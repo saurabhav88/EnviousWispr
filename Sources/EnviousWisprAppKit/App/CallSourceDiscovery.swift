@@ -112,6 +112,7 @@ final class CallSourceDiscovery {
   fileprivate struct ReadTarget {
     let state: SourceState
     let retained: CallEvidenceReader.RetainedTarget?
+    var speakerFrameID: Int? = nil
     var key: RequestKey { .init(sourceID: state.source.id, retained: retained) }
   }
   fileprivate struct RequestKey: Equatable {
@@ -167,6 +168,7 @@ final class CallSourceDiscovery {
   /// Reading lifetime is independent of microphone-frame sequence. A cancelled bounded read
   /// retains its task slot until it really returns; no new AX work is piled behind it.
   private func invalidateSharedWork() {
+    invalidateSpeakerFrames()
     readLifetime += 1
     evidenceTask?.cancel()
     cycleWanted = false
@@ -272,6 +274,8 @@ final class CallSourceDiscovery {
 
   /// Wake from sleep: read again at once.
   func noteWake() {
+    minimumSpeakerSequence = sequence + 1
+    invalidateSpeakerFrames()
     invalidatePolicyProjection()
     // Historical addresses survive wake, never microphone activity or completed proof.
     // Keep the raw speaker frame separate rather than pretending its holders disappeared.
@@ -373,6 +377,7 @@ final class CallSourceDiscovery {
         sources[value.source.pid]?.source == value.source || isTrackingRule(value.source.rule)
       }
     }
+    publishSpeakerFrameWithoutReads()
     observe()
   }
 
@@ -471,7 +476,13 @@ final class CallSourceDiscovery {
     } else { start = 0 }
     lastCycleStart = group[start].key
     let rotated = Array(group[start...]) + Array(group[..<start])
-    return primary.isEmpty ? rotated : rotated + secondary
+    let ordered = primary.isEmpty ? rotated : rotated + secondary
+    let frameID = beginSpeakerFrame(queries: ordered)
+    return ordered.map { target in
+      var target = target
+      if target.retained == nil { target.speakerFrameID = frameID }
+      return target
+    }
   }
 
   private func scheduleNextRead() {
@@ -490,7 +501,7 @@ final class CallSourceDiscovery {
         let target = cycle.removeFirst()
         guard let state = sources[target.state.source.pid], state.source == target.state.source,
           canQuery(state, retained: target.retained) else { continue }
-        launchRead(.init(state: state, retained: target.retained))
+        launchRead(.init(state: state, retained: target.retained, speakerFrameID: target.speakerFrameID))
         return
       }
     }
@@ -527,7 +538,10 @@ final class CallSourceDiscovery {
         self.removePending(current.source)
         if let retained = target.retained {
           self.acceptRetained(value, requested: current, target: retained, beganAt: beganAt, epoch: capturedPolicyEpoch)
-        } else { self.accept(value, requested: current, beganAt: beganAt, frame: capturedFrame, epoch: capturedPolicyEpoch) }
+        } else {
+          self.accept(value, requested: current, beganAt: beganAt, frame: capturedFrame,
+            epoch: capturedPolicyEpoch, speakerFrameID: target.speakerFrameID)
+        }
         // A healthy early source is useful now, not after every other app has answered.
         self.observe()
         self.onChange()
@@ -549,13 +563,15 @@ final class CallSourceDiscovery {
   }
 
   private func accept(
-    _ value: CallEvidenceReader.Snapshot, requested: SourceState, beganAt: Date, frame: Int, epoch: Int
+    _ value: CallEvidenceReader.Snapshot, requested: SourceState, beganAt: Date, frame: Int,
+    epoch: Int, speakerFrameID: Int?
   ) {
     let pid = requested.source.pid
     guard var current = sources[pid], current.present, current.source == requested.source,
       holders.contains(where: { Self.sameProcess($0, requested.holder) })
     else { return }
     if let expected = requested.owner, let actual = value.owner, expected != actual {
+      invalidateSpeakerFrames()
       // This request belongs to the replaced run. Publish loss of its identity, never its
       // positive result; a new microphone frame and query must establish the replacement.
       publishContinuity(.unknown, owner: nil, for: requested.source, beganAt: beganAt, epoch: epoch)
@@ -584,6 +600,7 @@ final class CallSourceDiscovery {
       else { start = value.startEvidence }
       evidence[pid] = .init(holder: current.holder, value: start, reading: frame,
         source: current.source, activityRevision: current.activityRevision, beganAt: beganAt, policyEpoch: epoch)
+      acceptSpeakerEvidence(start, source: current.source, frameID: speakerFrameID, beganAt: beganAt)
     }
   }
 
@@ -686,6 +703,9 @@ final class CallSourceDiscovery {
     guard epoch == policyEpoch, lifetime == readLifetime, updateReadLifetime(), isCurrentTarget(request.target)
     else { return }
     if watching { await pollAndWait() }
+    // A forced target can remove a member of the ordinary cycle. Never leave its partial
+    // speaker pair waiting forever, or fill it with a different frame's forced result.
+    collectingSpeakerFrame = nil
     discardStartProof(for: request.target)
     // The captured read pins identity, not the microphone choice: this poll may
     // have handed input to another already-verified source of the same call.
@@ -699,7 +719,9 @@ final class CallSourceDiscovery {
       canQuery(current, retained: captured.retained)
     else { return }
     cycle.removeAll { $0.key == captured.key }
-    launchRead(.init(state: current, retained: captured.retained))
+    let forced = ReadTarget(state: current, retained: captured.retained)
+    let speakerFrameID = beginSpeakerFrame(queries: [forced])
+    launchRead(.init(state: current, retained: captured.retained, speakerFrameID: speakerFrameID))
     if let fresh = evidenceTask { await fresh.value }
   }
 
@@ -742,18 +764,146 @@ final class CallSourceDiscovery {
   /// change, even one that changed back.
   private(set) var speakerSourceRevision = 0
   private var speakerSources: Set<String> = []
+  private var speakerMicrophones: Set<String> = []
+  private var observedSpeakerPages: [Int32: CallEvidenceReader.Evidence] = [:]
+  private var speakerGraphGeneration = 0
+  private var minimumSpeakerSequence = 0
+  private var nextSpeakerFrameID = 0
+
+  /// A readable completed buffer and one finite collecting buffer. The microphone/evidence
+  /// pair keeps its original identity and times; newer identical polls do not relabel it.
+  private struct SpeakerFrame {
+    let id: Int
+    let graphGeneration: Int
+    let sequence: Int
+    let holders: [CallMicrophoneWatcher.Holder]
+    let complete: Bool
+    let ambiguous: Bool
+    let capturedAt: Date
+    let required: [Int32: CallDetectionPolicy.Source]
+    var values: [Int32: CallEvidenceReader.Evidence] = [:]
+    var oldestReadAt: Date?
+  }
+
+  private var collectingSpeakerFrame: SpeakerFrame?
+  private var completedSpeakerFrame: SpeakerFrame?
+
+  private func invalidateSpeakerFrames() {
+    collectingSpeakerFrame = nil
+    completedSpeakerFrame = nil
+    observedSpeakerPages = [:]
+    speakerGraphGeneration += 1
+    speakerSourceRevision += 1
+  }
 
   private func noteSpeakerSources() {
     // Whether the reading may name a source at all is part of what changed.
-    var sources: Set<String> = ["complete=\(complete) ambiguous=\(ambiguous)"]
+    var microphones: Set<String> = ["complete=\(complete) ambiguous=\(ambiguous)"]
     for holder in holders where holder.input != .inactive {
-      var page = ""
-      if case .call(let family, _)? = evidence[holder.pid]?.value { page = "\(family)" }
-      sources.insert("\(holder.pid)|\(holder.bundleID)|\(holder.input)|\(page)")
+      microphones.insert("\(holder.pid)|\(holder.bundleID)|\(holder.input)|\(holder.object)|\(holder.ownerPID ?? -1)")
     }
-    guard sources != speakerSources else { return }
-    speakerSources = sources
+    if microphones != speakerMicrophones {
+      speakerMicrophones = microphones
+      invalidateSpeakerFrames()
+    }
+    var signature = microphones
+    for holder in holders where holder.input != .inactive {
+      // A start-proof eviction is pending work, not an observed page change. Actual completed
+      // unknown/none/call results update this signature and invalidate any old readable pair.
+      if let cached = evidence[holder.pid], Self.sameProcess(cached.holder, holder),
+        cached.holder.ownerPID == holder.ownerPID {
+        if let previous = observedSpeakerPages[holder.pid], previous != cached.value {
+          // Every member belongs to the pre-change context, even if the changing member
+          // has not contributed yet. The next ordinary cycle captures the new context;
+          // speaker invalidation must not add UI work to the shared policy scheduler.
+          collectingSpeakerFrame = nil
+        }
+        observedSpeakerPages[holder.pid] = cached.value
+      }
+      let page = observedSpeakerPages[holder.pid].map { String(describing: $0) } ?? "unread"
+      signature.insert("page=\(holder.pid)|\(page)")
+    }
+    guard signature != speakerSources else { return }
+    speakerSources = signature
+    completedSpeakerFrame = nil
     speakerSourceRevision += 1
+    publishSpeakerFrameWithoutReads()
+  }
+
+  private func makeSpeakerFrame() -> SpeakerFrame? {
+    guard complete, !ambiguous, sequence >= minimumSpeakerSequence else { return nil }
+    var required: [Int32: CallDetectionPolicy.Source] = [:]
+    for holder in holders where holder.input == .active {
+      guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
+      if case .browser = rule {
+        guard let state = sources[holder.pid], state.present,
+          Self.sameProcess(state.holder, holder) else { return nil }
+        required[holder.pid] = state.source
+      }
+    }
+    nextSpeakerFrameID += 1
+    return .init(id: nextSpeakerFrameID, graphGeneration: speakerGraphGeneration,
+      sequence: sequence, holders: holders, complete: complete, ambiguous: ambiguous,
+      capturedAt: takenAt, required: required)
+  }
+
+  private func speakerFrameIsFresh(_ frame: SpeakerFrame) -> Bool {
+    let oldest = min(frame.capturedAt, frame.oldestReadAt ?? frame.capturedAt)
+    let age = deps.now().timeIntervalSince(oldest)
+    return age >= 0 && age <= CallDetectionPolicy.staleAfter
+  }
+
+  private func expireCompletedSpeakerFrame() {
+    if let frame = completedSpeakerFrame, !speakerFrameIsFresh(frame) {
+      completedSpeakerFrame = nil
+      speakerSourceRevision += 1
+    }
+  }
+
+  private func publishSpeakerFrame(_ frame: SpeakerFrame) {
+    expireCompletedSpeakerFrame()
+    guard frame.graphGeneration == speakerGraphGeneration, speakerFrameIsFresh(frame),
+      frame.required.keys.allSatisfy({ frame.values[$0] != nil }) else { return }
+    // Identical successful refreshes advance freshness, not logical source identity.
+    completedSpeakerFrame = frame
+  }
+
+  private func publishSpeakerFrameWithoutReads() {
+    guard var frame = makeSpeakerFrame() else { return }
+    #if DEBUG
+      if let simulation {
+        for item in simulation where frame.required[item.holder.pid] != nil {
+          frame.values[item.holder.pid] = item.evidence
+        }
+        publishSpeakerFrame(frame)
+        return
+      }
+    #endif
+    if frame.required.isEmpty { publishSpeakerFrame(frame) }
+  }
+
+  private func beginSpeakerFrame(queries: [ReadTarget]) -> Int? {
+    collectingSpeakerFrame = nil
+    guard let frame = makeSpeakerFrame() else { return nil }
+    guard frame.required.values.allSatisfy({ source in
+      queries.contains { $0.retained == nil && $0.state.source == source }
+    }) else { return nil }
+    if frame.required.isEmpty { publishSpeakerFrame(frame); return nil }
+    collectingSpeakerFrame = frame
+    return frame.id
+  }
+
+  private func acceptSpeakerEvidence(_ value: CallEvidenceReader.Evidence,
+    source: CallDetectionPolicy.Source, frameID: Int?, beganAt: Date) {
+    guard var frame = collectingSpeakerFrame, frame.id == frameID,
+      frame.graphGeneration == speakerGraphGeneration,
+      frame.required[source.pid] == source else { return }
+    frame.values[source.pid] = value
+    frame.oldestReadAt = min(frame.oldestReadAt ?? beganAt, beganAt)
+    if frame.required.keys.allSatisfy({ frame.values[$0] != nil }) {
+      collectingSpeakerFrame = nil
+      publishSpeakerFrame(frame)
+    } else { collectingSpeakerFrame = frame }
   }
 
   /// #4013 13B: the one call a recording's speaker session reads now, whatever started the
@@ -764,10 +914,17 @@ final class CallSourceDiscovery {
   /// or a browser holding the microphone whose page is not read yet: `unavailable`. Never a
   /// guess, never a preference between calls.
   func speakerSource() -> CallSpeakerSourceAnswer {
-    guard complete, !ambiguous else { return .unavailable }
+    expireCompletedSpeakerFrame()
+    guard complete, !ambiguous, let frame = completedSpeakerFrame,
+      frame.graphGeneration == speakerGraphGeneration else { return .unavailable }
+    return speakerSource(in: frame)
+  }
+
+  private func speakerSource(in frame: SpeakerFrame) -> CallSpeakerSourceAnswer {
+    guard frame.complete, !frame.ambiguous else { return .unavailable }
     var candidates: [CallSpeakerSourceAnswer.Source] = []
     var undecided = false
-    for holder in holders where holder.input != .inactive {
+    for holder in frame.holders where holder.input != .inactive {
       guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
       // It may be holding the microphone for a second call.
       guard holder.input == .active else {
@@ -778,7 +935,7 @@ final class CallSourceDiscovery {
       switch rule {
       case .callApp(let ruleFamily), .callWindow(let ruleFamily): family = ruleFamily
       case .browser:
-        switch currentEvidence(for: holder) {
+        switch frame.values[holder.pid] {
         case .call(let pageFamily, _)?: family = pageFamily
         case .unknown?, nil:
           undecided = true

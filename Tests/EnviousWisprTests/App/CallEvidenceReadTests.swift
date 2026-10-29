@@ -42,13 +42,16 @@ struct CallEvidenceReadTests {
 
   @Test("Timely snapshots preserve independent attributed continuity", arguments: [true, false])
   func timelySnapshot(ended: Bool) async {
+    let owner = CallEvidenceReader.AppRun(pid: 70_000, bundleIdentifier: "com.google.Chrome",
+      birthSeconds: 1, birthMicroseconds: 23)
     let value = Snapshot(startEvidence: ended ? .none : .call(family: .googleMeet, room: "owned-room"),
       continuity: ended ? .ended(family: .googleMeet, room: "owned-room")
-        : .ongoing(family: .googleMeet, room: "owned-room"))
+        : .ongoing(family: .googleMeet, room: "owned-room"), owner: owner)
     let result = await CallEvidenceRead.boundedSnapshot(
       rule: .browser(.chrome), pid: 70_000, bound: .seconds(10), lane: .init(),
       read: { _, _ in value })
     #expect(result == value)
+    #expect(result.owner == owner)
   }
 
   @Test("A timed-out ongoing snapshot stays withheld until real completion and recovery")
