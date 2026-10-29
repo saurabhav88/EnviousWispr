@@ -878,9 +878,11 @@ fi
 COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 DETECTED_JSON=$(detected_json_from_lanes "$DETECTED")
 CHANGED_JSON=$(printf '%s\n' "$CHANGED" | jq -R . | jq -s 'map(select(. != ""))')
-SATISFIED_JSON=$(printf '%s\n' "${SATISFIED[@]}" | jq -R . | jq -s 'map(select(. != ""))')
-SKIPPED_JSON=$(printf '%s\n' "${SKIPPED[@]}" | jq -R . | jq -s 'map(select(. != ""))')
-SKIP_NOTES_JSON=$(printf '%s\n' "${SKIP_NOTES[@]}" | jq -R . | jq -s 'map(select(. != ""))')
+# Bash 3.2 treats an empty array as unset under nounset. The JSON filters below
+# discard the empty placeholder while preserving every populated array element.
+SATISFIED_JSON=$(printf '%s\n' "${SATISFIED[@]-}" | jq -R . | jq -s 'map(select(. != ""))')
+SKIPPED_JSON=$(printf '%s\n' "${SKIPPED[@]-}" | jq -R . | jq -s 'map(select(. != ""))')
+SKIP_NOTES_JSON=$(printf '%s\n' "${SKIP_NOTES[@]-}" | jq -R . | jq -s 'map(select(. != ""))')
 
 jq -n \
   --argjson schema "$SCHEMA_VERSION" \
