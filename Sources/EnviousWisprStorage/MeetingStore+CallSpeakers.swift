@@ -80,9 +80,12 @@ extension MeetingStore {
   /// Replaces `call-speakers.json` atomically at 0600 (`atomicWrite`, with its documented
   /// outcomes on failure). Refuses, before anything is written: a meeting that is gone,
   /// unreadable, written by a newer build, marked for deletion or without its audio; a file on
-  /// disk that a newer build wrote; and a log whose shape is wrong.
+  /// disk that a newer build wrote; and a log whose shape is wrong or that the current format
+  /// cannot hold.
   public func saveCallSpeakers(_ log: CallSpeakerLog, meeting id: UUID) throws {
-    if let problem = log.shapeProblem { throw CallSpeakersError.invalidLog(problem) }
+    // Written as the current format: a log read from an older one that the current format
+    // cannot hold is refused here, and the file it came from stays as it is.
+    if let problem = log.currentFormatProblem { throw CallSpeakersError.invalidLog(problem) }
     let data = try Self.encoder.encode(log)
     // A well-formed log always fits (`CallEvidenceLimits`, checked by `CallSpeakerLogSizeTests`);
     // this refuses one only if those caps and this limit ever drift apart.

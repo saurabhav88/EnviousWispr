@@ -432,4 +432,82 @@ struct CallSpeakerLogTests {
     #expect(read.formatVersion == 2)
     #expect(read.segments.first?.roster.names.count == names.count)
   }
+
+  @Test("format 3 keeps every spelling's exact bytes, even two Swift calls equal")
+  func spellingsKeepTheirBytes() throws {
+    let composed = "Am\u{00E9}lie"
+    let decomposed = "Ame\u{0301}lie"
+    #expect(composed == decomposed, "Swift calls them equal")
+    let log = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        CallSpeakerSegment(
+          startMs: 0, endMs: nil, endReason: nil, surface: .meet, source: .rules,
+          status: .observed, lag: nil,
+          roster: CallSpeakerRoster(names: [composed], selfNames: []),
+          rosterFromParticipantList: false,
+          observations: [
+            CallSpeakerObservation(observationMs: 1_000, speaking: [decomposed]),
+            CallSpeakerObservation(observationMs: 1_500, speaking: [composed]),
+          ])
+      ])
+    let back = try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(log))
+    let segment = try #require(back.segments.first)
+    func bytes(_ names: [String]) -> [[UInt8]] { names.map { Array($0.utf8) } }
+    #expect(bytes(segment.roster.names) == bytes([composed]))
+    #expect(bytes(segment.observations.flatMap(\.speaking)) == bytes([decomposed, composed]))
+  }
+
+  @Test("a format-2 log keeps its own name rule; the current format refuses what it cannot hold")
+  func legacyNamesReadAsWritten() throws {
+    // One character holding 600 combining marks: a name format 2 allowed.
+    let heavy = "a" + String(repeating: "\u{0301}", count: 600)
+    let json =
+      #"{"formatVersion":2,"segments":[{"startMs":0,"roster":{"names":[""#
+      + heavy + #""],"selfNames":[]}}]}"#
+    let log = try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+    #expect(log.shapeProblem == nil)
+    #expect(log.currentFormatProblem == "names")
+    #expect(throws: EncodingError.self) { try JSONEncoder().encode(log) }
+  }
+
+  @Test("a small format-3 file that would unfold past a cap is refused before it unfolds")
+  func compactOverCapRefused() {
+    let samples = CallEvidenceLimits.current.samples + 1
+    let oneRun =
+      #"{"formatVersion":3,"names":[],"segments":[{"startMs":0,"roster":{"names":[],"selfNames":[]},"runs":[{"startMs":0,"speaking":[],"offsets":["#
+      + Array(repeating: "0", count: samples).joined(separator: ",") + "]}]}]}"
+    let runs = CallEvidenceLimits.current.runs + 1
+    let manyRuns =
+      #"{"formatVersion":3,"names":[],"segments":[{"startMs":0,"roster":{"names":[],"selfNames":[]},"runs":["#
+      + Array(repeating: #"{"startMs":0,"speaking":[],"offsets":[0]}"#, count: runs)
+      .joined(separator: ",") + "]}]}"
+    for (json, cap) in [(oneRun, "samples"), (manyRuns, "runs")] {
+      #expect(throws: CallSpeakerLog.DecodeError.invalid("capacity.\(cap)")) {
+        try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+      }
+    }
+  }
+
+  @Test("a format-3 log with an overlong label or too many health keys is refused")
+  func labelBounds() {
+    let long = String(repeating: "x", count: CallSpeakerLog.maximumLabelBytes + 1)
+    let json =
+      #"{"formatVersion":3,"names":[],"segments":[{"startMs":0,"roster":{"names":[],"selfNames":[]},"runs":[],"surface":""#
+      + long + #""}]}"#
+    #expect(throws: CallSpeakerLog.DecodeError.invalid("segments[0].labels")) {
+      try JSONDecoder().decode(CallSpeakerLog.self, from: Data(json.utf8))
+    }
+    var health = CallCaptureHealth()
+    for n in 0...CallSpeakerLog.maximumHealthKeys { health.withheldByReason["k\(n)"] = 1 }
+    let log = CallSpeakerLog(
+      rules: nil,
+      segments: [
+        CallSpeakerSegment(
+          startMs: 0, endMs: nil, endReason: nil, surface: .meet, source: .rules,
+          status: .observed, lag: nil, roster: .empty, rosterFromParticipantList: nil,
+          observations: [], health: health)
+      ])
+    #expect(log.shapeProblem == "segments[0].health")
+  }
 }

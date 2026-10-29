@@ -40,7 +40,9 @@ public enum CallEvidenceCapacity: String, Sendable, Equatable, CaseIterable {
 
 /// What some segments' evidence uses of `CallEvidenceLimits`.
 public struct CallEvidenceUsage: Sendable, Equatable {
-  public var names: Set<String> = []
+  /// Distinct stored spellings, by their bytes: two spellings Swift calls equal (composed and
+  /// decomposed accents) are still two spellings in the log.
+  public var names: Set<[UInt8]> = []
   public var runs = 0
   public var samples = 0
   public var speakingReferences = 0
@@ -56,22 +58,27 @@ public struct CallEvidenceUsage: Sendable, Equatable {
     for segment in segments { add(segment) }
   }
 
+  public mutating func insertNames(_ more: some Sequence<String>) {
+    for name in more { names.insert(Array(name.utf8)) }
+  }
+
   public mutating func add(_ segment: CallSpeakerSegment) {
-    names.formUnion(segment.roster.names)
-    names.formUnion(segment.roster.selfNames)
+    insertNames(segment.roster.names)
+    insertNames(segment.roster.selfNames)
     rosterReferences += segment.roster.names.count + segment.roster.selfNames.count
     var previous: CallSpeakerObservation?
     for observation in segment.observations {
-      names.formUnion(observation.speaking)
       samples += 1
+      // A run's samples all name the same spellings.
       if !CallSpeakerRun.continues(previous, with: observation) {
         runs += 1
         speakingReferences += observation.speaking.count
+        insertNames(observation.speaking)
       }
       previous = observation
     }
     for entry in segment.presence ?? [] {
-      names.insert(entry.name)
+      insertNames([entry.name])
       presenceEntries += 1
       sightings += entry.sightings.count
       absences += entry.absences.count
@@ -99,12 +106,31 @@ public enum CallSpeakerRun {
   /// The longest gap between two samples of one run, in milliseconds.
   public static let maximumGapMs = 1_500
 
-  /// Whether `next` extends the run that `previous` is in.
+  /// Whether `next` extends the run that `previous` is in: the same talkers spelled with the
+  /// same bytes, in the same order, close enough in time.
   public static func continues(
     _ previous: CallSpeakerObservation?, with next: CallSpeakerObservation
   ) -> Bool {
-    guard let previous else { return false }
-    return previous.speaking == next.speaking
-      && next.observationMs - previous.observationMs <= maximumGapMs
+    guard let previous, sameTalkers(previous, next) else { return false }
+    return next.observationMs - previous.observationMs <= maximumGapMs
+  }
+
+  /// The same talkers spelled with the same bytes, in the same order.
+  public static func sameTalkers(_ a: CallSpeakerObservation?, _ b: CallSpeakerObservation) -> Bool
+  {
+    guard let a, a.speaking.count == b.speaking.count else { return false }
+    return zip(a.speaking, b.speaking).allSatisfy(sameSpelling)
+  }
+
+  /// Whether two names have the same bytes; compared as memory, since this runs for every
+  /// sample of a long recording.
+  public static func sameSpelling(_ a: String, _ b: String) -> Bool {
+    guard a.utf8.count == b.utf8.count else { return false }
+    let fast = a.utf8.withContiguousStorageIfAvailable { x in
+      b.utf8.withContiguousStorageIfAvailable { y in
+        x.count == 0 || memcmp(x.baseAddress!, y.baseAddress!, x.count) == 0
+      }
+    }
+    return (fast ?? nil) ?? a.utf8.elementsEqual(b.utf8)
   }
 }

@@ -577,7 +577,7 @@ struct CallSpeakerCaptureTests {
     #expect(reached({ $0.rosterReferences = 1 }, [priya]) == .rosterReferences)
     #expect(reached({ $0.presenceEntries = 1 }, [priya]) == .presenceEntries)
     var earlier = CallEvidenceUsage()
-    earlier.names = ["Dana Okafor", "Sam"]
+    earlier.insertNames(["Dana Okafor", "Sam"])
     #expect(
       reached({ $0.names = 3 }, baseline: earlier, [priya]) == .names,
       "earlier segments count too")

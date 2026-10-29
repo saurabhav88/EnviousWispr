@@ -188,7 +188,8 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// This segment's runs, talker references and talker names, kept as observations are added.
   private var runs = 0
   private var speakingReferences = 0
-  private var speakingNames: Set<String> = []
+  /// The bytes of every talker name this segment kept.
+  private var speakingSpellings: Set<[UInt8]> = []
 
   /// Rosters and presence: small, so a reading is tried on a copy of them.
   private struct Names: Sendable, Equatable {
@@ -299,7 +300,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
         runs += 1
         speakingReferences += observation.speaking.count
       }
-      speakingNames.formUnion(observation.speaking)
+      for name in observation.speaking { speakingSpellings.insert(Array(name.utf8)) }
       observations.append(observation)
     case .withheld(let reason):
       health.withheldByReason[reason.rawValue, default: 0] += 1
@@ -312,10 +313,10 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     -> CallEvidenceUsage
   {
     var usage = baseline
-    usage.names.formUnion(names.nameOrder)
-    usage.names.formUnion(names.selfNames)
-    usage.names.formUnion(names.presenceOrder)
-    usage.names.formUnion(speakingNames)
+    usage.insertNames(names.nameOrder)
+    usage.insertNames(names.selfNames)
+    usage.insertNames(names.presenceOrder)
+    usage.names.formUnion(speakingSpellings)
     usage.rosterReferences += names.nameCounts.values.reduce(0, +) + names.selfNames.count
     usage.presenceEntries += names.presenceOrder.count
     for tracked in names.presence.values {
@@ -326,7 +327,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     usage.samples += observations.count
     usage.speakingReferences += speakingReferences
     if let observation {
-      usage.names.formUnion(observation.speaking)
+      usage.insertNames(observation.speaking)
       usage.samples += 1
       if !CallSpeakerRun.continues(observations.last, with: observation) {
         usage.runs += 1

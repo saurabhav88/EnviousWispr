@@ -291,4 +291,23 @@ struct MeetingCallSpeakersStoreTests {
     try store.deleteFolder(meeting: record.id)
     #expect(!FileManager.default.fileExists(atPath: folder.path))
   }
+
+  @Test("a format-2 file the current format cannot hold reads as written and is never rewritten")
+  func legacyOverCapKept() throws {
+    let (store, record) = try makeMeeting()
+    let names = (0...CallEvidenceLimits.current.names).map { "\"Person \($0)\"" }
+    let text =
+      #"{"formatVersion":2,"segments":[{"startMs":0,"roster":{"names":["#
+      + names.joined(separator: ",") + #"],"selfNames":[]}}]}"#
+    try writeRaw(text, meeting: record.id, in: store)
+    guard case .usable(let log) = store.loadCallSpeakers(meeting: record.id) else {
+      Issue.record("the format-2 file did not read")
+      return
+    }
+    #expect(log.segments.first?.roster.names.count == names.count)
+    #expect(throws: MeetingStore.CallSpeakersError.invalidLog("capacity.names")) {
+      try store.saveCallSpeakers(log, meeting: record.id)
+    }
+    #expect(try String(contentsOf: store.callSpeakersURL(for: record.id), encoding: .utf8) == text)
+  }
 }

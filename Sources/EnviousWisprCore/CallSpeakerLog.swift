@@ -194,8 +194,12 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     {
       return "lag"
     }
-    if !(roster.names + roster.selfNames).allSatisfy(CallSpeakerLog.isName) { return "roster" }
+    if !(roster.names + roster.selfNames).allSatisfy(CallSpeakerLog.isStoredName) {
+      return "roster"
+    }
     var previous = startMs
+    // Consecutive samples usually name the same talkers; their names are checked once.
+    var checked: CallSpeakerObservation?
     for (index, observation) in observations.enumerated() {
       guard clock.contains(observation.observationMs) else {
         return "observations[\(index)].observationMs"
@@ -206,8 +210,11 @@ public struct CallSpeakerSegment: Sendable, Equatable {
       if let endMs, observation.observationMs > endMs {
         return "observations[\(index)] after the segment"
       }
-      guard observation.speaking.allSatisfy(CallSpeakerLog.isName) else {
-        return "observations[\(index)].speaking"
+      if !CallSpeakerRun.sameTalkers(checked, observation) {
+        guard observation.speaking.allSatisfy(CallSpeakerLog.isStoredName) else {
+          return "observations[\(index)].speaking"
+        }
+        checked = observation
       }
       previous = observation.observationMs
     }
@@ -217,7 +224,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
         return "presence names repeat"
       }
       for (index, entry) in presence.enumerated() {
-        guard CallSpeakerLog.isName(entry.name) else { return "presence[\(index)].name" }
+        guard CallSpeakerLog.isStoredName(entry.name) else { return "presence[\(index)].name" }
         if let problem = entry.shapeProblem { return "presence[\(index)] \(problem)" }
         // Every time stays inside the segment.
         let times =
@@ -348,8 +355,49 @@ public struct CallSpeakerLog: Sendable, Equatable {
       names: order.flatMap { Array(repeating: $0, count: counts[$0] ?? 0) }, selfNames: selfNames)
   }
 
-  /// The first shape problem, or `nil` when the log may be admitted as evidence.
+  /// The first shape problem, or `nil` when the log may be admitted as evidence: the rules every
+  /// format shares, plus the current format's limits for a log in it (formats 1 and 2 are read
+  /// as they were written).
   public var shapeProblem: String? {
+    sharedShapeProblem ?? (formatVersion >= 3 ? currentFormatOnlyProblem : nil)
+  }
+
+  /// Why this log cannot be written in the current format, or `nil`. A log read from an older
+  /// format may hold more than the current format allows; it is then kept as it is, never
+  /// rewritten (`MeetingStore.saveCallSpeakers` refuses it before writing).
+  public var currentFormatProblem: String? {
+    sharedShapeProblem ?? currentFormatOnlyProblem
+  }
+
+  /// The longest text a log keeps for a surface, source, status, end reason, health key or
+  /// capacity reason (every value this build writes is far shorter), and the most health keys.
+  public static let maximumLabelBytes = 64
+  public static let maximumHealthKeys = 16
+
+  private var currentFormatOnlyProblem: String? {
+    let usage = CallEvidenceUsage(segments)
+    if let capacity = usage.exceeded(.current) { return "capacity.\(capacity.rawValue)" }
+    // Each distinct spelling once.
+    guard usage.names.allSatisfy({ Self.isName(String(decoding: $0, as: UTF8.self)) }) else {
+      return "names"
+    }
+    func isLabel(_ text: String?) -> Bool { (text?.utf8.count ?? 0) <= Self.maximumLabelBytes }
+    guard isLabel(sessionHealth?.capacityReason) else { return "sessionHealth.capacityReason" }
+    for (index, segment) in segments.enumerated() {
+      guard
+        [segment.surfaceRaw, segment.sourceRaw, segment.statusRaw, segment.endReasonRaw]
+          .allSatisfy(isLabel)
+      else { return "segments[\(index)].labels" }
+      if let reasons = segment.health?.withheldByReason {
+        guard reasons.count <= Self.maximumHealthKeys, reasons.keys.allSatisfy(isLabel) else {
+          return "segments[\(index)].health"
+        }
+      }
+    }
+    return nil
+  }
+
+  private var sharedShapeProblem: String? {
     if let rules {
       if rules.version < 1 { return "rules.version" }
       if rules.payload.isEmpty || rules.payload.utf8.count > FrozenTalkerRules.maximumPayloadBytes {
@@ -357,11 +405,6 @@ public struct CallSpeakerLog: Sendable, Equatable {
       }
     }
     guard segments.count <= Self.maximumSegments else { return "segments" }
-    if formatVersion >= 3,
-      let capacity = CallEvidenceUsage(segments).exceeded(.current)
-    {
-      return "capacity.\(capacity.rawValue)"
-    }
     var previousEnd: Int?
     for (index, segment) in segments.enumerated() {
       if let problem = segment.shapeProblem { return "segments[\(index)].\(problem)" }
@@ -382,7 +425,12 @@ public struct CallSpeakerLog: Sendable, Equatable {
   public static let maximumNameBytes = 1_024
 
   public static func isName(_ name: String) -> Bool {
-    !name.isEmpty && name.count <= maximumNameLength && name.utf8.count <= maximumNameBytes
+    isStoredName(name) && name.utf8.count <= maximumNameBytes
+  }
+
+  /// A name as formats 1 and 2 allowed one: bounded in characters only.
+  static func isStoredName(_ name: String) -> Bool {
+    !name.isEmpty && name.count <= maximumNameLength
   }
 }
 
@@ -434,17 +482,26 @@ extension CallSpeakerLog: Codable {
       segments = try container.decode([CallSpeakerSegment].self, forKey: .segments)
     } else {
       let names = try container.decode([String].self, forKey: .names)
-      guard names.allSatisfy(Self.isName), Set(names).count == names.count else {
-        throw DecodeError.invalid("names")
+      guard names.allSatisfy(Self.isName),
+        Set(names.map { Array($0.utf8) }).count == names.count
+      else { throw DecodeError.invalid("names") }
+      let wire = try container.decode([CallSpeakerWireSegment].self, forKey: .segments)
+      // Counted before any sample is made, so a small file cannot unfold into millions.
+      if let capacity = CallSpeakerWireSegment.exceeded(wire, names: names.count, .current) {
+        throw DecodeError.invalid("capacity.\(capacity.rawValue)")
       }
-      segments = try container.decode([CallSpeakerWireSegment].self, forKey: .segments)
-        .map { try $0.segment(names: names) }
+      segments = try wire.map { try $0.segment(names: names) }
     }
     if let problem = shapeProblem { throw DecodeError.invalid(problem) }
   }
 
-  /// Always written as the current format.
+  /// Always written as the current format; a log the current format cannot hold
+  /// (`currentFormatProblem`) is refused, never written.
   public func encode(to encoder: Encoder) throws {
+    if let problem = currentFormatProblem {
+      throw EncodingError.invalidValue(
+        self, .init(codingPath: encoder.codingPath, debugDescription: problem))
+    }
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(Self.currentFormatVersion, forKey: .formatVersion)
     try container.encodeIfPresent(rules, forKey: .rules)
@@ -457,14 +514,16 @@ extension CallSpeakerLog: Codable {
   }
 }
 
-/// Format 3's name table: each spelling once, in first-written order.
+/// Format 3's name table: each spelling once, by its bytes (two spellings Swift calls equal stay
+/// two), in first-written order.
 private struct CallSpeakerNameTable {
   private(set) var names: [String] = []
-  private var ids: [String: Int] = [:]
+  private var ids: [[UInt8]: Int] = [:]
 
   mutating func id(_ name: String) -> Int {
-    if let id = ids[name] { return id }
-    ids[name] = names.count
+    let key = Array(name.utf8)
+    if let id = ids[key] { return id }
+    ids[key] = names.count
     names.append(name)
     return names.count - 1
   }
@@ -543,6 +602,42 @@ private struct CallSpeakerWireSegment: Codable {
         sightingsFull: $0.sightingsFull)
     }
     health = segment.health
+  }
+
+  /// The first cap the stored counts pass, before anything is unfolded.
+  static func exceeded(
+    _ segments: [CallSpeakerWireSegment], names: Int, _ limits: CallEvidenceLimits
+  ) -> CallEvidenceCapacity? {
+    if segments.count > CallSpeakerLog.maximumSegments { return .segments }
+    if names > limits.names { return .names }
+    var runs = 0
+    var samples = 0
+    var speaking = 0
+    var roster = 0
+    var presence = 0
+    var sightings = 0
+    var absences = 0
+    for segment in segments {
+      runs += segment.runs.count
+      roster += segment.roster.names.count + segment.roster.selfNames.count
+      for run in segment.runs {
+        samples += run.offsets.count
+        speaking += run.speaking.count
+      }
+      for entry in segment.presence ?? [] {
+        presence += 1
+        sightings += entry.sightings.count
+        absences += entry.absences.count
+      }
+    }
+    if runs > limits.runs { return .runs }
+    if samples > limits.samples { return .samples }
+    if speaking > limits.speakingReferences { return .speakingReferences }
+    if roster > limits.rosterReferences { return .rosterReferences }
+    if presence > limits.presenceEntries { return .presenceEntries }
+    if sightings > limits.sightings { return .sightings }
+    if absences > limits.absences { return .absences }
+    return nil
   }
 
   /// The segment this was written from; a position outside the table, or a run that is empty,

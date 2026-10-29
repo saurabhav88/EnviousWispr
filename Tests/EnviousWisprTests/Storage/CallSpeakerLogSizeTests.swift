@@ -12,7 +12,7 @@ import Testing
 /// The fixture fills every cap in `CallEvidenceLimits` at once, with names that escape to six
 /// bytes a character, every counter at its largest and the longest text values, and goes
 /// through the real storage encoder and store. Building, saving and reading 345,600 samples
-/// takes about three seconds: that size is the subject.
+/// takes about eight seconds in a Debug build: that size is the subject.
 @Suite("Speaker log size", .tags(.productOutcome), .timeLimit(.minutes(1)))
 struct CallSpeakerLogSizeTests {
   private static let limits = CallEvidenceLimits.current
@@ -167,5 +167,42 @@ struct CallSpeakerLogSizeTests {
     }
     let frames = try MeetingStore.encoder.encode(CallSpeakerLog(rules: nil, segments: empty))
     #expect(frames.count <= Self.segmentFramesCeiling)
+  }
+
+  @Test("one run, one presence entry and one sighting with its absence stay inside their ceilings")
+  func frameCeilings() throws {
+    let name = Self.names[0]
+    let far = CallSpeakerObservation.maximumObservationMs
+    func size(_ observations: [CallSpeakerObservation], _ presence: [CallNamePresence]) throws
+      -> Int
+    {
+      try MeetingStore.encoder.encode(
+        CallSpeakerLog(
+          rules: nil,
+          segments: [
+            CallSpeakerSegment(
+              startMs: 0, endMs: nil, endReason: nil, surface: .teamsApp, source: .app,
+              status: .observed, lag: nil, roster: CallSpeakerRoster(names: [name], selfNames: []),
+              rosterFromParticipantList: true, observations: observations, presence: presence)
+          ])
+      ).count
+    }
+    let none = try size([], [])
+    // A run of one sample naming one talker: frame 128, one offset 10, one reference 5.
+    let run = try size([CallSpeakerObservation(observationMs: far, speaking: [name])], []) - none
+    #expect(run <= 128 + 10 + 5)
+    let empty = CallNamePresence(name: name, sightings: [], absences: [], sightingsFull: true)
+    let entry = try size([], [empty]) - none
+    #expect(entry <= 128)
+    let pair =
+      try size(
+        [],
+        [
+          CallNamePresence(
+            name: name,
+            sightings: [.init(firstSeenMs: far - 3, lastSeenMs: far - 2, absenceConfirmed: true)],
+            absences: [.init(firstMissingMs: far - 1, confirmedAtMs: far)], sightingsFull: true)
+        ]) - none - entry
+    #expect(pair <= 160)
   }
 }
