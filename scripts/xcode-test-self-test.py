@@ -55,7 +55,7 @@ class RunnerContract(unittest.TestCase):
         # Replace only dependencies in the private fixture. The runner itself is
         # byte-identical, with no production environment bypass or rewrite.
         (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
-        (lib / 'spm-seed.sh').write_text('''ew_seed_release_all() { :; }
+        (lib / 'spm-seed.sh').write_text('''ew_seed_on_exit() { :; }
 ew_seed_consume() { echo seed >> "$TRACE"; }
 ew_seed_publish() { cp "$PACKAGE_STATE" "$PUBLISHED_STATE"; echo publish >> "$TRACE"; }
 ew_seed_resolve_or_unseed() { [ "${STUB_SEEDED:-1}" = 1 ] || return 0; shift; "$@"; }
@@ -698,7 +698,7 @@ class BuildEntrypointHookContract(unittest.TestCase):
         shutil.copyfile(RUNNER.with_name('build-dev-app.sh'), self.root / 'scripts/build-dev-app.sh')
         (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / 'launch-check.sh').write_text(':\n')
-        (lib / 'spm-seed.sh').write_text('ew_seed_release_all() { :; }\n')
+        (lib / 'spm-seed.sh').write_text('ew_seed_on_exit() { :; }\n')
         (lib / 'l10n-build-with-receipt.sh').write_text(':\n')
         hooks = self.root / 'scripts/githooks'
         hooks.mkdir()
