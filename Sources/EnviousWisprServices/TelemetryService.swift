@@ -4133,6 +4133,8 @@ public final class TelemetryService {
   /// never resolved one (#3973 C3).
   /// #4121: `call_output_transport` (string), `call_capture_rate_hz`, `call_rebuilds` and
   /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
+  /// #4013: `speaker_names_surface` and `speaker_names_outcome` (strings) and `auto_named_count`
+  /// (`Int`) are each omitted when not known.
   static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
     var props: [String: Any] = [
       "outcome": event.outcome.rawValue,
@@ -4156,6 +4158,9 @@ public final class TelemetryService {
     if let rate = event.callCaptureRateHz { props["call_capture_rate_hz"] = rate }
     if let rebuilds = event.callRebuilds { props["call_rebuilds"] = rebuilds }
     if let omitted = event.callReportsOmitted { props["call_reports_omitted"] = omitted }
+    if let surface = event.speakerNamesSurface { props["speaker_names_surface"] = surface.rawValue }
+    if let outcome = event.speakerNamesOutcome { props["speaker_names_outcome"] = outcome.rawValue }
+    if let count = event.autoNamedCount { props["auto_named_count"] = count }
     return props
   }
 

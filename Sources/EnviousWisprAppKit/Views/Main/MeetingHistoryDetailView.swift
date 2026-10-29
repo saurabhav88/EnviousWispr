@@ -49,6 +49,9 @@ struct MeetingHistoryDetailView: View {
   }
 
   @State private var tab: Tab = .transcript
+  /// #4013 r3 F3: this meeting's saved participant list, for the rename suggestions; read once
+  /// per meeting and audio state (`RosterKey`).
+  @State private var rosterRead: KeyedRosterRead<RosterKey>?
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -82,6 +85,13 @@ struct MeetingHistoryDetailView: View {
       }
       .task(id: meetings.playbackSource(meetingID: meetingID)) {
         reconcilePlayer()
+      }
+      .task(id: rosterKey(record)) {
+        // Stored with the request it answers; shown only while that is still the request.
+        let key = rosterKey(record)
+        let read = await meetings.callSpeakerEvidence(meetingID: meetingID)
+        guard !Task.isCancelled else { return }
+        rosterRead = KeyedRosterRead(key: key, evidence: read)
       }
       .onAppear {
         // A meeting that recorded nothing has only notes to show.
@@ -175,6 +185,19 @@ struct MeetingHistoryDetailView: View {
   /// What the audio size depends on, so it is measured again only when that changes.
   private struct AudioSizeKey: Hashable {
     let audioKept: Bool
+    let state: MeetingState
+  }
+
+  private func rosterKey(_ record: MeetingRecord) -> RosterKey {
+    RosterKey(
+      meetingID: meetingID, audioKept: record.audioKept,
+      deletionRequested: record.deletionRequested, state: record.state)
+  }
+
+  private struct RosterKey: Hashable {
+    let meetingID: UUID
+    let audioKept: Bool
+    let deletionRequested: Bool
     let state: MeetingState
   }
 
@@ -520,11 +543,16 @@ struct MeetingHistoryDetailView: View {
           }
           .disabled(!permissions.accessibilityGranted || !canDeliver)
         }
+        if record.map({ rosterRead?.permissionMissing(for: rosterKey($0)) == true }) == true {
+          speakerNamesPermissionNote
+        }
         switch projection {
         case .visible(let turns, _):
           MeetingTurnsDocument(
             rowID: row.id, turns: turns, rawText: row.text,
-            speakerNames: row.speakerNames ?? [:], player: player
+            speakerNames: row.speakerNames ?? [:], player: player,
+            renameSuggestions: SpeakerRenameSuggestions(
+              row: row, roster: record.flatMap { rosterRead?.roster(for: rosterKey($0)) })
           )
           .equatable()
         case .everythingHidden:
@@ -537,6 +565,22 @@ struct MeetingHistoryDetailView: View {
             .foregroundStyle(.stTextSecondary)
         }
       }
+    }
+  }
+
+  /// #4013: this meeting recorded without Accessibility, so it has no speaker names to offer.
+  private var speakerNamesPermissionNote: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text(MeetingHistoryPresentation.speakerNamesPermissionMessage)
+        .font(.stBody)
+        .foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 0)
+      Button(MeetingHistoryPresentation.speakerNamesPermissionButton) {
+        navigationCoordinator.request(.meetings(.permissions))
+        appWindowCoordinator.showWindow()
+      }
+      .accessibilityIdentifier("meetings.history.speakerNamesPermission")
     }
   }
 
@@ -584,10 +628,11 @@ struct MeetingTurnsDocument: View, Equatable {
   let rawText: String
   let speakerNames: [String: String]
   let player: MeetingPlaybackController?
+  let renameSuggestions: SpeakerRenameSuggestions
   @Environment(TranscriptCoordinator.self) private var transcripts
 
   nonisolated static func == (a: MeetingTurnsDocument, b: MeetingTurnsDocument) -> Bool {
-    a.rowID == b.rowID && a.player === b.player
+    a.rowID == b.rowID && a.player === b.player && a.renameSuggestions == b.renameSuggestions
       && MeetingDocumentHash.sameBytes(a.rawText, b.rawText)
       && MeetingDocumentHash.sameBytes(a.speakerNames, b.speakerNames)
       && TranscriptTurnsDocument.Inputs.sameTurns(a.turns, b.turns)
@@ -608,6 +653,7 @@ struct MeetingTurnsDocument: View, Equatable {
           player.play()
         }
       },
+      renameSuggestions: renameSuggestions,
       fallback: { EmptyView() })
   }
 }

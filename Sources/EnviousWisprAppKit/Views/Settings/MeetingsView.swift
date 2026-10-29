@@ -338,7 +338,7 @@ extension MeetingsView {
           "Not allowed. EnviousMeet can't notice calls until you allow it.",
           comment: "EnviousMeet page: without Accessibility, calls are not noticed."),
       help: LocalizedStringResource(
-        "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. It reads this on your Mac and never sends it anywhere. Pasting your dictation uses the same permission.",
+        "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission.",
         comment: "EnviousMeet page: help for the Accessibility permission row.")
     ) {
       if !permissions.accessibilityGranted {

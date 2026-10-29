@@ -59,6 +59,12 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let callCaptureRateHz: Int?
   public let callRebuilds: Int?
   public let callReportsOmitted: Int?
+  /// #4013: what automatic speaker naming achieved, from the summary of the reconciled row the
+  /// durable History write stored. Each is nil when not known, and all are nil when the
+  /// attempt has no committed summary; a known zero count stays 0.
+  public let speakerNamesSurface: SpeakerNamingSummary.Surface?
+  public let speakerNamesOutcome: SpeakerNamingSummary.Outcome?
+  public let autoNamedCount: Int?
 
   /// The summary decision taken when the meeting ends (R48, R54).
   public enum SummaryPlan: String, Sendable, CaseIterable {
@@ -81,7 +87,8 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     microphoneTrack: MeetingTrackStatus, callSoundTrack: MeetingTrackStatus,
     engine: MeetingEngineChoice?, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
-    summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil
+    summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil,
+    speakerNaming: SpeakerNamingSummary? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -102,6 +109,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.callCaptureRateHz = callSound?.configuredRateHz
     self.callRebuilds = callSound?.rebuilds
     self.callReportsOmitted = callSound?.omittedReports
+    self.speakerNamesSurface = speakerNaming?.surface
+    self.speakerNamesOutcome = speakerNaming?.outcome
+    self.autoNamedCount = speakerNaming?.autoNamedCount
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a

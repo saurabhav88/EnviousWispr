@@ -566,7 +566,10 @@ struct MeetingTranscriptionJobTests {
   private func checkpointJob(
     engine: FakeEngine, identity: String = "ultra:r1", target: Double = 20,
     analyses: OSAllocatedUnfairLock<Int>? = nil, cutsPieces: Bool = true,
-    languages: OSAllocatedUnfairLock<[String?]>? = nil
+    languages: OSAllocatedUnfairLock<[String?]>? = nil,
+    speakerSegments: [SpeakerSegment] = [
+      SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1)
+    ]
   ) -> MeetingTranscriptionJob {
     var config = MeetingTranscriptionJob.Configuration()
     config.pieceTargetSeconds = target
@@ -583,8 +586,7 @@ struct MeetingTranscriptionJobTests {
         unloadEngine: {},
         analyzeSpeakers: { _ in
           analyses?.withLock { $0 += 1 }
-          return MeetingSpeakerAnalysis(
-            outcome: .single, segments: [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1)])
+          return MeetingSpeakerAnalysis(outcome: .single, segments: speakerSegments)
         },
         engineIdentity: { identity }),
       configuration: config)
@@ -664,6 +666,101 @@ struct MeetingTranscriptionJobTests {
     #expect(third.calls.isEmpty)
     #expect(again.withLock { $0 } == 0)
     #expect(result3.composition.text == reference.composition.text)
+  }
+
+  // MARK: - Automatic speaker naming (#4013 chunk 12A)
+
+  @Test("a pass names the call speaker from saved evidence; a resumed pass names the same way")
+  func namesFromSavedEvidenceFreshAndResumed() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 50)])
+    let caller = [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 50_000, quality: 1)]
+    let log = try CallSpeakerTestLog.meet()
+
+    let reference = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil, callSpeakers: .usable(log)) { _ in }
+    let naming = try #require(reference.naming)
+    #expect(naming.evidence == .usable(log))
+    #expect(naming.result.outcome == .named)
+    #expect(naming.result.proposals == ["sys:1": "Alex Rivera"])
+    #expect(naming.eligibility.callSpeakerIDs == ["sys:1"])
+
+    // Naming never changes the composition.
+    let unnamed = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil) { _ in }
+    #expect(unnamed.composition == reference.composition)
+    #expect(unnamed.naming?.result.proposals == [:])
+    #expect(unnamed.naming?.result.outcome == .noLog)
+    #expect(unnamed.naming?.evidence == .absent)
+
+    // A pass interrupted after one piece, then resumed from its checkpoint, gives the same
+    // eligibility and the same names as the uninterrupted pass.
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+    let first = checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+    await #expect(throws: MeetingTranscriptionJob.JobError.cancelled) {
+      _ = try await first.runTestAttempt(
+        tracks: [.callSound: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID) { saves in if saves == 1 { first.cancel() } },
+        callSpeakers: .usable(log)
+      ) { _ in }
+    }
+    let resumed = try await checkpointJob(engine: FakeEngine(), speakerSegments: caller)
+      .runTestAttempt(
+        tracks: [.callSound: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+        callSpeakers: .usable(log)) { _ in }
+    #expect(resumed.resumedPieces > 0)
+    #expect(resumed.naming == reference.naming)
+  }
+
+  @Test("unusable saved evidence leaves the pass successful with no names, and says why")
+  func unusableEvidenceNamesNobody() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let result = try await checkpointJob(
+      engine: FakeEngine(),
+      speakerSegments: [SpeakerSegment(speakerId: "1", startMs: 0, endMs: 30_000, quality: 1)]
+    ).runTestAttempt(
+      tracks: [.callSound: audio], language: nil, callSpeakers: .unusable(.newerFormat)) { _ in }
+    #expect(result.naming?.evidence == .unusable(.newerFormat))
+    #expect(result.naming?.result.proposals == [:])
+    #expect(!result.composition.text.isEmpty)
+  }
+
+  @Test("eligibility comes from the pieces: speech, failed pieces and unreadable audio per track")
+  func eligibilityFromPieces() {
+    typealias Piece = MeetingProcessingCheckpoint.Piece
+    func spoken(_ start: Int, _ end: Int, _ text: String) -> Piece {
+      Piece(
+        startSample: start, endSample: end, forcedCut: false, text: text,
+        words: text.isEmpty ? [] : [.init(word: text, lower: 0, upper: text.utf16.count, startMs: 0, endMs: 1)])
+    }
+    func failed(_ start: Int, _ end: Int) -> Piece {
+      Piece(startSample: start, endSample: end, forcedCut: false, text: nil, words: nil)
+    }
+    let eligibility = MeetingTranscriptionJob.namingEligibility(
+      pieces: [
+        .callSound: [spoken(0, 16_000, "hi"), failed(16_000, 32_000), spoken(32_000, 48_000, " ")],
+        .microphone: [failed(0, 16_000)],
+      ],
+      callSegments: [
+        SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1),
+        SpeakerSegment(speakerId: "2", startMs: 1_000, endMs: 3_000, quality: 1),
+      ],
+      missingAudio: [
+        .callSound: [.init(startMs: 5_000, endMs: nil)],
+        .microphone: [.init(startMs: 7_000, endMs: 8_000)],
+      ])
+    #expect(eligibility.callSpeakerIDs == ["sys:1", "sys:2"])
+    #expect(eligibility.callSpeech == [MeetingNamingInterval(startMs: 0, endMs: 1_000)!])
+    let expected = [
+      MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000),
+      MeetingNamingMarker(track: .callSound, startMs: 5_000, endMs: nil),
+      MeetingNamingMarker(track: .microphone, startMs: 0, endMs: 1_000),
+      MeetingNamingMarker(track: .microphone, startMs: 7_000, endMs: 8_000),
+    ]
+    #expect(eligibility.markers.count == expected.count)
+    for marker in expected { #expect(eligibility.markers.contains(marker), "\(marker)") }
   }
 
   @Test("a checkpoint for other settings, another meeting or another model is not reused")

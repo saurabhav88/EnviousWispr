@@ -20,6 +20,7 @@ struct TranscriptDetailView: View {
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
+  @Environment(MeetingCoordinator.self) private var meetings
 
   /// Screen-local, per-row UI state (#2811, phase 4 of #2807) — History has no persisted view
   /// mode today, and this phase does not add one (plan §2.2 non-goal). Reset on row change
@@ -28,6 +29,9 @@ struct TranscriptDetailView: View {
   /// `@State` across a mere value change at the same tree position (§5 E2E audit).
   @State private var documentView: FileImportCoordinator.DocumentView = .cleaned
   @State private var timesOn = true
+  /// #4013 r3 F3: a meeting row's saved participant list, for the rename suggestions; never
+  /// read for a dictation or an import.
+  @State private var rosterRead: KeyedRosterRead<RosterKey>?
   /// Surfaced via `.alert` rather than swallowed by `try?` (found by chunk review) — a failed
   /// disk write must not look identical to a successful one.
   @State private var saveError: String?
@@ -94,7 +98,9 @@ struct TranscriptDetailView: View {
                   rowID: transcript.id, text: transcript.text, turns: turns,
                   speakerNames: transcript.speakerNames ?? [:], language: transcript.language,
                   isMeeting: transcript.isMeeting, mode: documentView, timesOn: timesOn,
-                  documentFinished: documentFinished)
+                  documentFinished: documentFinished,
+                  renameSuggestions: SpeakerRenameSuggestions(
+                    row: transcript, roster: rosterRead?.roster(for: rosterKey)))
               )
               .equatable()
             }
@@ -116,6 +122,13 @@ struct TranscriptDetailView: View {
       documentView = .cleaned
       timesOn = true
     }
+    .task(id: rosterKey) {
+      // Stored with the request it answers; shown only while that is still the request.
+      guard let key = rosterKey else { return }
+      let read = await meetings.callSpeakerEvidence(meetingID: key.meetingID)
+      guard !Task.isCancelled else { return }
+      rosterRead = KeyedRosterRead(key: key, evidence: read)
+    }
     .alert(
       "Couldn't save the file",
       isPresented: Binding(
@@ -125,6 +138,23 @@ struct TranscriptDetailView: View {
     } message: {
       Text(saveError ?? "")
     }
+  }
+
+  /// What the roster read depends on; `nil` for a row that is not a meeting's.
+  private var rosterKey: RosterKey? {
+    guard let meetingID = transcript.meetingID else { return nil }
+    let record = meetings.record(id: meetingID)
+    return RosterKey(
+      rowID: transcript.id, meetingID: meetingID, audioKept: record?.audioKept,
+      deletionRequested: record?.deletionRequested, state: record?.state)
+  }
+
+  private struct RosterKey: Hashable {
+    let rowID: UUID
+    let meetingID: UUID
+    let audioKept: Bool?
+    let deletionRequested: Bool?
+    let state: MeetingState?
   }
 
   // MARK: - Paste

@@ -126,6 +126,18 @@ public enum CallEvidenceReader {
   /// its executable lives in, else the only running copy of that browser. Two copies running
   /// (Chrome and Chrome Beta) with no way to tell which holds the microphone is unknown,
   /// never a guess.
+  /// The app call detection reads for a microphone-holding process of `rule`: a browser or
+  /// window-checked call app's own app instance. Nil for a native call app (it is read by its
+  /// own process) or when no instance can be told.
+  package static func app(for rule: CallAppCatalog.Rule, holderPID: Int32) -> NSRunningApplication?
+  {
+    switch rule {
+    case .callApp: nil
+    case .callWindow(let family): runningApp(family: family, holderPID: holderPID)
+    case .browser(let browser): browserApp(browser, holderPID: holderPID)
+    }
+  }
+
   private static func browserApp(_ browser: CallAppCatalog.Browser, holderPID: Int32)
     -> NSRunningApplication?
   {

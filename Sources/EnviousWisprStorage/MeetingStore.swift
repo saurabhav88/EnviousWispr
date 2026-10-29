@@ -197,13 +197,15 @@ public struct MeetingStore: Sendable {
 
   // MARK: - Deletion
 
-  /// Removes every audio file of the meeting (finals and partials) and its work folder; keeps
-  /// `meeting.json`. Refuses a meeting a newer build wrote.
+  /// Removes every audio file of the meeting (finals and partials), its work folder and its
+  /// call-speaker evidence (#4013); keeps `meeting.json` and the notes and summary. Refuses a
+  /// meeting a newer build wrote.
   public func deleteAudio(meeting id: UUID) throws {
     try refuseNewerFormat(id)
     for file in try segmentFiles(meeting: id) {
       try FileManager.default.removeItem(at: file.url)
     }
+    try removeCallSpeakers(meeting: id)
     let work = workDirectory(for: id)
     if FileManager.default.fileExists(atPath: work.path) {
       try FileManager.default.removeItem(at: work)

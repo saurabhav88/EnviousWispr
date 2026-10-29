@@ -13,6 +13,9 @@ import Foundation
 /// app but cannot be named makes it ambiguous. Nothing is remembered between readings, so a
 /// failed read is never turned into "off" or into an old answer. Which processes count is the
 /// injected filter: this module owns no app list.
+///
+/// The Core Audio and process reads run on the watcher's own serial queue (#4013 13B), never on
+/// the main actor; readings come back to the main queue in the order they were taken.
 @MainActor
 public final class CallMicrophoneWatcher {
   public enum Input: Sendable, Equatable { case active, inactive, unknown }
@@ -24,12 +27,18 @@ public final class CallMicrophoneWatcher {
     /// The Core Audio process object: a new one for every run of a process, so it tells a
     /// relaunched process from the one before even when the pid comes back.
     public let object: UInt32
+    /// The regular app owning this process (itself, or a helper's parent), read with the
+    /// reading off the main actor (`OwnerFilter`); nil when there is none.
+    public let ownerPID: Int32?
 
-    public init(pid: Int32, bundleID: String, input: Input, object: UInt32 = 0) {
+    public init(
+      pid: Int32, bundleID: String, input: Input, object: UInt32 = 0, ownerPID: Int32? = nil
+    ) {
       self.pid = pid
       self.bundleID = bundleID
       self.input = input
       self.object = object
+      self.ownerPID = ownerPID
     }
   }
 
@@ -56,26 +65,49 @@ public final class CallMicrophoneWatcher {
   /// `mayBeCandidate(bundleID)`: whether a process whose executable cannot be read may still
   /// be a call app.
   public typealias UnnamedFilter = @Sendable (String?) -> Bool
+  /// `owner(pid, bundleID)`: the regular app owning a call process, or nil.
+  public typealias OwnerFilter = @Sendable (Int32, String) -> Int32?
+  /// One whole read of the process list (tests stand in for Core Audio).
+  public typealias Scan = @Sendable () -> Reading
 
   /// macOS 14.2 added the process objects; below it the watcher never starts.
-  public static var isSupported: Bool {
+  public nonisolated static var isSupported: Bool {
     if #available(macOS 14.2, *) { return true }
     return false
   }
 
-  private let candidateBundleID: CandidateFilter
-  private let mayBeCandidate: UnnamedFilter
+  private let scan: Scan
   private let onReading: @MainActor (Reading) -> Void
   private var listener: AudioObjectPropertyListenerBlock?
-  private let ownPID = getpid()
+  private let queue = DispatchQueue(label: "com.enviouswispr.call-microphone-watcher", qos: .utility)
+  /// Between `start()` and `stop()`.
+  private var running = false
+  /// Whether `start()` registers the process-list listener (tests poll by hand).
+  private let listens: Bool
+  /// Bumped by `stop()`: a scan started before it reports nothing.
+  private var generation = 0
+  /// One physical scan at a time; asks meanwhile become one more scan after it.
+  private var scanning = false
+  private var scanWaiters: [@MainActor () -> Void] = []
+  private var nextWanted = false
+  private var nextWaiters: [@MainActor () -> Void] = []
 
   public init(
     candidateBundleID: @escaping CandidateFilter,
     mayBeCandidate: @escaping UnnamedFilter,
+    owner: @escaping OwnerFilter = { _, _ in nil },
+    scan: Scan? = nil,
+    listens: Bool = true,
     onReading: @escaping @MainActor (Reading) -> Void
   ) {
-    self.candidateBundleID = candidateBundleID
-    self.mayBeCandidate = mayBeCandidate
+    self.listens = listens
+    let ownPID = getpid()
+    self.scan =
+      scan ?? {
+        Self.read(
+          candidateBundleID: candidateBundleID, mayBeCandidate: mayBeCandidate, owner: owner,
+          ownPID: ownPID)
+      }
     self.onReading = onReading
   }
 
@@ -83,7 +115,12 @@ public final class CallMicrophoneWatcher {
   public var isListening: Bool { listener != nil }
 
   public func start() {
-    guard Self.isSupported, listener == nil else { return }
+    guard Self.isSupported, !running else { return }
+    running = true
+    guard listens else {
+      poll()
+      return
+    }
     var address = Self.processListAddress
     let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
       Task { @MainActor in self?.poll() }
@@ -96,6 +133,8 @@ public final class CallMicrophoneWatcher {
     poll()
   }
 
+  /// Stops listening and reporting: a scan still running reports nothing, and every caller
+  /// waiting for a reading is let go at once.
   public func stop() {
     if let listener {
       var address = Self.processListAddress
@@ -103,14 +142,77 @@ public final class CallMicrophoneWatcher {
         AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, listener)
     }
     listener = nil
+    running = false
+    generation += 1
+    nextWanted = false
+    let waiting = scanWaiters + nextWaiters
+    scanWaiters = []
+    nextWaiters = []
+    for waiter in waiting { waiter() }
   }
 
-  /// Reads now (a process-list change, a poll, a wake from sleep) and reports the reading.
-  public func poll() {
-    onReading(read())
+  /// Reads now (a process-list change, a poll, a wake from sleep) off the main actor and
+  /// reports the reading on the main queue, then calls `done`. One scan runs at a time: an ask
+  /// while one runs is answered by one more scan right after it (asks meanwhile share it), so a
+  /// slow read never builds a queue, and `done` always follows a reading taken after the ask.
+  /// While stopped, `done` is called at once and nothing is read.
+  public func poll(done: (@MainActor () -> Void)? = nil) {
+    guard running else {
+      done?()
+      return
+    }
+    if scanning {
+      nextWanted = true
+      if let done { nextWaiters.append(done) }
+      return
+    }
+    beginScan(waiters: done.map { [$0] } ?? [])
   }
 
-  private func read() -> Reading {
+  private func beginScan(waiters: [@MainActor () -> Void]) {
+    scanning = true
+    scanWaiters = waiters
+    let taken = generation
+    let scan = scan
+    queue.async { [weak self] in
+      let reading = scan()
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated { self?.scanFinished(reading, generation: taken) }
+      }
+    }
+  }
+
+  #if DEBUG
+    /// Callers waiting for the scan after the running one.
+    public var waitingForNextScanForTesting: Int { nextWaiters.count }
+  #endif
+
+  private func scanFinished(_ reading: Reading, generation taken: Int) {
+    scanning = false
+    let waiting = scanWaiters
+    scanWaiters = []
+    // A scan from before a stop reports nothing; its waiters were let go by the stop.
+    if taken == generation { onReading(reading) }
+    for waiter in waiting { waiter() }
+    if running, nextWanted {
+      nextWanted = false
+      let next = nextWaiters
+      nextWaiters = []
+      beginScan(waiters: next)
+    }
+  }
+
+  /// `poll`, awaited until its reading was reported.
+  public func pollAndWait() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      poll { continuation.resume() }
+    }
+  }
+
+  private nonisolated static func read(
+    candidateBundleID: CandidateFilter, mayBeCandidate: UnnamedFilter, owner: OwnerFilter,
+    ownPID: pid_t
+  ) -> Reading {
     guard let objects = Self.processObjects() else { return .failed }
     var holders: [Holder] = []
     var ambiguous = false
@@ -122,7 +224,9 @@ public final class CallMicrophoneWatcher {
       if let bundle = candidateBundleID(ownBundle ?? "", path) {
         if let pid {
           holders.append(
-            Holder(pid: pid, bundleID: bundle, input: Self.input(of: object), object: object))
+            Holder(
+              pid: pid, bundleID: bundle, input: Self.input(of: object), object: object,
+              ownerPID: owner(pid, bundle)))
         } else if Self.input(of: object) != .inactive {
           // A call app whose process cannot be read: it can never start a call, and while it
           // may hold the microphone no call is confirmed over (review r14 F1).
@@ -141,13 +245,13 @@ public final class CallMicrophoneWatcher {
 
   // MARK: - Core Audio reads
 
-  private static var processListAddress: AudioObjectPropertyAddress {
+  private nonisolated static var processListAddress: AudioObjectPropertyAddress {
     AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyProcessObjectList,
       mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
   }
 
-  private static func processObjects() -> [AudioObjectID]? {
+  private nonisolated static func processObjects() -> [AudioObjectID]? {
     var address = processListAddress
     var size: UInt32 = 0
     let system = AudioObjectID(kAudioObjectSystemObject)
@@ -163,7 +267,7 @@ public final class CallMicrophoneWatcher {
     return Array(ids.prefix(Int(size) / MemoryLayout<AudioObjectID>.size))
   }
 
-  private static func input(of object: AudioObjectID) -> Input {
+  private nonisolated static func input(of object: AudioObjectID) -> Input {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioProcessPropertyIsRunningInput, mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
@@ -175,7 +279,7 @@ public final class CallMicrophoneWatcher {
     return value != 0 ? .active : .inactive
   }
 
-  private static func pid(of object: AudioObjectID) -> Int32? {
+  private nonisolated static func pid(of object: AudioObjectID) -> Int32? {
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioProcessPropertyPID, mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain)
@@ -186,7 +290,7 @@ public final class CallMicrophoneWatcher {
     return pid
   }
 
-  private static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector)
+  private nonisolated static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector)
     -> String?
   {
     var address = AudioObjectPropertyAddress(
@@ -201,7 +305,7 @@ public final class CallMicrophoneWatcher {
     return text.isEmpty ? nil : text
   }
 
-  private static func executablePath(_ pid: Int32) -> String? {
+  private nonisolated static func executablePath(_ pid: Int32) -> String? {
     var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
     let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
     guard length > 0 else { return nil }

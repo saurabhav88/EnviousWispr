@@ -24,11 +24,12 @@ extension MeetingTranscriptionJob {
     tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
     checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
+    callSpeakers: MeetingCallSpeakerEvidence = .absent,
     onStage: @escaping @MainActor (Stage) -> Void
   ) async throws -> Result {
     try await run(
       tracks: tracks, language: language, checkpoint: access, missingAudio: missingAudio,
-      onStage: onStage, attempt: MeetingTestAttempt.attempt(language: language))
+      callSpeakers: callSpeakers, onStage: onStage, attempt: MeetingTestAttempt.attempt(language: language))
   }
 }
 
@@ -45,6 +46,6 @@ extension MeetingTranscriptionJob.Result {
         attemptID: attempt.attemptID, requestedEngine: attempt.requestedEngine,
         resolvedEngine: attempt.requestedEngine,
         effectiveLanguage: attempt.requestedEffectiveLanguage,
-        modelIdentity: resolved.modelIdentity, fallbackReason: nil))
+        modelIdentity: resolved.modelIdentity, fallbackReason: nil), naming: naming)
   }
 }

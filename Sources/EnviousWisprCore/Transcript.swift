@@ -461,6 +461,15 @@ public struct Transcript: Codable, Identifiable, Sendable {
   public private(set) var speakerNames: [String: String]?
   /// Non-nil only when `speakerAnalysis == .labeled`.
   public private(set) var turns: [Turn]?
+  /// Who wrote each person name in `speakerNames` (#4013 r2 item 4): `.manual` for a name the
+  /// user typed or picked, `.auto` for one read from the call app. A speaker with no entry has
+  /// a generated label ("Speaker N", "You", "Call"). `nil` on rows written before #4013; read
+  /// through `speakerNameSource(for:)`, which treats their non-default names as manual.
+  public private(set) var speakerNameSources: [String: SpeakerNameSource]?
+  /// Names the user wrote that no speaker carries any more (#4013 r3 F2, F3): a speaker that
+  /// disappeared on Transcribe again, or could not be matched to one new speaker. Kept, in the
+  /// user's spelling, so the rename pick list can offer them again.
+  public private(set) var unassignedSpeakerNames: [String]?
 
   /// Whether this row came from Transcribe a File. Derived, never stored twice.
   public var isImported: Bool { importedFileName != nil }
@@ -506,6 +515,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
     speakerNames: [String: String]? = nil,
     turns: [Turn]? = nil,
+    speakerNameSources: [String: SpeakerNameSource]? = nil,
+    unassignedSpeakerNames: [String]? = nil,
     meetingID: UUID? = nil,
     meetingTranscriptAttemptID: UUID? = nil
   ) {
@@ -533,6 +544,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.speakerAnalysis = speakerAnalysis
     self.speakerNames = speakerNames
     self.turns = turns
+    self.speakerNameSources = speakerNameSources
+    self.unassignedSpeakerNames = unassignedSpeakerNames
     self.meetingID = meetingID
     self.meetingTranscriptAttemptID = meetingTranscriptAttemptID
   }
@@ -598,6 +611,11 @@ public struct Transcript: Codable, Identifiable, Sendable {
   ///
   /// A non-`.labeled` analysis clears both `turns` and `speakerNames`, matching the invariant
   /// that `turns` is non-nil only when `speakerAnalysis == .labeled`.
+  ///
+  /// #4013: provenance moves with each name. A name the user wrote whose speaker is retired, or
+  /// cleared with a non-`.labeled` analysis, is kept in `unassignedSpeakerNames` rather than
+  /// lost; an explicit rename is manual whatever its spelling, and a rename to a kept name
+  /// takes it out of that list.
   public func mergingSpeakerFields(
     analysis: TranscriptSpeakerAnalysis, turns newTurns: [Turn]?,
     explicitRename: (speakerId: String, name: String)? = nil
@@ -605,8 +623,11 @@ public struct Transcript: Codable, Identifiable, Sendable {
     var copy = self
     copy.speakerAnalysis = analysis
     guard case .labeled = analysis, let newTurns else {
+      copy.unassignedSpeakerNames = Self.keepingNames(
+        unassignedSpeakerNames, adding: manualNames(of: speakerNames?.keys.sorted() ?? []))
       copy.turns = nil
       copy.speakerNames = nil
+      copy.speakerNameSources = nil
       return copy
     }
     copy.turns = newTurns
@@ -626,10 +647,20 @@ public struct Transcript: Codable, Identifiable, Sendable {
     for speakerID in survivingSpeakerIDs {
       mergedNames[speakerID] = preservedNames[speakerID] ?? defaultNames[speakerID]
     }
+    var sources: [String: SpeakerNameSource] = [:]
+    for speakerID in survivingSpeakerIDs {
+      if let source = speakerNameSource(for: speakerID) { sources[speakerID] = source }
+    }
+    let retired = (speakerNames?.keys.sorted() ?? []).filter { !survivingSpeakerIDs.contains($0) }
+    var kept = Self.keepingNames(unassignedSpeakerNames, adding: manualNames(of: retired))
     if let explicitRename, survivingSpeakerIDs.contains(explicitRename.speakerId) {
       mergedNames[explicitRename.speakerId] = explicitRename.name
+      sources[explicitRename.speakerId] = .manual
+      kept = kept?.filter { $0 != explicitRename.name }
     }
     copy.speakerNames = mergedNames
+    copy.speakerNameSources = sources
+    copy.unassignedSpeakerNames = kept?.isEmpty == true ? nil : kept
     return copy
   }
 
@@ -641,11 +672,25 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// a rename or a background turn-storage pass that landed on the live row since that
   /// snapshot was taken, and `withImportResult` alone would silently carry the STALE fields
   /// forward, reverting whatever the live row had just gained.
+  /// The same row with only its speaker-name fields replaced; used by the reconciliation in
+  /// `TranscriptSpeakerReconciliation.swift`, which decides them.
+  func withSpeakerNameFields(
+    names: [String: String]?, sources: [String: SpeakerNameSource]?, unassigned: [String]?
+  ) -> Transcript {
+    var copy = self
+    copy.speakerNames = names
+    copy.speakerNameSources = sources
+    copy.unassignedSpeakerNames = unassigned?.isEmpty == true ? nil : unassigned
+    return copy
+  }
+
   public func carryingSpeakerFields(from other: Transcript) -> Transcript {
     var copy = self
     copy.speakerAnalysis = other.speakerAnalysis
     copy.speakerNames = other.speakerNames
     copy.turns = other.turns
+    copy.speakerNameSources = other.speakerNameSources
+    copy.unassignedSpeakerNames = other.unassignedSpeakerNames
     return copy
   }
 }

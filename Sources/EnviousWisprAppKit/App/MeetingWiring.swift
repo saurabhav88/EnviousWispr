@@ -65,6 +65,12 @@ enum MeetingWiring {
     /// #4012: whether a detected Start is still wanted (`CallDetectionCoordinator`), asked
     /// before the meeting is created. Late-bound: call detection is built after the meetings.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
+    /// #4013 13B: call-source discovery, which every recording's speaker session reads.
+    var callSources: (any CallSpeakerSources)?
+    /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
+    /// (`TalkerRulesStore.refreshIfDue`, at most once a day). The app passes the live store;
+    /// tests never reach the network.
+    var refreshTalkerRules: @Sendable () -> Void = {}
     /// The `meeting.summary_finished` emitter.
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
@@ -228,8 +234,9 @@ enum MeetingWiring {
           return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
         },
         detectedStartWanted: inputs.detectedStartWanted,
-        saveTranscript: { [transcriptCoordinator = inputs.transcriptCoordinator] transcript in
-          try await transcriptCoordinator.saveAndShowDurably(transcript)
+        saveTranscript: {
+          [transcriptCoordinator = inputs.transcriptCoordinator] transcript, naming in
+          try await transcriptCoordinator.saveAndShowDurably(transcript, naming: naming)
         },
         historyRow: { [transcriptCoordinator = inputs.transcriptCoordinator] id in
           transcriptCoordinator.currentRow(id: id)
@@ -249,7 +256,18 @@ enum MeetingWiring {
         },
         log: inputs.log,
         workChanged: inputs.workChanged,
-        isDictationIdle: inputs.isDictationIdle))
+        isDictationIdle: inputs.isDictationIdle,
+        callSources: inputs.callSources,
+        talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
+          let selected = await TalkerRulesStore.live.current()
+          // The day's download, never waited for: this recording keeps the rules read above.
+          refreshTalkerRules()
+          guard
+            let bundled = TalkerRulesStore.bundledURL.flatMap({ try? Data(contentsOf: $0) })
+              .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })
+          else { return nil }
+          return (selected, bundled.rules)
+        }))
     inputs.transcriptCoordinator.deleteMeeting = {
       [weak coordinator, weak transcripts = inputs.transcriptCoordinator] meetingID in
       Task {
@@ -265,7 +283,8 @@ enum MeetingWiring {
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
     }
-    coordinator.onMeetingsPublished = { [weak transcriptCoordinator = inputs.transcriptCoordinator] in
+    coordinator.onMeetingsPublished = {
+      [weak transcriptCoordinator = inputs.transcriptCoordinator] in
       transcriptCoordinator?.meetingsDidChange()
     }
     inputs.transcriptCoordinator.meetingInfo = { [weak coordinator] meetingID in
