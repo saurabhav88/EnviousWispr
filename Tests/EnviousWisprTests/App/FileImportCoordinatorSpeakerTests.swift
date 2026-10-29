@@ -819,6 +819,7 @@ struct FileImportCoordinatorSpeakerTests {
   }
   private struct BatchPolisher: TranscriptPolisher {
     let capture: BatchCapture
+    var preserveExistingPunctuation = false
     func polish(
       text: String, instructions: PolishInstructions, config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
@@ -831,7 +832,10 @@ struct FileImportCoordinatorSpeakerTests {
       guard let pair = envelope.asSingleTurn(), pair.user.hasPrefix("Transcript to clean:\n\n")
       else { throw LLMError.requestFailed("Unexpected fixture envelope") }
       let text = String(pair.user.dropFirst("Transcript to clean:\n\n".count))
-      func clean(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() + "." }
+      func clean(_ text: String) -> String {
+        let sentence = text.prefix(1).uppercased() + text.dropFirst()
+        return preserveExistingPunctuation && sentence.hasSuffix(".") ? sentence : sentence + "."
+      }
       if text.hasPrefix("<s1>") {
         await MainActor.run { capture.batches += 1 }
         guard let sections = SectionEnvelope.unwrap(text, expected: 2)
@@ -843,11 +847,11 @@ struct FileImportCoordinatorSpeakerTests {
   }
 
   @Test("Initial import and Clean it again use real batching while keeping speaker IDs, gaps, History and piece progress",
-    arguments: [false, true])
-  func realBatchPreservesSpeakerDocument(longFirstTurn: Bool) async throws {
+    arguments: [(false, false), (true, false), (true, true)])
+  func realBatchPreservesSpeakerDocument(longFirstTurn: Bool, sentenceBoundary: Bool) async throws {
     let tail = "please send the final report to the design team before lunch tomorrow"
-    let left = Array(repeating: "the report needs review by our design team before Friday", count: 50).joined(separator: " ")
-    let insideGap = "  "
+    let left = Array(repeating: "the report needs review by our design team before Friday", count: 50).joined(separator: " ") + (sentenceBoundary ? "." : "")
+    let insideGap = sentenceBoundary ? " \t \n" : "  "
     let a = longFirstTurn ? left + insideGap + tail : tail
     let b = "we should review the remaining changes with our colleagues before we publish"
     let gap = "  \n"
@@ -867,10 +871,10 @@ struct FileImportCoordinatorSpeakerTests {
       keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       makeEGOnePolisher: nil, promptPlanner: nil,
-      makePolisher: { _, _, _ in BatchPolisher(capture: capture) })
+      makePolisher: { _, _, _ in BatchPolisher(capture: capture, preserveExistingPunctuation: sentenceBoundary) })
     let settings = RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
-      wordCorrectionEnabled: false, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
+      wordCorrectionEnabled: false, fillerRemovalEnabled: sentenceBoundary, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
       llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol",
       s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
@@ -884,7 +888,9 @@ struct FileImportCoordinatorSpeakerTests {
         SpeakerSegment(speakerId: "B", startMs: firstCount * 50 + 1000, endMs: (timings.last?.endMs ?? 0) + 10, quality: 1)
       ]) },
       processPartsOverride: { pieces, language, emit in
-        #expect(pieces == (longFirstTurn ? [left, tail, b] : [a, b]))
+        if sentenceBoundary == false {
+          #expect(pieces == (longFirstTurn ? [left, tail, b] : [a, b]))
+        }
         try await processor.process(parts: pieces, engineLanguage: language) { index, outcome in
           let accepted = emit(index, outcome)
           if let state = observed?.state { progress.append(state) }
@@ -909,7 +915,10 @@ struct FileImportCoordinatorSpeakerTests {
     let id = try #require(coordinator.historyID)
     let row = try #require(store.current(id))
     let turns = try #require(row.turns)
-    func clean(_ text: String) -> String { text.prefix(1).uppercased() + text.dropFirst() + "." }
+    func clean(_ text: String) -> String {
+      let sentence = text.prefix(1).uppercased() + text.dropFirst()
+      return sentenceBoundary && sentence.hasSuffix(".") ? sentence : sentence + "."
+    }
     let expected = [longFirstTurn ? clean(left) + insideGap + clean(tail) : clean(a), clean(b)]
     let perPassRequests = longFirstTurn ? 2 : 1
     let expectedGaps = longFirstTurn ? [insideGap, "", ""] : ["", ""]
@@ -925,6 +934,10 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.parts.map(\.trailingGap) == expectedGaps)
     #expect(progress == expectedProgress)
     #expect(row.polishedText == expected.joined(separator: "\n\n"))
+    if sentenceBoundary {
+      #expect(row.polishedText?.contains("Friday. \t \nPlease") == true,
+        "#3859: saved output must retain the exact source separator after real cleanup")
+    }
     let ids = turns.map(\.id)
     finished = BoundedWait.Signal(); progress = []
     coordinator.rePolish()
@@ -938,6 +951,10 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(coordinator.parts.map(\.trailingGap) == expectedGaps)
     #expect(progress == expectedProgress)
     #expect(coordinator.state == .finished)
+    if sentenceBoundary {
+      #expect(store.current(id)?.polishedText?.contains("Friday. \t \nPlease") == true,
+        "#3859: Clean it again must retain the exact source separator")
+    }
   }
 
   @Test(
