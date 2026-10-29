@@ -1,7 +1,9 @@
+import ApplicationServices
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPipeline
+import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Observation
@@ -18,6 +20,8 @@ protocol MeetingRecording: AnyObject {
   var callSoundLevel: Float { get }
   /// #3973: each recorded chunk for live words (`MeetingRecorder.liveSamples`).
   var liveSamples: MeetingRecorder.LiveSamplesObserver? { get set }
+  /// #4013 chunk 13A: the host time the meeting's timeline starts at (`MeetingRecorder.anchor`).
+  var anchor: UInt64 { get }
 }
 
 extension MeetingRecorder: MeetingRecording {}
@@ -332,6 +336,22 @@ final class MeetingCoordinator {
     /// Dictation is idle (the same fact meeting work admits on), so a wait can be told apart
     /// from a wait for a meeting summary.
     var isDictationIdle: @MainActor () -> Bool = { true }
+    /// #4013 chunk 13A: the one app instance a recording's speaker capture reads for a call
+    /// family (`CallDetectionCoordinator.speakerTarget(for:)`); nil when none or ambiguous.
+    var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
+    /// #4013 chunk 13A: the speaker rules in force now and the bundled ones, read without the
+    /// network; frozen at recording start. Nil: no speaker capture for this recording.
+    var talkerRules: @MainActor () async -> (selected: TalkerRulesSnapshot, bundled: TalkerRules)? =
+      { nil }
+    /// #4013 chunk 13A: whether this app may read other apps through Accessibility.
+    var isAccessibilityTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
+    /// #4013 chunk 13A: one bounded copy of a call app (run off the main actor).
+    var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture = {
+      target, family in
+      CallSpeakerCapture.live(
+        pid: target.pid, bounds: .standard,
+        keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) })
+    }
     var beginActivity: @MainActor () -> NSObjectProtocol? = {
       ProcessInfo.processInfo.beginActivity(
         options: [.idleSystemSleepDisabled, .userInitiated], reason: "Recording a meeting")
@@ -493,6 +513,9 @@ final class MeetingCoordinator {
   /// for the History publication's result, so it can report the names actually written. Only
   /// frozen, content-free facts; settled once (`settleEnded`), at the latest at quit.
   private var pendingEnded: [UUID: PendingEnded] = [:]
+
+  /// #4013 chunk 13A: the recording's speaker observer and the meeting it belongs to.
+  private var speakerObserver: (meetingID: UUID, observer: CallSpeakerObserver)?
 
   private struct PendingEnded {
     let attemptID: UUID
@@ -1037,6 +1060,7 @@ final class MeetingCoordinator {
     deps.log("meeting recording started bound=\(boundMicrophoneUID ?? "unknown")")
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
+    await startSpeakerObserver(meetingID: meetingID, family: record.callApp, recorder: recorder)
     var captured: Set<MeetingTrackKind> = [.microphone]
     if callSound == .captured { captured.insert(.callSound) }
     deps.liveWords?.captureStarted(
@@ -1166,6 +1190,9 @@ final class MeetingCoordinator {
     }
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
+    // #4013 chunk 13A: speaker capture closes now; its final save lands before the pass reads it.
+    let observer = takeSpeakerObserver(meetingID)
+    observer?.close()
     // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
     // and closes admission. The lines stay until the transcript is ready.
     deps.liveWords?.stop()
@@ -1174,6 +1201,8 @@ final class MeetingCoordinator {
     let recorder = self.recorder
     let report = await recorder?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
+    guard !quitting else { return }
+    await observer?.finish()
     guard !quitting else { return }
     adoptCallSoundSummary(report, for: meetingID)
     self.recorder = nil
@@ -1891,6 +1920,8 @@ final class MeetingCoordinator {
   /// close that still owns the files, is not a failure.
   @discardableResult
   func delete(meetingID: UUID) async -> Bool {
+    // #4013 chunk 13A: a deleted recording's speaker capture adds and saves nothing more.
+    takeSpeakerObserver(meetingID)?.cancel()
     // History can ask before the launch listing finished; the meeting is known after it.
     if live[meetingID] == nil, let launchTask { await launchTask.value }
     guard live[meetingID] != nil else {
@@ -2086,6 +2117,10 @@ final class MeetingCoordinator {
   /// not finish in time stays owned by its queued close; launch recovery handles it.
   func prepareForTermination(deadline: DispatchTime = .now() + 1) {
     quitting = true
+    // #4013 chunk 13A: speaker capture stops first and saves nothing more (its last periodic
+    // save stays); audio and the record come first within the deadline.
+    speakerObserver?.observer.cancel()
+    speakerObserver = nil
     // #4013 chunk 12B: ready attempts still waiting on their History publication send their
     // row now, with no naming facts (the publication's result is not known). A late
     // publication finds nothing to settle.
@@ -2320,6 +2355,46 @@ final class MeetingCoordinator {
         processingSeconds: processingSeconds, summaryPlan: summaryPlan, hasNotes: hasNotes)
     else { return }
     deps.emitEnded(frozen.event(speakerNaming: nil))
+  }
+
+  /// #4013 chunk 13A: starts speaker capture for a recording started for a call app, bound to
+  /// that app family (one surface), with the rules and lag frozen now and the recorder's
+  /// anchor. A recording with no call app, no app instance to read now, or no rules gets none.
+  private func startSpeakerObserver(
+    meetingID: UUID, family: CallAppFamily?, recorder: MeetingRecording
+  ) async {
+    speakerObserver?.observer.cancel()
+    speakerObserver = nil
+    guard let family, let target = deps.callSpeakerTarget(family),
+      let surface = CallSpeakerSurfaceChoice.surface(family: family, rule: target.rule)
+    else { return }
+    guard let rules = await deps.talkerRules() else { return }
+    // Read again after the await: a Stop or another start meanwhile wins.
+    guard case .recording(let current, _) = phase, current == meetingID, !quitting else { return }
+    let lag = TalkerRules.recordingStartLag(
+      for: surface, selected: rules.selected.rules, bundled: rules.bundled)
+    let capture = deps.captureCallApp
+    let observer = CallSpeakerObserver(
+      surface: surface, family: family, anchor: recorder.anchor, rules: rules.selected, lag: lag,
+      dependencies: .init(
+        target: { [weak self] in self?.deps.callSpeakerTarget(family) },
+        capture: { capture($0, family) }, isTrusted: deps.isAccessibilityTrusted,
+        isDictationIdle: { [weak self] in self?.deps.isDictationIdle() ?? false },
+        save: { [weak self] log in
+          guard let self else { return }
+          try await self.writer.run { try $0.saveCallSpeakers(log, meeting: meetingID) }
+        },
+        log: { [weak self] line in self?.deps.log(line) }))
+    speakerObserver = (meetingID, observer)
+    deps.log("meeting speaker capture started surface=\(surface.rawValue)")
+    observer.start()
+  }
+
+  /// The meeting's speaker observer, removed from the coordinator; nil when it has none.
+  private func takeSpeakerObserver(_ meetingID: UUID) -> CallSpeakerObserver? {
+    guard let current = speakerObserver, current.meetingID == meetingID else { return nil }
+    speakerObserver = nil
+    return current.observer
   }
 
   /// Closes the attempt and freezes its terminal facts, or nil when no attempt is open for the

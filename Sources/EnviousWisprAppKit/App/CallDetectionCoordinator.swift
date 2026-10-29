@@ -77,6 +77,31 @@ final class CallDetectionCoordinator {
   /// The policy token the panel's buttons were last drawn with.
   private var drawnToken = -1
 
+  /// #4013 chunk 13A: the one app instance a meeting's speaker capture reads for `family`, from
+  /// the microphone holders of the last reading: a call app of that family, or a browser whose
+  /// page reads as that family's call. `nil` when there is none, or more than one app instance
+  /// (two calls, or two copies of one browser): the capture then reads nothing, never a guess.
+  func speakerTarget(for family: CallAppFamily) -> CallSpeakerTarget? {
+    var owners: [pid_t: CallAppCatalog.Rule] = [:]
+    for holder in holders where holder.input == .active {
+      guard let rule = CallAppCatalog.rule(forBundleID: holder.bundleID) else { continue }
+      let matches: Bool
+      switch rule {
+      case .callApp(let ruleFamily), .callWindow(let ruleFamily): matches = ruleFamily == family
+      case .browser:
+        if case .call(let pageFamily, _)? = evidence[holder.pid]?.value {
+          matches = pageFamily == family
+        } else {
+          matches = false
+        }
+      }
+      guard matches, let owner = CallSpeakerTarget.owner(ofHolder: holder.pid) else { continue }
+      owners[owner] = rule
+    }
+    guard owners.count == 1, let (pid, rule) = owners.first else { return nil }
+    return CallSpeakerTarget(pid: pid, rule: rule)
+  }
+
   init(dependencies: Dependencies) {
     deps = dependencies
   }

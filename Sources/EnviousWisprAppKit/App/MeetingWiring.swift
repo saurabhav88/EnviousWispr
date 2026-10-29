@@ -65,6 +65,8 @@ enum MeetingWiring {
     /// #4012: whether a detected Start is still wanted (`CallDetectionCoordinator`), asked
     /// before the meeting is created. Late-bound: call detection is built after the meetings.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
+    /// #4013 chunk 13A: the app instance a recording's speaker capture reads for a call family.
+    var callSpeakerTarget: @MainActor (CallAppFamily) -> CallSpeakerTarget? = { _ in nil }
     /// The `meeting.summary_finished` emitter.
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
@@ -183,7 +185,16 @@ enum MeetingWiring {
         },
         log: inputs.log,
         workChanged: inputs.workChanged,
-        isDictationIdle: inputs.isDictationIdle))
+        isDictationIdle: inputs.isDictationIdle,
+        callSpeakerTarget: inputs.callSpeakerTarget,
+        talkerRules: {
+          let selected = await TalkerRulesStore.live.current()
+          guard
+            let bundled = TalkerRulesStore.bundledURL.flatMap({ try? Data(contentsOf: $0) })
+              .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })
+          else { return nil }
+          return (selected, bundled.rules)
+        }))
     inputs.transcriptCoordinator.deleteMeeting = {
       [weak coordinator, weak transcripts = inputs.transcriptCoordinator] meetingID in
       Task {
