@@ -117,8 +117,9 @@ package enum MeetingSpeakerNamer {
   /// Proposed in the plan, to be confirmed by the real-call measurements (C1).
   package static let minimumVotes = 3
   package static let minimumShare = 0.7
-  /// A two-person stretch counts only after this long, unless the other person is the only one
-  /// the recording ever showed (Granola `zN`: 15,000 ms).
+  /// A two-person stretch counts only after this long (Granola `zN`: 15,000 ms). Granola also
+  /// waives it when only one remote was ever seen; that shortcut is not taken here, because a
+  /// saved recording cannot prove nobody else was present while it was not being read (#4206).
   package static let minimumPairStretchMs = 15_000
   /// The least call speech one speaker needs inside a stretch for it to name them; an
   /// engineering threshold to validate with the real-call receipts, not a Granola constant.
@@ -215,7 +216,7 @@ package enum MeetingSpeakerNamer {
       votes.isEmpty ? .noSignal : (proposals.isEmpty ? .ambiguous : .named)
 
     let added = pairProposals(
-      log: log, segments: usable.map(\.segment), speech: speech, shared: shared,
+      segments: usable.map(\.segment), speech: speech, shared: shared,
       votes: votes, voteProposals: proposals)
     let merged = proposals.merging(added) { vote, _ in vote }
     var result = MeetingNamingResult(
@@ -226,37 +227,17 @@ package enum MeetingSpeakerNamer {
 
   /// The one-on-one rule's names for speakers votes did not name (plan R1.5, R2.4, R3.2).
   static func pairProposals(
-    log: CallSpeakerLog, segments: [CallSpeakerSegment],
+    segments: [CallSpeakerSegment],
     speech: [String: [MeetingNamingInterval]], shared: Set<String>,
     votes: [String: [String: Int]], voteProposals: [String: String]
   ) -> [String: String] {
-    // The 15 s rule is waived only when the whole recording proves the other person was the
-    // only one: every segment was read whole (`wholeReading`), and in every segment the app
-    // marked exactly one name as the user (a user who changed name, or none marked, could hide
-    // someone). Then every name the recording showed, less that segment's user, is a person who
-    // is not the user; judged segment by segment, so the user's name in one call never erases a
-    // real person of that name in another.
-    let waivable = log.segments.allSatisfy { segment in
-      segment.status == .observed && wholeReading(segment) && marks(in: segment).count == 1
-    }
-    let others = Set(
-      log.segments.flatMap { segment -> [String] in
-        let marked = marks(in: segment)
-        let names =
-          segment.roster.names + (segment.presence ?? []).map(\.name)
-          + (segment.pairs ?? []).flatMap(\.names)
-        return names.filter { !marked.contains($0) }
-      }
-    ).union(shared)
-
     // Windows that name one speaker, by speaker and name.
     var windows: [String: [String: [MeetingNamingInterval]]] = [:]
     for segment in segments {
       for stretch in segment.pairs ?? [] {
         guard let remote = remote(in: stretch, segmentSelf: segment.roster.selfNames),
           !shared.contains(remote),
-          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs
-            || (waivable && others == [remote]),
+          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs,
           let window = MeetingNamingInterval(startMs: stretch.firstMs, endMs: stretch.lastMs)
         else { continue }
         // Exactly one call-sound voice: one speaker with enough speech, nobody else at all.
@@ -295,23 +276,18 @@ package enum MeetingSpeakerNamer {
   }
 
   /// The other person in a two-person stretch, or `nil` when the evidence does not identify
-  /// exactly one of the two as the user (plan R3.2, r4). The stretch's marks come first; the
-  /// segment's marks may confirm but never contradict them. Only when the app marked nobody in
-  /// the stretch or the segment does the signed-in account name decide, and only when it is
-  /// exactly one of the two (the founder's D5 exception, plan r4).
+  /// exactly one of the two as the user (plan R3.2, r4). Identity comes from the stretch itself:
+  /// the app's mark during the stretch, else the signed-in account name read with it when it is
+  /// exactly one of the two (the founder's D5 exception, plan r4). The segment's marks, which may
+  /// be from earlier in the call, can only confirm: one that names anyone else abstains.
   static func remote(in stretch: CallPairStretch, segmentSelf: [String]) -> String? {
     let pair = Set(stretch.names)
     guard pair.count == 2 else { return nil }
     let stretchSelf = Set(stretch.selfNames)
     // A mark for someone not on this two-person call is a contradiction, not an absence.
     guard stretchSelf.isSubset(of: pair), stretchSelf.count <= 1 else { return nil }
-    let segmentMarked = Set(segmentSelf).intersection(pair)
     let user: String
     if let marked = stretchSelf.first {
-      guard segmentMarked.isSubset(of: [marked]) else { return nil }
-      user = marked
-    } else if !segmentSelf.isEmpty {
-      guard segmentMarked.count == 1, let marked = segmentMarked.first else { return nil }
       user = marked
     } else {
       let account = Set(stretch.accountNames).intersection(pair)
@@ -320,25 +296,8 @@ package enum MeetingSpeakerNamer {
       }
       user = named
     }
+    guard Set(segmentSelf).isSubset(of: [user]) else { return nil }
     return pair.subtracting([user]).first
-  }
-
-  /// Whether every capture of a segment was read and kept: `.observed` says only that one was.
-  /// A failed, partial, skipped, stale or refused capture is a moment someone could have been on
-  /// the call unseen, so it keeps the 15 s rule. A segment without health counts is not whole.
-  static func wholeReading(_ segment: CallSpeakerSegment) -> Bool {
-    guard let health = segment.health, health.captureAttempts > 0 else { return false }
-    return health.completeCaptures == health.captureAttempts
-      && health.truncatedCaptures == 0 && health.unreadableCaptures == 0
-      && health.unresolvedScopeCaptures == 0 && health.skippedBusyTicks == 0
-      && health.skippedDictationTicks == 0 && health.missingPermissionTicks == 0
-      && health.staleResultDrops == 0 && (health.invalidNameReadings ?? 0) == 0
-      && (health.evidenceCapacityDrops ?? 0) == 0
-  }
-
-  /// Every name the app marked as the user anywhere in a segment.
-  static func marks(in segment: CallSpeakerSegment) -> Set<String> {
-    Set(segment.roster.selfNames + (segment.pairs ?? []).flatMap(\.selfNames))
   }
 
   static func length(_ intervals: [MeetingNamingInterval]) -> Int {

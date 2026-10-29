@@ -131,7 +131,10 @@ package enum ZoomAppSpeakerReader {
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: identity,
         sharedNames: listedTwice.union(repeatedNames(peopleNames)),
-        participantListComplete: true, participantCount: count, accountSelfNames: account)
+        // Complete only when every count the call shows agrees with it; a conflict leaves the
+        // names as names but never confirms that anyone left.
+        participantListComplete: count != nil, participantCount: count,
+        accountSelfNames: account)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
@@ -395,6 +398,8 @@ package enum TeamsAppSpeakerReader {
       participants.append(
         CallParticipant(key: "talker-\(index)", name: name, isTalking: true, isSelf: false))
     }
+    let agreed: Int? =
+      complete && allCounts == [rosters[0].names.count] ? rosters[0].names.count : nil
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       // With People closed the gallery is the roster offered for renaming.
@@ -406,12 +411,10 @@ package enum TeamsAppSpeakerReader {
       sharedNames: rosters.reduce(into: repeatedNames(tileNames)) {
         $0.formUnion(repeatedNames($1.names))
       },
-      // Rows in one window whose "In this meeting, N total" count equals the rows read.
-      participantListComplete: complete,
-      // The complete list's count, when no other window of the call shows another. The list is
-      // everyone, so a tile this reader could not parse cannot hide a third person.
-      participantCount: complete && allCounts == [rosters[0].names.count]
-        ? rosters[0].names.count : nil)
+      // Rows in one window whose "In this meeting, N total" count equals the rows read, when no
+      // other window of the call shows another count. The list is everyone, so a tile this
+      // reader could not parse cannot hide a third person.
+      participantListComplete: agreed != nil, participantCount: agreed)
   }
 
   static let compactViewPrefix = "Meeting compact view | "

@@ -230,6 +230,8 @@ struct NativeCallSpeakerReaderTests {
         CallAXNode(role: "AXButton", description: "Open participants panel, closed, 3 participants")
       ])
     #expect(ZoomAppSpeakerReader.read(windows: [disagreeing]).participantCount == nil)
+    // Counts that disagree never let the list confirm that someone left.
+    #expect(!ZoomAppSpeakerReader.read(windows: [disagreeing]).participantListComplete)
   }
 
   @Test("Zoom: a header count with no list beside it must agree with the button")
@@ -386,6 +388,7 @@ struct NativeCallSpeakerReaderTests {
       "Meeting compact view | Meeting with Saurabh Vaish",
       [CallAXNode(role: "AXGroup", description: "In this meeting, 3 total")])
     #expect(TeamsAppSpeakerReader.read(windows: [complete, otherWindow]).participantCount == nil)
+    #expect(!TeamsAppSpeakerReader.read(windows: [complete, otherWindow]).participantListComplete)
     #expect(
       TeamsAppSpeakerReader.read(windows: [teamsRoster(rows, counts: [])]).participantCount == nil)
   }

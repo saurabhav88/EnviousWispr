@@ -43,17 +43,9 @@ struct MeetingSpeakerPairNamerTests {
       lastMs: last)
   }
 
-  /// A segment every capture of which was read and kept.
-  private static var whole: CallCaptureHealth {
-    var health = CallCaptureHealth()
-    health.captureAttempts = 10
-    health.completeCaptures = 10
-    return health
-  }
-
   private static func segment(
     pairs: [CallPairStretch]?, roster: [String] = [user, alex], selfNames: [String] = [],
-    samples: [(Int, [String])] = [], health: CallCaptureHealth? = whole
+    samples: [(Int, [String])] = []
   ) -> CallSpeakerSegment {
     CallSpeakerSegment(
       startMs: 0, endMs: 600_000, endReason: .recordingEnded, surface: .zoomApp, source: .app,
@@ -61,7 +53,7 @@ struct MeetingSpeakerPairNamerTests {
       roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
       rosterFromParticipantList: true,
       observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) },
-      health: health, pairs: pairs)
+      pairs: pairs)
   }
 
   private func propose(_ turns: [Turn], _ segments: [CallSpeakerSegment]) -> MeetingNamingResult {
@@ -92,12 +84,35 @@ struct MeetingSpeakerPairNamerTests {
     #expect(result.outcome == .noSignal, "the vote outcome stands when the rule adds nothing")
   }
 
-  @Test("the segment's mark identifies the user when the stretch carries none")
-  func segmentMarkCounts() {
-    let result = propose(
-      [Self.turn(Self.a, 1_000, 40_000)],
-      [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [])], selfNames: [Self.user])])
-    #expect(result.proposals == [Self.a: Self.alex])
+  @Test("a mark from elsewhere in the segment only confirms who the user is, never decides it")
+  func segmentMarkOnlyConfirms() {
+    let turns = [Self.turn(Self.a, 1_000, 40_000)]
+    // The mark may be from earlier in the call; on its own it names nobody.
+    #expect(
+      propose(
+        turns,
+        [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [])], selfNames: [Self.user])]
+      ).proposals.isEmpty)
+    // With the account name read alongside the stretch, it agrees, so the name stands.
+    #expect(
+      propose(
+        turns,
+        [
+          Self.segment(
+            pairs: [Self.stretch(0, 30_000, marked: [], account: [Self.user])],
+            selfNames: [Self.user])
+        ]
+      ).proposals == [Self.a: Self.alex])
+    // Earlier the user was marked "Priya Shah"; now the two are Priya and the user's new name,
+    // and the account says the user is the new name: the old mark disagrees, so nothing.
+    let renamed = CallPairStretch(
+      names: [Self.priya, Self.user], selfNames: [], accountNames: [Self.user], firstMs: 0,
+      lastMs: 30_000)
+    #expect(
+      propose(
+        turns,
+        [Self.segment(pairs: [renamed], roster: [Self.priya, Self.user], selfNames: [Self.priya])]
+      ).proposals.isEmpty)
   }
 
   @Test("marks that disagree, or mark someone not on the call, give nothing")
@@ -175,10 +190,9 @@ struct MeetingSpeakerPairNamerTests {
     #expect(
       propose(turns, [Self.segment(pairs: [Self.stretch(0, 15_000)], roster: crowded)])
         .proposals == [Self.a: Self.alex])
-    // Alex was the only other person the recording ever showed: a short stretch is enough.
-    #expect(
-      propose(turns, [Self.segment(pairs: [Self.stretch(0, 5_000)])]).proposals
-        == [Self.a: Self.alex])
+    // Alex was the only other person the recording ever showed: a short stretch is still not
+    // enough, because nothing proves nobody else was there while it was not read (#4206).
+    #expect(propose(turns, [Self.segment(pairs: [Self.stretch(0, 5_000)])]).proposals.isEmpty)
   }
 
   @Test("any second call voice in the stretch gives nothing, however short")
@@ -242,87 +256,6 @@ struct MeetingSpeakerPairNamerTests {
       [Self.turn(Self.a, 1_000, 5_000), Self.turn(Self.b, 40_000, 60_000)],
       [Self.segment(pairs: [Self.stretch(35_000, 65_000)], roster: crowded, samples: alexVotes)])
     #expect(taken.proposals == [Self.a: Self.alex])
-  }
-
-  @Test("the user's name in one call never hides a real person of that name in another")
-  func waiverIsPerSegment() {
-    // Segment 1: the remote is "Alex Rivera". Segment 2: the user is "Alex Rivera" and Priya is
-    // the remote, for only 5 s. Alex was another person earlier, so the 15 s rule applies.
-    let first = CallSpeakerSegment(
-      startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
-      status: .observed, lag: CallSpeakerLag(milliseconds: 0),
-      roster: CallSpeakerRoster(names: [Self.user, Self.alex], selfNames: [Self.user]),
-      rosterFromParticipantList: true, observations: [], health: Self.whole)
-    let second = CallSpeakerSegment(
-      startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
-      source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
-      roster: CallSpeakerRoster(names: [Self.alex, Self.priya], selfNames: [Self.alex]),
-      rosterFromParticipantList: true, observations: [], health: Self.whole,
-      pairs: [
-        CallPairStretch(
-          names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
-          lastMs: 115_000)
-      ])
-    let result = propose([Self.turn(Self.a, 110_000, 115_000)], [first, second])
-    #expect(result.proposals.isEmpty)
-  }
-
-  @Test("the 15 s rule is waived only when the whole recording was read and the user never changed")
-  func waiverNeedsAWholeReading() {
-    let turns = [Self.turn(Self.a, 110_000, 115_000)]
-    let short = [Self.stretch(110_000, 115_000)]
-    func later(selfNames: [String] = [], roster: [String] = [Self.user, Self.alex])
-      -> CallSpeakerSegment
-    {
-      CallSpeakerSegment(
-        startMs: 100_000, endMs: 200_000, endReason: .recordingEnded, surface: .zoomApp,
-        source: .app, status: .observed, lag: CallSpeakerLag(milliseconds: 0),
-        roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
-        rosterFromParticipantList: true, observations: [], health: Self.whole, pairs: short)
-    }
-    // Control: one healthy segment, Alex the only other person: the waiver applies.
-    #expect(propose(turns, [later()]).proposals == [Self.a: Self.alex])
-    // The same segment with some captures unread, or with no health counts, may have hidden a
-    // third person in those moments (cloud review on #4206).
-    var gaps = Self.whole
-    gaps.completeCaptures = 8
-    gaps.unreadableCaptures = 2
-    for health in [gaps, nil] as [CallCaptureHealth?] {
-      let partial = Self.segment(
-        pairs: short, roster: [Self.user, Self.alex], selfNames: [Self.user], health: health)
-      #expect(propose(turns, [partial]).proposals.isEmpty, "\(String(describing: health))")
-    }
-    // Each kind of missed capture keeps the 15 s rule.
-    let missed: [WritableKeyPath<CallCaptureHealth, Int>] = [
-      \.truncatedCaptures, \.unresolvedScopeCaptures, \.skippedBusyTicks,
-      \.skippedDictationTicks, \.missingPermissionTicks, \.staleResultDrops,
-    ]
-    for key in missed {
-      var health = Self.whole
-      health[keyPath: key] = 1
-      let partial = Self.segment(
-        pairs: short, roster: [Self.user, Self.alex], selfNames: [Self.user], health: health)
-      #expect(propose(turns, [partial]).proposals.isEmpty, "\(key)")
-    }
-    // An earlier call that could not be read may have held anyone.
-    let unreadable = CallSpeakerSegment(
-      startMs: 0, endMs: 100_000, endReason: .sourceChanged, surface: .zoomApp, source: .app,
-      status: .unreadable, lag: CallSpeakerLag(milliseconds: 0), roster: .empty,
-      rosterFromParticipantList: nil, observations: [])
-    #expect(propose(turns, [unreadable, later()]).proposals.isEmpty)
-    // Alex was another person, then the user took the name "Alex Rivera" in the same call.
-    let renamed = later(
-      selfNames: [Self.user, Self.alex], roster: [Self.user, Self.alex, Self.priya])
-    let renamedPairs = CallSpeakerSegment(
-      startMs: renamed.startMs, endMs: renamed.endMs, endReason: .recordingEnded,
-      surface: .zoomApp, source: .app, status: .observed, lag: renamed.lag,
-      roster: renamed.roster, rosterFromParticipantList: true, observations: [], health: Self.whole,
-      pairs: [
-        CallPairStretch(
-          names: [Self.alex, Self.priya], selfNames: [Self.alex], firstMs: 110_000,
-          lastMs: 115_000)
-      ])
-    #expect(propose(turns, [renamedPairs]).proposals.isEmpty)
   }
 
   @Test("a name two people share never comes from a stretch")
