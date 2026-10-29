@@ -18,18 +18,21 @@ package enum ZoomAppSpeakerReader {
     "Computer audio muted", "Computer audio unmuted", "No audio connected",
   ]
   static let activeSpeakerFlag = "active speaker"
+  static let noAudioState = "No audio connected"
   static let videoStates: Set<String> = ["Video off", "Video on"]
   static let participantsListLabel = "Participants list"
   static let participantsCountPrefix = "Participants ("
   /// The words Zoom puts in brackets after a name in the participants panel.
   static let panelTags: Set<String> = ["Host", "Co-host", "me", "Guest"]
 
-  package static func read(windows: [CallAXWindow]) -> CallSpeakerReading {
+  package static func read(windows: [CallAXWindow], accountTitles: [String]? = nil)
+    -> CallSpeakerReading
+  {
     var tileNames: [String] = []
     var speaking: [String] = []
     var selfNames: [String] = []
     // Every participants list on screen, each with the counts shown in its own window.
-    var lists: [(entries: [String], counts: Set<Int>)] = []
+    var lists: [(rows: PanelRows, counts: Set<Int>)] = []
     // The counts the closed panel's toolbar button shows (C1a: "Open participants panel,
     // closed, 4 participants").
     var buttonCounts: Set<Int> = []
@@ -43,26 +46,27 @@ package enum ZoomAppSpeakerReader {
       let counts = Set(nodes.compactMap { $0.label.flatMap(participantCount) })
       panelCounts.formUnion(counts)
       for node in nodes where node.role == "AXOutline" && node.label == participantsListLabel {
-        lists.append(
-          (node.allNodes.filter { $0.role == "AXStaticText" }.compactMap(\.label), counts))
+        lists.append((panelRows(node), counts))
       }
     }
     // Speaker-view thumbnails carry a video state and show each participant once; the large
-    // tile repeats one of them without it (C1a/C1b, 2026-10-28). Only thumbnails are people.
+    // tile repeats one of them without it (C1a/C1b, 2026-10-28). With two people the large tile
+    // is the other person and only the user has a thumbnail (2026-10-29).
     var thumbnails: [(name: String?, talking: Bool)] = []
-    var flaggedOutsideThumbnails = false
+    var largeTiles: [(name: String?, talking: Bool)] = []
     for node in windows.flatMap({ $0.root.allNodes }) {
       if node.role == "AXTabGroup", let label = node.label, let tile = parseTile(label) {
-        // A tile with Zoom's structure but no name is still a person; it is kept unnamed.
-        let name: String? = tile.name.isEmpty ? nil : tile.name
+        // A tile with Zoom's structure but no name is still a person; it is kept unnamed. So is
+        // one still joining ("No audio connected"), whose name may be Zoom's placeholder (#4190).
+        let name: String? = tile.name.isEmpty || tile.isJoining ? nil : tile.name
         if let name {
           tileNames.append(name)
           if tile.isActiveSpeaker { speaking.append(name) }
         }
         if tile.hasVideoState {
           thumbnails.append((name, tile.isActiveSpeaker))
-        } else if tile.isActiveSpeaker {
-          flaggedOutsideThumbnails = true
+        } else {
+          largeTiles.append((name, tile.isActiveSpeaker))
         }
       } else if node.role == "AXStaticText", let label = node.label,
         let name = selfName(fromParticipantEntry: label)
@@ -71,64 +75,144 @@ package enum ZoomAppSpeakerReader {
       }
     }
     // The panel lists each person once, so a name listed twice is two people. It counts as the
-    // participant list only when it is the only list on screen and complete: its own window
-    // shows exactly one "Participants (N)" count, equal to the entries read. A longer list Zoom
-    // draws only partly, or two lists, fall back to the tiles.
-    let selfList = uniqueInOrder(selfNames)
+    // participant list only when it is the only list on screen and complete: every joined row is
+    // bound to its name, and its own window shows exactly one "Participants (N)" count, equal to
+    // the entries read. A longer list Zoom draws only partly, or two lists, fall back to the
+    // tiles.
+    let complete: PanelRows? =
+      if lists.count == 1, let list = lists.first, !list.rows.entries.isEmpty,
+        !list.rows.unresolved, list.counts == [list.rows.entries.count]
+      {
+        list.rows
+      } else {
+        nil
+      }
+    let allCounts = buttonCounts.union(panelCounts)
+    // Every other count the call shows, the button's included, must say the same. With the panel
+    // closed only the button counts; a list on screen that is not complete leaves it unknown.
+    let count: Int? =
+      if let complete {
+        allCounts.isSubset(of: [complete.entries.count]) ? complete.entries.count : nil
+      } else {
+        lists.isEmpty && allCounts.count == 1 ? allCounts.first : nil
+      }
+    // The large tile is a person of its own only when the call's count says so: one more than
+    // the thumbnails, under a name no thumbnail shows. Otherwise it repeats a thumbnail.
     let thumbnailNames = thumbnails.compactMap(\.name)
-    let participants = thumbnails.enumerated().map { index, tile in
+    var people = thumbnails
+    if largeTiles.count == 1, let large = largeTiles.first, let name = large.name,
+      let count, count == thumbnails.count + 1, !thumbnailNames.contains(name)
+    {
+      people.append(large)
+    }
+    let flaggedOutsidePeople =
+      people.count == thumbnails.count && largeTiles.contains(where: \.talking)
+    let selfList = uniqueInOrder(selfNames)
+    let peopleNames = people.compactMap(\.name)
+    let participants = people.enumerated().map { index, tile in
       CallParticipant(
-        key: "thumbnail-\(index)", name: tile.name, isTalking: tile.talking,
+        key: index < thumbnails.count ? "thumbnail-\(index)" : "large", name: tile.name,
+        isTalking: tile.talking,
         isSelf: tile.name != nil && selfList == [tile.name!]
-          && thumbnailNames.filter { $0 == tile.name }.count == 1)
+          && peopleNames.filter { $0 == tile.name }.count == 1)
     }
     // Every list's own duplicates are two people, whether or not that list is complete.
     let listedTwice = lists.reduce(into: Set<String>()) { shared, list in
-      shared.formUnion(repeatedNames(list.entries.map { panelEntry($0).name }))
+      shared.formUnion(repeatedNames(list.rows.entries.map { panelEntry($0).name }))
     }
-    // Identity holds when the thumbnails are the people and no talking flag sits elsewhere.
-    let identity = !thumbnails.isEmpty && !flaggedOutsideThumbnails
-    if lists.count == 1, let list = lists.first, !list.entries.isEmpty,
-      list.counts == [list.entries.count]
-    {
-      // Every other count the call shows, the button's included, must say the same.
-      let count =
-        buttonCounts.union(panelCounts).isSubset(of: [list.entries.count])
-        ? list.entries.count : nil
-      let names = list.entries.map { panelEntry($0).name }
+    // Identity holds when the tiles are the people and no talking flag sits elsewhere.
+    let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
+    let account = accountName(fromTitles: accountTitles)
+    if let complete {
+      let names = complete.entries.map { panelEntry($0).name }
       return CallSpeakerReading(
         speaking: uniqueInOrder(speaking),
         roster: CallSpeakerRoster(names: names, selfNames: selfList),
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: identity,
-        sharedNames: listedTwice.union(repeatedNames(thumbnailNames)),
-        // One list on screen whose own "Participants (N)" count equals the entries read.
-        participantListComplete: true, participantCount: count)
+        sharedNames: listedTwice.union(repeatedNames(peopleNames)),
+        participantListComplete: true, participantCount: count, accountSelfNames: account)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       roster: CallSpeakerRoster(
-        names: identity ? thumbnailNames : uniqueInOrder(tileNames), selfNames: selfList),
+        names: identity ? peopleNames : uniqueInOrder(tileNames), selfNames: selfList),
       rosterFromParticipantList: false, participants: participants,
       participantIdentityEstablished: identity,
-      sharedNames: listedTwice.union(repeatedNames(thumbnailNames)),
-      // With the panel closed only the button counts; a list on screen that does not match
-      // its own count leaves the number unknown.
-      participantCount: lists.isEmpty && buttonCounts.union(panelCounts).count == 1
-        ? buttonCounts.union(panelCounts).first : nil)
+      sharedNames: listedTwice.union(repeatedNames(peopleNames)),
+      participantCount: count, accountSelfNames: account)
+  }
+
+  /// The participants panel's rows (2026-10-29, `zoom-1on1-findings-2026-10-29.md`): each person
+  /// is an `AXCell` whose identifier says what it is. A joined person's row
+  /// (`ZMHCTableItemType_PANELIST`) holds one text, the entry, and a "More options for <name>"
+  /// button; the row counts only when that button names the same person, since Zoom fills a
+  /// joining row before binding it to anyone. Waiting-room rows and section headers are not
+  /// people on the call. A joined row Zoom has not bound, or a row of an unobserved kind, is
+  /// unresolved: the list is then not complete.
+  struct PanelRows: Equatable {
+    var entries: [String] = []
+    var unresolved = false
+  }
+
+  static let joinedRowIdentifier = "ZMHCTableItemType_PANELIST"
+  static let notJoinedRowIdentifiers: Set<String> = [
+    "ZMHCTableItemType_PANELIST_Group", "ZMHCTableItemType_WAITINGLIST",
+    "ZMHCTableItemType_WAITINGLIST_Group",
+  ]
+  static let moreOptionsPrefix = "More options for "
+  static let moreOptionsStates = [", collapsed", ", expanded"]
+
+  static func panelRows(_ outline: CallAXNode) -> PanelRows {
+    var rows = PanelRows()
+    for cell in outline.allNodes where cell.role == "AXCell" {
+      if cell.identifier == joinedRowIdentifier {
+        if let entry = boundEntry(cell) {
+          rows.entries.append(entry)
+        } else {
+          rows.unresolved = true
+        }
+      } else if let identifier = cell.identifier, notJoinedRowIdentifiers.contains(identifier) {
+        continue
+      } else if cell.allNodes.contains(where: { $0.role == "AXStaticText" && $0.label != nil }) {
+        rows.unresolved = true
+      }
+    }
+    return rows
+  }
+
+  /// A joined row's entry, when its one text and its "More options for" button name the same
+  /// person; otherwise `nil`.
+  static func boundEntry(_ cell: CallAXNode) -> String? {
+    let texts = cell.children.filter { $0.role == "AXStaticText" }.compactMap(\.label)
+    guard texts.count == 1, let entry = texts.first else { return nil }
+    let name = panelEntry(entry).name
+    let bound = moreOptionsStates.map { moreOptionsPrefix + name + $0 }
+    return cell.children.contains { $0.role == "AXMenuButton" && bound.contains($0.label ?? "") }
+      ? entry : nil
+  }
+
+  /// The signed-in account's display name when exactly one account is checked and its title has
+  /// the observed shape; otherwise none.
+  static func accountName(fromTitles titles: [String]?) -> [String] {
+    guard let titles, titles.count == 1,
+      let name = CallAccountMenu.displayName(fromTitle: titles[0])
+    else { return [] }
+    return [name]
   }
 
   static let closedPanelButtonPrefix = "Open participants panel, closed, "
 
-  /// `Open participants panel, closed, 4 participants` → 4 (`1 participant` → 1). Only the
-  /// observed English shape; any other text → `nil`, so another language leaves it unknown.
+  /// `Open participants panel, closed, 4 participants` → 4 (Zoom also writes `1 participants`,
+  /// 2026-10-29). Only the observed English shape; any other text, a waiting-room tail included,
+  /// → `nil`, so another language leaves it unknown.
   static func closedPanelCount(_ label: String) -> Int? {
     guard label.hasPrefix(closedPanelButtonPrefix) else { return nil }
     let rest = label.dropFirst(closedPanelButtonPrefix.count)
     let digits = rest.prefix(while: { $0.isASCII && $0.isNumber })
     guard !digits.isEmpty, let count = Int(digits) else { return nil }
     let tail = rest.dropFirst(digits.count)
-    guard tail == (count == 1 ? " participant" : " participants") else { return nil }
+    guard tail == " participants" || (count == 1 && tail == " participant") else { return nil }
     return count
   }
 
@@ -160,7 +244,7 @@ package enum ZoomAppSpeakerReader {
   /// optional video state, then exactly one audio state. Everything before that is the name, so
   /// commas and look-alike words inside a name survive. Any other ending is not read (no guess).
   static func parseTile(_ label: String)
-    -> (name: String, isActiveSpeaker: Bool, hasVideoState: Bool)?
+    -> (name: String, isActiveSpeaker: Bool, hasVideoState: Bool, isJoining: Bool)?
   {
     var parts = label.components(separatedBy: ", ")
     let isActiveSpeaker = parts.last == activeSpeakerFlag
@@ -172,7 +256,10 @@ package enum ZoomAppSpeakerReader {
     }
     guard let state = parts.popLast(), audioStates.contains(state) else { return nil }
     // An empty name is returned as "": the tile is still a person the caller must not drop.
-    return (parts.joined(separator: ", "), isActiveSpeaker, hasVideoState)
+    // "No audio connected" is how a joining person's tile reads for its first moments.
+    return (
+      parts.joined(separator: ", "), isActiveSpeaker, hasVideoState, state == noAudioState
+    )
   }
 
   /// The participants panel marks the user: `Saurabh A Vaish (Host, me)` or `Dana (me)`.

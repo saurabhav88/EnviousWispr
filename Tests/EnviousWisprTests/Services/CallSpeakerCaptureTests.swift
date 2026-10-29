@@ -56,11 +56,13 @@ struct CallSpeakerCaptureTests {
 
   private func capture(
     _ tree: Tree, windows: [Int] = [1], bounds: CallAXBounds = .standard,
-    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true }
+    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true },
+    menuBar: Int? = nil
   ) -> CallAXCapture {
     var host: UInt64 = 100
     return CallSpeakerCapture.capture(
       windows: windows, access: tree.access(), bounds: bounds, policy: policy, keepPage: keepPage,
+      menuBar: menuBar,
       hostTime: {
         host += 10
         return host
@@ -68,6 +70,66 @@ struct CallSpeakerCaptureTests {
   }
 
   // MARK: - Walking
+
+  /// SURVEY shape (Zoom Workplace, 2026-10-29, `zoom-1on1-findings-2026-10-29.md`): Apple's menu,
+  /// then the app menu, whose "Switch account" and "Sign out" items each open a submenu of
+  /// accounts; only the first holds `addAccount:`. Titles here are SYNTHETIC.
+  private func accountMenuTree(checked: Bool = true) -> Tree {
+    let tree = Tree()
+    tree.node(1, "AXWindow")
+    tree.node(100, "AXMenuBar", children: [101, 102])
+    tree.node(101, "AXMenuBarItem")
+    tree.node(102, "AXMenuBarItem", children: [103])
+    tree.node(103, "AXMenu", children: [104, 105, 106])
+    tree.node(104, "AXMenuItem")
+    tree.node(105, "AXMenuItem", children: [107])
+    tree.node(106, "AXMenuItem", children: [111])
+    tree.node(107, "AXMenu", children: [108, 109, 110])
+    tree.node(108, "AXMenuItem")
+    tree.texts[108] = [
+      .identifier: "menuItemDidClicked:", .title: "Saurabh A Vaish(saurabh@example.com)",
+    ]
+    if checked { tree.texts[108]?[.markChar] = "\u{2713}" }
+    tree.node(109, "AXMenuItem")
+    tree.node(110, "AXMenuItem")
+    tree.texts[110] = [.identifier: "addAccount:"]
+    tree.node(111, "AXMenu", children: [112, 113])
+    tree.node(112, "AXMenuItem")
+    tree.texts[112] = [.identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)", .markChar: "\u{2713}"]
+    tree.node(113, "AXMenuItem")
+    tree.texts[113] = [.identifier: "signOutAllAccounts:"]
+    return tree
+  }
+
+  @Test("Zoom's checked account is read from its menu bar inside the copy, never pressed")
+  func accountMenu() {
+    let read = capture(accountMenuTree(), policy: .zoomApp, menuBar: 100)
+    #expect(read.accountTitles == ["Saurabh A Vaish(saurabh@example.com)"])
+    #expect(read.completeness == .complete)
+    // Other surfaces never read it; an unchecked account is no account.
+    #expect(capture(accountMenuTree(), policy: .standard, menuBar: 100).accountTitles == nil)
+    #expect(capture(accountMenuTree(), policy: .zoomApp).accountTitles == nil)
+    #expect(capture(accountMenuTree(checked: false), policy: .zoomApp, menuBar: 100).accountTitles == [])
+    // A menu that cannot be read gives no account and leaves the call's copy as it was.
+    for failing in ["100.AXChildren", "103.AXChildren", "108.AXTitle"] {
+      let tree = accountMenuTree()
+      tree.failing = [failing]
+      let copy = capture(tree, policy: .zoomApp, menuBar: 100)
+      #expect(copy.accountTitles == nil, "\(failing)")
+      #expect(copy.completeness == .complete, "\(failing)")
+    }
+    // A failed mark read is not a check mark.
+    let unmarked = accountMenuTree()
+    unmarked.failing = ["108.AXMenuItemMarkChar"]
+    #expect(capture(unmarked, policy: .zoomApp, menuBar: 100).accountTitles == [])
+    // A spent budget reads no menu at all.
+    let slow = accountMenuTree()
+    slow.tickPerRead = .milliseconds(50)
+    let late = capture(
+      slow, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)),
+      policy: .zoomApp, menuBar: 100)
+    #expect(late.accountTitles == nil)
+  }
 
   @Test("a full small tree is complete; a missing optional attribute is not a failure")
   func completeTree() {
@@ -617,12 +679,21 @@ struct CallSpeakerCaptureTests {
     tree.node(4, "AXButton")
     tree.texts[4] = [.description: "More meeting controls, collapsed", .identifier: "more"]
     tree.failing = ["3.AXChildren", "4.AXChildren", "21.AXIdentifier"]
-    tree.node(5, "AXOutline", children: [6, 7, 8])
+    tree.node(5, "AXOutline", children: [30, 31, 8])
     tree.texts[5] = [.description: "Participants list"]
+    // Each joined row: its entry and the "More options for" button that binds it (2026-10-29).
+    tree.node(30, "AXCell", children: [6, 32])
+    tree.texts[30] = [.identifier: "ZMHCTableItemType_PANELIST"]
+    tree.node(31, "AXCell", children: [7, 33])
+    tree.texts[31] = [.identifier: "ZMHCTableItemType_PANELIST"]
     tree.node(6, "AXStaticText")
     tree.texts[6] = [.value: "Alex Rivera"]
+    tree.node(32, "AXMenuButton")
+    tree.texts[32] = [.description: "More options for Alex Rivera, collapsed"]
     tree.node(7, "AXStaticText")
     tree.texts[7] = [.value: "Priya Shah"]
+    tree.node(33, "AXMenuButton")
+    tree.texts[33] = [.description: "More options for Priya Shah, collapsed"]
     tree.node(8, "AXButton", children: [9])
     tree.node(9, "AXImage")
     tree.node(10, "AXStaticText")
@@ -719,7 +790,7 @@ struct CallSpeakerCaptureTests {
   private func pair(
     _ names: [String] = ["Saurabh Vaish", "Alex Rivera"], marked: [String] = ["Saurabh Vaish"],
     count: Int? = 2, identity: Bool = true, shared: Set<String> = [],
-    participants: [String?]? = nil
+    participants: [String?]? = nil, account: [String] = []
   ) -> CallSpeakerReading {
     CallSpeakerReading(
       speaking: [], roster: CallSpeakerRoster(names: names, selfNames: marked),
@@ -727,7 +798,23 @@ struct CallSpeakerCaptureTests {
       participants: (participants ?? names).enumerated().map {
         CallParticipant(key: "\($0.offset)", name: $0.element, isTalking: false, isSelf: false)
       },
-      participantIdentityEstablished: identity, sharedNames: shared, participantCount: count)
+      participantIdentityEstablished: identity, sharedNames: shared, participantCount: count,
+      accountSelfNames: account)
+  }
+
+  @Test("the account name rides with its stretch; a different account starts a new one")
+  func pairStretchAccount() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(marked: [], account: [user]), context: Self.good, observationMs: 1_000)
+    log.add(pair(marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    log.add(pair(marked: [], account: ["Other Name"]), context: Self.good, observationMs: 3_000)
+    // Never a reason to qualify, and an unusable account name is simply not kept.
+    log.add(pair(marked: [], account: [""]), context: Self.good, observationMs: 4_000)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.accountNames) == [[user], ["Other Name"], []])
+    #expect(pairs.map(\.firstMs) == [1_000, 3_000, 4_000])
+    #expect(log.log.segments[0].roster.selfNames.isEmpty, "the account is never a mark")
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: nil, account: [user])) == nil)
   }
 
   @Test("only a reading the app itself counts as two people, both named, is two-person evidence")

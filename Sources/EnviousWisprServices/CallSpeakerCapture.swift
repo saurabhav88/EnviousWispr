@@ -17,6 +17,8 @@ package enum CallAXAttribute: String, Sendable, CaseIterable {
   case children = "AXChildren"
   case url = "AXURL"
   case windows = "AXWindows"
+  case menuBar = "AXMenuBar"
+  case markChar = "AXMenuItemMarkChar"
 }
 
 /// One attribute read. `missing` is an element without the attribute (optional, not a failure);
@@ -121,13 +123,17 @@ package struct CallAXCapture: Sendable, Equatable {
   package let failedReads: Int
   package let prunedControls: Int
   package let skippedWindows: Int
+  /// The titles of the call app's checked accounts (`CallAccountMenu`), read from its menu bar
+  /// in the same copy and time budget; `nil` when not read or not readable. Never pressed.
+  package let accountTitles: [String]?
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
     readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
-    prunedControls: Int = 0, skippedWindows: Int = 0
+    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil
   ) {
+    self.accountTitles = accountTitles
     self.nodesVisited = nodesVisited
     self.failedReads = failedReads
     self.prunedControls = prunedControls
@@ -150,7 +156,7 @@ package enum CallSpeakerCapture {
   package static func capture<Element>(
     windows: [Element], access: CallAXTreeAccess<Element>, bounds: CallAXBounds,
     policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool,
-    hostTime: () -> UInt64
+    menuBar: Element? = nil, hostTime: () -> UInt64
   ) -> CallAXCapture {
     let started = hostTime()
     let deadline = access.now().advanced(by: bounds.budget)
@@ -177,6 +183,17 @@ package enum CallSpeakerCapture {
       }
       copied.append(CallAXWindow(title: title, root: root))
     }
+    // The account is read after the call's windows, inside the same budget; it never makes the
+    // call's copy unreadable or truncated.
+    var accountTitles: [String]?
+    if policy == .zoomApp, let menuBar, !walk.unreadable, !walk.truncated {
+      accountTitles = CallAccountMenu.checkedTitles(menuBar: menuBar) { element, attribute in
+        guard access.now() < deadline else { return nil }
+        let result = access.read(element, attribute)
+        if case .failed = result { return nil }
+        return result
+      }
+    }
     // The budget covers every read, the last element's included, not only node entry.
     if access.now() >= deadline { walk.truncated = true }
     let completeness: CallCaptureContext.Completeness =
@@ -185,7 +202,7 @@ package enum CallSpeakerCapture {
       windows: copied, documents: walk.documents, completeness: completeness,
       readStartHostTime: started, readEndHostTime: hostTime(), nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
-      skippedWindows: skippedWindows)
+      skippedWindows: skippedWindows, accountTitles: accountTitles)
   }
 
   private struct Walk<Element> {
@@ -340,6 +357,9 @@ package enum CallSpeakerCapture {
     case .children, .windows:
       guard let list = value as? [AXUIElement] else { return .missing }
       return .elements(list)
+    case .menuBar:
+      guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return .missing }
+      return .elements([value as! AXUIElement])
     case .domClassList:
       if let list = value as? [String] { return .texts(list) }
       return .missing
@@ -369,9 +389,13 @@ package enum CallSpeakerCapture {
     _ = liveRead(app, .role)
     switch liveRead(app, .windows) {
     case .elements(let windows):
+      var menuBar: AXUIElement?
+      if policy == .zoomApp, case .elements(let bar) = liveRead(app, .menuBar) {
+        menuBar = bar.first
+      }
       return capture(
         windows: windows, access: liveAccess, bounds: bounds, policy: policy, keepPage: keepPage,
-        hostTime: { mach_absolute_time() })
+        menuBar: menuBar, hostTime: { mach_absolute_time() })
     case .missing:
       let now = mach_absolute_time()
       return CallAXCapture(
@@ -383,6 +407,66 @@ package enum CallSpeakerCapture {
         windows: [], documents: [], completeness: .unreadable, readStartHostTime: now,
         readEndHostTime: now)
     }
+  }
+}
+
+/// Finds the signed-in account in a call app's menu bar without opening or pressing anything
+/// (#4013 chunk 14, plan r4). Observed in Zoom Workplace 2026-10-29
+/// (`docs/audits/2026-10-27-4013/zoom-1on1-findings-2026-10-29.md`): the app menu (the menu
+/// bar's second item, after Apple's) holds an account submenu whose items are titled
+/// `<Display name>(<email>)` with identifier `menuItemDidClicked:`, beside an `addAccount:` item;
+/// the account in use carries the mark `✓`. Identifiers and the mark are the same in every
+/// language; titles are not read for structure.
+package enum CallAccountMenu {
+  static let accountIdentifier = "menuItemDidClicked:"
+  static let addAccountIdentifier = "addAccount:"
+  static let checkedMark = "\u{2713}"
+  /// Reads are bounded: the app menu's items, then one level of submenus.
+  static let maximumItems = 64
+
+  /// The checked account items' titles in the submenu that holds `addAccount:`, or `nil` when
+  /// the menu could not be read or no such submenu exists. `read` answers `nil` for a failed
+  /// read or a spent budget.
+  package static func checkedTitles<Element>(
+    menuBar: Element, read: (Element, CallAXAttribute) -> CallAXRead<Element>?
+  ) -> [String]? {
+    func elements(_ element: Element) -> [Element]? {
+      switch read(element, .children) {
+      case .elements(let list)?: return Array(list.prefix(maximumItems))
+      case .missing?: return []
+      default: return nil
+      }
+    }
+    func text(_ element: Element, _ attribute: CallAXAttribute) -> String? {
+      if case .text(let text)? = read(element, attribute) { return text }
+      return nil
+    }
+    guard let bar = elements(menuBar), bar.count > 1,
+      let appMenu = elements(bar[1])?.first, let items = elements(appMenu)
+    else { return nil }
+    for item in items {
+      guard let submenu = elements(item)?.first, let entries = elements(submenu) else { continue }
+      let identifiers = entries.map { text($0, .identifier) }
+      guard identifiers.contains(addAccountIdentifier) else { continue }
+      var titles: [String] = []
+      for (entry, identifier) in zip(entries, identifiers) where identifier == accountIdentifier {
+        guard text(entry, .markChar) == checkedMark else { continue }
+        guard let title = text(entry, .title) else { return nil }
+        titles.append(title)
+      }
+      return titles
+    }
+    return nil
+  }
+
+  /// `Saurabh A Vaish(saurabhav@example.com)` → `Saurabh A Vaish`: the text before the last
+  /// bracket when the bracket closes the title and holds an address. Any other shape → `nil`.
+  package static func displayName(fromTitle title: String) -> String? {
+    guard title.hasSuffix(")"), let open = title.lastIndex(of: "(") else { return nil }
+    let inner = title[title.index(after: open)..<title.index(before: title.endIndex)]
+    guard inner.contains("@") else { return nil }
+    let name = title[..<open].trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
   }
 }
 

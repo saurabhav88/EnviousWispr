@@ -35,9 +35,12 @@ struct MeetingSpeakerPairNamerTests {
   }
 
   private static func stretch(
-    _ first: Int, _ last: Int, remote: String = alex, marked: [String] = [user]
+    _ first: Int, _ last: Int, remote: String = alex, marked: [String] = [user],
+    account: [String] = []
   ) -> CallPairStretch {
-    CallPairStretch(names: [user, remote], selfNames: marked, firstMs: first, lastMs: last)
+    CallPairStretch(
+      names: [user, remote], selfNames: marked, accountNames: account, firstMs: first,
+      lastMs: last)
   }
 
   private static func segment(
@@ -106,6 +109,52 @@ struct MeetingSpeakerPairNamerTests {
         turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [Self.user, Self.alex])])]
       )
       .proposals.isEmpty)
+  }
+
+  /// The founder's D5 exception (plan r4): Zoom's signed-in account name may say who the user is
+  /// when the app marked nobody.
+  @Test("with no mark, the signed-in account name says which of the two is the user")
+  func accountNameIdentifiesTheUser() {
+    let turns = [Self.turn(Self.a, 1_000, 40_000)]
+    let named = propose(
+      turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [], account: [Self.user])])])
+    #expect(named.proposals == [Self.a: Self.alex])
+    // An account name that is neither person gives nothing.
+    let neither = propose(
+      turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [], account: [Self.priya])])])
+    #expect(neither.proposals.isEmpty)
+    // The risk the founder accepted: an account name equal to the other person's display name
+    // takes that person for the user, so the voice gets the user's meeting name.
+    let accepted = propose(
+      turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [], account: [Self.alex])])])
+    #expect(accepted.proposals == [Self.a: Self.user])
+  }
+
+  @Test("an app mark always wins over the account name, and a mark elsewhere blocks it")
+  func marksWinOverTheAccount() {
+    let turns = [Self.turn(Self.a, 1_000, 40_000)]
+    // The mark says the user is Saurabh; the account says Alex: the mark decides.
+    let marked = propose(
+      turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [Self.user], account: [Self.alex])])])
+    #expect(marked.proposals == [Self.a: Self.alex])
+    // The segment marks someone not on this two-person call: a contradiction the account cannot
+    // settle.
+    let elsewhere = propose(
+      turns,
+      [
+        Self.segment(
+          pairs: [Self.stretch(0, 30_000, marked: [], account: [Self.user])],
+          selfNames: [Self.priya])
+      ])
+    #expect(elsewhere.proposals.isEmpty)
+  }
+
+  @Test("the account name never waives the 15 s rule")
+  func accountNeverWaives() {
+    let result = propose(
+      [Self.turn(Self.a, 1_000, 14_000)],
+      [Self.segment(pairs: [Self.stretch(0, 10_000, marked: [], account: [Self.user])])])
+    #expect(result.proposals.isEmpty)
   }
 
   @Test("a stretch must last 15 s when anyone else was on the call, but not when nobody was")

@@ -91,12 +91,18 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// count it showed agreed; `nil` when it showed none, the counts disagreed, or a list it
   /// showed did not match its own count. Never a count of what was read.
   package let participantCount: Int?
+  /// The call app's signed-in account display name (Zoom's menu bar, `CallAccountMenu`), at most
+  /// one; empty when not read. Not a meeting marking (#4013 plan r4): only the 1-on-1 rule may
+  /// use it, and only when no app marking says who the user is.
+  package let accountSelfNames: [String]
 
   package init(
     speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
     participants: [CallParticipant], participantIdentityEstablished: Bool,
-    sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil
+    sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil,
+    accountSelfNames: [String] = []
   ) {
+    self.accountSelfNames = accountSelfNames
     self.participantListComplete = participantListComplete
     self.participantCount = participantCount
     self.speaking = speaking

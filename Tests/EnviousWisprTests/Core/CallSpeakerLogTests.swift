@@ -537,7 +537,8 @@ struct CallSpeakerLogTests {
         names: ["Saurabh Vaish", "Alex Rivera"], selfNames: ["Saurabh Vaish"], firstMs: 2_000,
         lastMs: 20_000),
       CallPairStretch(
-        names: ["Saurabh Vaish", "Priya Shah"], selfNames: [], firstMs: 30_000, lastMs: 30_000),
+        names: ["Saurabh Vaish", "Priya Shah"], selfNames: [], accountNames: ["Saurabh Vaish"],
+        firstMs: 30_000, lastMs: 30_000),
     ])
     let data = try JSONEncoder().encode(log)
     #expect(try JSONDecoder().decode(CallSpeakerLog.self, from: data) == log)
@@ -551,10 +552,11 @@ struct CallSpeakerLogTests {
 
   @Test("a stretch with the wrong names, out of order, or outside its segment is refused")
   func pairShapes() {
-    func stretch(_ names: [String], _ first: Int, _ last: Int, marked: [String] = [])
-      -> CallPairStretch
-    {
-      CallPairStretch(names: names, selfNames: marked, firstMs: first, lastMs: last)
+    func stretch(
+      _ names: [String], _ first: Int, _ last: Int, marked: [String] = [], account: [String] = []
+    ) -> CallPairStretch {
+      CallPairStretch(
+        names: names, selfNames: marked, accountNames: account, firstMs: first, lastMs: last)
     }
     let two = ["Saurabh Vaish", "Alex Rivera"]
     #expect(Self.withPairs([stretch(two, 1_000, 60_000)]).shapeProblem == nil, "the bounds hold")
@@ -563,6 +565,8 @@ struct CallSpeakerLogTests {
       ([stretch(["Alex Rivera", "Alex Rivera"], 2_000, 3_000)], "the same name twice"),
       ([stretch(two + ["Priya Shah"], 2_000, 3_000)], "three names"),
       ([stretch(two, 2_000, 3_000, marked: two + ["Priya Shah"])], "three marks"),
+      ([stretch(two, 2_000, 3_000, account: two)], "two account names"),
+      ([stretch(two, 2_000, 3_000, account: [""])], "an empty account name"),
       ([stretch(two, 3_000, 2_000)], "runs backwards"),
       ([stretch(two, 500, 3_000)], "before the segment"),
       ([stretch(two, 2_000, 60_001)], "after the segment"),
@@ -581,7 +585,9 @@ struct CallSpeakerLogTests {
         + pairs.joined(separator: ",") + "]}]}"
     }
     let tooMany = json(Array(repeating: one, count: CallEvidenceLimits.current.pairs + 1))
-    let tooWide = json([#"{"names":[0,1],"selfNames":[0,1,0],"firstMs":0,"lastMs":0}"#])
+    let tooWide = json([
+      #"{"names":[0,1],"selfNames":[0,1],"accountNames":[0,1],"firstMs":0,"lastMs":0}"#
+    ])
     for text in [tooMany, tooWide] {
       #expect(throws: CallSpeakerLog.DecodeError.invalid("capacity.pairs")) {
         try JSONDecoder().decode(CallSpeakerLog.self, from: Data(text.utf8))

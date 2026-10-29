@@ -68,7 +68,9 @@ package enum CallSpeakerSurfaceReader {
   ) -> CallSpeakerReading? {
     switch surface {
     // Only the meeting window; `scope` withholds a capture with meeting content elsewhere.
-    case .zoomApp: ZoomAppSpeakerReader.read(windows: capture.windows.filter(isZoomMeeting))
+    case .zoomApp:
+      ZoomAppSpeakerReader.read(
+        windows: capture.windows.filter(isZoomMeeting), accountTitles: capture.accountTitles)
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -358,6 +360,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     for pair in names.allPairs {
       usage.insertNames(pair.names)
       usage.insertNames(pair.selfNames)
+      usage.insertNames(pair.accountNames)
       usage.pairs += 1
     }
     usage.runs += runs
@@ -450,8 +453,10 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// The two people a reading proves are the whole call, with the user's app-marked names, or
   /// `nil` (R1.2 of the chunk-14 plan): a resolved capture whose participants are established
   /// and all named, nobody shown twice or shared, the app's own count saying exactly two, and the
-  /// participants agreeing with the roster. Two names on screen alone never qualify.
-  static func pairEvidence(_ reading: CallSpeakerReading) -> (names: [String], marked: [String])? {
+  /// participants agreeing with the roster. Two names on screen alone never qualify. The app's
+  /// signed-in account name rides along when it is a valid name (plan r4); it never makes a
+  /// reading qualify.
+  static func pairEvidence(_ reading: CallSpeakerReading) -> PairEvidence? {
     guard reading.participantIdentityEstablished, reading.sharedNames.isEmpty,
       reading.participantCount == 2, reading.participants.count == 2,
       reading.roster.names.count == 2, reading.roster.selfNames.count <= 2
@@ -460,26 +465,38 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     guard named.count == 2, Set(named).count == 2, Set(named) == Set(reading.roster.names) else {
       return nil
     }
-    return (reading.roster.names, reading.roster.selfNames)
+    let account =
+      reading.accountSelfNames.count == 1
+        && reading.accountSelfNames.allSatisfy(CallSpeakerLog.isName)
+      ? reading.accountSelfNames : []
+    return PairEvidence(
+      names: reading.roster.names, marked: reading.roster.selfNames, account: account)
   }
 
-  private static func notePair(
-    _ evidence: (names: [String], marked: [String])?, at ms: Int, in names: inout Names
-  ) {
+  struct PairEvidence: Equatable {
+    let names: [String]
+    let marked: [String]
+    let account: [String]
+  }
+
+  private static func notePair(_ evidence: PairEvidence?, at ms: Int, in names: inout Names) {
     guard let evidence else {
       names.closePair()
       return
     }
     if let open = names.openPair, ms - open.lastMs <= CallPairStretch.maximumGapMs,
-      sameSpellings(open.names, evidence.names), sameSpellings(open.selfNames, evidence.marked)
+      sameSpellings(open.names, evidence.names), sameSpellings(open.selfNames, evidence.marked),
+      sameSpellings(open.accountNames, evidence.account)
     {
       names.openPair = CallPairStretch(
-        names: open.names, selfNames: open.selfNames, firstMs: open.firstMs, lastMs: ms)
+        names: open.names, selfNames: open.selfNames, accountNames: open.accountNames,
+        firstMs: open.firstMs, lastMs: ms)
       return
     }
     names.closePair()
     names.openPair = CallPairStretch(
-      names: evidence.names, selfNames: evidence.marked, firstMs: ms, lastMs: ms)
+      names: evidence.names, selfNames: evidence.marked, accountNames: evidence.account,
+      firstMs: ms, lastMs: ms)
   }
 
   private static func sameSpellings(_ a: [String], _ b: [String]) -> Bool {

@@ -115,10 +115,11 @@ struct CallSpeakerLogSizeTests {
       let pairsHere = pairsLeft / (segmentCount - index)
       pairsLeft -= pairsHere
       let pairs = (0..<pairsHere).map { k in
-        // Four of the longest names each, at the segment's largest times.
+        // Five of the longest names each, at the segment's largest times.
         CallPairStretch(
           names: [names[k % names.count], names[(k + 1) % names.count]],
           selfNames: [names[(k + 2) % names.count], names[(k + 3) % names.count]],
+          accountNames: [names[(k + 4) % names.count]],
           firstMs: start + span - 1 - (pairsHere - k) * 2, lastMs: start + span - (pairsHere - k) * 2)
       }
       segments.append(
@@ -219,7 +220,7 @@ struct CallSpeakerLogSizeTests {
     #expect(pair <= 160)
   }
 
-  @Test("one two-person stretch with four references and the largest times stays inside its ceiling")
+  @Test("one two-person stretch with five references and the largest times stays inside its ceiling")
   func pairFrameCeiling() throws {
     let far = CallSpeakerObservation.maximumObservationMs
     func size(_ pairs: [CallPairStretch]) throws -> Int {
@@ -238,7 +239,7 @@ struct CallSpeakerLogSizeTests {
     // The roster puts every name in the table first, so these ids have three digits.
     let stretch = CallPairStretch(
       names: [Self.names[508], Self.names[509]], selfNames: [Self.names[510], Self.names[511]],
-      firstMs: far - 1, lastMs: far)
+      accountNames: [Self.names[507]], firstMs: far - 1, lastMs: far)
     let one = try size([stretch]) - size([])
     #expect(one <= Self.pairCeiling)
   }

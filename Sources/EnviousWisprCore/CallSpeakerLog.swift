@@ -124,22 +124,58 @@ public struct CallPairStretch: Sendable, Equatable, Codable {
   public let names: [String]
   /// Names the app itself marked as the user in these readings (at most two, normally one).
   public let selfNames: [String]
+  /// The display name of the account signed in to the call app during these readings, at most
+  /// one (Zoom's menu bar). Not a meeting marking: the namer uses it only to tell the user from
+  /// the other person when no app marking says, under the founder's recorded D5 exception
+  /// (#4013 plan r4); votes and rename suggestions never use it. Empty when not read.
+  public let accountNames: [String]
   public let firstMs: Int
   public let lastMs: Int
 
-  public init(names: [String], selfNames: [String], firstMs: Int, lastMs: Int) {
+  public init(
+    names: [String], selfNames: [String], accountNames: [String] = [], firstMs: Int, lastMs: Int
+  ) {
     self.names = names
     self.selfNames = selfNames
+    self.accountNames = accountNames
     self.firstMs = firstMs
     self.lastMs = lastMs
   }
 
-  /// The first shape problem, or `nil`: two distinct names, at most two self names, all valid,
-  /// and a stretch that does not run backwards.
+  private enum CodingKeys: String, CodingKey {
+    case names, selfNames, accountNames, firstMs, lastMs
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    names = try container.decode([String].self, forKey: .names)
+    selfNames = try container.decode([String].self, forKey: .selfNames)
+    accountNames = try container.decodeIfPresent([String].self, forKey: .accountNames) ?? []
+    firstMs = try container.decode(Int.self, forKey: .firstMs)
+    lastMs = try container.decode(Int.self, forKey: .lastMs)
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(names, forKey: .names)
+    try container.encode(selfNames, forKey: .selfNames)
+    if !accountNames.isEmpty { try container.encode(accountNames, forKey: .accountNames) }
+    try container.encode(firstMs, forKey: .firstMs)
+    try container.encode(lastMs, forKey: .lastMs)
+  }
+
+  /// The most names one stretch holds: two people, two self names, one account name.
+  static let maximumNames = 5
+
+  /// The first shape problem, or `nil`: two distinct names, at most two self names and one
+  /// account name, all valid, and a stretch that does not run backwards.
   var shapeProblem: String? {
     guard names.count == 2, names[0] != names[1] else { return "names" }
     guard selfNames.count <= 2 else { return "selfNames" }
-    guard (names + selfNames).allSatisfy(CallSpeakerLog.isStoredName) else { return "name" }
+    guard accountNames.count <= 1 else { return "accountNames" }
+    guard (names + selfNames + accountNames).allSatisfy(CallSpeakerLog.isStoredName) else {
+      return "name"
+    }
     guard lastMs >= firstMs else { return "times" }
     return nil
   }
@@ -618,6 +654,8 @@ private struct CallSpeakerWireSegment: Codable {
   struct Pair: Codable {
     let names: [Int]
     let selfNames: [Int]
+    /// Absent when no account name was read.
+    let accountNames: [Int]?
     let firstMs: Int
     let lastMs: Int
   }
@@ -678,6 +716,7 @@ private struct CallSpeakerWireSegment: Codable {
     pairs = segment.pairs?.map {
       Pair(
         names: $0.names.map { table.id($0) }, selfNames: $0.selfNames.map { table.id($0) },
+        accountNames: $0.accountNames.isEmpty ? nil : $0.accountNames.map { table.id($0) },
         firstMs: $0.firstMs, lastMs: $0.lastMs)
     }
   }
@@ -697,8 +736,11 @@ private struct CallSpeakerWireSegment: Codable {
     var absences = 0
     var pairs = 0
     for segment in segments {
-      // A stretch holds at most four names; more is damage, refused before anything unfolds.
-      if (segment.pairs ?? []).contains(where: { $0.names.count + $0.selfNames.count > 4 }) {
+      // A stretch holds at most five names; more is damage, refused before anything unfolds.
+      if (segment.pairs ?? []).contains(where: {
+        $0.names.count + $0.selfNames.count + ($0.accountNames?.count ?? 0)
+          > CallPairStretch.maximumNames
+      }) {
         return .pairs
       }
       pairs += segment.pairs?.count ?? 0
@@ -759,7 +801,8 @@ private struct CallSpeakerWireSegment: Codable {
       pairs: try pairs?.map {
         CallPairStretch(
           names: try $0.names.map(name), selfNames: try $0.selfNames.map(name),
-          firstMs: $0.firstMs, lastMs: $0.lastMs)
+          accountNames: try ($0.accountNames ?? []).map(name), firstMs: $0.firstMs,
+          lastMs: $0.lastMs)
       })
   }
 }

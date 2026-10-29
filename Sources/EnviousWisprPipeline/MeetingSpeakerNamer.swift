@@ -294,10 +294,11 @@ package enum MeetingSpeakerNamer {
     return proposals
   }
 
-  /// The other person in a two-person stretch, or `nil` when the app's own marks do not identify
-  /// exactly one of the two as the user (plan R3.2). The stretch's marks come first; the
-  /// segment's marks may confirm but never contradict them. A signed-in account name is never a
-  /// mark.
+  /// The other person in a two-person stretch, or `nil` when the evidence does not identify
+  /// exactly one of the two as the user (plan R3.2, r4). The stretch's marks come first; the
+  /// segment's marks may confirm but never contradict them. Only when the app marked nobody in
+  /// the stretch or the segment does the signed-in account name decide, and only when it is
+  /// exactly one of the two (the founder's D5 exception, plan r4).
   static func remote(in stretch: CallPairStretch, segmentSelf: [String]) -> String? {
     let pair = Set(stretch.names)
     guard pair.count == 2 else { return nil }
@@ -309,9 +310,15 @@ package enum MeetingSpeakerNamer {
     if let marked = stretchSelf.first {
       guard segmentMarked.isSubset(of: [marked]) else { return nil }
       user = marked
-    } else {
+    } else if !segmentSelf.isEmpty {
       guard segmentMarked.count == 1, let marked = segmentMarked.first else { return nil }
       user = marked
+    } else {
+      let account = Set(stretch.accountNames).intersection(pair)
+      guard stretch.accountNames.count == 1, account.count == 1, let named = account.first else {
+        return nil
+      }
+      user = named
     }
     return pair.subtracting([user]).first
   }

@@ -75,13 +75,28 @@ struct CallSpeakerAdmissionTests {
       Admission.admission(of: reading, context: Self.good) == .withheld(.identityUnestablished))
   }
 
+  /// SURVEY (2026-10-29): a joined person's panel row, bound to its name.
+  private func panelRow(_ entry: String) -> CallAXNode {
+    CallAXNode(
+      role: "AXRow",
+      children: [
+        CallAXNode(
+          role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+          children: [
+            CallAXNode(role: "AXStaticText", value: entry),
+            CallAXNode(
+              role: "AXMenuButton",
+              description:
+                "More options for \(ZoomAppSpeakerReader.panelEntry(entry).name), collapsed"),
+          ])
+      ])
+  }
+
   @Test("SURVEY Zoom panel: duplicate rows are evidence even when only one Alex tile shows")
   func panelDuplicates() {
     let panel = CallAXNode(
       role: "AXOutline", description: "Participants list",
-      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map {
-        CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXStaticText", value: $0)])
-      })
+      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map(panelRow))
     let reading = ZoomAppSpeakerReader.read(windows: [
       window(
         "Zoom Meeting",
@@ -168,9 +183,7 @@ struct CallSpeakerAdmissionTests {
   func zoomIncompletePanelDuplicates() {
     let panel = CallAXNode(
       role: "AXOutline", description: "Participants list",
-      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map {
-        CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXStaticText", value: $0)])
-      })
+      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map(panelRow))
     let reading = ZoomAppSpeakerReader.read(windows: [
       window(
         "Zoom Meeting",

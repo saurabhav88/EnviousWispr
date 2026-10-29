@@ -23,7 +23,7 @@ public struct CallEvidenceLimits: Sendable, Equatable {
   public var sightings = 8_000
   /// Absences over all presence entries.
   public var absences = 8_000
-  /// Two-person stretches (`CallPairStretch`), each holding at most four names.
+  /// Two-person stretches (`CallPairStretch`), each holding at most five names.
   public var pairs = 4_096
 
   public static let current = CallEvidenceLimits()
@@ -89,6 +89,7 @@ public struct CallEvidenceUsage: Sendable, Equatable {
     for pair in segment.pairs ?? [] {
       insertNames(pair.names)
       insertNames(pair.selfNames)
+      insertNames(pair.accountNames)
       pairs += 1
     }
   }
