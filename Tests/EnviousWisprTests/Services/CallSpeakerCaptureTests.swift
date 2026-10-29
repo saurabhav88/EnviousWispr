@@ -23,6 +23,12 @@ struct CallSpeakerCaptureTests {
     var classes: [Int: [String]] = [:]
     var children: [Int: [Int]] = [:]
     var hashes: [Int: Int] = [:]
+    /// An application element's menu bar.
+    var menuBars: [Int: Int] = [:]
+    /// Elements whose every read costs this much extra time.
+    var slow: Set<Int> = []
+    var slowRead: Duration = .milliseconds(30)
+    var extra: Duration = .zero
     var failing: Set<String> = []
     /// Every `id.attribute` the walk asked for.
     var queried: Set<String> = []
@@ -34,18 +40,20 @@ struct CallSpeakerCaptureTests {
       CallAXTreeAccess<Int>(
         read: { [self] id, attribute in
           ticks += 1
+          if slow.contains(id) { extra += slowRead }
           queried.insert("\(id).\(attribute.rawValue)")
           if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
           switch attribute {
           case .role: return roles[id].map { .text($0) } ?? .missing
           case .children: return .elements(children[id] ?? [])
+          case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
           case .domClassList: return classes[id].map { .texts($0) } ?? .missing
           case .size: return .missing
           default: return texts[id]?[attribute].map { .text($0) } ?? .missing
           }
         },
         hash: { [self] in hashes[$0] ?? $0 }, same: { $0 == $1 },
-        now: { [self] in start.advanced(by: tickPerRead * ticks) })
+        now: { [self] in start.advanced(by: tickPerRead * ticks + extra) })
     }
 
     func node(_ id: Int, _ role: String = "AXGroup", children kids: [Int] = []) {
@@ -56,11 +64,13 @@ struct CallSpeakerCaptureTests {
 
   private func capture(
     _ tree: Tree, windows: [Int] = [1], bounds: CallAXBounds = .standard,
-    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true }
+    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool = { _ in true },
+    app: Int? = nil
   ) -> CallAXCapture {
     var host: UInt64 = 100
     return CallSpeakerCapture.capture(
       windows: windows, access: tree.access(), bounds: bounds, policy: policy, keepPage: keepPage,
+      app: app,
       hostTime: {
         host += 10
         return host
@@ -68,6 +78,84 @@ struct CallSpeakerCaptureTests {
   }
 
   // MARK: - Walking
+
+  /// SURVEY shape (Zoom Workplace, 2026-10-29, `zoom-1on1-findings-2026-10-29.md`): Apple's menu,
+  /// then the app menu, whose "Switch account" and "Sign out" items each open a submenu of
+  /// accounts; only the first holds `addAccount:`. Titles here are SYNTHETIC.
+  private func accountMenuTree(checked: Bool = true) -> Tree {
+    let tree = Tree()
+    tree.node(1, "AXWindow")
+    tree.node(99, "AXApplication")
+    tree.menuBars[99] = 100
+    tree.node(100, "AXMenuBar", children: [101, 102])
+    tree.node(101, "AXMenuBarItem")
+    tree.node(102, "AXMenuBarItem", children: [103])
+    tree.node(103, "AXMenu", children: [104, 105, 106])
+    tree.node(104, "AXMenuItem")
+    tree.node(105, "AXMenuItem", children: [107])
+    tree.node(106, "AXMenuItem", children: [111])
+    tree.node(107, "AXMenu", children: [108, 109, 110])
+    tree.node(108, "AXMenuItem")
+    tree.texts[108] = [
+      .identifier: "menuItemDidClicked:", .title: "Saurabh A Vaish(saurabh@example.com)",
+    ]
+    if checked { tree.texts[108]?[.markChar] = "\u{2713}" }
+    tree.node(109, "AXMenuItem")
+    tree.node(110, "AXMenuItem")
+    tree.texts[110] = [.identifier: "addAccount:"]
+    tree.node(111, "AXMenu", children: [112, 113])
+    tree.node(112, "AXMenuItem")
+    tree.texts[112] = [.identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)", .markChar: "\u{2713}"]
+    tree.node(113, "AXMenuItem")
+    tree.texts[113] = [.identifier: "signOutAllAccounts:"]
+    return tree
+  }
+
+  @Test("Zoom's checked account is read from its menu bar inside the copy, never pressed")
+  func accountMenu() {
+    let read = capture(accountMenuTree(), policy: .zoomApp, app: 99)
+    #expect(read.accountTitles == ["Saurabh A Vaish(saurabh@example.com)"])
+    #expect(read.completeness == .complete)
+    // Other surfaces never read it; an unchecked account is no account.
+    #expect(capture(accountMenuTree(), policy: .standard, app: 99).accountTitles == nil)
+    #expect(capture(accountMenuTree(), policy: .zoomApp).accountTitles == nil)
+    // An app with no menu bar has no account to read.
+    let noBar = accountMenuTree()
+    noBar.menuBars = [:]
+    #expect(capture(noBar, policy: .zoomApp, app: 99).accountTitles == nil)
+    #expect(capture(accountMenuTree(checked: false), policy: .zoomApp, app: 99).accountTitles == [])
+    // A menu that cannot be read whole gives no account and leaves the call's copy as it was:
+    // a failed list, a failed title, a failed mark, or another account entry (the unchecked
+    // one beside the checked one) whose identifier could not be read.
+    for failing in [
+      "99.AXMenuBar", "100.AXChildren", "103.AXChildren", "105.AXChildren", "108.AXTitle",
+      "108.AXMenuItemMarkChar", "109.AXIdentifier",
+    ] {
+      let tree = accountMenuTree()
+      tree.failing = [failing]
+      let copy = capture(tree, policy: .zoomApp, app: 99)
+      #expect(copy.accountTitles == nil, "\(failing)")
+      #expect(copy.completeness == .complete, "\(failing)")
+    }
+    // A submenu longer than the cap is not read at all.
+    let long = accountMenuTree()
+    long.children[107] = [108, 109, 110] + Array(200..<(200 + CallAccountMenu.maximumItems))
+    for id in 200..<(200 + CallAccountMenu.maximumItems) { long.node(id, "AXMenuItem") }
+    #expect(capture(long, policy: .zoomApp, app: 99).accountTitles == nil)
+    // A slow menu after a quick call copy: the copy and its time stand, the account is unknown.
+    let slowMenu = accountMenuTree()
+    slowMenu.slow = Set(99...113)
+    let quick = capture(slowMenu, policy: .zoomApp, app: 99)
+    #expect(quick.completeness == .complete)
+    #expect(quick.accountTitles == nil)
+    // A spent budget reads no menu at all.
+    let slow = accountMenuTree()
+    slow.tickPerRead = .milliseconds(50)
+    let late = capture(
+      slow, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)),
+      policy: .zoomApp, app: 99)
+    #expect(late.accountTitles == nil)
+  }
 
   @Test("a full small tree is complete; a missing optional attribute is not a failure")
   func completeTree() {
@@ -617,12 +705,21 @@ struct CallSpeakerCaptureTests {
     tree.node(4, "AXButton")
     tree.texts[4] = [.description: "More meeting controls, collapsed", .identifier: "more"]
     tree.failing = ["3.AXChildren", "4.AXChildren", "21.AXIdentifier"]
-    tree.node(5, "AXOutline", children: [6, 7, 8])
+    tree.node(5, "AXOutline", children: [30, 31, 8])
     tree.texts[5] = [.description: "Participants list"]
+    // Each joined row: its entry and the "More options for" button that binds it (2026-10-29).
+    tree.node(30, "AXCell", children: [6, 32])
+    tree.texts[30] = [.identifier: "ZMHCTableItemType_PANELIST"]
+    tree.node(31, "AXCell", children: [7, 33])
+    tree.texts[31] = [.identifier: "ZMHCTableItemType_PANELIST"]
     tree.node(6, "AXStaticText")
     tree.texts[6] = [.value: "Alex Rivera"]
+    tree.node(32, "AXMenuButton")
+    tree.texts[32] = [.description: "More options for Alex Rivera, collapsed"]
     tree.node(7, "AXStaticText")
     tree.texts[7] = [.value: "Priya Shah"]
+    tree.node(33, "AXMenuButton")
+    tree.texts[33] = [.description: "More options for Priya Shah, collapsed"]
     tree.node(8, "AXButton", children: [9])
     tree.node(9, "AXImage")
     tree.node(10, "AXStaticText")
@@ -711,5 +808,126 @@ struct CallSpeakerCaptureTests {
       CallSpeakerSurfaceChoice.capturePolicy(family: .zoom, rule: .browser(.chrome)) == .standard)
     #expect(
       CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: .callApp(.teams)) == .standard)
+  }
+
+  // MARK: - Two-person stretches (#4013 chunk 14)
+
+  /// A reading of a two-person call: the app's count, both people named, the user marked.
+  private func pair(
+    _ names: [String] = ["Saurabh Vaish", "Alex Rivera"], marked: [String] = ["Saurabh Vaish"],
+    count: Int? = 2, identity: Bool = true, shared: Set<String> = [],
+    participants: [String?]? = nil, account: [String] = []
+  ) -> CallSpeakerReading {
+    CallSpeakerReading(
+      speaking: [], roster: CallSpeakerRoster(names: names, selfNames: marked),
+      rosterFromParticipantList: false,
+      participants: (participants ?? names).enumerated().map {
+        CallParticipant(key: "\($0.offset)", name: $0.element, isTalking: false, isSelf: false)
+      },
+      participantIdentityEstablished: identity, sharedNames: shared, participantCount: count,
+      accountSelfNames: account)
+  }
+
+  @Test("the account name rides with its stretch; a different account starts a new one")
+  func pairStretchAccount() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(marked: [], account: [user]), context: Self.good, observationMs: 1_000)
+    log.add(pair(marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    log.add(pair(marked: [], account: ["Other Name"]), context: Self.good, observationMs: 3_000)
+    // Never a reason to qualify, and an unusable account name is simply not kept.
+    log.add(pair(marked: [], account: [""]), context: Self.good, observationMs: 4_000)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.accountNames) == [[user], ["Other Name"], []])
+    #expect(pairs.map(\.firstMs) == [1_000, 3_000, 4_000])
+    #expect(log.log.segments[0].roster.selfNames.isEmpty, "the account is never a mark")
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: nil, account: [user])) == nil)
+  }
+
+  @Test("only a reading the app itself counts as two people, both named, is two-person evidence")
+  func pairEvidence() {
+    #expect(CallSpeakerAccumulator.pairEvidence(pair())?.names == ["Saurabh Vaish", "Alex Rivera"])
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: nil)) == nil, "two names alone")
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(count: 3)) == nil)
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(identity: false)) == nil)
+    #expect(CallSpeakerAccumulator.pairEvidence(pair(shared: ["Alex Rivera"])) == nil)
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(pair(participants: ["Saurabh Vaish", nil])) == nil,
+      "an unnamed participant")
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(pair(participants: ["Saurabh Vaish", "Priya Shah"]))
+        == nil, "participants that disagree with the roster")
+  }
+
+  @Test("a stretch grows while the same two are read within 7 s, and splits after")
+  func pairStretchGrowsAndSplits() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(), context: Self.good, observationMs: 1_000)
+    log.add(pair(), context: Self.good, observationMs: 8_000)
+    log.add(pair(), context: Self.good, observationMs: 15_001)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.firstMs) == [1_000, 15_001])
+    #expect(pairs.map(\.lastMs) == [8_000, 15_001])
+    #expect(pairs.first?.selfNames == ["Saurabh Vaish"])
+  }
+
+  @Test("the same two people listed the other way round continue the same stretch")
+  func pairStretchIgnoresOrder() {
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+    log.add(pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good, observationMs: 1_000)
+    log.add(pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good, observationMs: 1_500)
+    // A different spelling of one name is a different stretch.
+    log.add(pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.map(\.firstMs) == [1_000, 2_000])
+    #expect(pairs.map(\.lastMs) == [1_500, 2_000])
+  }
+
+  @Test("another reading or any interruption ends a stretch at its last reading")
+  func pairStretchInterruptions() {
+    func run(_ interrupt: (inout CallSpeakerAccumulator) -> Void) -> [CallPairStretch] {
+      var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+      log.add(pair(), context: Self.good, observationMs: 1_000)
+      interrupt(&log)
+      log.add(pair(), context: Self.good, observationMs: 1_500)
+      return log.log.segments[0].pairs ?? []
+    }
+    #expect(run { _ in }.count == 1, "control: nothing in between extends it")
+    #expect(run { $0.noteDictationSkip() }.count == 2)
+    #expect(run { $0.noteBusySkip() }.count == 2)
+    #expect(run { $0.noteStaleDrop() }.count == 2)
+    #expect(run { $0.noteInterruption() }.count == 2)
+    #expect(run { $0.noteNoPermission() }.count == 2)
+    #expect(
+      run {
+        $0.add(
+          nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved),
+          observationMs: 1_200)
+      }.count == 2)
+    #expect(run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
+    #expect(
+      run { $0.add(self.pair(marked: []), context: Self.good, observationMs: 1_200) }.count == 3,
+      "different marks are a different stretch")
+    #expect(run { $0.add(nil, context: Self.good, observationMs: 1_200) }.count == 2, "no reading")
+    let tooLong = String(repeating: "x", count: CallSpeakerLog.maximumNameLength + 1)
+    #expect(
+      run { $0.add(self.pair([self.user, tooLong]), context: Self.good, observationMs: 1_200) }
+        .count == 2, "a name no log may hold")
+  }
+
+  private let user = "Saurabh Vaish"
+
+  @Test("reaching a cap ends the open stretch at its last kept reading")
+  func pairStretchEndsAtCapacity() {
+    var limits = CallEvidenceLimits.current
+    limits.pairs = 1
+    var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil, limits: limits)
+    log.add(pair(), context: Self.good, observationMs: 1_000)
+    log.add(pair(), context: Self.good, observationMs: 1_500)
+    // A different two people would need a second stretch: the cap stops collection.
+    log.add(pair(["Saurabh Vaish", "Priya Shah"]), context: Self.good, observationMs: 2_000)
+    #expect(log.capacityReached == .pairs)
+    let pairs = log.log.segments[0].pairs ?? []
+    #expect(pairs.count == 1)
+    #expect(pairs.first?.lastMs == 1_500)
   }
 }

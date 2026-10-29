@@ -23,6 +23,8 @@ public struct CallEvidenceLimits: Sendable, Equatable {
   public var sightings = 8_000
   /// Absences over all presence entries.
   public var absences = 8_000
+  /// Two-person stretches (`CallPairStretch`), each holding at most five names.
+  public var pairs = 4_096
 
   public static let current = CallEvidenceLimits()
 
@@ -35,7 +37,7 @@ public enum CallEvidenceCapacity: String, Sendable, Equatable, CaseIterable {
   case speakingReferences = "speaking_references"
   case rosterReferences = "roster_references"
   case presenceEntries = "presence_entries"
-  case sightings, absences
+  case sightings, absences, pairs
 }
 
 /// What some segments' evidence uses of `CallEvidenceLimits`.
@@ -50,6 +52,7 @@ public struct CallEvidenceUsage: Sendable, Equatable {
   public var presenceEntries = 0
   public var sightings = 0
   public var absences = 0
+  public var pairs = 0
 
   public init() {}
 
@@ -83,6 +86,12 @@ public struct CallEvidenceUsage: Sendable, Equatable {
       sightings += entry.sightings.count
       absences += entry.absences.count
     }
+    for pair in segment.pairs ?? [] {
+      insertNames(pair.names)
+      insertNames(pair.selfNames)
+      insertNames(pair.accountNames)
+      pairs += 1
+    }
   }
 
   /// The first cap this usage passes, or `nil`.
@@ -95,6 +104,7 @@ public struct CallEvidenceUsage: Sendable, Equatable {
     if presenceEntries > limits.presenceEntries { return .presenceEntries }
     if sightings > limits.sightings { return .sightings }
     if absences > limits.absences { return .absences }
+    if pairs > limits.pairs { return .pairs }
     return nil
   }
 }

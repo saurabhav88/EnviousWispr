@@ -64,6 +64,36 @@ struct CallSpeakerAdmissionTests {
     #expect(reading.roster.names == ["Alex Rivera", "Alex Rivera", "Priya Shah"])
   }
 
+  /// SURVEY layout (2026-10-29): two people, the other person on the large tile only.
+  /// SYNTHETIC: the flag on that tile and the counts around it.
+  @Test("Zoom: a flag on the large tile counts only when the count makes that tile a person")
+  func largeTileFlag() {
+    func reading(large: String, count: Int) -> CallSpeakerReading {
+      ZoomAppSpeakerReader.read(windows: [
+        window(
+          "Zoom Meeting",
+          [
+            zoomTile(large),
+            zoomTile("Saurabh A Vaish, Computer audio muted, Video off"),
+            CallAXNode(
+              role: "AXButton",
+              description: "Open participants panel, closed, \(count) participants"),
+          ])
+      ])
+    }
+    let person = reading(large: "Alex Rivera, Computer audio unmuted, active speaker", count: 2)
+    #expect(Admission.observationSpeaking(person, context: Self.good) == ["Alex Rivera"])
+    // The count says three: the large tile is not known to be a person, so identity fails.
+    let uncounted = reading(large: "Alex Rivera, Computer audio unmuted, active speaker", count: 3)
+    #expect(
+      Admission.admission(of: uncounted, context: Self.good) == .withheld(.identityUnestablished))
+    // The large tile shows the thumbnail's own name: a repeat, so its flag sits outside.
+    let repeated = reading(
+      large: "Saurabh A Vaish, Computer audio unmuted, active speaker", count: 2)
+    #expect(
+      Admission.admission(of: repeated, context: Self.good) == .withheld(.identityUnestablished))
+  }
+
   @Test("SYNTHETIC Zoom: a talking flag on a tile that is not a thumbnail withholds identity")
   func flagOutsideThumbnails() {
     let reading = zoom([
@@ -75,13 +105,28 @@ struct CallSpeakerAdmissionTests {
       Admission.admission(of: reading, context: Self.good) == .withheld(.identityUnestablished))
   }
 
+  /// SURVEY (2026-10-29): a joined person's panel row, bound to its name.
+  private func panelRow(_ entry: String) -> CallAXNode {
+    CallAXNode(
+      role: "AXRow",
+      children: [
+        CallAXNode(
+          role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+          children: [
+            CallAXNode(role: "AXStaticText", value: entry),
+            CallAXNode(
+              role: "AXMenuButton",
+              description:
+                "More options for \(ZoomAppSpeakerReader.panelEntry(entry).name), collapsed"),
+          ])
+      ])
+  }
+
   @Test("SURVEY Zoom panel: duplicate rows are evidence even when only one Alex tile shows")
   func panelDuplicates() {
     let panel = CallAXNode(
       role: "AXOutline", description: "Participants list",
-      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map {
-        CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXStaticText", value: $0)])
-      })
+      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map(panelRow))
     let reading = ZoomAppSpeakerReader.read(windows: [
       window(
         "Zoom Meeting",
@@ -168,9 +213,7 @@ struct CallSpeakerAdmissionTests {
   func zoomIncompletePanelDuplicates() {
     let panel = CallAXNode(
       role: "AXOutline", description: "Participants list",
-      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map {
-        CallAXNode(role: "AXRow", children: [CallAXNode(role: "AXStaticText", value: $0)])
-      })
+      children: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera"].map(panelRow))
     let reading = ZoomAppSpeakerReader.read(windows: [
       window(
         "Zoom Meeting",
