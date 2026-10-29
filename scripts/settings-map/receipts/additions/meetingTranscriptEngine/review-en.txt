@@ -1,0 +1,26 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "en",
+    "words": [
+      "meeting transcript engine"
+    ],
+    "phrases": [
+      "choose model for the full meeting transcript",
+      "change the engine for full meeting transcripts"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Parakeet for meeting transcripts"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Whisper for meeting transcripts"
+    ]
+  }
+}

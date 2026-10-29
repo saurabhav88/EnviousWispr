@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "pl",
+    "title": "silnik transkrypcji spotkań",
+    "words": [],
+    "phrases": [
+      "wybierz model do pełnej transkrypcji spotkania",
+      "zmień silnik tworzący transkrypcję po spotkaniu"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "pl",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "użyj Parakeet do transkrypcji spotkań"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "pl",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "użyj Whisper do transkrypcji spotkań"
+    ]
+  }
+}

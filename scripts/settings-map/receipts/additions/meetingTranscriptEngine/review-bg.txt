@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "bg",
+    "title": "модел за транскрипция на срещи",
+    "words": [],
+    "phrases": [
+      "избор на модел за пълната транскрипция след срещата",
+      "смяна на модела за транскрипция на срещи"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "bg",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "използване на Parakeet за транскрипция на срещи"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "bg",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "използвай Whisper за транскрипция на срещи"
+    ]
+  }
+}

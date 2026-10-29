@@ -1,0 +1,29 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "mt",
+    "title": "magna tat-traskrizzjoni tal-laqgħat",
+    "words": [
+      "mudell għat-traskrizzjoni tal-laqgħat"
+    ],
+    "phrases": [
+      "agħżel il-magna għat-traskrizzjoni sħiħa tal-laqgħat",
+      "ibdel il-magna li tittraskrivi l-laqgħat wara li jintemmu"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "mt",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "uża Parakeet biex tittraskrivi l-laqgħat"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "mt",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "uża Whisper biex tittraskrivi l-laqgħat"
+    ]
+  }
+}

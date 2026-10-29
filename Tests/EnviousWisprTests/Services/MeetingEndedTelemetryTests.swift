@@ -40,11 +40,12 @@ import Testing
       outcome: MeetingEndedTelemetry.Outcome = .ready, entry: MeetingEntryPoint? = .menu,
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
       echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
-      speakerNaming: SpeakerNamingSummary? = nil
+      engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
-        callSoundTrack: .unsupported, speakerCount: speakers, processingSeconds: processing,
+        callSoundTrack: .unsupported, engine: engine, speakerCount: speakers,
+        processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
         summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
         speakerNaming: speakerNaming)
@@ -153,16 +154,28 @@ import Testing
     @Test("unknown start facts are omitted, never guessed; no audio means an RTF of 0")
     func unknownsAndZero() throws {
       let row = try #require(
-        capture(event(outcome: .startFailed, entry: nil, processing: 0, audio: 0, disk: nil)))
+        capture(
+          event(
+            outcome: .startFailed, entry: nil, processing: 0, audio: 0, disk: nil, engine: nil)))
       #expect(row.stringProps["entry_point"] == nil)
+      #expect(row.stringProps["engine"] == nil, "#3973 C3: an unresolved attempt names no engine")
       #expect(row.boolProps["disk_stopped"] == nil)
       #expect(row.doubleProps["rtf"] == 0)
       let infinite = MeetingEndedTelemetry(
         outcome: .failed, entryPoint: .history, durationSeconds: 0, microphoneTrack: .failed,
-        callSoundTrack: .off, speakerCount: 0, processingSeconds: .infinity, audioSeconds: 1,
+        callSoundTrack: .off, engine: nil, speakerCount: 0, processingSeconds: .infinity,
+        audioSeconds: 1,
         yieldCount: 0, gapCount: 0, echoHiddenCount: 0, diskStopped: false,
         summaryPlan: .notApplicable, hasNotes: false)
       #expect(infinite.realTimeFactor == 0)
+    }
+
+    @Test("#3973 C3: the engine is the one the attempt resolved to, Whisper included")
+    func resolvedEngine() throws {
+      let whisper = try #require(capture(event(engine: .whisper)))
+      #expect(whisper.stringProps["engine"] == "whisper")
+      let fallback = try #require(capture(event(engine: .parakeet)))
+      #expect(fallback.stringProps["engine"] == "parakeet")
     }
 
     @Test("every outcome is its own closed value")

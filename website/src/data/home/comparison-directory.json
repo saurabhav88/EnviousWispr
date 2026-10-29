@@ -6,5 +6,6 @@
   ["whisper.cpp", "whisper-cpp"],
   ["Willow Voice", "willow-voice"],
   ["Notta", "notta"],
-  ["Google Docs Voice Typing", "google-docs-voice-typing"]
+  ["Google Docs Voice Typing", "google-docs-voice-typing"],
+  ["Gboard Voice Typing", "gboard-voice-typing"]
 ]

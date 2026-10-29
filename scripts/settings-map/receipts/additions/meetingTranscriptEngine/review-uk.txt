@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "uk",
+    "title": "рушій транскрибування зустрічей",
+    "words": [],
+    "phrases": [
+      "вибрати рушій для повної стенограми зустрічі",
+      "змінити модель для розшифрування записаних зустрічей"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "uk",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "використовувати Parakeet для розшифрування зустрічей"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "uk",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "використовувати Whisper для розшифрування зустрічей"
+    ]
+  }
+}

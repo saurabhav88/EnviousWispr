@@ -59,6 +59,11 @@
    "meetingLiveWords.apple",
    "meetingLiveWords.universal"
   ],
+  "mac-ctl-meeting-transcript-engine": [
+   "meetingTranscriptEngine",
+   "meetingTranscriptEngine.parakeet",
+   "meetingTranscriptEngine.whisper"
+  ],
   "mac-ctl-meeting-transcript-language": [
    "meetingTranscriptLanguage"
   ],
@@ -767,6 +772,11 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Live words"
+  },
+  "mac-ctl-meeting-transcript-engine": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Transcript engine"
   },
   "mac-ctl-meeting-transcript-language": {
    "kind": "control",

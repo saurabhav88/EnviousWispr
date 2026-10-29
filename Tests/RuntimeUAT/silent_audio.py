@@ -136,6 +136,51 @@ def _current(kind):
     return subprocess.run([SWITCH, "-c", "-t", kind], capture_output=True, text=True).stdout.strip()
 
 
+def _device_snapshot(kind):
+    """Capture identity before routing changes; a failed read must never become an original.
+    The numeric Core Audio id is temporary. Only name and UID belong in the journal (#4181)."""
+    out = subprocess.run([SWITCH, "-c", "-t", kind, "-f", "json"],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(f"could not read {kind} device: {out.stderr.strip()}")
+    device = json.loads(out.stdout)
+    if (not isinstance(device, dict) or device.get("type") != kind
+            or not all(isinstance(device.get(key), str) and device[key].strip()
+                       for key in ("name", "uid"))):
+        raise RuntimeError(f"could not read {kind} device identity: {device!r}")
+    return {key: device[key] for key in ("name", "uid")}
+
+
+def _restore_device(kind, saved):
+    """Restore one system device, with readback, without preventing another restore attempt.
+    Older journals contain only a name. A new identity record never falls back to that name:
+    Bluetooth name selection can report success while leaving the route on BlackHole (#4181)."""
+    try:
+        if isinstance(saved, str) and saved.strip():
+            flag, value = "-s", saved
+        elif (isinstance(saved, dict)
+              and all(isinstance(saved.get(key), str) and saved[key].strip()
+                      for key in ("name", "uid"))):
+            flag, value = "-u", saved["uid"]
+        else:
+            raise ValueError(f"unusable saved device: {saved!r}")
+        out = subprocess.run([SWITCH, flag, value, "-t", kind],
+                             capture_output=True, text=True)
+        now = _device_snapshot(kind)
+        # -u also accepts UID substrings. Exact readback, not the switcher's success line,
+        # determines whether the original device is back. Keep the name check as well.
+        matches = now["name"] == saved if flag == "-s" else now == {
+            "name": saved["name"], "uid": saved["uid"]}
+        ok = out.returncode == 0 and matches
+        print(f"DEVICE    {kind} saved={saved!r} now={now!r} verified={ok}", flush=True)
+        if out.returncode != 0:
+            print(f"RESTORE WARNING: {kind} selection failed: {out.stderr.strip()}", flush=True)
+        return ok
+    except Exception as exc:
+        print(f"RESTORE WARNING: {kind} not restored: {exc!r}", flush=True)
+        return False
+
+
 def take_was_virtual(log_offset):
     """Whether every capture since `log_offset` reported a virtual transport, and at least one did."""
     with open(LOG, "rb") as fh:
@@ -158,8 +203,8 @@ class AudioRoute:
         refuse_stale_journal(RESTORE_FILE)
         self.client = client if client is not None else w.door()
         self.client.check_owner()
-        self.original_output = _current("output")
-        self.original_input = _current("input")
+        self.original_output = _device_snapshot("output")
+        self.original_input = _device_snapshot("input")
         self.original_app_device = AppMic.read(self.client)
         self.original_app_device.check_restorable(connected_input_uids())
         self.applied = False
@@ -205,8 +250,8 @@ def _restore(output, input_, app_device, client):
     whatever happened to the others, and all are verified. `app_device` is None when a restore
     file holds no usable choice; `client` is None when the app could not be reached: either
     way the app's microphone is reported unrestored and the file is kept."""
-    subprocess.run([SWITCH, "-s", output, "-t", "output"], capture_output=True)
-    subprocess.run([SWITCH, "-s", input_, "-t", "input"], capture_output=True)
+    output_ok = _restore_device("output", output)
+    input_ok = _restore_device("input", input_)
     app_ok, how, app_now = False, "not attempted", None
     if app_device is None:
         print("RESTORE WARNING: no captured app microphone; choose it again by hand in "
@@ -227,8 +272,8 @@ def _restore(output, input_, app_device, client):
             print(f"RESTORE WARNING: app microphone unreadable: {exc!r}", flush=True)
     # All THREE are verified: a failed app restore would otherwise leave the founder's app
     # listening to BlackHole behind a "verified" line.
-    ok = _current("output") == output and _current("input") == input_ and app_ok
-    print(f"RESTORED  output={_current('output')!r} input={_current('input')!r} "
+    ok = output_ok and input_ok and app_ok
+    print(f"RESTORED  output={output!r} input={input_!r} "
           f"app_device={app_now!r} ({how}) verified={ok}", flush=True)
     if ok and os.path.exists(RESTORE_FILE):
         os.remove(RESTORE_FILE)
@@ -309,7 +354,7 @@ class AlertSink:
     """
 
     def __init__(self):
-        self.original = {kind: _current(kind) for kind in ("output", "system")}
+        self.original = {kind: _device_snapshot(kind) for kind in ("output", "system")}
         self.applied = False
 
     FILE = os.path.expanduser("~/.ew-uat-alert-restore.json")
@@ -335,10 +380,9 @@ class AlertSink:
 
 
 def _restore_alert(original):
-    for kind, device in original.items():
-        subprocess.run([SWITCH, "-s", device, "-t", kind], capture_output=True)
-    ok = all(_current(kind) == device for kind, device in original.items())
-    print(f"ALERTS    {({k: _current(k) for k in original})} verified={ok}", flush=True)
+    restored = [_restore_device(kind, device) for kind, device in original.items()]
+    ok = all(restored)
+    print(f"ALERTS    saved={original!r} verified={ok}", flush=True)
     if ok and os.path.exists(AlertSink.FILE):
         os.remove(AlertSink.FILE)
     return ok
@@ -447,9 +491,9 @@ def recover(player=None, listening=None):
         with open(RESTORE_FILE) as fh:
             saved = json.load(fh)
         if listening:
-            subprocess.run([SWITCH, "-s", saved["output"], "-t", "output"], capture_output=True)
-            print(f"RESTORE HELD: the app may still be recording; speakers back to "
-                  f"{_current('output')!r}, the input and the app's microphone stay on BlackHole. "
+            output_ok = _restore_device("output", saved["output"])
+            print(f"RESTORE HELD: the app may still be recording; speakers restore "
+                  f"verified={output_ok}, the input and the app's microphone stay on BlackHole. "
                   "Stop the recording, then run this again.", flush=True)
             ok = False
         else:
@@ -583,6 +627,7 @@ def _self_test():
         for name in os.listdir(folder):
             os.remove(os.path.join(folder, name))
         os.rmdir(folder)
+    _device_restore_cases(expect, FakeClient)
     _recover_cases(expect)
 
     route = object.__new__(AudioRoute)  # no device or app is read: only the handler is tested
@@ -604,6 +649,151 @@ def _self_test():
            code == 130 and restored == [])
     print("PASS" if ok else "FAIL")
     return ok
+
+
+def _device_restore_cases(expect, fake_client):
+    """Harness Contract (#4181): a successful name write can leave Bluetooth alerts silent.
+    Fake only the system boundary; exercise the real snapshot, journal and restore owners."""
+    import tempfile
+    from unittest.mock import patch
+
+    original = {"name": "Storm", "uid": "Bluetooth:output"}
+    microphone = {"name": "MacBook Pro Microphone", "uid": "BuiltInMicrophoneDevice"}
+    silent = {"name": SILENT_DEVICE, "uid": BLACKHOLE_UID}
+    originals = {"output": original, "system": original, "input": microphone}
+    devices = {kind: dict(device) for kind, device in originals.items()}
+    commands = []
+    fail_writes, broken_reads = set(), set()
+    wrong_uid = set()
+
+    def run(argv, **kwargs):
+        if argv[0] != SWITCH:
+            raise AssertionError(f"unexpected external command: {argv}")
+        commands.append(argv)
+        kind = argv[argv.index("-t") + 1]
+        if "-c" in argv:
+            now = devices[kind]
+            text = ("unreadable" if kind in broken_reads else
+                    json.dumps(dict(now, type=kind)) if "-f" in argv else now["name"])
+            return subprocess.CompletedProcess(argv, 0, text, "")
+        if kind in fail_writes:
+            return subprocess.CompletedProcess(argv, 1, "", "device unavailable")
+        if "-u" in argv:
+            uid = argv[argv.index("-u") + 1]
+            for device in (originals[kind], silent):
+                if uid == device["uid"]:
+                    devices[kind] = dict(device)
+            if kind in wrong_uid:
+                devices[kind]["uid"] = "another-device-with-the-same-name"
+        elif argv[argv.index("-s") + 1] == SILENT_DEVICE:
+            devices[kind] = dict(silent)
+        elif kind != "system":
+            devices[kind] = dict(originals[kind])
+        # Reproduce the issue: name selection of Storm's system route reports success
+        # without changing it. UID selection above actually restores the device.
+        return subprocess.CompletedProcess(argv, 0, "device set", "")
+
+    with tempfile.TemporaryDirectory(prefix="ew-device-selftest-") as folder:
+        with patch.object(subprocess, "run", run), patch.object(
+                AlertSink, "FILE", os.path.join(folder, "alerts.json")), patch.dict(
+                globals(), RESTORE_FILE=os.path.join(folder, "route.json")):
+            sink = AlertSink()
+            expect("#4181 Bluetooth fixture routes output and alerts to BlackHole", sink.apply())
+            with open(AlertSink.FILE) as fh:
+                journal = json.load(fh)
+            expect("#4181 alert originals retain name and full UID on disk",
+                   journal == {"output": original, "system": original})
+            restored = sink.restore()
+            expect("#4181 Bluetooth alerts restore even when name selection silently does nothing",
+                   restored and devices["system"] == original
+                   and not os.path.exists(AlertSink.FILE))
+
+            sink = AlertSink()
+            sink.apply()
+            wrong_uid.add("system")
+            start = len(commands)
+            restored = sink.restore()
+            expect("#4181 a different UID with the same name cannot clear the alert journal",
+                   not restored and os.path.exists(AlertSink.FILE)
+                   and all("-s" not in cmd for cmd in commands[start:]))
+            wrong_uid.clear()
+
+            devices["system"] = dict(silent)
+            fail_writes.add("output")
+            expect("#4181 a failed output write still restores alerts and keeps the journal",
+                   not _restore_alert(journal) and devices["system"] == original
+                   and os.path.exists(AlertSink.FILE))
+            fail_writes.clear()
+            broken_reads.add("output")
+            devices["system"] = dict(silent)
+            expect("#4181 unreadable output verification still attempts the alert restore",
+                   not _restore_alert(journal) and devices["system"] == original
+                   and os.path.exists(AlertSink.FILE))
+            broken_reads.clear()
+            expect("#4181 a later verified recovery clears the kept alert journal",
+                   _restore_alert(journal) and not os.path.exists(AlertSink.FILE))
+
+            legacy = {"output": "Storm", "system": SILENT_DEVICE}
+            with open(AlertSink.FILE, "w") as fh:
+                json.dump(legacy, fh)
+            expect("#4181 legacy name-only alert journals remain readable",
+                   _restore_alert(legacy) and not os.path.exists(AlertSink.FILE))
+
+            broken_reads.add("system")
+            start = len(commands)
+            try:
+                AlertSink()
+                refused = False
+            except (ValueError, RuntimeError):
+                refused = True
+            expect("#4181 unreadable originals refuse capture without moving devices",
+                   refused and all("-c" in cmd for cmd in commands[start:]))
+            broken_reads.clear()
+
+            client = fake_client({OVERRIDE: microphone["uid"], SELECTED: microphone["uid"]},
+                                 [microphone["uid"], BLACKHOLE_UID])
+            client.check_owner = lambda: None
+            with patch("dev_control.check_owner", return_value="owned"), patch.object(
+                    sys.modules[__name__], "connected_input_uids", return_value=client.connected):
+                devices.update({kind: dict(device) for kind, device in originals.items()})
+                route = AudioRoute(client)
+                route.apply()
+                with open(RESTORE_FILE) as fh:
+                    saved = json.load(fh)
+                expect("#4181 route originals are journaled and all three choices restore",
+                       saved["output"] == original and saved["input"] == microphone
+                       and route.restore() and devices == originals
+                       and not os.path.exists(RESTORE_FILE))
+
+                # An outer alert sink legitimately makes BlackHole the inner route's original.
+                outer = AlertSink()
+                outer.apply()
+                inner = AudioRoute(client)
+                inner.apply()
+                inner_ok = inner.restore()
+                expect("#4181 nested cleanup leaves the outer silent output until its own restore",
+                       inner_ok and devices["output"] == silent and outer.restore()
+                       and devices == originals)
+
+                with open(RESTORE_FILE, "w") as fh:
+                    json.dump(saved, fh)
+                devices["output"] = devices["input"] = dict(silent)
+                start = len(commands)
+                with patch.object(sys.modules[__name__], "_app_client", return_value=None):
+                    result = recover(player=False, listening=True)
+                expect("#4181 recovery restores only speakers while a take may listen",
+                       not result and devices["output"] == original and devices["input"] == silent
+                       and os.path.exists(RESTORE_FILE)
+                       and all(cmd[cmd.index("-t") + 1] == "output" for cmd in commands[start:]))
+
+                import audio_rig
+                devices["output"] = dict(silent)
+                start = len(commands)
+                with patch.object(audio_rig, "sa", sys.modules[__name__]):
+                    audio_rig.AudioRig._speakers_back(original)
+                expect("#4181 live-rig speakers-only cleanup uses the same identity restore",
+                       devices["output"] == original and devices["input"] == silent
+                       and all(cmd[cmd.index("-t") + 1] == "output" for cmd in commands[start:]))
 
 
 def _recover_cases(expect):

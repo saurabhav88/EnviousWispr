@@ -366,15 +366,6 @@ final class MeetingLiveWordsRowModel {
     set { environment.settings.meetingLanguageMode = newValue }
   }
 
-  /// The final engine's lockable languages (Parakeet, `LanguageLockOptions`); Auto is offered
-  /// by the picker beside these. No English (UK): it is dictation's British spelling choice, not
-  /// a language, and a meeting stores only the language.
-  var transcriptLanguageOptions: [LanguageCatalog.Entry] {
-    LanguageLockOptions.pickerRows(
-      lockableCodes: LanguageLockOptions.lockableCodes(for: .parakeet), query: "",
-      offersEnglishUK: false)
-  }
-
   /// The note under both pickers: shown when the transcript language is locked to a different
   /// language than live words. It never blocks either choice.
   var languagesDiffer: Bool {

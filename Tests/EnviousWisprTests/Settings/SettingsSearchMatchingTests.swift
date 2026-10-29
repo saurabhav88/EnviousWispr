@@ -84,6 +84,9 @@ struct SettingsSearchMatchingTests {
     Row(language: "en", query: "ollama", first: "aiPolishProvider.ollama"),
     Row(language: "en", query: "microfone", first: "inputDevice"),
     Row(language: "de", query: "parakeet", first: "transcriptionEngine.fast"),
+    // #3973 C3: a bare engine name is dictation's; naming the meeting setting finds its choice.
+    Row(language: "en", query: "meeting parakeet", first: "meetingTranscriptEngine.parakeet"),
+    Row(language: "en", query: "meeting whisper", first: "meetingTranscriptEngine.whisper"),
     Row(language: "de", query: "selbstlernend", first: "selfLearningDictionary"),
   ]
 

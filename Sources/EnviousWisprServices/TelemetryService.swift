@@ -235,6 +235,7 @@ public enum ASRRetryDeadlineDisposition: String, Sendable {
 @MainActor
 public final class TelemetryService {
   public static let shared = TelemetryService()
+  private var settingsHelpCaptureBudget = SettingsHelpCaptureBudget()
   private init() {
     takeStages = TakeStageLedger()
     feedbackRefusalCaptureAvailable = { ObservabilityBootstrap.isUsageCaptureRunning }
@@ -1271,6 +1272,36 @@ public final class TelemetryService {
           boolProps: ["committed": committed]))
     #endif
     PostHogSDK.shared.capture("hotkey.lock_resolved", properties: props)
+  }
+
+  /// #3862: help callback observations, never a claim of visible text or a failure.
+  /// Native hover tooltip visibility is outside this event's observation boundary.
+  package func settingsHelpObserved(_ observation: SettingsHelpObservation) {
+    guard settingsHelpCaptureBudget.admit(
+      observation, captureAvailable: ObservabilityBootstrap.isUsageCaptureRunning
+    ) else { return }
+    let props = Self.settingsHelpProperties(
+      observation, osVersion: ProcessInfo.processInfo.operatingSystemVersionString)
+    #if DEBUG
+      testEventHook?(CapturedTelemetryEvent(
+        name: "settings.help_observed",
+        stringProps: props.compactMapValues { $0 as? String },
+        intProps: props.compactMapValues { $0 as? Int },
+        doubleProps: props.compactMapValues { $0 as? Double },
+        boolProps: props.compactMapValues { $0 as? Bool }))
+      let line = "SETTINGS_HELP id=\(observation.interactionID.uuidString) interaction=\(observation.interaction.rawValue) phase=\(observation.phase.rawValue) sequence=\(observation.sequence) elapsed_ms=\(observation.elapsedMilliseconds) pointer_inside=\(observation.pointerInside) app_active=\(observation.appActive) has_key_window=\(observation.hasKeyWindow) escape_observed=\(observation.escapeObserved) os_version=\(ProcessInfo.processInfo.operatingSystemVersionString)"
+      Task { await AppLogger.shared.log(line, category: "SettingsHelp") }
+    #endif
+    PostHogSDK.shared.capture("settings.help_observed", properties: props)
+  }
+
+  /// Shared projection for the SDK boundary and its schema test. The live caller supplies OS metadata.
+  static func settingsHelpProperties(
+    _ observation: SettingsHelpObservation, osVersion: String
+  ) -> [String: Any] {
+    var props = observation.properties
+    props["os_version"] = osVersion
+    return props
   }
 
   /// #3482: one finished Settings search attempt (plan §8.1). Closed values and counts; the
@@ -4097,7 +4128,9 @@ public final class TelemetryService {
 
   /// The `meeting.ended` payload. Numbers stay numbers (`processing_seconds` and `rtf` are
   /// `Double` seconds and a ratio, the counts `Int`), `disk_stopped` a `Bool`; `entry_point`
-  /// and `disk_stopped` are omitted when not known (an attempt recovered after a relaunch).
+  /// and `disk_stopped` are omitted when not known (an attempt recovered after a relaunch), and
+  /// `engine` (`parakeet` or `whisper`, the engine the attempt resolved to) when the attempt
+  /// never resolved one (#3973 C3).
   /// #4121: `call_output_transport` (string), `call_capture_rate_hz`, `call_rebuilds` and
   /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
   /// #4013: `speaker_names_surface` and `speaker_names_outcome` (strings) and `auto_named_count`
@@ -4108,7 +4141,6 @@ public final class TelemetryService {
       "duration_bucket": fileImportDurationBucket(event.durationSeconds),
       "mic_track": event.microphoneTrack.rawValue,
       "system_track": event.callSoundTrack.rawValue,
-      "engine": event.engine.rawValue,
       "speaker_count_bucket": meetingSpeakerCountBucket(event.speakerCount),
       "processing_seconds": event.processingSeconds.isFinite ? event.processingSeconds : 0,
       "rtf": event.realTimeFactor,
@@ -4119,6 +4151,8 @@ public final class TelemetryService {
       "has_notes": event.hasNotes,
     ]
     if let entryPoint = event.entryPoint { props["entry_point"] = entryPoint.rawValue }
+    // #3973 C3: omitted when the attempt never resolved an engine.
+    if let engine = event.engine { props["engine"] = engine.rawValue }
     if let diskStopped = event.diskStopped { props["disk_stopped"] = diskStopped }
     if let transport = event.callOutputTransport { props["call_output_transport"] = transport }
     if let rate = event.callCaptureRateHz { props["call_capture_rate_hz"] = rate }

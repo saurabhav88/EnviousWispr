@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "hr",
+    "title": "model za prijepis sastanka",
+    "words": [],
+    "phrases": [
+      "odaberi model za potpuni prijepis sastanka",
+      "promijeni model za prijepis koji se izrađuje nakon sastanka"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "hr",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "koristi Parakeet za transkripciju sastanaka"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "hr",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "koristi Whisper za transkripciju sastanaka"
+    ]
+  }
+}

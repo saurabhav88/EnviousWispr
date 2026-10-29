@@ -88,7 +88,7 @@ struct MeetingLiveWordsIntegrationTests {
       }
       if realJob {
         let started = passStarted
-        deps.makeJob = { [self] in
+        deps.makeJob = { [self] _ in
           var configuration = MeetingTranscriptionJob.Configuration()
           configuration.cutsPieces = false  // as MeetingWiring builds it (#4052)
           return MeetingTranscriptionJob(

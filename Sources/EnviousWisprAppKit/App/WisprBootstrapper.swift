@@ -46,6 +46,8 @@ package final class WisprBootstrapper {
   /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
   /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
   let meetingLiveWordsRow: MeetingLiveWordsRowModel
+  /// #3973 C3: EnviousMeet > Models' Transcript engine row.
+  let meetingTranscriptEngineRow: MeetingTranscriptEngineRowModel
   /// #4012: notices calls and asks to record them.
   let callDetection: CallDetectionCoordinator
   let meetingMemoryPressure: MeetingMemoryPressure
@@ -436,6 +438,9 @@ package final class WisprBootstrapper {
     let whisper = WhisperDeliveryWiring.make(
       modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
     let whisperBackend = whisper.backend
+    // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
+    // Parakeet). One instance for the process; loaded for one engine operation at a time.
+    let meetingWhisperEngine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
 
     // #1707 Phase 2: DEBUG fault-injection oracle (§11.1/§3.2a-i) — the SOLE
     // owner of every batch-decode fault command, dispatching to whichever
@@ -796,8 +801,14 @@ package final class WisprBootstrapper {
     // 2c: the Remove drain's engine-unload seam — assignable only now that the
     // driver (and its adapter) exist; the wiring that built the coordinator ran
     // before them. L1: the drain awaits this BEFORE the delivery deletion.
-    whisper.removal.unloadForRemoval = { [weak whisperKernelDriver] in
+    // #3973 C3: EnviousMeet's own Turbo copy is freed too, before the bytes go, and it
+    // starts no load until the deletion has finished.
+    whisper.removal.unloadForRemoval = { [weak whisperKernelDriver, meetingWhisperEngine] in
       await whisperKernelDriver?.unloadEngine()
+      await meetingWhisperEngine.closeForRemoval()
+    }
+    whisper.removal.finishRemoval = { [meetingWhisperEngine] in
+      await meetingWhisperEngine.reopenAfterRemoval()
     }
     // ONE lookup, three readers: the polish-runtime eviction rule below, the
     // import page's privacy line, and the configuration an import freezes at
@@ -1474,8 +1485,8 @@ package final class WisprBootstrapper {
         isMeetingEngineResident: { [meetingBox] in
           meetingBox.coordinator?.isMeetingModelWorkActive ?? false
         },
-        isMeetingOwnParakeetResident: { [meetingBox] in
-          meetingBox.coordinator?.isFinalPassOwnParakeetResident ?? false
+        isMeetingOwnModelResident: { [meetingBox] backend in
+          meetingBox.coordinator?.isFinalPassOwnModelResident(backend) ?? false
         },
         isInstalled: { [setup] backend in
           backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
@@ -2604,6 +2615,23 @@ package final class WisprBootstrapper {
       livePreview?.vocabularySnapshot()
         ?? LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false)
     }
+    // #3973 C3: the Whisper final engine: the shared delivery's model, dictation's backend for
+    // the one-copy case, and the meeting's own copy otherwise.
+    meetingInputs.whisper = MeetingWiring.WhisperEngine(
+      modelPath: whisper.admittedModelPath,
+      modelIdentity: { [identity = whisper.modelIdentity] in identity },
+      isDeliveryEnabled: whisper.isDeliveryEnabled,
+      transcribeShared: { [whisperBackend] samples, language in
+        try await whisperBackend.transcribeForMeeting(audioSamples: samples, language: language)
+      },
+      ownLoad: { [meetingWhisperEngine] path in try await meetingWhisperEngine.load(modelPath: path) },
+      ownTranscribe: { [meetingWhisperEngine] samples, language in
+        try await meetingWhisperEngine.transcribe(samples: samples, language: language)
+      },
+      ownUnload: { [meetingWhisperEngine] in await meetingWhisperEngine.unload() },
+      isReadyForMenu: { [setupService = whisper.setupService] in
+        setupService.setupState == .ready
+      })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
@@ -2619,6 +2647,12 @@ package final class WisprBootstrapper {
         startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
         universalDownloadRefused: { [modelDelivery] in modelDelivery.previewDownloadRefused },
         cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
+    self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
+      environment: .init(
+        settings: settings, whisperSetup: whisper.setupService,
+        isMeetingActive: { [weak meetingCoordinator] in
+          meetingCoordinator?.isMeetingActive ?? false
+        }))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -3162,6 +3196,7 @@ private struct MainWindowRoot: View {
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)
+      .environment(b.meetingTranscriptEngineRow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)
       .environment(b.backendMetadata)

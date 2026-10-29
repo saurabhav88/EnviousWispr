@@ -933,23 +933,62 @@ import Testing
 
   // MARK: - #3973 C1 A press waits for a meeting's turn
 
+  /// Observe the public press task's return, not its earlier terminal log (#4157).
+  /// A failed wait leaves cancellation and bounded drainage to the task's owner.
+  private static func completed(
+    _ task: Task<Void, Never>, timeout: Duration = .seconds(5)
+  ) async -> Bool {
+    let signal = TurnLogSink()
+    let observer = Task { @MainActor in
+      await task.value
+      signal.append("returned")
+    }
+    let returned = await signal.waitFor(containing: "returned", after: 0, timeout: timeout)
+    if returned {
+      await observer.value
+    } else {
+      observer.cancel()
+    }
+    return returned
+  }
+
+  @Test(.tags(.harnessContract))
+  func completionWaitRejectsAnUnfinishedTask() async {
+    let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+    defer { continuation.finish() }
+    let task = Task { @MainActor in
+      for await _ in stream {}
+    }
+
+    #expect(await Self.completed(task, timeout: .milliseconds(1)) == false)
+    continuation.finish()
+    #expect(await Self.completed(task))
+  }
+
   /// Holds the fixture's lease as a meeting, starts `press` in a task, and returns once the
   /// press has reserved the next turn (the request owner's `waiting` line is written in the
   /// same main-actor step as the reservation, and this resumes only after the press parks).
   private static func parkPress(
-    _ fx: Fixture, _ press: @escaping @MainActor () async -> Void
+    _ fx: Fixture, _ press: @escaping @MainActor () async -> Void,
+    sourceLocation: SourceLocation = #_sourceLocation
   ) async -> (meeting: EngineLease.Token, task: Task<Void, Never>)? {
     guard case .granted(let meeting) = fx.engineLease.admit(.meeting) else {
-      Issue.record("the fixture's lease was already held")
+      Issue.record("the fixture's lease was already held", sourceLocation: sourceLocation)
       return nil
     }
     let waitingLines = fx.turnLog.count(containing: "event=waiting")
     let task = Task { @MainActor in await press() }
     guard await fx.turnLog.waitFor(containing: "event=waiting", after: waitingLines) else {
-      Issue.record("the press never parked")
+      Issue.record("the press never parked", sourceLocation: sourceLocation)
+      task.cancel()
+      fx.engineLease.release(meeting)
+      #expect(
+        await Self.completed(task), "cleanup did not drain the press", sourceLocation: sourceLocation)
       return nil
     }
-    #expect(fx.engineLease.hasPendingReservation, "a parked press holds the next turn")
+    #expect(
+      fx.engineLease.hasPendingReservation, "a parked press holds the next turn",
+      sourceLocation: sourceLocation)
     return (meeting, task)
   }
 
@@ -1053,7 +1092,14 @@ import Testing
     case "secondToggle": await fx.starter.toggle(source: .toggleHotkey)
     default: parked.task.cancel()
     }
-    await parked.task.value
+    let returned = await Self.completed(parked.task)
+    #expect(returned, "the ended press did not return")
+    guard returned else {
+      parked.task.cancel()
+      fx.engineLease.release(parked.meeting)
+      #expect(await Self.completed(parked.task), "cleanup did not drain the press")
+      return
+    }
     #expect(fx.turnLog.outcomes.count == 1)
     #expect(fx.turnLog.outcomes.first?.hasPrefix("cancelled") == true)
     #expect(!fx.engineLease.hasPendingReservation, "the reservation was withdrawn")
@@ -1095,9 +1141,23 @@ import Testing
     let second = Task { @MainActor in _ = await fx.starter.start() }
     guard await fx.turnLog.waitFor(containing: "event=waiting", after: waitingLines) else {
       Issue.record("the newer press never parked")
+      first.task.cancel()
+      second.cancel()
+      fx.engineLease.release(first.meeting)
+      #expect(await Self.completed(first.task), "cleanup did not drain the older press")
+      #expect(await Self.completed(second), "cleanup did not drain the newer press")
       return
     }
-    await first.task.value
+    let returned = await Self.completed(first.task)
+    #expect(returned, "the superseded press did not return")
+    guard returned else {
+      first.task.cancel()
+      second.cancel()
+      fx.engineLease.release(first.meeting)
+      #expect(await Self.completed(first.task), "cleanup did not drain the older press")
+      #expect(await Self.completed(second), "cleanup did not drain the newer press")
+      return
+    }
     #expect(fx.turnLog.outcomes.first?.hasPrefix("superseded") == true)
     #expect(fx.engineLease.hasPendingReservation, "the older press's cleanup kept the newer turn")
 
@@ -1117,7 +1177,14 @@ import Testing
     guard let parked = await Self.parkPress(fx, { _ = await fx.starter.start() }) else { return }
 
     fx.pendingRequests.endForQuit()
-    await parked.task.value
+    let returned = await Self.completed(parked.task)
+    #expect(returned, "quit did not finish the waiting press")
+    guard returned else {
+      parked.task.cancel()
+      fx.engineLease.release(parked.meeting)
+      #expect(await Self.completed(parked.task), "cleanup did not drain the press")
+      return
+    }
     // The engine is free now, so only the closure can refuse these.
     #expect(fx.engineLease.release(parked.meeting))
     let outcome = await fx.starter.start()
@@ -1519,14 +1586,14 @@ final class TurnLogSink {
     }
   }
 
-  /// True once more than `after` lines contain `needle`; false after a 5 s deadline so a test
+  /// True once more than `after` lines contain `needle`; false at the deadline (5 s by default) so a test
   /// that never gets there fails instead of hanging.
-  func waitFor(containing needle: String, after: Int) async -> Bool {
+  func waitFor(containing needle: String, after: Int, timeout: Duration = .seconds(5)) async -> Bool {
     guard count(containing: needle) <= after else { return true }
     return await withCheckedContinuation { continuation in
       waiters.append((needle, after, continuation))
       Task { @MainActor [weak self] in
-        try? await Task.sleep(for: .seconds(5))  // deadline-fallback: bounds the signal wait
+        try? await Task.sleep(for: timeout)  // deadline-fallback: bounds the signal wait
         guard let self,
           let index = self.waiters.firstIndex(where: { $0.needle == needle && $0.after == after })
         else { return }

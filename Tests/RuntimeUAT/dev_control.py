@@ -292,10 +292,12 @@ An AI Polish screen already open keeps showing the key it loaded; reopen it to s
 set or cleared here.
 channel set DEVICE_UID N picks a connected multi-input microphone's input (0 is Input 1);
 a whole inputChannelByDeviceUID write is refused toward it, --force stages one.
-shortcut set ROLE KEYCODE MODIFIERS saves a Keybinds shortcut whole, checked as the screen
-checks it (ROLE: record, cancel, quickAdd, pasteLast, copyLast; recording is stored as
+shortcut set ROLE KEYCODE MODIFIERS accepts key codes 0 to 127 under the normal dev-tool
+policy, then uses the screen's normalization and conflict checks (ROLE: record, cancel,
+quickAdd, pasteLast, copyLast; recording is stored as
 toggleKeyCode/toggleModifiers; MODIFIERS is the modifier-flags integer, 0 for none). A lone
-modifier key stores no modifiers. settings set on one half checks the pair it makes.
+modifier key stores no modifiers. settings set on one active shortcut half checks the pair
+it makes under the same policy. Use settings set --force to stage unusual UInt16 key codes.
 language set CODE is the language picker's choice: lock and English spelling together
 (en-gb locks "en" with British spelling); auto unlocks. settings set languageMode or
 englishSpelling alone is refused toward it; --force stages one field.
@@ -335,7 +337,7 @@ MODEL_ACTIONS = ("download", "cancel")
 # The call panel's buttons `call simulate --press` may name (DevControlCalls.buttons).
 CALL_PANEL_BUTTONS = ("yes", "no", "keepRecording", "startNewRecording", "openSettings", "close")
 # MeetingEngineChoice raw values (#3973 C2); the door refuses anything else.
-MEETING_ENGINES = ("parakeet",)
+MEETING_ENGINES = ("parakeet", "whisper")
 # MeetingEntryPoint raw values; the door refuses anything else.
 MEETING_ENTRY_POINTS = ("history", "menu")
 # CLI verb -> door command for the meeting commands that take only a meeting id; all change

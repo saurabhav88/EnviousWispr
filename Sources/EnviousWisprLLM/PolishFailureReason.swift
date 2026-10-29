@@ -401,7 +401,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .emptyResponse:
       return String(
         localized:
-          "AI polish failed: \(name) returned no cleanup text. Try again.",
+          "AI polish failed: \(name) returned no polished text. Try again.",
         comment:
           "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )
@@ -426,7 +426,7 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
     case .outputTruncated:
       return String(
         localized:
-          "AI polish failed: \(name) ended the response before cleanup finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation.",
+          "AI polish failed: \(name) ended the response before AI polish finished. Pasted without AI polish. If this keeps happening, choose another model or use a shorter dictation.",
         comment:
           "Dictation notice: AI polish failed and the original text was used. %@ is the AI provider's name, such as OpenAI; keep it as is."
       )

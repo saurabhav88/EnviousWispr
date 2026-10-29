@@ -37,12 +37,20 @@ struct MeetingDetailHeader: View {
       Text(
         [
           MeetingsPresentation.statusLabel(status),
+          // #3973 C3: the engine that wrote the transcript shown (the committed one).
+          record.transcriptEngineUsed?.backendType.displayName,
           MeetingsPresentation.duration(ms: record.recordedDurationMs),
           MeetingsPresentation.audioSizeLine(audioSize),
-        ].joined(separator: " · ")
+        ].compactMap { $0 }.joined(separator: " · ")
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)
+      if record.transcriptEngineFallbackReason != nil {
+        Text(MeetingsCopy.usedParakeetFallback)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
       if let failure = MeetingsPresentation.failureLine(record) {
         Text(failure)
           .font(.stBody)

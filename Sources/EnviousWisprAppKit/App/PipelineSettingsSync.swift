@@ -393,7 +393,7 @@ final class PipelineSettingsSync {
     case .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary,
       .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection,
       .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
-      .meetingLiveWordsEngine, .meetingLiveWordsLanguage:
+      .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage:
       // #3972, #4017, #3973: read by EnviousMeet when a meeting starts or ends; not by the
       // pipeline. `.meetingLanguageMode` never touches dictation's language.
       break

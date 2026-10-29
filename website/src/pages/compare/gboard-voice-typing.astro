@@ -1,0 +1,172 @@
+---
+import CompareLayout from '../../layouts/CompareLayout.astro';
+import PlayButton from '../../components/PlayButton.astro';
+
+// #4171 item 5. Gboard facts are source-verified from Google's own help pages on
+// 2026-10-28 (not firsthand tests); EnviousWispr for Android facts trace to the Play
+// listing (EnviousWispr-Android docs/play-listing/store-listing.md) and the app.
+// Sources:
+//   https://support.google.com/gboard/answer/2781851  Type with your voice (Android)
+//   https://support.google.com/gboard/answer/11197787 Advanced voice typing (Pixel 6+)
+//   https://support.google.com/gboard/answer/17468539 Rambler (Pixel 11 series, Gemini)
+// Recheck all three before editing any Gboard claim; Google changes these features often.
+const checked = '2026-10-28';
+
+const meta = {
+  slug: 'gboard-voice-typing',
+  title: 'EnviousWispr vs Gboard Voice Typing on Android',
+  description: 'Compare EnviousWispr for Android with Gboard voice typing: on-device speech and AI polish, your tone and format, a custom dictionary, and where Gboard is the better fit.',
+  headline: 'EnviousWispr vs Gboard Voice Typing: Dictation on Android',
+  breadcrumb: 'EnviousWispr vs Gboard Voice Typing',
+  ogImage: '/images/og/compare.png',
+  ogImageAlt: 'Compare dictation apps with EnviousWispr by price, privacy and AI cleanup',
+  datePublished: '2026-10-28T00:00:00Z',
+  dateModified: '2026-10-28T00:00:00Z',
+};
+
+const faqPairs = [
+  ['Is EnviousWispr a Gboard voice typing alternative?', 'It works alongside Gboard rather than replacing it. You keep Gboard, or any keyboard, and EnviousWispr adds a floating bubble beside the text box. Tap it, speak, and finished text lands at your cursor, with on-device AI polish if you choose it.'],
+  ['Is EnviousWispr for Android free?', 'Yes. There is no app subscription, trial, account or ads. If you connect your own OpenAI, Anthropic or Google Gemini key for cloud polish, that provider\'s charges and terms apply.'],
+  ['Does Gboard voice typing send my audio to Google?', 'It depends on the phone and the feature. For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device except with Fix it or detailed edits; detailed edits send the command transcript and the field text, without audio. For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered; offline, Rambler keeps basic cleanup, punctuation and capitalization.'],
+  ['Does EnviousWispr send my audio anywhere?', 'No. Speech recognition runs on your phone and audio is never uploaded. Local AI polish runs on the phone too. With cloud polish on, the selected text and your custom words go directly to the provider you chose.'],
+  ['Which phones does EnviousWispr support?', 'Android 13 or newer on a 64-bit ARM phone with at least 6 GB of memory, and about 1.2 GB of free storage for its two on-device models. It works best on recent flagship phones such as the Galaxy S26 Ultra and Pixel 8. Entry-level phones with older processors are not supported.'],
+  ['Can I use both?', 'Yes. EnviousWispr does not replace your keyboard, so if you use Gboard its microphone stays available. You can use either one, depending on what you are writing.'],
+];
+const faqs = faqPairs.map(([q, a]) => ({ q, a }));
+
+const rows = [
+  ['What it is', 'A dictation app that works beside your keyboard', 'Voice typing built into the Gboard keyboard'],
+  ['Phones', 'Android 13+, 64-bit, 6 GB+ memory, any brand', 'Any phone with Gboard; advanced voice typing on Pixel 6 and later; Rambler on the Pixel 11 series'],
+  ['Speech recognition', 'On your phone, offline after setup', 'Advanced voice typing keeps spoken text on the device; online Rambler is temporarily processed by Google, and offline it keeps basic cleanup'],
+  ['AI polish', 'On your phone with S1-mini, or the cloud with your own key', 'On-device proofreading and rewriting on Pixel 9 and later (not 9a); Rambler (Gemini) on the Pixel 11 series'],
+  ['Your writing style', 'Tone from casual to formal, spoken lists as bullet points, and email layout for a greeting and sign-off you dictate (S1-mini)', 'Rambler rewrites on request, such as more professional or shorter'],
+  ['Custom words', 'Dictionary with preferred spellings and the ways they get misheard', 'Learns from words you correct (advanced voice typing)'],
+  ['Voice editing commands', 'No', 'Advanced voice typing on Pixel 6 and later, such as "delete" and "clear"; detailed edits on Pixel 8 and later in English (US)'],
+  ['History', 'Completed dictations, saved and searchable on your phone', 'Not described in Google\'s voice typing help'],
+  ['Setup', 'Two model downloads (about 1.2 GB) and Accessibility access', 'Built in; advanced voice typing downloads an update over Wi-Fi'],
+  ['Price', 'Free; no account, subscription or ads', 'Free'],
+];
+---
+
+<CompareLayout meta={meta} faqs={faqs}>
+
+<style>
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge { display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); }
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff; }
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin: 0 auto 14px; max-width: 700px; }
+.page-header-sub { font-size: 18px; color: var(--text-2); max-width: 580px; margin: 0 auto; line-height: 1.6; }
+.hero-cta { margin-top: 28px; display: flex; justify-content: center; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+.compare-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-card); border: 1px solid var(--border-hover); background: #fff; }
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card { background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-card); padding: 28px 24px; position: relative; overflow: hidden; }
+.advantage-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--rainbow-full); }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card { background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-card); padding: 32px 28px; font-size: 15px; color: var(--text-2); line-height: 1.65; }
+.privacy-card p + p { margin-top: 12px; }
+.privacy-card.ew { border-color: rgba(0,200,128,0.25); background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5)); }
+.privacy-card-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; color: var(--text-3); }
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item { border-bottom: 1px solid var(--border-hover); padding: 24px 0; }
+.faq-item:last-child { border-bottom: none; }
+.faq-q { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px; }
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; }
+.back-link:hover { color: var(--accent); }
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 700px) { .compare-table--duo caption { display: block; } }
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge"><span class="vs-brand accent">EnviousWispr</span><span class="vs-circle">VS</span><span class="vs-brand">Gboard</span></div>
+    <h1>Dictation on Android, from the keyboard or beside it.</h1>
+    <p class="page-header-sub">If you use Gboard, its microphone gives you dictation from the keyboard. EnviousWispr adds on-device AI polish, your tone and format, and a dictionary of your own words, on any supported phone.</p>
+    <div class="hero-cta"><PlayButton source="compare-gboard" label="Get EnviousWispr for Android" /></div>
+    <p class="hero-meta">By <a href="/authors/saurabh-vaish/">Saurabh Vaish</a> · Gboard facts checked {checked} from Google's help pages</p>
+  </div>
+</header>
+
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head"><div class="section-label-pill">Side by Side</div><h2 class="section-title">Feature comparison</h2></div>
+    <div class="compare-table-wrap">
+      <table class="compare-table compare-table--duo">
+        <caption style="padding: 16px; text-align: left;">EnviousWispr for Android and Gboard voice typing, checked {checked}</caption>
+        <thead><tr><th scope="col">Feature</th><th scope="col">EnviousWispr for Android</th><th scope="col">Gboard voice typing</th></tr></thead>
+        <tbody>{rows.map(([label, ew, gb]) => <tr><td role="rowheader">{label}</td><td>{ew}</td><td>{gb}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <p style="font-size: 13px; color: var(--text-2); margin-top: 16px;">Sources: Google's <a href="https://support.google.com/gboard/answer/2781851">Type with your voice</a>, <a href="https://support.google.com/gboard/answer/11197787">advanced voice typing</a> and <a href="https://support.google.com/gboard/answer/17468539">Rambler</a> help pages, read {checked}; <a href="/android/">EnviousWispr for Android</a> and its <a href="/help/android/">help section</a>. Gboard facts are source-verified, not firsthand test results. Gboard features vary by phone, language and region.</p>
+  </div>
+</section>
+
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head"><div class="section-label-pill green">Why EnviousWispr</div><h2 class="section-title">Finished writing, on any supported phone.</h2></div>
+    <div class="advantages-grid">
+      <div class="advantage-card"><div class="advantage-title">AI polish on your phone</div><p class="advantage-desc">S1-mini cleans up and formats what you said on the phone itself, offline, on Samsung, Pixel and other supported phones. Or use your own OpenAI, Anthropic or Gemini key. See <a href="/help/android-ai-polish/">AI polish on Android</a>.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Your tone and format</div><p class="advantage-desc">With S1-mini, pick casual to formal, turn spoken lists into bullet points, and lay out a greeting and sign-off you dictate as an email. A new pick applies from your next dictation.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Your words, spelled your way</div><p class="advantage-desc">Add names and terms with the ways they get misheard, and find your completed dictations again in History. See <a href="/help/android-dictionary-and-history/">Dictionary and History</a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head"><div class="section-label-pill cyan">Privacy</div><h2 class="section-title">Where your voice goes.</h2></div>
+    <div class="privacy-split">
+      <div class="privacy-card ew"><div class="privacy-card-label">EnviousWispr</div><p>Speech recognition runs on your phone and audio is never uploaded. Local AI polish keeps the text on the phone too.</p><p>If you choose cloud polish, the selected text and your custom words go directly to your provider under your own key. They do not pass through Envious Labs. <a href="/help/android-privacy/">Privacy on Android</a></p></div>
+      <div class="privacy-card"><div class="privacy-card-label">Gboard</div><p>For advanced voice typing on Pixel 6 and later, Google says the text you speak stays on your device except with Fix it or detailed edits; detailed edits send the command transcript and the field text, without audio.</p><p>For Rambler on the Pixel 11 series, Google says your text, audio input and corrections are temporarily processed by Google and deleted after your text is delivered; offline, Rambler keeps basic cleanup, punctuation and capitalization. Google's help pages do not describe processing for standard voice typing on other phones.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Where Gboard Wins">
+  <div class="container">
+    <div class="section-head"><div class="section-label-pill">Being Honest</div><h2 class="section-title">When Gboard is the better fit.</h2></div>
+    <div class="advantages-grid">
+      <div class="advantage-card"><div class="advantage-title">Start from your keyboard</div><p class="advantage-desc">Gboard voice typing is part of the keyboard, with no separate app. EnviousWispr needs about 1.2 GB of model downloads, a phone with 6 GB of memory and Accessibility access.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Editing by voice</div><p class="advantage-desc">Advanced voice typing on Pixel 6 and later supports commands such as "delete" and "clear", and detailed edits on Pixel 8 and later (English US) insert, delete and replace words by voice. EnviousWispr does not edit text by voice.</p></div>
+      <div class="advantage-card"><div class="advantage-title">Rewriting on recent Pixels</div><p class="advantage-desc">Pixel 9 and later (not 9a) proofread and rewrite on the device. On the Pixel 11 series, Rambler uses Gemini to remove filler words and rewrite on request, processing your speech with Google while online.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container"><div class="section-head"><div class="section-label-pill">FAQ</div><h2 class="section-title">Common questions</h2></div>
+    <div class="faq-list">{faqPairs.map(([question, answer]) => <div class="faq-item"><div class="faq-q">{question}</div><p class="faq-a">{answer}</p></div>)}</div>
+  </div>
+</section>
+
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Put your voice to work on Android.</h2>
+    <p class="reveal">Free on-device dictation and AI polish. Android 13+, 6 GB memory or more. No account.</p>
+    <div class="cta-actions reveal">
+      <PlayButton source="compare-gboard-closing" label="Get it on Google Play" class="btn-primary" />
+      <a href="/android/" class="back-link">About EnviousWispr for Android</a>
+    </div>
+  </div>
+</section>
+
+</CompareLayout>

@@ -25,18 +25,51 @@ public struct MeetingAttemptConfiguration: Sendable, Equatable, Codable {
     self.requestedEffectiveLanguage = Self.normalized(requestedEffectiveLanguage)
   }
 
-  /// A new attempt for `language` on `engine`. Every engine this build ships decodes the chosen
-  /// language as asked, so the effective language is the choice.
-  public init(requestedEngine: MeetingEngineChoice, language: LanguageMode) {
+  /// A new attempt for `language` on `engine`. #3973 C3: a language `engine` cannot decode
+  /// (`supports` says no) is asked as Auto, the intent kept, so a fallback to another engine can
+  /// decide again from the user's choice.
+  public init(
+    requestedEngine: MeetingEngineChoice, language: LanguageMode,
+    supports: (MeetingEngineChoice, String) -> Bool = { _, _ in true }
+  ) {
     let code: String?
     if case .locked(let locked) = language { code = locked } else { code = nil }
     self.init(
-      requestedEngine: requestedEngine, languageIntent: code, requestedEffectiveLanguage: code)
+      requestedEngine: requestedEngine, languageIntent: code,
+      requestedEffectiveLanguage: code.flatMap { supports(requestedEngine, $0) ? $0 : nil })
+  }
+
+  /// #3973 C3: the language `engine` decodes this attempt with: the intent when `engine` can
+  /// decode it, else Auto.
+  public func effectiveLanguage(
+    on engine: MeetingEngineChoice, supports: (MeetingEngineChoice, String) -> Bool
+  ) -> String? {
+    languageIntent.flatMap { supports(engine, $0) ? $0 : nil }
   }
 
   /// One spelling of Auto, so two Auto attempts compare equal.
   public static func normalized(_ code: String?) -> String? {
     code?.isEmpty == false ? code : nil
+  }
+}
+
+/// The engine one pass of an attempt runs on, decided before the pass is built (#3973 C3):
+/// the requested engine, or Parakeet with the reason when Whisper was asked for and is
+/// positively unavailable. The whole pass runs on it; engines are never mixed.
+public struct MeetingEngineResolution: Sendable, Equatable {
+  public let engine: MeetingEngineChoice
+  public let fallbackReason: MeetingTranscriptFallbackReason?
+  /// The language the pass decodes with on `engine` (a code; nil is Auto): the attempt's own
+  /// when it runs on the engine it asked for, else decided again from its intent.
+  public let effectiveLanguage: String?
+
+  public init(
+    engine: MeetingEngineChoice, fallbackReason: MeetingTranscriptFallbackReason? = nil,
+    effectiveLanguage: String? = nil
+  ) {
+    self.engine = engine
+    self.fallbackReason = fallbackReason
+    self.effectiveLanguage = MeetingAttemptConfiguration.normalized(effectiveLanguage)
   }
 }
 
@@ -76,6 +109,7 @@ extension MeetingEngineChoice {
   public var backendType: ASRBackendType {
     switch self {
     case .parakeet: .parakeet
+    case .whisper: .whisper
     }
   }
 }

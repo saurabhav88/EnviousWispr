@@ -182,8 +182,10 @@ def build_server():
     @server.tool()
     def ew_shortcut_set(role: Literal["record", "cancel", "quickAdd", "pasteLast", "copyLast"],
                         key_code: int, modifiers: int) -> CallToolResult:
-        """Save a Keybinds shortcut whole, checked as the screen checks it. `modifiers` is the
-        modifier-flags integer (0 for none); recording is stored as the toggle pair."""
+        """Save a whole shortcut with key_code 0 to 127 under the normal dev-tool policy,
+        then apply the screen's normalization and conflict checks. Use ew_settings_set with
+        force for unusual UInt16 key codes. `modifiers` is the modifier-flags integer
+        (0 for none); recording is stored as the toggle pair."""
         return call("shortcut", "set", "--", role, str(int(key_code)), str(int(modifiers)),
                     mutation=True)
 

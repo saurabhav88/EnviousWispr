@@ -68,6 +68,8 @@ enum SettingsDefaultValues {
   /// #3973 (decision 16): the language EnviousMeet transcribes a meeting in, Auto (the engine
   /// decides) until the user picks one. #4105: frozen on each meeting's record at Start.
   static let meetingLanguageMode: LanguageMode = .auto
+  /// #3973 C3: Parakeet writes meeting transcripts until the user picks Whisper.
+  static let meetingTranscriptEngine: MeetingEngineChoice = .parakeet
   /// #4105: meeting live words have no engine and no language until chosen or a ready guess is
   /// saved (decisions file item 18).
   static let meetingLiveWordsEngine: LivePreviewEngineChoice? = nil

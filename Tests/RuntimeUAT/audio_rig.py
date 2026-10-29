@@ -240,9 +240,8 @@ class AudioRig:
 
     @staticmethod
     def _speakers_back(device):
-        subprocess.run([sa.SWITCH, "-s", device, "-t", "output"], capture_output=True)
-        if sa._current("output") != device:
-            raise RuntimeError(f"output is {sa._current('output')!r}, not {device!r}")
+        if not sa._restore_device("output", device):
+            raise RuntimeError(f"output was not put back to {device!r}")
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():

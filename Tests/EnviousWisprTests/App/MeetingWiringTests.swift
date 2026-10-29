@@ -959,6 +959,38 @@ struct MeetingWiringTests {
     #expect(rig.dictation.decodes.isEmpty)
   }
 
+  @Test("#3973 C3: a shared Whisper operation re-arms unload timers only when no one took the engine meanwhile")
+  func sharedWhisperRouteLeavesTimersToTheHolder() async throws {
+    let lease = EngineLease()
+    var rearms = 0
+    let route = MeetingWhisperRoute(
+      dependencies: .init(
+        isAdmitted: { true }, isDictationIdle: { true }, isSwitchSettled: { true },
+        activeBackend: { .whisper }, wakes: MeetingWakeSignal(),
+        admission: .live(lease: lease, as: .meeting), ensureDictationReady: { .ready },
+        modelPath: { "/models/turbo.gguf" }, modelIdentity: { "turbo" },
+        transcribeShared: { samples, _ in DictationSide.heard(samples) },
+        disarmEngineTimers: {}, rearmEngineTimers: { rearms += 1 },
+        ownLoad: { _ in }, ownTranscribe: { samples, _ in DictationSide.heard(samples) },
+        ownUnload: {}, ownResidencyEnded: {}, log: { _ in }))
+
+    // Control: nobody took the engine, so the operation's end re-arms the timers.
+    try await route.acquire()
+    #expect(route.route == .shared)
+    await route.endModelUse()
+    #expect(rearms == 1)
+
+    // Transcribe a File takes the engine while the meeting decodes on it.
+    try await route.acquire()
+    guard case .granted(let token) = lease.admit(.fileImport) else {
+      Issue.record("the import could not take the engine")
+      return
+    }
+    await route.endModelUse()
+    #expect(rearms == 1, "the import holds the engine; it re-arms the timers itself")
+    _ = lease.release(token)
+  }
+
   @Test("the real job fails cleanly when no model is installed, and holds no model claim")
   func realJobWithoutModel() async throws {
     let rig = try Rig()
@@ -1014,6 +1046,56 @@ struct MeetingWiringTests {
     #expect(answer == .notInstalled)
     #expect(runningReadies == 0)
   }
+
+  // MARK: - #3973 C3: the engine a pass runs on
+
+  static func whisperEngine(path: String?, deliveryOn: Bool = true) -> MeetingWiring.WhisperEngine {
+    MeetingWiring.WhisperEngine(
+      modelPath: { path }, modelIdentity: { "whisper-large-v3-turbo-gguf:rev" },
+      isDeliveryEnabled: { deliveryOn },
+      transcribeShared: { _, _ in throw MeetingEngineYield() },
+      ownLoad: { _ in }, ownTranscribe: { _, _ in throw MeetingEngineYield() }, ownUnload: {},
+      isReadyForMenu: { path != nil })
+  }
+
+  @Test("#3973 C3: Whisper runs when its model is ready; otherwise the whole attempt is Parakeet, with the reason")
+  func engineResolution() async {
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .locked("de"))
+    let ready = Self.whisperEngine(path: "/models/turbo.gguf")
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: ready)
+        == .init(engine: .whisper, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: Self.whisperEngine(path: nil))
+        == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false))
+        == .init(engine: .parakeet, fallbackReason: .deliveryDisabled, effectiveLanguage: "de"))
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: nil)
+        == .init(engine: .parakeet, fallbackReason: .modelUnavailable, effectiveLanguage: "de"))
+    let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    #expect(await MeetingWiring.resolve(parakeet, whisper: nil) == .init(engine: .parakeet))
+  }
+
+  @Test("#3973 C3: a language only Whisper decodes is Auto on Parakeet, at Start and after a fallback")
+  func languageFollowsTheEngine() async {
+    // Hawaiian: in Whisper's catalogue, not Parakeet's.
+    #expect(MeetingWiring.engineSupports(.whisper, "haw"))
+    #expect(!MeetingWiring.engineSupports(.parakeet, "haw"))
+    let onParakeet = MeetingAttemptConfiguration(
+      requestedEngine: .parakeet, language: .locked("haw"), supports: MeetingWiring.engineSupports)
+    #expect(onParakeet.languageIntent == "haw")
+    #expect(onParakeet.requestedEffectiveLanguage == nil, "asked as Auto")
+    let onWhisper = MeetingAttemptConfiguration(
+      requestedEngine: .whisper, language: .locked("haw"), supports: MeetingWiring.engineSupports)
+    #expect(onWhisper.requestedEffectiveLanguage == "haw")
+    #expect(
+      await MeetingWiring.resolve(onWhisper, whisper: Self.whisperEngine(path: nil))
+        == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: nil))
+  }
+
 }
 
 /// #3973 C1: who held the engine at each checkpoint write.

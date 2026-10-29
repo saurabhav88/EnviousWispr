@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "fr",
+    "title": "moteur de transcription des réunions",
+    "words": [],
+    "phrases": [
+      "choisir le moteur qui transcrit toute la réunion une fois terminée",
+      "changer le moteur de transcription complète des réunions"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "fr",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "utiliser Parakeet pour transcrire les réunions"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "fr",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "utiliser Whisper pour transcrire les réunions"
+    ]
+  }
+}

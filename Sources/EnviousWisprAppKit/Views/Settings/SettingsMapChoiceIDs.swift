@@ -124,3 +124,20 @@ extension LivePreviewEngineChoice {
     }
   }
 }
+
+// #3973 C3: the Transcript engine row's menu, in the order the menu lists them.
+extension MeetingEngineChoice {
+  var transcriptEngineMapID: SettingsMapID {
+    switch self {
+    case .parakeet: .meetingTranscriptEngineParakeet
+    case .whisper: .meetingTranscriptEngineWhisper
+    }
+  }
+
+  var transcriptEngineTitle: SettingsMapTitle {
+    switch self {
+    case .parakeet: .resource(MeetingsCopy.engineParakeet)
+    case .whisper: .resource(MeetingsCopy.engineWhisper)
+    }
+  }
+}

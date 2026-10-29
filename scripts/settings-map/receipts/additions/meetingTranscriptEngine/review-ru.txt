@@ -1,0 +1,27 @@
+{
+  "meetingTranscriptEngine": {
+    "language": "ru",
+    "title": "движок полной расшифровки встреч",
+    "words": [],
+    "phrases": [
+      "выбрать движок для полной расшифровки встречи после её завершения",
+      "сменить модель для полной расшифровки встреч"
+    ]
+  },
+  "meetingTranscriptEngine.parakeet": {
+    "language": "ru",
+    "title": "Parakeet",
+    "words": [],
+    "phrases": [
+      "использовать Parakeet для полной расшифровки встреч после их завершения"
+    ]
+  },
+  "meetingTranscriptEngine.whisper": {
+    "language": "ru",
+    "title": "Whisper Large v3 Turbo",
+    "words": [],
+    "phrases": [
+      "использовать Whisper для полной расшифровки встреч после их завершения"
+    ]
+  }
+}

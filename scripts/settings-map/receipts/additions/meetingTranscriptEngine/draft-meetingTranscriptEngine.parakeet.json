@@ -1,0 +1,259 @@
+{
+ "id": "meetingTranscriptEngine.parakeet",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "استخدام Parakeet لتفريغ الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "използване на Parakeet за транскрипция на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "přepis schůzek pomocí Parakeet"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "brug Parakeet til at transskribere møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nutze Parakeet für Meeting-Transkripte"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "χρήση Parakeet για απομαγνητοφώνηση συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use Parakeet for meeting transcripts"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "usar Parakeet para transcribir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "koosolekute transkribeerimine Parakeetiga"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "käytä Parakeetia kokousten litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "utiliser Parakeet pour transcrire les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "मीटिंग को टेक्स्ट में बदलने के लिए Parakeet चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "koristi Parakeet za transkripciju sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "megbeszélések leirata Parakeettel"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "usare Parakeet per trascrivere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "会議の文字起こしにParakeetを使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "회의를 텍스트로 변환할 때 Parakeet 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "naudoti Parakeet susitikimų transkripcijai"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "izmantot Parakeet sapulču transkripcijai"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "uża Parakeet biex tittraskrivi l-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "Parakeet gebruiken om vergaderingen uit te schrijven"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "użyj Parakeet do transkrypcji spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "usar Parakeet para transcrever reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "folosește Parakeet pentru transcrierea ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "использовать Parakeet для расшифровки встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "prepis stretnutí pomocou Parakeet"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "uporabi Parakeet za prepis sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "använd Parakeet för att transkribera möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "toplantıları yazıya dökmek için Parakeet kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "використовувати Parakeet для розшифрування зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "dùng Parakeet để chuyển lời nói trong cuộc họp thành văn bản"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "Parakeet",
+   "words": [],
+   "phrases": [
+    "用Parakeet把会议语音转成文字"
+   ]
+  }
+ ]
+}
