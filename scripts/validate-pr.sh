@@ -107,6 +107,85 @@ match_canonical_lane() {
   return 1
 }
 
+# #4064: source completeness is decided before output filtering. Keep this callable by
+# the offline self-test; normal execution records its result with record_step below.
+check_broken_refs() {
+  local caller="$1" report="$2" common hook_root top owner_common rc filter_rc status
+  local raw="${2}.raw" diagnostics="${2}.stderr" retained="${2}.retained"
+  if ! printf 'Status: UNAVAILABLE\nCalling checkout: %s\n' "$caller" > "$report"; then
+    echo "Cannot write broken-refs report: $report" >&2
+    return 2
+  fi
+  : > "$raw" && : > "$diagnostics" && : > "$retained" || return 2
+  if ! common=$(git -C "$caller" rev-parse --path-format=absolute --git-common-dir 2>> "$diagnostics"); then
+    printf 'Cannot identify the hook source checkout.\n' >> "$report" || return 2
+    cat "$diagnostics" >> "$report" || return 2
+    return 2
+  fi
+  case "$common" in
+    */.git) hook_root="${common%/.git}" ;;
+    *) printf 'Unsupported Git layout: %s\n' "$common" >> "$report"; return 2 ;;
+  esac
+  if ! top=$(git -C "$hook_root" rev-parse --show-toplevel 2>> "$diagnostics") \
+     || ! owner_common=$(git -C "$hook_root" rev-parse --path-format=absolute --git-common-dir 2>> "$diagnostics") \
+     || [ "$top" != "$hook_root" ] || [ "$owner_common" != "$common" ]; then
+    printf 'Cannot verify the primary hook source checkout: %s\n' "$hook_root" >> "$report" || return 2
+    cat "$diagnostics" >> "$report" || return 2
+    return 2
+  fi
+  printf 'Hook source checkout: %s\n' "$hook_root" >> "$report" || return 2
+  if [ ! -d "$hook_root/.claude/scripts" ] || [ ! -r "$hook_root/.claude/scripts" ] \
+     || [ ! -x "$hook_root/.claude/scripts" ]; then
+    printf 'Missing or unreadable directory: %s/.claude/scripts\n' "$hook_root" >> "$report" || return 2
+    return 2
+  fi
+  if [ ! -f "$hook_root/.claude/settings.json" ] || [ ! -r "$hook_root/.claude/settings.json" ]; then
+    printf 'Missing or unreadable file: %s/.claude/settings.json\n' "$hook_root" >> "$report" || return 2
+    return 2
+  fi
+  if /usr/bin/grep -rn 'needs-uat\|\.needs-uat' \
+      "$hook_root/.claude/scripts/" "$hook_root/.claude/settings.json" > "$raw" 2>> "$diagnostics"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [ "$rc" -gt 1 ]; then
+    printf 'Search incomplete (exit=%s). Partial observations are not a completed check.\n' "$rc" >> "$report" || return 2
+    cat "$diagnostics" "$raw" >> "$report" || return 2
+    return 2
+  fi
+  status=CLEAN
+  rc=0
+  if [ -s "$raw" ]; then
+    # Preserve the PR #498 exclusion policy. These are candidate text matches,
+    # including comments, not proof of a live obsolete marker consumer.
+    if /usr/bin/grep -v 'validate-pr.sh\|check-validation.sh\|attest.sh' "$raw" > "$retained" 2>> "$diagnostics"; then
+      filter_rc=0
+    else
+      filter_rc=$?
+    fi
+    if [ "$filter_rc" -gt 1 ]; then
+      printf 'Exclusion filter failed (exit=%s).\n' "$filter_rc" >> "$report" || return 2
+      cat "$diagnostics" "$raw" >> "$report" || return 2
+      return 2
+    fi
+    if [ "$filter_rc" -eq 0 ]; then status=CANDIDATES; rc=1; fi
+  fi
+  {
+    printf 'Status: %s\nCalling checkout: %s\nHook source checkout: %s\n' "$status" "$caller" "$hook_root" || return 2
+    printf 'Search completed; existing three-name content exclusions apply.\n' || return 2
+    if [ -s "$raw" ]; then
+      printf '\nRaw matches before exclusions:\n' || return 2
+      cat "$raw" || return 2
+    fi
+    if [ -s "$retained" ]; then
+      printf '\nCandidates requiring review (comments may be historical):\n' || return 2
+      cat "$retained" || return 2
+    fi
+  } > "$report" || return 2
+  return "$rc"
+}
+
 # --- Self-test mode ---
 if [ "${1:-}" = "--self-test" ]; then
   TMPDIR=$(mktemp -d -t validate-pr-self-test.XXXXXX)
@@ -270,6 +349,137 @@ Mixed-lane note:|-
   "declared_lane": "Code",|-
 FINDCASES
   echo "self-test: lane line pattern exercised over 14 cases"
+
+  # #4064 harness-contract tests: real Git ownership, real grep and the actual
+  # producer/record_step/verifier chain, with no app or installed-hook changes.
+  probe_base="$TMPDIR/hook probe"
+  mkdir -p "$probe_base"
+  probe_base=$(cd "$probe_base" && pwd -P)
+  probe_root="$probe_base/primary"
+  probe_linked="$probe_base/linked"
+  probe_report="$probe_base/report.txt"
+  probe_git() {
+    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git \
+      -c core.hooksPath=/dev/null -c commit.gpgsign=false \
+      -c user.name=Fixture -c user.email=fixture@example.invalid "$@"
+  }
+  probe_git init -q -b main "$probe_root"
+  probe_git -C "$probe_root" commit --allow-empty -qm fixture
+  probe_git -C "$probe_root" worktree add --detach -q "$probe_linked" HEAD
+  mkdir -p "$probe_root/.claude/scripts" "$probe_linked/.claude/scripts"
+  printf '{}\n' > "$probe_root/.claude/settings.json"
+  printf 'ordinary hook\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  printf 'needs-uat copied worktree decoy\n' > "$probe_linked/.claude/scripts/decoy.sh"
+  printf '{}\n' > "$probe_linked/.claude/settings.json"
+  probe_case() {
+    local label="$1" caller="$2" expected="$3" needle="$4" got
+    if check_broken_refs "$caller" "$probe_report" 2> "$probe_base/call.stderr"; then got=0; else got=$?; fi
+    if [ "$got" -eq "$expected" ] && /usr/bin/grep -qF -- "$needle" "$probe_report"; then
+      pass=$((pass + 1)); echo "self-test PASS: hook sources $label"
+    else
+      fail=$((fail + 1)); echo "self-test FAIL: hook sources $label (expected $expected, got $got)"
+      cat "$probe_report" "$probe_base/call.stderr"
+    fi
+  }
+  probe_case 'known-present clean inputs' "$probe_root" 0 'Status: CLEAN'
+  probe_case 'linked checkout ignores its copied hooks' "$probe_linked" 0 "Hook source checkout: $probe_root"
+  printf 'needs-uat live fixture marker\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  probe_case 'known-present live candidate' "$probe_root" 1 'Status: CANDIDATES'
+  probe_case 'linked checkout sees the primary candidate' "$probe_linked" 1 "$probe_root/.claude/scripts/ordinary.sh:1:"
+  printf '# historical .needs-uat mention\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  probe_case 'historical text stays a review candidate' "$probe_root" 1 'comments may be historical'
+  printf 'needs-uat mention of validate-pr.sh\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  probe_case 'existing exclusions retain raw evidence' "$probe_root" 0 'Raw matches before exclusions:'
+  printf 'ordinary hook\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  probe_case 'clean report before sequential retry' "$probe_root" 0 'Status: CLEAN'
+  mv "$probe_root/.claude/settings.json" "$probe_root/settings.saved"
+  probe_case 'missing settings replaces prior clean report' "$probe_root" 2 'Status: UNAVAILABLE'
+  printf 'needs-uat live fixture marker\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  probe_case 'missing input overrides matching member' "$probe_root" 2 'Missing or unreadable file:'
+  probe_case 'linked copies cannot hide a missing primary input' "$probe_linked" 2 'Missing or unreadable file:'
+  mkdir "$probe_root/.claude/settings.json"
+  probe_case 'settings wrong type' "$probe_root" 2 'Missing or unreadable file:'
+  rmdir "$probe_root/.claude/settings.json"
+  mv "$probe_root/settings.saved" "$probe_root/.claude/settings.json"
+  mv "$probe_root/.claude/scripts" "$probe_root/scripts.saved"
+  probe_case 'missing hook directory' "$probe_root" 2 'Missing or unreadable directory:'
+  mv "$probe_root/scripts.saved" "$probe_root/.claude/scripts"
+  if [ "$(id -u)" -ne 0 ]; then
+    chmod 000 "$probe_root/.claude/settings.json"
+    probe_case 'unreadable settings' "$probe_root" 2 'Missing or unreadable file:'
+    chmod 600 "$probe_root/.claude/settings.json"
+    printf 'unreadable hook\n' > "$probe_root/.claude/scripts/unreadable.sh"
+    chmod 000 "$probe_root/.claude/scripts/unreadable.sh"
+    probe_case 'actual partial read failure' "$probe_root" 2 'Search incomplete'
+    if /usr/bin/grep -qF 'ordinary.sh:1:needs-uat' "$probe_report" \
+       && [ -s "${probe_report}.stderr" ]; then
+      pass=$((pass + 1)); echo 'self-test PASS: partial observations and read diagnostics survive'
+    else
+      fail=$((fail + 1)); echo 'self-test FAIL: partial observations or diagnostics lost'
+    fi
+    chmod 600 "$probe_root/.claude/scripts/unreadable.sh"
+    chmod 000 "$probe_root/.claude/scripts"
+    probe_case 'unreadable hook traversal' "$probe_root" 2 'Missing or unreadable directory:'
+    chmod 700 "$probe_root/.claude/scripts"
+  else
+    echo 'self-test SKIP: permission fixtures need a non-root account; no permission result claimed'
+  fi
+  probe_case 'not a Git checkout' "$probe_base" 2 'Cannot identify the hook source checkout'
+  probe_git init -q --separate-git-dir "$probe_base/separate-metadata" "$probe_base/separate"
+  probe_case 'unsupported separate Git layout' "$probe_base/separate" 2 'Unsupported Git layout:'
+  mkdir "$probe_base/report-directory"
+  if check_broken_refs "$probe_root" "$probe_base/report-directory" 2> "$probe_base/write-error.txt"; then
+    fail=$((fail + 1)); echo 'self-test FAIL: failed report write returned clean'
+  else
+    pass=$((pass + 1)); echo 'self-test PASS: failed report write is non-success'
+  fi
+
+  # Lift the real recorder, call site and writer, not a fake result mapper. The
+  # final verifier sees fixture-only prose evidence, never a real review receipt.
+  eval "$(sed -n '/^record_step() {/,/^}/p' "$0")"
+  probe_call=$(sed -n '/^    # #4064 source probe:/,/^    # Per Codex round 3 P2:/p' "$0")
+  probe_writer=$(sed -n '/^# --- Write run.json ---/,/^# --- Final assertion ---/p' "$0")
+  [ -n "$probe_call" ] && [ -n "$probe_writer" ]
+  probe_verifier="$PROJECT_ROOT/scripts/check-validation.sh"
+  probe_head=$(git -C "$PROJECT_ROOT" rev-parse HEAD)
+  probe_integration() {
+    local expected="$1" expected_obligation="$2" got
+    local PROJECT_ROOT="$probe_root" RUN_DIR="$probe_base/integration-$expected"
+    local SATISFIED SKIPPED SKIP_NOTES HEAD_SHA BRANCH DECLARED DETECTED CHANGED IS_MIXED STARTED_AT
+    local COMPLETED_AT DETECTED_JSON CHANGED_JSON SATISFIED_JSON SKIPPED_JSON SKIP_NOTES_JSON refs_rc
+    mkdir -p "$RUN_DIR"
+    printf 'FIXTURE ONLY: artificial review evidence for source-probe contract checks.\n' > "$RUN_DIR/codex-prose.txt"
+    SATISFIED=(codex-prose); SKIPPED=(); SKIP_NOTES=()
+    eval "$probe_call" || return 2
+    HEAD_SHA="$probe_head"; BRANCH=fixture; DECLARED=Docs/dev-tooling
+    DETECTED=Docs/dev-tooling; CHANGED=''; IS_MIXED=false
+    STARTED_AT=2026-10-29T00:00:00Z
+    eval "$probe_writer" || return 2
+    if "$probe_verifier" "$RUN_DIR" > "$RUN_DIR/verifier.txt" 2>&1; then got=0; else got=$?; fi
+    [ "$got" -eq "$expected" ] \
+      && jq -e --argjson wanted "$expected_obligation" \
+        '((.obligations_satisfied | index("broken-refs")) != null) == $wanted' "$RUN_DIR/run.json" >/dev/null
+  }
+  printf 'ordinary hook\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  if probe_integration 0 true; then
+    pass=$((pass + 1)); echo 'self-test PASS: real recorder and verifier accept complete clean search'
+  else
+    fail=$((fail + 1)); echo 'self-test FAIL: real clean-search integration'
+  fi
+  mv "$probe_root/.claude/settings.json" "$probe_root/settings.saved"
+  if probe_integration 2 false; then
+    pass=$((pass + 1)); echo 'self-test PASS: real recorder and verifier reject unavailable source'
+  else
+    fail=$((fail + 1)); echo 'self-test FAIL: unavailable source passed recorder/verifier'
+  fi
+  mv "$probe_root/settings.saved" "$probe_root/.claude/settings.json"
+  printf 'needs-uat live fixture marker\n' > "$probe_root/.claude/scripts/ordinary.sh"
+  if probe_integration 2 false \
+     && /usr/bin/grep -qF 'Status: CANDIDATES' "$probe_base/integration-2/broken-refs-grep.txt"; then
+    pass=$((pass + 1)); echo 'self-test PASS: real recorder and verifier reject undisposed candidates'
+  else
+    fail=$((fail + 1)); echo 'self-test FAIL: candidate result passed recorder/verifier'
+  fi
 
   echo "self-test results: $pass passed, $fail failed"
   [ "$fail" -eq 0 ]
@@ -614,18 +824,12 @@ case "$DECLARED" in
     # surfaces only (.claude/scripts/, .claude/settings.json) and exclude
     # the PR #498 framework scripts. Framework documentation can mention
     # the deleted concept freely; real leftover refs in production fail.
-    grep_matches=$(grep -rn "needs-uat\|\.needs-uat" \
-      "$PROJECT_ROOT/.claude/scripts/" \
-      "$PROJECT_ROOT/.claude/settings.json" \
-      2>/dev/null \
-      | grep -v "validate-pr.sh\|check-validation.sh\|attest.sh" \
-      || true)
-    if [ -n "$grep_matches" ]; then
-      echo "$grep_matches" > "$RUN_DIR/broken-refs-grep.txt"
-      record_step "broken-refs" 1 "stale .needs-uat references found in production hook surfaces — see broken-refs-grep.txt"
+    # #4064 source probe: only a completed clean search satisfies this obligation.
+    if check_broken_refs "$PROJECT_ROOT" "$RUN_DIR/broken-refs-grep.txt"; then
+      record_step "broken-refs" 0 "hook source search completed cleanly under existing exclusions"
     else
-      echo "(empty — no stale .needs-uat references in production hook surfaces, as expected)" > "$RUN_DIR/broken-refs-grep.txt"
-      record_step "broken-refs" 0 "grep clean"
+      refs_rc=$?
+      record_step "broken-refs" "$refs_rc" "hook source check needs review (exit=$refs_rc; 1=candidates, 2=unavailable); see broken-refs-grep.txt"
     fi
     # Per Codex round 3 P2: writing a stub `codex-prose.txt` and immediately
     # marking codex-prose as satisfied lets a Docs/dev-tooling PR pass
