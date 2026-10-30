@@ -29,7 +29,7 @@ struct RecoverySpoolStoreTests {
       wordCorrectionEnabled: false,
       fillerRemovalEnabled: true,
       emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
       customWordsVersion: nil,
       llmProvider: "openAI",
       llmModel: "gpt-4o-mini",

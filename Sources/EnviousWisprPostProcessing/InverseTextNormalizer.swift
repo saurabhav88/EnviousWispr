@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Deterministic inverse text normalization (ITN): spoken-form → written-form.
@@ -255,8 +256,18 @@ public struct InverseTextNormalizer: Sendable {
   ///   (#3038, `slashReading`) — and the sentence-capitalization pass run regardless.
   ///   Defaults to `false`, matching the shipped product default (#1794) so a caller that
   ///   forgets it gets the shipped behaviour.
+  ///   `true` means the bare English commands with "period" still a command (#4216); a caller that
+  ///   needs the period switch passes `SpokenPunctuationSettings` to `normalizeReportingFinalFullStop`.
   public func normalize(_ text: String, spokenPunctuation: Bool = false) -> String {
-    normalizeReportingFinalFullStop(text, spokenPunctuation: spokenPunctuation).text
+    normalizeReportingFinalFullStop(
+      text, spokenPunctuation: Self.bareEnglishSettings(enabled: spokenPunctuation)
+    ).text
+  }
+
+  /// The Bool facades' meaning (#4216): `false` is `.off`; `true` is the switch on with no start word
+  /// and "period" still a command, which is exactly what `true` meant before the period switch existed.
+  package static func bareEnglishSettings(enabled: Bool) -> SpokenPunctuationSettings {
+    SpokenPunctuationSettings(enabled: enabled, startWordOverrides: [:], englishPeriodWord: true)
   }
 
   /// `normalize`, plus whether the text ENDS with a full stop the user SAID (#3737 Casual mode keeps
@@ -265,9 +276,12 @@ public struct InverseTextNormalizer: Sendable {
   /// recogniser-mark reconciliation has absorbed the engine's mark beside a command). Any surviving
   /// mark after the command makes it false, so an untouched input dot is never attributed to a
   /// command. Always false while `spokenPunctuation` is off.
-  package func normalizeReportingFinalFullStop(_ text: String, spokenPunctuation: Bool)
-    -> (text: String, spokenFinalFullStop: Bool)
-  {
+  package func normalizeReportingFinalFullStop(
+    _ text: String, spokenPunctuation settings: SpokenPunctuationSettings
+  ) -> (text: String, spokenFinalFullStop: Bool) {
+    // Only the switch and the English period word matter here; start words are the caller's route.
+    let spokenPunctuation = settings.enabled
+    let periodWord = settings.englishPeriodWord
     var t = " " + text.trimmingCharacters(in: .whitespacesAndNewlines) + " "
 
     // "shout" = the whole utterance is upper-case (typed in caps). In shout text a capitalized
@@ -647,10 +661,14 @@ public struct InverseTextNormalizer: Sendable {
     t = reSub(#"\b(\d[\d,]*\.\d+)\s+(?:percent|per\s+cent)\b"#, t) { m in "\(m.g(1) ?? "")% " }
 
     t = keepMagnitude(t)  // '$80,000,000'->'$80 million' (founder house style), keep the word
-    if spokenPunctuation { t = Self.reconcileEnglishRecognizerMarks(t) }  // #3594
+    if spokenPunctuation {  // #3594
+      t = Self.reconcileEnglishRecognizerMarks(t, periodWord: periodWord)
+    }
+    let finalFullStopPattern =
+      periodWord ? Self.spokenFinalFullStopPattern : Self.spokenFinalFullStopOnlyPattern  // #4216
     let spokenFinalFullStop =
-      spokenPunctuation && firstMatch(Self.spokenFinalFullStopPattern, t) != nil  // #3737
-    t = applyPunct(t, spokenPunctuation: spokenPunctuation)
+      spokenPunctuation && firstMatch(finalFullStopPattern, t) != nil  // #3737
+    t = applyPunct(t, spokenPunctuation: spokenPunctuation, periodWord: periodWord)
 
     // restore register-preserved spans verbatim
     t = Self.restoreProtectedSpans(t, protected)
@@ -2406,6 +2424,9 @@ public struct InverseTextNormalizer: Sendable {
   /// the LAST full-stop command decides.
   static let spokenFinalFullStopPattern =
     "(?:" + periodRow + "|" + fullStopRow + #")(?:\s+new (?:paragraph|line)\b)*\s*\z"#
+  /// #4216: the same report with the English period switch off, where only "full stop" is a command.
+  static let spokenFinalFullStopOnlyPattern =
+    "(?:" + fullStopRow + #")(?:\s+new (?:paragraph|line)\b)*\s*\z"#
 
   /// #2955 / #3038: the joiner pattern for "slash" / "forward slash" and "backslash" / "back slash",
   /// matched in ONE pass because a joiner that follows another joiner has already lost its
@@ -2845,7 +2866,7 @@ public struct InverseTextNormalizer: Sendable {
   ///   (#3038). Sentence capitalization below runs REGARDLESS: it keys off `.!?` whoever produced
   ///   them, including the marks the speech recognizer adds on its own, so it is general
   ///   formatting rather than part of the spoken-command feature.
-  private func applyPunct(_ t0: String, spokenPunctuation: Bool) -> String {
+  private func applyPunct(_ t0: String, spokenPunctuation: Bool, periodWord: Bool) -> String {
     var t = t0
     // #3738: spoken symbols FIRST, as on the start-word route, so the only commas the symbol pass can
     // drop inside a pair are the engine's: a spoken "comma" is still the word here and converts below
@@ -2853,9 +2874,12 @@ public struct InverseTextNormalizer: Sendable {
     // inside brackets (its left neighbour class accepts `(`), and beside any other symbol through the
     // gap the symbol pass leaves (`joinerGapCharacter`), removed once the joiner pass has run.
     let joinerGap = spokenPunctuation && !t0.contains(Self.joinerGapCharacter)
-    if spokenPunctuation { t = Self.applyEnglishSymbolCommands(t, joinerGap: joinerGap) }
     if spokenPunctuation {
-      for (pat, rep) in Self.punct {
+      t = Self.applyEnglishSymbolCommands(t, joinerGap: joinerGap, periodWord: periodWord)
+    }
+    if spokenPunctuation {
+      // #4216: with the English period switch off, "period" is an ordinary word; "full stop" stays.
+      for (pat, rep) in Self.punct where periodWord || pat != Self.periodRow {
         t = reSub(pat, t) { _ in rep }
       }
     }

@@ -4,10 +4,10 @@ description: "How to dictate slash commands, punctuation marks, brackets, quotes
 category: "features"
 section: "Text Processing"
 order: 3
-keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation", "casual mode", "full stop at the end", "period at the end of every dictation", "remove the final period", "no period at the end", "turn off the final full stop", "parenthesis", "left parenthesis", "brackets", "quotes", "open quote", "underscore", "hyphen", "symbols", "say a symbol"]
+keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "keep period as a word", "period written as a full stop", "say full stop instead of period", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation", "casual mode", "full stop at the end", "period at the end of every dictation", "remove the final period", "no period at the end", "turn off the final full stop", "parenthesis", "left parenthesis", "brackets", "quotes", "open quote", "underscore", "hyphen", "symbols", "say a symbol"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-10-14
+updated: 2026-10-30
 deflection: "can_resolve"
 ---
 You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Dictation Settings** > **Engine**.
@@ -45,6 +45,8 @@ Turn on **Spoken punctuation** in **Dictation Settings** > **Engine**. It is off
 | new paragraph | a blank line |
 
 Backslash joins the words on both sides, so "C colon backslash Users" becomes "C:\Users".
+
+"period" works while **English: say "period" for a dot** is on, which is the default. If you say "full stop" and need "period" as an ordinary word, see Keep "period" as a normal word (English) below.
 
 ### Dictate brackets, quotes and other symbols
 
@@ -128,7 +130,7 @@ Only the last full stop goes. "Sounds good, see you at three." becomes "Sounds g
 - Question marks and exclamation marks, because they change what you mean.
 - An ellipsis, and dotted endings such as "9 a.m.", "the U.S." and "Ph.D.".
 - In languages other than English, a dot right after a number, because it can be an ordinal, like German "am 3.".
-- A full stop you say out loud with **Spoken punctuation** on, like "see you period". If your speech engine already turned the word into a full stop before EnviousWispr saw it, EnviousWispr cannot tell, and the full stop may still be left off.
+- A full stop you say out loud with **Spoken punctuation** on, like "see you full stop". If your speech engine already turned the word into a full stop before EnviousWispr saw it, EnviousWispr cannot tell, and the full stop may still be left off.
 - The ending of a snippet, when the dictation ends with one.
 
 A final "etc.", "Dr." or "Inc." loses its dot.
@@ -247,17 +249,19 @@ Say the start word, then the command, in the language you dictate in. These tabl
 
 ### Choose your own start word
 
-Turn on **Spoken punctuation**. A **Start word** row appears under it.
+Turn on **Spoken punctuation**. A **Configure…** button appears beside it.
 
-1. Pick a language in **Start word for**.
-2. Type your word and press Return.
-3. Press **Reset** to bring back the default word for that language.
+1. **Open the window.** Press **Configure…**. The **Spoken punctuation** window opens.
+2. **Pick a language.** Choose one in **Start word for**.
+3. **Set the word.** Type your word and press Return.
+4. **Go back to the default.** Press **Reset** to bring back the default word for that language.
+5. **Close the window.** Press **Done**.
 
 Picking a language here only chooses which start word you edit. It does not change your dictation language.
 
 If your speech engine often writes a different word for your start word, pick another word. A word the engine hears clearly works best.
 
-English has no start word by default, so its commands work on their own. To use a start word in English, pick **English** in **Start word for** and type a word, for example "Insert". Then "insert period" gives a full stop, and "the grace period expires" stays words. A start word works with comma, period, full stop, question mark, exclamation mark, exclamation point, colon, semicolon, new line and new paragraph. Backslash is not one of them and is off while English has a start word. The spoken slash is not affected. Clear the field to go back to no start word.
+English has no start word by default, so its commands work on their own. To use a start word in English, pick **English** in **Start word for** and type a word, for example "Insert". Then "insert full stop" gives a full stop, and "the grace period expires" stays words. If you only need "period" as a word, the period switch below is simpler. A start word works with comma, period (while the period switch is on), full stop, question mark, exclamation mark, exclamation point, colon, semicolon, new line and new paragraph. Backslash is not one of them and is off while English has a start word. The spoken slash is not affected. Clear the field to go back to no start word.
 
 To use no start word, clear the field and press Return. The field then shows **No start word**. Every command word of that language now becomes a mark wherever you say it, as English does. In German, "der springende Punkt" then becomes "der springende." and "drei Komma fünf" becomes "drei, fünf". Press **Reset** to bring back the default start word.
 
@@ -267,11 +271,32 @@ When **Remove filler words** is on, sounds such as "uh", "hmm", "mm" and "ah" ca
 
 Spoken punctuation is meant for dictating with AI polish off. With AI polish on, polish can change the marks a command inserted.
 
-If you do not see the **Start word** row, check that **Spoken punctuation** is on. If it is on and the row is still missing, update EnviousWispr to the latest version.
+If you do not see the **Configure…** button, check that **Spoken punctuation** is on. If it is on and the button is still missing, update EnviousWispr to the latest version.
+
+### Keep "period" as a normal word (English)
+
+In English, "period" is a command by default, so "the grace period expires" gets a full stop in the middle. If you say "full stop" for a dot, you can make "period" an ordinary word again.
+
+1. **Open the window.** With **Spoken punctuation** on, press **Configure…**.
+2. **Turn off the switch.** Turn off **English: say "period" for a dot**. It is on by default.
+3. **Close the window.** Press **Done**.
+
+Now "period" stays a word and "full stop" still gives a full stop. "We met over a period of weeks full stop" becomes "We met over a period of weeks." All the other commands work as before.
+
+The switch is for English only. Other languages keep their own words for a full stop.
+
+If you gave English a start word, the switch applies there too. With the switch off, "insert period" stays words and "insert full stop" gives a full stop.
+
+Some limits:
+
+- **The speech engine can write the dot first.** Sometimes your speech engine turns a spoken "period" into a full stop before EnviousWispr sees the text. The switch cannot bring that word back. "period" stays a word in most sentences, but not always.
+- **AI polish comes after.** With AI polish on, polish can change the punctuation again.
 
 ### A punctuation word appears in the wrong place
 
-In English with no start word, and **Spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. Saying "the grace period expires" puts a full stop in the middle of your sentence. Give English a start word to stop this.
+In English with no start word, and **Spoken punctuation** on, EnviousWispr cannot tell when you meant the word itself. While the period switch is on, which is the default, saying "the grace period expires" puts a full stop in the middle of your sentence.
+
+If "period" is the word that gets in the way, turn off **English: say "period" for a dot** (see Keep "period" as a normal word above) and say "full stop" for a dot. If other command words get in the way too, give English a start word.
 
 In German, French, Spanish and Italian a command word stays a word unless the start word comes right before it. A start word of your own can still come up in a normal sentence, so choose one you would not say. If you chose no start word, a command word is a mark every time you say it.
 
@@ -282,7 +307,7 @@ With **Spoken punctuation** on, the marks you say are not the only marks in your
 EnviousWispr cleans up the clear cases:
 
 - **An extra mark right next to a spoken one.** You say "comma" and the engine also writes a comma or a period beside it. You get one comma.
-- **A command the engine wrote twice.** "Period. period." becomes one full stop.
+- **A command the engine wrote twice.** "Period. period." becomes one full stop. With the period switch off, "period" is not a command, so this applies to "full stop" instead.
 - **A pause in the middle of a command.** If a pause makes the engine put a full stop or comma between the start word and the command, as in "Diktiere. Punkt", it still counts as one command.
 
 This cleanup works in English, German, French, Spanish and Italian. Other languages, and dictation with **Spoken punctuation** off, behave as before.
@@ -293,7 +318,7 @@ Some things stay as they are:
 - **A start word the engine leaves behind.** Sometimes the engine turns your command into a mark itself and leaves the start word in the text, for example "Anna, diktiere, Jonas". Delete the extra word by hand.
 - **A mark in front of a new line or new paragraph.** A full stop before the break stays. When the break follows a sentence-ending mark, a spoken mark command, or an engine-added comma, semicolon or colon, cleanup can remove a full stop or comma after the break. It cannot tell whether you wanted that mark there; add it back by hand if needed.
 - **Marks that belong to a word.** Abbreviations such as "Dr." and "p.m.", the German "z.B.", the German dot after a number as in "am 2. Juni", marks joined to the next word as in "example.com", and an ellipsis ("...") are not touched.
-- **A command you say twice on purpose.** "Period period" gives two full stops.
+- **A command you say twice on purpose.** With the period switch on, "Period period" gives two full stops.
 - **Marks added by AI polish.** AI polish can change the punctuation again after this cleanup.
 
 If an engine mark still lands where you did not want it, delete it by hand. If **Spoken punctuation** gets in your way, switch it off.

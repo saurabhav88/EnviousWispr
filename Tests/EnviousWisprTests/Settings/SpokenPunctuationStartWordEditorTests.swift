@@ -291,6 +291,33 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
+  @Test("Closing the window saves a valid draft and closes")
+  func closingSavesAValidDraft() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.selectLanguage("fr")
+    editor.userEdited("Dictée")
+    #expect(editor.settleForClosing())
+    #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "Dictée"])
+  }
+
+  @Test("Closing the window with a refused draft stays open once, shows why, then closes")
+  func closingWithARefusedDraftStaysOpen() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.userEdited("zwei Worte")
+    #expect(editor.settleForClosing() == false)
+    #expect(editor.rejection != nil, "the reason is on screen")
+    #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
+    #expect(editor.settleForClosing(), "the old word is back, so the next close goes through")
+  }
+
+  @Test("Closing the window with nothing typed closes")
+  func closingWithNothingTypedCloses() {
+    let editor = SpokenPunctuationStartWordEditor(settings: Self.freshSettings())
+    #expect(editor.settleForClosing())
+  }
+
   @Test("The no-start-word warning shows for a blank draft before it is committed")
   func warningShowsForABlankDraft() {
     let settings = Self.freshSettings()
@@ -337,6 +364,23 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(editor.startWord(for: "de") == "Diktiere", "another language is untouched")
     #expect(SpokenPunctuationLanguagePicker.startWordLine("") == SpokenPunctuationCopy.noStartWordPlaceholder)
     #expect(SpokenPunctuationLanguagePicker.startWordLine("Sprich") == "Sprich")
+  }
+
+  /// #4216: the example names a command the pass accepts, so with the English period switch off it
+  /// says "full stop", with and without a start word; other languages keep their own word.
+  @Test("The English example says full stop while the period switch is off")
+  func examplesFollowThePeriodSwitch() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.selectLanguage("en")
+    #expect(editor.exampleCommand == "period")
+    settings.spokenPunctuation.englishPeriodWord = false
+    #expect(editor.exampleCommand == "full stop")
+    editor.userEdited("Insert")
+    editor.commitDraft()
+    #expect(editor.exampleCommand == "Insert full stop")
+    editor.selectLanguage("de")
+    #expect(editor.exampleCommand == "Diktiere Punkt")
   }
 
   @Test("English is offered first, starts with no start word, and takes one the user types")

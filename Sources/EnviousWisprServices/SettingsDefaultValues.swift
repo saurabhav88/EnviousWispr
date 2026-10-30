@@ -144,6 +144,8 @@ enum SettingsDefaultValues {
   static let casualModeEnabled = false
   /// Nothing customised: every language uses its default start word (#2450).
   static let spokenPunctuationStartWordOverrides: [String: String] = [:]
+  /// #4216: English "period" stays a punctuation command until the user turns it off in Configure.
+  static let spokenPunctuationEnglishPeriodWord = true
 
   // #1063: crash-recovery audio safety copy. Default ON — every recording is
   // protected by an encrypted, auto-deleted-on-success spool. Off means never

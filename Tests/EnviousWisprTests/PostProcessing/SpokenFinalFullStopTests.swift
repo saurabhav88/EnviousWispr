@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -11,14 +12,17 @@ struct SpokenFinalFullStopTests {
 
   private let normalizer = InverseTextNormalizer()
 
-  private func english(_ text: String, spoken: Bool = true) -> (String, Bool) {
-    let r = normalizer.normalizeReportingFinalFullStop(text, spokenPunctuation: spoken)
+  private func english(_ text: String, spoken: Bool = true, periodWord: Bool = true) -> (String, Bool) {
+    let r = normalizer.normalizeReportingFinalFullStop(
+      text,
+      spokenPunctuation: SpokenPunctuationSettings(
+        enabled: spoken, startWordOverrides: [:], englishPeriodWord: periodWord))
     return (r.text, r.spokenFinalFullStop)
   }
 
   private func german(_ text: String, startWord: String = "Diktiere") -> SpokenPunctuationResult {
     normalizer.applyStartWordPunctuation(
-      text, language: "de", startWord: startWord, protectedSentinels: [])
+      text, language: "de", startWord: startWord, englishPeriodWord: true, protectedSentinels: [])
   }
 
   @Test(
@@ -85,5 +89,29 @@ struct SpokenFinalFullStopTests {
     #expect(!german("Hallo Diktiere Punkt Diktiere Komma").spokenFinalFullStop)
     #expect(!german("Bis morgen Punkt").spokenFinalFullStop)
     #expect(!german("Bis morgen.").spokenFinalFullStop)
+  }
+}
+
+// MARK: - #4216 the English period switch
+
+extension SpokenFinalFullStopTests {
+
+  @Test(
+    "Period switch OFF: only full stop reports a spoken final full stop",
+    arguments: [
+      ("see you full stop", true),
+      ("see you full stop new paragraph", true),
+      ("see you period", false),
+      ("see you Period", false),
+      ("see you period new line", false),
+    ])
+  func periodSwitchOff(input: String, expected: Bool) {
+    #expect(english(input, periodWord: false).1 == expected)
+  }
+
+  @Test("Period switch OFF: a final period keeps the word in the text")
+  func periodSwitchOffKeepsTheWord() {
+    #expect(english("See you period", periodWord: false).0 == "See you period")
+    #expect(english("See you full stop", periodWord: false).0 == "See you.")
   }
 }

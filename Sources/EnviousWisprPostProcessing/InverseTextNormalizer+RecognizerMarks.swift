@@ -21,11 +21,18 @@ extension InverseTextNormalizer {
   /// The English MARK and LINE-BREAK command forms as regex alternations, read from the same table the
   /// start-word option uses (`MultilingualSpokenPunctuationTests` ties it to `punct`), so there is one
   /// list. Spaces inside a form accept any whitespace run, like `punct`.
-  private static let englishPhrases: (marks: String, breaks: String) = {
+  /// #4216: one cached pair per position of the English period switch, both read from the active
+  /// vocabulary owner, so with the switch off "period" is never a phrase here and an engine "Period."
+  /// keeps its mark.
+  private static let englishPhrasesWithPeriod = englishPhrases(periodWord: true)
+  private static let englishPhrasesWithoutPeriod = englishPhrases(periodWord: false)
+
+  private static func englishPhrases(periodWord: Bool) -> (marks: String, breaks: String) {
     var marks: [String] = []
     var breaks: [String] = []
     // #3738: the legacy marks and breaks only; a symbol never absorbs an engine mark beside it.
-    for rule in SpokenPunctuationRules.startWordRules(for: "en") ?? [] where rule.command.role != .symbol {
+    for rule in SpokenPunctuationRules.englishRules(periodWord: periodWord)
+    where rule.command.role != .symbol {
       let isBreak = rule.command == .lineBreak || rule.command == .paragraphBreak
       for form in rule.spokenForms {
         let pattern = form.split(separator: " ")
@@ -38,14 +45,14 @@ extension InverseTextNormalizer {
       forms.isEmpty ? "(?!)" : forms.sorted { $0.count > $1.count }.joined(separator: "|")
     }
     return (alternation(marks), alternation(breaks))
-  }()
+  }
 
   // MARK: - English entry point
 
   /// The English bare-word route, called immediately before `applyPunct`: merge a repeated command, then
   /// remove the engine's marks beside the commands.
-  static func reconcileEnglishRecognizerMarks(_ text: String) -> String {
-    let phrases = englishPhrases
+  static func reconcileEnglishRecognizerMarks(_ text: String, periodWord: Bool) -> String {
+    let phrases = periodWord ? englishPhrasesWithPeriod : englishPhrasesWithoutPeriod
     let merged = mergeRepeatedCommand(
       in: text, forms: phrases.marks + "|" + phrases.breaks, startWord: "")
     return absorbRecognizerMarks(in: merged, markForms: phrases.marks, breakForms: phrases.breaks)

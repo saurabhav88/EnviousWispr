@@ -326,6 +326,8 @@ final class RecoveryCoordinator {
       // #2450: the EFFECTIVE start word per language in force for this take, replayed on recovery.
       spokenPunctuationStartWords: SpokenPunctuationRules.effectiveStartWords(
         overrides: settings.spokenPunctuation.startWordOverrides),
+      // #4216: the period switch in force, frozen with the start words.
+      spokenPunctuationEnglishPeriodWord: settings.spokenPunctuation.englishPeriodWord,
       llmProvider: settings.llmProvider.rawValue,
       llmModel: resolvedModel,
       s1Control: settings.s1Control,

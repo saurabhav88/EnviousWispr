@@ -27,6 +27,8 @@ struct RecoverySpoolCodecTests {
       // #2450: a NON-default effective word for German, so the round-trip rows prove the field
       // survives rather than that defaults were re-minted on the way back.
       spokenPunctuationStartWords: ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"],
+      // #4216: the non-default value, so a round trip proves an explicit OFF survives.
+      spokenPunctuationEnglishPeriodWord: false,
       customWordsVersion: "v3",
       llmProvider: "appleIntelligence",
       llmModel: "apple-intelligence",
@@ -235,6 +237,7 @@ struct RecoverySpoolCodecTests {
       emojiFormatterEnabled: snapshot().emojiFormatterEnabled,
       spokenPunctuationEnabled: snapshot().spokenPunctuationEnabled,
       spokenPunctuationStartWords: snapshot().spokenPunctuationStartWords,
+      spokenPunctuationEnglishPeriodWord: snapshot().spokenPunctuationEnglishPeriodWord,
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
@@ -268,6 +271,7 @@ struct RecoverySpoolCodecTests {
       emojiFormatterEnabled: snapshot().emojiFormatterEnabled,
       spokenPunctuationEnabled: snapshot().spokenPunctuationEnabled,
       spokenPunctuationStartWords: snapshot().spokenPunctuationStartWords,
+      spokenPunctuationEnglishPeriodWord: snapshot().spokenPunctuationEnglishPeriodWord,
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
@@ -310,7 +314,8 @@ struct RecoverySpoolCodecTests {
     #expect(words["de"] == "Sprich")
     fields.removeValue(forKey: "spokenPunctuationStartWords")
     let legacy = try JSONSerialization.data(withJSONObject: fields)
-    #expect(String(decoding: legacy, as: UTF8.self).contains("spokenPunctuationStartWords") == false)
+    #expect(
+      String(decoding: legacy, as: UTF8.self).contains("spokenPunctuationStartWords") == false)
 
     let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
     #expect(decoded.spokenPunctuationStartWords == nil)
@@ -323,6 +328,7 @@ struct RecoverySpoolCodecTests {
       emojiFormatterEnabled: snapshot().emojiFormatterEnabled,
       spokenPunctuationEnabled: snapshot().spokenPunctuationEnabled,
       spokenPunctuationStartWords: nil,
+      spokenPunctuationEnglishPeriodWord: snapshot().spokenPunctuationEnglishPeriodWord,
       customWordsVersion: snapshot().customWordsVersion,
       llmProvider: snapshot().llmProvider,
       llmModel: snapshot().llmModel,
@@ -330,6 +336,39 @@ struct RecoverySpoolCodecTests {
       s1Control: snapshot().s1Control,
       englishSpelling: snapshot().englishSpelling, casualModeEnabled: snapshot().casualModeEnabled)
     #expect(decoded == expected)
+  }
+
+  /// #4216: a spool or frozen import written before the period switch has no
+  /// `spokenPunctuationEnglishPeriodWord` key. It must decode with the field nil and every other
+  /// field intact, and replay with "period" still a command (the behaviour it was recorded under).
+  @Test("a spool written before #4216 decodes with the period switch absent and replays it ON")
+  func legacySpoolWithoutPeriodSwitchStillDecodes() throws {
+    let current = try JSONEncoder().encode(snapshot())
+    var fields = try #require(
+      try JSONSerialization.jsonObject(with: current) as? [String: Any])
+    #expect(
+      fields["spokenPunctuationEnglishPeriodWord"] as? Bool == false,
+      "a NEW snapshot must carry the key, or this row tests nothing")
+    fields.removeValue(forKey: "spokenPunctuationEnglishPeriodWord")
+    let legacy = try JSONSerialization.data(withJSONObject: fields)
+    #expect(
+      String(decoding: legacy, as: UTF8.self).contains("spokenPunctuationEnglishPeriodWord")
+        == false)
+
+    let decoded = try JSONDecoder().decode(RecordingSettingsSnapshot.self, from: legacy)
+    #expect(decoded.spokenPunctuationEnglishPeriodWord == nil)
+    #expect(decoded.spokenPunctuationSettings.englishPeriodWord == true)
+    #expect(decoded.spokenPunctuationStartWords == snapshot().spokenPunctuationStartWords)
+    #expect(decoded.spokenPunctuationEnabled == snapshot().spokenPunctuationEnabled)
+    #expect(decoded.llmModel == snapshot().llmModel)
+  }
+
+  @Test("an explicit period switch OFF survives the round trip and reaches the replay settings")
+  func periodSwitchOffRoundTrips() throws {
+    let decoded = try JSONDecoder().decode(
+      RecordingSettingsSnapshot.self, from: try JSONEncoder().encode(snapshot()))
+    #expect(decoded.spokenPunctuationEnglishPeriodWord == false)
+    #expect(decoded.spokenPunctuationSettings.englishPeriodWord == false)
   }
 
   @Test("the file header round-trips and locates the frames")

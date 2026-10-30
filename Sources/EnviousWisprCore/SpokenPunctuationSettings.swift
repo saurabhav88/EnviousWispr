@@ -16,15 +16,22 @@ import Foundation
 public struct SpokenPunctuationSettings: Sendable, Equatable {
   public var enabled: Bool
   public var startWordOverrides: [String: String]
+  /// #4216: "English: say "period" for a dot". `true` (the default) keeps today's behaviour; `false`
+  /// means the English word "period" is never a punctuation command on any route, while "full stop"
+  /// still is. English only; every other language ignores it. The initializer parameter is not
+  /// defaulted, so every construction states which value it carries.
+  public var englishPeriodWord: Bool
 
-  public init(enabled: Bool, startWordOverrides: [String: String]) {
+  public init(enabled: Bool, startWordOverrides: [String: String], englishPeriodWord: Bool) {
     self.enabled = enabled
     self.startWordOverrides = startWordOverrides
+    self.englishPeriodWord = englishPeriodWord
   }
 
-  /// The shipped default: off, nothing customised. Named so a call site that wants "the default"
-  /// says so instead of repeating two literals.
-  public static let off = SpokenPunctuationSettings(enabled: false, startWordOverrides: [:])
+  /// The shipped default: off, nothing customised, "period" still a command once switched on. Named
+  /// so a call site that wants "the default" says so instead of repeating the literals.
+  public static let off = SpokenPunctuationSettings(
+    enabled: false, startWordOverrides: [:], englishPeriodWord: true)
 }
 
 /// #2450: the single owner of "is this an acceptable start word".

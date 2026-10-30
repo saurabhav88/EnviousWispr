@@ -420,7 +420,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         // The text work for every route is the gate's single implementation (#1677).
         let normalized = InverseTextNormalizationGate.executeReportingFinalFullStop(
           request.input, route: route, rules: rules, normalizer: normalizer,
-          spokenPunctuation: request.spokenPunctuation.enabled)
+          spokenPunctuation: request.spokenPunctuation)
         let text = normalized.text
         // #2450: when this take has a plan (neutral or language route, or English with a start word), the
         // start-word pass runs INSIDE the same closure, so one deadline covers both and a timeout
@@ -434,6 +434,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
         }
         let result = normalizer.applyStartWordPunctuation(
           text, language: language, startWord: startWord,
+          englishPeriodWord: request.spokenPunctuation.englishPeriodWord,
           protectedSentinels: request.protectedSentinels)
         // With a plan the bare English words are off for this take (`normalizerSettings`), so the
         // start-word pass is the only matcher that can have converted a final full stop.
@@ -621,7 +622,8 @@ extension InverseTextNormalizationStep {
     else { return language }
     let plan = punctuationPlan(language: base, englishVetoed: false, settings: settings)
     guard let word = plan.startWord, !word.isEmpty,
-      InverseTextNormalizer.hasStartWordCommand(in: text, language: base, startWord: word)
+      InverseTextNormalizer.hasStartWordCommand(
+        in: text, language: base, startWord: word, englishPeriodWord: settings.englishPeriodWord)
     else { return language }
     return base
   }
@@ -744,7 +746,7 @@ public enum InverseTextNormalizationGate {
   /// through to the English lexicon.
   package static func execute(
     _ text: String, route: Route, rules: LanguageRuleSet?, normalizer: InverseTextNormalizer,
-    spokenPunctuation: Bool
+    spokenPunctuation: SpokenPunctuationSettings
   ) -> String {
     executeReportingFinalFullStop(
       text, route: route, rules: rules, normalizer: normalizer,
@@ -757,7 +759,7 @@ public enum InverseTextNormalizationGate {
   /// start-word pass, which reports its own.
   package static func executeReportingFinalFullStop(
     _ text: String, route: Route, rules: LanguageRuleSet?, normalizer: InverseTextNormalizer,
-    spokenPunctuation: Bool
+    spokenPunctuation: SpokenPunctuationSettings
   ) -> (text: String, spokenFinalFullStop: Bool) {
     switch route {
     case .english:
@@ -792,6 +794,6 @@ public enum InverseTextNormalizationGate {
     }
     return execute(
       text, route: route, rules: rules, normalizer: normalizer,
-      spokenPunctuation: spokenPunctuation)
+      spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spokenPunctuation))
   }
 }

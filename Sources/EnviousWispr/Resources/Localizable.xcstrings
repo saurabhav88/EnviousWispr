@@ -5221,6 +5221,17 @@
         }
       }
     },
+    "Choose how spoken commands turn into marks." : {
+      "comment" : "Spoken punctuation window: the line under the title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leg fest, wie gesprochene Befehle zu Satzzeichen werden."
+          }
+        }
+      }
+    },
     "Choose short, distinctive words after the keyword." : {
       "localizations" : {
         "de" : {
@@ -5596,7 +5607,7 @@
       }
     },
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nLive Preview settings: catalog close label.",
+      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nLive Preview settings: catalog close label.\nSpoken punctuation window: spoken name of the close button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5742,6 +5753,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live-Vorschau einrichten"
+          }
+        }
+      }
+    },
+    "Configure spoken punctuation" : {
+      "comment" : "Speech engine settings, spoken punctuation: spoken name of the Configure button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesprochene Satzzeichen einrichten"
+          }
+        }
+      }
+    },
+    "Configure…" : {
+      "comment" : "Speech engine settings, spoken punctuation: button beside the switch that opens the spoken punctuation window.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten…"
           }
         }
       }
@@ -7047,7 +7080,7 @@
       }
     },
     "Done" : {
-      "comment" : "AI Polish, Ollama: closes the model list sheet.\nLive Preview settings: catalog done button.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
+      "comment" : "AI Polish, Ollama: closes the model list sheet.\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7738,6 +7771,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Englisch funktioniert wie bisher: Sag das Wort einfach allein. Du kannst auch für Englisch ein Startwort festlegen."
+          }
+        }
+      }
+    },
+    "English: say \"period\" for a dot" : {
+      "comment" : "Spoken punctuation window: name of the switch that makes the English word period a punctuation command. Keep the word period in English: it is a word the user says.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisch: „period“ für einen Punkt sagen"
           }
         }
       }
@@ -9838,13 +9882,24 @@
         }
       }
     },
-    "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
+    "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". To keep \"period\" as a word, turn it off in Configure. Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol." : {
       "comment" : "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Im Englischen ohne Startwort werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
+            "value" : "Im Englischen ohne Startwort werden diese Wörter zu Satzzeichen, selbst wenn du das Wort selbst meintest, etwa in „the grace period expires“. Damit „period“ ein Wort bleibt, schalte es unter „Einrichten“ aus. Der Befehl „slash“ funktioniert auch bei ausgeschalteter Einstellung: „slash clear“ wird zu /clear, „command is slash wfp“ zu command is /wfp und „pros slash cons“ zu pros/cons. „slash the budget“ bleibt als Wörter stehen. Bei manchen Verwendungen als Verb, etwa „slash prices“, kann trotzdem ein Zeichen entstehen."
+          }
+        }
+      }
+    },
+    "In English, \"period\" is a command too. If you say \"full stop\" instead, turn \"period\" off in Configure." : {
+      "comment" : "Speech engine settings, spoken punctuation help: the English period switch lives in the Configure window. Keep period and full stop in English: they are words the user says.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Englischen ist auch „period“ ein Befehl. Wenn du stattdessen „full stop“ sagst, schalte „period“ unter „Einrichten“ aus."
           }
         }
       }
@@ -18355,7 +18410,7 @@
       }
     },
     "Spoken punctuation" : {
-      "comment" : "Speech engine settings, spoken punctuation: the toggle's name.",
+      "comment" : "Speech engine settings, spoken punctuation: the toggle's name.\nSpoken punctuation window: the window's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21638,6 +21693,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren während Meetings ausschalten"
+          }
+        }
+      }
+    },
+    "Turn off to keep \"period\" as a normal word. \"Full stop\" still makes a dot." : {
+      "comment" : "Spoken punctuation window: line under the period switch. Keep period and Full stop in English: they are words the user says.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausschalten, damit „period“ ein normales Wort bleibt. „Full stop“ setzt weiterhin einen Punkt."
           }
         }
       }
@@ -26718,6 +26784,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏎"
+          }
+        }
+      }
+    },
+    "whatsNew.keep-period-as-a-word.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry keep-period-as-a-word).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep \"Period\" as a Word"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Period“ als Wort behalten"
+          }
+        }
+      }
+    },
+    "whatsNew.keep-period-as-a-word.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry keep-period-as-a-word).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Say \"full stop\" instead of \"period\"? Open Configure beside Spoken punctuation and turn \"period\" off. It stays a normal word, and \"full stop\" still makes a dot."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du sagst „full stop“ statt „period“? Öffne „Einrichten“ neben „Gesprochene Satzzeichen“ und schalte „period“ aus. Es bleibt ein normales Wort, und „full stop“ setzt weiterhin einen Punkt."
           }
         }
       }

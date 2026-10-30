@@ -3767,7 +3767,7 @@ extension KernelFinalizationWiringTests {
   private func punctuationSteps() -> LimbSteps {
     let steps = makeSteps()
     steps.inverseTextNormalization.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: true, startWordOverrides: [:])
+      enabled: true, startWordOverrides: [:], englishPeriodWord: true)
     return steps
   }
 

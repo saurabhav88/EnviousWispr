@@ -2,24 +2,25 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// #2450: the "Start word" row, shown under the Spoken punctuation switch while it is on.
+/// #2450: the "Start word" row. #4216: it lives in the Spoken punctuation window
+/// (`SpokenPunctuationConfigureSheet`), so it is sheet content: no Settings Map arrival target of its
+/// own; a search for it lands on the Spoken punctuation row, where the Configure button is.
 ///
 /// A picker chooses which language's start word is edited, and a field edits it. All the editing rules
 /// live in `SpokenPunctuationStartWordEditor`; this view only draws its state. Keyboard, VoiceOver,
 /// focus and the rendered layout are proven by hand in the dev app, not by this file's declarations.
 struct SpokenPunctuationStartWordRow: View {
-  @State private var editor: SpokenPunctuationStartWordEditor
+  /// Owned by the window, so its Done button can settle the draft before closing.
+  let editor: SpokenPunctuationStartWordEditor
   @FocusState private var fieldFocused: Bool
-
-  init(settings: SettingsManager) {
-    _editor = State(initialValue: SpokenPunctuationStartWordEditor(settings: settings))
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       SettingsRow(
-        map: .id(.startWordLanguage),
-        icon: "text.cursor"
+        notInSettingsMap: .sheetOrPopoverContent,
+        icon: "text.cursor",
+        resolvedTitle: String(localized: SpokenPunctuationCopy.startWordTitleResource),
+        resolvedShort: String(localized: SpokenPunctuationCopy.startWordShortResource)
       ) {
         SpokenPunctuationStartWordHelpPanel()
       } control: {
@@ -29,8 +30,9 @@ struct SpokenPunctuationStartWordRow: View {
         // Lines up under the row's title, past its icon (the Unload row's pattern).
         .padding(.leading, 37)
     }
-    // The row leaves when the switch turns off or the page closes. A pending draft is settled for
-    // the language it was typed for, never lost into another one.
+    // The row leaves when the window closes. Done, Escape and the close button settle first and stay
+    // open on a refusal (`SpokenPunctuationConfigureSheet.close`); this catches the Settings window
+    // going away. A pending draft is settled for the language it was typed for, never lost into another.
     .onDisappear { editor.settleBeforeLeaving() }
   }
 
@@ -46,7 +48,6 @@ struct SpokenPunctuationStartWordRow: View {
           .foregroundStyle(.stTextPrimary)
           .accessibilityHidden(true)
         field
-          .settingsMapRegistration(.startWordField)
         // Clicking elsewhere in the window does not always take focus off the field, so a typed word
         // needs a button that saves it; Return and focus loss still save it too.
         SettingsActionButton(
@@ -54,12 +55,10 @@ struct SpokenPunctuationStartWordRow: View {
           emphasis: .filled
         ) { editor.commitDraft() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.saveAccessibilityLabel))
-        .settingsMapRegistration(.startWordSave)
         SettingsActionButton(
           verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.canReset
         ) { editor.reset() }
         .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
-        .settingsMapRegistration(.startWordReset)
       }
       if let example = editor.exampleCommand {
         Text(SpokenPunctuationCopy.example(command: example))
@@ -90,7 +89,6 @@ struct SpokenPunctuationStartWordRow: View {
       prompt: Text(SpokenPunctuationCopy.noStartWordPlaceholder)
     )
     .focused($fieldFocused)
-    .settingsArrivalFocusControl(textEntry: true) { fieldFocused = true }
     .settingsFieldChrome(focused: $fieldFocused)
     .frame(width: 160)
     .onSubmit { editor.commitDraft() }
@@ -122,6 +120,8 @@ struct SpokenPunctuationHelpPanel: View {
       Text(SpokenPunctuationCopy.helpStartWord)
         .settingsReadingCopy()
       Text(SpokenPunctuationCopy.helpEnglish)
+        .settingsReadingCopy()
+      Text(SpokenPunctuationCopy.helpPeriodWord)
         .settingsReadingCopy()
       Text(SpokenPunctuationCopy.helpPolish)
         .settingsReadingCopy()

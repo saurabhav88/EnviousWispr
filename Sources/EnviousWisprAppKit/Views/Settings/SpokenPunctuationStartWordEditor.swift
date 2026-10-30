@@ -97,13 +97,14 @@ final class SpokenPunctuationStartWordEditor {
   /// message still on screen.
   var canReset: Bool { isCustomised || hasUnsavedDraft || rejection != nil }
 
-  /// A spoken command that inserts a period in the picked language, built from the rules table so the
-  /// example can never name a word the pass does not accept. It stays in the dictation language.
+  /// A spoken command that inserts a period in the picked language, built from the ACTIVE rules (#4216:
+  /// "full stop" in English while the period switch is off) so the example can never name a word the
+  /// pass does not accept. It stays in the dictation language.
   var exampleCommand: String? {
     guard
-      let form = SpokenPunctuationRules.startWordRules(for: language)?.first(where: { $0.command == .period }
-      )?
-      .spokenForms.first
+      let form = SpokenPunctuationRules.activeStartWordRules(
+        for: language, englishPeriodWord: settings.spokenPunctuation.englishPeriodWord
+      )?.first(where: { $0.command == .period })?.spokenForms.first
     else { return nil }
     return effectiveWord.isEmpty ? form : effectiveWord + " " + form
   }
@@ -152,5 +153,14 @@ final class SpokenPunctuationStartWordEditor {
   /// for the language it was typed for, never carried into another one.
   func settleBeforeLeaving() {
     commitDraft()
+  }
+
+  /// #4216: the window's Done, Escape or close button. Settles a pending draft and says whether the
+  /// window may close: false only when THIS draft was refused, so the reason is on screen before the
+  /// window goes. A reason left from an earlier commit does not hold the window open.
+  func settleForClosing() -> Bool {
+    guard hasUnsavedDraft else { return true }
+    commitDraft()
+    return rejection == nil
   }
 }

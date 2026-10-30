@@ -134,11 +134,11 @@ import Testing
     /// Both logicals ride the one `SettingKey`, and each coalesces and suppresses its own net no-ops.
     /// The positive controls are what make the negative assertions mean something: each test also
     /// shows the OTHER logical's delta is the one that did fire.
-    @Test("Both spoken-punctuation logicals route from the one setting key")
+    @Test("All three spoken-punctuation logicals route from the one setting key")
     func spokenPunctuationRoutesBothLogicals() {
       #expect(
         SettingsProjection.logicals(for: .spokenPunctuation) == [
-          .spokenPunctuation, .spokenPunctuationStartWord,
+          .spokenPunctuation, .spokenPunctuationStartWord, .spokenPunctuationPeriodWord,
         ])
     }
 
@@ -155,6 +155,66 @@ import Testing
       #expect(switchDeltas.first?.stringProps["from"] == "off")
       #expect(switchDeltas.first?.stringProps["to"] == "on")
       #expect(deltas(box, setting: "spoken_punctuation_start_word").isEmpty)
+      #expect(deltas(box, setting: "spoken_punctuation_period_word").isEmpty)
+    }
+
+    /// #4216. The switch ships on, so every real signal is on to off. The main switch and the start
+    /// word are the negative siblings; a bounce back to on before the flush is a net no-op.
+    @Test("Turning the English period switch off reports on to off and nothing else")
+    func spokenPunctuationPeriodWordDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.spokenPunctuation.englishPeriodWord = false
+      telemetry.flush()
+
+      let periodDeltas = deltas(box, setting: "spoken_punctuation_period_word")
+      #expect(periodDeltas.count == 1)
+      #expect(periodDeltas.first?.stringProps["from"] == "on")
+      #expect(periodDeltas.first?.stringProps["to"] == "off")
+      #expect(periodDeltas.first?.stringProps["source"] == "user")
+      #expect(deltas(box, setting: "spoken_punctuation").isEmpty)
+      #expect(deltas(box, setting: "spoken_punctuation_start_word").isEmpty)
+
+      box.clear()
+      settings.spokenPunctuation.englishPeriodWord = true
+      settings.spokenPunctuation.englishPeriodWord = false
+      telemetry.flush()
+      #expect(
+        deltas(box, setting: "spoken_punctuation_period_word").isEmpty,
+        "off to on to off inside one window is a net no-op")
+    }
+
+    /// #4216. `settings.snapshot` is what counts the users who never touch the switch, so a fresh
+    /// install must report `on` through the real builder and capture hook, with no seeding.
+    @Test("A fresh install's settings.snapshot reports the period switch on, then off after a change")
+    func spokenPunctuationPeriodWordSnapshot() {
+      let suite = TestDefaults.suite("SCT-Snap-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      let builder = StandingSnapshotBuilder(
+        settings: settings,
+        keychainManager: KeychainManager(),
+        customWordsCoordinator: CustomWordsCoordinator(),
+        permissions: PermissionsService(accessibilityReader: { true }),
+        snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
+      let box = DeltaBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "settings.snapshot" { box.add(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      builder.emit()
+      let fresh = box.all
+      #expect(fresh.count == 1)
+      #expect(fresh.first?.stringProps["spoken_punctuation_period_word"] == "on")
+      #expect(fresh.first?.stringProps["spoken_punctuation"] == "off")
+      #expect(fresh.first?.stringProps["spoken_punctuation_start_word"] == "default")
+
+      box.clear()
+      settings.spokenPunctuation.englishPeriodWord = false
+      builder.emit()
+      #expect(box.all.first?.stringProps["spoken_punctuation_period_word"] == "off")
+      #expect(box.all.first?.stringProps["spoken_punctuation"] == "off")
     }
 
     @Test("Customising a start word reports default to customised, never the switch or the word")
@@ -202,7 +262,7 @@ import Testing
       #expect(reset.first?.stringProps["to"] == "default")
     }
 
-    @Test("The settings baseline carries both logicals and tracks them")
+    @Test("The settings baseline carries all three logicals and tracks them")
     func spokenPunctuationBaseline() {
       let (settings, _, _, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
@@ -210,12 +270,14 @@ import Testing
       let atDefault = SettingsProjection.snapshotConfig(settings)
       #expect(atDefault["spoken_punctuation"] == "off")
       #expect(atDefault["spoken_punctuation_start_word"] == "default")
+      #expect(atDefault["spoken_punctuation_period_word"] == "on")
 
       settings.spokenPunctuation.enabled = true
       settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
       let changed = SettingsProjection.snapshotConfig(settings)
       #expect(changed["spoken_punctuation"] == "on")
       #expect(changed["spoken_punctuation_start_word"] == "customised")
+      #expect(changed["spoken_punctuation_period_word"] == "on", "the start word left it alone")
       #expect(changed.values.allSatisfy { !$0.contains("Sprich") })
     }
 

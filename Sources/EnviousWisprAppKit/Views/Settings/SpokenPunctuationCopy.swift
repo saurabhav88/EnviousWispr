@@ -30,6 +30,12 @@ enum SpokenPunctuationCopy {
   static let helpEnglish = String(
     localized: "English works as it does today: say the word on its own. You can also give English a start word.",
     comment: "Speech engine settings, spoken punctuation help: English needs no start word.")
+  /// #4216: where a British speaker turns "period" off.
+  static let helpPeriodWord = String(
+    localized:
+      "In English, \"period\" is a command too. If you say \"full stop\" instead, turn \"period\" off in Configure.",
+    comment:
+      "Speech engine settings, spoken punctuation help: the English period switch lives in the Configure window. Keep period and full stop in English: they are words the user says.")
   static let helpPolish = String(
     localized:
       "This is meant for dictating with AI polish off. AI polish can change punctuation afterwards.",
@@ -40,7 +46,7 @@ enum SpokenPunctuationCopy {
   static let helpFootnote =
     String(
       localized:
-        "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
+        "In English with no start word, these words become marks even when you meant the word itself, like \"the grace period expires\". To keep \"period\" as a word, turn it off in Configure. Slash works with this setting off: \"slash clear\" becomes /clear, \"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", can still become a symbol.",
       comment:
         "Speech engine settings, spoken punctuation help footnote. The quoted phrases are English words the user says to dictation; keep them in English, and keep /clear, /wfp and pros/cons exactly."
     )
@@ -53,6 +59,35 @@ enum SpokenPunctuationCopy {
       "Speech engine settings, spoken punctuation help: spoken name of the Help Center link.")
   /// The Help Center article that owns the word list. The slug is pinned by the help article tests.
   static let learnMoreURL = URL(string: HelpCenter.rootURL + "spoken-punctuation-and-emoji/")
+
+  // MARK: - Configure window (#4216)
+
+  static let configureButtonResource = LocalizedStringResource("Configure…",
+    comment: "Speech engine settings, spoken punctuation: button beside the switch that opens the spoken punctuation window.")
+  static var configureButton: String { String(localized: configureButtonResource) }
+  static let configureAccessibilityLabel = String(
+    localized: "Configure spoken punctuation",
+    comment: "Speech engine settings, spoken punctuation: spoken name of the Configure button.")
+  static let configureTitle = String(
+    localized: "Spoken punctuation",
+    comment: "Spoken punctuation window: the window's title.")
+  static let configureSubtitle = String(
+    localized: "Choose how spoken commands turn into marks.",
+    comment: "Spoken punctuation window: the line under the title.")
+  static let configureDone = String(
+    localized: "Done",
+    comment: "Spoken punctuation window: button that closes the window.")
+  static let configureClose = String(
+    localized: "Close",
+    comment: "Spoken punctuation window: spoken name of the close button.")
+  static let periodWordTitle = LocalizedStringResource(
+    "English: say \"period\" for a dot",
+    comment:
+      "Spoken punctuation window: name of the switch that makes the English word period a punctuation command. Keep the word period in English: it is a word the user says.")
+  static let periodWordShort = LocalizedStringResource(
+    "Turn off to keep \"period\" as a normal word. \"Full stop\" still makes a dot.",
+    comment:
+      "Spoken punctuation window: line under the period switch. Keep period and Full stop in English: they are words the user says.")
 
   // MARK: - Start word row
 
