@@ -2232,7 +2232,16 @@ def main():
         sys.exit(2)
 
     if args.mode == "selftest":
-        print("mirror self-tests passed (CLOUD_FIXED_SYSTEM in sync; AFM arm env isolated)")
+        import unittest
+        suite = unittest.defaultTestLoader.discover(
+            str(ROOT / "scripts/eval/tests"), pattern="test_acceptance_judge_routing.py")
+        count = suite.countTestCases()
+        if count == 0:
+            print("INFRA-ERROR: funded-judge routing tests were not discovered", file=sys.stderr)
+            sys.exit(2)
+        if not unittest.TextTestRunner().run(suite).wasSuccessful():
+            sys.exit(1)
+        print(f"mirror self-tests passed; {count} funded-judge routing tests passed")
         sys.exit(0)
 
     if args.mode == "baseline":

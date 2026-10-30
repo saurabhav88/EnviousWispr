@@ -35,7 +35,8 @@ class FundedAcceptanceTests(unittest.TestCase):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         for name, value in [('CORPUS', self.corpus), ('BASELINE_DIR', self.root),
-                            ('GOLDEN_FILE', self.golden), ('OUT_DIR', self.root / 'out')]:
+                            ('GOLDEN_FILE', self.golden), ('OUT_DIR', self.root / 'out'),
+                            ('BENCH_JUDGE_MODEL', gate.APPROVED_JUDGE_MODEL)]:
             self.stack.enter_context(patch.object(gate, name, value))
         self.stack.enter_context(patch.dict(os.environ, {}, clear=True))
         self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
@@ -105,7 +106,14 @@ class FundedAcceptanceTests(unittest.TestCase):
         self.assertEqual(report['judge_identity'], 'azure/gpt-5-6-luna@served')
         self.assertEqual(report['judge_model'], gate.APPROVED_JUDGE_MODEL)
 
-    def test_import_and_selftest_are_key_free(self):
+    def test_cli_selftest_refuses_zero_discovered_routing_tests(self):
+        with patch.object(sys, 'argv', ['acceptance_gate.py', '--mode', 'selftest']), \
+             patch('unittest.defaultTestLoader.discover', return_value=unittest.TestSuite()):
+            with self.assertRaises(SystemExit) as error:
+                gate.main()
+            self.assertEqual(error.exception.code, 2)
+
+    def test_import_and_mirror_checks_are_key_free(self):
         program = '''
 import pathlib, subprocess, sys, urllib.request
 sys.path.insert(0, sys.argv[1])
