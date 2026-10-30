@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 /// The four things a test can protect, plus the real-boundary marker.
@@ -35,8 +36,20 @@ extension Tag {
   /// Applied IN ADDITION to a class tag when the test crosses a REAL boundary: a real microphone, a
   /// shipped model decoding committed audio, or text landing in a real foreground app.
   ///
-  /// Gate every one with `@Test(.enabled(if:))` on the resource, so it RUNS on the dev machine and is
-  /// reported SKIPPED on the hosted runner, which has no audio input device. **A skipped receipt is not a
-  /// passed receipt** — the release gate reads the dev-machine run.
+  /// Gate every one with `.realBoundaryRun` (runs only in `scripts/xcode-test.sh --real-boundary`, at
+  /// feature validation and before a release) and with `@Test(.enabled(if:))` on the resource. **A
+  /// skipped receipt is not a passed receipt**: the release gate reads the `--real-boundary` run.
   @Tag static var realBoundary: Self
+}
+
+extension Trait where Self == ConditionTrait {
+  /// #4218: a real-world test (real model, microphone, GPU, live OS state or real app) runs only in
+  /// the opt-in run, `scripts/xcode-test.sh --real-boundary`, used when validating a feature and
+  /// before a release. The everyday local lane and CI skip it, because a busy Mac makes these flake.
+  /// Every `.realBoundary` test or suite carries this trait (`TestInventoryFreezeTests`).
+  static var realBoundaryRun: Self {
+    .enabled(
+      if: ProcessInfo.processInfo.environment["EW_REAL_BOUNDARY"] == "1",
+      "real-world test: runs only in scripts/xcode-test.sh --real-boundary")
+  }
 }

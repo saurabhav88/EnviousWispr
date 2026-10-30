@@ -153,29 +153,40 @@ package struct OllamaLibraryFeedClient: Sendable {
     return ParsedFeed(entries: entries, dropped: dropped)
   }
 
-  private nonisolated static func validate(
-    _ value: Any, reservedCanonicalNames: Set<String>, seen: inout Set<String>
-  ) -> Result<OllamaModelCatalogEntry, DropReason> {
-    guard let row = value as? [String: Any] else { return .failure(.notAnObject) }
-
-    guard let name = row["name"] as? String,
+  /// The name rules alone: whether `name` may become a local pull target at all, before any
+  /// feed-publication rule (shipped, measured, duplicate) is asked. The feed parser and the
+  /// typed-name Download row in the Models sheet (#3836) both ask this, so there is one answer.
+  /// Returns nil for an acceptable name. The input is taken exactly as given: no trimming, no
+  /// lowercasing, because the tag is case-sensitive (`foo:Q4_K_M`).
+  package nonisolated static func nameDropReason(_ name: String) -> DropReason? {
+    guard
       name.range(of: namePattern, options: .regularExpression) == name.startIndex..<name.endIndex
-    else { return .failure(.badName) }
+    else { return .badName }
 
     // Only the lowercase `latest` alias is understood. `canonicalModelName` strips
     // exactly `:latest`, so `:LATEST` would otherwise survive as a different model.
     if let tag = name.split(separator: ":", maxSplits: 1).dropFirst().first,
       tag.lowercased() == "latest", tag != "latest"
     {
-      return .failure(.caseVariantOfLatest)
+      return .caseVariantOfLatest
     }
 
     let lowered = name.lowercased()
     if OllamaSetupService.isS1MiniModel(name) || lowered.hasPrefix("hf.co/")
       || lowered.contains("cloud")
     {
-      return .failure(.reservedName)
+      return .reservedName
     }
+    return nil
+  }
+
+  private nonisolated static func validate(
+    _ value: Any, reservedCanonicalNames: Set<String>, seen: inout Set<String>
+  ) -> Result<OllamaModelCatalogEntry, DropReason> {
+    guard let row = value as? [String: Any] else { return .failure(.notAnObject) }
+
+    guard let name = row["name"] as? String else { return .failure(.badName) }
+    if let reason = nameDropReason(name) { return .failure(reason) }
 
     guard let displayName = row["displayName"] as? String, isDisplayable(displayName, maxLength: 60)
     else { return .failure(.badDisplayName) }

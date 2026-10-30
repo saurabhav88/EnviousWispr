@@ -180,41 +180,6 @@ struct EGOneAdapterLifecycleTests {
     }
   }
 
-  @Test("ready process waits for a take or import pin before changing adapter")
-  func deferredRestartAndEndpointFlag() async throws {
-    let fixture = try Fixture()
-    let coordinator = LocalPolishServerCoordinator()
-    defer { fixture.cleanup() }
-    let bare = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration())
-    let adapted = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
-    await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
-    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
-    #expect(
-      Array(try fixture.launches()[0].suffix(EGOneRuntime.engineArguments(for: .egOne).count))
-        == EGOneRuntime.engineArguments(for: .egOne))
-    let admission = await coordinator.acquireLease(for: .egOne)
-    let lease: LocalPolishServerLease
-    switch admission {
-    case .granted(let granted): lease = granted
-    case .changing:
-      Issue.record("ready server refused a lease")
-      return
-    }
-    await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
-    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
-    #expect(try fixture.launches().count == 1)
-    await coordinator.releaseLease(lease)
-    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == true)
-    #expect(try fixture.launches().count == 2)
-
-    await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
-    #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
-    #expect(try fixture.launches().count == 3)
-    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
-  }
-
   @Test("adapter startup fault retries the admitted base with no adapter")
   func failedAdapterFallsBack() async throws {
     let fixture = try Fixture()

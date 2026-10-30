@@ -336,7 +336,7 @@ def main():
         lib = repo / "scripts/lib"
         (lib / "ensure-generated.sh").write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / "launch-check.sh").write_text('ew_wait_for_launch() { echo launch-check >> "$TRACE"; return 1; }\n')
-        (lib / "spm-seed.sh").write_text('ew_seed_release_all() { :; }\new_seed_consume() { :; }\n'
+        (lib / "spm-seed.sh").write_text('ew_seed_on_exit() { :; }\new_seed_consume() { :; }\n'
                                          'ew_seed_resolve_or_unseed() { shift; "$@"; }\new_seed_publish() { :; }\n')
         (lib / "dev-app-lock.py").write_text('import os, sys\nopen(os.environ["TRACE"], "a").write("lock:" + " ".join(sys.argv[1:2]) + "\\n")\n')
         bins = {"security": 'echo "  1) ABC \\"EnviousWispr Dev\\""', "pgrep": 'echo "pgrep:$*" >> "$TRACE"; exit 1',

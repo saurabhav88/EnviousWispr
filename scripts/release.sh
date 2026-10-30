@@ -218,7 +218,7 @@ cmd_prepare() {
   echo "==> Changed files:"
   git status --short
   echo "==> Still yours: check the gift menu on the dev app, release the dev-app lock, commit,"
-  echo "    run scripts/xcode-test.sh once, one local Codex review, then open the release PR."
+  echo "    run scripts/xcode-test.sh --real-boundary once, one local Codex review, then open the release PR."
 }
 
 # shellcheck disable=SC2016 # the self-test passes literal shell text to eval

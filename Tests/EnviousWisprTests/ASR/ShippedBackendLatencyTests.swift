@@ -113,7 +113,7 @@ struct ShippedBackendLatencyTests {
     .enabled("requires the shipped model to be admitted") {
       await ShippedBackendLatencyFixture.parakeetIsAdmitted()
     },
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func parakeetP95StaysUnderOneSecond() async throws {
     let originalOfflineMode = ModelHub.offlineMode
@@ -154,7 +154,7 @@ struct ShippedBackendLatencyTests {
     .enabled("requires the shipped model to be admitted") {
       await ShippedBackendLatencyFixture.whisperIsAdmitted()
     },
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func whisperP95StaysUnderOneSecond() async throws {
     let samples = try AudioConverter().resampleAudioFile(

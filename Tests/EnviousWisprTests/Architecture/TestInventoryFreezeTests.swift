@@ -520,6 +520,8 @@ struct TestInventoryFreezeTests {
     let mismatches: [String]
     let parsedTotal: Int
     let rawTotal: Int
+    /// #4218: `.realBoundary` attributes missing `.realBoundaryRun`, as `file:line`.
+    let ungatedBoundary: [String]
   }
 
   private enum ScanError: Error { case cannotEnumerate(String) }
@@ -538,6 +540,7 @@ struct TestInventoryFreezeTests {
     var mismatches: [String] = []
     var parsedTotal = 0
     var rawTotal = 0
+    var ungatedBoundary: [String] = []
     for case let url as URL in walker where url.pathExtension == "swift" {
       let prepared = try CachedSwiftParser.snapshot(at: url)
       let rel = relativePath(of: url.path, under: root)
@@ -545,6 +548,7 @@ struct TestInventoryFreezeTests {
       // whole point of the attribution guard — but they have no reason to read the file twice.
       let tree = prepared.tree
       let raw = rawTestAttributeCount(in: Syntax(tree))
+      ungatedBoundary += ungatedBoundaryAttributes(in: tree, file: rel)
       let fileRecords = suites(inTree: tree, file: rel)
       let attributed = fileRecords.reduce(0) { $0 + $1.testCount }
       records.append(contentsOf: fileRecords)
@@ -556,7 +560,39 @@ struct TestInventoryFreezeTests {
     }
     return TreeScan(
       records: records.sorted { $0.key < $1.key }, mismatches: mismatches,
-      parsedTotal: parsedTotal, rawTotal: rawTotal)
+      parsedTotal: parsedTotal, rawTotal: rawTotal, ungatedBoundary: ungatedBoundary.sorted())
+  }
+
+  /// #4218: every `@Test` or `@Suite` whose own tags include `.realBoundary` must also carry
+  /// `.realBoundaryRun` as one of its own trait arguments, so real-world tests run only in
+  /// `scripts/xcode-test.sh --real-boundary` and never in the everyday lane, where a busy Mac makes
+  /// them flake. Returns each offending attribute as `file:line`.
+  private static func ungatedBoundaryAttributes(in tree: SourceFileSyntax, file: String) -> [String] {
+    let converter = SourceLocationConverter(fileName: file, tree: tree)
+    var found: [String] = []
+    func walk(_ node: Syntax) {
+      if let attr = node.as(AttributeSyntax.self),
+        ["Test", "Suite"].contains(attributeBaseName(attr)),
+        tagNames(inAttributeArguments: attr).contains(TestClass.realBoundaryTag),
+        !hasRealBoundaryRunTrait(attr)
+      {
+        found.append("\(file):\(attr.startLocation(converter: converter).line)")
+      }
+      for child in node.children(viewMode: .sourceAccurate) { walk(child) }
+    }
+    walk(Syntax(tree))
+    return found
+  }
+
+  /// A top-level `.realBoundaryRun` argument of the attribute itself, never one nested inside another
+  /// trait's arguments (same position rule as `tagNames(inAttributeArguments:)`).
+  private static func hasRealBoundaryRunTrait(_ attr: AttributeSyntax) -> Bool {
+    guard case let .argumentList(arguments)? = attr.arguments else { return false }
+    return arguments.contains { argument in
+      guard argument.label == nil, let member = argument.expression.as(MemberAccessExprSyntax.self)
+      else { return false }
+      return member.base == nil && identifierText(member.declName.baseName) == "realBoundaryRun"
+    }
   }
 
   private static func inventory() throws -> [SuiteRecord] {
@@ -1102,6 +1138,33 @@ struct TestInventoryFreezeTests {
     let s = try #require(records.first { $0.name == "S" })
     #expect(s.testCount == 1, "attribute: \(attribute)")
     #expect(s.boundaryCount == expected, "attribute: \(attribute)")
+  }
+
+  @Test("every real-boundary test or suite runs only in the opt-in real-boundary run")
+  func realBoundaryTestsAreOptIn() throws {
+    let ungated = try Self.scan.get().ungatedBoundary
+    #expect(
+      ungated.isEmpty,
+      """
+      #4218: these `.realBoundary` attributes lack `.realBoundaryRun`, so they would run in the \
+      everyday lane, where a busy Mac makes real-world tests flake. Add `.realBoundaryRun` to each:
+      \(ungated.joined(separator: "\n"))
+      """)
+  }
+
+  @Test(
+    "the real-boundary opt-in is read from the attribute's own trait arguments",
+    arguments: [
+      ("@Test(.tags(.realBoundary), .realBoundaryRun) func a() {}", 0),
+      ("@Test(.tags(.realBoundary)) func a() {}", 1),
+      ("@Suite(.tags(.productOutcome, .realBoundary)) struct S { @Test func a() {} }", 1),
+      ("@Suite(.tags(.productOutcome, .realBoundary), .realBoundaryRun) struct S {}", 0),
+      ("@Test(.tags(.realBoundary), .enabled(if: has(.realBoundaryRun))) func a() {}", 1),
+      ("@Test(.tags(.productOutcome)) func a() {}", 0),
+    ])
+  func realBoundaryOptInComesFromATrait(source: String, expected: Int) {
+    let tree = CachedSwiftParser.parse(source: source)
+    #expect(Self.ungatedBoundaryAttributes(in: tree, file: "probe.swift").count == expected, "\(source)")
   }
 
   @Test("an extension's tests take their own type's tag and no neighbour's")

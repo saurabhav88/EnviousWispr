@@ -96,7 +96,7 @@ struct ParakeetUltraLanguageLockRealBoundaryTests {
   @Test(
     "a lock keeps Ultra's batch output in the locked language's alphabet",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
-    .tags(.realBoundary))
+    .tags(.realBoundary), .realBoundaryRun)
   func batchLockHoldsTheScript() async throws {
     let outputs = try await Self.withUltra { backend in
       var outputs: [String: String] = [:]
@@ -118,7 +118,7 @@ struct ParakeetUltraLanguageLockRealBoundaryTests {
   @Test(
     "a lock keeps Ultra's live output in the locked language's alphabet",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
-    .tags(.realBoundary))
+    .tags(.realBoundary), .realBoundaryRun)
   func liveLockHoldsTheScript() async throws {
     let outputs = try await Self.withUltra { backend in
       var outputs: [String: String] = [:]
@@ -143,7 +143,7 @@ struct ParakeetUltraLanguageLockRealBoundaryTests {
   @Test(
     "different locks constrain the same audio on both paths",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
-    .tags(.realBoundary))
+    .tags(.realBoundary), .realBoundaryRun)
   func sameAudioDifferentLocks() async throws {
     let outputs = try await Self.withUltra { backend in
       let samples = try Self.clip("ru")
@@ -172,7 +172,7 @@ struct ParakeetUltraLanguageLockRealBoundaryTests {
   @Test(
     "Auto and an unsupported code both decode without a lock",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
-    .tags(.realBoundary))
+    .tags(.realBoundary), .realBoundaryRun)
   func autoAndUnsupportedDecode() async throws {
     // `sr` is in the vendor enum but not claimed by the model card: it must fall back to Auto,
     // so it decodes exactly like no language at all.

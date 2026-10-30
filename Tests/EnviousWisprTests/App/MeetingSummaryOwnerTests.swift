@@ -492,7 +492,7 @@ struct MeetingSummaryOwnerTests {
     let meetingID = try #require(coordinator.meetings.first?.id)
     coordinator.documents.setNotes(meetingID, "Ask Priya")
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     let ended = try #require(harness.ended.last)
     #expect(ended.summaryPlan == .scheduled)
     #expect(ended.hasNotes)
@@ -516,24 +516,32 @@ struct MeetingSummaryOwnerTests {
     let meetingID = try #require(coordinator.meetings.first?.id)
     await coordinator.stop()
     await Self.eventually("old call") { rig.world.callsWaiting == 1 }
+    let previous: UUID
+    do {
+      previous = try #require(coordinator.record(id: meetingID)?.committedTranscriptGeneration)
+    } catch {
+      rig.world.releaseCall()
+      throw error
+    }
 
-    await coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
+    await Self.eventually("retry pass running") { coordinator.processing?.meetingID == meetingID }
     // The new transcript waits for the old summary: it is not committed while that call runs.
-    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves nothing moves
+    // settle: bounded negative window; it cannot prove "never", only expose an early start
+    try await Task.sleep(for: .milliseconds(200))
     #expect(coordinator.record(id: meetingID)?.state == .processing)
     #expect(rig.world.finished.isEmpty)
 
     rig.world.releaseCall()
     await Self.eventually("old settled") { rig.world.finished.count == 1 }
     #expect(rig.world.finished == [Self.row(.cancelled, .hosted)])
-    await Self.eventually("replaced") {
-      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
-    }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID, replacing: previous)
     #expect(harness.ended.last?.summaryPlan == .notApplicable)
     #expect(
       try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending != true,
       "nothing is owed")
-    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves no call starts
+    // settle: bounded negative window; it cannot prove "never", only expose an early start
+    try await Task.sleep(for: .milliseconds(200))
     #expect(rig.world.callsWaiting == 0)
     #expect(rig.world.finished.count == 1)
   }
@@ -551,9 +559,7 @@ struct MeetingSummaryOwnerTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
     await coordinator.stop()
-    await Self.eventually("committed") {
-      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
-    }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(rig.world.finished.isEmpty, "no summary without a published row")
     #expect(try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
 
@@ -563,8 +569,13 @@ struct MeetingSummaryOwnerTests {
     let stuckRig = try Rig()
     stuck.coordinator.summaries = stuckRig.makeOwner(documents: stuck.coordinator.documents)
     stuck.coordinator.launch()
-    await Self.eventually("reconciled") { stuck.coordinator.isCommitReceiptPending(meetingID) }
-    try await Task.sleep(for: .milliseconds(300))  // deadline-fallback: proves nothing starts
+    // #4218: the receipt is pending from reconciliation, before launch tries to publish; wait
+    // for the publication attempt itself (recorded before it fails).
+    await Self.eventually("publication tried") {
+      stuck.coordinator.isCommitReceiptPending(meetingID) && stuck.saveRequests.count == 1
+    }
+    // settle: bounded negative window; it cannot prove "never", only expose an early start
+    try await Task.sleep(for: .milliseconds(300))
     #expect(stuckRig.world.finished.isEmpty)
     #expect(stuckRig.world.callsWaiting == 0)
     #expect(try stuck.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
@@ -594,19 +605,18 @@ struct MeetingSummaryOwnerTests {
     await coordinator.start(from: .history)
     let first = try #require(coordinator.meetings.first?.id)
     await coordinator.stop()
-    await Self.eventually("first ready") { coordinator.record(id: first)?.state == .ready }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, first)
     await coordinator.start(from: .history)
     let second = try #require(coordinator.meetings.first(where: { $0.id != first })?.id)
     await coordinator.stop()
-    await Self.eventually("second ready") { coordinator.record(id: second)?.state == .ready }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, second)
     await Self.eventually("both waiting") { rig.lane.summaryWaiting == 2 }
 
     // Transcribe again on the second: its waiting summary is cancelled and settles at once,
     // so the final pass is not held behind the first meeting's summary.
-    await coordinator.transcribeAgain(meetingID: second, engine: .parakeet)
-    await Self.eventually("retry ready") {
-      coordinator.record(id: second)?.state == .ready && coordinator.processing == nil
-    }
+    let previous = try #require(coordinator.record(id: second)?.committedTranscriptGeneration)
+    await MeetingCoordinatorTests.transcribeAgainOnceOffered(coordinator, meetingID: second)
+    await MeetingCoordinatorTests.livePassFinished(coordinator, second, replacing: previous)
     // The cancelled summary's row is sent once its task has ended, which may follow the pass.
     await Self.eventually("waiting summary cancelled") {
       rig.world.finished.contains(Self.row(.cancelled, .local))
@@ -625,7 +635,8 @@ struct MeetingSummaryOwnerTests {
       rig.world.finished.filter { $0 == Self.row(.written, .local) }.count == 1
     }
     #expect(most == 1, "each call held the lane alone")
-    try await Task.sleep(for: .milliseconds(200))  // deadline-fallback: proves no second call
+    // settle: bounded negative window; it cannot prove "never", only expose an early start
+    try await Task.sleep(for: .milliseconds(200))
     #expect(rig.world.finished.count == 2, "one cancelled and one written, nothing else")
   }
 
@@ -639,7 +650,7 @@ struct MeetingSummaryOwnerTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(harness.ended.last?.summaryPlan == .off)
     #expect(harness.ended.last?.hasNotes == false)
     #expect(rig.world.finished.isEmpty)
@@ -809,7 +820,8 @@ struct MeetingSummaryOwnerTests {
     var rowsAtEnd: [MeetingSummaryFinishedTelemetry]?
     harness.onEnded = { _ in rowsAtEnd = rig.world.finished }
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    // #4198: the mark settles after the History publication that follows `.ready`.
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(harness.ended.last?.summaryPlan == .scheduled)
     #expect(rowsAtEnd == [], "nothing settled before the ready row")
     #expect(rig.world.finished == [Self.row(.failed, .hosted)], "settled at once, no attempt to lose")

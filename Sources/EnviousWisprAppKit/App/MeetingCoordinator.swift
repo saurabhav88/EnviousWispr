@@ -1551,6 +1551,11 @@ final class MeetingCoordinator {
     // transcript is published, now or by the next launch, never rolled back.
     committing = true
     defer { committing = false }
+    if let naming = result.naming?.result {
+      // Counts only: never a name or a speaker.
+      deps.log(
+        "meeting speaker names proposed=\(naming.proposals.count) pairs=\(naming.pairProposals)")
+    }
     let previousGeneration = finished.committedTranscriptGeneration
     let receipt = MeetingTranscriptReplacement(
       meetingID: meetingID,

@@ -94,6 +94,8 @@ package struct MeetingNamingResult: Sendable, Equatable {
   /// Display names keyed by the composition's speaker id.
   package let proposals: [String: String]
   package let outcome: Outcome
+  /// How many of `proposals` the one-on-one rule added (#4013 chunk 14); a local count only.
+  package var pairProposals = 0
 }
 
 /// Automatic speaker naming (#4013 §3 item 5, r2 items 7-8, r3 F1). Pure and deterministic: the
@@ -105,10 +107,23 @@ package struct MeetingNamingResult: Sendable, Equatable {
 /// non-self name the app showed talking. A speaker is named when its top name has at least
 /// `minimumVotes` votes and at least `minimumShare` of ALL its votes (competing names included),
 /// and no other speaker claims that name as strongly. Anything less leaves "Speaker N".
+///
+/// One-on-one rule (#4013 chunk 14, after Granola 7.668.3's `zN`): where the saved evidence
+/// proves a two-person call (`CallPairStretch`) and the app marked which of the two is the user,
+/// the call sound in that stretch can only be the other person. A speaker with no vote name
+/// takes that name when it is the only call-sound voice in such stretches (`pairProposals`).
+/// Votes always come first; the rule only fills speakers votes left as "Speaker N".
 package enum MeetingSpeakerNamer {
   /// Proposed in the plan, to be confirmed by the real-call measurements (C1).
   package static let minimumVotes = 3
   package static let minimumShare = 0.7
+  /// A two-person stretch counts only after this long (Granola `zN`: 15,000 ms). Granola also
+  /// waives it when only one remote was ever seen; that shortcut is not taken here, because a
+  /// saved recording cannot prove nobody else was present while it was not being read (#4206).
+  package static let minimumPairStretchMs = 15_000
+  /// The least call speech one speaker needs inside a stretch for it to name them; an
+  /// engineering threshold to validate with the real-call receipts, not a Granola constant.
+  package static let minimumPairSpeechMs = 3_000
 
   package static func propose(
     composition: MeetingComposition, eligibility: MeetingNamingEligibility?, log: CallSpeakerLog?
@@ -179,8 +194,6 @@ package enum MeetingSpeakerNamer {
         }
       }
     }
-    guard !votes.isEmpty else { return none(.noSignal) }
-
     // Each speaker's qualifying name, if any.
     var claims: [String: [(speaker: String, votes: Int)]] = [:]
     for (speaker, tally) in votes {
@@ -199,8 +212,96 @@ package enum MeetingSpeakerNamer {
       let atTop = claimants.filter { $0.votes == strongest }
       if atTop.count == 1 { proposals[atTop[0].speaker] = name }
     }
-    return MeetingNamingResult(
-      proposals: proposals, outcome: proposals.isEmpty ? .ambiguous : .named)
+    let voteOutcome: MeetingNamingResult.Outcome =
+      votes.isEmpty ? .noSignal : (proposals.isEmpty ? .ambiguous : .named)
+
+    let added = pairProposals(
+      segments: usable.map(\.segment), speech: speech, shared: shared,
+      votes: votes, voteProposals: proposals)
+    let merged = proposals.merging(added) { vote, _ in vote }
+    var result = MeetingNamingResult(
+      proposals: merged, outcome: merged.isEmpty ? voteOutcome : .named)
+    result.pairProposals = merged.count - proposals.count
+    return result
+  }
+
+  /// The one-on-one rule's names for speakers votes did not name (plan R1.5, R2.4, R3.2).
+  static func pairProposals(
+    segments: [CallSpeakerSegment],
+    speech: [String: [MeetingNamingInterval]], shared: Set<String>,
+    votes: [String: [String: Int]], voteProposals: [String: String]
+  ) -> [String: String] {
+    // Windows that name one speaker, by speaker and name.
+    var windows: [String: [String: [MeetingNamingInterval]]] = [:]
+    for segment in segments {
+      for stretch in segment.pairs ?? [] {
+        guard let remote = remote(in: stretch, segmentSelf: segment.roster.selfNames),
+          !shared.contains(remote),
+          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs,
+          let window = MeetingNamingInterval(startMs: stretch.firstMs, endMs: stretch.lastMs)
+        else { continue }
+        // Exactly one call-sound voice: one speaker with enough speech, nobody else at all.
+        var heard: [(speaker: String, ms: Int)] = []
+        for (speaker, intervals) in speech {
+          let ms = length(intersect(intervals, [window]))
+          if ms > 0 { heard.append((speaker, ms)) }
+        }
+        guard heard.count == 1, heard[0].ms >= minimumPairSpeechMs else { continue }
+        windows[heard[0].speaker, default: [:]][remote, default: []].append(window)
+      }
+    }
+
+    // Each speaker's claim: its overlapping windows counted once, per name.
+    var claims: [String: [(speaker: String, ms: Int)]] = [:]
+    for (speaker, byName) in windows where voteProposals[speaker] == nil {
+      let measured = byName.mapValues { length(intersect(speech[speaker] ?? [], normalized($0))) }
+      let total = measured.values.reduce(0, +)
+      guard let top = measured.values.max(), total > 0 else { continue }
+      let leaders = measured.filter { $0.value == top }
+      guard leaders.count == 1, let winner = leaders.first,
+        Double(top) >= minimumShare * Double(total)
+      else { continue }
+      // Talker votes for this speaker that point at anyone else contradict the rule.
+      if (votes[speaker] ?? [:]).keys.contains(where: { $0 != winner.key }) { continue }
+      claims[winner.key, default: []].append((speaker, top))
+    }
+    let reserved = Set(voteProposals.values)
+    var proposals: [String: String] = [:]
+    for (name, claimants) in claims where !reserved.contains(name) {
+      guard let strongest = claimants.map(\.ms).max() else { continue }
+      let atTop = claimants.filter { $0.ms == strongest }
+      if atTop.count == 1 { proposals[atTop[0].speaker] = name }
+    }
+    return proposals
+  }
+
+  /// The other person in a two-person stretch, or `nil` when the evidence does not identify
+  /// exactly one of the two as the user (plan R3.2, r4). Identity comes from the stretch itself:
+  /// the app's mark during the stretch, else the signed-in account name read with it when it is
+  /// exactly one of the two (the founder's D5 exception, plan r4). The segment's marks, which may
+  /// be from earlier in the call, can only confirm: one that names anyone else abstains.
+  static func remote(in stretch: CallPairStretch, segmentSelf: [String]) -> String? {
+    let pair = Set(stretch.names)
+    guard pair.count == 2 else { return nil }
+    let stretchSelf = Set(stretch.selfNames)
+    // A mark for someone not on this two-person call is a contradiction, not an absence.
+    guard stretchSelf.isSubset(of: pair), stretchSelf.count <= 1 else { return nil }
+    let user: String
+    if let marked = stretchSelf.first {
+      user = marked
+    } else {
+      let account = Set(stretch.accountNames).intersection(pair)
+      guard stretch.accountNames.count == 1, account.count == 1, let named = account.first else {
+        return nil
+      }
+      user = named
+    }
+    guard Set(segmentSelf).isSubset(of: [user]) else { return nil }
+    return pair.subtracting([user]).first
+  }
+
+  static func length(_ intervals: [MeetingNamingInterval]) -> Int {
+    intervals.reduce(0) { $0 + ($1.endMs - $1.startMs) }
   }
 
   /// Why a segment is not naming evidence, in the order a single-surface log was judged: its

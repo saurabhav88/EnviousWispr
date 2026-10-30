@@ -899,7 +899,7 @@ struct MeetingRecorderTests {
     "the real recorder writes a readable, non-silent microphone file from the built-in mic",
     .tags(.realBoundary),
     .enabled(if: MeetingRecorderTests.authorizedBuiltInMicrophoneUID() != nil),
-    .timeLimit(.minutes(1)))
+    .timeLimit(.minutes(1)), .realBoundaryRun)
   func realRecorderWritesReadableFile() async throws {
     let uid = try #require(Self.authorizedBuiltInMicrophoneUID())
     let folder = try MeetingAudioFixture.folder("MeetingRecorderTests-real")

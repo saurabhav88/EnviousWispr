@@ -789,8 +789,9 @@ public enum SentryBreadcrumb {
     /// no text: kind, closed cause, judge revision, arm, macOS major.
     case learnJudgeFailure = "learn_judge_failure"
     /// #1175 (Telemetry Bible Phase 6): a hotkey registration failed — Carbon
-    /// `RegisterEventHotKey` returned non-`noErr`, or an `NSEvent` modifier
-    /// monitor installed `nil`. The affected hotkey will not fire. Rare and
+    /// `RegisterEventHotKey` returned non-`noErr`, or the keyboard listener's event
+    /// tap did not install while the Accessibility grant was present (without it the
+    /// failure is a breadcrumb, #3848). The affected hotkey will not fire. Rare and
     /// actionable; carries `mechanism` / `hotkey_kind` / `os_status` / `key_shape`
     /// (metadata only — never the key codes).
     case hotkeyRegistrationFailed = "hotkey_registration_failed"

@@ -73,6 +73,10 @@ final class RecordingDesktopHotkeyEffects: DesktopHotkeyEffects {
   private(set) var keyboardListenerSink: (@Sendable (KeyEventValue) -> Void)?
   /// Make the next listener installs return nil, as a tap creation without Accessibility does.
   var failKeyboardListenerInstall = false
+  /// What the Accessibility trust read answers (#3848). Trusted by default, so a failed install
+  /// takes the registration-failure route unless a test says the grant is missing.
+  var accessibilityTrusted = true
+  var isAccessibilityTrusted: Bool { accessibilityTrusted }
   /// Runs with the sink before a successful install returns, as a live tap can deliver an event
   /// before `installKeyboardListener` returns to its caller.
   var beforeKeyboardListenerInstallReturns:

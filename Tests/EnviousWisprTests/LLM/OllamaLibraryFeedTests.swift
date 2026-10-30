@@ -41,7 +41,8 @@ struct OllamaLibraryFeedTests {
     formatter.formatOptions = [.withFullDate]
     #expect(
       updated.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
-        && formatter.date(from: updated) != nil, "updated must be a real YYYY-MM-DD date: \(updated)")
+        && formatter.date(from: updated) != nil,
+      "updated must be a real YYYY-MM-DD date: \(updated)")
 
     let parsed = try OllamaLibraryFeedClient.parseFeed(data)
 
@@ -110,7 +111,41 @@ struct OllamaLibraryFeedTests {
     for name in fixtures.invalid {
       let parsed = try OllamaLibraryFeedClient.parseFeed(try row(name: name))
       #expect(parsed.entries.isEmpty, "invalid fixture \(name) was accepted")
-      #expect(parsed.dropped.count == 1)
+      #expect(
+        parsed.dropped == [Self.expectedDropReason(for: name)],
+        "invalid fixture \(name) dropped for the wrong reason: \(parsed.dropped)")
+    }
+  }
+
+  /// The reason each invalid fixture is refused, written out by hand rather than read from the
+  /// parser. Only two rules beat the shape check: the case variants of `latest` and the reserved
+  /// `cloud` names, which are otherwise well-formed. `hf.co/foo/bar` fails the shape first (the
+  /// slash), so it is a bad name, not a reserved one.
+  private static func expectedDropReason(for name: String) -> OllamaLibraryFeedClient.DropReason {
+    switch name {
+    case "foo:LATEST", "foo:Latest": return .caseVariantOfLatest
+    case "gpt-oss:120b-cloud", "kimi-cloud": return .reservedName
+    default: return .badName
+    }
+  }
+
+  /// #3836: the typed-name Download row in the Models sheet asks the same question of a name the
+  /// user typed. One answer for both callers: a fixture the feed accepts must be offered, and a
+  /// fixture the feed refuses must be refused for the same reason.
+  @Test("the name rules on their own give every shared fixture the feed parser's answer")
+  func nameDropReasonMatchesFixtures() throws {
+    let fixtures = try JSONDecoder().decode(NameFixtures.self, from: try read(Self.fixturesPath))
+    #expect(fixtures.valid.count == 8)
+    #expect(fixtures.invalid.count == 14)
+
+    for name in fixtures.valid {
+      #expect(
+        OllamaLibraryFeedClient.nameDropReason(name) == nil, "valid fixture \(name) was refused")
+    }
+    for name in fixtures.invalid {
+      #expect(
+        OllamaLibraryFeedClient.nameDropReason(name) == Self.expectedDropReason(for: name),
+        "invalid fixture \(name) got the wrong answer")
     }
   }
 }

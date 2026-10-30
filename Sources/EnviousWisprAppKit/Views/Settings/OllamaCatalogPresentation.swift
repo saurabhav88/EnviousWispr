@@ -51,7 +51,9 @@ enum OllamaCatalogPresentation {
   /// M is every local row the catalog offers (our suggestions plus any model the user pulled
   /// themselves), N the ones already on this Mac. Hosted rows are not on this Mac and count in
   /// neither.
-  static func installedCount(from catalog: [OllamaModelCatalogEntry]) -> (installed: Int, total: Int) {
+  static func installedCount(from catalog: [OllamaModelCatalogEntry]) -> (
+    installed: Int, total: Int
+  ) {
     let local = groups(from: catalog).local
     return (local.filter(\.isDownloaded).count, local.count)
   }
@@ -60,8 +62,103 @@ enum OllamaCatalogPresentation {
     String(
       localized: "\(installed) of \(total) installed on this Mac",
       comment:
-        "AI Polish, Ollama: pill on the Download more models card. The numbers count the models that run on this Mac.")
+        "AI Polish, Ollama: pill on the Download more models card. The numbers count the models that run on this Mac."
+    )
   }
+
+  // MARK: - Typed-name Download row (#3836)
+
+  /// #3836: the one row the Models sheet offers for a name the user typed that is not in the list.
+  ///
+  /// Only when the search matched nothing, so a partial search (`llama`) never offers to download a
+  /// model called `llama`. Only for a name the feed parser would accept (one owner for the name
+  /// rules, `OllamaLibraryFeedClient.nameDropReason`). Never for a model the list already has under
+  /// another spelling: local rows compare by canonical name (`llama3.2` is `llama3.2:latest`),
+  /// hosted rows by their hosted key. The text is trimmed of spaces only and otherwise kept as
+  /// typed, because the tag is case-sensitive (`foo:Q4_K_M`).
+  ///
+  /// The entry has no size and no parameter count: we know neither until the daemon has it, and a
+  /// guess would be a claim. `detailLine` keys its sentence off exactly that.
+  static func typedDownloadSuggestion(
+    query: String, catalog: [OllamaModelCatalogEntry], searchMatchedAnyRow: Bool
+  ) -> OllamaModelCatalogEntry? {
+    let typed = query.trimmingCharacters(in: .whitespaces)
+    guard !typed.isEmpty, !searchMatchedAnyRow,
+      OllamaLibraryFeedClient.nameDropReason(typed) == nil
+    else { return nil }
+    let canonical = OllamaSetupService.canonicalModelName(typed)
+    let hostedKey = OllamaSetupService.hostedCatalogKey(typed)
+    let listed = catalog.contains { row in
+      row.isRemote
+        ? OllamaSetupService.hostedCatalogKey(row.name) == hostedKey
+        : OllamaSetupService.canonicalModelName(row.name) == canonical
+    }
+    guard !listed else { return nil }
+    return OllamaModelCatalogEntry(
+      name: typed, displayName: typed, parameterCount: "", downloadSize: "")
+  }
+
+  /// #3836: the row a typed-name download keeps in the sheet until it ends.
+  ///
+  /// It always carries the service's EXACT pulling name, because progress and Cancel match a local
+  /// row by exact name (`rowIsPulling`). When the list already has the model under an alias (the
+  /// daemon reports `foo:latest` for a pull of `foo` during the refresh after success), the row
+  /// borrows that entry's metadata and installed state but keeps the pulling name.
+  static func pinnedTypedRow(activeTypedPull: String?, local: [OllamaModelCatalogEntry])
+    -> OllamaModelCatalogEntry?
+  {
+    guard let name = activeTypedPull else { return nil }
+    let canonical = OllamaSetupService.canonicalModelName(name)
+    guard let listed = local.first(where: { OllamaSetupService.canonicalModelName($0.name) == canonical })
+    else {
+      return OllamaModelCatalogEntry(name: name, displayName: name, parameterCount: "", downloadSize: "")
+    }
+    return OllamaModelCatalogEntry(
+      name: name, displayName: listed.displayName, parameterCount: listed.parameterCount,
+      downloadSize: listed.downloadSize, isDownloaded: listed.isDownloaded)
+  }
+
+  /// #3836: the typed rows in display order: the pinned one (a typed download running or failed),
+  /// then the current search's suggestion unless it is the same model. Both can show at once, so a
+  /// failed mistyped name never hides the offer for the corrected one.
+  static func typedRows(pinned: OllamaModelCatalogEntry?, suggestion: OllamaModelCatalogEntry?)
+    -> [OllamaModelCatalogEntry]
+  {
+    var rows = pinned.map { [$0] } ?? []
+    if let suggestion,
+      pinned.map({
+        OllamaSetupService.canonicalModelName($0.name)
+          != OllamaSetupService.canonicalModelName(suggestion.name)
+      }) ?? true
+    {
+      rows.append(suggestion)
+    }
+    return rows
+  }
+
+  /// #3836: the grey line under a local row's name: the verdict note, then parameters and size.
+  /// A typed suggestion has neither number, so it says what will happen instead.
+  static func detailLine(for entry: OllamaModelCatalogEntry, note: String) -> String {
+    if entry.parameterCount.isEmpty && entry.downloadSize.isEmpty {
+      return typedSuggestionDetail
+    }
+    return [note.isEmpty ? nil : note, "\(entry.parameterCount) · \(entry.downloadSize)"]
+      .compactMap { $0 }.joined(separator: " · ")
+  }
+
+  static let typedSuggestionDetail = String(
+    localized:
+      "Not in our list. Downloads from ollama.com if a model by this name exists. Size appears after download.",
+    comment:
+      "AI Polish, Ollama Models sheet: detail line under a model name the user typed that is not in our list. Nothing is known about it until it downloads."
+  )
+
+  /// #3836: shown when Search matches no row and the text cannot be offered as a download.
+  static let noMatchesText = String(
+    localized: "No models match. Check the supported-name guidance beside Search.",
+    comment:
+      "AI Polish, Ollama Models sheet: nothing in the list matches the search text, and the text is not a model name the app can download."
+  )
 
   /// Size and quality are meaningless for a model that is not on this disk. A
   /// hosted row's reported `size` is manifest-only (316 bytes for a

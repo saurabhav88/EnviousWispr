@@ -38,7 +38,7 @@ struct ParakeetStreamingGenerationTests {
   @Test(
     "a stale generation never publishes a streaming manager",
     .enabled(if: ParakeetRealBoundaryFixture.shippedModelIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func staleGenerationNeverPublishes() async throws {
     try await withParakeetOfflineModeExclusion {
@@ -87,7 +87,7 @@ struct ParakeetStreamingGenerationTests {
   @Test(
     "an abandoned attempt's late arrival still publishes nothing once its generation is reclaimed",
     .enabled(if: ParakeetRealBoundaryFixture.shippedModelIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func abandonedAttemptLateArrivalPublishesNothing() async throws {
     try await withParakeetOfflineModeExclusion {

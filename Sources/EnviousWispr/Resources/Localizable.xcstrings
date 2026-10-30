@@ -9223,17 +9223,6 @@
         }
       }
     },
-    "Getting the preview ready..." : {
-      "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorschau wird vorbereitet..."
-          }
-        }
-      }
-    },
     "Getting the speech engine ready\nso your first go is instant." : {
       "localizations" : {
         "de" : {
@@ -9717,6 +9706,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Isländisch"
+          }
+        }
+      }
+    },
+    "If no models match, type an exact unlisted local model name to download it. Names containing / or cloud, S1-mini names, and case variants of latest are unsupported. Partial matches can hide the offer." : {
+      "comment" : "AI Polish, Ollama Models sheet: help below the search field. A model name typed exactly can be downloaded even if it is not listed; some names are not supported.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn kein Modell passt, gib den genauen Namen eines nicht aufgeführten lokalen Modells ein, um es herunterzuladen. Namen mit / oder cloud, S1-mini-Namen und Varianten von latest mit anderer Groß- und Kleinschreibung werden nicht unterstützt. Teiltreffer können das Angebot ausblenden."
           }
         }
       }
@@ -12858,6 +12858,17 @@
         }
       }
     },
+    "No model named %@ was found on ollama.com. Check the spelling, including the part after the colon." : {
+      "comment" : "AI Polish, Ollama Models sheet: shown under a typed or listed model whose download failed because ollama.com has no model by that name. The placeholder is the model name exactly as typed, for example smollm2:135m.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf ollama.com gibt es kein Modell namens %@. Prüfe die Schreibweise, auch den Teil nach dem Doppelpunkt."
+          }
+        }
+      }
+    },
     "No model selected" : {
       "localizations" : {
         "de" : {
@@ -12875,6 +12886,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Modelle gefunden"
+          }
+        }
+      }
+    },
+    "No models match. Check the supported-name guidance beside Search." : {
+      "comment" : "AI Polish, Ollama Models sheet: nothing in the list matches the search text, and the text is not a model name the app can download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine passenden Modelle. Beachte die Hinweise zu unterstützten Namen neben der Suche."
           }
         }
       }
@@ -13381,6 +13403,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht vollständig nachbearbeitet"
+          }
+        }
+      }
+    },
+    "Not in our list. Downloads from ollama.com if a model by this name exists. Size appears after download." : {
+      "comment" : "AI Polish, Ollama Models sheet: detail line under a model name the user typed that is not in our list. Nothing is known about it until it downloads.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht in unserer Liste. Wird von ollama.com geladen, falls es ein Modell mit diesem Namen gibt. Die Größe erscheint nach dem Download."
           }
         }
       }

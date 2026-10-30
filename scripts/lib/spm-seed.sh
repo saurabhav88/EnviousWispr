@@ -30,9 +30,12 @@
 #
 # Portability: bash 3.2 compatible.
 
-_ew_seed_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if declare -F _ew_seed_guard_source >/dev/null 2>&1; then
+  if _ew_seed_guard_source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)" 2; then :; else return 2; fi
+fi
+_ew_seed_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib/spm-seed-lock.sh
-. "$_ew_seed_here/spm-seed-lock.sh"
+if . "$_ew_seed_here/spm-seed-lock.sh"; then :; else return 2; fi
 # The Tuist pin is part of the cache key and is OWNED by ensure-generated.sh.
 # Sourcing it here rather than defaulting is what keeps one library from
 # inventing a second cache namespace — see the key function below.
@@ -176,7 +179,7 @@ EW_SEED_MAX_AGE_DAYS="${EW_SEED_MAX_AGE_DAYS:-14}"
 # Removes snapshots unused for longer than the age bound. Every failure is a
 # no-op: this is housekeeping and must never fail a build.
 ew_seed_prune() {
-  local keep="${1:-}" mins dir key
+  local keep="${1:-}" mins dir key outcome
   [ -d "$EW_SEED_ROOT" ] || return 0
   case "$EW_SEED_MAX_AGE_DAYS" in
     ''|*[!0-9]*) return 0 ;;   # malformed bound: prune nothing rather than guess
@@ -189,8 +192,8 @@ ew_seed_prune() {
   # written here first and a mutation control proved it DEAD — deleting it changed
   # nothing, because `.locks` was never a candidate. Removed rather than left in,
   # since a guard that cannot fire reads as the thing keeping you safe and is not.
-  # Anyone replacing this glob with `find`, or enabling `dotglob`, re-opens it —
-  # which is what the ".locks is not mistaken for a snapshot" case now binds.
+  # #4197 also rejects hidden keys in the shared owner, so enabling dotglob
+  # cannot turn either .locks or .mutations into a deletion candidate.
   for dir in "$EW_SEED_ROOT"/*; do
     [ -d "$dir" ] || continue
     key="$(basename "$dir")"
@@ -200,9 +203,12 @@ ew_seed_prune() {
     # says nobody is using it RIGHT NOW, and those are different claims — a
     # consumer mid-clone has an old snapshot open.
     if ew_seed_lock_acquire "$key"; then
-      rm -rf "$dir" 2>/dev/null || true
+      if ew_seed_cleanup_candidate "$key" "$EW_SEED_ROOT" "$dir" snapshot; then :; fi
+      outcome="$EW_SEED_REMOVE_OUTCOME"
       ew_seed_lock_release "$key"
-      echo "==> Pruned unused package seed ${key:0:12} (idle > ${EW_SEED_MAX_AGE_DAYS}d)"
+      if [ "$outcome" = removed ]; then
+        echo "==> Pruned unused package seed ${key:0:12} (idle > ${EW_SEED_MAX_AGE_DAYS}d)"
+      fi
     fi
   done
   return 0
@@ -287,8 +293,9 @@ ew_seed_consume() {
   # validate. Arm the fallback for it rather than inheriting it silently.
   if [ -e "$target" ]; then
     if [ -f "$target/$EW_SEED_PROVENANCE_FILE" ]; then
-      EW_SEED_CONSUMED=1
-      echo "==> Reusing a cloned package tree from an earlier run (unvalidated; will re-resolve unseeded if it fails)"
+      if _ew_seed_arm_consumed "$dd" "$target"; then
+        echo "==> Reusing a cloned package tree from an earlier run (unvalidated; will re-resolve unseeded if it fails)"
+      fi
     fi
     return 0
   fi
@@ -321,16 +328,18 @@ ew_seed_consume() {
   # early-return above would then ACCEPT it on the next run — silent corruption
   # that surfaces as a mystery build failure. A staging name nobody looks for
   # cannot be mistaken for a resolved tree.
-  mkdir -p "$dd" 2>/dev/null || true
+  if ! ew_seed_prepare_namespace "$dd"; then ew_seed_lock_release "$key"; return 0; fi
   # Sweep this key's stale consumer staging BEFORE copying. A SIGKILL leaves one
   # behind with no handler, and nothing else reclaims local DerivedData staging —
   # each is a full 3.6 GB. Safe here because we hold the key's lock.
   for _stale in "$dd"/.SourcePackages.seed."$key".*; do
-    [ -e "$_stale" ] && rm -rf "$_stale" 2>/dev/null || true
+    [ -e "$_stale" ] || [ -L "$_stale" ] || continue
+    if ! ew_seed_cleanup_candidate "$key" "$dd" "$_stale"; then
+      ew_seed_lock_release "$key"; return 0
+    fi
   done
   tmp="$dd/.SourcePackages.seed.$key.$$"
-  rm -rf "$tmp" 2>/dev/null || true
-  ew_seed_track_temp "$tmp"
+  if ! ew_seed_begin_temp "$key" "$dd" "$tmp"; then ew_seed_lock_release "$key"; return 0; fi
   # THE MARKER GOES IN BEFORE THE RENAME, and the ordering is the whole point.
   # Written afterwards, a kill between the rename and the write left a cloned tree
   # with NO provenance — which a later run reads as ordinary DerivedData, so the
@@ -377,12 +386,13 @@ ew_seed_consume() {
   # the snapshot CONTAINS. **When you make an artifact position-independent, ask
   # it again of everything inside it.** Applies to any cached, cloned, snapshotted
   # or vendored tree, not just this one.
-  if cp -Rc "$snap" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp" \
+  if cp -Rc "$snap/." "$tmp/" 2>/dev/null && ew_seed_is_complete "$tmp" \
      && ew_seed_localise "$tmp" "$target" \
      && printf '%s\n' "$key" > "$tmp/$EW_SEED_PROVENANCE_FILE" 2>/dev/null \
      && ew_seed_rename_exclusive "$tmp" "$target"; then
+    if ! ew_seed_complete_temp "$key" "$tmp"; then ew_seed_lock_release "$key"; return 0; fi
+    if ! _ew_seed_arm_consumed "$dd" "$target"; then ew_seed_lock_release "$key"; return 0; fi
     ew_seed_lock_release "$key"
-    EW_SEED_CONSUMED=1
     # Mark the snapshot as USED, which is what the age bound in ew_seed_prune
     # reads. Without this, mtime means "when it was written" and a snapshot in
     # daily use would be pruned on its birthday.
@@ -393,16 +403,29 @@ ew_seed_consume() {
 
   # `cp -Rc` fails with ENOTSUP/EXDEV off APFS or across volumes — judged by
   # outcome, never inferred from duration.
-  rm -rf "$tmp" 2>/dev/null || true
+  if ew_seed_cleanup_candidate "$key" "$dd" "$tmp"; then :; fi
   ew_seed_lock_release "$key"
-  echo "==> Resolving packages (seed clone unavailable; removed partial staging copy)"
+  echo "==> Resolving packages (seed clone unavailable; staging cleanup checked)"
   return 0
 }
 
 
 # Did the CURRENT process consume a seed? Read by `ew_seed_resolve_or_unseed`,
 # which is the only thing entitled to discard a tree it did not create.
-EW_SEED_CONSUMED=0
+EW_SEED_CONSUMED="${EW_SEED_CONSUMED:-0}"
+_EW_SEED_CONSUMED_ROOT="${_EW_SEED_CONSUMED_ROOT:-}"
+_EW_SEED_CONSUMED_ROOT_ID="${_EW_SEED_CONSUMED_ROOT_ID:-}"
+_EW_SEED_CONSUMED_TARGET="${_EW_SEED_CONSUMED_TARGET:-}"
+_EW_SEED_CONSUMED_ID="${_EW_SEED_CONSUMED_ID:-}"
+
+_ew_seed_arm_consumed() {
+  local root="$1" target="$2"
+  if ! _ew_seed_depth || ! _ew_seed_observe "$root" "$target"; then return 1; fi
+  _EW_SEED_CONSUMED_ROOT="$root"; _EW_SEED_CONSUMED_TARGET="$target"
+  _EW_SEED_CONSUMED_ROOT_ID="$_EW_SEED_OBS_ROOT_ID"; _EW_SEED_CONSUMED_ID="$_EW_SEED_OBS_ID"
+  EW_SEED_CONSUMED=1
+  return 0
+}
 
 # ew_seed_resolve_or_unseed <derived_data_path> <resolve command...>
 #
@@ -435,19 +458,31 @@ EW_SEED_CONSUMED=0
 # The retry carries no `-skipPackageUpdates`, so it is a full resolve and cannot
 # inherit whatever the discarded tree got wrong.
 ew_seed_resolve_or_unseed() {
-  local dd="$1"; shift
+  local dd="$1" rc; shift
   [ "$EW_SEED_CONSUMED" = "1" ] || return 0
+  if ! _ew_seed_depth || [ "$dd" != "$_EW_SEED_CONSUMED_ROOT" ] || [ "$dd/SourcePackages" != "$_EW_SEED_CONSUMED_TARGET" ] || [ -z "$_EW_SEED_CONSUMED_ID" ]; then
+    _ew_seed_warn 'unseed target has no matching captured provenance'; return 1
+  fi
 
   if "$@"; then
+    if ! _ew_seed_observe "$dd" "$_EW_SEED_CONSUMED_TARGET" "$_EW_SEED_CONSUMED_ID" || [ "$_EW_SEED_OBS_ROOT_ID" != "$_EW_SEED_CONSUMED_ROOT_ID" ]; then
+      _ew_seed_warn 'validated target changed or is unknown; provenance retained'; return 1
+    fi
     # Validated. The tree is now xcodebuild's, not the seed's, so drop the
     # provenance marker — otherwise the next run would arm this fallback again
     # and discard a perfectly good tree on the first unrelated package error.
     rm -f "$dd/SourcePackages/$EW_SEED_PROVENANCE_FILE" 2>/dev/null || true
+    EW_SEED_CONSUMED=0
     return 0
   fi
 
-  echo "==> Seeded package tree failed to resolve — discarding it and retrying unseeded"
-  rm -rf "$dd/SourcePackages"
+  if ! _ew_seed_root_matches "$dd" "$_EW_SEED_CONSUMED_ROOT_ID"; then return 1; fi
+  if python3 "$_EW_SEED_HELPER" "$dd" "$_EW_SEED_CONSUMED_TARGET" "$_EW_SEED_CONSUMED_ID"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0|3) ;;
+    *) _ew_seed_warn 'unseed cleanup refused; provenance retained and no second resolve'; return 1 ;;
+  esac
+  echo "==> Seeded package tree failed to resolve — removed or verified absent; retrying unseeded"
   EW_SEED_CONSUMED=0
   "$@"
 }
@@ -476,12 +511,12 @@ ew_seed_publish() {
     return 0
   fi
 
-  mkdir -p "$EW_SEED_ROOT/$key" 2>/dev/null || { ew_seed_lock_release "$key"; return 0; }
+  if ! _ew_seed_ensure_child "$EW_SEED_ROOT" "$EW_SEED_ROOT/$key"; then ew_seed_lock_release "$key"; return 0; fi
   tmp="$EW_SEED_ROOT/$key/.staging.$$"
-  rm -rf "$tmp" 2>/dev/null || true
-  ew_seed_track_temp "$tmp"
+  if ! ew_seed_cleanup_candidate "$key" "$EW_SEED_ROOT/$key" "$tmp"; then ew_seed_lock_release "$key"; return 0; fi
+  if ! ew_seed_begin_temp "$key" "$EW_SEED_ROOT/$key" "$tmp"; then ew_seed_lock_release "$key"; return 0; fi
 
-  if cp -Rc "$src" "$tmp" 2>/dev/null && ew_seed_is_complete "$tmp"; then
+  if cp -Rc "$src/." "$tmp/" 2>/dev/null && ew_seed_is_complete "$tmp"; then
     # A snapshot is never itself a clone. If the source tree still carried a
     # marker the publication would hand every future consumer a tree that arms
     # the fallback on arrival.
@@ -490,6 +525,7 @@ ew_seed_publish() {
     # nothing. Atomicity is not mutual exclusion, which is what the lock and the
     # re-check above provide.
     if ew_seed_rename_exclusive "$tmp" "$snap"; then
+      if ! ew_seed_complete_temp "$key" "$tmp"; then ew_seed_lock_release "$key"; return 0; fi
       ew_seed_lock_release "$key"
       echo "==> Published package seed snapshot ${key:0:12}"
       # Publishing is the moment the cache grows, so it is the right moment to
@@ -500,7 +536,7 @@ ew_seed_publish() {
     fi
   fi
 
-  rm -rf "$tmp" 2>/dev/null || true
+  if ew_seed_cleanup_candidate "$key" "$EW_SEED_ROOT/$key" "$tmp"; then :; fi
   ew_seed_lock_release "$key"
   return 0
 }

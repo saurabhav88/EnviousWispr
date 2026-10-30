@@ -111,6 +111,76 @@ public struct FrozenTalkerRules: Sendable, Equatable, Codable {
   }
 }
 
+/// A stretch of consecutive readings that each proved a two-person call (#4013 chunk 14): the
+/// app's own count said two, both people were named and nobody else was shown. Evidence only;
+/// the namer decides who is the user and who is the other person. Times are the first and last
+/// such reading on the recording clock; a known interruption or any other reading ends it.
+public struct CallPairStretch: Sendable, Equatable, Codable {
+  /// The longest gap between two readings of one stretch: Granola 7.668.3 restarts its one-on-one
+  /// candidate after more than 7,000 ms unseen (`zN`).
+  public static let maximumGapMs = 7_000
+
+  /// The two people shown, in the reader's order.
+  public let names: [String]
+  /// Names the app itself marked as the user in these readings (at most two, normally one).
+  public let selfNames: [String]
+  /// The display name of the account signed in to the call app during these readings, at most
+  /// one (Zoom's menu bar). Not a meeting marking: the namer uses it only to tell the user from
+  /// the other person when no app marking says, under the founder's recorded D5 exception
+  /// (#4013 plan r4); votes and rename suggestions never use it. Empty when not read.
+  public let accountNames: [String]
+  public let firstMs: Int
+  public let lastMs: Int
+
+  public init(
+    names: [String], selfNames: [String], accountNames: [String] = [], firstMs: Int, lastMs: Int
+  ) {
+    self.names = names
+    self.selfNames = selfNames
+    self.accountNames = accountNames
+    self.firstMs = firstMs
+    self.lastMs = lastMs
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case names, selfNames, accountNames, firstMs, lastMs
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    names = try container.decode([String].self, forKey: .names)
+    selfNames = try container.decode([String].self, forKey: .selfNames)
+    accountNames = try container.decodeIfPresent([String].self, forKey: .accountNames) ?? []
+    firstMs = try container.decode(Int.self, forKey: .firstMs)
+    lastMs = try container.decode(Int.self, forKey: .lastMs)
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(names, forKey: .names)
+    try container.encode(selfNames, forKey: .selfNames)
+    if !accountNames.isEmpty { try container.encode(accountNames, forKey: .accountNames) }
+    try container.encode(firstMs, forKey: .firstMs)
+    try container.encode(lastMs, forKey: .lastMs)
+  }
+
+  /// The most names one stretch holds: two people, two self names, one account name.
+  static let maximumNames = 5
+
+  /// The first shape problem, or `nil`: two distinct names, at most two self names and one
+  /// account name, all valid, and a stretch that does not run backwards.
+  var shapeProblem: String? {
+    guard names.count == 2, names[0] != names[1] else { return "names" }
+    guard selfNames.count <= 2 else { return "selfNames" }
+    guard accountNames.count <= 1 else { return "accountNames" }
+    guard (names + selfNames + accountNames).allSatisfy(CallSpeakerLog.isStoredName) else {
+      return "name"
+    }
+    guard lastMs >= firstMs else { return "times" }
+    return nil
+  }
+}
+
 /// Why a segment's collection ended. Stored as text, like the surface.
 public enum CallSpeakerSegmentEnd: String, Sendable, Equatable, CaseIterable {
   /// The call moved to another app, page or app instance.
@@ -149,6 +219,9 @@ public struct CallSpeakerSegment: Sendable, Equatable {
   public let presence: [CallNamePresence]?
   /// How this segment's captures went; `nil` when not recorded (unknown, never zero).
   public let health: CallCaptureHealth?
+  /// Stretches that proved a two-person call (#4013 chunk 14), in time order; `nil` when not
+  /// recorded (a log written before them), which is unknown, never "no such stretch".
+  public let pairs: [CallPairStretch]?
 
   /// More names than any call shows; bounds the work of reading a damaged file.
   public static let maximumPresenceNames = 1_000
@@ -167,7 +240,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     source: CallSpeakerSource?, status: CallSpeakerObservationStatus?, lag: CallSpeakerLag?,
     roster: CallSpeakerRoster, rosterFromParticipantList: Bool?,
     observations: [CallSpeakerObservation], presence: [CallNamePresence]? = nil,
-    health: CallCaptureHealth? = nil
+    health: CallCaptureHealth? = nil, pairs: [CallPairStretch]? = nil
   ) {
     self.startMs = startMs
     self.endMs = endMs
@@ -181,6 +254,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
     self.observations = observations
     self.presence = presence
     self.health = health
+    self.pairs = pairs
   }
 
   /// The first shape problem, or `nil` when the segment may be admitted as evidence.
@@ -235,6 +309,20 @@ public struct CallSpeakerSegment: Sendable, Equatable {
         }
       }
     }
+    if let pairs {
+      // In time order without overlap, each inside the segment.
+      var previousEnd: Int?
+      for (index, pair) in pairs.enumerated() {
+        if let problem = pair.shapeProblem { return "pairs[\(index)].\(problem)" }
+        guard pair.firstMs >= startMs, pair.lastMs <= (endMs ?? clock.upperBound) else {
+          return "pairs[\(index)] outside the segment"
+        }
+        if let previousEnd, pair.firstMs <= previousEnd {
+          return "pairs[\(index)] out of order"
+        }
+        previousEnd = pair.lastMs
+      }
+    }
     return nil
   }
 }
@@ -242,7 +330,7 @@ public struct CallSpeakerSegment: Sendable, Equatable {
 extension CallSpeakerSegment: Codable {
   private enum CodingKeys: String, CodingKey {
     case startMs, endMs, endReason, surface, source, status, lag, roster
-    case rosterFromParticipantList, observations, presence, health
+    case rosterFromParticipantList, observations, presence, health, pairs
   }
 
   public init(from decoder: Decoder) throws {
@@ -261,6 +349,7 @@ extension CallSpeakerSegment: Codable {
       try container.decodeIfPresent([CallSpeakerObservation].self, forKey: .observations) ?? []
     presence = try container.decodeIfPresent([CallNamePresence].self, forKey: .presence)
     health = try container.decodeIfPresent(CallCaptureHealth.self, forKey: .health)
+    pairs = try container.decodeIfPresent([CallPairStretch].self, forKey: .pairs)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -277,6 +366,7 @@ extension CallSpeakerSegment: Codable {
     try container.encode(observations, forKey: .observations)
     try container.encodeIfPresent(presence, forKey: .presence)
     try container.encodeIfPresent(health, forKey: .health)
+    try container.encodeIfPresent(pairs, forKey: .pairs)
   }
 }
 
@@ -561,6 +651,15 @@ private struct CallSpeakerWireSegment: Codable {
     let sightingsFull: Bool?
   }
 
+  struct Pair: Codable {
+    let names: [Int]
+    let selfNames: [Int]
+    /// Absent when no account name was read.
+    let accountNames: [Int]?
+    let firstMs: Int
+    let lastMs: Int
+  }
+
   let startMs: Int
   let endMs: Int?
   let endReason: String?
@@ -573,6 +672,7 @@ private struct CallSpeakerWireSegment: Codable {
   let runs: [Run]
   let presence: [Presence]?
   let health: CallCaptureHealth?
+  let pairs: [Pair]?
 
   init(_ segment: CallSpeakerSegment, table: inout CallSpeakerNameTable) {
     startMs = segment.startMs
@@ -613,6 +713,12 @@ private struct CallSpeakerWireSegment: Codable {
         sightingsFull: $0.sightingsFull)
     }
     health = segment.health
+    pairs = segment.pairs?.map {
+      Pair(
+        names: $0.names.map { table.id($0) }, selfNames: $0.selfNames.map { table.id($0) },
+        accountNames: $0.accountNames.isEmpty ? nil : $0.accountNames.map { table.id($0) },
+        firstMs: $0.firstMs, lastMs: $0.lastMs)
+    }
   }
 
   /// The first cap the stored counts pass, before anything is unfolded.
@@ -628,7 +734,16 @@ private struct CallSpeakerWireSegment: Codable {
     var presence = 0
     var sightings = 0
     var absences = 0
+    var pairs = 0
     for segment in segments {
+      // A stretch holds at most five names; more is damage, refused before anything unfolds.
+      if (segment.pairs ?? []).contains(where: {
+        $0.names.count + $0.selfNames.count + ($0.accountNames?.count ?? 0)
+          > CallPairStretch.maximumNames
+      }) {
+        return .pairs
+      }
+      pairs += segment.pairs?.count ?? 0
       runs += segment.runs.count
       roster += segment.roster.names.count + segment.roster.selfNames.count
       for run in segment.runs {
@@ -648,6 +763,7 @@ private struct CallSpeakerWireSegment: Codable {
     if presence > limits.presenceEntries { return .presenceEntries }
     if sightings > limits.sightings { return .sightings }
     if absences > limits.absences { return .absences }
+    if pairs > limits.pairs { return .pairs }
     return nil
   }
 
@@ -681,7 +797,13 @@ private struct CallSpeakerWireSegment: Codable {
         CallNamePresence(
           name: try name($0.name), sightings: $0.sightings, absences: $0.absences,
           sightingsFull: $0.sightingsFull)
-      }, health: health)
+      }, health: health,
+      pairs: try pairs?.map {
+        CallPairStretch(
+          names: try $0.names.map(name), selfNames: try $0.selfNames.map(name),
+          accountNames: try ($0.accountNames ?? []).map(name), firstMs: $0.firstMs,
+          lastMs: $0.lastMs)
+      })
   }
 }
 
@@ -702,7 +824,8 @@ extension CallSpeakerSegment {
     startMs: Int, endMs: Int?, endReasonRaw: String?, surfaceRaw: String?, sourceRaw: String?,
     statusRaw: String?, lag: CallSpeakerLag?, roster: CallSpeakerRoster,
     rosterFromParticipantList: Bool?, observations: [CallSpeakerObservation],
-    presence: [CallNamePresence]? = nil, health: CallCaptureHealth? = nil
+    presence: [CallNamePresence]? = nil, health: CallCaptureHealth? = nil,
+    pairs: [CallPairStretch]? = nil
   ) {
     self.startMs = startMs
     self.endMs = endMs
@@ -716,5 +839,6 @@ extension CallSpeakerSegment {
     self.observations = observations
     self.presence = presence
     self.health = health
+    self.pairs = pairs
   }
 }

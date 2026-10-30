@@ -48,6 +48,7 @@ MEMBERS=(
   "dependency-direction|bash grep|build-check"
   "lane-verdict-self-test|bash python3|build-check"
   "dev-app-lock-self-test|python3 ps|build-check"
+  "seed-cleanup-contracts|python3|build-check"
   "download-link-lint|bash|build-check"
   "runtime-uat-self-tests|python3|build-check"
   "judge-contracts|python3|build-check"
@@ -145,6 +146,12 @@ member_dev_app_lock_self_test() {
   # only python3, ps and flock, which this Linux runner has. This step
   # is the first Linux run of it; the suite was written on macOS.
   python3 scripts/lib/dev-app-lock-test.py
+}
+
+# Portable physical contracts use a fake filesystem; native Darwin fixtures
+# remain local. Relative paths bind both fixture and helper to --tree.
+member_seed_cleanup_contracts() {
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/remove-tree-test.py --portable
 }
 
 # CI step: Download-link lint (doorway tagging + on-site /#download)
@@ -521,7 +528,7 @@ run_all() {
 
 # The member list, frozen independently of MEMBERS. Adding or removing a member
 # is a deliberate edit to both.
-EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test third-party-notices worker-tests"
+EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test seed-cleanup-contracts download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test third-party-notices worker-tests"
 
 member_names() { local r; for r in "$@"; do printf '%s ' "${r%%|*}"; done; }
 
@@ -566,7 +573,51 @@ self_test() {
   for name in $EXPECTED_MEMBERS; do
     check "member function exists for $name" "$(declare -F "member_${name//-/_}" > /dev/null && echo yes || echo no)" "yes"
   done
-  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|16"
+  check "default selection has exactly nineteen members" "$(selected_members 0 | wc -l | tr -d ' ')" "19"
+  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|17"
+
+  # Exercise the real entrypoint and member body against a distinct tree. A
+  # checkout-absolute fixture or helper path could still pass its own suite;
+  # independent receipts make that wrong-tree success fail this control.
+  local selected="$tmp/selected-tree" selected_copy="$tmp/selected-runner.sh"
+  mkdir -p "$selected/scripts/lib"
+  cat > "$selected/scripts/lib/remove-tree.py" <<'PYHELPER'
+from pathlib import Path
+def receipt():
+    with Path("selected-helper").open("a") as stream:
+        stream.write("helper-from-selected-tree\n")
+PYHELPER
+  cat > "$selected/scripts/lib/remove-tree-test.py" <<'PYFIXTURE'
+import importlib.util
+from pathlib import Path
+import sys
+assert sys.argv[1:] == ["--portable"]
+spec = importlib.util.spec_from_file_location("selected_helper", Path(__file__).with_name("remove-tree.py"))
+helper = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helper)
+helper.receipt()
+with Path("selected-fixture").open("a") as stream:
+    stream.write("fixture-from-selected-tree\n")
+print("GROUP selected-binding: executed=1 skipped=0")
+sys.exit(23 if Path("fail-selected-control").exists() else 0)
+PYFIXTURE
+  if [ "$(grep -cx 'main "$@"' "$0")" != 1 ]; then
+    check "selected-tree runner copy has one checked entrypoint" "invalid" "valid"
+  else
+    {
+      sed '/^main "\$@"$/d' "$0"
+      printf '%s\n' 'MEMBERS=("seed-cleanup-contracts|python3|build-check")' 'main "$@"'
+    } > "$selected_copy"
+    cp "$SCRIPT_DIR/process-tree.sh" "$tmp/process-tree.sh"
+    out="$("$BASH" "$selected_copy" --tree "$selected" 2>&1)"; rc=$?
+    check "selected-tree portable member succeeds and completes exactly once" "$rc|$(printf '%s' "$out" | grep -c '^GROUP selected-binding: executed=1 skipped=0$')|$(printf '%s' "$out" | tail -1)" "0|1|==> fast-checks: 1 members, 0 failed, 0 skipped"
+    check "selected tree supplies its own fixture receipt" "$(cat "$selected/selected-fixture" 2>/dev/null)" "fixture-from-selected-tree"
+    check "selected tree supplies its own helper receipt" "$(cat "$selected/selected-helper" 2>/dev/null)" "helper-from-selected-tree"
+    touch "$selected/fail-selected-control"
+    out="$("$BASH" "$selected_copy" --tree "$selected" 2>&1)"; rc=$?
+    check "selected-tree nonzero fixture fails the named member and aggregate" "$rc|$(printf '%s' "$out" | grep -c '^==> seed-cleanup-contracts: FAIL (exit 23')|$(printf '%s' "$out" | tail -1)" "1|2|==> fast-checks: 1 members, 1 failed, 0 skipped"
+    check "failing control also executes fixture and helper exactly once" "$(wc -l < "$selected/selected-fixture" | tr -d ' ')|$(wc -l < "$selected/selected-helper" | tr -d ' ')" "2|2"
+  fi
 
   local saved_members=("${MEMBERS[@]}")
   MEMBERS=("bad-record-without-fields")

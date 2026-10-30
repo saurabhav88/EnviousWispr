@@ -68,7 +68,9 @@ package enum CallSpeakerSurfaceReader {
   ) -> CallSpeakerReading? {
     switch surface {
     // Only the meeting window; `scope` withholds a capture with meeting content elsewhere.
-    case .zoomApp: ZoomAppSpeakerReader.read(windows: capture.windows.filter(isZoomMeeting))
+    case .zoomApp:
+      ZoomAppSpeakerReader.read(
+        windows: capture.windows.filter(isZoomMeeting), accountTitles: capture.accountTitles)
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -175,6 +177,13 @@ package enum CallSpeakerTimeline {
 /// (`capacityReached`), keeping what it had. A reading with a name no log may hold
 /// (`CallSpeakerLog.isName`) is not kept either, and breaks runs of missing names.
 ///
+/// Two-person stretches (#4013 chunk 14): a reading that proves a two-person call
+/// (`pairEvidence`) opens or extends a `CallPairStretch`; the same two people and self marks,
+/// read again within `CallPairStretch.maximumGapMs`, extend it. Any other kept reading, any
+/// reading that could not be kept and every known interruption (dictation, a busy or stale copy,
+/// missing permission, a lost source) ends it at its last reading, so a stretch never covers time
+/// nothing was read.
+///
 /// Health: counts of how captures and ticks went (`CallCaptureHealth`), no names.
 package struct CallSpeakerAccumulator: Sendable, Equatable {
   package let surface: CallSpeakerSurface
@@ -210,6 +219,17 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     var presence: [String: Tracked] = [:]
     /// The time of the last complete participant list in the current unbroken run.
     var lastListMs: Int?
+    /// Closed two-person stretches, and the one still being extended.
+    var pairs: [CallPairStretch] = []
+    var openPair: CallPairStretch?
+
+    /// Closed stretches plus the open one.
+    var allPairs: [CallPairStretch] { pairs + (openPair.map { [$0] } ?? []) }
+
+    mutating func closePair() {
+      if let openPair { pairs.append(openPair) }
+      openPair = nil
+    }
   }
 
   private struct Tracked: Sendable, Equatable {
@@ -257,6 +277,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     guard context.completeness == .complete, context.scope == .resolved else {
       if context.completeness == .complete { health.unresolvedScopeCaptures += 1 }
       breakAbsenceRuns()
+      names.closePair()
       if status == nil { status = .unreadable }
       return
     }
@@ -264,6 +285,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     status = .observed
     guard let reading else {
       breakAbsenceRuns()
+      names.closePair()
       return
     }
     guard capacityReached == nil else {
@@ -282,11 +304,13 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     guard shown.allSatisfy(CallSpeakerLog.isName) else {
       health.invalidNameReadings = (health.invalidNameReadings ?? 0) + 1
       breakAbsenceRuns()
+      names.closePair()
       return
     }
     var trial = names
     Self.addRoster(reading, to: &trial)
     Self.notePresence(reading, at: observationMs, policy: presencePolicy, in: &trial)
+    Self.notePair(Self.pairEvidence(reading), at: observationMs, in: &trial)
     let observation = speaking.map {
       CallSpeakerObservation(observationMs: observationMs, speaking: $0)
     }
@@ -294,6 +318,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       capacityReached = capacity
       health.evidenceCapacityDrops = (health.evidenceCapacityDrops ?? 0) + 1
       breakAbsenceRuns()
+      names.closePair()
       return
     }
     names = trial
@@ -331,6 +356,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     for tracked in names.presence.values {
       usage.sightings += tracked.sightings.count + (tracked.open == nil ? 0 : 1)
       usage.absences += tracked.absences.count
+    }
+    for pair in names.allPairs {
+      usage.insertNames(pair.names)
+      usage.insertNames(pair.selfNames)
+      usage.insertNames(pair.accountNames)
+      usage.pairs += 1
     }
     usage.runs += runs
     usage.samples += observations.count
@@ -419,6 +450,63 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     names.lastListMs = ms
   }
 
+  /// The two people a reading proves are the whole call, with the user's app-marked names, or
+  /// `nil` (R1.2 of the chunk-14 plan): a resolved capture whose participants are established
+  /// and all named, nobody shown twice or shared, the app's own count saying exactly two, and the
+  /// participants agreeing with the roster. Two names on screen alone never qualify. The app's
+  /// signed-in account name rides along when it is a valid name (plan r4); it never makes a
+  /// reading qualify.
+  static func pairEvidence(_ reading: CallSpeakerReading) -> PairEvidence? {
+    guard reading.participantIdentityEstablished, reading.sharedNames.isEmpty,
+      reading.participantCount == 2, reading.participants.count == 2,
+      reading.roster.names.count == 2, reading.roster.selfNames.count <= 2
+    else { return nil }
+    let named = reading.participants.compactMap(\.name)
+    guard named.count == 2, Set(named).count == 2, Set(named) == Set(reading.roster.names) else {
+      return nil
+    }
+    let account =
+      reading.accountSelfNames.count == 1
+        && reading.accountSelfNames.allSatisfy(CallSpeakerLog.isName)
+      ? reading.accountSelfNames : []
+    return PairEvidence(
+      names: reading.roster.names, marked: reading.roster.selfNames, account: account)
+  }
+
+  struct PairEvidence: Equatable {
+    let names: [String]
+    let marked: [String]
+    let account: [String]
+  }
+
+  private static func notePair(_ evidence: PairEvidence?, at ms: Int, in names: inout Names) {
+    guard let evidence else {
+      names.closePair()
+      return
+    }
+    if let open = names.openPair, ms - open.lastMs <= CallPairStretch.maximumGapMs,
+      sameSpellings(open.names, evidence.names), sameSpellings(open.selfNames, evidence.marked),
+      sameSpellings(open.accountNames, evidence.account)
+    {
+      names.openPair = CallPairStretch(
+        names: open.names, selfNames: open.selfNames, accountNames: open.accountNames,
+        firstMs: open.firstMs, lastMs: ms)
+      return
+    }
+    names.closePair()
+    names.openPair = CallPairStretch(
+      names: evidence.names, selfNames: evidence.marked, accountNames: evidence.account,
+      firstMs: ms, lastMs: ms)
+  }
+
+  /// The same names spelled the same, in any order: a call app can list the same two people the
+  /// other way round after a view change, and that is still the same stretch.
+  private static func sameSpellings(_ a: [String], _ b: [String]) -> Bool {
+    a.count == b.count
+      && a.allSatisfy { x in b.contains { CallSpeakerRun.sameSpelling(x, $0) } }
+      && b.allSatisfy { y in a.contains { CallSpeakerRun.sameSpelling(y, $0) } }
+  }
+
   /// Anything that is not a complete participant list read in time: no run of them goes on.
   private mutating func breakAbsenceRuns() {
     Self.breakAbsenceRuns(in: &names)
@@ -436,6 +524,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   package mutating func noteNoPermission() {
     health.missingPermissionTicks += 1
     breakAbsenceRuns()
+    names.closePair()
     if !usable { status = .noPermission }
   }
 
@@ -443,23 +532,27 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// that breaks any run of missing lists, counted nowhere else.
   package mutating func noteInterruption() {
     breakAbsenceRuns()
+    names.closePair()
   }
 
   /// A tick took no copy because dictation was running.
   package mutating func noteDictationSkip() {
     health.skippedDictationTicks += 1
     breakAbsenceRuns()
+    names.closePair()
   }
 
   /// A tick took no copy because one was still being taken.
   package mutating func noteBusySkip() {
     health.skippedBusyTicks += 1
+    names.closePair()
   }
 
   /// A copy was dropped at delivery because something changed while it was taken.
   package mutating func noteStaleDrop() {
     health.staleResultDrops += 1
     breakAbsenceRuns()
+    names.closePair()
   }
 
   /// One copy's walk time and size.
@@ -501,6 +594,6 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
           name: name, sightings: tracked.sightings + (open.map { [$0] } ?? []),
           absences: tracked.absences, sightingsFull: tracked.full ? true : nil)
       },
-      health: health)
+      health: health, pairs: names.allPairs)
   }
 }

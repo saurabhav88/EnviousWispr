@@ -5,6 +5,13 @@ compatibility_date = "2026-03-27"
 [triggers]
 crons = []  # QStash owns Monday 09:00 America/New_York (#3570).
 
+# Workers Logs (free plan: 0.5 GB/day shared across the account, 7-day
+# retention). Kept here so a redeploy cannot switch it off.
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
+
 [vars]
 CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
 GITHUB_REPO = "saurabhav88/EnviousWispr"
@@ -13,6 +20,14 @@ POSTHOG_PROJECT_ID = "354235"
 SENTRY_ORG = "envious-labs-llc"
 SENTRY_PROJECT_ID = "4511097112428544"
 SENTRY_PROJECT_SLUG = "enviouswispr"
+# Ollama model list section (#3837). The run-log issue is where the weekly
+# Ollama library routine posts one receipt line per run. ENABLED records that
+# the routine's schedule is switched on; it is configuration, not a live read
+# of the scheduler, and must be exactly "true" or "false" (anything else fails
+# the section). Flip it in the same change that enables or disables the routine.
+OLLAMA_ROUTINE_LOG_ISSUE = "4215"
+OLLAMA_ROUTINE_ENABLED = "true"
+OLLAMA_LIBRARY_FEED_URL = "https://enviouswispr.com/ollama-library.json"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`

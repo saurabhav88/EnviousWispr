@@ -662,6 +662,10 @@ def _self_test():
         r = {"result": result, "raw_asr": raw, "steps": steps or {}, "take": take, "reason": "nil"}
         return r
 
+    # #4133: real gate, fake OS reads. This group imports no PyObjC or running app.
+    import take_gate
+    check("loopback output mute admission", take_gate._output_mute_self_test())
+
     # --- classify_transcription ---
     ec, obs, _t, _n = classify_transcription([rec(steps={"LLM Polish": "the quick brown fox"})], "fox")
     check("completed + token present -> pass(0)", ec == 0 and obs == "the quick brown fox")

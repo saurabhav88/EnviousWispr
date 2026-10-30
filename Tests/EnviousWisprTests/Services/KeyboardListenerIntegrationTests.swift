@@ -21,6 +21,9 @@ struct KeyboardListenerIntegrationTests {
     let effects = RecordingDesktopHotkeyEffects()
     let service: HotkeyService
     var failures: [(mechanism: String, kind: String, shape: String)] = []
+    /// `listenerAwaitingAccessibility` reports (#3848): kind and shape.
+    var awaiting: [(kind: String, shape: String)] = []
+    var health: [HotkeyListenerHealthReport] = []
     var presses = 0
     var actions = 0
 
@@ -34,7 +37,9 @@ struct KeyboardListenerIntegrationTests {
           registrationFailed: { mechanism, kind, _, shape in
             box.rig?.failures.append((mechanism, kind, shape))
           },
-          pressed: { _, _, _, _, _, _ in box.rig?.presses += 1 }),
+          pressed: { _, _, _, _, _, _ in box.rig?.presses += 1 },
+          listenerHealth: { report in box.rig?.health.append(report) },
+          listenerAwaitingAccessibility: { kind, shape in box.rig?.awaiting.append((kind, shape)) }),
         uptime: clock.uptime, scheduler: timers.scheduler)
       box.rig = self
       service.onToggleRecording = { [weak self] in self?.actions += 1 }
@@ -45,6 +50,14 @@ struct KeyboardListenerIntegrationTests {
     }
 
     var listenerFailures: Int { failures.filter { $0.mechanism == "event_tap" }.count }
+
+    /// One failed or successful retry at the poll cadence, waited on through the service's own
+    /// retry-resolved signal (`waiter` counts every resolved retry).
+    func retry(_ waiter: HotkeyGlobeKeyTests.CallbackWaiter, resolved: Int) async {
+      clock.now += TimingConstants.accessibilityPollIntervalSec
+      timers.fireDue()
+      await waiter.wait(until: resolved)
+    }
   }
 
   @Test("start installs one listener and stop removes it")
@@ -105,7 +118,7 @@ struct KeyboardListenerIntegrationTests {
     #expect(rig.effects.keyboardListenerInstalls == 2)
     #expect(rig.listenerFailures == 1)
 
-    // Accessibility granted: the next retry installs and stops retrying.
+    // Installation succeeds on the next retry, which stops retrying.
     rig.effects.failKeyboardListenerInstall = false
     rig.clock.now += TimingConstants.accessibilityPollIntervalSec
     rig.timers.fireDue()
@@ -114,6 +127,162 @@ struct KeyboardListenerIntegrationTests {
     #expect(rig.effects.keyboardListenerToken != nil)
     #expect(rig.timers.pendingCount == 0)
     #expect(rig.listenerFailures == 1)
+    rig.service.stop()
+  }
+
+  // MARK: - Failure route by Accessibility grant (#3848)
+  //
+  // Observability coverage: when these fail, every new install files a Sentry error for the
+  // user's own setup step, or a listener that fails with the grant present goes unreported.
+
+  @Test("an install that fails without Accessibility files no registration failure (#3848)")
+  func untrustedFailedInstallFilesNoRegistrationFailure() async {
+    let rig = Rig()
+    let waiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerRetryResolvedForTesting = { waiter.note() }
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.start()
+    #expect(rig.listenerFailures == 0)
+    await rig.retry(waiter, resolved: 1)
+    #expect(rig.effects.keyboardListenerInstalls == 2)
+    #expect(rig.listenerFailures == 0)
+    #expect(rig.awaiting.count == 1)
+    #expect(rig.awaiting.first?.kind == ShortcutRole.record.telemetryKind)
+    #expect(rig.awaiting.first?.shape == "modifier_only")
+    rig.service.stop()
+  }
+
+  @Test("the first failure after the grant arrives gets one attempt of grace (#3848)")
+  func grantInProgressGetsOneAttemptOfGrace() async {
+    let rig = Rig()
+    let waiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerRetryResolvedForTesting = { waiter.note() }
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.start()
+    rig.effects.accessibilityTrusted = true
+    await rig.retry(waiter, resolved: 1)
+    #expect(rig.awaiting.count == 1)
+    #expect(rig.listenerFailures == 0)
+    // Grace spent and the listener installs: nothing reaches Sentry for this grant.
+    rig.effects.failKeyboardListenerInstall = false
+    await rig.retry(waiter, resolved: 2)
+    #expect(rig.effects.keyboardListenerToken != nil)
+    #expect(rig.listenerFailures == 0)
+    #expect(rig.health.map(\.reason) == ["installed_after_failures"])
+    rig.service.stop()
+  }
+
+  @Test("a listener that keeps failing after the grant is reported once (#3848)")
+  func persistentFailureAfterTheGrantReportsOnce() async {
+    let rig = Rig()
+    let waiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerRetryResolvedForTesting = { waiter.note() }
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.start()
+    rig.effects.accessibilityTrusted = true
+    await rig.retry(waiter, resolved: 1)
+    #expect(rig.listenerFailures == 0)
+    await rig.retry(waiter, resolved: 2)
+    #expect(rig.listenerFailures == 1)
+    #expect(rig.failures.last?.mechanism == "event_tap")
+    await rig.retry(waiter, resolved: 3)
+    #expect(rig.listenerFailures == 1)
+    #expect(rig.awaiting.count == 1)
+    rig.service.stop()
+  }
+
+  @Test("a successful install resets every route, so each later failure run reports (#3848)")
+  func successResetsEveryRoute() async {
+    let rig = Rig()
+    let waiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerRetryResolvedForTesting = { waiter.note() }
+    // Trusted failure, success, trusted failure: two reports, no grace.
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.start()
+    #expect(rig.listenerFailures == 1)
+    rig.effects.failKeyboardListenerInstall = false
+    await rig.retry(waiter, resolved: 1)
+    #expect(rig.effects.keyboardListenerToken != nil)
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.restartPreservingCancelArming()
+    #expect(rig.listenerFailures == 2)
+    // Untrusted failure, success, trusted failure: the success cleared the grace.
+    rig.effects.accessibilityTrusted = false
+    rig.service.restartPreservingCancelArming()
+    #expect(rig.awaiting.count == 1)
+    rig.effects.failKeyboardListenerInstall = false
+    rig.effects.accessibilityTrusted = true
+    rig.service.restartPreservingCancelArming()
+    #expect(rig.effects.keyboardListenerToken != nil)
+    rig.effects.failKeyboardListenerInstall = true
+    rig.service.restartPreservingCancelArming()
+    #expect(rig.listenerFailures == 3)
+    #expect(rig.awaiting.count == 1)
+    // Untrusted failure, success, untrusted failure: the success cleared the awaiting report.
+    rig.effects.failKeyboardListenerInstall = false
+    rig.service.restartPreservingCancelArming()
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.restartPreservingCancelArming()
+    #expect(rig.awaiting.count == 2)
+    #expect(rig.listenerFailures == 3)
+    rig.service.stop()
+  }
+
+  @Test("stop/start and suspend/resume while failing report nothing new (#3848)")
+  func lifecycleWhileFailingKeepsTheReports() {
+    let rig = Rig()
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.start()
+    rig.service.stop()
+    rig.service.start()
+    rig.service.suspend()
+    rig.service.resume()
+    #expect(rig.effects.keyboardListenerInstalls == 3)
+    #expect(rig.awaiting.count == 1)
+    #expect(rig.listenerFailures == 0)
+    rig.effects.accessibilityTrusted = true
+    rig.service.stop()
+    rig.service.start()  // grace
+    rig.service.suspend()
+    rig.service.resume()  // reports
+    rig.service.stop()
+    rig.service.start()  // already reported
+    #expect(rig.effects.keyboardListenerInstalls == 6)
+    #expect(rig.listenerFailures == 1)
+    #expect(rig.awaiting.count == 1)
+    rig.service.stop()
+  }
+
+  @Test("a storm replacement that fails after a healthy install reports afresh (#3848)")
+  func stormReplacementFailureReportsAfresh() async throws {
+    let rig = Rig()
+    let waiter = HotkeyGlobeKeyTests.CallbackWaiter()
+    rig.service.onListenerRetryResolvedForTesting = { waiter.note() }
+    rig.effects.failKeyboardListenerInstall = true
+    rig.effects.accessibilityTrusted = false
+    rig.service.start()
+    rig.effects.failKeyboardListenerInstall = false
+    rig.effects.accessibilityTrusted = true
+    await rig.retry(waiter, resolved: 1)
+    let sink = try #require(rig.effects.keyboardListenerSink)
+    rig.effects.keyboardListenerHealthAnswer = KeyboardListenerHealth(
+      terminal: .disableStorm, disableEpisodes: 5, reenables: 4, cost: nil)
+    await Task.detached {
+      sink(KeyEventValue(kind: .stormStopped, keyCode: 0, rawFlags: 0, timestamp: nil))
+    }.value
+    await ListenerKeyboard.mainTurn()
+    #expect(rig.effects.keyboardListenerToken == nil)
+    rig.effects.failKeyboardListenerInstall = true
+    rig.clock.now += HotkeyService.listenerStormCooldown
+    rig.timers.fireDue()
+    await waiter.wait(until: 2)
+    #expect(rig.listenerFailures == 1)
+    #expect(rig.awaiting.count == 1)
     rig.service.stop()
   }
 

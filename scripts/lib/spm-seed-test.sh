@@ -16,6 +16,30 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS=0; FAIL=0; TMPROOT=""
 
+# Independent bounded fixture teardown; never call the helper being tested.
+rm() {
+  if [ "$#" = 2 ] && [ "$1" = -rf ]; then
+    python3 - "$TMPROOT" "$FIXTURE_ID" "$2" <<'PYREMOVE'
+import os, stat, subprocess, sys
+root, expected, target = sys.argv[1:]
+root, target = os.path.abspath(root), os.path.abspath(target)
+s = os.lstat(root)
+assert stat.S_ISDIR(s.st_mode) and f'{s.st_dev}:{s.st_ino}' == expected
+assert target == root or target.startswith(root + os.sep)
+current = root
+for part in os.path.relpath(target, root).split(os.sep):
+    if part == '.': continue
+    current = os.path.join(current, part)
+    try: entry = os.lstat(current)
+    except FileNotFoundError: sys.exit(0)
+    assert stat.S_ISDIR(entry.st_mode) and entry.st_dev == s.st_dev
+subprocess.run(['/usr/bin/find', '-P', target, '-xdev', '-delete'], check=True)
+assert not os.path.lexists(target)
+PYREMOVE
+  else
+    command rm "$@"
+  fi
+}
 cleanup() { [ -n "$TMPROOT" ] && [ -d "$TMPROOT" ] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 
@@ -23,6 +47,8 @@ ok()  { PASS=$((PASS+1)); printf '  PASS  %s\n' "$1"; }
 bad() { FAIL=$((FAIL+1)); printf '  FAIL  %s — %s\n' "$1" "$2"; }
 
 TMPROOT="$(mktemp -d /tmp/ew-seed-XXXXXX)"
+TMPROOT="$(cd "$TMPROOT" && pwd -P)"
+FIXTURE_ID="$(/usr/bin/stat -f '%d:%i' "$TMPROOT")"
 export EW_SEED_ROOT="$TMPROOT/spm-seed"
 export EW_TUIST_PIN="tuist@4.195.11"
 # shellcheck source=scripts/lib/spm-seed.sh
@@ -102,7 +128,7 @@ fi
 
 # --- consume with NO snapshot: must not create anything ------------------------
 DD1="$TMPROOT/dd1"
-out="$(ew_seed_consume "$ROOT" "$DD1" 2>&1)"
+ew_seed_consume "$ROOT" "$DD1" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
 if [ ! -e "$DD1/SourcePackages" ] && printf '%s' "$out" | grep -q "no seed snapshot"; then
   ok "no snapshot: creates nothing and SAYS why"
 else
@@ -111,7 +137,7 @@ fi
 
 # --- publish, then consume -----------------------------------------------------
 DD2="$TMPROOT/dd2"; mkdir -p "$DD2"; make_tree "$DD2/SourcePackages"
-out="$(ew_seed_publish "$ROOT" "$DD2" 2>&1)"
+ew_seed_publish "$ROOT" "$DD2" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
 if ew_seed_is_complete "$(ew_seed_dir "$KEY")"; then ok "publish creates a complete snapshot"; else bad "publish" "snapshot incomplete: $out"; fi
 staging_found=0
 for _s in "$EW_SEED_ROOT/$KEY"/.staging.*; do
@@ -124,7 +150,7 @@ else
 fi
 
 DD3="$TMPROOT/dd3"
-out="$(ew_seed_consume "$ROOT" "$DD3" 2>&1)"
+ew_seed_consume "$ROOT" "$DD3" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
 # The EXPENSIVE payload must arrive; `ew_seed_is_complete` is deliberately NOT
 # the assertion here, because a consumed tree no longer carries the state file
 # that check uses as its marker. Assert the content instead.
@@ -269,7 +295,7 @@ fi
 mkdir -p "$(ew_seed_dir "$KEY_B")/artifacts"
 printf '{}\n' > "$(ew_seed_dir "$KEY_B")/workspace-state.json"   # artifacts/ empty
 DD6="$TMPROOT/dd6"
-out="$(ew_seed_consume "$ROOT" "$DD6" 2>&1)"
+ew_seed_consume "$ROOT" "$DD6" > "$TMPROOT/captured-output" 2>&1; out="$(cat "$TMPROOT/captured-output")"
 if [ ! -e "$DD6/SourcePackages" ] && printf '%s' "$out" | grep -q "no seed snapshot"; then
   ok "consume REFUSES a corrupt snapshot and leaves no partial target"
 else
@@ -291,9 +317,14 @@ else
 fi
 
 # --- a held lock makes consume a cache MISS, never a failure -------------------
-ew_seed_lock_acquire "$KEY" >/dev/null 2>&1
+if ! ew_seed_lock_acquire "$KEY" >/dev/null 2>&1 || ! _setup_record="$(_ew_seed_find_lock "$KEY")" \
+   || [ "${_EW_SEED_R_PHASE[$_setup_record]:-}" != published ] || [ ! -f "$EW_SEED_ROOT/.locks/$KEY/owner" ]; then
+  bad "held seed setup" "$KEY has no registered published owner"; exit 1
+fi
 DD7="$TMPROOT/dd7"
-out="$(ew_seed_consume "$ROOT" "$DD7" 2>&1)"; rc=$?
+ew_seed_consume "$ROOT" "$DD7" > "$TMPROOT/captured-output" 2>&1
+rc=$?
+out="$(cat "$TMPROOT/captured-output")"
 ew_seed_lock_release "$KEY"
 if [ "$rc" -eq 0 ] && [ ! -e "$DD7/SourcePackages" ] && printf '%s' "$out" | grep -q "seed busy"; then
   ok "a HELD lock is a cache miss (exit 0, nothing created, reason announced)"
@@ -443,14 +474,18 @@ fi
 # --- staging is cleaned by the SAME handler as the locks ----------------------
 # A TERM that releases the lock but leaves a staging copy has half-cleaned.
 STAGE="$TMPROOT/stagecheck"; mkdir -p "$STAGE"
-ew_seed_track_temp "$STAGE/.SourcePackages.seed.999"
-mkdir -p "$STAGE/.SourcePackages.seed.999"
-ew_seed_lock_acquire "stagekey" >/dev/null 2>&1
-ew_seed_release_all
-if [ ! -e "$STAGE/.SourcePackages.seed.999" ]; then
-  ok "release_all removes tracked staging directories, not just locks"
+if ew_seed_lock_acquire stagekey && ew_seed_begin_temp stagekey "$STAGE" "$STAGE/.SourcePackages.seed.stagekey.999" \
+   && printf 'staged-sentinel' > "$STAGE/.SourcePackages.seed.stagekey.999/sentinel" \
+   && [ "$(cat "$STAGE/.SourcePackages.seed.stagekey.999/sentinel")" = staged-sentinel ]; then
+  ew_seed_release_all
+  if [ ! -e "$STAGE/.SourcePackages.seed.stagekey.999" ] && [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ]; then
+    ok "release_all removes tracked staging directories, not just locks"
+  else
+    bad "staging cleanup" "staging survived or cleanup reported incomplete"
+  fi
 else
-  bad "staging cleanup" "staging survived release_all"
+  bad "staging cleanup setup" "lock, staging creation or sentinel precondition failed"
+  ew_seed_release_all
 fi
 
 # --- a seeded tree that will not resolve is DISCARDED and retried unseeded -----
@@ -469,7 +504,7 @@ fake_resolve() {
 
 mkdir -p "$FB/SourcePackages"; printf 'bad\n' > "$FB/SourcePackages/marker"
 : > "$FB/fail-while-seeded"; : > "$FB/calls"
-EW_SEED_CONSUMED=1
+_ew_seed_arm_consumed "$FB" "$FB/SourcePackages"
 ew_seed_resolve_or_unseed "$FB" fake_resolve; fb_rc=$?
 fb_calls="$(tr '\n' ',' < "$FB/calls")"
 if [ "$fb_rc" -eq 0 ] && [ "$fb_calls" = "seeded,unseeded," ] && [ ! -e "$FB/SourcePackages" ]; then
@@ -496,7 +531,7 @@ fi
 # exactly one resolve. A fallback that retried on success would double the
 # resolve it exists to save.
 rm -f "$FB/fail-while-seeded"; : > "$FB/calls"
-EW_SEED_CONSUMED=1
+_ew_seed_arm_consumed "$FB" "$FB/SourcePackages"
 ew_seed_resolve_or_unseed "$FB" fake_resolve; fb_rc=$?
 if [ "$fb_rc" -eq 0 ] && [ "$(wc -l < "$FB/calls" | tr -d ' ')" = "1" ] && [ -f "$FB/SourcePackages/marker" ]; then
   ok "a seeded tree that resolves first time is kept, and costs exactly one resolve"
@@ -510,7 +545,7 @@ fi
 rm -rf "$FB/SourcePackages"; mkdir -p "$FB/SourcePackages"
 : > "$FB/fail-while-seeded"; : > "$FB/calls"
 always_fail() { printf 'call\n' >> "$FB/calls"; return 7; }
-EW_SEED_CONSUMED=1
+_ew_seed_arm_consumed "$FB" "$FB/SourcePackages"
 ew_seed_resolve_or_unseed "$FB" always_fail; fb_rc=$?
 if [ "$fb_rc" -ne 0 ] && [ "$(wc -l < "$FB/calls" | tr -d ' ')" = "2" ]; then
   ok "a failure that survives the unseeded retry PROPAGATES (exit $fb_rc), after exactly 2 attempts"
@@ -563,7 +598,7 @@ EW_SEED_CONSUMED=0
 # on the first unrelated package error.
 PROV3="$TMPROOT/prov3"; mkdir -p "$PROV3/SourcePackages"
 printf 'somekey\n' > "$PROV3/SourcePackages/$EW_SEED_PROVENANCE_FILE"
-EW_SEED_CONSUMED=1
+_ew_seed_arm_consumed "$PROV3" "$PROV3/SourcePackages"
 ew_seed_resolve_or_unseed "$PROV3" true
 if [ ! -e "$PROV3/SourcePackages/$EW_SEED_PROVENANCE_FILE" ]; then
   ok "a successful resolve CLEARS the marker (the tree is xcodebuild's now)"
@@ -612,7 +647,10 @@ fi
 
 # A snapshot whose lock is HELD is in use right now, whatever its age says.
 mkdir -p "$PR/busykey"; make_tree "$PR/busykey/SourcePackages"; touch -t 202001010000 "$PR/busykey"
-ew_seed_lock_acquire busykey >/dev/null 2>&1
+if ! ew_seed_lock_acquire busykey >/dev/null 2>&1 || ! _setup_record="$(_ew_seed_find_lock busykey)" \
+   || [ "${_EW_SEED_R_PHASE[$_setup_record]:-}" != published ] || [ ! -f "$EW_SEED_ROOT/.locks/busykey/owner" ]; then
+  bad "held seed setup" "busykey has no registered published owner"; exit 1
+fi
 EW_SEED_MAX_AGE_DAYS=14 ew_seed_prune >/dev/null 2>&1
 if [ -d "$PR/busykey/SourcePackages" ]; then
   ok "a LOCKED snapshot is never pruned, however old (a consumer may be mid-clone)"
@@ -719,6 +757,44 @@ if [ "$consume_rc" -eq 0 ] && [ ! -e "$DDP/SourcePackages" ] \
   ok "an unset pin makes consume a plain cache MISS, announced, never a failure"
 else
   bad "unpinned consume" "rc=$consume_rc target=$([ -e "$DDP/SourcePackages" ] && echo present || echo absent) out='$(cat "$TMPROOT/pin.out")'"
+fi
+
+# #4197: refusal must not erase provenance or trigger a second resolver.
+GUARDED="$TMPROOT/guarded"; mkdir -p "$GUARDED/SourcePackages"
+printf keep > "$GUARDED/SourcePackages/sentinel"
+printf key > "$GUARDED/SourcePackages/$EW_SEED_PROVENANCE_FILE"
+_ew_seed_arm_consumed "$GUARDED" "$GUARDED/SourcePackages"
+_captured_id="$_EW_SEED_CONSUMED_ID"
+. "$HERE/spm-seed.sh"
+if [ "$EW_SEED_CONSUMED" = 1 ] && [ "$_EW_SEED_CONSUMED_ID" = "$_captured_id" ]; then ok "same-source reload preserves captured clone provenance"; else bad "provenance reload" "state reset"; fi
+: > "$GUARDED/calls"
+guarded_fail() { printf call >> "$GUARDED/calls"; return 9; }
+python3() {
+  if [ "${1:-}" = "$_EW_SEED_HELPER" ] && [ "${2:-}" = "$GUARDED" ] && [ "${3:-}" = "$GUARDED/SourcePackages" ]; then return 1; fi
+  command python3 "$@"
+}
+if ew_seed_resolve_or_unseed "$GUARDED" guarded_fail; then _guard_rc=0; else _guard_rc=$?; fi
+unset -f python3
+if [ "$_guard_rc" != 0 ] && [ "$(cat "$GUARDED/calls")" = call ] && [ "$EW_SEED_CONSUMED" = 1 ] && [ -f "$GUARDED/SourcePackages/$EW_SEED_PROVENANCE_FILE" ]; then ok "cleanup refusal keeps provenance and runs resolver exactly once"; else bad "refused unseed" "status=$_guard_rc or state/call count changed"; fi
+
+# Preserve the original instance elsewhere so inode recycling cannot fake the
+# replacement oracle. The replacement sentinel must survive the failed resolve.
+mv "$GUARDED/SourcePackages" "$GUARDED/original"
+mkdir "$GUARDED/SourcePackages"; printf foreign > "$GUARDED/SourcePackages/sentinel"
+: > "$GUARDED/calls"
+if ew_seed_resolve_or_unseed "$GUARDED" guarded_fail; then _guard_rc=0; else _guard_rc=$?; fi
+if [ "$_guard_rc" != 0 ] && [ "$(cat "$GUARDED/calls")" = call ] && [ "$(cat "$GUARDED/SourcePackages/sentinel")" = foreign ] && [ "$EW_SEED_CONSUMED" = 1 ]; then ok "unseed refuses a replaced target and preserves its sentinel"; else bad "replacement unseed" "deleted foreign instance or retried"; fi
+EW_SEED_CONSUMED=0
+
+CONTENTS="$TMPROOT/contents"; mkdir "$CONTENTS"
+if ew_seed_lock_acquire contents && ew_seed_begin_temp contents "$CONTENTS" "$CONTENTS/.staging.copy"; then
+  mkdir "$CONTENTS/source"; printf payload > "$CONTENTS/source/marker"
+  if cp -Rc "$CONTENTS/source/." "$CONTENTS/.staging.copy/" && [ "$(cat "$CONTENTS/.staging.copy/marker")" = payload ] && [ ! -e "$CONTENTS/.staging.copy/source" ]; then ok "exclusive staging copies source contents without nesting"; else bad "copy contents" "unexpected layout"; fi
+  ew_seed_lock_release contents
+  if [ "$EW_SEED_CLEANUP_COMPLETE" = 1 ] && [ ! -e "$CONTENTS/.staging.copy" ]; then ok "copied contents retain registered cleanup ownership"; else bad "copied contents cleanup" "unregistered or incomplete staging"; fi
+else
+  bad "copy contents setup" "exclusive staging acquisition failed"
+  ew_seed_lock_release contents
 fi
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

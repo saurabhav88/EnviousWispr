@@ -125,6 +125,7 @@ struct MeetingEndedNamingTests {
     let harness = try namingHarness()
     let save = MeetingCoordinatorTests.Gate()
     let meetingID = try await meetingParkedAtSave(harness, save)
+    // #4218: deliberate window: ready is persisted while History's save is held; no row yet.
     #expect(harness.coordinator.record(id: meetingID)?.state == .ready, "the barrier is passed")
     #expect(harness.ended.isEmpty, "nothing is sent before History answers")
     #expect(harness.namingPasses.last == .some(.proposed(surface: .meet, count: 1)))
@@ -206,7 +207,9 @@ struct MeetingEndedNamingTests {
     #expect(harness.ended.first?.outcome == .ready)
     #expect(harness.ended.first?.autoNamedCount == nil)
     save.open()
-    await eventually("History answered") { !harness.saved.isEmpty }
+    await eventually("History answered and pass over") {
+      !harness.saved.isEmpty && harness.coordinator.processing == nil
+    }
     #expect(harness.ended.count == 1, "no second row for the same attempt")
   }
 

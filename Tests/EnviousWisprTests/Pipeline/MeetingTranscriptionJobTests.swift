@@ -1170,7 +1170,7 @@ struct MeetingTranscriptionJobTests {
   #if DEBUG
     @Test(
       "a pass killed after two committed pieces resumes in a new process: done pieces kept, every word once",
-      .tags(.realBoundary), .timeLimit(.minutes(2)))
+      .tags(.realBoundary), .timeLimit(.minutes(2)), .realBoundaryRun)
     func killedPassResumes() async throws {
       let dir = try folder()
       _ = try segment(in: dir, index: 1, startMs: 0, seconds: 60)

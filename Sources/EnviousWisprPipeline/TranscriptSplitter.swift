@@ -101,11 +101,18 @@ public enum TranscriptSplitter {
 
     func flushPending() {
       guard !pending.isEmpty else { return }
-      // Sliced from the FIRST pending sentence's start to the LAST one's end, so
-      // the part keeps the original spacing between those sentences rather than
-      // a re-joined approximation of it.
-      let lower = pending.first!.startIndex
-      let upper = pending.last!.endIndex
+      // Keep the original spacing between pending sentences rather than a
+      // re-joined approximation. Boundary whitespace belongs to the source gap,
+      // not the cleanable piece: cleanup can trim it, and a long speaker turn
+      // would then rejoin without its separator (#3859).
+      var lower = pending.first!.startIndex
+      var upper = pending.last!.endIndex
+      while lower < upper, transcript[lower].isWhitespace {
+        lower = transcript.index(after: lower)
+      }
+      while upper > lower, transcript[transcript.index(before: upper)].isWhitespace {
+        upper = transcript.index(before: upper)
+      }
       parts.append(String(transcript[lower..<upper]))
       pending = []
       pendingWords = 0
