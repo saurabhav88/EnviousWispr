@@ -421,3 +421,44 @@ struct SpokenPunctuationToggleTests {
     #expect(on("one\n two") == Self.itn.normalize("one\n two", spokenPunctuation: false))
   }
 }
+
+// MARK: - #4216 the English period switch on the bare route
+
+extension SpokenPunctuationToggleTests {
+
+  private static func bare(_ text: String, periodWord: Bool) -> String {
+    itn.normalizeReportingFinalFullStop(
+      text,
+      spokenPunctuation: SpokenPunctuationSettings(
+        enabled: true, startWordOverrides: [:], englishPeriodWord: periodWord)
+    ).text
+  }
+
+  @Test("Period switch OFF: period is a word, every other trigger still converts", arguments: gatedTriggers)
+  func periodSwitchOffOnlyAffectsPeriod(trigger: (spoken: String, mark: String)) {
+    let input = "alpha \(trigger.spoken) beta"
+    let off = Self.bare(input, periodWord: false)
+    if trigger.spoken == "period" {
+      #expect(off == "alpha period beta")
+    } else {
+      #expect(off == Self.bare(input, periodWord: true), "\(trigger.spoken)")
+    }
+  }
+
+  @Test("Period switch ON through the settings path equals the Bool facade")
+  func periodSwitchOnEqualsFacade() {
+    for input in ["alpha period beta", "We met over a period of weeks full stop", "see you period"] {
+      #expect(Self.bare(input, periodWord: true) == Self.itn.normalize(input, spokenPunctuation: true))
+    }
+  }
+
+  @Test("Period switch OFF: a sentence keeps period and ends with the full stop")
+  func periodSwitchOffSentence() {
+    #expect(
+      Self.bare("We met over a period of weeks full stop", periodWord: false)
+        == "We met over a period of weeks.")
+    #expect(
+      Self.bare("The trial period ends on Friday full stop", periodWord: false)
+        == "The trial period ends on Friday.")
+  }
+}

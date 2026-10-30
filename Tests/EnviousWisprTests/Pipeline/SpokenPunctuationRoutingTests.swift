@@ -860,3 +860,89 @@ struct SpokenPunctuationRoutingTests {
         == nil)
   }
 }
+
+// MARK: - #4216 the English period switch, through the step's production closure
+
+extension SpokenPunctuationRoutingTests {
+
+  private static let periodOff = SpokenPunctuationSettings(
+    enabled: true, startWordOverrides: [:], englishPeriodWord: false)
+  private static let englishWordPeriodOff = SpokenPunctuationSettings(
+    enabled: true, startWordOverrides: ["en": "Insert"], englishPeriodWord: false)
+
+  @Test("Bare English, period switch OFF: the word stays and full stop still converts")
+  func bareEnglishPeriodOff() async throws {
+    let step = step(Self.periodOff)
+    let out = try await step.process(
+      ctx("We met over a period of weeks full stop", language: "en"))
+    #expect(out.text == "We met over a period of weeks.")
+  }
+
+  @Test("Bare English, period switch ON: today's output")
+  func bareEnglishPeriodOn() async throws {
+    let step = step(Self.on)
+    let out = try await step.process(ctx("alpha period beta", language: "en"))
+    #expect(out.text == "alpha. Beta")
+  }
+
+  @Test("English start word, period switch OFF: insert period stays words, insert full stop converts")
+  func englishStartWordPeriodOff() async throws {
+    let step = step(Self.englishWordPeriodOff)
+    let out = try await step.process(
+      ctx("alpha insert period beta insert full stop", language: "en"))
+    #expect(out.text == "alpha insert period beta.")
+    #expect(step.lastRun?.punctuationRulesFired == 1)
+  }
+
+  /// Slash is always on and backslash follows the bare switch only (it is not a start-word command), so on
+  /// the English start-word route, where the bare commands are off for the take, a backslash stays words.
+  @Test(
+    "English start word, period switch OFF: slash and backslash beside period, through the step",
+    arguments: [
+      ("alpha slash period beta", "alpha/period beta"),
+      ("alpha insert period slash beta", "alpha insert period/beta"),
+      ("alpha backslash period beta", "alpha backslash period beta"),
+    ])
+  func englishStartWordSlashesPeriodOff(input: String, expected: String) async throws {
+    let out = try await step(Self.englishWordPeriodOff).process(ctx(input, language: "en"))
+    #expect(out.text == expected, "\(input)")
+  }
+
+  @Test("The routing probe ignores insert period with the switch OFF and still sees insert full stop")
+  func probeUsesActiveVocabulary() {
+    #expect(
+      InverseTextNormalizer.hasStartWordCommand(
+        in: "alpha insert period beta", language: "en", startWord: "insert",
+        englishPeriodWord: false) == false)
+    #expect(
+      InverseTextNormalizer.hasStartWordCommand(
+        in: "alpha insert period beta", language: "en", startWord: "insert",
+        englishPeriodWord: true))
+    #expect(
+      InverseTextNormalizer.hasStartWordCommand(
+        in: "alpha insert full stop", language: "en", startWord: "insert",
+        englishPeriodWord: false))
+  }
+
+  @Test("Period stays an invalid English start word in both switch positions")
+  func periodStartWordStillRefused() throws {
+    let forms = try #require(SpokenPunctuationRules.startWordForms(for: "en"))
+    #expect(
+      SpokenPunctuationStartWord.validate("period", language: "en", spokenForms: forms)
+        == .refused(.collidesWithCommand))
+    // The plan is built from the validated word, which is independent of the switch.
+    #expect(
+      InverseTextNormalizationStep.englishPunctuationPlan(
+        settings: SpokenPunctuationSettings(
+          enabled: true, startWordOverrides: ["en": "period"], englishPeriodWord: false)) == nil)
+  }
+
+  @Test("German output is the same in both period switch positions")
+  func germanIgnoresTheSwitch() async throws {
+    let input = "wir sagen Diktiere Punkt und weiter"
+    let on = try await step(Self.on).process(ctx(input, language: "de"))
+    let off = try await step(Self.periodOff).process(ctx(input, language: "de"))
+    #expect(off.text == on.text)
+    #expect(on.text != input, "the German command must convert, or this row tests nothing")
+  }
+}

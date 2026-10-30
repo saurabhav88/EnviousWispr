@@ -19,7 +19,9 @@ struct RecoveryTextProcessorTests {
     languageMode: LanguageMode = .auto,
     s1Control: S1ControlSettings? = nil,
     englishSpelling: EnglishSpelling? = nil,
-    casualMode: Bool? = nil
+    casualMode: Bool? = nil,
+    spokenPunctuation: Bool = false,
+    periodWord: Bool? = nil
   ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: backendType,
@@ -28,7 +30,8 @@ struct RecoveryTextProcessorTests {
       wordCorrectionEnabled: false,
       fillerRemovalEnabled: fillerRemoval,
       emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
+      spokenPunctuationEnabled: spokenPunctuation, spokenPunctuationStartWords: nil,
+      spokenPunctuationEnglishPeriodWord: periodWord,
       customWordsVersion: nil,
       llmProvider: provider,
       llmModel: "none",
@@ -105,6 +108,28 @@ struct RecoveryTextProcessorTests {
       snapshot(fillerRemoval: false, languageMode: .locked("en"), casualMode: nil))
     let legacyOutcome = await legacy.process(rawText: "see you soon.")
     #expect(legacyOutcome.text.hasSuffix("soon."))
+  }
+
+  /// #4216: a recovered take replays under the period switch recorded with it; a spool from before the
+  /// switch replays with "period" still a command.
+  @Test("a recording made with the period switch OFF recovers with the word kept; a legacy spool converts it")
+  func periodSwitchReplays() async {
+    let spoken = "We met over a period of weeks full stop"
+    let off = RecoveryTextProcessor(keychainManager: KeychainManager())
+    off.applySettings(
+      snapshot(
+        fillerRemoval: false, languageMode: .locked("en"), spokenPunctuation: true,
+        periodWord: false))
+    let offOutcome = await off.process(rawText: spoken)
+    #expect(offOutcome.text == "We met over a period of weeks.")
+
+    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager())
+    legacy.applySettings(
+      snapshot(
+        fillerRemoval: false, languageMode: .locked("en"), spokenPunctuation: true, periodWord: nil))
+    let legacyOutcome = await legacy.process(rawText: spoken)
+    #expect(legacyOutcome.text.contains("period") == false, "\(legacyOutcome.text)")
+    #expect(legacyOutcome.text.hasSuffix("weeks."))
   }
 
   @Test("disabling filler removal in the snapshot leaves the text untouched")

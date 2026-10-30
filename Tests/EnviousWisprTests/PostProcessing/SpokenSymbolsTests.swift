@@ -15,9 +15,12 @@ struct SpokenSymbolsTests {
 
   private func on(_ text: String) -> String { normalizer.normalize(text, spokenPunctuation: true) }
 
-  private func startWord(_ text: String, _ language: String, _ word: String) -> String {
+  private func startWord(
+    _ text: String, _ language: String, _ word: String, periodWord: Bool = true
+  ) -> String {
     normalizer.applyStartWordPunctuation(
-      text, language: language, startWord: word, protectedSentinels: []
+      text, language: language, startWord: word, englishPeriodWord: periodWord,
+      protectedSentinels: []
     ).text
   }
 
@@ -265,7 +268,8 @@ struct SpokenSymbolsTests {
   @Test("A closing symbol after a spoken period means the period is not the last character")
   func periodThenSymbolProvenance() {
     let result = normalizer.normalizeReportingFinalFullStop(
-      "see you period close paren", spokenPunctuation: true)
+      "see you period close paren",
+      spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: true))
     #expect(result.spokenFinalFullStop == false)
   }
 
@@ -372,5 +376,67 @@ struct SpokenSymbolsTests {
       case .mark, .lineBreak: #expect(command.spacing == nil, "\(command)")
       }
     }
+  }
+}
+
+// MARK: - #4216 symbol spacing with the English period switch
+
+extension SpokenSymbolsTests {
+
+  private func bare(_ text: String, periodWord: Bool) -> String {
+    normalizer.normalizeReportingFinalFullStop(
+      text,
+      spokenPunctuation: SpokenPunctuationSettings(
+        enabled: true, startWordOverrides: [:], englishPeriodWord: periodWord)
+    ).text
+  }
+
+  private func viaStartWord(_ text: String, periodWord: Bool) -> SpokenPunctuationResult {
+    normalizer.applyStartWordPunctuation(
+      text, language: "en", startWord: "Open", englishPeriodWord: periodWord,
+      protectedSentinels: [])
+  }
+
+  @Test(
+    "Bare route: literal spacing and case beside symbols in both period switch positions",
+    arguments: [
+      // (input, period switch, expected)
+      ("open paren period close paren", false, "(period)"),
+      ("open paren period close paren", true, "(.)"),
+      ("open paren full stop close paren", false, "(.)"),
+      ("alpha underscore period beta", false, "alpha_period beta"),
+      ("alpha underscore period beta", true, "alpha_. Beta"),
+      ("alpha slash period beta", false, "alpha/period beta"),
+      ("period slash beta", false, "period/beta"),
+      ("alpha backslash period beta", false, "alpha\\period beta"),
+      ("alpha period beta", false, "alpha period beta"),
+      ("alpha period beta", true, "alpha. Beta"),
+      ("alpha full stop beta", false, "alpha. Beta"),
+    ])
+  func bareLiterals(input: String, periodWord: Bool, expected: String) {
+    #expect(bare(input, periodWord: periodWord) == expected, "\(input) periodWord=\(periodWord)")
+  }
+
+  @Test(
+    "Start word route: literal spacing and case in both period switch positions",
+    arguments: [
+      ("Call Open open paren Open period Open close paren", false, "Call (Open period)"),
+      ("Call Open open paren Open period Open close paren", true, "Call (.)"),
+      ("Call Open open paren Open full stop Open close paren", false, "Call (.)"),
+      ("alpha Open period beta", false, "alpha Open period beta"),
+      ("alpha Open period beta", true, "alpha. Beta"),
+      ("alpha Open full stop beta", false, "alpha. Beta"),
+      ("alpha Open underscore Open period beta", false, "alpha_Open period beta"),
+      ("alpha Open underscore Open period beta", true, "alpha_. Beta"),
+    ])
+  func startWordLiterals(input: String, periodWord: Bool, expected: String) {
+    #expect(viaStartWord(input, periodWord: periodWord).text == expected, "\(input) periodWord=\(periodWord)")
+  }
+
+  @Test("Start word route: the final full stop report follows the period switch")
+  func startWordFinalFullStopReport() {
+    #expect(viaStartWord("see you Open period", periodWord: false).spokenFinalFullStop == false)
+    #expect(viaStartWord("see you Open full stop", periodWord: false).spokenFinalFullStop)
+    #expect(viaStartWord("see you Open period", periodWord: true).spokenFinalFullStop)
   }
 }

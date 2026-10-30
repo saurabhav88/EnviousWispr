@@ -30,7 +30,7 @@ struct RecognizerMarksTests {
     itn.applyStartWordPunctuation(
       input, language: language,
       startWord: start ?? SpokenPunctuationRules.defaultStartWord(for: language) ?? "",
-      protectedSentinels: []
+      englishPeriodWord: true, protectedSentinels: []
     ).text
   }
 
@@ -106,7 +106,7 @@ struct RecognizerMarksTests {
     "English: a standalone repeated break merges at helper level and normalizes to a lone period")
   func standaloneRepeatedBreak() {
     #expect(
-      InverseTextNormalizer.reconcileEnglishRecognizerMarks("new line. New line.") == "new line.")
+      InverseTextNormalizer.reconcileEnglishRecognizerMarks("new line. New line.", periodWord: true) == "new line.")
     #expect(Self.english("new line. New line.") == ".")
   }
 
@@ -565,5 +565,32 @@ struct RecognizerMarksTests {
     }
     #expect(checked == 104, "unchanged rows read: \(checked)")
     #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
+  }
+}
+
+// MARK: - #4216 the engine's marks beside a disabled period
+
+extension RecognizerMarksTests {
+
+  @Test("Period switch OFF: an engine Period. is ordinary text and keeps its marks")
+  func periodOffLeavesEngineMarks() {
+    #expect(
+      InverseTextNormalizer.reconcileEnglishRecognizerMarks("It ended. Period.", periodWord: false)
+        == "It ended. Period.")
+    #expect(
+      InverseTextNormalizer.reconcileEnglishRecognizerMarks("Period. period.", periodWord: false)
+        == "Period. period.")
+    // A full stop the engine wrote twice is still merged.
+    #expect(
+      InverseTextNormalizer.reconcileEnglishRecognizerMarks("full stop. full stop.", periodWord: false)
+        == InverseTextNormalizer.reconcileEnglishRecognizerMarks(
+          "full stop. full stop.", periodWord: true))
+  }
+
+  @Test("Period switch ON: an engine repeated period is still merged as before")
+  func periodOnStillMerges() {
+    #expect(
+      InverseTextNormalizer.reconcileEnglishRecognizerMarks("Period. period.", periodWord: true)
+        != "Period. period.")
   }
 }

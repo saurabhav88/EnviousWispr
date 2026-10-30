@@ -95,7 +95,7 @@ struct InverseTextNormalizationExecutionTests {
     let fr = LanguageRuleSet(language: "fr")!
     for rules in [nil, fr] as [LanguageRuleSet?] {
       let out = Gate.execute(
-        german, route: .language("de"), rules: rules, normalizer: engine, spokenPunctuation: false)
+        german, route: .language("de"), rules: rules, normalizer: engine, spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: false))
       #expect(out == neutralExpected)
     }
     #expect(viaFacade.contains("7:00 AM") == false, "the English time rule must never run")
@@ -118,7 +118,7 @@ struct InverseTextNormalizationExecutionTests {
         let engine = InverseTextNormalizer()
         return { text, spoken in
           let neutral = Gate.execute(
-            text, route: route, rules: rules, normalizer: engine, spokenPunctuation: spoken)
+            text, route: route, rules: rules, normalizer: engine, spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
           seen.withLock { $0.append(neutral) }
           return neutral + Self.marker
         }
@@ -147,7 +147,7 @@ struct InverseTextNormalizationExecutionTests {
           let engine = InverseTextNormalizer()
           return { text, spoken in
             Gate.execute(
-              text, route: route, rules: rules, normalizer: engine, spokenPunctuation: spoken)
+              text, route: route, rules: rules, normalizer: engine, spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
           }
         })
       step.backendSupportsLID = true
@@ -173,7 +173,7 @@ struct InverseTextNormalizationExecutionTests {
         return { text, spoken in
           // Neutral work completes (and would visibly change the text) BEFORE the stall.
           let partial = Gate.execute(
-            text, route: route, rules: rules, normalizer: engine, spokenPunctuation: spoken)
+            text, route: route, rules: rules, normalizer: engine, spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
           partialOutputs.withLock { $0.append(partial) }
           _ = await Self.slowWork(partial, spoken)
           return partial + Self.marker
@@ -266,7 +266,7 @@ struct InverseTextNormalizationExecutionTests {
           for await _ in release { break }
           return Gate.execute(
             text, route: route, rules: rules, normalizer: engine,
-            spokenPunctuation: spoken)
+            spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
         }
       },
       onTimeoutForTesting: { timeouts.append($0) })

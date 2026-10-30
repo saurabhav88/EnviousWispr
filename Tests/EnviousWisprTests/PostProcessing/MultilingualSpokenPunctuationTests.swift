@@ -28,7 +28,7 @@ struct MultilingualSpokenPunctuationTests {
     itn.applyStartWordPunctuation(
       text, language: language,
       startWord: start ?? SpokenPunctuationRules.defaultStartWord(for: language) ?? "",
-      protectedSentinels: sentinels)
+      englishPeriodWord: true, protectedSentinels: sentinels)
   }
 
   private static func text(_ input: String, _ language: String = "de") -> String {
@@ -583,5 +583,38 @@ struct MultilingualSpokenPunctuationTests {
     #expect(Self.apply("The grace period expires", "en", start: "Insert").rulesFired == 0)
     #expect(Self.apply("alpha period beta", "en", start: "Insert").text == "alpha period beta")
     #expect(Self.apply("alpha Insert Punkt beta", "en", start: "Insert").rulesFired == 0)
+  }
+}
+
+// MARK: - #4216 both routes agree with the English period switch OFF
+
+extension MultilingualSpokenPunctuationTests {
+
+  @Test("With the period switch OFF each English form writes the same thing bare and after a start word, and period stays a word on both", arguments: [
+    "comma", "period", "full stop", "question mark", "exclamation mark", "exclamation point",
+    "colon", "semicolon", "new line", "new paragraph",
+  ])
+  func englishBareAndStartWordAgreePeriodOff(form: String) throws {
+    let itn = InverseTextNormalizer()
+    let off = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: false)
+    let bare = itn.normalizeReportingFinalFullStop("Alpha \(form) beta", spokenPunctuation: off).text
+    let viaStartWord = itn.applyStartWordPunctuation(
+      "Alpha Insert \(form) beta", language: "en", startWord: "Insert", englishPeriodWord: false,
+      protectedSentinels: []
+    ).text
+    if form == "period" {
+      // Literal, whitespace- and case-exact: the word survives untouched on both routes.
+      #expect(bare == "Alpha period beta")
+      #expect(viaStartWord == "Alpha Insert period beta")
+    } else {
+      // Every other form is unaffected by the switch: same output as with it ON.
+      let onBare = itn.normalize("Alpha \(form) beta", spokenPunctuation: true)
+      let onStart = itn.applyStartWordPunctuation(
+        "Alpha Insert \(form) beta", language: "en", startWord: "Insert", englishPeriodWord: true,
+        protectedSentinels: []
+      ).text
+      #expect(bare == onBare, "bare \(form)")
+      #expect(viaStartWord == onStart, "start word \(form)")
+    }
   }
 }

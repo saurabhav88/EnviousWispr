@@ -163,12 +163,13 @@ extension InverseTextNormalizer {
   /// ("well-hyphen known", "well-hyphened known", measured with Parakeet Ultra); read that as the
   /// command, then run the shared pass with the determiner guard.
   /// - Parameter joinerGap: see `applySymbolCommands`; the caller removes the gaps after its joiner pass.
-  static func applyEnglishSymbolCommands(_ text: String, joinerGap: Bool) -> String {
+  static func applyEnglishSymbolCommands(_ text: String, joinerGap: Bool, periodWord: Bool) -> String {
     let unglued = reSub(#"(\p{L})-hyphen(?:ed)?\b"#, text) { m in (m.g(1) ?? "") + " hyphen" }
-    // The whole English table, not only its symbols: the legacy forms keep the space before a legacy
-    // command ("open paren comma close paren" -> `(,)`); only symbol rows are matched here.
+    // The whole ACTIVE English table, not only its symbols: the legacy forms keep the space before a
+    // legacy command ("open paren comma close paren" -> `(,)`); only symbol rows are matched here. With
+    // the period switch off (#4216) "period" is an ordinary word, so it gets ordinary-word spacing.
     return applySymbolCommands(
-      unglued, rules: SpokenPunctuationRules.startWordRules(for: "en") ?? [], startWord: nil,
+      unglued, rules: SpokenPunctuationRules.englishRules(periodWord: periodWord), startWord: nil,
       guardDeterminers: true, joinerGap: joinerGap
     ).text
   }

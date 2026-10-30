@@ -62,10 +62,15 @@ extension InverseTextNormalizer {
   /// outside the matched commands keeps its original representation: the pass never normalises the
   /// transcript.
   package func applyStartWordPunctuation(
-    _ text: String, language: String, startWord: String, protectedSentinels: [String]
+    _ text: String, language: String, startWord: String, englishPeriodWord: Bool,
+    protectedSentinels: [String]
   ) -> SpokenPunctuationResult {
     let unchanged = SpokenPunctuationResult(text: text, rulesFired: 0)
-    guard let rules = SpokenPunctuationRules.startWordRules(for: language) else { return unchanged }
+    // #4216: the active vocabulary, so with the English period switch off "Insert period" stays words.
+    guard
+      let rules = SpokenPunctuationRules.activeStartWordRules(
+        for: language, englishPeriodWord: englishPeriodWord)
+    else { return unchanged }
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
 
@@ -189,11 +194,14 @@ extension InverseTextNormalizer {
   /// `startWord` (the user's bare-commands choice) answers false, because a bare command word is not
   /// evidence of a command.
   package static func hasStartWordCommand(
-    in text: String, language: String, startWord: String
+    in text: String, language: String, startWord: String, englishPeriodWord: Bool
   ) -> Bool {
     let start = startWord.trimmingCharacters(in: .whitespacesAndNewlines)
       .precomposedStringWithCanonicalMapping
-    guard !start.isEmpty, let rules = SpokenPunctuationRules.startWordRules(for: language) else {
+    guard !start.isEmpty,
+      let rules = SpokenPunctuationRules.activeStartWordRules(
+        for: language, englishPeriodWord: englishPeriodWord)
+    else {
       return false
     }
     var breakForms: [String] = []

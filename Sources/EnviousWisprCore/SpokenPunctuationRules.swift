@@ -131,6 +131,29 @@ package enum SpokenPunctuationRules {
     baseCode(language) == "en" ? english : rules(for: language)
   }
 
+  /// #4216: the ACTIVE English vocabulary, the single owner every English matcher reads (bare-row
+  /// eligibility, recognizer-mark reconciliation, the start-word pass and its routing probe, the
+  /// final-full-stop report and symbol spacing). With `periodWord` false the form "period" is removed
+  /// and the `.period` rule keeps "full stop"; every other row is unchanged. Start-word VALIDATION
+  /// deliberately keeps the complete list (`startWordForms`), so a stored start word can never start
+  /// colliding when the user turns the switch back on.
+  package static func englishRules(periodWord: Bool) -> [SpokenPunctuationRule] {
+    guard !periodWord else { return english }
+    return english.map { rule in
+      guard rule.command == .period else { return rule }
+      return SpokenPunctuationRule(
+        command: rule.command, spokenForms: rule.spokenForms.filter { $0 != "period" },
+        replacement: rule.replacement)
+    }
+  }
+
+  /// `startWordRules(for:)` with the English switch applied: the language's matching rules for a take.
+  package static func activeStartWordRules(for language: String, englishPeriodWord: Bool)
+    -> [SpokenPunctuationRule]?
+  {
+    baseCode(language) == "en" ? englishRules(periodWord: englishPeriodWord) : rules(for: language)
+  }
+
   /// Every spoken form of the LEGACY commands (`.mark` and `.lineBreak`) `startWordRules(for:)` knows,
   /// for start-word collision checks. #3738: symbol forms are left out on purpose, so a start word that
   /// was valid before the symbols existed ("open", "left", "close") can never be newly refused, which
