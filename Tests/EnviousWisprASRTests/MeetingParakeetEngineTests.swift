@@ -281,7 +281,7 @@ struct MeetingParakeetEngineTests {
     .enabled(
       if: ParakeetRealBoundaryFixture.ultraIsInstalled
         || ParakeetRealBoundaryFixture.shippedModelIsInstalled),
-    .tags(.realBoundary))
+    .tags(.realBoundary), .realBoundaryRun)
   func realEngineTranscribes() async throws {
     let url = ParakeetRealBoundaryFixture.repoRoot.appending(
       path: "Tests/Fixtures/speaker-diarization/two-voice-30s.wav")

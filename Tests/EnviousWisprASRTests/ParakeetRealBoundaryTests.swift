@@ -66,7 +66,7 @@ struct ParakeetRealBoundaryTests {
   @Test(
     "the shipped model transcribes committed speech",
     .enabled(if: ParakeetRealBoundaryFixture.shippedModelIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func shippedModelTranscribesCommittedSpeech() async throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -100,7 +100,7 @@ struct ParakeetRealBoundaryTests {
   @Test(
     "the shipped Ultra model transcribes committed speech",
     .enabled(if: ParakeetRealBoundaryFixture.ultraIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func ultraTranscribesCommittedSpeech() async throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -135,7 +135,7 @@ struct ParakeetRealBoundaryTests {
   @Test(
     "a joined load counts one physical load and reports one ready publish",
     .enabled(if: ParakeetRealBoundaryFixture.shippedModelIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   @MainActor
   func joinedLoadFiresEachHookOnce() async throws {

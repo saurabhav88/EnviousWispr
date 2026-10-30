@@ -83,7 +83,7 @@ struct FileImportRealBoundaryTests {
   @Test(
     "a real multi-minute recording decodes, transcribes, and splits into parts",
     .enabled(if: Fixture.shippedModelIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func aRealRecordingBecomesParts() async throws {
     try await realRecordingBecomesParts(model: .v3)
@@ -93,7 +93,7 @@ struct FileImportRealBoundaryTests {
   @Test(
     "a real multi-minute recording decodes, transcribes on Ultra, and splits into parts",
     .enabled(if: Fixture.ultraIsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func aRealRecordingBecomesPartsOnUltra() async throws {
     try await realRecordingBecomesParts(model: .ultra)

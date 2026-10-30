@@ -48,6 +48,8 @@ with tempfile.TemporaryDirectory(prefix="ew-microphone-watchdog-") as marker_dir
     environment = os.environ.copy()
     environment["EW_MICROPHONE_STOP_STARTED"] = str(started)
     environment["EW_MICROPHONE_STOP_FINISHED"] = str(finished)
+    # #4218: real-world tests run only when asked; this receipt is that ask.
+    environment["EW_REAL_BOUNDARY"] = "1"
 
     with open(log_file, "w", encoding="utf-8") as log:
         received_signal = [None]

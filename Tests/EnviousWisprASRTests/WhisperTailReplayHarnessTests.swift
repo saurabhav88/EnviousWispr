@@ -100,7 +100,7 @@ struct WhisperTailReplayHarnessTests {
   @Test(
     "replays the manifest through every arm and records raw text",
     .enabled(if: TailReplayConfig.isConfigured && TailReplayConfig.refilterPath == nil),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func replay() throws {
     let manifest = try JSONDecoder().decode(

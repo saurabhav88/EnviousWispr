@@ -123,6 +123,9 @@ LOG_DIR=""
 # filtered, Release and CI invocations retain the original execution path.
 TEST_EXECUTION="grouped"
 EXECUTION_SELECTED=0
+# #4218: real-world tests (`.realBoundaryRun`: real models, microphone, GPU, live OS state, real
+# apps) run only when asked, at feature validation and before a release; the everyday lane skips them.
+REAL_BOUNDARY=0
 
 # A value that looks like an option is a missing value: `--filter A --filter
 # --release` must not select a suite named `--release` and drop the lane.
@@ -162,10 +165,11 @@ while [ "$#" -gt 0 ]; do
         *) echo "ERROR: configuration must be Debug, Release or both" >&2; exit 2 ;;
       esac ;;
     --help|-h)
-      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--log-dir DIR] [--result-bundle-path PATH]"
-      echo "Default: one Debug run with up to four measured-cost worker groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior."
+      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH]"
+      echo "Default: one Debug run with up to four measured-cost worker groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
       exit 0 ;;
     --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
+    --real-boundary) REAL_BOUNDARY=1; shift ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
     # `Test run with N test` line in its log, so two runs sharing one fixed path
     # inflate the count — 10806 observed against a real 5387 — and the guard
@@ -173,7 +177,7 @@ while [ "$#" -gt 0 ]; do
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
     --log-dir) option_value "$1" "${2:-}"; LOG_DIR="$2"; shift 2 ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
   esac
 done
 
@@ -194,6 +198,16 @@ if [ "$TEST_EXECUTION" = "grouped" ] && {
 fi
 
 cd "$PROJECT_ROOT"
+
+# Xcode forwards TEST_RUNNER_* to the test process without the prefix (see the xcodebuild call
+# below); the grouped supervisor inherits this environment. Unset otherwise, so a stray export can
+# never turn real-world tests on in the everyday lane.
+if [ "$REAL_BOUNDARY" = 1 ]; then
+  export TEST_RUNNER_EW_REAL_BOUNDARY=1
+  echo "==> real-boundary run: real-world tests included"
+else
+  unset TEST_RUNNER_EW_REAL_BOUNDARY
+fi
 
 FULL_VALIDATION=0
 NO_RECEIPT_REASON=""

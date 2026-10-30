@@ -131,7 +131,7 @@ struct MeetingProcessingRealBoundaryTests {
   @Test(
     "a two-voice recording becomes a labeled transcript through the real meeting pass",
     .enabled(if: MeetingProcessingRealBoundaryTests.ultraIsInstalled),
-    .tags(.realBoundary), .timeLimit(.minutes(3)))
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun)
   func twoVoiceRecording() async throws {
     let fixture = URL(filePath: #filePath)
       .deletingLastPathComponent()  // Pipeline
@@ -162,7 +162,7 @@ struct MeetingProcessingRealBoundaryTests {
   @Test(
     "#3973 C3: a two-voice recording becomes sentence-timed turns through the real Whisper pass, and resumes from its checkpoint",
     .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
-    .tags(.realBoundary), .timeLimit(.minutes(3)))
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun)
   func twoVoiceRecordingOnWhisper() async throws {
     let fixture = WhisperProductionWiringRealBoundaryTests.repoRoot
       .appending(path: "Tests/Fixtures/speaker-diarization/two-voice-30s.wav")
@@ -254,7 +254,7 @@ struct MeetingProcessingRealBoundaryTests {
     .enabled(
       if: MeetingProcessingRealBoundaryTests.ultraIsInstalled
         && MeetingProcessingRealBoundaryTests.longAudio("3H") != nil),
-    .tags(.realBoundary), .timeLimit(.minutes(30)))
+    .tags(.realBoundary), .timeLimit(.minutes(30)), .realBoundaryRun)
   func threeHourMeeting() async throws { try await longMeeting("3H") }
 
   @Test(
@@ -262,7 +262,7 @@ struct MeetingProcessingRealBoundaryTests {
     .enabled(
       if: MeetingProcessingRealBoundaryTests.ultraIsInstalled
         && MeetingProcessingRealBoundaryTests.longAudio("5H") != nil),
-    .tags(.realBoundary), .timeLimit(.minutes(30)))
+    .tags(.realBoundary), .timeLimit(.minutes(30)), .realBoundaryRun)
   func fiveHourMeeting() async throws { try await longMeeting("5H") }
 
   @MainActor final class Stages {
@@ -352,7 +352,7 @@ extension MeetingProcessingRealBoundaryTests {
     .enabled(
       if: ProcessInfo.processInfo.environment["EW_MEETING_DIARIZER_COMPARE"] == "1"
         && MeetingProcessingRealBoundaryTests.longAudio("3H") != nil),
-    .tags(.realBoundary), .timeLimit(.minutes(30)))
+    .tags(.realBoundary), .timeLimit(.minutes(30)), .realBoundaryRun)
   func diarizerInputComparison() async throws {
     let source = try #require(Self.longAudio("3H"))
     let dir = try folder("compare")

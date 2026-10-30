@@ -54,7 +54,7 @@ struct ParakeetUltraRealDeliveryTests {
     "the shipped Ultra manifest downloads, assembles, admits and transcribes",
     .enabled(if: ParakeetUltraRealDeliveryTests.enabled),
     .tags(.realBoundary),
-    .timeLimit(.minutes(30)))
+    .timeLimit(.minutes(30)), .realBoundaryRun)
   func shippedUltraDeliversAndTranscribes() async throws {
     // Real network only: a delivery suite in this process installs its URL
     // stub for the whole process, so this row must run on its own.

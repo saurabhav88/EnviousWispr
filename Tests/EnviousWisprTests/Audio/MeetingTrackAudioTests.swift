@@ -75,7 +75,7 @@ enum MeetingAudioFixture {
 
 /// #3972 R15, R22: when these fail, a meeting transcript is built from the wrong audio, from
 /// audio shifted on the timeline, or from silence where a file could not be read.
-@Suite("MeetingTrackAudio", .tags(.productOutcome, .realBoundary))
+@Suite("MeetingTrackAudio", .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct MeetingTrackAudioTests {
   private typealias F = MeetingAudioFixture
 
