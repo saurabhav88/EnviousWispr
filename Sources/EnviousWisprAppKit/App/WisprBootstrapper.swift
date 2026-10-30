@@ -2718,9 +2718,10 @@ package final class WisprBootstrapper {
         requestStart: { [weak meetingStartFlow] family in
           await meetingStartFlow?.requestStart(from: .detected, callApp: family) ?? .notIdle
         },
-        // The panel's Start a new recording is the user's own Start: the menu's route.
+        // The failed-switch card's Start recording is the user's own Start: the menu's route.
         startByUser: { [weak meetingStartFlow] family in
-          await meetingStartFlow?.requestStart(from: .menu, callApp: family) ?? .notIdle
+          await meetingStartFlow?.requestStart(from: .menu, callApp: family, fromCallPanel: true)
+            ?? .notIdle
         },
         detectedStartIsBlocked: { [weak meetingStartFlow, weak meetingCoordinator] in
           (meetingStartFlow?.detectedStartIsBlocked() ?? true)
@@ -2738,6 +2739,22 @@ package final class WisprBootstrapper {
         now: callDetectionNow,
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
+        },
+        // #4232: the notes card follows one attempt; Open is the menu's Show in History.
+        pendingAttemptID: { [weak meetingCoordinator] in
+          meetingCoordinator?.pendingAttemptID(meetingID: $0)
+        },
+        notesFollowUp: { [weak meetingCoordinator] meetingID, attemptID in
+          meetingCoordinator?.notesFollowUp(meetingID: meetingID, followedAttemptID: attemptID)
+            ?? .ended
+        },
+        showMeeting: { [weak transcriptCoordinator] meetingID in
+          transcriptCoordinator?.showRecordings(meetingID: meetingID)
+          navigationCoordinator.request(.history)
+          appWindowCoordinator.showWindow()
+        },
+        callSoundCaptured: { [weak meetingCoordinator] in
+          meetingCoordinator?.callSoundCaptured(meetingID: $0) ?? false
         }),
       discovery: callSources)
     meetingBox.callDetection = callDetection

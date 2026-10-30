@@ -133,9 +133,7 @@ enum PolishSetupSurfaceCopy {
         comment: "Short reason, no full stop. %@ is a model name, such as EG-1.")
     case .appleUnavailable(let reason):
       if reason == .appleIntelligenceDisabled {
-        return String(
-          localized: "Apple Intelligence is turned off",
-          comment: "Setup notice title when Apple Intelligence is off in System Settings.")
+        return AppleIntelligenceSetupCopy.current.title
       }
       return String(
         localized: "Apple Intelligence isn't available on this Mac",

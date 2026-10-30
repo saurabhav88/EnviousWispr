@@ -30,6 +30,8 @@ GERMAN = {
     "Leave anyway": "Trotzdem verlassen", "Finish setup": "Einrichtung abschließen",
     "Pick another model": "Anderes Modell wählen", "Go back to %@": "Zurück zu %@",
     "Finish AI polish setup": "KI-Nachbearbeitung fertig einrichten",
+    "Apple Intelligence is turned off": "Apple Intelligence ist deaktiviert",
+    "Apple Intelligence wasn't enabled": "Apple Intelligence war nicht aktiviert",
     "The download is still in progress. Until setup finishes, text is pasted without AI polish.":
         "Der Download läuft noch. Bis die Einrichtung fertig ist, wird Text ohne "
         "KI-Nachbearbeitung eingefügt.",
@@ -79,6 +81,7 @@ class FakeSettings:
         self.cancels = 0
         # #3438: leaving AI Polish asks first. None, "actionable" or "informational".
         self.leave_question = None
+        self.leave_title = "Finish AI polish setup"
         self.go_back_provider = None    # offers "Go back to <provider>" when set
         self.provider = "OpenAI"
         self.asking = None              # the page the person tried to reach
@@ -164,7 +167,7 @@ class FakeSettings:
         buttons.append(self.named("AXButton", "Leave anyway",
                                   press=self._leave("leave_anyway", go(target))))
         return self._identified(el("AXSheet", children=[
-            el("AXStaticText", value=self.t("Finish AI polish setup"))] + buttons))
+            el("AXStaticText", value=self.t(self.leave_title))] + buttons))
 
     def _identified(self, sheet):
         sheet["_question"] = self.question_id
@@ -1711,6 +1714,20 @@ def leave_valued_cases():
         r = _nav(f, "History", leave_answer="leave_anyway")
         rows.append((f"#3438 {'German' if german else 'English'}: Leave anyway reaches the page",
                      (r.page, f.page, f.presses[-1]), ("History", "History", "leave:leave_anyway")))
+    # #4016: preserve the 26 title and recognize the new 27+ title through the real navigator.
+    for german, title in ((False, "Apple Intelligence is turned off"),
+                          (True, "Apple Intelligence is turned off"),
+                          (False, "Apple Intelligence wasn't enabled"),
+                          (True, "Apple Intelligence wasn't enabled")):
+        f = _on_ai_polish("actionable", german=german)
+        f.leave_title = title
+        try:
+            r = _nav(f, "History", leave_answer="leave_anyway")
+            got = (r.page, f.page, f.presses[-1])
+        except sn.NavigationError as error:
+            got = str(error)
+        rows.append((f"#4016 {'German' if german else 'English'}: {title} can leave",
+                     got, ("History", "History", "leave:leave_anyway")))
     f = _on_ai_polish("actionable")
     f.go_back_provider = "Gemini"
     r = _nav(f, "Keybinds", leave_answer=("go_back", "Gemini"))

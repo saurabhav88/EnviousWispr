@@ -302,14 +302,10 @@ struct PolishSetupLeaveDialogContent: Equatable {
         comment: "AI Polish, leave pop-up. Apple Intelligence is a product name.")
     }
     static var appleOffTitle: String {
-      String(
-        localized: "Apple Intelligence is turned off",
-        comment: "AI Polish, leave pop-up title. Apple Intelligence is a product name.")
+      AppleIntelligenceSetupCopy.current.title
     }
     static var appleOffMessage: String {
-      String(
-        localized: "Turn it on in System Settings, or pick another model.",
-        comment: "AI Polish, leave pop-up. System Settings is the name of the macOS app.")
+      AppleIntelligenceSetupCopy.current.leaveMessage
     }
     static var finishSetup: String {
       String(
@@ -394,7 +390,7 @@ enum PolishSetupLeaveGuard {
     case navigate(SettingsNavigationIntent)
     /// Choose `provider` through the normal setter, then try the leave again.
     case restoreProvider(LLMProvider, then: SettingsNavigationIntent)
-    /// Open Apple Intelligence's pane in System Settings and stay.
+    /// Open the existing System Settings destination and stay; no repair is promised.
     case openSystemSettings
   }
 

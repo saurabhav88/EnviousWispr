@@ -102,6 +102,24 @@ struct PolishSetupSurfaceTests {
     #expect(monitor.shows(.banner))
   }
 
+  @Test("the sidebar row says 'Needs setup', not 'in progress'")
+  func sidebarSpokenValue() {
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: false, activity: .polishNeedsSetup)
+        == "Not selected. Needs setup")
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: true, activity: .polishNeedsSetup)
+        == "Selected. Needs setup")
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: false, activity: .fileImport)
+        == "Not selected. Importing in progress")
+  }
+}
+
+/// Copy protection; reminder visibility is exercised separately above.
+@MainActor
+@Suite("AI polish setup reminder copy (#4016)", .tags(.driftGuard))
+struct PolishSetupSurfaceCopyTests {
   @Test("the banner, menu line and tag read the approved words")
   func words() {
     #expect(PolishSetupSurfaceCopy.menuLine == "Finish setting up AI polish")
@@ -121,25 +139,14 @@ struct PolishSetupSurfaceTests {
       (.localEngineUpdatePaused(.egOne), "the EG-1 update is paused"),
       (.localEngineFailed(.egOne), "the EG-1 download did not finish"),
       (.appleUnavailable(.unsupportedOS), "Apple Intelligence isn't available on this Mac"),
-      (.appleUnavailable(.appleIntelligenceDisabled), "Apple Intelligence is turned off"),
+      (.appleUnavailable(.appleIntelligenceDisabled),
+       ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+         ? "Apple Intelligence wasn't enabled" : "Apple Intelligence is turned off"),
     ]
     for (problem, reason) in reasons {
       let text = PolishSetupSurfaceCopy.shortReason(problem)
       #expect(text == reason, "\(problem)")
       #expect(text.hasSuffix(".") == false, "a short reason carries its own full stop")
     }
-  }
-
-  @Test("the sidebar row says 'Needs setup', not 'in progress'")
-  func sidebarSpokenValue() {
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: false, activity: .polishNeedsSetup)
-        == "Not selected. Needs setup")
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: true, activity: .polishNeedsSetup)
-        == "Selected. Needs setup")
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: false, activity: .fileImport)
-        == "Not selected. Importing in progress")
   }
 }

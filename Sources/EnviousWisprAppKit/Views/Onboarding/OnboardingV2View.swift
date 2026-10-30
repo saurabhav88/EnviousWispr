@@ -9,12 +9,9 @@ import SwiftUI
 
 // MARK: - Apple Intelligence Settings Deep Link
 
-/// System Settings deep-link for the Apple Intelligence & Siri pane. `internal`
-/// (not file-private) so the onboarding-availability test target can assert the
-/// validated URL string and catch accidental edits to it. Validated 2026-06-19
-/// on macOS 26.6: opening this lands on "Apple Intelligence & Siri". Only ever
-/// opened from the `.enableInSettings` branch, which requires macOS 26, so it
-/// never targets a missing pane on older macOS. (#1080)
+/// Existing System Settings destination, validated on macOS 26.6 (#1080).
+/// Kept internal so the onboarding test can assert the URL. Newer macOS may show
+/// different controls; the guidance does not promise a switch or a repair (#4016).
 enum AppleIntelligenceSettings {
   static let systemSettingsURL = "x-apple.systempreferences:com.apple.Siri-Settings.extension"
 }
@@ -1061,9 +1058,8 @@ final class OnboardingV2ViewModel {
     _ = permissions.requestAccessibilityAccess()
   }
 
-  /// Opens the Apple Intelligence & Siri pane in System Settings so the user
-  /// can switch Apple Intelligence on. Only invoked from the `.enableInSettings`
-  /// onboarding notice (macOS 26 + switched off). (#1080)
+  /// Opens the existing System Settings destination from the not-enabled notice.
+  /// The notice describes the OS-specific guidance; navigation promises no repair (#4016).
   func openAppleIntelligenceSettings() {
     if let url = URL(string: AppleIntelligenceSettings.systemSettingsURL) {
       NSWorkspace.shared.open(url)
@@ -1922,7 +1918,7 @@ private struct PermissionsPhaseView: View {
 /// polish path. Rendered by `PermissionsPhaseView` ONLY when the launch
 /// availability report yields an actionable notice; it never gates Continue.
 /// `.enableInSettings` is an accent card with a one-tap jump to System Settings
-/// (Apple Intelligence switched off on a macOS-26 Mac); `.updateMacOS` is a
+/// (Apple Intelligence reported not enabled); `.updateMacOS` is a
 /// neutral, button-less informational card (pre-macOS-26). For deviceNotEligible
 /// the classifier returns nil: Apple reported deviceNotEligible, the underlying
 /// cause is unknown (do not infer hardware, region, language, or management
@@ -1990,9 +1986,7 @@ private struct AIPolishNoticeSection: View {
   private var title: String {
     switch notice {
     case .enableInSettings:
-      return String(
-        localized: "Apple Intelligence is turned off",
-        comment: "Setup notice title when Apple Intelligence is off in System Settings.")
+      return AppleIntelligenceSetupCopy.current.title
     case .updateMacOS:
       return String(
         localized: "AI polish needs macOS 26",
@@ -2003,10 +1997,7 @@ private struct AIPolishNoticeSection: View {
   private var message: String {
     switch notice {
     case .enableInSettings:
-      return String(
-        localized:
-          "Turn it on to enable free, on-device AI polish. Dictation works fine without it.",
-        comment: "Setup notice when Apple Intelligence is off in System Settings.")
+      return AppleIntelligenceSetupCopy.current.onboardingMessage
     case .updateMacOS:
       return String(
         localized:

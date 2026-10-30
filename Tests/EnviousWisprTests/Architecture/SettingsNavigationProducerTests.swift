@@ -58,7 +58,13 @@ struct SettingsNavigationProducerTests {
     Route(
       "11 call panel Open settings",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
-      argument: ".meetings(.callApps)"),
+      within: "label:showMeetingPage", argument: ".meetings(.callApps)"),
+    // #4232: Your notes are ready's Open shows that meeting in History, like the menu's Show in
+    // History.
+    Route(
+      "12 call panel Open (Your notes are ready)",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
+      within: "label:showMeeting", argument: ".history"),
   ]
 
   @Test("every producer route opens its planned destination", arguments: routes)
@@ -66,7 +72,10 @@ struct SettingsNavigationProducerTests {
     let source = try String(
       contentsOf: RepoRoot.url.appending(path: route.file), encoding: .utf8)
     let calls = Self.navigationCalls(in: source, callee: route.callee)
-    let owned = calls.filter { $0.owners.contains(route.owner) && $0.isReachable }
+    let owned = calls.filter {
+      $0.owners.contains(route.owner) && $0.isReachable
+        && (route.within.map($0.owners.contains) ?? true)
+    }
     #expect(
       owned.count == 1,
       "\(route.name): expected one \(route.callee)(...) owned by \(route.owner), found \(owned.count) in \(calls)"
@@ -167,12 +176,18 @@ struct SettingsNavigationProducerTests {
     let file: String
     let callee: String
     let owner: String
+    /// A second owner the call must also sit in, when one owner holds two routes.
+    let within: String?
     let argument: String
-    init(_ name: String, file: String, callee: String, owner: String, argument: String) {
+    init(
+      _ name: String, file: String, callee: String, owner: String, within: String? = nil,
+      argument: String
+    ) {
       self.name = name
       self.file = file
       self.callee = callee
       self.owner = owner
+      self.within = within
       self.argument = argument
     }
     var testDescription: String { name }

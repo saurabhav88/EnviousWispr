@@ -2,16 +2,22 @@ import AppKit
 import EnviousWisprCore
 import SwiftUI
 
-/// What the call panel under the menu bar shows (#4012 D2, D3, D6, D10).
+/// What the call panel under the menu bar shows (#4012 D2, D3, D6, D10; #4232 redesign).
 enum CallPromptContent: Equatable {
-  case ask(appName: String)
-  case switchMeeting(appName: String)
-  case countdown(secondsLeft: Int)
-  case stopped
-  case stoppedByUser
-  case endConfirmation
+  case ask(CallAppIdentity)
+  case switchMeeting(CallAppIdentity)
+  /// The call ended; the recording stops when the seconds run out. Nil identity: the call is no
+  /// longer tracked by then.
+  case countdown(CallAppIdentity?, secondsLeft: Int)
+  case endConfirmation(CallAppIdentity)
   /// A switch stopped the old recording, but the new call could not be confirmed.
-  case switchNotConfirmed
+  case switchNotConfirmed(CallAppIdentity)
+  /// #4232: the call flow stopped a recording; its notes are being written.
+  case notesWriting
+  /// #4232: that recording's transcript is saved and in History.
+  case notesReady(meetingID: UUID)
+  /// #4232: a recording the user started from the menu bar, shown for two seconds.
+  case manualStart(CallAppIdentity)
   case needsAttention
   /// The Start after Yes was refused (low disk, microphone off) or taken over.
   case couldNotStart
@@ -20,19 +26,28 @@ enum CallPromptContent: Equatable {
 
   /// A countdown's ticks update copy, not the lifetime of its presentation.
   var presentationIdentity: Self {
-    if case .countdown = self { return .countdown(secondsLeft: 0) }
+    if case .countdown(let identity, _) = self { return .countdown(identity, secondsLeft: 0) }
     return self
+  }
+
+  /// The two-second menu-bar card has no buttons and no close button.
+  var closes: Bool {
+    if case .manualStart = self { return false }
+    return true
   }
 }
 
-/// The panel's answers, back to `CallDetectionCoordinator`.
+/// The panel's answers, back to `CallDetectionCoordinator` (or the Diagnostics preview).
 struct CallPromptActions {
   var yes: @MainActor () -> Void = {}
   var no: @MainActor () -> Void = {}
   var stopRecording: @MainActor () -> Void = {}
   var keepRecording: @MainActor () -> Void = {}
+  var endRecording: @MainActor () -> Void = {}
   var startNewRecording: @MainActor () -> Void = {}
   var openSettings: @MainActor () -> Void = {}
+  var open: @MainActor () -> Void = {}
+  /// The × on every card that has one.
   var dismiss: @MainActor () -> Void = {}
 }
 
@@ -41,17 +56,16 @@ extension CallPromptActions {
   func action(named name: String, for content: CallPromptContent) -> (@MainActor () -> Void)? {
     switch (name, content) {
     case ("yes", .ask), ("yes", .switchMeeting): yes
-    case ("no", .ask), ("no", .switchMeeting): no
-    case ("keepRecording", .countdown), ("keepRecording", .endConfirmation): keepRecording
+    case ("no", .ask), ("no", .switchMeeting), ("no", .switchNotConfirmed): no
+    case ("keepRecording", .endConfirmation): keepRecording
     case ("stopRecording", .endConfirmation): stopRecording
-    case ("startNewRecording", .stoppedByUser), ("startNewRecording", .stopped), ("startNewRecording", .switchNotConfirmed):
-      startNewRecording
+    case ("endRecording", .countdown): endRecording
+    case ("startNewRecording", .switchNotConfirmed): startNewRecording
     case ("openSettings", .needsAttention), ("openSettings", .couldNotStart),
       ("openSettings", .firstTip), ("openSettings", .lastTip):
       openSettings
-    case ("close", .stoppedByUser), ("close", .stopped), ("close", .switchNotConfirmed), ("close", .needsAttention), ("close", .couldNotStart),
-      ("close", .firstTip), ("close", .lastTip):
-      dismiss
+    case ("open", .notesReady): open
+    case ("close", let content) where content.closes: dismiss
     default: nil
     }
   }
@@ -135,7 +149,9 @@ final class CallPromptPanel: CallPromptPresenting {
     panel.level = .statusBar
     panel.isOpaque = false
     panel.backgroundColor = .clear
-    panel.hasShadow = true
+    // The card draws its own shadow. A window shadow would trace the card's soft glow inside
+    // the transparent margin and draw a rough black frame around it (#4232).
+    panel.hasShadow = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     // Best effort only (Apple: not a guarantee on macOS 15.4 and later).
     panel.sharingType = capturable ? .readOnly : .none

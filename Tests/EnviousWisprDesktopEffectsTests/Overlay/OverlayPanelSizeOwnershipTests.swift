@@ -95,7 +95,9 @@ struct OverlayPanelSizeOwnershipTests {
         return panel
       })
     defer { prompt.hide() }
-    prompt.show(.ask(appName: "Zoom"), actions: .init())
+    let zoom = CallAppIdentity.app(.zoom, bundleID: nil)
+    let meet = CallAppIdentity.web(.googleMeet, browserBundleID: "com.google.chrome")
+    prompt.show(.ask(zoom), actions: .init())
     let panel = try #require(panels.first?.underlyingPanel, "the actual call panel was not built")
     let initialWidth = panel.frame.width
     #expect(initialWidth >= 340 && initialWidth <= 400,
@@ -104,8 +106,9 @@ struct OverlayPanelSizeOwnershipTests {
     var countdownID: Int?
     var initialPresentationID: Int?
     let contents: [CallPromptContent] = [
-      .ask(appName: "Zoom"), .countdown(secondsLeft: 10), .countdown(secondsLeft: 9),
-      .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), .endConfirmation, .stoppedByUser, .stopped,
+      .ask(zoom), .countdown(zoom, secondsLeft: 10), .countdown(zoom, secondsLeft: 9),
+      .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), .endConfirmation(meet),
+      .notesWriting, .notesReady(meetingID: UUID()), .manualStart(.microphone(withCallSound: true)),
     ]
     for content in contents {
       prompt.show(content, actions: .init())
@@ -125,8 +128,8 @@ struct OverlayPanelSizeOwnershipTests {
         initialPresentationID = identity
         prompt.show(content, actions: .init())
         #expect(view.rootView.model.presentationID == identity, "action refreshes do not replay entrance")
-      case .countdown(secondsLeft: 10): countdownID = identity
-      case .countdown(secondsLeft: 9):
+      case .countdown(_, secondsLeft: 10): countdownID = identity
+      case .countdown(_, secondsLeft: 9):
         #expect(identity == countdownID, "countdown ticks do not recreate entrance motion")
       case .lastTip:
         #expect(placed.height > shortHeight, "long readable copy grows before the host places the card")
@@ -137,7 +140,7 @@ struct OverlayPanelSizeOwnershipTests {
     }
     prompt.hide()
     #expect(!panel.isVisible)
-    prompt.show(.ask(appName: "Microsoft Teams"), actions: .init())
+    prompt.show(.ask(.app(.teams, bundleID: nil)), actions: .init())
     let shownAgain = panel.frame
     CATransaction.flush()
     #expect(panel.isVisible && panel.frame == shownAgain)
@@ -177,35 +180,34 @@ struct OverlayPanelSizeOwnershipTests {
         "this render route supports current key-and-value resources, not different explicit keys")
       return value
     }
-    let title = LocalizedStringResource("Want me to take notes?")
-    #expect(String(localized: transform(title, language: "de")) == (try german(title.key)))
-    let appName = "Microsoft Teams"
-    let body = LocalizedStringResource("\(appName) is using the microphone. I can start a recording.")
+    let appName = "Teams"
+    let body = LocalizedStringResource("Take notes on this \(appName) call?")
     let bodyExpected = try german(body.key).replacingOccurrences(of: "%@", with: appName)
     #expect(String(localized: transform(body, language: "de")) == bodyExpected,
       "German lookup must preserve the real app-name interpolation, not fall back to English")
     let seconds = 9
-    let countdown = LocalizedStringResource("Meeting ending in \(seconds) seconds")
+    let countdown = LocalizedStringResource("Recording stops in \(seconds) seconds")
     let countdownExpected = String(format: try german(countdown.key), locale: Locale(identifier: "de"), Int64(seconds))
     #expect(String(localized: transform(countdown, language: "de")) == countdownExpected,
       "German countdown lookup must preserve integer interpolation")
-    for key in ["Start recording", "Start a new recording", "Not now", "Stop recording", "Keep recording",
-      "Did your call end?", "I'll keep recording unless you choose Stop recording."] {
+    for key in ["Start recording", "Not now", "Stop recording", "Keep recording", "End recording",
+      "Did your call end?", "I'll keep recording unless you choose Stop recording.", "Meeting recorded",
+      "Writing your notes…", "Your notes are ready", "Open"] {
       let original = LocalizedStringResource(String.LocalizationValue(stringLiteral: key))
       #expect(String(localized: transform(original, language: "de")) == (try german(key)))
     }
     let directory = root.appending(path: "build/checkpoints/b3a/renders")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let cases: [(String, Bool, CallPromptContent, String)] = [
-      ("en", false, .ask(appName: "Zoom"), "ask"),
-      ("en", true, .ask(appName: "Zoom"), "ask"),
-      ("de", false, .ask(appName: appName), "ask"),
-      ("de", true, .countdown(secondsLeft: 9), "countdown"),
-      ("en", false, .endConfirmation, "end-confirmation"),
-      ("en", true, .endConfirmation, "end-confirmation"),
-      ("de", false, .endConfirmation, "end-confirmation"),
-      ("de", true, .endConfirmation, "end-confirmation"),
-      ("de", true, .stoppedByUser, "user-stopped"),
+      ("en", false, .ask(.app(.zoom, bundleID: nil)), "ask"),
+      ("en", true, .ask(.app(.zoom, bundleID: nil)), "ask"),
+      ("de", false, .ask(.app(.teams, bundleID: nil)), "ask"),
+      ("de", true, .countdown(.app(.teams, bundleID: nil), secondsLeft: 9), "countdown"),
+      ("en", false, .endConfirmation(.web(.googleMeet, browserBundleID: "com.google.chrome")), "end-confirmation"),
+      ("de", true, .endConfirmation(.web(.googleMeet, browserBundleID: "com.google.chrome")), "end-confirmation"),
+      ("en", true, .notesWriting, "notes-writing"),
+      ("de", false, .notesReady(meetingID: UUID()), "notes-ready"),
+      ("de", true, .manualStart(.microphone(withCallSound: true)), "manual-start"),
       ("de", true, .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), "long-tip"),
     ]
     for (language, dark, content, name) in cases {

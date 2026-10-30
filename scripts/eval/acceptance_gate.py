@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Polish quality gate — runs polish + cross-family thinking judge on the 100-case corpus.
+"""Polish quality gate — runs polish + the funded Azure judge on the canonical corpus.
 
 Modes:
   run        (default)  polish candidate prompt + judge against committed baseline. CI gate.
@@ -39,6 +39,8 @@ from datetime import datetime
 from statistics import mean
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import behavior_judge as funded_judge
+
 ROOT = Path(__file__).parent.parent.parent.resolve()
 CORPUS = ROOT / "scripts/eval/corpus/ci_corpus.jsonl"
 PROMPTS_DIR = ROOT / "scripts/eval/prompts"
@@ -69,20 +71,11 @@ POLISH_INSTRUCTIONS_DEFAULT = (
     "Do NOT include any preamble, greeting, or commentary. Begin directly with the corrected text."
 )
 
-# Bench-mode judge. Defaults to on-subscription Claude (Sonnet) via the headless
-# Claude Code CLI — $0 at the margin, vs the paid Gemini/OpenAI APIs (#1196: a
-# local prompt sweep on 2026-06-19 burned ~$19 in Gemini judge calls). Sonnet is
-# cross-family to every current bench provider (apple-intelligence / gpt-4o-mini /
-# gemini-3-flash), preserving the cross-family-judge design. For a final paid
-# receipt, override with EW_BENCH_JUDGE=gemini-3.1-pro-preview (or any gpt*/gemini*
-# id) — every consumer reads this constant, and the resolved id is stamped in the
-# bench report. The CI gate judge is JUDGE_FOR below and is intentionally NOT
-# affected by this env var.
-CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-4-6"
-# Cap concurrent headless `claude` judge subprocesses (tier-bench fans out judge
-# chunks on a thread pool). Keeps a sweep from spawning ~8 CLI instances at once.
-CLAUDE_JUDGE_MAX_WORKERS = 3
-BENCH_JUDGE_MODEL = os.environ.get("EW_BENCH_JUDGE", CLAUDE_JUDGE_MODEL_ID)
+# #1196: a local sweep burned ~$19 on personal-key grading. #4234 routes
+# grading through the existing funded Azure owner instead. Generation below still
+# uses the requested polish provider; its credential and budget are separate.
+APPROVED_JUDGE_MODEL = "azure/gpt-5-6-luna"
+BENCH_JUDGE_MODEL = os.environ.get("EW_BENCH_JUDGE", APPROVED_JUDGE_MODEL)
 BENCH_JUDGE_REPLICATIONS = 2
 BENCH_BOOTSTRAP_RESAMPLES = 2000
 # Replication wobble thresholds — exceed either and the report flags
@@ -104,14 +97,10 @@ BENCH_PAIRINGS = (
     ("P3", "gpt-4o-mini",           "gemini-3-flash-preview","GPT-4o-mini vs Gemini-3-flash"),
 )
 
-# Polish-model → judge-model pairings (cross-family, thinking-enabled).
-# Keys are the logical model family used in baseline filenames + the CLI.
-# Values are the pinned judge model id (dated where available, thinking-capable).
-JUDGE_FOR = {
-    "gpt-4o-mini": "gemini-3.1-pro-preview",
-    "gemini-2.5-flash": "gpt-5.4-2026-03-05",
-    "gemini-3-flash-preview": "gpt-5.4-2026-03-05",
-}
+# The polish-model keys preserve baseline filenames; grading uses the approved
+# funded judge. Both comparison arms are judged together, never against old grades.
+JUDGE_FOR = dict.fromkeys(
+    ("gpt-4o-mini", "gemini-2.5-flash", "gemini-3-flash-preview"), APPROVED_JUDGE_MODEL)
 
 # Logical polish-model key → pinned immutable API model id. Prevents silent
 # drift when OpenAI/Google re-tune a floating alias. Any alias change must be
@@ -520,90 +509,39 @@ def call_gemini(model: str, system: str, user: str, json_mime: bool = False) -> 
     return "".join(p.get("text", "") for p in parts).strip()
 
 
-def _judge_subprocess_env() -> dict:
-    """Env for the headless Claude judge with Anthropic/Bedrock/Vertex routing
-    vars stripped, so the judge always uses the logged-in SUBSCRIPTION ($0 at the
-    margin) and never an inherited paid API key / Bedrock route — which would
-    defeat the cost goal AND could fail on a stale key (#1196 Codex code-diff).
-    The subscription credential lives in ~/.claude, not env, so it survives."""
-    return {k: v for k, v in os.environ.items()
-            if not k.startswith("ANTHROPIC_")
-            and k not in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX")}
-
-
-def call_claude(model: str, system: str, user: str) -> str:
-    """On-subscription judge via the headless Claude Code CLI ($0 at the margin;
-    no API key read). Returns the assistant text (a JSON array, possibly fenced)
-    for the shared fence-strip + json.loads path in the judge functions. The CLI
-    has no temperature knob — bench reps + the rep-wobble flag are the stability
-    net (#1196). Validates the result envelope and fails loud on a CLI error or a
-    missing/empty/non-string result, rather than handing junk to json.loads."""
-    try:
-        proc = subprocess.run(
-            # Lock the judge to pure text-in/JSON-out: `--safe-mode` disables
-            # ambient customizations (hooks/LSP/plugins) while KEEPING the
-            # subscription auth (`--bare` would strip auth too -> "Not logged in",
-            # breaking the $0 path); NO tools (`--tools ""` — `--allowed-tools`
-            # only pre-approves, it does not remove the built-ins); no MCP
-            # servers; neutral cwd. So adversarial corpus text (anti_instruction /
-            # anti_hallucination cases) and a configured user-hook can't make it
-            # call a tool, fire a hook, hang on a prompt, or score with repo context.
-            ["claude", "-p", "--model", model, "--system-prompt", system,
-             "--safe-mode", "--tools", "", "--strict-mcp-config",
-             "--output-format", "json"],
-            input=user, capture_output=True, text=True, timeout=300,
-            cwd=tempfile.gettempdir(), env=_judge_subprocess_env(),
-        )
-    except subprocess.TimeoutExpired:
-        # Bound the call like the HTTP judges (timeout=300); a stalled CLI must
-        # surface as a judge failure, not hang tier-bench's as_completed forever.
-        raise RuntimeError("claude judge: CLI timed out after 300s")
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"claude judge: CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}")
-    try:
-        env = json.loads(proc.stdout)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"claude judge: CLI did not return a JSON envelope ({e}); got {proc.stdout[:200]!r}")
-    if env.get("is_error") or env.get("subtype") != "success":
-        raise RuntimeError(
-            f"claude judge: CLI error envelope (subtype={env.get('subtype')!r}): "
-            f"{str(env.get('result'))[:200]}")
-    result = env.get("result")
-    if not isinstance(result, str) or not result.strip():
-        raise RuntimeError(
-            f"claude judge: envelope 'result' missing/empty/non-string (type={type(result).__name__})")
-    return result.strip()
+def _require_approved_judge(model: str) -> None:
+    if model != APPROVED_JUDGE_MODEL:
+        print(f"INFRA-ERROR: acceptance grading requires {APPROVED_JUDGE_MODEL}; "
+              "direct, unknown and subscription judges are not permitted.", file=sys.stderr)
+        raise SystemExit(2)
 
 
 def _dispatch_judge(model: str, system: str, user: str, json_mime: bool) -> str:
-    """Route a judge call to the backend selected by model-id prefix and return
-    the raw assistant text (a JSON array, possibly fenced) for the caller to
-    fence-strip + json.loads. `claude*`/`sonnet*` -> on-subscription Claude CLI
-    ($0); `gpt*` -> OpenAI; else -> Gemini. `json_mime` is a Gemini-only knob
-    (the OpenAI + Claude paths instruct JSON via the system prompt)."""
-    if model.startswith(("claude", "sonnet")):
-        return call_claude(model, system, user)
-    if model.startswith("gpt"):
-        return call_openai(model, system, user)
-    return call_gemini(model, system, user, json_mime=json_mime)
+    """Retain this tool's rubric/parser; the funded owner handles transport/pins."""
+    _require_approved_judge(model)
+    return funded_judge.dispatch_judge(model, system, user)
 
 
-def _preflight_claude_judge(judge_model: str) -> None:
-    """If the bench judge is Claude, verify the CLI is installed AND logged in
-    BEFORE generating candidates — otherwise mode_bench/mode_tier_bench burn the
-    full polish spend (paid OpenAI/Gemini + local AFM time) only to fail at the
-    first judge call (#1196 Codex code-diff). No-op for HTTP judges."""
-    if not judge_model.startswith(("claude", "sonnet")):
-        return
+def _preflight_judge(judge_model: str) -> str:
+    """Resolve one standalone identity before generation, never repin a sweep.
+
+    #1196: a broken judge must fail before paid generation, not after it. #4234
+    extends that precondition to the funded judge. Inherited sweeps belong to
+    behavior_judge's own interface, not this standalone acceptance invocation.
+    """
+    _require_approved_judge(judge_model)
+    if any(name in os.environ for name in ("EW_AZURE_PINNED_MODEL", "EW_JUDGE_IDENTITY")):
+        print("INFRA-ERROR: standalone acceptance grading refuses inherited sweep "
+              "identity; use behavior_judge's sweep interface.", file=sys.stderr)
+        raise SystemExit(2)
     try:
-        call_claude(judge_model, "You output only JSON.", "Reply with exactly: []")
-    except Exception as e:
-        print(f"INFRA-ERROR: Claude judge CLI unavailable/unauthed ({e}); aborting before "
-              f"generating candidates. Run `claude` once to log in, or set EW_BENCH_JUDGE "
-              f"to a paid judge id.", file=sys.stderr)
-        sys.exit(2)
+        # This existing function probes, pins and returns the served identity.
+        # Do not call preflight_judge afterwards: that would probe a second time.
+        return funded_judge.judge_identity(judge_model)
+    except Exception as error:
+        print(f"INFRA-ERROR: funded judge unavailable ({error}); aborting before "
+              "generation.", file=sys.stderr)
+        raise SystemExit(2) from error
 
 
 # ---------- polish ----------
@@ -748,6 +686,8 @@ def mode_run(polish_model: str, out_name: str | None) -> int:
         print("Commit the new baseline with a BASELINE-BUMP: tag in the PR body.", file=sys.stderr)
         return 2
 
+    judge_identity = _preflight_judge(judge_model)
+
     # Stage 1: polish. Any failure is infra, not regression.
     print(f"[run] polish: {polish_model}  judge: {judge_model}  chunk: {CHUNK_SIZE}")
     print(f"[run] polishing {len(cases)} cases")
@@ -826,6 +766,7 @@ def mode_run(polish_model: str, out_name: str | None) -> int:
     (run_dir / "polished.jsonl").write_text("\n".join(json.dumps(p, ensure_ascii=False) for p in polished))
     report = {
         "timestamp": ts, "polish_model": polish_model, "judge_model": judge_model,
+        "judge_identity": judge_identity,
         "total": total, "pass": pass_count, "fail": total - pass_count, "pct_pass": round(100 * pct, 1),
         "threshold_pct": BATCH_PASS_THRESHOLD * 100,
         "verdict": "PASS" if pct >= BATCH_PASS_THRESHOLD else "FAIL",
@@ -876,6 +817,8 @@ def mode_meta_test(polish_model: str) -> int:
               f"drift; recapture the golden set under '{judge_model}' before running meta-test.",
               file=sys.stderr)
         return 2
+    judge_identity = _preflight_judge(judge_model)
+    print(f"[meta-test] judge identity: {judge_identity}")
     print(f"[meta-test] golden set size: {len(golden['cases'])}  judge: {judge_model}")
     cases = [
         {"id": k, "asr_input": v["asr_input"], "candidate": v["candidate"], "baseline": v["baseline"]}
@@ -1674,7 +1617,7 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
     if not cases:
         print(f"INFRA-ERROR: corpus at {corpus} has zero cases", file=sys.stderr)
         return 2
-    _preflight_claude_judge(BENCH_JUDGE_MODEL)
+    judge_identity = _preflight_judge(BENCH_JUDGE_MODEL)
 
     ts = datetime.utcnow().strftime("%Y-%m-%dT%H%M%S")
     run_dir = OUT_DIR / (out_name or f"afm-bench-{ts}")
@@ -1822,6 +1765,7 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
         "corpus_path": str(corpus),
         "corpus_size": len(cases),
         "judge_model": BENCH_JUDGE_MODEL,
+        "judge_identity": judge_identity,
         "replications": BENCH_JUDGE_REPLICATIONS,
         "afm_sleep_seconds": sleep_seconds,
         "reliability": reliability,
@@ -2074,7 +2018,7 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
         print(f"INFRA-ERROR: corpus {corpus} empty", file=sys.stderr)
         return 2
     judge = BENCH_JUDGE_MODEL  # shared judge instrument (see JUDGE_FOR / BENCH_JUDGE_MODEL)
-    _preflight_claude_judge(judge)
+    judge_identity = _preflight_judge(judge)
     ts = datetime.utcnow().strftime("%Y-%m-%dT%H%M%S")
     run_dir = OUT_DIR / (out_name or f"tier-bench-{ts}")
     cand_dir = run_dir / "candidates"
@@ -2150,10 +2094,6 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
     # on a bounded pool (founder: "parallel man, no need to wait for sequential").
     # A chunk that fails just drops its cases, which surface as missing -> INFRA-ERROR.
     workers = min(8, max(1, (os.cpu_count() or 4) - 1))
-    # Each Claude judge call is a headless CLI subprocess; cap fan-out so a sweep
-    # doesn't spawn ~8 `claude` instances at once (#1196). HTTP judges keep the pool.
-    if judge.startswith(("claude", "sonnet")):
-        workers = min(workers, CLAUDE_JUDGE_MAX_WORKERS)
     print(f"\n[tier-bench] judging (absolute, tier rubric) — {workers} workers — judge: {judge}")
     scores: dict = {prov: {} for prov in providers}
     work = []  # (provider, chunk_index, chunk)
@@ -2190,7 +2130,7 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
         f = s.get("faithful", 0)
         return (f >= 2 and s.get("clean", 0) >= 2 and s.get("restrained", 0) >= 2
                 and s.get("smart", 0) >= 1)
-    report = {"timestamp": ts, "corpus": str(corpus), "judge": judge, "providers": providers,
+    report = {"timestamp": ts, "corpus": str(corpus), "judge": judge, "judge_identity": judge_identity, "providers": providers,
               "afm_detected_language": afm_detected_language or "(nil/default-Parakeet)",
               "tiers": {}}
     for tier in TIER_ORDER:
@@ -2292,7 +2232,16 @@ def main():
         sys.exit(2)
 
     if args.mode == "selftest":
-        print("mirror self-tests passed (CLOUD_FIXED_SYSTEM in sync; AFM arm env isolated)")
+        import unittest
+        suite = unittest.defaultTestLoader.discover(
+            str(ROOT / "scripts/eval/tests"), pattern="test_acceptance_judge_routing.py")
+        count = suite.countTestCases()
+        if count == 0:
+            print("INFRA-ERROR: funded-judge routing tests were not discovered", file=sys.stderr)
+            sys.exit(2)
+        if not unittest.TextTestRunner().run(suite).wasSuccessful():
+            sys.exit(1)
+        print(f"mirror self-tests passed; {count} funded-judge routing tests passed")
         sys.exit(0)
 
     if args.mode == "baseline":
