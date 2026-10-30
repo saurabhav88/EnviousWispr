@@ -2,9 +2,10 @@
  * EnviousWispr Weekly Digest - Cloudflare Worker (issues #1243, #1589)
  *
  * Runs Monday 09:00 America/New_York via QStash HTTP trigger (#3570) and posts ONE Discord
- * message with five sections: all website traffic (Cloudflare), tracked visitor
- * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), and
- * the week's errors on the current release line (Sentry, #1965).
+ * message with six sections: all website traffic (Cloudflare), tracked visitor
+ * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), the
+ * Ollama model list and its weekly routine (#3837), and the week's errors on the
+ * current release line (Sentry, #1965).
  *
  * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
  * the dev-ID exclusion ONCE, schedules every outbound query itself under one
@@ -329,6 +330,138 @@ export async function fetchGitHubDownloads(env, { fetchFn = fetch } = {}) {
   throw new Error(`GitHub releases exceeded ${GITHUB_MAX_PAGES} pages`);
 }
 
+// ----- Ollama model list (#3837) --------------------------------------------
+
+const DAY_MS = 86400000;
+
+/** How far back the receipt read looks. Two weekly runs fit, so one receipt is
+ * still visible when the digest itself skipped a week. */
+const OLLAMA_RECEIPT_WINDOW_DAYS = 14;
+
+/** A receipt older than this is "no recent receipt". Eight, not seven: in
+ * summer the Monday digest (09:00 New York, 13:00 UTC) runs BEFORE that day's
+ * routine (13:30 UTC) and reads last Monday's receipt, which is 7 days old.
+ * This is an age threshold evaluated when the digest runs, not a promise to
+ * notice a missed run within eight days. */
+const OLLAMA_RECEIPT_MAX_AGE_DAYS = 8;
+
+/** The one line the routine posts on the run-log issue at the end of every run
+ * (workers/ollama-library-routine/routine-prompt.md, "Run receipt"). Fields are
+ * exact and ordered: a new field is a new format, changed here and in the
+ * prompt together. `result` is `none` or a link into this repository with a
+ * bounded number, so the digest never prints an arbitrary URL and one receipt
+ * can never push the payload over Discord's size limit. */
+const OLLAMA_RECEIPT_RE =
+  /^routine-run date=(\d{4}-\d{2}-\d{2}) scanned=(\d+) picked=([0-3]) mode=(issue|pr) outcome=(success|failure) result=(none|https:\/\/github\.com\/saurabhav88\/EnviousWispr\/(?:issues|pull)\/\d{1,7})$/;
+
+/** The GitHub account the routine writes as (its GitHub tools act as the
+ * founder's account; measured on the routine's own issue #3845). This names
+ * the account, not exclusive routine authorship. */
+const OLLAMA_RECEIPT_AUTHOR = "saurabhav88";
+
+/**
+ * The published Ollama list and the weekly routine's newest run receipt.
+ *
+ * Measures the routine's OWN activity, not the feed's age: the routine adds
+ * nothing most weeks, so an old `updated` date is normal and would make a
+ * healthy routine look dead. Same shape discipline as every other fetch here:
+ * a malformed 200 throws and costs this section, never becomes a quiet answer.
+ *
+ * Configuration is a contract too. A missing or invalid var throws rather than
+ * reading as "routine disabled", which would silence the warning this section
+ * exists to give.
+ */
+export async function fetchOllamaListStatus(env, now, { fetchFn = fetch } = {}) {
+  if (!/^\d+$/.test(env.OLLAMA_ROUTINE_LOG_ISSUE || "")) {
+    throw new Error("OLLAMA_ROUTINE_LOG_ISSUE is missing or not an issue number");
+  }
+  if (typeof env.OLLAMA_LIBRARY_FEED_URL !== "string" || !env.OLLAMA_LIBRARY_FEED_URL.startsWith("https://")) {
+    throw new Error("OLLAMA_LIBRARY_FEED_URL is missing or not https");
+  }
+  if (env.OLLAMA_ROUTINE_ENABLED !== "true" && env.OLLAMA_ROUTINE_ENABLED !== "false") {
+    throw new Error('OLLAMA_ROUTINE_ENABLED must be exactly "true" or "false"');
+  }
+
+  const feedRes = await fetchFn(env.OLLAMA_LIBRARY_FEED_URL, {
+    headers: { "User-Agent": "EnviousWispr-Digest-Worker" },
+  });
+  if (!feedRes.ok) throw new Error(`Ollama feed HTTP ${feedRes.status}`);
+  const feed = await feedRes.json();
+  if (
+    feed === null || typeof feed !== "object" || feed.schema !== 1 ||
+    !Array.isArray(feed.models) || typeof feed.updated !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(feed.updated) ||
+    // Date.parse rolls an impossible date over ("2026-02-30" reads as March 2),
+    // so the round trip must give back exactly the date that was written.
+    Number.isNaN(Date.parse(`${feed.updated}T00:00:00Z`)) ||
+    new Date(`${feed.updated}T00:00:00Z`).toISOString().slice(0, 10) !== feed.updated
+  ) {
+    throw new Error("Ollama feed returned an unexpected shape");
+  }
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const rawFeedAge = Math.floor((todayUTC - Date.parse(`${feed.updated}T00:00:00Z`)) / DAY_MS);
+
+  const headers = { "User-Agent": "EnviousWispr-Digest-Worker" };
+  if (env.GITHUB_TOKEN) headers.Authorization = `token ${env.GITHUB_TOKEN}`;
+  const since = new Date(now.getTime() - OLLAMA_RECEIPT_WINDOW_DAYS * DAY_MS).toISOString();
+  const res = await fetchFn(
+    `https://api.github.com/repos/${env.GITHUB_REPO}/issues/${env.OLLAMA_ROUTINE_LOG_ISSUE}/comments` +
+      `?since=${encodeURIComponent(since)}&per_page=100`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`GitHub run-log comments HTTP ${res.status}`);
+  const comments = await res.json();
+  if (!Array.isArray(comments)) throw new Error("GitHub run-log comments returned a non-array");
+  // GitHub lists comments oldest first; a full page could hide the newest one
+  // on page two. Two runs a fortnight never fill it, so a full page is a log
+  // somebody else is writing in, and it fails rather than guessing.
+  if (comments.length >= 100) throw new Error("GitHub run-log comments filled a whole page");
+
+  let lastRun = null;
+  for (const c of comments) {
+    if (typeof c?.body !== "string" || typeof c?.created_at !== "string") {
+      throw new Error("GitHub run-log comments returned a comment without body or created_at");
+    }
+    const created = Date.parse(c.created_at);
+    if (Number.isNaN(created)) {
+      throw new Error("GitHub run-log comments returned an unreadable created_at");
+    }
+    if (c.user?.login !== OLLAMA_RECEIPT_AUTHOR) continue;
+    // The receipt is the FIRST line, matched whole. The routine's GitHub tool
+    // appends its own attribution footer below it ("\n\n---\n_Generated by
+    // ..._", measured on #4215 2026-10-29), so the rest of the body may be
+    // empty or that footer and nothing else.
+    const [line, ...rest] = c.body.split(/\r?\n/);
+    const tail = rest.join("\n").trim();
+    if (tail !== "" && tail !== "---\n_Generated by [Claude Code](https://claude.ai/code)_") continue;
+    const m = OLLAMA_RECEIPT_RE.exec(line);
+    if (!m || m[0] !== line) continue;
+    // Freshness comes from GitHub's creation time, never from the date the
+    // writer typed, and a timestamp in the future is not accepted.
+    if (created > now.getTime() || created < now.getTime() - OLLAMA_RECEIPT_WINDOW_DAYS * DAY_MS) continue;
+    if (lastRun === null || created > lastRun.createdMs) {
+      lastRun = {
+        createdMs: created,
+        date: new Date(created).toISOString().slice(0, 10),
+        scanned: Number(m[2]),
+        picked: Number(m[3]),
+        mode: m[4],
+        outcome: m[5],
+        result: m[6],
+      };
+    }
+  }
+
+  return {
+    enabled: env.OLLAMA_ROUTINE_ENABLED === "true",
+    feedRows: feed.models.length,
+    feedUpdated: feed.updated,
+    feedAgeDays: Math.max(rawFeedAge, 0),
+    feedUpdatedInFuture: rawFeedAge < 0,
+    lastRun: lastRun && { ...lastRun, ageMs: now.getTime() - lastRun.createdMs },
+  };
+}
+
 // ----- PostHog SQL ----------------------------------------------------------
 
 const hostFilter = `properties.$host IN (${SITE_HOSTS.map((h) => `'${h}'`).join(", ")})`;
@@ -594,6 +727,43 @@ export function formatAppUsage(usage, funnel) {
   return lines;
 }
 
+const OLLAMA_TITLE = "Ollama model list";
+
+/** `status` null means the section could not be measured. "Disabled" is what
+ * the Worker's configuration says, not a live read of the scheduler, and the
+ * sentence says so. */
+export function formatOllamaList(status) {
+  if (!status) {
+    return [OLLAMA_TITLE, `Ollama list figures were ${UNAVAILABLE} when this digest ran.`];
+  }
+  const lines = [OLLAMA_TITLE];
+  const age = status.feedUpdatedInFuture
+    ? "(dated in the future: check the file)"
+    : `(${n(status.feedAgeDays)} days ago)`;
+  lines.push(`${n(status.feedRows)} extra models in the published list; it last changed on ${status.feedUpdated} ${age}.`);
+  if (!status.enabled) {
+    lines.push("Monitoring is configured as disabled; this is not a live scheduler-state check.");
+    return lines;
+  }
+  const run = status.lastRun;
+  if (run && run.ageMs <= OLLAMA_RECEIPT_MAX_AGE_DAYS * DAY_MS) {
+    if (run.outcome === "failure") {
+      lines.push(`WARNING: the weekly routine failed on ${run.date}. Details: ${run.result}`);
+    } else if (run.picked === 0) {
+      lines.push(`The weekly routine completed on ${run.date} and found nothing new to add.`);
+    } else {
+      lines.push(`The weekly routine completed on ${run.date} and proposed ${run.picked} models: ${run.result}`);
+    }
+  } else {
+    const newest = run ? `the newest is from ${run.date}` : `none in the last ${OLLAMA_RECEIPT_WINDOW_DAYS} days`;
+    lines.push(
+      `WARNING: no recent receipt from the weekly routine (${newest}). ` +
+        "It may have stopped. Check claude.ai/code/routines."
+    );
+  }
+  return lines;
+}
+
 /** One embed per section, and a REFUSAL of any shape Discord would reject,
  * while that failure still belongs to one section rather than the payload. */
 function toEmbed(lines) {
@@ -729,7 +899,7 @@ export async function runDigest(env, deps = {}) {
     posthogTasks.push(() => querySection(env, onboardActivateSql(prod, window.win), "onboard_activate", hogqlOpts));
   }
 
-  const [posthogOutcome, cfOutcome, ghOutcome, sentryOutcome] = await Promise.allSettled([
+  const [posthogOutcome, cfOutcome, ghOutcome, sentryOutcome, ollamaOutcome] = await Promise.allSettled([
     runLimited(posthogTasks.map((task) => async () => {
       try {
         return { status: "fulfilled", value: await task() };
@@ -743,6 +913,9 @@ export async function runDigest(env, deps = {}) {
     // limiter exactly as Cloudflare and GitHub do rather than queueing behind
     // PostHog's 3-query allowance for work that is not PostHog's.
     fetchSentrySection(env, sentryWindowFor(window), { fetchFn, workerLabel: WORKER_LABEL }),
+    // Our own public list file and the routine's public run log (#3837): a
+    // fifth source with no shared ceiling, alongside the others.
+    fetchOllamaListStatus(env, now, { fetchFn }),
   ]);
 
   // A rejection here is a programming error in the limiter itself, not a query
@@ -777,7 +950,11 @@ export async function runDigest(env, deps = {}) {
   //                     g.uniq.uniques               num()
   //                     c.clientCountryName          non-empty string
   //                     c.requests                   num()
-  //   GitHub            releases                     array
+  //   Ollama list       feed.schema/.models/.updated  1, array, YYYY-MM-DD
+//                     comments                     array, under one page
+//                     comment.body/.created_at     strings, readable time
+//                     comment.user.login           compared, never trusted to exist
+//   GitHub            releases                     array
   //                     rel.assets                   array (missing != empty)
   //                     asset.name                   string
   //                     asset.download_count         finite number
@@ -890,10 +1067,11 @@ export async function runDigest(env, deps = {}) {
   const cf = valueOrNull(cfOutcome, failures, "cloudflare");
   const gh = valueOrNull(ghOutcome, failures, "github");
   const sentry = valueOrNull(sentryOutcome, failures, "sentry");
+  const ollama = valueOrNull(ollamaOutcome, failures, "ollama_list");
 
   // Rendered inside its own try, so a section that computes cleanly and formats
   // badly costs only itself. Validated at delivery it would fail the whole
-  // payload and take the other four sections down with it.
+  // payload and take the other five sections down with it.
   let sentryLines;
   try {
     sentryLines = sentry === null
@@ -911,6 +1089,7 @@ export async function runDigest(env, deps = {}) {
       toEmbed(formatWebsite(site, downloads ? downloads.intents : null)),
       toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
       toEmbed(formatAppUsage(usage, funnel)),
+      toEmbed(formatOllamaList(ollama)),
       toEmbed(sentryLines),
     ],
   };
