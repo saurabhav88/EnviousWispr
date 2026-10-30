@@ -56,7 +56,11 @@ struct UniversalPreviewContentionPolicyTests {
       for mode in Self.languages {
         for toggle in [false, true] {
           let s = try settings(backend: backend, mode: mode, toggle: toggle)
-          #expect(s.selectedBackend == backend && s.useStreamingASR == toggle)
+          // #3809: Whisper Auto normalizes a requested ON preference to OFF.
+          let expectedStoredToggle =
+            backend == .whisper && mode == .auto ? false : toggle
+          #expect(s.selectedBackend == backend)
+          #expect(s.useStreamingASR == expectedStoredToggle)
           let expected = Self.expectedStreaming(backend: backend, mode: mode, toggle: toggle)
           #expect(
             WhisperPreviewDeliveryWiring.heartIsStreaming(settings: s) == expected,

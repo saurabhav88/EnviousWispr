@@ -10,6 +10,15 @@ import Testing
 /// honesty must never quietly start lying.
 struct LiveTranscriptionCopyTests {
 
+  @Test("Whisper explains the language prerequisite and lasting shared-switch reset")
+  func whisperPrerequisiteAndReset() {
+    #expect(LiveTranscriptionCopy.autoLanguageFootnote.contains("Select a language"))
+    let explanation = LiveTranscriptionCopy.whisper.whyBody
+    #expect(explanation.contains("Auto-detect turns Faster Transcription off"))
+    #expect(explanation.contains("changing engines does not turn it back on"))
+    #expect(explanation.contains("ignores this setting") == false)
+  }
+
   /// Sources, both recorded on #1337: word errors and phantom words from the 28-clip
   /// firehose bake-off; the lost-endings figure from a replay of 500 archived real
   /// dictations. Change a number here only alongside a fresh measurement.
