@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 /// The one route to a meeting Start, shared by the EnviousMeet page and the menu bar (#3972 C5,
@@ -7,7 +8,7 @@ import Foundation
 /// your Mac plays..."), and only the user's Continue opens the tap that makes macOS ask. A
 /// Start without the call sound never waits for it.
 ///
-/// Owns only the explainer step. `MeetingCoordinator` still owns capture and its own refusals
+/// Owns admission and accepted-request provenance. `MeetingCoordinator` still owns capture and its own refusals
 /// (dictation hold, disk, microphone), and its `start` already ignores a second Start while one
 /// is starting or recording.
 @MainActor
@@ -36,6 +37,11 @@ final class MeetingStartFlow {
     var requestMicrophone: @MainActor () async -> Void
     /// Shows the EnviousMeet page, where the explainer is: a menu Start that needs it.
     var showMeetingPage: @MainActor () -> Void
+    var acceptedStartNow: @MainActor () -> Date = {
+      Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
+    }
+    var acceptedStart: @MainActor (CallDetectionPolicy.AcceptedStart) -> Void = { _ in }
+    var settledStart: @MainActor (CallDetectionPolicy.AcceptedStart, UUID?) -> Void = { _, _ in }
   }
 
   /// A Start waiting on the explainer, and where it was asked from: the page shows the
@@ -74,6 +80,7 @@ final class MeetingStartFlow {
   /// Counts reserved Starts and cancellations, so a Start that comes back from the prompt after
   /// it was cancelled or replaced starts nothing.
   private var startGeneration = 0
+  @ObservationIgnored private var acceptedRequest: CallDetectionPolicy.AcceptedStart?
 
   private let deps: Dependencies
 
@@ -139,7 +146,7 @@ final class MeetingStartFlow {
     pendingExplainer = nil
     pendingCallSound = nil
     pendingCallApp = nil
-    return .started(await deps.start(entryPoint, captureCallSound, callApp))
+    return await startAccepted(from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
   }
 
   /// #4012: whether a detected Start would stop at `.needsAttention` or `.setupRequired` (setup,
@@ -172,7 +179,31 @@ final class MeetingStartFlow {
     guard deps.canStart() else { return .notIdle }
     let captureCallSound = override ?? deps.captureCallSound()
     if captureCallSound { deps.markExplained() }
-    return .started(await deps.start(entryPoint, captureCallSound, callApp))
+    return await startAccepted(from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
+  }
+
+  /// One producing/settling path for both direct and explainer-Continue starts. Observation
+  /// never owns capture: the coordinator's unchanged outcome is still returned to the caller.
+  private func startAccepted(
+    from route: MeetingEntryPoint, captureCallSound: Bool, callApp: CallAppFamily?
+  ) async -> Outcome {
+    if let previous = acceptedRequest { settle(previous, recordingID: nil) }
+    startGeneration += 1
+    let request = CallDetectionPolicy.AcceptedStart(
+      generation: startGeneration, route: route, acceptedAt: deps.acceptedStartNow())
+    acceptedRequest = request
+    deps.acceptedStart(request)
+    let result = await deps.start(route, captureCallSound, callApp)
+    let recordingID: UUID?
+    if case .recording(let id) = result { recordingID = id } else { recordingID = nil }
+    settle(request, recordingID: recordingID)
+    return .started(result)
+  }
+
+  private func settle(_ request: CallDetectionPolicy.AcceptedStart, recordingID: UUID?) {
+    guard acceptedRequest == request else { return }
+    acceptedRequest = nil
+    deps.settledStart(request, recordingID)
   }
 
   /// The user closed the explainer without starting, or a Start waiting on the microphone
@@ -190,6 +221,7 @@ final class MeetingStartFlow {
   }
 
   func cancelExplainer() {
+    if let request = acceptedRequest { settle(request, recordingID: nil) }
     pendingExplainer = nil
     pendingCallSound = nil
     pendingCallApp = nil

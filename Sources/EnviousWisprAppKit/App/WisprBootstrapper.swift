@@ -2605,11 +2605,14 @@ package final class WisprBootstrapper {
     meetingInputs.refreshTalkerRules = refreshTalkerRules
     // The day's talker-rules download at launch, off the launch path.
     refreshTalkerRules()
+    let callDetectionNow: @MainActor () -> Date = {
+      Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
+    }
     // #4013 13B: one owner of the microphone watcher for call prompts and speaker capture.
     let callSources = CallSourceDiscovery(
-      dependencies: .init(evidence: { rule, pid in
-        await CallEvidenceRead.bounded(rule: rule, pid: pid)
-      }))
+      dependencies: .init(snapshot: { rule, pid, retained in
+        await CallEvidenceRead.boundedSnapshot(rule: rule, pid: pid, retained: retained)
+      }, now: callDetectionNow))
     meetingInputs.callSources = callSources
     meetingInputs.liveVocabulary = { [weak livePreview] in
       livePreview?.vocabularySnapshot()
@@ -2673,6 +2676,13 @@ package final class WisprBootstrapper {
         showMeetingPage: { [navigationCoordinator, appWindowCoordinator] in
           navigationCoordinator.request(.meetings(.general))
           appWindowCoordinator.showWindow()
+        },
+        acceptedStartNow: callDetectionNow,
+        acceptedStart: { [weak meetingBox] request in
+          meetingBox?.callDetection?.acceptedStart(request)
+        },
+        settledStart: { [weak meetingBox] request, recordingID in
+          meetingBox?.callDetection?.settledStart(request, recordingID: recordingID)
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
@@ -2723,6 +2733,7 @@ package final class WisprBootstrapper {
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame
         },
         emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
+        now: callDetectionNow,
         makePresenter: { [overlayEffects] anchor in
           CallPromptPanel(anchor: anchor, makePanel: overlayEffects.makePanel)
         }),
@@ -3409,7 +3420,7 @@ struct OutputClassifierEmissionPolicy: Equatable {
 final class MeetingCoordinatorBox {
   weak var coordinator: MeetingCoordinator?
   weak var startFlow: MeetingStartFlow?
-  /// #4012: call detection, for the DEBUG `call.simulate` command.
+  /// Call detection receives accepted-start observations and the DEBUG `call.simulate` command.
   weak var callDetection: CallDetectionCoordinator?
 
   /// #4069: whether "Turn off dictation during meetings" refuses a dictation start now: the

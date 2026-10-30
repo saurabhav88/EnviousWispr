@@ -3,6 +3,7 @@ import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprDesktopEffects
 import Testing
+import SwiftUI
 
 @testable import EnviousWisprAppKit
 
@@ -82,4 +83,163 @@ struct OverlayPanelSizeOwnershipTests {
       view.frame.size == grown,
       "the window grew to \(grown) and the pill's view stayed \(view.frame.size)")
   }
+
+  @Test("the actual call card keeps its host frame through layout, content changes and re-show")
+  func callPromptKeepsItsHostsFrame() throws {
+    var panels: [LiveOverlayPanelDriver] = []
+    let prompt = CallPromptPanel(
+      anchor: { CGRect(x: 950, y: 940, width: 22, height: 22) },
+      makePanel: {
+        let panel = LiveOverlayPanelDriver()
+        panels.append(panel)
+        return panel
+      })
+    defer { prompt.hide() }
+    prompt.show(.ask(appName: "Zoom"), actions: .init())
+    let panel = try #require(panels.first?.underlyingPanel, "the actual call panel was not built")
+    let initialWidth = panel.frame.width
+    #expect(initialWidth >= 340 && initialWidth <= 400,
+      "D2 needs its approved readable card width; this is not a claim of a historical geometry failure")
+    var shortHeight: CGFloat = 0
+    var countdownID: Int?
+    var initialPresentationID: Int?
+    let contents: [CallPromptContent] = [
+      .ask(appName: "Zoom"), .countdown(secondsLeft: 10), .countdown(secondsLeft: 9),
+      .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), .endConfirmation, .stoppedByUser, .stopped,
+    ]
+    for content in contents {
+      prompt.show(content, actions: .init())
+      let placed = panel.frame
+      #expect(placed.width.isFinite && placed.height.isFinite && placed.width > 0 && placed.height > 0)
+      CATransaction.flush()
+      #expect(panel.frame == placed, "the view changed the host-assigned frame after window layout")
+      let container = try #require(panel.contentView)
+      let hosted = (container as? NSHostingView<CallPromptView>)
+        ?? container.subviews.compactMap { $0 as? NSHostingView<CallPromptView> }.first
+      let view = try #require(hosted, "the actual call card left its host")
+      #expect(view.frame.size == container.bounds.size, "the card must follow its window")
+      let identity = view.rootView.model.presentationID
+      switch content {
+      case .ask:
+        shortHeight = placed.height
+        initialPresentationID = identity
+        prompt.show(content, actions: .init())
+        #expect(view.rootView.model.presentationID == identity, "action refreshes do not replay entrance")
+      case .countdown(secondsLeft: 10): countdownID = identity
+      case .countdown(secondsLeft: 9):
+        #expect(identity == countdownID, "countdown ticks do not recreate entrance motion")
+      case .lastTip:
+        #expect(placed.height > shortHeight, "long readable copy grows before the host places the card")
+      default: break
+      }
+      #expect(panel.frame.width == initialWidth, "long copy wraps without widening the card")
+      #expect(prompt.content == content)
+    }
+    prompt.hide()
+    #expect(!panel.isVisible)
+    prompt.show(.ask(appName: "Microsoft Teams"), actions: .init())
+    let shownAgain = panel.frame
+    CATransaction.flush()
+    #expect(panel.isVisible && panel.frame == shownAgain)
+    #expect(!panel.isKeyWindow, "the call card must not claim keyboard focus on presentation")
+    let container = try #require(panel.contentView)
+    let host = try #require(container.subviews.compactMap { $0 as? NSHostingView<CallPromptView> }.first)
+    #expect(host.rootView.model.presentationID > (initialPresentationID ?? 0),
+      "showing a new prompt after hide gets a new finite presentation lifetime")
+    try Self.writeStandaloneRendersIfRequested()
+  }
+
+
+  /// Bounded opt-in export of the actual view, following the existing hosting/bitmap route.
+  /// This proves explicit app-catalog lookup in an unhosted test, not general module reuse.
+  private static func writeStandaloneRendersIfRequested() throws {
+    guard ProcessInfo.processInfo.environment["EW_RENDER_CALL_PROMPT_B3A"] == "1" else { return }
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let app = root.appending(path: ".derivedData/L10n/Build/Products/Release/EnviousWispr.app")
+    try #require(FileManager.default.fileExists(atPath: app.appending(path: "Contents/Info.plist").path),
+      "build the actual app's reviewed catalog through the compiler-only Release route first")
+    let data = try Data(contentsOf: root.appending(path: "Sources/EnviousWispr/Resources/Localizable.xcstrings"))
+    let catalog = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let strings = try #require(catalog["strings"] as? [String: Any])
+    func german(_ key: String) throws -> String {
+      let entry = try #require(strings[key] as? [String: Any])
+      let languages = try #require(entry["localizations"] as? [String: Any])
+      let language = try #require(languages["de"] as? [String: Any])
+      let unit = try #require(language["stringUnit"] as? [String: Any])
+      try #require(unit["state"] as? String == "translated", "review German before accepting renders")
+      return try #require(unit["value"] as? String)
+    }
+    func transform(_ resource: LocalizedStringResource, language: String) -> LocalizedStringResource {
+      let value = LocalizedStringResource(resource.defaultValue, table: resource.table,
+        locale: Locale(identifier: language), bundle: .atURL(app))
+      #expect(value.key == resource.key,
+        "this render route supports current key-and-value resources, not different explicit keys")
+      return value
+    }
+    let title = LocalizedStringResource("Want me to take notes?")
+    #expect(String(localized: transform(title, language: "de")) == (try german(title.key)))
+    let appName = "Microsoft Teams"
+    let body = LocalizedStringResource("\(appName) is using the microphone. I can start a recording.")
+    let bodyExpected = try german(body.key).replacingOccurrences(of: "%@", with: appName)
+    #expect(String(localized: transform(body, language: "de")) == bodyExpected,
+      "German lookup must preserve the real app-name interpolation, not fall back to English")
+    let seconds = 9
+    let countdown = LocalizedStringResource("Meeting ending in \(seconds) seconds")
+    let countdownExpected = String(format: try german(countdown.key), locale: Locale(identifier: "de"), Int64(seconds))
+    #expect(String(localized: transform(countdown, language: "de")) == countdownExpected,
+      "German countdown lookup must preserve integer interpolation")
+    for key in ["Start recording", "Start a new recording", "Not now", "Stop recording", "Keep recording",
+      "Did your call end?", "I'll keep recording unless you choose Stop recording."] {
+      let original = LocalizedStringResource(String.LocalizationValue(stringLiteral: key))
+      #expect(String(localized: transform(original, language: "de")) == (try german(key)))
+    }
+    let directory = root.appending(path: "build/checkpoints/b3a/renders")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let cases: [(String, Bool, CallPromptContent, String)] = [
+      ("en", false, .ask(appName: "Zoom"), "ask"),
+      ("en", true, .ask(appName: "Zoom"), "ask"),
+      ("de", false, .ask(appName: appName), "ask"),
+      ("de", true, .countdown(secondsLeft: 9), "countdown"),
+      ("en", false, .endConfirmation, "end-confirmation"),
+      ("en", true, .endConfirmation, "end-confirmation"),
+      ("de", false, .endConfirmation, "end-confirmation"),
+      ("de", true, .endConfirmation, "end-confirmation"),
+      ("de", true, .stoppedByUser, "user-stopped"),
+      ("de", true, .lastTip(appName: "Microsoft Teams (Geschäfts- oder Schulkonto)"), "long-tip"),
+    ]
+    for (language, dark, content, name) in cases {
+      let model = CallPromptModel()
+      model.content = content
+      let view = CallPromptView(model: model,
+        resourceTransform: { transform($0, language: language) }, reduceMotionOverride: true)
+        .environment(\.locale, Locale(identifier: language))
+        .environment(\.colorScheme, dark ? .dark : .light)
+      let host = NSHostingView(rootView: AnyView(view))
+      host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+      host.frame = CGRect(x: 0, y: 0, width: 380, height: 600)
+      let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+      window.isReleasedWhenClosed = false
+      window.appearance = host.appearance
+      let container = NSView(frame: host.frame)
+      host.autoresizingMask = [.width, .height]
+      container.addSubview(host)
+      window.contentView = container
+      defer { window.close() }
+      host.layoutSubtreeIfNeeded()
+      let size = host.fittingSize
+      try #require(size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0)
+      window.setFrame(CGRect(origin: .zero, size: size), display: false)
+      host.frame = container.bounds
+      host.layoutSubtreeIfNeeded()
+      window.displayIfNeeded()
+      let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+      host.cacheDisplay(in: host.bounds, to: bitmap)
+      let png = try #require(bitmap.representation(using: .png, properties: [:]))
+      let filename = "d2-\(language)-\(dark ? "dark" : "light")-\(name)-standalone-render.png"
+      try png.write(to: directory.appending(path: filename))
+      print("STANDALONE RENDER \(directory.appending(path: filename).path)")
+    }
+  }
+
 }

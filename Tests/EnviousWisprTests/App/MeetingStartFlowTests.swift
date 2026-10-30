@@ -30,6 +30,10 @@ struct MeetingStartFlowTests {
 
     /// EnviousMeet's setup is finished (#4017); false locks every Start.
     var setUp = true
+    var clock = Date(timeIntervalSinceReferenceDate: 1_000)
+    var accepted: [CallDetectionPolicy.AcceptedStart] = []
+    var settlements: [(CallDetectionPolicy.AcceptedStart, UUID?)] = []
+    var onStart: @MainActor () async -> MeetingCoordinator.StartOutcome? = { nil }
     lazy var flow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [unowned self] in setUp },
@@ -44,6 +48,7 @@ struct MeetingStartFlowTests {
           startedApps.append(callApp)
           startedWithCallSound.append(callSound)
           idle = false
+          if let outcome = await onStart() { return outcome }
           return .recording(meetingID: startedMeetingID)
         },
         microphoneNeedsAsking: { [unowned self] in microphoneUnasked },
@@ -52,7 +57,95 @@ struct MeetingStartFlowTests {
           await onMicrophoneRequest()
           microphoneUnasked = false
         },
-        showMeetingPage: { [unowned self] in pageShown += 1 }))
+        showMeetingPage: { [unowned self] in pageShown += 1 },
+        acceptedStartNow: { [unowned self] in clock },
+        acceptedStart: { [unowned self] in accepted.append($0) },
+        settledStart: { [unowned self] in settlements.append(($0, $1)) }))
+  }
+
+  @Test("Both direct and explainer Continue freeze acceptance after gates and before the recording dependency",
+    arguments: [true, false])
+  func acceptedBoundaryPrecedesStart(direct: Bool) async throws {
+    let rig = Rig()
+    rig.callSound = !direct
+    rig.microphoneUnasked = true
+    rig.onMicrophoneRequest = { #expect(rig.accepted.isEmpty) }
+    rig.onStart = {
+      let accepted = try? #require(rig.accepted.last)
+      #expect(accepted?.route == .menu && accepted?.acceptedAt == rig.clock)
+      #expect(rig.settlements.isEmpty, "acceptance is synchronous, settlement follows actual outcome")
+      return nil
+    }
+    let first = await rig.flow.requestStart(from: .menu, callApp: .zoom)
+    if !direct {
+      #expect(first == .waitingForExplainer && rig.accepted.isEmpty)
+      rig.clock = rig.clock.addingTimeInterval(7)
+      #expect(await rig.flow.continueAfterExplainer() == .started(.recording(meetingID: rig.startedMeetingID)))
+    } else {
+      #expect(first == .started(.recording(meetingID: rig.startedMeetingID)))
+    }
+    #expect(rig.accepted.count == 1 && rig.settlements.count == 1)
+    #expect(rig.settlements.first?.0 == rig.accepted.first)
+    #expect(rig.settlements.first?.1 == rig.startedMeetingID)
+    #expect(rig.starts == [.menu] && rig.startedApps == [.zoom])
+  }
+
+  @Test("A refused or superseded accepted request never publishes a successful recording UUID")
+  func failedAcceptedOutcomeHasNoRecordingFact() async {
+    for outcome in [MeetingCoordinator.StartOutcome.refused(.lowDisk), .superseded(meetingID: nil)] {
+      let rig = Rig()
+      rig.callSound = false
+      rig.onStart = { outcome }
+      #expect(await rig.flow.requestStart(from: .history) == .started(outcome))
+      #expect(rig.accepted.count == 1 && rig.settlements.count == 1)
+      #expect(rig.settlements.first?.0.route == .history && rig.settlements.first?.1 == nil)
+    }
+  }
+
+  @Test("Cancellation settles once and an old completion cannot overwrite a newer accepted generation")
+  func acceptedCancellationAndLateCompletion() async {
+    let rig = Rig()
+    rig.callSound = false
+    let gate = MeetingCoordinatorTests.Gate()
+    defer { gate.open() }
+    var startIndex = 0
+    let newerID = UUID()
+    rig.onStart = {
+      startIndex += 1
+      if startIndex == 1 { await gate.wait(); return .recording(meetingID: rig.startedMeetingID) }
+      return .recording(meetingID: newerID)
+    }
+    let old = Task { await rig.flow.requestStart(from: .menu) }
+    await MeetingCoordinatorTests.eventually("accepted start parked", drainFiles: false) { gate.parked }
+    let oldRequest = rig.accepted.first
+    rig.flow.cancelExplainer()
+    #expect(rig.settlements.count == 1 && rig.settlements.first?.1 == nil)
+    rig.idle = true
+    #expect(await rig.flow.requestStart(from: .history) == .started(.recording(meetingID: newerID)))
+    let current = rig.accepted.last
+    #expect(current?.generation != oldRequest?.generation)
+    #expect(rig.settlements.count == 2 && rig.settlements.last?.0 == current)
+    #expect(rig.settlements.last?.1 == newerID)
+    gate.open()
+    await old.value
+    #expect(rig.settlements.count == 2 && rig.settlements.last?.1 == newerID,
+      "the old start's actual result does not publish or clear newer provenance")
+  }
+
+  @Test("Requests blocked before acceptance do not publish pending or settled facts")
+  func blockedStartHasNoAcceptedProvenance() async {
+    let rig = Rig()
+    rig.setUp = false
+    #expect(await rig.flow.requestStart(from: .menu) == .setupRequired)
+    #expect(rig.accepted.isEmpty && rig.settlements.isEmpty)
+    rig.setUp = true
+    rig.idle = false
+    #expect(await rig.flow.requestStart(from: .history) == .notIdle)
+    #expect(rig.accepted.isEmpty && rig.settlements.isEmpty)
+    rig.idle = true
+    rig.microphoneUnasked = true
+    #expect(await rig.flow.requestStart(from: .detected, callApp: .zoom) == .needsAttention)
+    #expect(rig.accepted.isEmpty && rig.settlements.isEmpty)
   }
 
   @Test("#4012: a Start that waits for the explainer keeps its call app")
