@@ -196,6 +196,7 @@
  "SpeechEngineSettingsView.swift | settingsMapRegistration | action",
  "SpokenPunctuationConfigureSheet.swift | SettingsRow | exempt .sheetOrPopoverContent",
  "SpokenPunctuationStartWordRow.swift | SettingsRow | exempt .sheetOrPopoverContent",
+ "SwitchingFromAnotherAppCard.swift | settingsMapRegistration | .exempt(.switchingHandoffCard)",
  "TranscribeFileView.swift | settingsMapRegistration | .transcribeFileSteps",
  "YourWordsView.swift | settingsMapRegistration | .yourWordsAdd",
  "YourWordsView.swift | settingsMapRegistration | .yourWordsExport",

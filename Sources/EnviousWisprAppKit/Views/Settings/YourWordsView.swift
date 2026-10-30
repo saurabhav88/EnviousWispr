@@ -316,12 +316,6 @@ struct YourWordsView: View {
     switch selection {
     case .yourWords:
       yourWordsBanners
-      // #3034: always shown. A sibling, not wrapped with the section below, which must stay a
-      // direct child of the pane's `LazyVStack` for its header to pin.
-      SwitchingFromAnotherAppCard(
-        subtitle: SwitchingFromAnotherAppCopy.wordsSubtitle(names: SmartImportRegistry.v1.displayNames)
-      ) { sheetRoute = .importWordsFromApp }
-      .padding(.bottom, SettingsLayout.sectionSpacing)
       // The three page actions are handed to the list card rather than drawn
       // above it. They used to be their own right-aligned row, with the word
       // count on a third row below that, so the pane opened as three stacked
@@ -345,6 +339,11 @@ struct YourWordsView: View {
   /// controls are what stay pinned.
   private var yourWordsBanners: some View {
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+      // #3034: always shown, above any notice.
+      SwitchingFromAnotherAppCard(
+        subtitle: SwitchingFromAnotherAppCopy.wordsSubtitle(names: SmartImportRegistry.v1.displayNames)
+      ) { sheetRoute = .importWordsFromApp }
+
       // Launch-time load failure (#1646): honest banner instead of a silent
       // empty list. Two distinct situations, two distinct messages.
       if let failure = customWordsCoordinator.wordsLoadFailureAtLaunch {
@@ -369,13 +368,8 @@ struct YourWordsView: View {
         )
       }
     }
-    // Space below only when a notice is showing; otherwise the card starts at
-    // the top of the pane, where it always has.
-    .padding(
-      .bottom,
-      customWordsCoordinator.wordsLoadFailureAtLaunch != nil
-        || customWordsCoordinator.pendingEnrichmentCount > 0
-        ? SettingsLayout.sectionSpacing : 0)
+    // Space below: the switching card is always above the list, so the gap is always needed.
+    .padding(.bottom, SettingsLayout.sectionSpacing)
   }
 
   /// The Your Words tab's three page-level actions, factored out so
