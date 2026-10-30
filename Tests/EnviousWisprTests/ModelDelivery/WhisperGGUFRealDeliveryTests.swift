@@ -112,7 +112,7 @@ struct WhisperGGUFRealDeliveryTests {
     "the turbo manifest downloads three parts from our copy, assembles, admits and transcribes",
     .enabled(if: WhisperGGUFRealDeliveryTests.enabled),
     .tags(.realBoundary),
-    .timeLimit(.minutes(30)))
+    .timeLimit(.minutes(30)), .realBoundaryRun)
   func turboDeliversAndTranscribes() async throws {
     let text = try await Self.deliverAndTranscribe(
       manifestName: "whisper-delivery-manifest", expectedParts: 3, installFolder: "whisper-gguf")
@@ -123,7 +123,7 @@ struct WhisperGGUFRealDeliveryTests {
     "the preview manifest downloads one object from our copy, admits and transcribes",
     .enabled(if: WhisperGGUFRealDeliveryTests.enabled),
     .tags(.realBoundary),
-    .timeLimit(.minutes(30)))
+    .timeLimit(.minutes(30)), .realBoundaryRun)
   func previewDeliversAndTranscribes() async throws {
     let text = try await Self.deliverAndTranscribe(
       manifestName: "whisper-preview-delivery-manifest", expectedParts: nil,

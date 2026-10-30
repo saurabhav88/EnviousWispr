@@ -16,7 +16,7 @@ import Testing
 @Suite(
   "Gemini all-models live sweep",
   .tags(.productOutcome, .realBoundary),
-  .enabled(if: ProcessInfo.processInfo.environment["EW_GEMINI_LIVE_SWEEP"] == "1"))
+  .enabled(if: ProcessInfo.processInfo.environment["EW_GEMINI_LIVE_SWEEP"] == "1"), .realBoundaryRun)
 struct GeminiLiveSweepTests {
 
   @Test(.timeLimit(.minutes(15)))

@@ -59,7 +59,7 @@ struct WhisperProductionWiringRealBoundaryTests {
   @Test(
     "an admitted model decodes real speech through the adapter; a cancelled decode leaves it reusable; an idle unload reloads",
     .enabled(if: Self.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func admittedDecodeCancelReuseAndReload() async throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -146,7 +146,7 @@ struct WhisperProductionWiringRealBoundaryTests {
   @Test(
     "Faster Transcription on the real model: a rolling session decodes during the take and its flush is the transcript; a cancelled session leaves the engine reusable",
     .enabled(if: Self.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func rollingSessionOnTheRealModel() async throws {
     let samples = try AudioConverter().resampleAudioFile(

@@ -52,7 +52,7 @@ struct AudioCaptureManagerLiveInputTests {
     "the built-in microphone produces non-zero 16 kHz mono samples and stops cleanly",
     .tags(.realBoundary),
     .enabled(if: AudioCaptureManagerLiveInputTests.authorizedBuiltInMicrophoneUID() != nil),
-    .timeLimit(.minutes(1)))
+    .timeLimit(.minutes(1)), .realBoundaryRun)
   func builtInMicrophoneProducesNonZeroSamplesAndCleanStop() async throws {
     let microphoneUID = try #require(
       Self.authorizedBuiltInMicrophoneUID(),

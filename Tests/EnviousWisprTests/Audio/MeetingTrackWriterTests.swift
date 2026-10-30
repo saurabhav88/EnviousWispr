@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, R15: when these fail, meeting audio is lost, written to the wrong place on the
 /// timeline, overwritten, or unreadable after a crash.
-@Suite("MeetingTrackWriter", .tags(.productOutcome, .realBoundary))
+@Suite("MeetingTrackWriter", .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct MeetingTrackWriterTests {
 
   private func folder() throws -> URL {

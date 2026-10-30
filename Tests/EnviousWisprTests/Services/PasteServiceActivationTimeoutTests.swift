@@ -41,7 +41,7 @@ import Testing
 /// browsing to that exact path (Cmd+Shift+G in the file picker to paste it).
 @Suite(
   "PasteService activation timeout against a genuinely frozen target (#2705)",
-  .tags(.productOutcome, .realBoundary))
+  .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct PasteServiceActivationTimeoutTests {
 
   /// `xcodebuild test` forwards `TEST_RUNNER_CI` and Xcode's test runner

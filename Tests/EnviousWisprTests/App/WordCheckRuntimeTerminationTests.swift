@@ -213,7 +213,7 @@ struct WordCheckRuntimeTerminationTests {
   /// Metal device destructor with the weights alive.
   @Test(
     "mlx-kev: a take holding the model through quit and exit() ends the process cleanly",
-    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)))
+    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)), .realBoundaryRun)
   func exitControlRetained() async throws {
     let token = UUID().uuidString
     let temp = Self.makeTempRoot()
@@ -246,7 +246,7 @@ struct WordCheckRuntimeTerminationTests {
   /// then the crash is a known issue, and the bound is checked on every run the child survives.
   @Test(
     "mlx-kev: quit during a running evaluation returns at once and exit() ends the process cleanly",
-    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)))
+    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)), .realBoundaryRun)
   func exitControlActive() async throws {
     let token = UUID().uuidString
     let temp = Self.makeTempRoot()
@@ -437,6 +437,7 @@ struct WordCheckRuntimeTerminationTests {
     "a quit after the real model answered exits cleanly while exit() finalizes",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/3987", "quit cleanup was MLX's first use"),
     .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)),
+    .realBoundaryRun,
     arguments: realModelQuitRuns)
   func quitAfterRealModelExitsCleanly(run: Int) async throws {
     let temp = Self.makeTempRoot()
