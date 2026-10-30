@@ -103,17 +103,19 @@ struct EnvironmentInjectionFreezeTests {
         block.contains(".environment(b.settings)"),
         "positive control failed: the Settings host block does not inject settings")
 
-      let injection = ".environment(b.pillPreviewController)"
-      let at = try #require(
-        block.range(of: injection),
-        "the Settings host does not inject the pill-preview controller")
-      let before = block[..<at.lowerBound]
-      let lastIf = try #require(
-        before.range(of: "#if DEBUG", options: .backwards),
-        "the injection is not inside an #if DEBUG block")
-      #expect(
-        !before[lastIf.upperBound...].contains("#endif"),
-        "the injection is outside its #if DEBUG block")
+      // #4232: the section also reads the call pop-up preview controller.
+      for injection in [".environment(b.pillPreviewController)", ".environment(b.callPopupPreviewController)"] {
+        let at = try #require(
+          block.range(of: injection),
+          "the Settings host does not inject \(injection)")
+        let before = block[..<at.lowerBound]
+        let lastIf = try #require(
+          before.range(of: "#if DEBUG", options: .backwards),
+          "\(injection) is not inside an #if DEBUG block")
+        #expect(
+          !before[lastIf.upperBound...].contains("#endif"),
+          "\(injection) is outside its #if DEBUG block")
+      }
     }
   #endif
 }

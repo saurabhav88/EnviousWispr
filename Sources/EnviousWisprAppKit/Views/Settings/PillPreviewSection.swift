@@ -7,9 +7,11 @@ import SwiftUI
   /// `PillPreviewCatalog`; the pill itself is drawn by the real overlay.
   struct PillPreviewSection: View {
     @Environment(PillPreviewController.self) private var controller
+    @Environment(CallPopupPreviewController.self) private var callPopups
 
     var body: some View {
       @Bindable var controller = controller
+      @Bindable var callPopups = callPopups
 
       BrandedSection(header: "Pill Preview") {
         BrandedRow(showDivider: controller.isReviewEnabled) {
@@ -56,6 +58,34 @@ import SwiftUI
               .foregroundStyle(.stTextSecondary)
             }
           }
+          BrandedRow {
+            Picker("Call pop-up", selection: $callPopups.selectedID) {
+              ForEach(callPopups.entries) { entry in
+                Text(entry.title).tag(entry.id)
+              }
+            }
+          }
+          BrandedRow {
+            VStack(alignment: .leading, spacing: 6) {
+              HStack {
+                Button("Play") { callPopups.play() }
+                Button("Dismiss") { callPopups.dismiss() }
+              }
+              Text(callPopupStatusText)
+                .font(.stHelper)
+                .foregroundStyle(.stTextSecondary)
+              if let event = callPopups.lastEvent {
+                Text(event)
+                  .font(.stHelper)
+                  .foregroundStyle(.stTextSecondary)
+              }
+              Text(
+                "Shows the real call pop-up under the menu bar for as long as the real one stays. Any button only closes it. Play does nothing while a real call pop-up is on screen."
+              )
+              .font(.stHelper)
+              .foregroundStyle(.stTextSecondary)
+            }
+          }
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Text("Not previewable")
@@ -69,6 +99,18 @@ import SwiftUI
             }
           }
         }
+      }
+      .onChange(of: controller.isReviewEnabled) { _, enabled in
+        if !enabled { callPopups.dismiss() }
+      }
+    }
+
+    private var callPopupStatusText: String {
+      switch callPopups.outcome {
+      case .idle: return "Pick a call pop-up and press Play."
+      case .shown(let title): return "Shown: \(title)"
+      case .ended(let title): return "Closed: \(title)"
+      case .notShown(let reason): return "Not shown: \(reason)."
       }
     }
 

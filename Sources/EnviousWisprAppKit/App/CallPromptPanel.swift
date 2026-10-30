@@ -87,14 +87,19 @@ final class CallPromptPanel: CallPromptPresenting {
   private var hosting: NSHostingView<CallPromptView>?
   private let anchor: @MainActor () -> NSRect?
   private let makePanel: @MainActor () -> any OverlayPanelDriving
+  private let capturable: Bool
 
-  /// `anchor` gives the menu bar icon's frame on screen, when there is one.
+  /// `anchor` gives the menu bar icon's frame on screen, when there is one. `capturable` is for
+  /// the Diagnostics preview only (#4232): it lets screenshots include the card. Real call
+  /// pop-ups keep asking to stay out of screen sharing.
   init(
     anchor: @escaping @MainActor () -> NSRect?,
-    makePanel: @escaping @MainActor () -> any OverlayPanelDriving
+    makePanel: @escaping @MainActor () -> any OverlayPanelDriving,
+    capturable: Bool = false
   ) {
     self.anchor = anchor
     self.makePanel = makePanel
+    self.capturable = capturable
   }
 
   var isShowing: Bool { panel?.isVisible == true }
@@ -133,7 +138,7 @@ final class CallPromptPanel: CallPromptPresenting {
     panel.hasShadow = true
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     // Best effort only (Apple: not a guarantee on macOS 15.4 and later).
-    panel.sharingType = .none
+    panel.sharingType = capturable ? .readOnly : .none
     panel.setAccessibilityIdentifier("meetings.callPrompt")
     let host = NSHostingView(rootView: CallPromptView(model: model))
     let container = NSView(frame: CGRect(x: 0, y: 0, width: 380, height: 260))

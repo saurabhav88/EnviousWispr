@@ -56,6 +56,8 @@ final class CallDetectionCoordinator {
   /// Shared with speaker capture, including recordings made with prompts Off.
   let discovery: CallSourceDiscovery
   private lazy var panel: any CallPromptPresenting = deps.makePresenter(deps.anchor)
+  /// Whether the real call pop-up is on screen; the Diagnostics preview steps aside for it.
+  var isPromptShowing: Bool { panel.isShowing }
   private var timer: Timer?
   private var watching: Bool { discovery.watching }
   private var wakeObserver: NSObjectProtocol?
