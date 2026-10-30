@@ -7,7 +7,7 @@ import EnviousWisprAppKitTestSupport
 
 /// #3972 R3, R15: when these fail, a meeting recorded before a crash, force quit or power cut
 /// loses audio that reached the disk, or recovery overwrites a file it should have kept.
-@Suite("MeetingTrackRecovery", .tags(.productOutcome, .realBoundary))
+@Suite("MeetingTrackRecovery", .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct MeetingTrackRecoveryTests {
   private typealias F = MeetingAudioFixture
 

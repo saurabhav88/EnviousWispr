@@ -59,7 +59,7 @@ struct HALCaptureStreamBufferingTests {
     "two independent clients on the built-in microphone both deliver; stopping one leaves the other",
     .tags(.realBoundary),
     .enabled(if: MeetingRecorderTests.authorizedBuiltInMicrophoneUID() != nil),
-    .timeLimit(.minutes(1)))
+    .timeLimit(.minutes(1)), .realBoundaryRun)
   func twoIndependentClients() async throws {
     let uid = try #require(MeetingRecorderTests.authorizedBuiltInMicrophoneUID())
     let countA = OSAllocatedUnfairLock(initialState: 0)

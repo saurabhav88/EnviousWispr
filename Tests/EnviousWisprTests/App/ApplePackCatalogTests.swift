@@ -330,7 +330,8 @@ struct ApplePackCatalogTests {
   /// real system (enumeration takes no claim, per this type's doc), so it runs on macOS 26 hosts.
   @Test(
     "The meeting catalogue reads the meeting module's languages, not dictation's",
-    .enabled(if: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26))
+    .enabled(if: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26),
+    .tags(.realBoundary), .realBoundaryRun)
   func catalogueKindsReadTheirOwnModule() async {
     guard #available(macOS 26.0, *) else { return }
     let tags: ([Locale]) -> [String] = { $0.map { $0.identifier(.bcp47) } }

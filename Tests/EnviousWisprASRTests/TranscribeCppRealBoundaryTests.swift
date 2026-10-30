@@ -73,7 +73,7 @@ struct TranscribeCppRealBoundaryTests {
   @Test(
     "the turbo Q8_0 model decodes committed English speech, detects English, and reports bounded monotonic progress",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func decodesDetectsAndReportsProgress() throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -131,7 +131,7 @@ struct TranscribeCppRealBoundaryTests {
   @Test(
     "a forced language returns no native detected language and still decodes",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func forcedLanguageReportsNoDetection() throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -148,7 +148,7 @@ struct TranscribeCppRealBoundaryTests {
   @Test(
     "an abort requested before the run stops it with the aborted status",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func abortStopsTheRun() throws {
     let samples = try AudioConverter().resampleAudioFile(
@@ -189,7 +189,7 @@ struct TranscribeCppExecutorRealBoundaryTests {
   @Test(
     "the executor loads the turbo model, detects English, transcribes with progress, survives a cancel and is reused",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func executorRoutesRealWork() async throws {
     try TranscribeCppRealBoundaryFixture.requireExpectedModel()
@@ -235,7 +235,7 @@ struct TranscribeCppExecutorRealBoundaryTests {
   @Test(
     "a real model freed by the quit release lets the process exit normally (#3849)",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelFileExists),
-    .tags(.realBoundary), .timeLimit(.minutes(3))
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
   )
   func realModelReleaseSurvivesNormalExit() async throws {
     let token = UUID().uuidString
@@ -300,7 +300,7 @@ struct TranscribeCppWhisperBackendRealBoundaryTests {
   @Test(
     "the backend loads and warms the turbo model, transcribes auto and forced, runs LID, reports progress, survives a cancel and unloads",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func backendRoutesRealWork() async throws {
     try TranscribeCppRealBoundaryFixture.requireExpectedModel()
@@ -417,7 +417,7 @@ struct TranscribeCppPreviewRealBoundaryTests {
   @Test(
     "an unadmitted model is never loaded; the admitted one publishes English text, yields to a heart decode, is reused and is freed on release",
     .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func previewPublishesYieldsAndFrees() async throws {
     try TranscribeCppRealBoundaryFixture.requireExpectedModel()

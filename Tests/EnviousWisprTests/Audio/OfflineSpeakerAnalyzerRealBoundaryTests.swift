@@ -49,7 +49,7 @@ struct OfflineSpeakerAnalyzerRealBoundaryTests {
 
   @Test(
     "tells two real speakers apart on a committed two-voice recording",
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func distinguishesTwoRealSpeakers() async throws {
     let bundle = try SpeakerAnalyzerFixture.makeBundle()

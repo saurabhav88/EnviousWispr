@@ -94,7 +94,7 @@ struct SpeakerLabelerTests {
   @Test(
     "cancelling mid-analysis against the REAL bundled models and a real recording exits promptly",
     .enabled(if: SpeakerLabelerRealFixture.modelsInstalled),
-    .tags(.realBoundary)
+    .tags(.realBoundary), .realBoundaryRun
   )
   func realCancellationExitsPromptly() async throws {
     let resourcesRoot = RepoRoot.sourceURL("Sources/EnviousWispr/Resources")

@@ -20,7 +20,7 @@ import Testing
 /// audio, no dictated content — and their generator is committed beside them at
 /// `Tests/Fixtures/vad-conditioning/generate-fixtures.py`, so the bytes are
 /// reproducible rather than mysterious.
-@Suite("VAD input conditioning fixtures", .tags(.productOutcome, .realBoundary))
+@Suite("VAD input conditioning fixtures", .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct VADInputConditioningFixtureTests {
 
   // MARK: - Cases

@@ -236,7 +236,8 @@ fi
 
 for suite in "${SUITES[@]}"; do
   run_log="$LOG_DIR/nightly-battery-$(printf '%s' "$suite" | tr '/' '_').log"
-  if "$PROJECT_ROOT/scripts/xcode-test.sh" --filter "$suite" --log-dir "$LOG_DIR/nightly-lanes" >"$run_log" 2>&1; then
+  # #4218: the battery is a real-world run, so it opts in to `.realBoundaryRun` tests.
+  if "$PROJECT_ROOT/scripts/xcode-test.sh" --real-boundary --filter "$suite" --log-dir "$LOG_DIR/nightly-lanes" >"$run_log" 2>&1; then
     # A filtered run still executes every bundle, so several `Test run with N`
     # lines print (the unfiltered bundles report 0); sum them, never the first.
     passed="$(/usr/bin/grep -aoE 'Test run with [0-9]+ tests? in [0-9]+ suites? passed' "$run_log" | /usr/bin/grep -oE 'with [0-9]+' | awk '{s+=$2} END {print s+0}')"

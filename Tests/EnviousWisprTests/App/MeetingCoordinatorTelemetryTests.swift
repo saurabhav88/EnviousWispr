@@ -223,7 +223,7 @@ struct MeetingCoordinatorTelemetryTests {
     let meetingID = try await recordAndFinish(harness, from: .menu)
     #expect(harness.ended.map(\.outcome) == [.failed])
     harness.receiptError.withLock { $0 = nil }
-    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }
@@ -246,7 +246,7 @@ struct MeetingCoordinatorTelemetryTests {
     await harness.coordinator.stop()
     await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
     harness.receiptError.withLock { $0 = nil }
-    await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet)
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
     await eventually("retry ended") {
       harness.ended.count == 2 && harness.coordinator.processing == nil
     }

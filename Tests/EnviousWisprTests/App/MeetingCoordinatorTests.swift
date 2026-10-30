@@ -538,6 +538,35 @@ struct MeetingCoordinatorTests {
     #expect(queued, "Transcribe again was refused", sourceLocation: sourceLocation)
   }
 
+  /// #4218: the live pass the test drove has ended. `.ready` is persisted before the pass
+  /// publishes its History row, clears its commit receipt, settles the summary mark and clears
+  /// its checkpoint; the coordinator releases `processing` only after those steps (on success
+  /// or failure). So a test that reads any of those effects waits here, not on `.ready`.
+  ///
+  /// Pass completion is not publication success (a failed save keeps the receipt) and not
+  /// summary completion (`startOwed` runs its own task). It is also not a launch wait: launch
+  /// shows ready records and publishes their receipts without claiming `processing`. A retry
+  /// passes the generation it replaced, so the old ready record cannot satisfy the wait.
+  static func livePassFinished(
+    _ coordinator: MeetingCoordinator, _ meetingID: UUID, replacing previous: UUID? = nil,
+    timeout: Duration = .seconds(10), sourceLocation: SourceLocation = #_sourceLocation
+  ) async {
+    await eventually(
+      "live pass finished", timeout: timeout,
+      { livePassHasFinished(coordinator, meetingID, replacing: previous) },
+      sourceLocation: sourceLocation)
+  }
+
+  static func livePassHasFinished(
+    _ coordinator: MeetingCoordinator, _ meetingID: UUID, replacing previous: UUID? = nil
+  ) -> Bool {
+    guard let record = coordinator.record(id: meetingID), record.state == .ready else {
+      return false
+    }
+    if let previous, record.committedTranscriptGeneration == previous { return false }
+    return coordinator.processing?.meetingID != meetingID
+  }
+
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
   static func eventually(
     _ label: String, timeout: Duration = .seconds(10),
@@ -586,6 +615,37 @@ struct MeetingCoordinatorTests {
     }
   }
 
+  /// #4218 control: `.ready` is observable while the History save is parked, and the live-pass
+  /// wait does not accept it until the pass releases its claim.
+  @Test("the live-pass wait holds while the History save after ready is parked")
+  func livePassWaitHoldsDuringPublication() async throws {
+    let harness = try Harness()
+    let saving = Gate()
+    // Releases the parked save on every exit; the suite's time limit would not resume it.
+    defer { saving.open() }
+    harness.saveGate = saving
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("save in flight") { saving.parked }
+    #expect(coordinator.record(id: meetingID)?.state == .ready)
+    #expect(coordinator.processing?.meetingID == meetingID)
+    #expect(harness.saved.isEmpty)
+    // The wait itself, not only its predicate, stays blocked while the save is parked: it
+    // runs to its deadline (the expected known issues), exactly as `eventuallyFailsOnDeadline`.
+    await withKnownIssue {
+      await Self.livePassFinished(coordinator, meetingID, timeout: .milliseconds(50))
+    }
+    #expect(saving.parked, "still parked: the deadline above expired during publication")
+    saving.open()
+    await Self.livePassFinished(coordinator, meetingID)
+    #expect(harness.saved.count == 1)
+    // A retry names the generation it replaces; that ready record never satisfies its wait.
+    let generation = try #require(coordinator.record(id: meetingID)?.committedTranscriptGeneration)
+    #expect(Self.livePassHasFinished(coordinator, meetingID, replacing: generation) == false)
+  }
+
   // MARK: - Start, stop and commit
 
   @Test("start then stop records once, then saves History, then ready, then clears progress")
@@ -606,7 +666,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try onlyMeeting(harness).id
 
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await Self.livePassFinished(coordinator, meetingID)
 
     #expect(harness.recorders.first?.stopCalls == 1)
     #expect(harness.activitiesEnded == 1)
@@ -622,9 +682,7 @@ struct MeetingCoordinatorTests {
     #expect(record.echoTurnIDs == ["mic-3"])
     #expect(record.speakerOutcomes == [.microphone: .single])
     #expect(record.segments[.microphone]?.first?.frameCount == 16_000)
-    await Self.eventually("checkpoint cleared") {
-      !FileManager.default.fileExists(atPath: harness.checkpointURL(meetingID).path)
-    }
+    #expect(FileManager.default.fileExists(atPath: harness.checkpointURL(meetingID).path) == false)
     #expect(coordinator.isWorkInFlight == false)
   }
 
@@ -639,9 +697,8 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    await Self.eventually("committed") {
-      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
-    }
+    // #4218: the pass ends with its publication failed; completion is not publication.
+    await Self.livePassFinished(coordinator, meetingID)
     #expect(harness.saved.isEmpty)
     #expect(coordinator.notice == .storageFailed)
     #expect(!coordinator.canTranscribeAgain(meetingID), "the receipt is settled first")
@@ -761,7 +818,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.phase == .idle)
     #expect(coordinator.notice == .microphoneUnavailable)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await Self.livePassFinished(coordinator, meetingID)
     let record = try harness.store.load(id: meetingID)
     #expect(record.wasInterrupted == true)
     #expect(record.trackStatus[.microphone] == .failed)
@@ -886,9 +943,7 @@ struct MeetingCoordinatorTests {
     // Next launch: recovered from the files on disk and processed.
     let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
     relaunched.launch()
-    await Self.eventually("ready after launch") {
-      relaunched.record(id: meetingID)?.state == .ready
-    }
+    await Self.livePassFinished(relaunched, meetingID)
     #expect(harness.saved.count == 1)
   }
 
@@ -994,13 +1049,12 @@ struct MeetingCoordinatorTests {
       await rerun.wait()
       return Self.result()
     }
+    let previous = coordinator.record(id: meetingB)?.committedTranscriptGeneration
     #expect(await coordinator.transcribeAgain(meetingID: meetingB, engine: .parakeet))
     await Self.eventually("rerun processing") { rerun.parked }
     harness.language = .locked("fr")
     rerun.open()
-    await Self.eventually("ready again") {
-      coordinator.record(id: meetingB)?.state == .ready && coordinator.processing == nil
-    }
+    await Self.livePassFinished(coordinator, meetingB, replacing: previous)
     #expect(harness.jobs.last?.receivedLanguages == ["es"])
     let again = try #require(harness.jobs.last?.receivedAttempts.first)
     #expect(again.attemptID != started.attemptID, "Transcribe again is a new attempt")
@@ -1164,7 +1218,7 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await Self.livePassFinished(coordinator, meetingID)
 
     #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
     // Durable when the awaited marking answers, before History empties its own store.
@@ -1478,9 +1532,12 @@ struct MeetingCoordinatorTests {
     harness.freeBytes = 0
     let coordinator = harness.coordinator
     coordinator.launch()
-    await Self.eventually("recovered and queued") {
+    // #4218: queued is written before the drain starts; wait until the drain has met the low
+    // disk and holds the queue, or it can take the meeting itself once space returns.
+    await Self.eventually("recovered and held for space") {
       coordinator.record(id: record.id)?.state == .queued
         && coordinator.record(id: record.id)?.wasInterrupted == true
+        && coordinator.queueWaitsForSpace
     }
     #expect(coordinator.playbackSource(meetingID: record.id) == nil)
     harness.freeBytes = 50_000_000_000
@@ -1517,8 +1574,8 @@ struct MeetingCoordinatorTests {
     coordinator.launch()
     coordinator.launch()
     await Self.eventually("both processed") {
-      coordinator.record(id: crashed.id)?.state == .ready
-        && coordinator.record(id: midPass.id)?.state == .ready
+      Self.livePassHasFinished(coordinator, crashed.id)
+        && Self.livePassHasFinished(coordinator, midPass.id)
         && coordinator.record(id: deleted.id) == nil
     }
     #expect(harness.jobs.count == 2)
@@ -1970,7 +2027,9 @@ struct MeetingCoordinatorTests {
     await Self.eventually("save in flight") { saving.parked }
     await coordinator.rename(meetingID: meetingID, title: "Board sync")
     saving.open()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    // #4218: ready comes before the History save, so the rename is checked once the whole
+    // commit (publication, receipt and checkpoint clears) has run.
+    await Self.livePassFinished(coordinator, meetingID)
     let saved = try harness.store.load(id: meetingID)
     #expect(saved.title == "Board sync")
     #expect(saved.state == .ready)
@@ -2042,7 +2101,7 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    await Self.livePassFinished(coordinator, meetingID)
     await coordinator.assignAITitle(meetingID: meetingID, title: "Launch plan")
     #expect(try harness.store.load(id: meetingID).title == "Launch plan")
     await coordinator.rename(meetingID: meetingID, title: "Board sync")

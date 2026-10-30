@@ -185,9 +185,7 @@
       await coordinator.start(from: .menu)
       let meetingID = try #require(coordinator.meetings.first?.id)
       await coordinator.stop()
-      await MeetingCoordinatorTests.eventually("ready") {
-        coordinator.record(id: meetingID)?.state == .ready
-      }
+      await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
       let saved = try #require(rig.harness.saved.first)
       try await rig.history.coordinator.saveAndShowDurably(saved)
 
@@ -262,9 +260,8 @@
       await coordinator.start(from: .menu)
       let meetingID = try #require(coordinator.meetings.first?.id)
       await coordinator.stop()
-      await MeetingCoordinatorTests.eventually("ready") {
-        coordinator.record(id: meetingID)?.state == .ready
-      }
+      // #4218: the History row is published after `.ready`; the pass ends after it.
+      await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
       return meetingID
     }
 
