@@ -10,41 +10,72 @@
     let content: CallPromptContent
   }
 
-  /// Every card `CallPromptContent` can show, with the app names a real call would use.
+  /// Every card `CallPromptContent` can show, with the app names a real call would use. Desktop
+  /// apps are found the way a real card finds them; the browser rows name Chrome.
   enum CallPopupPreviewCatalog {
+    static let chrome = "com.google.chrome"
+
     static let all: [CallPopupPreviewEntry] = [
       .init(
-        id: "ask", title: "Offer to record (Microsoft Teams)",
-        content: .ask(appName: "Microsoft Teams")),
+        id: "askTeams", title: "Offer to record (Microsoft Teams app)",
+        content: .ask(.app(.teams, bundleID: nil))),
+      .init(
+        id: "askZoom", title: "Offer to record (Zoom app)", content: .ask(.app(.zoom, bundleID: nil))),
+      .init(
+        id: "askMeetChrome", title: "Offer to record (Google Meet in Chrome)",
+        content: .ask(.web(.googleMeet, browserBundleID: chrome))),
+      .init(
+        id: "askSlack", title: "Offer to record (Slack huddle)",
+        content: .ask(.app(.slack, bundleID: nil))),
       .init(
         id: "switchMeeting", title: "New call while recording (Zoom)",
-        content: .switchMeeting(appName: "Zoom")),
+        content: .switchMeeting(.app(.zoom, bundleID: nil))),
       .init(id: "firstTip", title: "First tip, after the first Not now", content: .firstTip),
       .init(
-        id: "countdown", title: "Countdown, then Recording stopped",
-        content: .countdown(secondsLeft: 10)),
+        id: "countdown", title: "Countdown, then Writing your notes, then Your notes are ready",
+        content: .countdown(.app(.teams, bundleID: nil), secondsLeft: 10)),
       .init(
-        id: "endConfirmation", title: "Did your call end? (browser call)", content: .endConfirmation
-      ),
-      .init(id: "stopped", title: "Recording stopped (call ended)", content: .stopped),
+        id: "endConfirmation", title: "Did your call end? (Google Meet in Chrome)",
+        content: .endConfirmation(.web(.googleMeet, browserBundleID: chrome))),
+      .init(id: "notesWriting", title: "Meeting recorded, Writing your notes", content: .notesWriting),
       .init(
-        id: "stoppedByUser", title: "Recording stopped (stopped by you)", content: .stoppedByUser),
+        id: "notesReady", title: "Your notes are ready", content: .notesReady(meetingID: previewMeeting)),
+      .init(
+        id: "manualStartZoom", title: "Started from the menu bar (Zoom call)",
+        content: .manualStart(.app(.zoom, bundleID: nil))),
+      .init(
+        id: "manualStartMic", title: "Started from the menu bar (microphone)",
+        content: .manualStart(.microphone(withCallSound: false))),
+      .init(
+        id: "manualStartMicSound", title: "Started from the menu bar (microphone and Mac sound)",
+        content: .manualStart(.microphone(withCallSound: true))),
       .init(
         id: "lastTip", title: "Last reminder (Microsoft Teams)",
         content: .lastTip(appName: "Microsoft Teams")),
       .init(
-        id: "switchNotConfirmed", title: "New call not confirmed", content: .switchNotConfirmed),
+        id: "switchNotConfirmed", title: "New call not confirmed (Zoom)",
+        content: .switchNotConfirmed(.app(.zoom, bundleID: nil))),
       .init(id: "needsAttention", title: "Needs your attention", content: .needsAttention),
       .init(id: "couldNotStart", title: "Could not start recording", content: .couldNotStart),
     ]
 
-    /// How long the real card stays when nobody answers (`CallDetectionPolicy`). Nil: it waits
-    /// for an answer.
+    /// A fixed id for the preview's ready card; Open on a preview never opens anything.
+    static let previewMeeting = UUID(uuidString: "00000000-0000-0000-0000-000000004232")!
+
+    /// How long Writing your notes stays in the countdown chain. A real card stays until the notes
+    /// are ready (most meetings: seconds); the preview stands in with this.
+    static let chainedWritingLength: TimeInterval = 6
+
+    /// How long the real card stays when nobody answers (`CallDetectionPolicy`,
+    /// `CallDetectionCoordinator`). Nil: it waits for an answer.
     static func lifetime(of content: CallPromptContent) -> TimeInterval? {
       switch content {
       case .ask, .switchMeeting: CallDetectionPolicy.promptTimeout
       case .countdown: CallDetectionPolicy.countdownLength
-      case .stopped, .stoppedByUser, .switchNotConfirmed: CallDetectionPolicy.stoppedOffer
+      case .switchNotConfirmed: CallDetectionPolicy.stoppedOffer
+      case .notesWriting: CallDetectionCoordinator.notesWritingCap
+      case .notesReady: CallDetectionCoordinator.notesReadyLength
+      case .manualStart: CallDetectionCoordinator.manualStartLength
       case .firstTip, .lastTip, .needsAttention, .couldNotStart: CallDetectionPolicy.noteTimeout
       case .endConfirmation: nil
       }
@@ -76,6 +107,8 @@
       var content: CallPromptContent
       let deadline: Date?
       let generation: Int
+      /// Writing your notes inside the countdown chain: hands over to Your notes are ready.
+      var chained = false
     }
 
     @ObservationIgnored private var playing: Playing?
@@ -127,8 +160,8 @@
       lastEvent = nil
     }
 
-    /// Runs the card's clock: countdown ticks, the hand-over to Recording stopped, expiry, and
-    /// stepping aside for a real pop-up.
+    /// Runs the card's clock: countdown ticks, the hand-over to Writing your notes and then to
+    /// Your notes are ready, expiry, and stepping aside for a real pop-up.
     func tick() {
       guard let current = playing else { return }
       if realPopupIsShowing() {
@@ -138,18 +171,22 @@
       }
       guard let deadline = current.deadline else { return }
       let left = deadline.timeIntervalSince(now())
-      if case .countdown = current.content {
+      if case .countdown(let identity, _) = current.content {
         if left > 0 {
           // Same rounding as `CallDetectionCoordinator`.
-          let next = CallPromptContent.countdown(secondsLeft: max(1, Int(ceil(left))))
+          let next = CallPromptContent.countdown(identity, secondsLeft: max(1, Int(ceil(left))))
           if next != current.content {
             playing?.content = next
             presenter.show(next, actions: actions(generation: current.generation, content: next))
           }
         } else {
-          // A real call end hands the countdown over to Recording stopped.
-          show(current.entry, content: .stopped)
+          // A real call end hands the countdown over to the notes cards.
+          show(current.entry, content: .notesWriting, chained: true)
         }
+        return
+      }
+      if left <= 0, current.chained, case .notesWriting = current.content {
+        show(current.entry, content: .notesReady(meetingID: CallPopupPreviewCatalog.previewMeeting))
         return
       }
       if left <= 0 {
@@ -158,14 +195,17 @@
       }
     }
 
-    private func show(_ entry: CallPopupPreviewEntry, content: CallPromptContent) {
+    private func show(
+      _ entry: CallPopupPreviewEntry, content: CallPromptContent, chained: Bool = false
+    ) {
       generation += 1
+      let lifetime =
+        chained ? CallPopupPreviewCatalog.chainedWritingLength
+        : CallPopupPreviewCatalog.lifetime(of: content)
       playing = Playing(
         entry: entry, content: content,
-        deadline: CallPopupPreviewCatalog.lifetime(of: content).map {
-          now().addingTimeInterval($0)
-        },
-        generation: generation)
+        deadline: lifetime.map { now().addingTimeInterval($0) },
+        generation: generation, chained: chained)
       presenter.show(content, actions: actions(generation: generation, content: content))
       outcome = .shown(entry.title)
       startTimer()
@@ -191,9 +231,6 @@
     }
 
     private func actions(generation: Int, content: CallPromptContent) -> CallPromptActions {
-      // The same label the card's first button shows.
-      let yesLabel: String
-      if case .switchMeeting = content { yesLabel = "Start a new recording" } else { yesLabel = "Start recording" }
       func press(_ name: String) -> @MainActor () -> Void {
         { [weak self] in
           // A button on an older card cannot close a newer one.
@@ -206,10 +243,10 @@
         }
       }
       return CallPromptActions(
-        yes: press(yesLabel), no: press("Not now"),
+        yes: press("Start recording"), no: press("Not now"),
         stopRecording: press("Stop recording"), keepRecording: press("Keep recording"),
-        startNewRecording: press("Start a new recording"), openSettings: press("Open settings"),
-        dismiss: press("Close"))
+        endRecording: press("End recording"), startNewRecording: press("Start recording"),
+        openSettings: press("Open settings"), open: press("Open"), dismiss: press("Close"))
     }
   }
 #endif

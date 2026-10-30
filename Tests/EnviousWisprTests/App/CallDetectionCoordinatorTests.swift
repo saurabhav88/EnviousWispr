@@ -47,6 +47,22 @@
       var clock = Date(timeIntervalSince1970: 3_000_000)
       var nextOutcome: MeetingStartFlow.Outcome?
       var userStarts: [CallAppFamily?] = []
+      /// #4232: each recording's attempt, its notes state, and the meetings Open showed.
+      var attempts: [UUID: UUID] = [:]
+      var notes: [UUID: MeetingCoordinator.NotesFact] = [:]
+      var followedAttempts: [UUID] = []
+      var openedMeetings: [UUID] = []
+      var callSound = false
+      /// The panel's own Start goes through the real manual flow (route .menu) when true.
+      var userStartsViaFlow = false
+      /// The real flow stops at the call-sound explainer while true.
+      var needsExplainer = false
+      /// Outcomes of the panel's own Starts that went through the real flow.
+      var flowOutcomes: [MeetingStartFlow.Outcome] = []
+      var recordingID: UUID? {
+        if case .recording(let id, _) = phase { return id }
+        return nil
+      }
       /// What every evidence read answers, and how many reads ran (the real async path).
       let evidenceAnswer = OSAllocatedUnfairLock<CallEvidenceReader.Evidence>(
         initialState: .unknown)
@@ -68,7 +84,8 @@
       /// The actual admission flow with fake recording effects, used by manual-fallback stories.
       lazy var manualFlow = MeetingStartFlow(dependencies: .init(
         isSetUp: { [unowned self] in settings.meetingOnboardingComplete },
-        captureCallSound: { false }, isExplained: { true }, markExplained: {},
+        captureCallSound: { [unowned self] in needsExplainer },
+        isExplained: { [unowned self] in !needsExplainer }, markExplained: {},
         canStart: { [unowned self] in phase == .idle },
         start: { [unowned self] _, _, family in
           userStarts.append(family)
@@ -106,11 +123,18 @@
               await self.duringStart?()
               if let outcome = self.nextOutcome { return outcome }
               let id = UUID()
+              self.attempts[id] = UUID()
               self.phase = .recording(meetingID: id, startedAt: self.clock)
               return .started(.recording(meetingID: id))
             },
             startByUser: { [weak self] family in
               guard let self else { return .notIdle }
+              if self.userStartsViaFlow {
+                let outcome = await self.manualFlow.requestStart(
+                  from: .menu, callApp: family, fromCallPanel: true)
+                self.flowOutcomes.append(outcome)
+                return outcome
+              }
               self.userStarts.append(family)
               return self.nextOutcome ?? .notIdle
             },
@@ -134,6 +158,18 @@
               guard let self else { return }
               self.polls += 1
               self.coordinator.deliverWatcherReading(self.polledHolders, ambiguous: self.pollAmbiguous)
+            },
+            pendingAttemptID: { [weak self] in self?.attempts[$0] },
+            notesFollowUp: { [weak self] meetingID, attempt in
+              guard let self else { return .ended }
+              self.followedAttempts.append(attempt)
+              guard self.attempts[meetingID] == attempt else { return .ended }
+              return self.notes[meetingID] ?? .writing
+            },
+            showMeeting: { [weak self] in self?.openedMeetings.append($0) },
+            callSoundCaptured: { [weak self] in
+              guard let self, self.recordingID == $0 else { return false }
+              return self.callSound
             }))
       }
 
@@ -261,7 +297,7 @@
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       #expect(rig.coordinator.inputForTesting?.continuity.compactMap(\.owner).allSatisfy { $0.pid == 900_100 } == true)
       // In the timing control, the displayed question still reflects the older active
       // holder. The required fresh poll supplies the handoff, not a second click.
@@ -322,7 +358,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        browserEntered.withLock { $0 } && rig.panel.content == .ask(appName: "Zoom")
+        browserEntered.withLock { $0 } && rig.panel.content.testName == "ask:Zoom"
       })
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.coordinator.refreshPendingForTesting })
@@ -394,7 +430,7 @@
       })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Google Meet"))
+      #expect(rig.panel.content.testName == "ask:Google Meet")
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       #expect(await releaseWorker(lane, gate: slow))
       #expect(rig.coordinator.inputForTesting?.continuity.contains {
@@ -482,7 +518,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "ask:Zoom" && !rig.coordinator.evidenceReadPendingForTesting
       })
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { entered.withLock { $0 } })
@@ -534,7 +570,7 @@
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       rig.advance(CallDetectionPolicy.questionInterval - 0.5)
       rig.coordinator.deliverWatcherReading(rig.polledHolders)
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
@@ -547,7 +583,7 @@
       rig.coordinator.deliverWatcherReading(rig.polledHolders)
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Microsoft Teams") })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "ask:Microsoft Teams" })
       #expect(rig.press("yes"))
       gate.signal()
       #expect(await settleUntilObserved { rig.starts == [.teams] },
@@ -590,7 +626,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "ask:Zoom" && !rig.coordinator.evidenceReadPendingForTesting
       })
       rig.advance(1)
       let chrome = CallMicrophoneWatcher.Holder(pid: 900_011, bundleID: "com.google.chrome", input: .active)
@@ -638,7 +674,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .switchMeeting(appName: "Google Meet") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "switchMeeting:Google Meet" && !rig.coordinator.evidenceReadPendingForTesting
       })
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { afterStop.withLock { $0 == 1 } })
@@ -705,19 +741,19 @@
       #expect(rig.phase == ownedPhase)
       rig.advance(CallDetectionPolicy.wakeHoldoff - 1)
       rig.coordinator.stepForTesting()
-      #expect(rig.stops == 0 && rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.stops == 0 && rig.panel.content.testName != "countdown:10")
       rig.advance(2)
       answer.withLock { $0 = .ended(family: .zoom, room: "wake-call") }
       rig.coordinator.deliverWatcherReading([])
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       let firstEnd = try #require(rig.coordinator.inputForTesting?.continuity.last)
       #expect(firstEnd.id > old.id && firstEnd.beganAt == rig.clock)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
       rig.advance(1.6)
       rig.coordinator.deliverWatcherReading([])
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       #expect(rig.coordinator.inputForTesting?.continuity.last?.id != firstEnd.id)
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
       for _ in 0..<10 {
         rig.advance(1)
         rig.coordinator.deliverWatcherReading([])
@@ -763,7 +799,7 @@
       rig.coordinator.deliverWatcherReading([])
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       #expect(rig.stops == 0 && rig.starts == [.zoom] && rig.phase == ownedPhase)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
       #expect(rig.coordinator.inputForTesting?.holders.isEmpty == true)
     }
 
@@ -840,7 +876,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "ask:Zoom" && !rig.coordinator.evidenceReadPendingForTesting
       })
       let original = try #require(rig.coordinator.inputForTesting?.continuity.last)
       #expect(original.owner != nil)
@@ -911,7 +947,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "ask:Zoom" && !rig.coordinator.evidenceReadPendingForTesting
       })
       let before = rig.evidenceReads.withLock { $0 }
       rig.coordinator.deliverWatcherReading([])
@@ -948,7 +984,7 @@
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
       #expect(await settleUntilObserved {
-        rig.panel.content == .ask(appName: "Zoom") && !rig.coordinator.evidenceReadPendingForTesting
+        rig.panel.content.testName == "ask:Zoom" && !rig.coordinator.evidenceReadPendingForTesting
       })
       rig.advance(1)
       rig.coordinator.deliverWatcherReading([])
@@ -1248,7 +1284,7 @@
       guard entered else { return }
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") },
+      #expect(await settleUntilObserved { rig.panel.content.testName == "ask:Zoom" },
         "the first completed source must not wait for the later held read")
       release.continuation.yield(())
       release.continuation.finish()
@@ -1265,7 +1301,7 @@
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "ask:Zoom" })
       let readsBefore = rig.evidenceReads.withLock { $0 }
       #expect(readsBefore > 0)
 
@@ -1284,7 +1320,7 @@
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "ask:Zoom" })
       let readsBefore = rig.evidenceReads.withLock { $0 }
 
       rig.coordinator.deliverWatcherReading([
@@ -1385,7 +1421,7 @@
     func yesRecords() async throws {
       let rig = try Rig()
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [.zoom] })
       #expect(rig.panel.isShowing == false)
@@ -1424,7 +1460,7 @@
       let rig = try Rig()
       for call in 0..<3 {
         await rig.ongoingZoom()
-        #expect(rig.panel.content == .ask(appName: "Zoom"), "call \(call)")
+        #expect(rig.panel.content.testName == "ask:Zoom", "call \(call)")
         #expect(rig.press("no"))
         await rig.endedZoom()
         rig.advance(2)
@@ -1448,8 +1484,36 @@
       #expect(await settleUntilObserved { rig.events.map(\.answer) == [.autoStarted] })
     }
 
-    @Test("a detected meeting counts down after the call, then stops and offers a new recording")
+    @Test("a detected meeting counts down, stops, then shows Writing your notes and Your notes are ready")
     func countdownStopsTheDetectedMeeting() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      #expect(rig.panel.content.testName == "countdown:10")
+      rig.advance(10)
+      await rig.endedZoom()
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "notesWriting" })
+      #expect(!rig.press("startNewRecording"), "#4232: no Start a new recording after a call")
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .notesReady(meetingID: meeting))
+      let ready = rig.panel.actions
+      #expect(rig.press("open"))
+      #expect(rig.openedMeetings == [meeting] && !rig.panel.isShowing)
+      ready.open()
+      #expect(rig.openedMeetings == [meeting], "an old card's Open does nothing")
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "Open ends the follow-up")
+    }
+
+    @Test("End recording stops at once and follows the notes")
+    func endRecordingStopsNow() async throws {
       let rig = try Rig()
       await rig.ongoingZoom()
       #expect(rig.press("yes"))
@@ -1457,14 +1521,233 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.press("endRecording"))
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "notesWriting" })
+    }
+
+    @Test("the notes card's clocks: Writing caps at 120 s, Ready still comes and lasts 60 s, never replayed")
+    func notesCardLifetimes() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      rig.advance(CallDetectionCoordinator.notesWritingCap)
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "Writing hides after its cap")
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .notesReady(meetingID: meeting), "Ready still comes")
+      rig.advance(CallDetectionCoordinator.notesReadyLength)
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing)
+      rig.advance(1)
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "an expired Ready never comes back")
+    }
+
+    @Test("× hides Writing only; Ready still shows; × on Ready ends the follow-up")
+    func notesCardClose() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      #expect(rig.press("close"))
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing)
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .notesReady(meetingID: meeting))
+      #expect(rig.press("close"))
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing && rig.openedMeetings.isEmpty)
+    }
+
+    @Test("a replaced, failed or deleted meeting ends the notes card, and later readiness cannot revive it")
+    func notesCardEnds() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      rig.notes[meeting] = .ended
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing)
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "a retired follow-up never comes back")
+      let other = try Rig()
+      let second = try await stoppedByCountdown(other)
+      // Transcribe again: the meeting's attempt is now another one; the original is never adopted.
+      other.attempts[second] = UUID()
+      other.notes[second] = .ready
+      other.coordinator.stepForTesting()
+      #expect(!other.panel.isShowing)
+    }
+
+    @Test("a policy card covers the notes card; the notes card comes back with its own clock")
+    func notesCardYieldsToQuestions() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      rig.advance(CallDetectionPolicy.questionInterval)
+      rig.zoomReady()
+      #expect(rig.panel.content.testName == "ask:Zoom")
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content.testName == "ask:Zoom", "the question keeps the panel")
+      #expect(rig.press("close"))
+      #expect(rig.panel.content == .notesReady(meetingID: meeting))
+    }
+
+    @Test("a recording with no known attempt gets no notes card")
+    func noAttemptNoNotesCard() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      rig.attempts = [:]
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      rig.advance(10)
+      await rig.endedZoom()
+      #expect(await settleUntilObserved { rig.stops == 1 })
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing)
+    }
+
+    @Test("a Writing button pressed after Ready replaced it does nothing")
+    func staleWritingButton() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      let writing = rig.panel.actions
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      writing.dismiss()
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .notesReady(meetingID: meeting), "Ready stays")
+    }
+
+    @Test("notes finished before the stop returned still show Ready")
+    func readyBeforeRegistration() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      rig.onStop = { rig.notes[meeting] = .ready }
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      #expect(rig.press("endRecording"))
+      #expect(await settleUntilObserved { rig.panel.content == .notesReady(meetingID: meeting) })
+    }
+
+    @Test("an attempt replaced before the stop returned is never adopted")
+    func replacedBeforeRegistration() async throws {
+      let rig = try Rig()
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      rig.onStop = {
+        rig.attempts[meeting] = UUID()
+        rig.notes[meeting] = .ready
+      }
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
+      #expect(rig.press("endRecording"))
+      #expect(await settleUntilObserved { rig.stops == 1 })
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "the replacement's notes are not this card's")
+    }
+
+    @Test("the panel's own Start keeps its no-card provenance through the call-sound explainer")
+    func panelStartThroughExplainer() async throws {
+      let rig = try Rig()
+      rig.userStartsViaFlow = true
+      rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
+      rig.zoomReady()
+      rig.onStop = { rig.zoom(.unknown) }
+      #expect(rig.press("yes"))
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "switchNotConfirmed" })
+      rig.needsExplainer = true
+      #expect(rig.press("startNewRecording"))
+      #expect(await settleUntilObserved { rig.flowOutcomes == [.waitingForExplainer] })
+      rig.needsExplainer = false
+      #expect(await rig.manualFlow.continueAfterExplainer() == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(!rig.panel.shown.contains { if case .manualStart = $0 { true } else { false } })
+    }
+
+    @Test("a cancelled explainer leaves no suppression: a later menu-bar Start still gets its card; History never does")
+    func cancelledPanelStartThenMenuStart() async throws {
+      let rig = try Rig()
+      rig.userStartsViaFlow = true
+      rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
+      rig.zoomReady()
+      rig.onStop = { rig.zoom(.unknown) }
+      #expect(rig.press("yes"))
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "switchNotConfirmed" })
+      rig.needsExplainer = true
+      #expect(rig.press("startNewRecording"))
+      #expect(await settleUntilObserved { rig.flowOutcomes == [.waitingForExplainer] })
+      rig.manualFlow.cancelExplainer()
+      rig.needsExplainer = false
+      #expect(await rig.manualFlow.requestStart(from: .history) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(!rig.panel.shown.contains { if case .manualStart = $0 { true } else { false } })
+      rig.phase = .idle
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content.testName.hasPrefix("manualStart:"), "a genuine menu-bar Start shows its card")
+    }
+
+    @Test("the notes decision reads the record: writing, ready only once published, ended otherwise")
+    func notesFactFromRecord() {
+      let followed = UUID()
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      record.beginAttempt(.init(attemptID: followed, requestedEngine: .parakeet, languageIntent: nil, requestedEffectiveLanguage: nil))
+      func fact(_ r: MeetingRecord?, published: Bool = true) -> MeetingCoordinator.NotesFact {
+        MeetingCoordinator.notesFact(record: r, followedAttemptID: followed, published: published)
+      }
+      for state in [MeetingState.stopping, .queued, .processing] {
+        record.state = state
+        #expect(fact(record) == .writing, "\(state)")
+      }
+      record.state = .ready
+      record.commitAttempt(.init(
+        attemptID: followed, requestedEngine: .parakeet, resolvedEngine: .parakeet,
+        effectiveLanguage: nil, modelIdentity: nil, fallbackReason: nil))
+      #expect(fact(record) == .ready)
+      #expect(fact(record, published: false) == .writing, "History publication pending or failed")
+      var replaced = record
+      replaced.beginAttempt(.init(requestedEngine: .parakeet, languageIntent: nil, requestedEffectiveLanguage: nil))
+      replaced.state = .queued
+      #expect(fact(replaced) == .ended, "Transcribe again replaced the followed attempt")
+      var deleting = record
+      deleting.deletionRequested = true
+      #expect(fact(deleting) == .ended)
+      for state in [MeetingState.failed, .notesOnly, .interrupted] {
+        var ended = record
+        ended.state = state
+        #expect(fact(ended) == .ended, "\(state)")
+      }
+      #expect(fact(nil) == .ended, "deleted")
+      var other = record
+      other.commitAttempt(.init(
+        attemptID: UUID(), requestedEngine: .parakeet, resolvedEngine: .parakeet,
+        effectiveLanguage: nil, modelIdentity: nil, fallbackReason: nil))
+      #expect(fact(other) == .ended, "another attempt committed")
+    }
+
+    /// A detected Zoom meeting that the countdown stopped; the panel shows Writing your notes.
+    func stoppedByCountdown(_ rig: Rig) async throws -> UUID {
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      await rig.endedZoom()
+      rig.advance(1.6)
+      await rig.endedZoom()
       rig.advance(10)
       await rig.endedZoom()
       #expect(
-        await settleUntilObserved { rig.stops == 1 && rig.panel.content == .stopped })
-      #expect(rig.press("startNewRecording"))
-      #expect(await settleUntilObserved { rig.userStarts == [.zoom] })
-      #expect(rig.starts == [.zoom], "the user's Start goes through the manual route")
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "notesWriting" })
+      return meeting
     }
 
     @Test("A completed unknown snapshot cancels a real asynchronous countdown after microphone polls")
@@ -1478,10 +1761,10 @@
       rig.advance(1)
       rig.coordinator.stepForTesting()
       #expect(rig.coordinator.inputForTesting?.continuity.last?.id == firstID)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
       rig.advance(0.6)
       await rig.endedZoom()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
       await rig.proof(.unknown, input: .inactive)
       #expect(rig.panel.content == nil)
       rig.advance(10)
@@ -1494,21 +1777,94 @@
     func matchingFlowManualFallbackFollowsCallEnd() async throws {
       let rig = try Rig()
       await rig.ongoingZoom()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       let result = await rig.manualFlow.requestStart(from: .menu)
       #expect(result == .started(.recording(meetingID: rig.manualMeetingID)))
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == nil, "the manual fallback already records the asked-about call")
+      #expect(
+        rig.panel.content.testName == "manualStart:Zoom",
+        "the manual fallback records the asked-about call, and its two-second card names it")
+      rig.advance(CallDetectionCoordinator.manualStartLength)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == nil, "the start card goes after two seconds; the question does not return")
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
       #expect(rig.events.isEmpty, "manual adoption sends neither duplicate Yes nor autoStarted")
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
       rig.advance(10)
       await rig.endedZoom()
       #expect(await settleUntilObserved { rig.stops == 1 && rig.phase == .idle })
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
+    }
+
+    @Test("a menu-bar Start with no call names the microphone, and the Mac sound only when it is captured",
+      arguments: [false, true])
+    func menuStartWithoutCall(callSound: Bool) async throws {
+      let rig = try Rig()
+      rig.callSound = callSound
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content == .manualStart(.microphone(withCallSound: callSound)))
+      #expect(!rig.press("close"), "the start card has no buttons")
+      rig.advance(CallDetectionCoordinator.manualStartLength)
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing)
+    }
+
+    @Test("the start card goes when its recording stops, and its Mac-sound line follows the capture")
+    func startCardFollowsItsRecording() async throws {
+      let rig = try Rig()
+      rig.callSound = true
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content == .manualStart(.microphone(withCallSound: true)))
+      rig.callSound = false
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content == .manualStart(.microphone(withCallSound: false)), "call sound failed")
+      rig.phase = .idle
+      rig.coordinator.stepForTesting()
+      #expect(!rig.panel.isShowing, "stopped within two seconds")
+    }
+
+    @Test("Open checks the meeting again when pressed: a deleted or replaced one opens nothing")
+    func openRechecksTheMeeting() async throws {
+      let rig = try Rig()
+      let meeting = try await stoppedByCountdown(rig)
+      rig.notes[meeting] = .ready
+      rig.coordinator.stepForTesting()
+      let ready = rig.panel.actions
+      rig.notes[meeting] = .ended
+      ready.open()
+      #expect(rig.openedMeetings.isEmpty)
+      #expect(!rig.panel.isShowing)
+    }
+
+    @Test("a menu-bar Start with call prompts off still shows the microphone card")
+    func menuStartWithPromptsOff() async throws {
+      let rig = try Rig()
+      rig.settings.meetingCallDetection = CallDetectionPolicy.Mode.off.rawValue
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content == .manualStart(.microphone(withCallSound: false)))
+    }
+
+    @Test("History starts and the panel's own Start recording show no menu-bar card")
+    func noStartCardOutsideTheMenuBar() async throws {
+      let rig = try Rig()
+      #expect(await rig.manualFlow.requestStart(from: .history) == .started(.recording(meetingID: rig.manualMeetingID)))
+      #expect(rig.panel.content == nil)
+      let other = try Rig()
+      other.userStartsViaFlow = true
+      other.phase = .recording(meetingID: UUID(), startedAt: other.clock)
+      other.zoomReady()
+      other.onStop = { other.zoom(.unknown) }
+      #expect(other.press("yes"))
+      #expect(
+        await settleUntilObserved { other.stops == 1 && other.panel.content.testName == "switchNotConfirmed" })
+      #expect(other.press("startNewRecording"))
+      #expect(await settleUntilObserved { other.phase == .recording(meetingID: other.manualMeetingID, startedAt: other.clock) })
+      other.coordinator.stepForTesting()
+      #expect(other.panel.content.testName != "manualStart:microphone")
+      #expect(!other.panel.shown.contains { if case .manualStart = $0 { true } else { false } })
     }
 
     @Test("A recording visible before Flow returns has no transient question and rejects its old Yes")
@@ -1534,7 +1890,7 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty && rig.events.isEmpty)
     }
 
@@ -1546,14 +1902,14 @@
       await rig.proof(.ongoing(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Google Meet"))
+      #expect(rig.panel.content.testName == "ask:Google Meet")
       #expect(await rig.manualFlow.requestStart(from: .history)
         == .started(.recording(meetingID: rig.manualMeetingID)))
       #expect(rig.panel.content == nil)
       await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
       rig.advance(1.6)
       await rig.proof(.ended(family: .googleMeet, room: room), rule: rule, family: .googleMeet, room: room)
-      #expect(rig.panel.content == .endConfirmation, "a page ending asks without stopping the recording")
+      #expect(rig.panel.content.testName == "endConfirmation", "a page ending asks without stopping the recording")
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty && rig.events.isEmpty)
     }
 
@@ -1572,15 +1928,15 @@
       rig.coordinator.simulate(newer)
       rig.advance(CallDetectionPolicy.questionInterval)
       rig.coordinator.simulate(newer)
-      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      #expect(rig.panel.content.testName == "switchMeeting:Microsoft Teams")
       gate.open()
       await start.value
-      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      #expect(rig.panel.content.testName == "switchMeeting:Microsoft Teams")
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
     }
 
-    @Test("Keep recording stops the countdown and the meeting goes on")
-    func keepRecording() async throws {
+    @Test("× hides the countdown; ticks never redraw it and the recording still stops on time")
+    func closeHidesCountdown() async throws {
       let rig = try Rig()
       await rig.ongoingZoom()
       #expect(rig.press("yes"))
@@ -1588,11 +1944,18 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(rig.press("keepRecording"))
-      rig.advance(30)
+      #expect(!rig.press("keepRecording"), "#4232: the countdown has no Keep")
+      #expect(rig.press("close"))
+      #expect(!rig.panel.isShowing)
+      for _ in 0..<4 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+        #expect(!rig.panel.isShowing, "a hidden countdown stays hidden")
+      }
+      rig.advance(2)
       await rig.endedZoom()
-      #expect(rig.stops == 0)
-      #expect(rig.panel.isShowing == false)
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "notesWriting" })
     }
 
     @Test("a hand-started meeting never stops when a call ends")
@@ -1601,7 +1964,7 @@
       let original = UUID()
       rig.phase = .recording(meetingID: original, startedAt: rig.clock)
       await rig.ongoingZoom()
-      #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "switchMeeting:Zoom")
       #expect(rig.press("no"))
       await rig.endedZoom()
       rig.advance(2)
@@ -1670,7 +2033,7 @@
       #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(await settleUntilObserved { rig.panel.content == .ask(appName: "Zoom") })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "ask:Zoom" })
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [.zoom] })
       // The microphone reads off once, then every read fails: off is not proven for long.
@@ -1681,7 +2044,7 @@
       rig.advance(30)
       rig.coordinator.deliverWatcherReading(nil)
       #expect(rig.stops == 0)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
     }
 
     @Test("a switch Yes that a new Start could not finish keeps the meeting recording")
@@ -1689,7 +2052,7 @@
       let rig = try Rig()
       rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
       rig.zoomReady()
-      #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "switchMeeting:Zoom")
       rig.blocked = true
       #expect(rig.press("yes"))
       await settleStarts()
@@ -1702,7 +2065,7 @@
     func yesAfterSwitchedOff() async throws {
       let rig = try Rig()
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       rig.settings.meetingCallAppsOff = "zoom"
       _ = rig.press("yes")
       await settleStarts()
@@ -1740,19 +2103,19 @@
       await readBoth()
       rig.advance(CallDetectionPolicy.questionReadiness)
       await readBoth()
-      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      #expect(rig.panel.content.testName == "switchMeeting:Microsoft Teams")
       for _ in 0..<7 {
         rig.advance(2)
         await readBoth()
       }
       #expect(rig.stops == 0, "no stop behind the question")
-      #expect(rig.panel.content == .switchMeeting(appName: "Microsoft Teams"))
+      #expect(rig.panel.content.testName == "switchMeeting:Microsoft Teams")
       #expect(rig.press("no"))
       rig.advance(1)
       await readBoth()
       rig.advance(1.6)
       await readBoth()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
       rig.advance(10)
       await readBoth()
       #expect(await settleUntilObserved { rig.stops == 1 })
@@ -1770,19 +2133,19 @@
       rig.panel.hide()
       rig.advance(CallDetectionPolicy.questionInterval)
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
     }
 
     @Test("Yes while the reading is unknown starts nothing and keeps the question")
     func yesWhileUnknownKeepsQuestion() async throws {
       let rig = try Rig()
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       rig.zoom(.unknown)
       #expect(rig.press("yes"))
       await settleStarts()
       #expect(rig.starts.isEmpty)
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
     }
 
     @Test("with two calls, Yes records the one the panel asked about")
@@ -1803,8 +2166,8 @@
       rig.coordinator.stepForTesting()
       // Either call may be asked first; Yes records the one on the panel.
       let shown = try #require(rig.panel.content)
-      let family: CallAppFamily = shown == .ask(appName: "Zoom") ? .zoom : .teams
-      #expect(shown == .ask(appName: family.displayName))
+      let family: CallAppFamily = shown.testName == "ask:Zoom" ? .zoom : .teams
+      #expect(shown.testName == "ask:\(family.displayName)")
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [family] })
     }
@@ -1848,7 +2211,7 @@
       rig.advance(10)
       await rig.endedZoom()
       #expect(await settleUntilObserved { rig.stops == 1 })
-      #expect(rig.panel.content != .stopped)
+      #expect(rig.panel.content.testName != "notesWriting", "a newer recording gets no old notes card")
     }
 
     @Test("a slow stop that flushes while the timer ticks still offers a new recording")
@@ -1864,7 +2227,7 @@
       await rig.endedZoom()
       rig.advance(10)
       await rig.endedZoom()
-      #expect(await settleUntilObserved { rig.panel.content == .stopped })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "notesWriting" })
     }
 
     @Test("detection switched off during a detected Start is reported as no longer wanted")
@@ -1898,21 +2261,18 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName == "countdown:10")
     }
 
-    @Test("Start a new recording that is refused says so on the panel")
+    @Test("Start recording after a failed switch, refused, says so on the panel")
     func refusedNewRecordingIsShown() async throws {
       let rig = try Rig()
-      await rig.ongoingZoom()
+      rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
+      rig.zoomReady()
+      rig.onStop = { rig.zoom(.unknown) }
       #expect(rig.press("yes"))
-      #expect(await settleUntilObserved { rig.starts == [.zoom] })
-      await rig.endedZoom()
-      rig.advance(1.6)
-      await rig.endedZoom()
-      rig.advance(10)
-      await rig.endedZoom()
-      #expect(await settleUntilObserved { rig.panel.content == .stopped })
+      #expect(
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "switchNotConfirmed" })
       rig.nextOutcome = .started(.refused(.lowDisk))
       #expect(rig.press("startNewRecording"))
       #expect(await settleUntilObserved { rig.panel.content == .couldNotStart })
@@ -1935,29 +2295,24 @@
       both(.inactive)
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Google Meet"))
+      #expect(rig.panel.content.testName == "ask:Google Meet")
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [.googleMeet] })
       both(.active)
-      #expect(rig.panel.content != .switchMeeting(appName: "Google Meet"))
-      #expect(rig.panel.shown.filter { $0 == .switchMeeting(appName: "Google Meet") }.isEmpty)
+      #expect(rig.panel.content.testName != "switchMeeting:Google Meet")
+      #expect(rig.panel.shown.filter { $0.testName == "switchMeeting:Google Meet" }.isEmpty)
     }
 
-    @Test("Recording stopped goes away when a new recording starts elsewhere")
+    @Test("the notes card goes away for good when a new recording starts elsewhere")
     func stoppedOfferEndsOnNewRecording() async throws {
       let rig = try Rig()
-      await rig.ongoingZoom()
-      #expect(rig.press("yes"))
-      #expect(await settleUntilObserved { rig.starts == [.zoom] })
-      await rig.endedZoom()
-      rig.advance(1.6)
-      await rig.endedZoom()
-      rig.advance(10)
-      await rig.endedZoom()
-      #expect(await settleUntilObserved { rig.panel.content == .stopped })
+      _ = try await stoppedByCountdown(rig)
       rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
       await rig.endedZoom()
       #expect(rig.panel.isShowing == false)
+      rig.phase = .idle
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.isShowing == false, "the retired follow-up never comes back")
     }
 
     @Test("another tab or an unknown microphone never stops a browser meeting's recording")
@@ -1981,7 +2336,7 @@
       for second in 0..<12 {
         rig.advance(1)
         chrome(.active, .none)
-        #expect(rig.panel.content != .countdown(secondsLeft: 10), "second \(second)")
+        #expect(rig.panel.content.testName != "countdown:10", "second \(second)")
       }
       // The microphone reading goes unknown for 30 seconds.
       for _ in 0..<30 {
@@ -1993,7 +2348,7 @@
       chrome(.inactive, .none)
       rig.advance(1.6)
       chrome(.inactive, .none)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
       #expect(rig.stops == 0)
     }
 
@@ -2018,14 +2373,14 @@
       chrome(roomB)
       rig.advance(CallDetectionPolicy.questionReadiness)
       chrome(roomB)
-      #expect(rig.panel.content == .switchMeeting(appName: "Google Meet"))
+      #expect(rig.panel.content.testName == "switchMeeting:Google Meet")
       #expect(rig.press("no"))
       for _ in 0..<20 {
         rig.advance(1)
         chrome(roomB)
       }
       #expect(rig.stops == 0)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
     }
 
     @Test("Chrome losing its microphone with an unreadable page never independently ends a meeting")
@@ -2048,7 +2403,7 @@
       chrome(.inactive, .unknown)
       rig.advance(20)
       chrome(.inactive, .unknown)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
       #expect(rig.stops == 0)
     }
 
@@ -2087,11 +2442,11 @@
         rig.reading("com.google.Chrome", .inactive)
         #expect(await settleUntilObserved { !rig.coordinator.evidenceReadPendingForTesting })
       }
-      #expect(rig.panel.content == .endConfirmation)
+      #expect(rig.panel.content.testName == "endConfirmation")
       let answers = rig.events
       rig.advance(CallDetectionPolicy.promptTimeout + CallDetectionPolicy.countdownLength)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .endConfirmation && rig.stops == 0)
+      #expect(rig.panel.content.testName == "endConfirmation" && rig.stops == 0)
       state.withLock { $0.park = true }
       rig.reading("com.google.Chrome", .inactive)
       #expect(await settleUntilObserved { state.withLock { $0.entered } })
@@ -2102,7 +2457,7 @@
       #expect(lane.reading.withLock { $0 }, "Stop was emitted while the physical worker was still occupied")
       #expect(await releaseWorker(lane, gate: slow))
       #expect(!lane.reading.withLock { $0 })
-      #expect(await settleUntilObserved { rig.panel.content == .stoppedByUser })
+      #expect(await settleUntilObserved { rig.panel.content.testName == "notesWriting" })
       #expect(!rig.press("stopRecording"))
     }
 
@@ -2121,7 +2476,7 @@
       rig.advance(1.6)
       await rig.proof(.ended(family: .googleMeet, room: room), input: .inactive,
         rule: rule, family: .googleMeet, room: room)
-      #expect(rig.panel.content == .endConfirmation)
+      #expect(rig.panel.content.testName == "endConfirmation")
       rig.advance(2)
       await rig.proof(.ongoing(family: .googleMeet, room: room),
         rule: rule, family: .googleMeet, room: room)
@@ -2145,7 +2500,7 @@
       ])
       rig.advance(CallDetectionPolicy.questionReadiness)
       rig.coordinator.stepForTesting()
-      #expect(rig.panel.content == .ask(appName: "Slack"))
+      #expect(rig.panel.content.testName == "ask:Slack")
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { rig.starts == [.slack] })
       rig.coordinator.simulate([
@@ -2156,7 +2511,7 @@
           holder: .init(pid: 900_081, bundleID: "com.tinyspeck.slackmacgap.helper", input: .active),
           evidence: huddle(900_081)),
       ])
-      #expect(rig.panel.shown.filter { $0 == .switchMeeting(appName: "Slack") }.isEmpty)
+      #expect(rig.panel.shown.filter { $0.testName == "switchMeeting:Slack" }.isEmpty)
     }
 
     @Test("a browser handing its microphone to a new process on another tab keeps recording")
@@ -2181,18 +2536,18 @@
         ])
       }
       #expect(rig.stops == 0)
-      #expect(rig.panel.content != .countdown(secondsLeft: 10))
+      #expect(rig.panel.content.testName != "countdown:10")
     }
 
     @Test("Yes after a recording started from the menu asks to switch instead")
     func yesAfterManualStartAsksToSwitch() async throws {
       let rig = try Rig()
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
       rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
       #expect(rig.press("yes"))
       await settleStarts()
-      #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "switchMeeting:Zoom")
       #expect(rig.starts.isEmpty)
     }
 
@@ -2218,11 +2573,11 @@
       let rig = try Rig()
       rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
       rig.zoomReady()
-      #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "switchMeeting:Zoom")
       rig.onStop = { rig.zoom(.unknown) }
       #expect(rig.press("yes"))
       #expect(
-        await settleUntilObserved { rig.stops == 1 && rig.panel.content == .switchNotConfirmed })
+        await settleUntilObserved { rig.stops == 1 && rig.panel.content.testName == "switchNotConfirmed" })
       #expect(rig.starts.isEmpty)
       #expect(rig.press("startNewRecording"))
       #expect(await settleUntilObserved { rig.userStarts == [.zoom] })
@@ -2242,7 +2597,7 @@
       #expect(rig.panel.content == nil, "unchanged input cannot replay the superseded Ask")
       rig.zoom(.inactive)
       rig.zoomReady()
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
     }
 
     @Test("a switch question becomes Record this call? once the recording stops from the menu")
@@ -2250,10 +2605,10 @@
       let rig = try Rig()
       rig.phase = .recording(meetingID: UUID(), startedAt: rig.clock)
       rig.zoomReady()
-      #expect(rig.panel.content == .switchMeeting(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "switchMeeting:Zoom")
       rig.phase = .idle
       rig.zoom(.active)
-      #expect(rig.panel.content == .ask(appName: "Zoom"))
+      #expect(rig.panel.content.testName == "ask:Zoom")
     }
 
     @Test("Start by itself sends no started event when the Start needs attention")
@@ -2265,5 +2620,29 @@
       #expect(await settleUntilObserved { rig.panel.content == .needsAttention })
       #expect(!rig.events.map(\.answer).contains(.autoStarted))
     }
+  }
+  extension CallPromptContent {
+    /// A stable name for assertions: the card kind and the call's product name (#4232).
+    var testName: String {
+      switch self {
+      case .ask(let identity): "ask:\(identity.displayName)"
+      case .switchMeeting(let identity): "switchMeeting:\(identity.displayName)"
+      case .countdown(_, let seconds): "countdown:\(seconds)"
+      case .endConfirmation: "endConfirmation"
+      case .switchNotConfirmed: "switchNotConfirmed"
+      case .notesWriting: "notesWriting"
+      case .notesReady: "notesReady"
+      case .manualStart(.microphone(let sound)): sound ? "manualStart:microphone+sound" : "manualStart:microphone"
+      case .manualStart(let identity): "manualStart:\(identity.displayName)"
+      case .needsAttention: "needsAttention"
+      case .couldNotStart: "couldNotStart"
+      case .firstTip: "firstTip"
+      case .lastTip(let app): "lastTip:\(app)"
+      }
+    }
+  }
+
+  extension Optional where Wrapped == CallPromptContent {
+    var testName: String { self?.testName ?? "none" }
   }
 #endif

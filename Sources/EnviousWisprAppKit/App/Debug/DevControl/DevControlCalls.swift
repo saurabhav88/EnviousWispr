@@ -20,7 +20,8 @@
     /// Fake pids start here, far above real ones on macOS.
     static let firstFakePID: Int32 = 900_000
     static let buttons: Set<String> = [
-      "yes", "no", "keepRecording", "stopRecording", "startNewRecording", "openSettings", "close",
+      "yes", "no", "keepRecording", "stopRecording", "endRecording", "startNewRecording",
+      "openSettings", "open", "close",
     ]
 
     private let sources: Sources
@@ -128,19 +129,31 @@
       if let pressed { reply["pressed"] = pressed }
       switch coordinator.panelContent {
       case nil: break
-      case .ask(let app):
+      case .ask(let identity):
         reply["panel"] = "ask"
-        reply["panelApp"] = app
-      case .switchMeeting(let app):
+        reply["panelApp"] = identity.displayName
+      case .switchMeeting(let identity):
         reply["panel"] = "switchMeeting"
-        reply["panelApp"] = app
-      case .countdown(let seconds):
+        reply["panelApp"] = identity.displayName
+      case .countdown(let identity, let seconds):
         reply["panel"] = "countdown"
         reply["secondsLeft"] = seconds
-      case .endConfirmation: reply["panel"] = "endConfirmation"
-      case .stoppedByUser: reply["panel"] = "stoppedByUser"
-      case .stopped: reply["panel"] = "stopped"
-      case .switchNotConfirmed: reply["panel"] = "switchNotConfirmed"
+        if let identity { reply["panelApp"] = identity.displayName }
+      case .endConfirmation(let identity):
+        reply["panel"] = "endConfirmation"
+        reply["panelApp"] = identity.displayName
+      case .switchNotConfirmed(let identity):
+        reply["panel"] = "switchNotConfirmed"
+        reply["panelApp"] = identity.displayName
+      case .notesWriting: reply["panel"] = "notesWriting"
+      case .notesReady: reply["panel"] = "notesReady"
+      case .manualStart(let identity):
+        reply["panel"] = "manualStart"
+        if case .microphone(let withCallSound) = identity {
+          reply["panelApp"] = withCallSound ? "microphone+callSound" : "microphone"
+        } else {
+          reply["panelApp"] = identity.displayName
+        }
       case .needsAttention: reply["panel"] = "needsAttention"
       case .couldNotStart: reply["panel"] = "couldNotStart"
       case .firstTip: reply["panel"] = "firstTip"

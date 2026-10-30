@@ -442,17 +442,6 @@
         }
       }
     },
-    "%@ is using the microphone. I can start a recording." : {
-      "comment" : "EnviousMeet: observed microphone use, including prejoin; the app name. Recording is offered, not started.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ nutzt das Mikrofon. Ich kann eine Aufnahme starten."
-          }
-        }
-      }
-    },
     "%@ is warming up after a restart" : {
       "comment" : "Pill subtitle while the speech engine loads after a restart. %@ is the engine's name.",
       "localizations" : {
@@ -6067,6 +6056,17 @@
         }
       }
     },
+    "Couldn't confirm the new %@ call" : {
+      "comment" : "EnviousMeet: a switch stopped the old recording, but the new call could not be checked; the app's short name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuer %@-Anruf konnte nicht bestätigt werden"
+          }
+        }
+      }
+    },
     "Couldn't delete all history. Try again." : {
       "comment" : "History: Delete All did not finish.",
       "localizations" : {
@@ -7716,6 +7716,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wörterbuch aktivieren"
+          }
+        }
+      }
+    },
+    "End recording" : {
+      "comment" : "EnviousMeet: stops the recording now instead of after the countdown.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme stoppen"
           }
         }
       }
@@ -10318,7 +10329,7 @@
       }
     },
     "Keep recording" : {
-      "comment" : "EnviousMeet: keep recording after an uncertain browser ending.\nEnviousMeet: stops the countdown; the meeting goes on.",
+      "comment" : "EnviousMeet: keep recording after an uncertain browser ending.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11867,17 +11878,6 @@
         }
       }
     },
-    "Meeting ending in %lld seconds" : {
-      "comment" : "EnviousMeet: the call ended; the recording stops after this many seconds.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meeting endet in %lld Sekunden"
-          }
-        }
-      }
-    },
     "Meeting name" : {
       "comment" : "EnviousMeet: the rename field's placeholder.",
       "localizations" : {
@@ -11896,6 +11896,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Notizen ohne Bot in deinem Anruf."
+          }
+        }
+      }
+    },
+    "Meeting recorded" : {
+      "comment" : "EnviousMeet: the call ended and its recording is saved.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting aufgenommen"
           }
         }
       }
@@ -12548,13 +12559,13 @@
         }
       }
     },
-    "New call in %@. Start a new recording?" : {
-      "comment" : "EnviousMeet: a new call started while a meeting records; the app's name.",
+    "New %@ call. Take notes on it instead?" : {
+      "comment" : "EnviousMeet: a new call started while a meeting records; the app's short name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neuer Anruf in %@. Neue Aufnahme starten?"
+            "value" : "Neuer %@-Anruf. Lieber dazu Notizen machen?"
           }
         }
       }
@@ -14266,6 +14277,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
+    "Open" : {
+      "comment" : "EnviousMeet: opens the recorded meeting in History.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen"
           }
         }
       }
@@ -16166,17 +16188,6 @@
         }
       }
     },
-    "Recording stopped" : {
-      "comment" : "EnviousMeet: the detected meeting stopped.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahme beendet"
-          }
-        }
-      }
-    },
     "Recording stopped because a file could not be saved." : {
       "comment" : "EnviousMeet: the recording was ended by a file error.",
       "localizations" : {
@@ -16195,6 +16206,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme wurde beendet: Dein Mac hat fast keinen Speicherplatz mehr."
+          }
+        }
+      }
+    },
+    "Recording stops in %lld seconds" : {
+      "comment" : "EnviousMeet: the call ended; the recording stops after this many seconds.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme endet in %lld Sekunden"
           }
         }
       }
@@ -18528,17 +18550,6 @@
         }
       }
     },
-    "Start a new recording" : {
-      "comment" : "EnviousMeet: after a detected meeting stopped.\nEnviousMeet: switch to the newly detected call.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue Aufnahme starten"
-          }
-        }
-      }
-    },
     "Start a recording from the menu bar." : {
       "localizations" : {
         "de" : {
@@ -19065,6 +19076,28 @@
         }
       }
     },
+    "Take notes on this %@ call?" : {
+      "comment" : "EnviousMeet: a call app uses the microphone; the app's short name. Recording is offered, not started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen zu diesem %@-Anruf machen?"
+          }
+        }
+      }
+    },
+    "Take notes on this Slack huddle?" : {
+      "comment" : "EnviousMeet: a Slack huddle uses the microphone; recording is offered, not started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen zu diesem Slack-Huddle machen?"
+          }
+        }
+      }
+    },
     "Takes effect when EnviousWispr restarts" : {
       "comment" : "Permissions settings, Privacy: shown after the crash reports switch changes.",
       "localizations" : {
@@ -19072,6 +19105,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nach einem Neustart von EnviousWispr wirksam"
+          }
+        }
+      }
+    },
+    "Taking notes from microphone" : {
+      "comment" : "EnviousMeet: a recording started from the menu bar, with no call; it records the microphone only.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen per Mikrofon werden erstellt"
+          }
+        }
+      }
+    },
+    "Taking notes from microphone and Mac sound" : {
+      "comment" : "EnviousMeet: a recording started from the menu bar, with no call; it records the microphone and the Mac's sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen per Mikrofon und Ton vom Mac werden erstellt"
+          }
+        }
+      }
+    },
+    "Taking notes on this %@ call" : {
+      "comment" : "EnviousMeet: a recording started from the menu bar during a call; the app's short name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen zu diesem %@-Anruf werden erstellt"
+          }
+        }
+      }
+    },
+    "Taking notes on this Slack huddle" : {
+      "comment" : "EnviousMeet: a recording started from the menu bar during a Slack huddle.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen zu diesem Slack-Huddle werden erstellt"
           }
         }
       }
@@ -19805,17 +19882,6 @@
         }
       }
     },
-    "The call ended." : {
-      "comment" : "EnviousMeet: under Recording stopped.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Anruf ist beendet."
-          }
-        }
-      }
-    },
     "The call sound could not be recorded. Only your microphone is recorded. EnviousWispr needs to be allowed under Screen & System Audio Recording in System Settings." : {
       "comment" : "EnviousMeet: recording the sound the Mac plays did not work. The last sentence names the macOS privacy setting.",
       "localizations" : {
@@ -20228,17 +20294,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das gewählte Modell läuft auf Ollamas Servern. Der Text wird dorthin gesendet."
-          }
-        }
-      }
-    },
-    "The new call could not be confirmed." : {
-      "comment" : "EnviousMeet: under Recording stopped, after a switch to a new call that could not be checked.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der neue Anruf konnte nicht bestätigt werden."
           }
         }
       }
@@ -22614,17 +22669,6 @@
         }
       }
     },
-    "Want me to take notes?" : {
-      "comment" : "EnviousMeet: friendly question when a call app uses the microphone.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Soll ich Notizen machen?"
-          }
-        }
-      }
-    },
     "Warming Up the AI..." : {
       "localizations" : {
         "de" : {
@@ -23422,6 +23466,17 @@
         }
       }
     },
+    "Writing your notes…" : {
+      "comment" : "EnviousMeet: under Meeting recorded, while the transcript is written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen werden erstellt…"
+          }
+        }
+      }
+    },
     "Written by %@." : {
       "comment" : "EnviousMeet page: the AI Polish provider that writes meeting summaries, e.g. Ollama.",
       "localizations" : {
@@ -24016,6 +24071,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Modelle, lokal oder gehostet."
+          }
+        }
+      }
+    },
+    "Your notes are ready" : {
+      "comment" : "EnviousMeet: the meeting's transcript is saved and in History.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Notizen sind fertig"
           }
         }
       }

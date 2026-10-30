@@ -52,6 +52,8 @@ final class MeetingStartFlow {
   private var pendingCallSound: Bool?
   /// The call app of the Start waiting on the explainer (#4012 r11 F6), so it keeps its name.
   private var pendingCallApp: CallAppFamily?
+  /// #4232: the waiting request came from the call panel's own Start recording.
+  private var pendingFromCallPanel = false
 
   /// What one request did.
   enum Outcome: Equatable {
@@ -95,7 +97,7 @@ final class MeetingStartFlow {
   @discardableResult
   func requestStart(
     from entryPoint: MeetingEntryPoint, captureCallSound override: Bool? = nil,
-    callApp: CallAppFamily? = nil
+    callApp: CallAppFamily? = nil, fromCallPanel: Bool = false
   ) async -> Outcome
   {
     // Setup first (#4017 R4): before any prompt, pending state or recording.
@@ -136,6 +138,7 @@ final class MeetingStartFlow {
         pendingExplainer = entryPoint
         pendingCallSound = override
         pendingCallApp = callApp
+        pendingFromCallPanel = fromCallPanel
       }
       if entryPoint == .menu { deps.showMeetingPage() }
       return .waitingForExplainer
@@ -146,7 +149,10 @@ final class MeetingStartFlow {
     pendingExplainer = nil
     pendingCallSound = nil
     pendingCallApp = nil
-    return await startAccepted(from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
+    pendingFromCallPanel = false
+    return await startAccepted(
+      from: entryPoint, captureCallSound: captureCallSound, callApp: callApp,
+      fromCallPanel: fromCallPanel)
   }
 
   /// #4012: whether a detected Start would stop at `.needsAttention` or `.setupRequired` (setup,
@@ -173,24 +179,30 @@ final class MeetingStartFlow {
     guard let entryPoint = pendingExplainer else { return .cancelled }
     let override = pendingCallSound
     let callApp = pendingCallApp
+    let fromCallPanel = pendingFromCallPanel
     pendingExplainer = nil
     pendingCallSound = nil
     pendingCallApp = nil
+    pendingFromCallPanel = false
     guard deps.canStart() else { return .notIdle }
     let captureCallSound = override ?? deps.captureCallSound()
     if captureCallSound { deps.markExplained() }
-    return await startAccepted(from: entryPoint, captureCallSound: captureCallSound, callApp: callApp)
+    return await startAccepted(
+      from: entryPoint, captureCallSound: captureCallSound, callApp: callApp,
+      fromCallPanel: fromCallPanel)
   }
 
   /// One producing/settling path for both direct and explainer-Continue starts. Observation
   /// never owns capture: the coordinator's unchanged outcome is still returned to the caller.
   private func startAccepted(
-    from route: MeetingEntryPoint, captureCallSound: Bool, callApp: CallAppFamily?
+    from route: MeetingEntryPoint, captureCallSound: Bool, callApp: CallAppFamily?,
+    fromCallPanel: Bool
   ) async -> Outcome {
     if let previous = acceptedRequest { settle(previous, recordingID: nil) }
     startGeneration += 1
     let request = CallDetectionPolicy.AcceptedStart(
-      generation: startGeneration, route: route, acceptedAt: deps.acceptedStartNow())
+      generation: startGeneration, route: route, acceptedAt: deps.acceptedStartNow(),
+      fromCallPanel: fromCallPanel)
     acceptedRequest = request
     deps.acceptedStart(request)
     let result = await deps.start(route, captureCallSound, callApp)
@@ -225,6 +237,7 @@ final class MeetingStartFlow {
     pendingExplainer = nil
     pendingCallSound = nil
     pendingCallApp = nil
+    pendingFromCallPanel = false
     waitingForMicrophone = nil
     startGeneration += 1
   }
