@@ -135,7 +135,9 @@ final class CallPromptPanel: CallPromptPresenting {
     panel.level = .statusBar
     panel.isOpaque = false
     panel.backgroundColor = .clear
-    panel.hasShadow = true
+    // The card draws its own shadow. A window shadow would trace the card's soft glow inside
+    // the transparent margin and draw a rough black frame around it (#4232).
+    panel.hasShadow = false
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     // Best effort only (Apple: not a guarantee on macOS 15.4 and later).
     panel.sharingType = capturable ? .readOnly : .none

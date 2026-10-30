@@ -209,6 +209,8 @@
       let panel = CallPromptPanel(anchor: { nil }, makePanel: { driver }, capturable: capturable)
       panel.show(.firstTip, actions: CallPromptActions())
       #expect(driver.sharingType == (capturable ? .readOnly : .none))
+      // The card draws its own shadow; a window shadow traced its glow as a rough black frame.
+      #expect(driver.hasShadow == false)
     }
 
     @Test("Dismiss closes the preview")
