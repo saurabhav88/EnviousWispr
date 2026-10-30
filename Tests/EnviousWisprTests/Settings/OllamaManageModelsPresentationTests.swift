@@ -775,4 +775,27 @@ struct OllamaManageModelsPresentationTests {
       OllamaCatalogPresentation.noMatchesText
         == "No models match. Check the supported-name guidance beside Search.")
   }
+
+  @Test("the pinned typed row keeps the exact pulling name, so progress and Cancel stay on it")
+  func pinnedTypedRowKeepsPullingName() throws {
+    #expect(OllamaCatalogPresentation.pinnedTypedRow(activeTypedPull: nil, local: Self.listed) == nil)
+
+    let bare = try #require(
+      OllamaCatalogPresentation.pinnedTypedRow(activeTypedPull: "smollm2:135m", local: Self.listed))
+    #expect(bare.name == "smollm2:135m" && bare.parameterCount.isEmpty && !bare.isDownloaded)
+
+    // The refresh after success lists the model under its alias; the row must still be the pull.
+    let aliased = [
+      OllamaModelCatalogEntry(
+        name: "foo:latest", displayName: "foo:latest", parameterCount: "1B", downloadSize: "0.8 GB",
+        isDownloaded: true)
+    ]
+    let pinned = try #require(
+      OllamaCatalogPresentation.pinnedTypedRow(activeTypedPull: "foo", local: aliased))
+    #expect(pinned.name == "foo")
+    #expect(pinned.parameterCount == "1B" && pinned.isDownloaded)
+    #expect(
+      OllamaCatalogPresentation.rowIsPulling(
+        pinned, currentPullingModel: "foo", hostedPullAdvertisedID: nil))
+  }
 }

@@ -394,13 +394,21 @@ final class ProviderSetupModel {
     Data(SHA256.hash(data: Data(value.utf8)))
   }
 
-  /// #1950: the model id awaiting download confirmation, or nil.
+  /// #1950: the download awaiting confirmation, or nil.
   ///
-  /// The id itself IS the state; there is deliberately no companion Boolean. A Boolean plus an id
-  /// can disagree, and the disagreement would be "which model did the user actually confirm".
+  /// One value, deliberately: a separate Boolean beside an id can disagree, and the disagreement
+  /// would be "which model did the user actually confirm". #3836 adds where the request came from
+  /// (a typed name) to the same value for the same reason.
   /// `ProviderSetupDownloads.confirmPending` takes and clears this before any side effect, so the pull uses
   /// the exact id that was requested even if the list re-renders underneath the dialog.
-  var pendingOllamaDownload: String?
+  var pendingOllamaDownload: PendingOllamaDownload?
+
+  struct PendingOllamaDownload: Equatable {
+    let modelID: String
+    /// #3836: the request came from the Models sheet's typed-name row, so the pull is pinned in the
+    /// sheet until it ends.
+    let typedName: Bool
+  }
 
   /// Whether the Ollama Models sheet is open. The download confirmation must present above
   /// the sheet while it is open and from the page otherwise, never from both (#3385).
@@ -426,14 +434,17 @@ enum ProviderSetupDownloads {
   /// to patch a guard onto the second one after a sweep missed it ("the SECOND control
   /// that can reach `pullModel`"). A funnel makes that class of miss structural rather
   /// than something to remember.
+  ///
+  /// `typedName` is true only for the Models sheet's typed-name row (#3836); it travels with the
+  /// request through the confirmation, so a typed download stays pinned however it started.
   static func request(
-    _ modelID: String, model: ProviderSetupModel, setup: SetupCoordinator
+    _ modelID: String, typedName: Bool = false, model: ProviderSetupModel, setup: SetupCoordinator
   ) {
     guard OllamaCatalogPresentation.requiresDownloadConfirmation(for: modelID) else {
-      setup.ollamaSetup.pullModel(modelID)
+      setup.ollamaSetup.pullModel(modelID, typedName: typedName)
       return
     }
-    model.pendingOllamaDownload = modelID
+    model.pendingOllamaDownload = .init(modelID: modelID, typedName: typedName)
   }
 
   /// Confirm the pending download, taking the id atomically before acting on it.
@@ -448,14 +459,14 @@ enum ProviderSetupDownloads {
   /// they started afterwards. Also skips a model that finished downloading while the dialog
   /// was open.
   static func confirmPending(model: ProviderSetupModel, setup: SetupCoordinator) {
-    guard let modelID = model.pendingOllamaDownload else { return }
+    guard let pending = model.pendingOllamaDownload else { return }
     model.pendingOllamaDownload = nil
 
     guard setup.ollamaSetup.currentPullingModel == nil else { return }
-    let canonical = OllamaSetupService.canonicalModelName(modelID)
+    let canonical = OllamaSetupService.canonicalModelName(pending.modelID)
     guard !setup.ollamaSetup.downloadedModelNames.contains(canonical) else { return }
 
-    setup.ollamaSetup.pullModel(modelID)
+    setup.ollamaSetup.pullModel(pending.modelID, typedName: pending.typedName)
   }
 }
 
@@ -2139,7 +2150,23 @@ private var ollamaBrowseModelsCard: some View {
       query.isEmpty || $0.name.lowercased().contains(query)
         || $0.displayName.lowercased().contains(query)
     }
-    let local = groups.local.filter(matches)
+    // #3836: a typed-name download stays in the sheet, with its progress and Cancel, until it ends,
+    // whatever the search says now and even after the sheet closed and reopened. The service owns
+    // the name because the pull outlives the sheet. It renders once, under its exact pulling name.
+    let pinnedTyped = OllamaCatalogPresentation.pinnedTypedRow(
+      activeTypedPull: setup.ollamaSetup.activeTypedPull, local: groups.local)
+    let local = groups.local.filter(matches).filter { entry in
+      pinnedTyped.map {
+        OllamaSetupService.canonicalModelName($0.name)
+          != OllamaSetupService.canonicalModelName(entry.name)
+      } ?? true
+    }
+    let hosted = groups.hosted.filter(matches)
+    // Otherwise, an exact unlisted name typed into a search that matched nothing becomes one row.
+    let typedRow =
+      pinnedTyped
+      ?? OllamaCatalogPresentation.typedDownloadSuggestion(
+        query: modelSearch, catalog: catalog, searchMatchedAnyRow: !local.isEmpty || !hosted.isEmpty)
 
     VStack(alignment: .leading, spacing: 10) {
       Text(
@@ -2164,13 +2191,35 @@ private var ollamaBrowseModelsCard: some View {
 
       OllamaModelSearchField(text: $modelSearch)
 
+      // #3836: what Search can do beyond filtering, and its limits, said once below the field.
+      Text(
+        String(
+          localized:
+            "If no models match, type an exact unlisted local model name to download it. Names containing / or cloud, S1-mini names, and case variants of latest are unsupported. Partial matches can hide the offer.",
+          comment:
+            "AI Polish, Ollama Models sheet: help below the search field. A model name typed exactly can be downloaded even if it is not listed; some names are not supported.")
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextSecondary)
+      .fixedSize(horizontal: false, vertical: true)
+
       ForEach(local) { entry in
-        ollamaCatalogRow(entry, isPulling: isPulling, isLastInGroup: entry.id == local.last?.id)
+        ollamaCatalogRow(
+          entry, isPulling: isPulling,
+          isLastInGroup: entry.id == local.last?.id && typedRow == nil)
+      }
+
+      if let typedRow {
+        ollamaCatalogRow(typedRow, isPulling: isPulling, isLastInGroup: true, typedName: true)
+      } else if !query.isEmpty, local.isEmpty, hosted.isEmpty {
+        Text(OllamaCatalogPresentation.noMatchesText)
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
       // A search that matches no hosted model hides the hosted section rather than letting its
       // "none available right now" notice describe the search as Ollama's answer.
-      let hosted = groups.hosted.filter(matches)
       if query.isEmpty || !hosted.isEmpty {
         ollamaHostedSection(hosted, isPulling: isPulling)
       }
@@ -2314,6 +2363,15 @@ private var ollamaBrowseModelsCard: some View {
   /// onto the same model once it is registered outside this flow, where the row no
   /// longer even offers an Add to retry. Row identity here is name, kind, and
   /// installed state.
+  /// #3836: the local twin of `hostedAddFailure`. Exact name, a local row, and not installed: a
+  /// model that is on the Mac now has nothing left to explain.
+  private func localPullFailure(for entry: OllamaModelCatalogEntry) -> String? {
+    guard !entry.isRemote, !entry.isDownloaded,
+      let failure = setup.ollamaSetup.lastPullFailure, failure.model == entry.name
+    else { return nil }
+    return failure.message
+  }
+
   private func hostedAddFailure(for entry: OllamaModelCatalogEntry) -> String? {
     guard entry.isRemote, !entry.isDownloaded else { return nil }
     if case .failed(let advertisedID, let message) = setup.ollamaSetup.hostedModelAddState,
@@ -2344,9 +2402,10 @@ private var ollamaBrowseModelsCard: some View {
   /// One catalog row. Extracted so the local and hosted groups render through
   /// exactly the same code — two copies would let the groups drift in actions or
   /// layout, which is the defect a "just duplicate the ForEach" version invites.
+  /// `typedName` marks the Models sheet's typed-name row (#3836), so its Download is pinned.
   @ViewBuilder
   private func ollamaCatalogRow(
-    _ entry: OllamaModelCatalogEntry, isPulling: Bool, isLastInGroup: Bool
+    _ entry: OllamaModelCatalogEntry, isPulling: Bool, isLastInGroup: Bool, typedName: Bool = false
   ) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
@@ -2369,10 +2428,9 @@ private var ollamaBrowseModelsCard: some View {
             // #1950: the "what goes wrong" clause, from the same authority as the label. Empty for
             // a model we have not measured and for EG-1, so the row simply says nothing rather
             // than implying a reading we do not have.
-            let note = OllamaModelVerdicts.entry(for: entry.name).note
             Text(
-              [note.isEmpty ? nil : note, "\(entry.parameterCount) · \(entry.downloadSize)"]
-                .compactMap { $0 }.joined(separator: " · ")
+              OllamaCatalogPresentation.detailLine(
+                for: entry, note: OllamaModelVerdicts.entry(for: entry.name).note)
             )
             .font(.stHelper)
             .foregroundStyle(Color.stTextSecondary)
@@ -2459,7 +2517,8 @@ private var ollamaBrowseModelsCard: some View {
             } else {
               // #1950: the funnel. Hosted Add above is untouched: a hosted model carries no
               // measured verdict, so there is nothing to warn about.
-              ProviderSetupDownloads.request(entry.name, model: model, setup: setup)
+              ProviderSetupDownloads.request(
+                entry.name, typedName: typedName, model: model, setup: setup)
             }
           } label: {
             Text(OllamaCatalogPresentation.actionLabel(for: entry))
@@ -2484,6 +2543,15 @@ private var ollamaBrowseModelsCard: some View {
       // #1956: beneath its own row, never a pane-wide banner, and never removing
       // the row it belongs to — the advertised model is still there to retry.
       if let failure = hostedAddFailure(for: entry) {
+        Text(failure)
+          .font(.stHelper)
+          .foregroundStyle(Color.stWarning)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      // #3836: why this model's download failed, under its own row and inside the sheet. The page
+      // shows its error too, but the open sheet covers it.
+      if let failure = localPullFailure(for: entry) {
         Text(failure)
           .font(.stHelper)
           .foregroundStyle(Color.stWarning)

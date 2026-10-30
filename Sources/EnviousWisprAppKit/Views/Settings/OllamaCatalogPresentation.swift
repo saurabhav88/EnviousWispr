@@ -98,6 +98,26 @@ enum OllamaCatalogPresentation {
       name: typed, displayName: typed, parameterCount: "", downloadSize: "")
   }
 
+  /// #3836: the row a typed-name download keeps in the sheet until it ends.
+  ///
+  /// It always carries the service's EXACT pulling name, because progress and Cancel match a local
+  /// row by exact name (`rowIsPulling`). When the list already has the model under an alias (the
+  /// daemon reports `foo:latest` for a pull of `foo` during the refresh after success), the row
+  /// borrows that entry's metadata and installed state but keeps the pulling name.
+  static func pinnedTypedRow(activeTypedPull: String?, local: [OllamaModelCatalogEntry])
+    -> OllamaModelCatalogEntry?
+  {
+    guard let name = activeTypedPull else { return nil }
+    let canonical = OllamaSetupService.canonicalModelName(name)
+    guard let listed = local.first(where: { OllamaSetupService.canonicalModelName($0.name) == canonical })
+    else {
+      return OllamaModelCatalogEntry(name: name, displayName: name, parameterCount: "", downloadSize: "")
+    }
+    return OllamaModelCatalogEntry(
+      name: name, displayName: listed.displayName, parameterCount: listed.parameterCount,
+      downloadSize: listed.downloadSize, isDownloaded: listed.isDownloaded)
+  }
+
   /// #3836: the grey line under a local row's name: the verdict note, then parameters and size.
   /// A typed suggestion has neither number, so it says what will happen instead.
   static func detailLine(for entry: OllamaModelCatalogEntry, note: String) -> String {
