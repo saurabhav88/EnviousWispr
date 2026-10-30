@@ -875,7 +875,7 @@ struct FileImportCoordinatorSpeakerTests {
     let settings = RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
       wordCorrectionEnabled: false, fillerRemovalEnabled: sentenceBoundary, emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
       llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol",
       s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
     var finished = BoundedWait.Signal()

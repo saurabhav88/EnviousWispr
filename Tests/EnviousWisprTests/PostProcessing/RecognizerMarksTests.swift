@@ -493,7 +493,7 @@ struct RecognizerMarksTests {
     let overrides: [String: String] =
       take.group == "startword" && take.lang == "en" ? ["en": take.start] : [:]
     let step = InverseTextNormalizationStep()
-    step.spokenPunctuation = SpokenPunctuationSettings(enabled: true, startWordOverrides: overrides)
+    step.spokenPunctuation = SpokenPunctuationSettings(enabled: true, startWordOverrides: overrides, englishPeriodWord: true)
     step.backendSupportsLID = take.engine == "whisperKit"
     return try await step.process(TextProcessingContext(text: take.raw, language: take.lang)).text
   }

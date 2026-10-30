@@ -45,10 +45,43 @@ struct SpokenPunctuationSettingsPersistenceTests {
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
-  @Test("Both persisted keys are in the unified defaults inventory")
+  @Test("All three persisted keys are in the unified defaults inventory")
   func unifiedKeys() {
     #expect(SettingsManager.unifiedDefaultsKeys.contains("spokenPunctuationEnabled"))
     #expect(SettingsManager.unifiedDefaultsKeys.contains("spokenPunctuationStartWords"))
+    #expect(SettingsManager.unifiedDefaultsKeys.contains("spokenPunctuationEnglishPeriodWord"))
+  }
+
+  // MARK: - #4216 the English period switch
+
+  @Test("An upgrade with no stored period switch reads ON and writes nothing at launch")
+  func periodSwitchAbsentReadsOn() {
+    let suite = Self.freshSuite()
+    suite.set(true, forKey: "spokenPunctuationEnabled")
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.spokenPunctuation.englishPeriodWord == true)
+    #expect(suite.object(forKey: "spokenPunctuationEnglishPeriodWord") == nil)
+  }
+
+  @Test("The period switch OFF survives a restart")
+  func periodSwitchRoundTrips() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    settings.spokenPunctuation.englishPeriodWord = false
+    #expect(suite.object(forKey: "spokenPunctuationEnglishPeriodWord") as? Bool == false)
+    let restarted = SettingsManager(defaults: suite)
+    #expect(restarted.spokenPunctuation.englishPeriodWord == false)
+    #expect(restarted.spokenPunctuation.enabled == false)
+  }
+
+  @Test("A stored period switch that is not a Bool reads as the default, and the rest is kept")
+  func periodSwitchWrongTypeFallsBack() {
+    let suite = Self.freshSuite()
+    suite.set(true, forKey: "spokenPunctuationEnabled")
+    suite.set("off", forKey: "spokenPunctuationEnglishPeriodWord")
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.spokenPunctuation.englishPeriodWord == true)
+    #expect(settings.spokenPunctuation.enabled == true)
   }
 
   // MARK: - Round trips
@@ -98,7 +131,8 @@ struct SpokenPunctuationSettingsPersistenceTests {
     settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     #expect(settings.spokenPunctuation.startWordOverrides == ["de": "Sprich"])
     #expect(
-      settings.commitSpokenPunctuationStartWord("diktiere", language: "de") == .accepted("diktiere"))
+      settings.commitSpokenPunctuationStartWord("diktiere", language: "de") == .accepted("diktiere")
+    )
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
@@ -213,7 +247,8 @@ struct SpokenPunctuationSettingsPersistenceTests {
     let settings = SettingsManager(defaults: suite)
     #expect(
       settings.spokenPunctuation
-        == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
+        == SpokenPunctuationSettings(
+          enabled: true, startWordOverrides: [:], englishPeriodWord: true))
   }
 
   @Test("A stored word equal to the default is dropped, so the file stays sparse")
@@ -239,7 +274,8 @@ struct SpokenPunctuationSettingsPersistenceTests {
 
   // MARK: - Effective words come from one owner
 
-  @Test("Effective words are the override else the default, for exactly the five Start word languages")
+  @Test(
+    "Effective words are the override else the default, for exactly the five Start word languages")
   func effectiveWords() {
     #expect(
       SpokenPunctuationRules.effectiveStartWords(overrides: [:])
@@ -281,7 +317,8 @@ struct SpokenPunctuationSettingsPersistenceTests {
   @Test("A recovery or import snapshot keeps a blank start word too")
   func snapshotKeepsBlankStartWord() {
     #expect(
-      SpokenPunctuationRules.validatedStartWords(["fr": " ", "de": "Diktiere"], dropDefaults: false)
+      SpokenPunctuationRules.validatedStartWords(
+        ["fr": " ", "de": "Diktiere"], dropDefaults: false)
         == ["fr": "", "de": "Diktiere"])
     #expect(
       SpokenPunctuationRules.validatedStartWords(["fr": " ", "de": "Diktiere"], dropDefaults: true)

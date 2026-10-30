@@ -21,7 +21,7 @@ import Testing
 @Suite("Spoken punctuation routing (#2450)", .tags(.productOutcome))
 struct SpokenPunctuationRoutingTests {
 
-  private static let on = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:])
+  private static let on = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true)
   private static let off = SpokenPunctuationSettings.off
 
   private func ctx(
@@ -65,7 +65,7 @@ struct SpokenPunctuationRoutingTests {
   ) {
     let plan = InverseTextNormalizationStep.punctuationPlan(
       language: language, englishVetoed: vetoed,
-      settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: [:]))
+      settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: [:], englishPeriodWord: true))
     #expect(plan.attemptLanguage == nil)
     #expect(plan.startWord == nil)
     #expect(plan.notAttemptedStatus == expected)
@@ -88,7 +88,7 @@ struct SpokenPunctuationRoutingTests {
 
   @Test("A valid override is the word that is matched")
   func overrideIsUsed() {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     #expect(
       InverseTextNormalizationStep.punctuationPlan(
         language: "de", englishVetoed: false, settings: settings
@@ -103,7 +103,7 @@ struct SpokenPunctuationRoutingTests {
     "An invalid override never widens matching: the default word is used instead",
     arguments: ["Punkt", "zwei Worte", "set3", "x", String(repeating: "a", count: 21)])
   func invalidOverrideFallsBackToTheDefault(word: String) {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": word])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": word], englishPeriodWord: true)
     let plan = InverseTextNormalizationStep.punctuationPlan(
       language: "de", englishVetoed: false, settings: settings)
     #expect(plan.attemptLanguage == "de")
@@ -112,7 +112,7 @@ struct SpokenPunctuationRoutingTests {
 
   @Test("A blank override is the choice of no start word and is planned as empty, not the default")
   func blankOverrideIsPlannedAsNoStartWord() {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": ""])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": ""], englishPeriodWord: true)
     let plan = InverseTextNormalizationStep.punctuationPlan(
       language: "de", englishVetoed: false, settings: settings)
     #expect(plan.attemptLanguage == "de")
@@ -260,7 +260,7 @@ struct SpokenPunctuationRoutingTests {
 
   @Test("A custom start word works and the default no longer does")
   func customWord() async throws {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     let custom = step(settings)
     let out = try await custom.process(ctx("alpha Sprich Punkt beta", language: "de"))
     #expect(out.text == "alpha. Beta")
@@ -271,7 +271,7 @@ struct SpokenPunctuationRoutingTests {
 
   @Test("An invalid stored word is never matched: the default word works, the invalid one does not")
   func invalidStoredWordIsNeverMatched() async throws {
-    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Punkt"])
+    let settings = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Punkt"], englishPeriodWord: true)
     let step = step(settings)
     let plain = try await step.process(ctx("alpha Punkt Punkt beta", language: "de"))
     #expect(
@@ -304,7 +304,7 @@ struct SpokenPunctuationRoutingTests {
       "what question mark", "Period.", "New paragraph.",
     ]
     for enabled in [true, false] {
-      let step = step(SpokenPunctuationSettings(enabled: enabled, startWordOverrides: [:]))
+      let step = step(SpokenPunctuationSettings(enabled: enabled, startWordOverrides: [:], englishPeriodWord: true))
       for input in inputs {
         let out = try await step.process(ctx(input, language: "en"))
         #expect(
@@ -324,9 +324,9 @@ struct SpokenPunctuationRoutingTests {
       ("New paragraph.", "."),
     ]
     for (input, expectedOn) in cases {
-      let on = step(SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
+      let on = step(SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true))
       #expect(try await on.process(ctx(input, language: "en")).text == expectedOn, "input=\(input)")
-      let off = step(SpokenPunctuationSettings(enabled: false, startWordOverrides: [:]))
+      let off = step(SpokenPunctuationSettings(enabled: false, startWordOverrides: [:], englishPeriodWord: true))
       #expect(try await off.process(ctx(input, language: "en")).text == input, "off, input=\(input)")
     }
   }
@@ -373,7 +373,7 @@ struct SpokenPunctuationRoutingTests {
       ("see you period", "en", [:], false),
     ]
     for (text, language, words, enabled) in rows {
-      let itn = step(SpokenPunctuationSettings(enabled: enabled, startWordOverrides: words))
+      let itn = step(SpokenPunctuationSettings(enabled: enabled, startWordOverrides: words, englishPeriodWord: true))
       let out = try await itn.process(ctx(text, language: language))
       #expect(out.spokenFinalFullStop == enabled, "\(text) [\(language)]")
     }
@@ -502,7 +502,7 @@ struct SpokenPunctuationRoutingTests {
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
     })
     step.backendSupportsLID = true
-    let original = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
+    let original = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     step.spokenPunctuation = original
 
     let context = ctx("alpha Sprich Punkt beta", language: "de")
@@ -521,7 +521,7 @@ struct SpokenPunctuationRoutingTests {
 
     // Both halves change after the work began.
     step.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: false, startWordOverrides: ["de": "Anders", "fr": "Mets"])
+      enabled: false, startWordOverrides: ["de": "Anders", "fr": "Mets"], englishPeriodWord: true)
     await gate.release()
     _ = try await task.value
 
@@ -802,7 +802,7 @@ struct SpokenPunctuationRoutingTests {
   // MARK: - English with a start word
 
   private static let englishWord = SpokenPunctuationSettings(
-    enabled: true, startWordOverrides: ["en": "Insert"])
+    enabled: true, startWordOverrides: ["en": "Insert"], englishPeriodWord: true)
 
   @Test("English with a start word converts after it, and reports the pass")
   func englishStartWordConverts() async throws {
@@ -842,7 +842,7 @@ struct SpokenPunctuationRoutingTests {
   func englishPlanWithAStartWord(enabled: Bool, overrides: [(String, String)], word: String) {
     let plan = InverseTextNormalizationStep.englishPunctuationPlan(
       settings: SpokenPunctuationSettings(
-        enabled: enabled, startWordOverrides: Dictionary(uniqueKeysWithValues: overrides)))
+        enabled: enabled, startWordOverrides: Dictionary(uniqueKeysWithValues: overrides), englishPeriodWord: true))
     #expect(plan?.attemptLanguage == "en")
     #expect(plan?.startWord == word)
   }
@@ -856,7 +856,7 @@ struct SpokenPunctuationRoutingTests {
   func noEnglishPlan(enabled: Bool, overrides: [String: String]) {
     #expect(
       InverseTextNormalizationStep.englishPunctuationPlan(
-        settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: overrides))
+        settings: SpokenPunctuationSettings(enabled: enabled, startWordOverrides: overrides, englishPeriodWord: true))
         == nil)
   }
 }

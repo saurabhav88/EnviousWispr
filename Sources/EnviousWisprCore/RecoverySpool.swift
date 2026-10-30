@@ -95,6 +95,12 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// key) and caller omission (a forgotten argument) are separate contracts; legacy fixtures pass
   /// `nil` explicitly.
   public let spokenPunctuationStartWords: [String: String]?
+  /// #4216: the "say period for a dot" switch at record time. OPTIONAL for the same reason as its
+  /// siblings: spools and frozen imports written before this field exist, and a missing non-optional
+  /// key would fail the whole decode. `nil` means the snapshot predates the switch, which is ON
+  /// (the word "period" was a command). The initializer parameter is not defaulted, so every writer
+  /// must state the value it froze.
+  public let spokenPunctuationEnglishPeriodWord: Bool?
   /// Version/hash of the custom-words vocabulary at record time, so recovery
   /// can note when the vocabulary has since changed. Nil when unknown.
   public let customWordsVersion: String?
@@ -138,6 +144,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     emojiFormatterEnabled: Bool,
     spokenPunctuationEnabled: Bool?,
     spokenPunctuationStartWords: [String: String]?,
+    spokenPunctuationEnglishPeriodWord: Bool?,
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
@@ -154,6 +161,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.emojiFormatterEnabled = emojiFormatterEnabled
     self.spokenPunctuationEnabled = spokenPunctuationEnabled
     self.spokenPunctuationStartWords = spokenPunctuationStartWords
+    self.spokenPunctuationEnglishPeriodWord = spokenPunctuationEnglishPeriodWord
     self.customWordsVersion = customWordsVersion
     self.llmProvider = llmProvider
     self.llmModel = llmModel
@@ -171,7 +179,8 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     SpokenPunctuationSettings(
       enabled: spokenPunctuationEnabled ?? false,
       startWordOverrides: SpokenPunctuationRules.validatedStartWords(
-        spokenPunctuationStartWords ?? [:], dropDefaults: false))
+        spokenPunctuationStartWords ?? [:], dropDefaults: false),
+      englishPeriodWord: spokenPunctuationEnglishPeriodWord ?? true)
   }
 }
 

@@ -20,7 +20,7 @@ import os
 @Suite("Auto-language spoken punctuation routing (#3624)", .tags(.productOutcome))
 struct AutoLanguageSpokenPunctuationTests {
 
-  private static let on = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:])
+  private static let on = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true)
 
   typealias Source = DictationLanguageResolver.Resolution.Source
 
@@ -63,7 +63,7 @@ struct AutoLanguageSpokenPunctuationTests {
   func routing(row: RouteRow) {
     let got = InverseTextNormalizationStep.routingLanguage(
       language: row.language, source: row.source, textLanguage: row.textLanguage, text: row.text,
-      settings: SpokenPunctuationSettings(enabled: row.enabled, startWordOverrides: row.overrides))
+      settings: SpokenPunctuationSettings(enabled: row.enabled, startWordOverrides: row.overrides, englishPeriodWord: true))
     #expect(
       got == row.expected,
       "engine \(row.language ?? "nil") text \(row.textLanguage ?? "nil") \(row.text.debugDescription)"
