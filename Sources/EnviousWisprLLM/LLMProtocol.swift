@@ -213,6 +213,10 @@ public extension LLMResult {
         break
       }
     }
+    // Transport owns whitespace adaptation. An unchanged answer must reach
+    // continuation byte-for-byte; this boundary only removes actual chatter.
+    let transportTrimmed = polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !cleaned.isEmpty, cleaned.utf8.elementsEqual(transportTrimmed.utf8) { return self }
     return LLMResult(
       polishedText: cleaned, polishMetadata: polishMetadata, stoppedEarly: stoppedEarly)
   }
