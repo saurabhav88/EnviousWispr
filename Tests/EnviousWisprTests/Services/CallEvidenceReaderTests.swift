@@ -151,6 +151,43 @@ struct CallEvidenceReaderTests {
     #expect(fixture.issued.allSatisfy { $0 > 0 && $0 <= 0.25 })
   }
 
+  @Test("Observed Zoom Home chrome permits a readable empty-role sibling, never unreadable or unsafe scope",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"),
+    arguments: ["observed", "unreadable", "sheet", "webRoot"])
+  func zoomHomeObservedEmptyRoleSibling(condition: String) {
+    let (fixture, containers) = zoomHomeFixture()
+    // Real Home capture, 2026-10-30: all 20 direct window-child roles, in order.
+    let roles = ["", "AXButton", "AXButton", "AXButton", "AXButton", "AXButton", "AXButton",
+      "AXButton", "AXButton", "AXButton", "AXGroup", "AXButton", "AXStaticText", "AXUnknown",
+      "AXUnknown", "AXButton", "AXSplitGroup", "AXButton", "AXButton", "AXButton"]
+    let siblings = roles.indices.map { index in
+      index == 16 ? containers[0] : AXUIElementCreateApplication(Int32(82_000 + index))
+    }
+    let emptyWebChild = AXUIElementCreateApplication(83_000)
+    let base = fixture.response
+    fixture.response = { f, element, attribute in
+      if CFEqual(element, f.window), attribute == "AXChildren" {
+        return .value(siblings as CFArray)
+      }
+      if let index = siblings.firstIndex(where: { CFEqual($0, element) }), index != 16,
+        attribute == "AXRole"
+      {
+        if index == 0, condition == "unreadable" { return .failed }
+        return .value((condition == "sheet" && index == 1 ? "AXSheet" : roles[index]) as CFString)
+      }
+      if condition == "webRoot" {
+        if CFEqual(element, f.page), attribute == "AXChildren" {
+          return .value([f.leave, emptyWebChild] as CFArray)
+        }
+        if CFEqual(element, emptyWebChild), attribute == "AXRole" { return .value("" as CFString) }
+      }
+      return base?(f, element, attribute)
+    }
+    let expected: Reader.Continuity = condition == "observed" ? .ended(family: .zoom, room: "pid-70000") : .unknown
+    #expect(Reader.callWindowSnapshot(family: .zoom, appPID: fixture.pid, access: fixture.access).continuity == expected)
+    #expect(fixture.refused.isEmpty)
+  }
+
   @Test("Scoped Zoom Home accepts the observed URL bridge without borrowing a title",
     arguments: [true, false])
   func zoomHomeURLBridge(nativeURL: Bool) {

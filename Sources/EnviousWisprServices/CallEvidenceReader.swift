@@ -695,7 +695,7 @@ public enum CallEvidenceReader {
       remainingNodes -= 1
       guard case .value(let raw) = boundedCopy(
         element, kAXRoleAttribute as CFString, until: deadline, access: access),
-        let value = raw as? String, !value.isEmpty
+        let value = raw as? String
       else { return nil }
       return value
     }
@@ -733,6 +733,8 @@ public enum CallEvidenceReader {
           guard let last = path.last, let values = children(last) else { return nil }
           for value in values {
             guard let valueRole = role(value) else { return nil }
+            // Zoom Home includes readable empty-role chrome; it cannot be a typed path node.
+            if valueRole.isEmpty { continue }
             if ["AXWindow", "AXSheet", "AXDialog", "AXSystemDialog", "AXDrawer"].contains(valueRole) {
               return nil
             }
