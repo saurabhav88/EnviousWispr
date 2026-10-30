@@ -15,6 +15,12 @@ import SwiftUI
 struct SpokenPunctuationConfigureSheet: View {
   @Bindable var settings: SettingsManager
   @Environment(\.dismiss) private var dismiss
+  @State private var editor: SpokenPunctuationStartWordEditor
+
+  init(settings: SettingsManager) {
+    self.settings = settings
+    _editor = State(initialValue: SpokenPunctuationStartWordEditor(settings: settings))
+  }
 
   /// One inset shared by the title, the body and the footer.
   private static let inset: CGFloat = 16
@@ -29,7 +35,7 @@ struct SpokenPunctuationConfigureSheet: View {
           Text(SpokenPunctuationCopy.configureSubtitle)
             .settingsReadingCopy()
           BrandedRow {
-            SpokenPunctuationStartWordRow(settings: settings)
+            SpokenPunctuationStartWordRow(editor: editor)
           }
           BrandedRow {
             // The row's "?" repeats its own line: there is nothing more to say, and no new claim.
@@ -56,7 +62,7 @@ struct SpokenPunctuationConfigureSheet: View {
     }
     .background(Color.stPageBg)
     .frame(minWidth: 560, minHeight: 420)
-    .onExitCommand { dismiss() }
+    .onExitCommand { close() }
   }
 
   private var titleBar: some View {
@@ -66,7 +72,7 @@ struct SpokenPunctuationConfigureSheet: View {
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
       SettingsSheetCloseButton(accessibilityTitle: SpokenPunctuationCopy.configureClose) {
-        dismiss()
+        close()
       }
     }
     .padding(.horizontal, Self.inset)
@@ -74,17 +80,21 @@ struct SpokenPunctuationConfigureSheet: View {
   }
 
   /// `Done`, filled: every change here is saved as it is made, so closing confirms rather than abandons.
-  /// Escape closes the window too (the cancel shortcut), and the Start word row settles a pending draft
-  /// when it leaves, whichever way the window closes.
   private var footer: some View {
     HStack {
       Spacer(minLength: 0)
       SettingsActionButton(
         verbatimTitle: SpokenPunctuationCopy.configureDone, isEnabled: true, emphasis: .filled,
         shortcut: .defaultAction
-      ) { dismiss() }
+      ) { close() }
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
+  }
+
+  /// Done, Escape and the close button. A typed start word is saved first; if it is refused the window
+  /// stays open with the reason under the field, and the next close goes through.
+  private func close() {
+    if editor.settleForClosing() { dismiss() }
   }
 }

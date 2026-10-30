@@ -291,6 +291,33 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
   }
 
+  @Test("Closing the window saves a valid draft and closes")
+  func closingSavesAValidDraft() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.selectLanguage("fr")
+    editor.userEdited("Dictée")
+    #expect(editor.settleForClosing())
+    #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "Dictée"])
+  }
+
+  @Test("Closing the window with a refused draft stays open once, shows why, then closes")
+  func closingWithARefusedDraftStaysOpen() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.userEdited("zwei Worte")
+    #expect(editor.settleForClosing() == false)
+    #expect(editor.rejection != nil, "the reason is on screen")
+    #expect(settings.spokenPunctuation.startWordOverrides.isEmpty)
+    #expect(editor.settleForClosing(), "the old word is back, so the next close goes through")
+  }
+
+  @Test("Closing the window with nothing typed closes")
+  func closingWithNothingTypedCloses() {
+    let editor = SpokenPunctuationStartWordEditor(settings: Self.freshSettings())
+    #expect(editor.settleForClosing())
+  }
+
   @Test("The no-start-word warning shows for a blank draft before it is committed")
   func warningShowsForABlankDraft() {
     let settings = Self.freshSettings()

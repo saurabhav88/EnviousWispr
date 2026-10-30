@@ -10,12 +10,9 @@ import SwiftUI
 /// live in `SpokenPunctuationStartWordEditor`; this view only draws its state. Keyboard, VoiceOver,
 /// focus and the rendered layout are proven by hand in the dev app, not by this file's declarations.
 struct SpokenPunctuationStartWordRow: View {
-  @State private var editor: SpokenPunctuationStartWordEditor
+  /// Owned by the window, so its Done button can settle the draft before closing.
+  let editor: SpokenPunctuationStartWordEditor
   @FocusState private var fieldFocused: Bool
-
-  init(settings: SettingsManager) {
-    _editor = State(initialValue: SpokenPunctuationStartWordEditor(settings: settings))
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -33,9 +30,9 @@ struct SpokenPunctuationStartWordRow: View {
         // Lines up under the row's title, past its icon (the Unload row's pattern).
         .padding(.leading, 37)
     }
-    // The row leaves when the window closes (Done, Escape, the close button, or the Settings window
-    // going away). A pending draft is settled for the language it was typed for, never lost into
-    // another one.
+    // The row leaves when the window closes. Done, Escape and the close button settle first and stay
+    // open on a refusal (`SpokenPunctuationConfigureSheet.close`); this catches the Settings window
+    // going away. A pending draft is settled for the language it was typed for, never lost into another.
     .onDisappear { editor.settleBeforeLeaving() }
   }
 

@@ -154,4 +154,13 @@ final class SpokenPunctuationStartWordEditor {
   func settleBeforeLeaving() {
     commitDraft()
   }
+
+  /// #4216: the window's Done, Escape or close button. Settles a pending draft and says whether the
+  /// window may close: false only when THIS draft was refused, so the reason is on screen before the
+  /// window goes. A reason left from an earlier commit does not hold the window open.
+  func settleForClosing() -> Bool {
+    guard hasUnsavedDraft else { return true }
+    commitDraft()
+    return rejection == nil
+  }
 }
