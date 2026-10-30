@@ -160,6 +160,8 @@ package final class WisprBootstrapper {
     /// #3736: plays sample pills through `recordingOverlay` for Settings > Diagnostics > Pill
     /// Preview. Absent from Release.
     let pillPreviewController: PillPreviewController
+    /// #4232: plays call pop-ups in their own panel for the same Diagnostics section.
+    let callPopupPreviewController: CallPopupPreviewController
   #endif
 
   /// #996: Self-Learning Dictionary as ONE app-lifetime slot (the Quick Add
@@ -2740,6 +2742,13 @@ package final class WisprBootstrapper {
       discovery: callSources)
     meetingBox.callDetection = callDetection
     self.callDetection = callDetection
+    #if DEBUG
+      self.callPopupPreviewController = CallPopupPreviewController(
+        presenter: CallPromptPanel(
+          anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
+          makePanel: overlayEffects.makePanel),
+        realPopupIsShowing: { [callDetection] in callDetection.isPromptShowing })
+    #endif
     self.meetingMemoryPressure = meetingMemoryPressure
     self.transcriptCoordinator = transcriptCoordinator
     self.liveRecordingState = liveRecordingState
@@ -3197,6 +3206,7 @@ private struct MainWindowRoot: View {
       .environment(b.diagnosticsCoordinator)
       #if DEBUG
         .environment(b.pillPreviewController)
+        .environment(b.callPopupPreviewController)
       #endif
       .environment(b.languageSuggestionPresenter)
       .environment(b.updateCoordinatorHolder)
