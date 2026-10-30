@@ -212,8 +212,10 @@ struct MeetingTranscriptReplacementTests {
     harness.jobBehavior = Self.rerunResult
     harness.writeGate.failWrites { $0.state == .ready && $0.echoTurnIDs == ["mic-9"] }
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    // #4218: the queue Task is set before `transcribeAgain` returns but claims `processing`
+    // later, so the drain ending (not `processing == nil`) proves this pass ran.
     await eventually("pass over and settled") {
-      harness.coordinator.processing == nil
+      !harness.coordinator.hasFinalPassWork
         && !harness.coordinator.isCommitReceiptPending(meetingID)
     }
     #expect(hasNoReceipt(harness, meetingID))
@@ -278,7 +280,7 @@ struct MeetingTranscriptReplacementTests {
       $0 = { try? FileManager.default.moveItem(at: recordURL, to: hidden) }
     }
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
-    await eventually("pass over") { harness.coordinator.processing == nil }
+    await eventually("pass over") { !harness.coordinator.hasFinalPassWork }
     #expect(harness.coordinator.isCommitReceiptPending(meetingID))
     await harness.coordinator.rename(meetingID: meetingID, title: "Refused")
     #expect(!FileManager.default.fileExists(atPath: recordURL.path), "the rename wrote nothing")
