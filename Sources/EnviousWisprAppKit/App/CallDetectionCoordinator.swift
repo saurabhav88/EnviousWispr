@@ -19,7 +19,7 @@ final class CallDetectionCoordinator {
     var stopMeeting: @MainActor () async -> Void
     /// A Start for a call (`MeetingStartFlow.requestStart(from: .detected, callApp:)`).
     var requestStart: @MainActor (CallAppFamily?) async -> MeetingStartFlow.Outcome
-    /// The user's own Start from the panel ("Start a new recording"): the manual route, which
+    /// The user's own Start from the panel (Start recording on the failed-switch card): the manual route, which
     /// may ask macOS or show the explainer because the user asked for it.
     var startByUser: @MainActor (CallAppFamily?) async -> MeetingStartFlow.Outcome
     /// Whether a detected Start would stop for setup, a macOS prompt or the explainer
@@ -43,7 +43,21 @@ final class CallDetectionCoordinator {
     var makePresenter: @MainActor (@escaping @MainActor () -> NSRect?) -> any CallPromptPresenting
     /// Tests can supply microphone frames without starting real hardware.
     var pollMicrophone: (@MainActor () -> Void)? = nil
+    /// #4232: the attempt a recording will transcribe (`MeetingCoordinator.pendingAttemptID`),
+    /// read before a call-flow stop so its notes card follows that attempt only.
+    var pendingAttemptID: @MainActor (UUID) -> UUID? = { _ in nil }
+    /// #4232: where the followed attempt's notes stand (`MeetingCoordinator.notesFollowUp`).
+    var notesFollowUp: @MainActor (UUID, UUID) -> MeetingCoordinator.NotesFact = { _, _ in .ended }
+    /// #4232: opens a meeting in History (the menu's Show in History route).
+    var showMeeting: @MainActor (UUID) -> Void = { _ in }
+    /// #4232: whether the Mac's sound is being captured for this recording now.
+    var callSoundCaptured: @MainActor (UUID) -> Bool = { _ in false }
   }
+
+  /// #4232 card lifetimes: the writing card's cap, the ready card, the menu-bar start card.
+  nonisolated static let notesWritingCap: TimeInterval = 120
+  nonisolated static let notesReadyLength: TimeInterval = 60
+  nonisolated static let manualStartLength: TimeInterval = 2
 
   /// Seconds between polls while a call may be on; without the process-list listener, between
   /// every poll.
@@ -73,8 +87,38 @@ final class CallDetectionCoordinator {
   private var pressRefreshTask: Task<Void, Never>?
   private var activePress: PendingPress?
   private var queuedPress: PendingPress?
-  /// The policy token the panel's buttons were last drawn with.
-  private var drawnToken = -1
+  /// What the panel was last drawn with: the policy token for a policy card, a presentation
+  /// generation for the coordinator's own cards.
+  private var drawnKey: DrawKey?
+  private enum DrawKey: Equatable {
+    case policy(Int)
+    case own(Int)
+  }
+  /// #4232: a countdown the user closed with ×. Its token is never redrawn; the countdown goes on.
+  private var hiddenToken: Int?
+  /// #4232: the attempt each call-flow stop froze before awaiting the stop, by meeting.
+  private var frozenAttempts: [UUID: UUID] = [:]
+  /// #4232: the one recording whose notes the panel follows.
+  private struct NotesFollow {
+    let meetingID: UUID
+    let attemptID: UUID
+    /// New when Ready replaces Writing, so a Writing button can never act on Ready.
+    var generation: Int
+    var writingShownAt: Date?
+    var writingHidden = false
+    var readySince: Date?
+  }
+  private var follow: NotesFollow?
+  /// #4232: the two-second menu-bar start card.
+  private struct ManualCard {
+    let recordingID: UUID
+    /// The linked call, or nil for the microphone card (its Mac-sound line is read each draw).
+    let call: CallAppIdentity?
+    let until: Date
+    let generation: Int
+  }
+  private var manualCard: ManualCard?
+  private var ownGeneration = 0
 
   init(dependencies: Dependencies, discovery: CallSourceDiscovery? = nil) {
     deps = dependencies
@@ -124,6 +168,8 @@ final class CallDetectionCoordinator {
     timer = nil
     if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
     wakeObserver = nil
+    follow = nil
+    manualCard = nil
     panel.hide()
   }
 
@@ -200,6 +246,16 @@ final class CallDetectionCoordinator {
       current.meeting == .recording(meetingID: id) ? id : nil
     }
     let commands = policy.settledStart(request, recordingID: matching, current)
+    // The failed-switch card's own Start recording rides the menu route but is no menu-bar
+    // start; the flow marks it, also across the call-sound explainer.
+    if request.route == .menu, !request.fromCallPanel, let matching {
+      // #4232: a menu-bar Start says what it records, for two seconds. Only for the recording
+      // that still runs; the call is named only when the policy linked this start to one.
+      ownGeneration += 1
+      manualCard = ManualCard(
+        recordingID: matching, call: policy.linkedCall(matching).map(CallAppIdentity.init),
+        until: current.now.addingTimeInterval(Self.manualStartLength), generation: ownGeneration)
+    }
     draw()
     run(commands)
   }
@@ -266,6 +322,9 @@ final class CallDetectionCoordinator {
         }
       case .stop(let operation, let meetingID):
         let target = refreshRequest(policy.refreshTarget(operation: operation))
+        // #4232: frozen before the stop can suspend, so the notes card follows this recording's
+        // attempt and never one that replaced it meanwhile.
+        if let attempt = deps.pendingAttemptID(meetingID) { frozenAttempts[meetingID] = attempt }
         Task {
           // Only the recording the policy meant: one started since (from the menu) is never
           // stopped by a late command.
@@ -275,6 +334,7 @@ final class CallDetectionCoordinator {
           // Fresh readings first: a switch checks the new call against them.
           await self.refreshNow(target)
           self.deliver(.stopFinished(operation: operation))
+          self.frozenAttempts[meetingID] = nil
         }
       case .emit(let family, let answer):
         deps.emit(.init(family: family, answer: answer, mode: mode.rawValue))
@@ -286,6 +346,12 @@ final class CallDetectionCoordinator {
         deps.settings.meetingCallFirstTipShown = true
       case .openMeetingPage:
         deps.showMeetingPage()
+      case .followNotes(let meetingID, _):
+        // No frozen attempt: nothing is known to follow, so no card (plan §3.5).
+        guard let attempt = frozenAttempts.removeValue(forKey: meetingID) else { continue }
+        ownGeneration += 1
+        follow = NotesFollow(meetingID: meetingID, attemptID: attempt, generation: ownGeneration)
+        draw()
       }
     }
   }
@@ -310,31 +376,134 @@ final class CallDetectionCoordinator {
 
   // MARK: - Panel
 
-  /// Draws `policy.interaction`; the buttons carry the token it was drawn with.
+  /// Draws the one card the panel shows. Priority: the policy's card, then the menu-bar start
+  /// card, then the notes follow-up (#4232). Every card's clock runs whether or not it is drawn,
+  /// and a card that expired while covered never comes back.
   private func draw() {
     guard !readStopped else { panel.hide(); return }
-    guard let content = content(policy.interaction) else {
-      if panel.isShowing || panel.content != nil { panel.hide() }
-      drawnToken = policy.token
-      return
+    let now = deps.now()
+    let followed = followContent(now)
+    if let card = manualCard {
+      // It says a recording is running: gone the moment that recording is not.
+      let running: Bool
+      if case .recording(card.recordingID, _) = deps.meetingPhase() { running = true } else { running = false }
+      if now >= card.until || !running { manualCard = nil }
     }
-    if policy.token != drawnToken || panel.content != content || !panel.isShowing {
-      panel.show(content, actions: actions(token: policy.token))
+    if let content = content(policy.interaction) {
+      if policy.token == hiddenToken {
+        hidePanel()
+        return
+      }
+      show(content, key: .policy(policy.token)) { self.actions(token: self.policy.token, for: content) }
+    } else if let card = manualCard {
+      let identity =
+        card.call ?? .microphone(withCallSound: deps.callSoundCaptured(card.recordingID))
+      show(.manualStart(identity), key: .own(card.generation)) { CallPromptActions() }
+    } else if let followed {
+      show(followed.content, key: .own(followed.generation)) {
+        self.followActions(generation: followed.generation)
+      }
+    } else {
+      hidePanel()
     }
-    drawnToken = policy.token
+  }
+
+  private func show(
+    _ content: CallPromptContent, key: DrawKey, actions: () -> CallPromptActions
+  ) {
+    if key != drawnKey || panel.content != content || !panel.isShowing {
+      panel.show(content, actions: actions())
+    }
+    drawnKey = key
+    if case .own = key, case .notesWriting = content, follow?.writingShownAt == nil {
+      follow?.writingShownAt = deps.now()
+    }
+  }
+
+  private func hidePanel() {
+    if panel.isShowing || panel.content != nil { panel.hide() }
+    drawnKey = nil
+  }
+
+  /// The notes follow-up's card now, with its generation; retires the follow-up when its
+  /// recording ended, was replaced, or its card expired. Its deadlines are stored once.
+  private func followContent(_ now: Date) -> (content: CallPromptContent, generation: Int)? {
+    guard var current = follow else { return nil }
+    if case .recording(let id, _) = deps.meetingPhase(), id != current.meetingID {
+      follow = nil
+      return nil
+    }
+    switch deps.notesFollowUp(current.meetingID, current.attemptID) {
+    case .ended:
+      follow = nil
+      return nil
+    case .ready:
+      if current.readySince == nil {
+        ownGeneration += 1
+        current.generation = ownGeneration
+      }
+      let since = current.readySince ?? now
+      current.readySince = since
+      guard now < since.addingTimeInterval(Self.notesReadyLength) else {
+        follow = nil
+        return nil
+      }
+      follow = current
+      return (.notesReady(meetingID: current.meetingID), current.generation)
+    case .writing:
+      if let shown = current.writingShownAt,
+        now >= shown.addingTimeInterval(Self.notesWritingCap)
+      {
+        current.writingHidden = true
+      }
+      follow = current
+      return current.writingHidden ? nil : (.notesWriting, current.generation)
+    }
+  }
+
+  private func followActions(generation: Int) -> CallPromptActions {
+    func current() -> NotesFollow? {
+      guard let follow, follow.generation == generation else { return nil }
+      return follow
+    }
+    return CallPromptActions(
+      open: { [weak self] in
+        guard let self, let followed = current() else { return }
+        // Checked again now: the meeting may have been deleted or transcribed again since the
+        // card was drawn.
+        guard self.followContent(self.deps.now())?.generation == generation,
+          self.deps.notesFollowUp(followed.meetingID, followed.attemptID) == .ready
+        else {
+          self.draw()
+          return
+        }
+        self.follow = nil
+        self.deps.showMeeting(followed.meetingID)
+        self.draw()
+      },
+      dismiss: { [weak self] in
+        guard let self, let followed = current() else { return }
+        // × on Writing only hides it; × on Ready ends the follow-up.
+        if followed.readySince == nil { self.follow?.writingHidden = true } else { self.follow = nil }
+        self.draw()
+      })
+  }
+
+  private func identity(episode: Int, family: CallAppFamily) -> CallAppIdentity {
+    policy.call(episode: episode).map(CallAppIdentity.init) ?? .app(family, bundleID: nil)
   }
 
   private func content(_ interaction: CallDetectionPolicy.Interaction) -> CallPromptContent? {
     switch interaction {
     case .none: nil
-    case .ask(_, let family, _): .ask(appName: family.displayName)
-    case .switchCall(_, let family, _, _): .switchMeeting(appName: family.displayName)
-    case .endConfirmation: .endConfirmation
-    case .countdown(_, let deadline):
-      .countdown(secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
-    case .stopped(.userConfirmed, _, _): .stoppedByUser
-    case .stopped(.callEnded, _, _): .stopped
-    case .stopped(.switchNotConfirmed, _, _): .switchNotConfirmed
+    case .ask(let e, let family, _): .ask(identity(episode: e, family: family))
+    case .switchCall(let e, let family, _, _): .switchMeeting(identity(episode: e, family: family))
+    case .endConfirmation(let e, let family): .endConfirmation(identity(episode: e, family: family))
+    case .countdown(let e, let deadline):
+      .countdown(
+        policy.call(episode: e).map(CallAppIdentity.init),
+        secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
+    case .switchNotConfirmed(let family, _): .switchNotConfirmed(.app(family, bundleID: nil))
     case .note(.firstTip, _): .firstTip
     case .note(.lastTip(let rule, let family), _):
       // Named by the switch the user can turn off: a browser meeting's is "Meetings in a
@@ -349,14 +518,24 @@ final class CallDetectionCoordinator {
     }
   }
 
-  private func actions(token: Int) -> CallPromptActions {
+  private func actions(token: Int, for content: CallPromptContent) -> CallPromptActions {
     func press(_ button: CallDetectionPolicy.Button) -> @MainActor () -> Void {
       { [weak self] in self?.pressed(button, token: token) }
     }
-    return CallPromptActions(
-      yes: press(.yes), no: press(.no), stopRecording: press(.stopRecording), keepRecording: press(.keepRecording),
+    var actions = CallPromptActions(
+      yes: press(.yes), no: press(.no), stopRecording: press(.stopRecording),
+      keepRecording: press(.keepRecording), endRecording: press(.endRecording),
       startNewRecording: press(.startNewRecording), openSettings: press(.openSettings),
       dismiss: press(.close))
+    if case .countdown = content {
+      // #4232: × hides the countdown and changes nothing else; the recording still stops.
+      actions.dismiss = { [weak self] in
+        guard let self, self.policy.token == token else { return }
+        self.hiddenToken = token
+        self.draw()
+      }
+    }
+    return actions
   }
 
   private func pressed(_ button: CallDetectionPolicy.Button, token: Int) {

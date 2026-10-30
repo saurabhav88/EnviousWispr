@@ -61,10 +61,11 @@
       case .ask: "ask"
       case .switchMeeting: "switchMeeting"
       case .countdown: "countdown"
-      case .stopped: "stopped"
-      case .stoppedByUser: "stoppedByUser"
       case .endConfirmation: "endConfirmation"
       case .switchNotConfirmed: "switchNotConfirmed"
+      case .notesWriting: "notesWriting"
+      case .notesReady: "notesReady"
+      case .manualStart: "manualStart"
       case .needsAttention: "needsAttention"
       case .couldNotStart: "couldNotStart"
       case .firstTip: "firstTip"
@@ -72,14 +73,14 @@
       }
     }
 
-    @Test("every call pop-up kind has exactly one row, with a unique id")
+    @Test("every call pop-up kind has a row, and every row has a unique id")
     func everyKindHasARow() {
       let names = CallPopupPreviewCatalog.all.map { Self.caseName($0.content) }
-      #expect(Set(names).count == names.count)
       #expect(
         Set(names) == [
-          "ask", "switchMeeting", "countdown", "stopped", "stoppedByUser", "endConfirmation",
-          "switchNotConfirmed", "needsAttention", "couldNotStart", "firstTip", "lastTip",
+          "ask", "switchMeeting", "countdown", "endConfirmation", "switchNotConfirmed",
+          "notesWriting", "notesReady", "manualStart", "needsAttention", "couldNotStart",
+          "firstTip", "lastTip",
         ])
       let ids = CallPopupPreviewCatalog.all.map(\.id)
       #expect(Set(ids).count == ids.count)
@@ -88,16 +89,16 @@
     @Test("Play shows the selected card in the preview panel")
     func playShowsTheCard() {
       let rig = Rig()
-      rig.play("ask")
-      #expect(rig.panel.content == .ask(appName: "Microsoft Teams"))
-      #expect(rig.controller.outcome == .shown("Offer to record (Microsoft Teams)"))
+      rig.play("askTeams")
+      #expect(rig.panel.content == .ask(.app(.teams, bundleID: nil)))
+      #expect(rig.controller.outcome == .shown("Offer to record (Microsoft Teams app)"))
     }
 
     @Test("Play refuses while a real call pop-up is on screen")
     func playRefusesOverARealPopup() {
       let rig = Rig()
       rig.realShowing = true
-      rig.play("ask")
+      rig.play("askTeams")
       #expect(rig.panel.shown.isEmpty)
       #expect(rig.controller.outcome == .notShown("a real call pop-up is on screen"))
     }
@@ -112,32 +113,39 @@
       #expect(rig.controller.outcome == .notShown("a real call pop-up appeared"))
     }
 
-    @Test("the countdown ticks down, hands over to Recording stopped, which then closes")
+    @Test("the countdown ticks down, hands over to Writing your notes, then Your notes are ready")
     func countdownRunsLikeARealCallEnd() {
       let rig = Rig()
+      let teams = CallAppIdentity.app(.teams, bundleID: nil)
       rig.play("countdown")
-      #expect(rig.panel.content == .countdown(secondsLeft: 10))
+      #expect(rig.panel.content == .countdown(teams, secondsLeft: 10))
       rig.advance(1.2)
-      #expect(rig.panel.content == .countdown(secondsLeft: 9))
+      #expect(rig.panel.content == .countdown(teams, secondsLeft: 9))
       rig.advance(8.0)
-      #expect(rig.panel.content == .countdown(secondsLeft: 1))
+      #expect(rig.panel.content == .countdown(teams, secondsLeft: 1))
       rig.advance(1.0)
-      #expect(rig.panel.content == .stopped)
-      rig.advance(CallDetectionPolicy.stoppedOffer - 0.5)
-      #expect(rig.panel.content == .stopped)
+      #expect(rig.panel.content == .notesWriting)
+      rig.advance(CallPopupPreviewCatalog.chainedWritingLength)
+      let ready = CallPromptContent.notesReady(meetingID: CallPopupPreviewCatalog.previewMeeting)
+      #expect(rig.panel.content == ready)
+      rig.advance(CallDetectionCoordinator.notesReadyLength - 0.5)
+      #expect(rig.panel.content == ready)
       rig.advance(0.5)
       #expect(!rig.panel.isShowing)
-      #expect(rig.controller.outcome == .ended("Countdown, then Recording stopped"))
+      #expect(
+        rig.controller.outcome
+          == .ended("Countdown, then Writing your notes, then Your notes are ready"))
     }
 
     @Test(
       "each card closes after its real lifetime; Did your call end? waits for an answer",
       arguments: [
-        ("ask", CallDetectionPolicy.promptTimeout),
+        ("askTeams", CallDetectionPolicy.promptTimeout),
         ("switchMeeting", CallDetectionPolicy.promptTimeout),
-        ("stopped", CallDetectionPolicy.stoppedOffer),
-        ("stoppedByUser", CallDetectionPolicy.stoppedOffer),
         ("switchNotConfirmed", CallDetectionPolicy.stoppedOffer),
+        ("notesWriting", CallDetectionCoordinator.notesWritingCap),
+        ("notesReady", CallDetectionCoordinator.notesReadyLength),
+        ("manualStartMic", CallDetectionCoordinator.manualStartLength),
         ("firstTip", CallDetectionPolicy.noteTimeout),
         ("lastTip", CallDetectionPolicy.noteTimeout),
         ("needsAttention", CallDetectionPolicy.noteTimeout),
@@ -157,16 +165,16 @@
       let rig = Rig()
       rig.play("endConfirmation")
       rig.advance(3_600)
-      #expect(rig.panel.content == .endConfirmation)
+      #expect(rig.panel.content == .endConfirmation(.web(.googleMeet, browserBundleID: "com.google.chrome")))
     }
 
     @Test("a button only closes the preview and says which button it was")
     func buttonClosesAndReports() {
       let rig = Rig()
-      rig.play("stopped")
+      rig.play("notesReady")
       rig.panel.actions.dismiss()
       #expect(!rig.panel.isShowing)
-      #expect(rig.controller.outcome == .ended("Recording stopped (call ended)"))
+      #expect(rig.controller.outcome == .ended("Your notes are ready"))
       #expect(
         rig.controller.lastEvent == "Pressed Close. A preview only closes; nothing else happens.")
     }
@@ -174,7 +182,7 @@
     @Test("a button on an older card cannot close a newer one")
     func staleButtonIsIgnored() {
       let rig = Rig()
-      rig.play("ask")
+      rig.play("askTeams")
       let oldNo = rig.panel.actions.no
       rig.play("firstTip")
       oldNo()
@@ -184,10 +192,11 @@
 
     @Test("each card's buttons close it and report the label that card shows",
       arguments: [
-        ("ask", "yes", "Start recording"), ("switchMeeting", "yes", "Start a new recording"),
+        ("askTeams", "yes", "Start recording"), ("switchMeeting", "yes", "Start recording"),
         ("switchMeeting", "no", "Not now"), ("endConfirmation", "keepRecording", "Keep recording"),
-        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "keepRecording", "Keep recording"),
-        ("stoppedByUser", "startNewRecording", "Start a new recording"), ("needsAttention", "openSettings", "Open settings"),
+        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "endRecording", "End recording"),
+        ("switchNotConfirmed", "startNewRecording", "Start recording"), ("switchNotConfirmed", "no", "Not now"),
+        ("notesReady", "open", "Open"), ("needsAttention", "openSettings", "Open settings"),
       ])
     func buttonsReportTheirCardLabel(id: String, button: String, label: String) throws {
       let rig = Rig()
@@ -197,7 +206,7 @@
       action()
       #expect(!rig.panel.isShowing)
       #expect(rig.controller.lastEvent == "Pressed \(label). A preview only closes; nothing else happens.")
-      // A countdown closed by Keep recording never hands over to Recording stopped.
+      // A countdown closed by End recording never hands over to the notes cards.
       rig.advance(CallDetectionPolicy.countdownLength + 1)
       #expect(!rig.panel.isShowing)
     }
@@ -209,6 +218,8 @@
       let panel = CallPromptPanel(anchor: { nil }, makePanel: { driver }, capturable: capturable)
       panel.show(.firstTip, actions: CallPromptActions())
       #expect(driver.sharingType == (capturable ? .readOnly : .none))
+      // The card draws its own shadow; a window shadow traced its glow as a rough black frame.
+      #expect(driver.hasShadow == false)
     }
 
     @Test("Dismiss closes the preview")

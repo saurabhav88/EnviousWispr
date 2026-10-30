@@ -12,13 +12,18 @@ struct CallPromptView: View {
 
   var body: some View {
     if let content = model.content {
-      CallPromptCard(content: content, actions: model.actions, resourceTransform: resourceTransform,
-        reduceMotionOverride: reduceMotionOverride)
-        .id(model.presentationID)
+      CallPromptCard(
+        content: content, actions: model.actions, resourceTransform: resourceTransform,
+        reduceMotionOverride: reduceMotionOverride
+      )
+      .id(model.presentationID)
     }
   }
 }
 
+/// The slim EnviousMeet card (#4232): one row with the call's picture, a single line and ×,
+/// then at most two 32 pt buttons. No name header: the rainbow line already says it is ours
+/// (founder 2026-10-30).
 private struct CallPromptCard: View {
   let content: CallPromptContent
   let actions: CallPromptActions
@@ -27,22 +32,17 @@ private struct CallPromptCard: View {
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
   @State private var entered = false
-  @State private var waveProgress = 0.0
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .center, spacing: 14) {
-        WisprLogoMark(waveProgress: reduceMotion ? 0 : waveProgress)
-          .frame(width: 56, height: 56)
-          .frame(width: 64, height: 64)
-          .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: 16))
-          .animation(reduceMotion ? nil : .easeInOut(duration: 1.1).delay(0.3), value: waveProgress)
-        VStack(alignment: .leading, spacing: 4) {
-          Text(resource(title(content)))
-            .font(.system(size: 19, weight: .bold))
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .center, spacing: 12) {
+        picture
+        VStack(alignment: .leading, spacing: 2) {
+          Text(resource(title))
+            .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(Color.stTextPrimary)
             .fixedSize(horizontal: false, vertical: true)
-          if let detail = detail(content) {
+          if let detail {
             Text(resource(detail))
               .font(.system(size: 14))
               .foregroundStyle(Color.stTextSecondary)
@@ -50,10 +50,17 @@ private struct CallPromptCard: View {
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Room for the × in the corner, so a long title never runs under it.
+        .padding(.trailing, content.closes ? 18 : 0)
+        if case .manualStart = content { recordingDot }
       }
-      buttons(content)
+      buttons
     }
-    .padding(18)
+    .padding(.vertical, 14)
+    .padding(.horizontal, 16)
+    .overlay(alignment: .topTrailing) {
+      if content.closes { closeButton.padding(6) }
+    }
     .frame(width: 340, alignment: .leading)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 16))
     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.obRainbow, lineWidth: 1))
@@ -65,48 +72,120 @@ private struct CallPromptCard: View {
     .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.7), value: entered)
     .padding(20)
     .accessibilityElement(children: .contain)
-    .onAppear {
-      entered = true
-      waveProgress = reduceMotion ? 0 : 1
-    }
+    .onAppear { entered = true }
     .onDisappear(perform: stopMotion)
     .onChange(of: reduceMotion) { _, enabled in
       if enabled { stopMotion() }
     }
   }
 
+  private var closeButton: some View {
+    Button(action: actions.dismiss) {
+        Image(systemName: "xmark")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(Color.stTextTertiary)
+          .frame(width: 24, height: 24)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(
+        Text(
+          resource(LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."))
+        ))
+  }
+
+  @ViewBuilder private var picture: some View {
+    switch content {
+    case .notesWriting:
+      CallNotesLips(size: 40, animated: !reduceMotion)
+    case .notesReady:
+      CallNotesLips(size: 40, animated: false)
+    case .ask(let identity), .switchMeeting(let identity), .endConfirmation(let identity),
+      .switchNotConfirmed(let identity), .manualStart(let identity), .countdown(let identity?, _):
+      CallAppIdentityTile(identity: identity, size: 40)
+    case .countdown(nil, _), .needsAttention, .couldNotStart, .firstTip, .lastTip:
+      CallNotesLips(size: 40, animated: false)
+    }
+  }
+
+  private var recordingDot: some View {
+    Circle()
+      .fill(Color(red: 1, green: 0.353, blue: 0.416))
+      .frame(width: 8, height: 8)
+      .accessibilityHidden(true)
+  }
+
   private func stopMotion() {
     var transaction = Transaction()
     transaction.disablesAnimations = true
-    withTransaction(transaction) {
-      entered = true
-      waveProgress = 0
-    }
+    withTransaction(transaction) { entered = true }
   }
 
   private func resource(_ value: LocalizedStringResource) -> LocalizedStringResource {
     resourceTransform?(value) ?? value
   }
 
-  private func title(_ content: CallPromptContent) -> LocalizedStringResource {
+  private var title: LocalizedStringResource {
     switch content {
-    case .ask:
+    case .ask(let identity) where identity.family == .slack:
       LocalizedStringResource(
-        "Want me to take notes?", comment: "EnviousMeet: friendly question when a call app uses the microphone.")
-    case .switchMeeting(let app):
+        "Take notes on this Slack huddle?",
+        comment:
+          "EnviousMeet: a Slack huddle uses the microphone; recording is offered, not started.")
+    case .ask(let identity):
       LocalizedStringResource(
-        "New call in \(app). Start a new recording?",
-        comment: "EnviousMeet: a new call started while a meeting records; the app's name.")
+        "Take notes on this \(identity.shortName) call?",
+        comment:
+          "EnviousMeet: a call app uses the microphone; the app's short name. Recording is offered, not started."
+      )
+    case .switchMeeting(let identity):
+      LocalizedStringResource(
+        "New \(identity.shortName) call. Take notes on it instead?",
+        comment: "EnviousMeet: a new call started while a meeting records; the app's short name.")
     case .endConfirmation:
       LocalizedStringResource(
-        "Did your call end?", comment: "EnviousMeet: uncertain browser page ending; recording continues until the user explicitly stops it.")
-    case .countdown(let seconds):
+        "Did your call end?",
+        comment:
+          "EnviousMeet: uncertain browser page ending; recording continues until the user explicitly stops it."
+      )
+    case .countdown(_, let seconds):
       LocalizedStringResource(
-        "Meeting ending in \(seconds) seconds",
+        "Recording stops in \(seconds) seconds",
         comment: "EnviousMeet: the call ended; the recording stops after this many seconds.")
-    case .stopped, .stoppedByUser, .switchNotConfirmed:
+    case .switchNotConfirmed(let identity):
       LocalizedStringResource(
-        "Recording stopped", comment: "EnviousMeet: the detected meeting stopped.")
+        "Couldn't confirm the new \(identity.shortName) call",
+        comment:
+          "EnviousMeet: a switch stopped the old recording, but the new call could not be checked; the app's short name."
+      )
+    case .notesWriting:
+      LocalizedStringResource(
+        "Meeting recorded", comment: "EnviousMeet: the call ended and its recording is saved.")
+    case .notesReady:
+      LocalizedStringResource(
+        "Your notes are ready",
+        comment: "EnviousMeet: the meeting's transcript is saved and in History.")
+    case .manualStart(.microphone(let withCallSound)):
+      withCallSound
+        ? LocalizedStringResource(
+          "Taking notes from microphone and Mac sound",
+          comment:
+            "EnviousMeet: a recording started from the menu bar, with no call; it records the microphone and the Mac's sound."
+        )
+        : LocalizedStringResource(
+          "Taking notes from microphone",
+          comment:
+            "EnviousMeet: a recording started from the menu bar, with no call; it records the microphone only."
+        )
+    case .manualStart(let identity) where identity.family == .slack:
+      LocalizedStringResource(
+        "Taking notes on this Slack huddle",
+        comment: "EnviousMeet: a recording started from the menu bar during a Slack huddle.")
+    case .manualStart(let identity):
+      LocalizedStringResource(
+        "Taking notes on this \(identity.shortName) call",
+        comment:
+          "EnviousMeet: a recording started from the menu bar during a call; the app's short name.")
     case .needsAttention:
       LocalizedStringResource(
         "EnviousMeet needs your attention before it can record",
@@ -128,24 +207,18 @@ private struct CallPromptCard: View {
     }
   }
 
-  private func detail(_ content: CallPromptContent) -> LocalizedStringResource? {
+  private var detail: LocalizedStringResource? {
     switch content {
-    case .ask(let app):
-      LocalizedStringResource(
-        "\(app) is using the microphone. I can start a recording.",
-        comment: "EnviousMeet: observed microphone use, including prejoin; the app name. Recording is offered, not started.")
     case .endConfirmation:
       LocalizedStringResource(
         "I'll keep recording unless you choose Stop recording.",
-        comment: "EnviousMeet: uncertain browser ending only, never the native countdown. No answer or Keep recording continues recording.")
-    case .stopped:
-      // No promise about the transcript: a close that timed out finishes on the next launch.
+        comment:
+          "EnviousMeet: uncertain browser ending only, never the native countdown. No answer or Keep recording continues recording."
+      )
+    case .notesWriting:
       LocalizedStringResource(
-        "The call ended.", comment: "EnviousMeet: under Recording stopped.")
-    case .switchNotConfirmed:
-      LocalizedStringResource(
-        "The new call could not be confirmed.",
-        comment: "EnviousMeet: under Recording stopped, after a switch to a new call that could not be checked.")
+        "Writing your notes…",
+        comment: "EnviousMeet: under Meeting recorded, while the transcript is written.")
     case .couldNotStart:
       LocalizedStringResource(
         "Open EnviousMeet to see why.",
@@ -154,95 +227,123 @@ private struct CallPromptCard: View {
     }
   }
 
-  @ViewBuilder private func buttons(_ content: CallPromptContent) -> some View {
-    HStack(spacing: 8) {
-      switch content {
-      case .ask, .switchMeeting:
-        button(
-          content.isSwitch
-            ? LocalizedStringResource("Start a new recording", comment: "EnviousMeet: switch to the newly detected call.")
-            : LocalizedStringResource("Start recording", comment: "EnviousMeet: accept the offered call recording."),
-          primary: true
-        ) {
-          actions.yes()
-        }
-        button(
-          LocalizedStringResource("Not now", comment: "EnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown."),
-          primary: false
-        ) {
-          actions.no()
-        }
-      case .endConfirmation:
-        button(
-          LocalizedStringResource("Stop recording", comment: "EnviousMeet: explicitly confirm stopping after an uncertain browser ending."),
-          primary: false
-        ) { actions.stopRecording() }
-        button(
-          LocalizedStringResource("Keep recording", comment: "EnviousMeet: keep recording after an uncertain browser ending."),
-          primary: true
-        ) { actions.keepRecording() }
-      case .countdown:
-        button(
-          LocalizedStringResource(
-            "Keep recording", comment: "EnviousMeet: stops the countdown; the meeting goes on."),
-          primary: true
-        ) {
-          actions.keepRecording()
-        }
-      case .stopped, .stoppedByUser, .switchNotConfirmed:
-        button(
-          LocalizedStringResource(
-            "Start a new recording", comment: "EnviousMeet: after a detected meeting stopped."),
-          primary: true
-        ) {
-          actions.startNewRecording()
-        }
-        button(
-          LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."),
-          primary: false
-        ) {
-          actions.dismiss()
-        }
-      case .needsAttention, .couldNotStart, .firstTip, .lastTip:
-        button(
-          LocalizedStringResource(
-            "Open settings", comment: "EnviousMeet: opens the EnviousMeet settings page."),
-          primary: true
-        ) {
-          actions.openSettings()
-        }
-        button(
-          LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."),
-          primary: false
-        ) {
-          actions.dismiss()
-        }
+  @ViewBuilder private var buttons: some View {
+    switch content {
+    case .ask, .switchMeeting:
+      HStack(spacing: 8) {
+        startButton(actions.yes)
+        notNowButton(actions.no)
       }
+    case .switchNotConfirmed:
+      HStack(spacing: 8) {
+        startButton(actions.startNewRecording)
+        notNowButton(actions.no)
+      }
+    case .endConfirmation:
+      HStack(spacing: 8) {
+        button(
+          LocalizedStringResource(
+            "Stop recording",
+            comment: "EnviousMeet: explicitly confirm stopping after an uncertain browser ending."),
+          primary: false, action: actions.stopRecording)
+        button(
+          LocalizedStringResource(
+            "Keep recording",
+            comment: "EnviousMeet: keep recording after an uncertain browser ending."),
+          primary: true, action: actions.keepRecording)
+      }
+    case .countdown:
+      button(
+        LocalizedStringResource(
+          "End recording",
+          comment: "EnviousMeet: stops the recording now instead of after the countdown."),
+        primary: true, action: actions.endRecording)
+    case .notesReady:
+      button(
+        LocalizedStringResource(
+          "Open", comment: "EnviousMeet: opens the recorded meeting in History."),
+        primary: true, action: actions.open)
+    case .needsAttention, .couldNotStart, .firstTip, .lastTip:
+      button(
+        LocalizedStringResource(
+          "Open settings", comment: "EnviousMeet: opens the EnviousMeet settings page."),
+        primary: true, action: actions.openSettings)
+    case .notesWriting, .manualStart:
+      EmptyView()
     }
   }
 
-  private func button(_ title: LocalizedStringResource, primary: Bool, action: @escaping () -> Void)
-    -> some View
-  {
+  private func startButton(_ action: @escaping @MainActor () -> Void) -> some View {
+    button(
+      LocalizedStringResource(
+        "Start recording", comment: "EnviousMeet: accept the offered call recording."),
+      primary: true, dot: true, action: action)
+  }
+
+  private func notNowButton(_ action: @escaping @MainActor () -> Void) -> some View {
+    button(
+      LocalizedStringResource(
+        "Not now",
+        comment:
+          "EnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown."
+      ),
+      primary: false, action: action)
+  }
+
+  private func button(
+    _ title: LocalizedStringResource, primary: Bool, dot: Bool = false,
+    action: @escaping @MainActor () -> Void
+  ) -> some View {
     Button(action: action) {
-      Text(resource(title))
-        .font(.system(size: 15, weight: primary ? .bold : .medium))
-        .foregroundStyle(primary ? Color.white : Color.stTextPrimary)
-        .multilineTextAlignment(.center)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, primary ? 12 : 16)
-        .frame(maxWidth: primary ? .infinity : nil, minHeight: 44)
-        .background(primary ? Color.stAccentSolid : Color.clear, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(primary ? Color.clear : Color.stInputBorder, lineWidth: 1))
-        .contentShape(RoundedRectangle(cornerRadius: 12))
+      HStack(spacing: 8) {
+        if dot {
+          Circle()
+            .fill(Color(red: 1, green: 0.353, blue: 0.416))
+            .frame(width: 8, height: 8)
+            .accessibilityHidden(true)
+        }
+        Text(resource(title))
+          .font(.system(size: 14, weight: .semibold))
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+      }
+      .foregroundStyle(primary ? Color.white : Color.stTextPrimary)
+      .padding(.horizontal, primary ? 12 : 16)
+      .frame(maxWidth: primary ? .infinity : nil, minHeight: 36)
+      .background(
+        primary ? Color.stAccentSolid : Color.clear, in: RoundedRectangle(cornerRadius: 10)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10).stroke(
+          primary ? Color.clear : Color.stInputBorder, lineWidth: 1)
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 10))
     }
     .buttonStyle(.plain)
   }
 }
 
-private extension CallPromptContent {
-  var isSwitch: Bool {
-    if case .switchMeeting = self { return true }
-    return false
+/// The brand mark on a tile (#4232). At rest it is the normal logo (`WisprLogoMark`, the
+/// favicon geometry), never the closed-mouth level-0 lips; while the notes are written it is the
+/// rainbow lips moving gently. Reduce Motion shows the normal logo.
+struct CallNotesLips: View {
+  let size: CGFloat
+  let animated: Bool
+
+  var body: some View {
+    Group {
+      if animated {
+        TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
+          let t = context.date.timeIntervalSinceReferenceDate
+          RainbowLipsIcon(size: size * 0.82, audioLevel: Float(0.35 + 0.3 * sin(t * 2.4)))
+        }
+      } else {
+        WisprLogoMark()
+          .padding(size * 0.14)
+      }
+    }
+    .frame(width: size, height: size)
+    .background(Color.stPageBg, in: RoundedRectangle(cornerRadius: size * 0.25))
+    .accessibilityHidden(true)
   }
 }

@@ -18,13 +18,15 @@ struct CallDetectionPolicyTests {
   @Test("A running user Start cannot display or queue an idle Ask before setup accepts it")
   func pendingUserStartSuppressesQuestion() {
     var s = recordingZoom()
-    end(&s)
-    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+    s.press(.yes)
+    s.read([Self.zoom(.active), Self.chromeUnknown(.active)])
     s.stopFinished()
-    #expect(isStopped(s.interaction, .callEnded), "use the real stopped offer")
+    #expect(isSwitchNotConfirmed(s.interaction), "use the real failed-switch offer")
     s.press(.startNewRecording)
     let userStarts = s.commands.compactMap { command -> Int? in
-      if case .startByUser(let id, .zoom) = command { return id }
+      if case .startByUser(let id, .googleMeet) = command { return id }
       return nil
     }
     guard userStarts.count == 1 else { Issue.record("no actual user Start issued"); return }
@@ -537,7 +539,8 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 1 && s.starts == [.googleMeet] && s.answers == answers)
     let operation = try #require(s.lastStop)
     s.stopFinished()
-    #expect(isStopped(s.interaction, .userConfirmed))
+    #expect(s.interaction == .none, "#4232: no Recording stopped card")
+    #expect(s.followed == [.googleMeet], "the notes are followed instead")
     #expect(s.policy.handle(.stopFinished(operation: operation), s.context).isEmpty)
     #expect(s.stops == 1)
   }
@@ -1029,8 +1032,8 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 1 && s.starts.isEmpty)
   }
 
-  @Test("Keep or a manual Stop cannot be silently reacquired on the same call", arguments: [true, false])
-  func manualOverrideCannotBeReacquired(keep: Bool) {
+  @Test("A manual Stop cannot be silently reacquired on the same call")
+  func manualOverrideCannotBeReacquired() {
     var s = Story()
     let call = Self.zoom(.active)
     s.ongoing(call)
@@ -1038,11 +1041,6 @@ struct CallDetectionPolicyTests {
     let first = UUID()
     s.meeting = .recording(meetingID: first)
     s.settleManual(request, recordingID: first)
-    if keep {
-      end(&s)
-      #expect(isCountdown(s.interaction))
-      s.press(.keepRecording)
-    }
     s.meeting = .idle
     s.step()
     s.ongoing(call)
@@ -1366,6 +1364,11 @@ struct CallDetectionPolicyTests {
 
     var stops: Int { commands.filter { if case .stop = $0 { true } else { false } }.count }
 
+    /// #4232: the meetings whose notes the panel follows, by call family.
+    var followed: [CallAppFamily] {
+      commands.compactMap { if case .followNotes(_, let family) = $0 { family } else { nil } }
+    }
+
     var answers: [MeetingCallPromptTelemetry.Answer] {
       commands.compactMap { if case .emit(_, let answer) = $0 { answer } else { nil } }
     }
@@ -1414,8 +1417,8 @@ struct CallDetectionPolicyTests {
     return false
   }
 
-  func isStopped(_ i: Policy.Interaction, _ reason: Policy.StopReason) -> Bool {
-    if case .stopped(reason, _, _) = i { return true }
+  func isSwitchNotConfirmed(_ i: Policy.Interaction) -> Bool {
+    if case .switchNotConfirmed = i { return true }
     return false
   }
 
@@ -1726,7 +1729,7 @@ struct CallDetectionPolicyTests {
 
   // MARK: - Ending
 
-  @Test("a detected meeting counts down after the call ends, then stops and offers a new one")
+  @Test("a detected meeting counts down after the call ends, then stops and follows its notes")
   func countdownThenStop() {
     var s = recordingZoom()
     end(&s)
@@ -1734,9 +1737,10 @@ struct CallDetectionPolicyTests {
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
     #expect(s.stops == 1)
     s.stopFinished()
-    #expect(isStopped(s.interaction, .callEnded))
+    #expect(s.interaction == .none, "#4232: no Recording stopped card")
+    #expect(s.followed == [.zoom])
     s.press(.startNewRecording)
-    #expect(s.commands.contains { if case .startByUser(_, .zoom) = $0 { true } else { false } })
+    #expect(!s.commands.contains { if case .startByUser = $0 { true } else { false } })
   }
 
   @Test("an end needs two readings and the confirm time; one reading never ends a call")
@@ -1822,14 +1826,43 @@ struct CallDetectionPolicyTests {
     #expect(isCountdown(s.interaction))
   }
 
-  @Test("Keep recording ends the countdown and the call's end never stops it later")
-  func keepRecording() {
+  @Test("End recording stops at once, like the deadline, and follows the notes once")
+  func endRecording() {
+    var s = recordingZoom()
+    end(&s)
+    let token = s.policy.token
+    s.press(.endRecording, token: token)
+    s.press(.endRecording, token: token)
+    #expect(s.stops == 1 && s.interaction == .none)
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength + 5)
+    #expect(s.stops == 1, "the deadline cannot stop it a second time")
+    s.stopFinished()
+    #expect(s.followed == [.zoom] && s.interaction == .none)
+  }
+
+  @Test("the countdown has no Keep: the old button does nothing and the deadline still stops")
+  func countdownHasNoKeep() {
     var s = recordingZoom()
     end(&s)
     s.press(.keepRecording)
-    #expect(s.interaction == .none)
-    s.hold([Self.zoom(.inactive)], for: 30)
-    #expect(s.stops == 0)
+    #expect(isCountdown(s.interaction))
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    #expect(s.stops == 1)
+  }
+
+  @Test("a failed switch's Not now only closes: no No answer and no refusal count")
+  func switchNotConfirmedNotNow() {
+    var s = recordingZoom()
+    s.wait(Policy.questionInterval)
+    s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+    s.press(.yes)
+    s.read([Self.zoom(.active), Self.chromeUnknown(.active)])
+    s.stopFinished()
+    #expect(isSwitchNotConfirmed(s.interaction))
+    let answers = s.answers
+    s.press(.no)
+    #expect(s.interaction == .none && s.answers == answers)
+    #expect(!s.commands.contains { if case .countNo = $0 { true } else { false } })
   }
 
   @Test("a hand-started meeting never stops when a call ends; a new call asks to switch")
@@ -1863,7 +1896,7 @@ struct CallDetectionPolicyTests {
     end(&s)
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
     s.stopFinished(meetingAfter: .recording(meetingID: UUID()))
-    #expect(!isStopped(s.interaction, .callEnded))
+    #expect(s.followed.isEmpty, "a newer recording takes the follow-up away")
     var t = recordingZoom()
     end(&t)
     t.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
@@ -1872,6 +1905,7 @@ struct CallDetectionPolicyTests {
     t.ready([Self.zoom(.inactive), Self.chrome(.active, url: Self.meetA)])
     t.stopFinished()
     #expect(isAsk(t.interaction, .googleMeet), "the newer question keeps the panel")
+    #expect(t.followed.isEmpty)
   }
 
   // MARK: - Starts and switches
@@ -1990,7 +2024,8 @@ struct CallDetectionPolicyTests {
     s.read([Self.zoom(.active), Self.chromeUnknown(.active)])
     s.stopFinished()
     #expect(s.starts == [.zoom])
-    #expect(isStopped(s.interaction, .switchNotConfirmed))
+    #expect(isSwitchNotConfirmed(s.interaction))
+    #expect(s.followed.isEmpty, "a switch's old meeting gets no notes card")
   }
 
   @Test("a switch question pauses the old meeting's countdown")
@@ -2437,7 +2472,7 @@ struct CallDetectionPolicyTests {
       s.read([Self.teams(evidence: evidence)])
       s.stopFinished()
       #expect(s.starts == (proof ? [.teams] : []))
-      if !proof { #expect(isStopped(s.interaction, .switchNotConfirmed)) }
+      if !proof { #expect(isSwitchNotConfirmed(s.interaction)) }
     }
   }
 

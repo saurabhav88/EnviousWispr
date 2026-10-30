@@ -61,11 +61,17 @@ public struct CallDetectionPolicy: Sendable {
     package let generation: Int
     package let route: MeetingEntryPoint
     package let acceptedAt: Date
+    /// #4232: the call panel's own Start recording asked for it (on the menu route), so it is
+    /// no menu-bar start and gets no start card.
+    package let fromCallPanel: Bool
 
-    package init(generation: Int, route: MeetingEntryPoint, acceptedAt: Date) {
+    package init(
+      generation: Int, route: MeetingEntryPoint, acceptedAt: Date, fromCallPanel: Bool = false
+    ) {
       self.generation = generation
       self.route = route
       self.acceptedAt = acceptedAt
+      self.fromCallPanel = fromCallPanel
     }
   }
 
@@ -199,13 +205,6 @@ public struct CallDetectionPolicy: Sendable {
     case couldNotStart
   }
 
-  public enum StopReason: Sendable, Equatable {
-    case callEnded
-    case userConfirmed
-    /// A switch stopped the old recording, but the new call could not be confirmed.
-    case switchNotConfirmed
-  }
-
   /// What the panel shows.
   public enum Interaction: Sendable, Equatable {
     case none
@@ -213,17 +212,19 @@ public struct CallDetectionPolicy: Sendable {
     case ask(episode: Int, family: CallAppFamily, since: Date)
     /// D10: a new call while `from` records.
     case switchCall(episode: Int, family: CallAppFamily, from: UUID, since: Date)
-    /// D3: "Meeting ending in N seconds" with Keep recording.
+    /// D3, #4232: "Recording stops in N seconds" with End recording. A call that comes back
+    /// cancels it (`resetEnd`), so it has no Keep button.
     case countdown(episode: Int, deadline: Date)
     /// A browser page ended, but the recording continues until explicit consent.
     case endConfirmation(episode: Int, family: CallAppFamily)
-    /// D3 as delivered: "Recording stopped" with Start a new recording.
-    case stopped(StopReason, family: CallAppFamily, until: Date)
+    /// A switch stopped the old recording, but the new call could not be confirmed: the user's
+    /// own Start is offered, never a silent nothing (review r16 F1, r18 F3).
+    case switchNotConfirmed(family: CallAppFamily, until: Date)
     case note(Note, until: Date)
   }
 
   public enum Button: String, Sendable, CaseIterable {
-    case yes, no, close, keepRecording, stopRecording, startNewRecording, openSettings
+    case yes, no, close, keepRecording, stopRecording, endRecording, startNewRecording, openSettings
   }
 
   /// A start's result, as the coordinator maps `MeetingStartFlow.Outcome`.
@@ -249,7 +250,7 @@ public struct CallDetectionPolicy: Sendable {
   public enum Command: Sendable, Equatable {
     /// A detected Start; its result comes back as `.startFinished(operation:)`.
     case start(operation: Int, family: CallAppFamily)
-    /// The user's own Start (Start a new recording): the manual route.
+    /// The user's own Start (Start recording on the failed-switch card): the manual route.
     case startByUser(operation: Int, family: CallAppFamily)
     /// Stop `meetingID` if it is still the meeting recording; `.stopFinished(operation:)`
     /// follows either way.
@@ -258,6 +259,9 @@ public struct CallDetectionPolicy: Sendable {
     case countNo(switchID: String)
     case markFirstTipShown
     case openMeetingPage
+    /// #4232: the call flow stopped `meetingID` (countdown, End recording, Stop recording); the
+    /// panel follows its notes. The coordinator holds the attempt it froze for that stop.
+    case followNotes(meetingID: UUID, family: CallAppFamily)
   }
 
   // Independent call-end confirmation retains the established 1.5 s minimum and two reads.
@@ -517,6 +521,25 @@ public struct CallDetectionPolicy: Sendable {
     return []
   }
 
+  /// #4232: what a card needs to show a call's app: its family, rule and owning app run.
+  package struct CallIdentity: Sendable, Equatable {
+    package let family: CallAppFamily
+    package let rule: CallAppCatalog.Rule
+    package let owner: CallEvidenceReader.AppRun?
+  }
+
+  /// The call an episode tracks, while it is known.
+  package func call(episode id: Int) -> CallIdentity? {
+    episode(id).map { CallIdentity(family: $0.family, rule: $0.rule, owner: $0.owner) }
+  }
+
+  /// The call a hand-started recording was linked to by `settledStart`, for its start card. Nil
+  /// when the start matched no single call (the card then names the microphone).
+  package func linkedCall(_ recordingID: UUID) -> CallIdentity? {
+    guard case .linked(recordingID, let e)? = association else { return nil }
+    return call(episode: e)
+  }
+
   /// A replaced read lifetime cannot carry a historical in-flight ticket into its successor.
   package mutating func invalidateAcceptedStart() {
     pendingManual = nil
@@ -744,7 +767,7 @@ public struct CallDetectionPolicy: Sendable {
       set(.ask(episode: e, family: family, since: c.now))
     case (.switchCall(let e, let family, let from, _), .recording(let m)) where m != from:
       set(.switchCall(episode: e, family: family, from: m, since: c.now))
-    case (.stopped, .recording), (.stopped, .busy):
+    case (.switchNotConfirmed, .recording), (.switchNotConfirmed, .busy):
       // A new recording started elsewhere: the offer is over (r6 F4).
       set(.none)
     default: break
@@ -762,7 +785,7 @@ public struct CallDetectionPolicy: Sendable {
     case .switchCall(_, _, _, let since)
     where c.now.timeIntervalSince(since) >= Self.promptTimeout:
       set(.none)
-    case .stopped(_, _, let until) where c.now >= until: set(.none)
+    case .switchNotConfirmed(_, let until) where c.now >= until: set(.none)
     case .note(_, let until) where c.now >= until: set(.none)
     default: break
     }
@@ -1098,7 +1121,9 @@ public struct CallDetectionPolicy: Sendable {
     case (.switchCall(_, let family, _, _), .no):
       set(.none)
       out.append(.emit(family: family, answer: .switchNo))
-    case (.ask, .close), (.switchCall, .close), (.stopped, .close), (.note, .close):
+    case (.ask, .close), (.switchCall, .close), (.switchNotConfirmed, .close),
+      (.switchNotConfirmed, .no), (.note, .close):
+      // Not now on a failed switch only closes it: no No answer, no refusal count (#4232).
       set(.none)
     case (.endConfirmation(let e, let family), .stopRecording):
       guard let index = episodes.firstIndex(where: { $0.id == e }),
@@ -1119,17 +1144,17 @@ public struct CallDetectionPolicy: Sendable {
       association = .overridden(m)
       resetEnd(index)
       set(.none)
-    case (.countdown(let e, _), .keepRecording):
-      if let index = episodes.firstIndex(where: { $0.id == e }),
-        case .ending(let m, _) = episodes[index].phase
-      {
-        episodes[index].phase = .kept(meetingID: m)
-        episodes[index].ownershipOverridden = true
-        association = .overridden(m)
-        resetEnd(index)
-      }
+    case (.countdown(let e, _), .endRecording):
+      // #4232: End recording stops now, exactly as the countdown's deadline would.
+      guard let index = episodes.firstIndex(where: { $0.id == e }),
+        case .ending(let m, _) = episodes[index].phase, c.meeting == .recording(meetingID: m)
+      else { return }
+      let id = newID()
+      operations[id] = .stopForEnd(episode: e, family: episodes[index].family, meetingID: m)
+      episodes[index].phase = .stopping(operation: id)
       set(.none)
-    case (.stopped(_, let family, _), .startNewRecording):
+      out.append(.stop(operation: id, meetingID: m))
+    case (.switchNotConfirmed(let family, _), .startNewRecording):
       set(.none)
       let id = newID()
       operations[id] = .userStart
@@ -1208,21 +1233,20 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func stopFinished(_ id: Int, _ c: Context, _ out: inout [Command]) {
     guard let operation = operations[id] else { return }
     switch operation {
-    case .stopAfterConfirmation(let e, let family, _):
+    case .stopAfterConfirmation(let e, let family, let m):
       operations[id] = nil
       guard let episode = episode(e), case .stopping(id) = episode.phase else { return }
       remove(episode: e)
       if c.setUp, c.mode != .off, c.meeting == .idle, interaction == .none {
-        set(.stopped(.userConfirmed, family: family, until: c.now.addingTimeInterval(Self.stoppedOffer)))
+        out.append(.followNotes(meetingID: m, family: family))
       }
-    case .stopForEnd(let e, let family, _):
+    case .stopForEnd(let e, let family, let m):
       operations[id] = nil
       guard let episode = episode(e), case .stopping(id) = episode.phase else { return }
       remove(episode: e)
       // A newer recording or a newer question keeps the panel (r3 F1, review r10 F2).
       if c.meeting == .idle, interaction == .none {
-        set(
-          .stopped(.callEnded, family: family, until: c.now.addingTimeInterval(Self.stoppedOffer)))
+        out.append(.followNotes(meetingID: m, family: family))
       }
     case .switchTo(let e, let family, _):
       if let episode = episode(e), isKnownLive(episode, c), c.meeting == .idle, c.setUp,
@@ -1238,10 +1262,7 @@ public struct CallDetectionPolicy: Sendable {
       // user's own Start, never a silent nothing (review r16 F1, r18 F3). Only while nothing
       // records and no newer question owns the panel (review r17 F2).
       if c.meeting == .idle, interaction == .none {
-        set(
-          .stopped(
-            .switchNotConfirmed, family: family,
-            until: c.now.addingTimeInterval(Self.stoppedOffer)))
+        set(.switchNotConfirmed(family: family, until: c.now.addingTimeInterval(Self.stoppedOffer)))
       }
     case .start, .userStart:
       break

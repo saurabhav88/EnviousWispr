@@ -1116,6 +1116,55 @@ final class MeetingCoordinator {
   /// #4012: whether a Start now would be refused for a reason known before it begins (the
   /// microphone refused, too little disk). A switch to a new call checks this before it stops
   /// the meeting recording now. Asks and changes nothing.
+  /// #4232: where one transcription attempt's notes stand, for the call panel's notes card.
+  enum NotesFact: Equatable {
+    /// Still to be written, or written but not yet in History (Open could not show it yet).
+    case writing
+    /// The attempt's transcript is committed and its History row is published.
+    case ready
+    /// Nothing more to say: the meeting is gone or being deleted, failed, notes-only,
+    /// interrupted, or another attempt replaced this one (Transcribe again).
+    case ended
+  }
+
+  /// #4232: the attempt a recording will transcribe; nil when the meeting has none pending.
+  func pendingAttemptID(meetingID: UUID) -> UUID? {
+    live[meetingID]?.pendingAttempt?.attemptID
+  }
+
+  /// #4232: the notes card's one read. Ready uses the same published-row test as the launch
+  /// summary resume (`live[...].state == .ready`, not deleting, no unpublished receipt).
+  func notesFollowUp(meetingID: UUID, followedAttemptID: UUID) -> NotesFact {
+    Self.notesFact(
+      record: live[meetingID], followedAttemptID: followedAttemptID,
+      published: unpublishedReceipts[meetingID] == nil)
+  }
+
+  /// The decision behind `notesFollowUp`, on one record. `published`: no History publication
+  /// is still owed for this meeting.
+  nonisolated static func notesFact(
+    record: MeetingRecord?, followedAttemptID: UUID, published: Bool
+  ) -> NotesFact {
+    guard let record, !record.deletionRequested else { return .ended }
+    // Another attempt pending (Transcribe again) or committed means this one was replaced.
+    if let pending = record.pendingAttempt?.attemptID, pending != followedAttemptID {
+      return .ended
+    }
+    switch record.state {
+    case .failed, .notesOnly, .interrupted: return .ended
+    case .ready:
+      guard record.committedTranscriptAttemptID == followedAttemptID else { return .ended }
+      return published ? .ready : .writing
+    case .recording, .stopping, .queued, .processing: return .writing
+    }
+  }
+
+  /// #4232: whether the Mac's sound is being captured for `meetingID`, the recording now.
+  func callSoundCaptured(meetingID: UUID) -> Bool {
+    guard case .recording(meetingID, _) = phase else { return false }
+    return callSoundStatus == .captured
+  }
+
   func startWouldBeRefused() -> Bool {
     if !deps.microphoneAuthorized() { return true }
     if let free = deps.freeDiskBytes(), free < Self.diskFloorBytes { return true }
