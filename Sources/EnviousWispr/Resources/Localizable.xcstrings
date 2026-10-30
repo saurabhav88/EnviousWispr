@@ -9212,17 +9212,6 @@
         }
       }
     },
-    "Getting the preview ready..." : {
-      "comment" : "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorschau wird vorbereitet..."
-          }
-        }
-      }
-    },
     "Getting the speech engine ready\nso your first go is instant." : {
       "localizations" : {
         "de" : {

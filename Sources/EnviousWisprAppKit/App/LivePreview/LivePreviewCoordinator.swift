@@ -44,7 +44,7 @@ enum LivePreviewDisplay: Equatable {
   /// The user has it switched off, or this recording is not eligible. The pill
   /// renders at its normal size with no preview area.
   case off
-  /// Running, nothing heard yet.
+  /// Preview enabled, no words yet, including while its engine prepares.
   case waiting
   /// Running, with text. Always the full retained tail; the view decides how much
   /// of it fits.
@@ -533,12 +533,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       return
     }
 
-    // Say "getting ready" rather than "listening" while preparation runs. On first
-    // use of a language that can mean downloading a speech model, and a pill
-    // promising to listen while nothing appears is the exact impression this
-    // feature exists to prevent.
-    let alreadyPrepared = preparedEngine != nil && preparedKey == candidate.key
-    if !alreadyPrepared { display = .unavailable(LivePreviewCopy.preparing) }
+    // #3919: Keep the compact waiting display while preview prepares.
+    // Actual blocked or failed preparation still publishes its reason.
 
     guard await ensurePrepared(candidate), let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
@@ -1044,13 +1040,6 @@ enum LivePreviewCopy {
   static let notReady = String(
     localized: "On-screen preview is not ready yet.",
     comment: "On-screen preview status: the preview could not start yet.")
-  /// Shown while the recognizer is being prepared, which on first use of a language
-  /// can include downloading an Apple speech model.
-  static let preparing = String(
-    localized: "Getting the preview ready...",
-    comment:
-      "On-screen preview status while it gets ready (may include a speech model download). Three ASCII periods."
-  )
   /// Shown in the pill while the preview is running but has not heard words yet.
   ///
   /// **Rendered by the CAPSULE layout only since #2202.** The preview pill's

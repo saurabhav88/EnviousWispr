@@ -13,7 +13,6 @@ struct LivePreviewCopyTests {
       LivePreviewCopy.languageUnsupported == "On-screen preview does not support this language yet."
     )
     #expect(LivePreviewCopy.notReady == "On-screen preview is not ready yet.")
-    #expect(LivePreviewCopy.preparing == "Getting the preview ready...")
     #expect(LivePreviewCopy.listening == "Listening...")
     #expect(LivePreviewCopy.listeningMode == "Listening")
     #expect(LivePreviewCopy.handsFreeMode == "Hands-free")
