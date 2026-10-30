@@ -68,14 +68,14 @@ enum LiveTranscriptionCopy {
     comment: "Speech engine settings, Faster Transcription: the toggle's name.")
   static var toggleLabel: String { String(localized: toggleLabelResource) }
 
-  /// Shown under the toggle only when Whisper is selected AND the language is
-  /// Auto-detect, because streaming must commit to one language up front and a bad early
+  /// #3809: shown while the selected configuration needs a language first,
+  /// because streaming must commit to one language up front and a bad early
   /// guess poisons the whole dictation (#1276). Lives here rather than inline so all of
   /// this toggle's user-facing strings have one home.
   static let autoLanguageFootnote =
     String(
       localized:
-        "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy.",
+        "Select a language to use Faster Transcription.",
       comment:
         "Speech engine settings, Faster Transcription: note under the toggle when the language is Auto-detect."
     )
@@ -238,7 +238,7 @@ enum LiveTranscriptionCopy {
     whyBody:
       String(
         localized:
-          "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often.",
+          "With Whisper, Auto-detect turns Faster Transcription off. Select a language, then turn it on if you want to use it. This switch is shared between engines; changing engines does not turn it back on.",
         comment: "Speech engine settings, Faster Transcription: help panel: explanation."),
     recommendationHeading: String(
       localized: "What we recommend",

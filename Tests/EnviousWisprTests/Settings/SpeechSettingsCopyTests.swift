@@ -16,7 +16,7 @@ struct SpeechSettingsCopyTests {
     #expect(LiveTranscriptionCopy.toggleLabel == "Faster Transcription")
     #expect(
       LiveTranscriptionCopy.autoLanguageFootnote
-        == "Faster Transcription needs a selected language. With Auto-detect, EnviousWispr uses clean batch transcription for accuracy."
+        == "Select a language to use Faster Transcription."
     )
     #expect(
       LiveTranscriptionCopy.parakeetToggleDescription
@@ -69,7 +69,7 @@ struct SpeechSettingsCopyTests {
     #expect(LiveTranscriptionCopy.whisper.whyHeading == "One thing to know")
     #expect(
       LiveTranscriptionCopy.whisper.whyBody
-        == "This engine has to commit to a language before it can start. If your language is set to Auto-detect, EnviousWispr ignores this setting and transcribes after you stop instead, because guessing the language early gets it wrong too often."
+        == "With Whisper, Auto-detect turns Faster Transcription off. Select a language, then turn it on if you want to use it. This switch is shared between engines; changing engines does not turn it back on."
     )
     #expect(LiveTranscriptionCopy.whisper.recommendationHeading == "What we recommend")
     #expect(
