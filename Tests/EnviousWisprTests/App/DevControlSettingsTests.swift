@@ -306,7 +306,7 @@
         name: "spokenPunctuation",
         wire: { settings in
           let enabled = settings.spokenPunctuation.enabled ? "false" : "true"
-          return #"{"enabled":\#(enabled),"startWordOverrides":{"en":"zebra"}}"#
+          return #"{"enabled":\#(enabled),"startWordOverrides":{"en":"zebra"},"englishPeriodWord":true}"#
         },
         holds: { $0.spokenPunctuation.startWordOverrides == ["en": "zebra"] },
         fires: .spokenPunctuation),
@@ -469,8 +469,11 @@
       (.languageMode, #"{"mode":"auto","code":"de"}"#),
       (.languageMode, #""auto""#),
       (.spokenPunctuation, #"{"enabled":true}"#),
-      (.spokenPunctuation, #"{"enabled":1,"startWordOverrides":{}}"#),
-      (.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{"en":4}}"#),
+      // #4216: the old two-key shape is refused, never read as "period switch ON".
+      (.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{}}"#),
+      (.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{},"englishPeriodWord":"no"}"#),
+      (.spokenPunctuation, #"{"enabled":1,"startWordOverrides":{},"englishPeriodWord":true}"#),
+      (.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{"en":4},"englishPeriodWord":true}"#),
       (.inputChannelByDeviceUID, #"{"dev":1.5}"#),
       (.inputChannelByDeviceUID, #"{"dev":"1"}"#),
       (.inputChannelByDeviceUID, #"[1]"#),
@@ -1463,7 +1466,7 @@
     @Test("an ordinary spoken-punctuation write validates every start word first, then commits and resets through the owners")
     func spokenPunctuationRoute() throws {
       let (_, _, settings) = Self.fixture()
-      settings.spokenPunctuation = SpokenPunctuationSettings(enabled: false, startWordOverrides: [:])
+      settings.spokenPunctuation = SpokenPunctuationSettings(enabled: false, startWordOverrides: [:], englishPeriodWord: true)
       let german = try #require(SpokenPunctuationRules.startWordDefault(for: "de"))
       try #require(german.isEmpty == false, "German has a default start word")
       // A non-default German override, set through the owner (not through the door).
@@ -1476,20 +1479,31 @@
           to: settings)
       }
       // One bad entry refuses the whole request: nothing changes, not even `enabled`.
-      let bad = try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"two words"}}"#)
+      let bad = try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"two words"},"englishPeriodWord":true}"#)
       #expect(bad.code == "checkFailed")
-      #expect(settings.spokenPunctuation == SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "zebra"]))
-      #expect(try write(#"{"enabled":true,"startWordOverrides":{"en-US":"zebra"}}"#).code == "checkFailed")
+      #expect(settings.spokenPunctuation == SpokenPunctuationSettings(enabled: false, startWordOverrides: ["de": "zebra"], englishPeriodWord: true))
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"en-US":"zebra"},"englishPeriodWord":true}"#).code == "checkFailed")
       #expect(try write(#"{"enabled":true}"#).code == "badValue")
+      let twoKeys = try write(#"{"enabled":true,"startWordOverrides":{}}"#)
+      #expect(twoKeys.code == "badValue")
+      #expect(twoKeys.message.contains("englishPeriodWord"))
 
       // A good request: enable, a new French word, German absent (reset to its default).
-      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin"}}"#) == .written(forced: false))
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin"},"englishPeriodWord":true}"#) == .written(forced: false))
       #expect(settings.spokenPunctuation.enabled == true)
       #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "lapin"])
 
       // The owner's normalization still applies: German's own default stores no override.
-      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"\#(german)"}}"#) == .written(forced: false))
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin","de":"\#(german)"},"englishPeriodWord":true}"#) == .written(forced: false))
       #expect(settings.spokenPunctuation.startWordOverrides == ["fr": "lapin"])
+
+      // #4216: the period switch is written through the same checked route, and only it changes.
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"fr":"lapin"},"englishPeriodWord":false}"#) == .written(forced: false))
+      #expect(settings.spokenPunctuation == SpokenPunctuationSettings(enabled: true, startWordOverrides: ["fr": "lapin"], englishPeriodWord: false))
+      // A refused request leaves the period switch untouched too.
+      #expect(try write(#"{"enabled":true,"startWordOverrides":{"de":"two words"},"englishPeriodWord":true}"#).code == "checkFailed")
+      #expect(settings.spokenPunctuation.englishPeriodWord == false)
+      #expect(DevControlSettings.Codec.encode(settings.spokenPunctuation)["englishPeriodWord"] as? Bool == false)
     }
 
     @Test("an ordinary spoken-punctuation write refuses a stored map holding a key only force could stage")
@@ -1498,7 +1512,7 @@
       #expect(
         DevControlSettings.forceWrite(
           .spokenPunctuation,
-          value: try Self.wire(#"{"enabled":false,"startWordOverrides":{"de-DE":"zebra"}}"#),
+          value: try Self.wire(#"{"enabled":false,"startWordOverrides":{"de-DE":"zebra"},"englishPeriodWord":true}"#),
           to: settings) == .written(forced: true))
       let before = settings.spokenPunctuation
       let stored = defaults.persistentDomain(forName: suite) as NSDictionary?
@@ -1506,7 +1520,7 @@
       settings.onChange = { fired.append($0) }
 
       let outcome = DevControlSettings.write(
-        .spokenPunctuation, value: try Self.wire(#"{"enabled":true,"startWordOverrides":{}}"#),
+        .spokenPunctuation, value: try Self.wire(#"{"enabled":true,"startWordOverrides":{},"englishPeriodWord":true}"#),
         force: false, context: Self.context(), to: settings)
       #expect(outcome.code == "checkFailed")
       #expect(settings.spokenPunctuation == before)
@@ -1532,7 +1546,7 @@
       try write(.fillerRemovalEnabled, settings.fillerRemovalEnabled ? "false" : "true")
       try write(.llmModel, #""gpt-dev-a""#)
       try write(.selectedInputDeviceUID, #""mic-a""#)
-      try write(.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{"fr":"lapin"}}"#)
+      try write(.spokenPunctuation, #"{"enabled":true,"startWordOverrides":{"fr":"lapin"},"englishPeriodWord":true}"#)
       try write(.hasCompletedOnboarding, "false")
       try write(.toggleKeyCode, "33", force: true)
       try write(.llmProvider, #""none""#, force: true)

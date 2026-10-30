@@ -126,7 +126,7 @@ struct SettingsMapRegistrationTests {
     ".selfLearningDictionaryForgetMemory",
     ".sendCrashReportsRestart", ".snippetKeyword", ".snippets", ".snippetsAdd", ".snippetsAddFirst",
     ".snippetsClearSearch", ".snippetsExport", ".snippetsImport", ".snippetsSearch",
-    ".startWordField", ".startWordReset", ".startWordSave", ".transcribeFileSteps",
+    ".transcribeFileSteps",
     ".transcriptionEngineRecheckFast", ".whatWeCollectSeeDetails", ".whisperModelCancelDownload",
     ".whisperModelRecheck", ".whisperModelRemove", ".whisperModelResume", ".whisperModelSetUp",
     ".whisperModelTryAgain", ".windowSearch", ".yourWordsAdd", ".yourWordsCategoryFilter",

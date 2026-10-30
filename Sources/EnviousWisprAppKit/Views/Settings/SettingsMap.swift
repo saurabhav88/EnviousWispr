@@ -351,30 +351,33 @@ enum SettingsMap {
       description: .resource(DictationSettingsCopy.Engine.punctuationShort),
       parent: .sectionEngineShared, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, target: .spokenPunctuation, fallbacks: []),
+    // #4216: the Start word controls are in the Spoken punctuation window (sheet content, never an
+    // arrival target), so these keep their names and search words and land on the Spoken punctuation
+    // row, where the Configure button opens the window. Founder decision 2026-10-29: no new places.
     SettingsMapNode(
       id: .startWordLanguage, structure: .item, item: .setting,
       title: .resource(SpokenPunctuationCopy.startWordTitleResource),
       description: .resource(SpokenPunctuationCopy.startWordShortResource),
       parent: .spokenPunctuation, destination: .dictation(.engine), dictionaryTab: nil,
-      visibility: .spokenPunctuationOn, target: .startWordLanguage, fallbacks: [.spokenPunctuation]),
+      visibility: .spokenPunctuationOn, target: .spokenPunctuation, fallbacks: []),
     SettingsMapNode(
       id: .startWordField, structure: .item, item: .setting,
       title: .resource(SpokenPunctuationCopy.languagePickerLabelResource),
       description: nil,
       parent: .spokenPunctuation, destination: .dictation(.engine), dictionaryTab: nil,
-      visibility: .spokenPunctuationOn, target: .startWordField, fallbacks: [.spokenPunctuation]),
+      visibility: .spokenPunctuationOn, target: .spokenPunctuation, fallbacks: []),
     SettingsMapNode(
       id: .startWordSave, structure: .item, item: .action,
       title: .resource(SpokenPunctuationCopy.saveLabelResource),
       description: nil,
       parent: .startWordField, destination: .dictation(.engine), dictionaryTab: nil,
-      visibility: .spokenPunctuationOn, target: .startWordSave, fallbacks: [.spokenPunctuation]),
+      visibility: .spokenPunctuationOn, target: .spokenPunctuation, fallbacks: []),
     SettingsMapNode(
       id: .startWordReset, structure: .item, item: .action,
       title: .resource(SpokenPunctuationCopy.resetLabelResource),
       description: nil,
       parent: .startWordField, destination: .dictation(.engine), dictionaryTab: nil,
-      visibility: .spokenPunctuationOn, target: .startWordReset, fallbacks: [.spokenPunctuation]),
+      visibility: .spokenPunctuationOn, target: .spokenPunctuation, fallbacks: []),
     SettingsMapNode(
       id: .casualMode, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Engine.casualTitle),
@@ -1356,12 +1359,15 @@ enum SettingsMap {
       of: .transcriptionEngine, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .engineChoicesExpanded, fallbacks: [.transcriptionEngine],
       EngineChoicePresentation.choices.map { ($0.mapID, .resource($0.title), .resource($0.tagline)) })
+    // #4216: the picker is inside the Spoken punctuation window (sheet content, not an arrival
+    // target), so its choices land on the Spoken punctuation row, where the Configure button is.
     + choices(
       of: .startWordLanguage, destination: .dictation(.engine), dictionaryTab: nil,
-      visibility: .spokenPunctuationOn, fallbacks: [.spokenPunctuation],
+      visibility: .spokenPunctuationOn, fallbacks: [],
       SpokenPunctuationStartWordEditor.languages.compactMap { code in
         SettingsMapChoiceIDs.startWordLanguage(code).map { ($0, .dynamic(.startWordLanguage), .runtime) }
-      })
+      }
+    ).map { retargeted($0, to: .spokenPunctuation) }
     + choices(
       of: .meetingLiveWords, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
@@ -1455,6 +1461,15 @@ enum SettingsMap {
         destination: destination, dictionaryTab: dictionaryTab, visibility: visibility,
         target: parent, fallbacks: fallbacks)
     }
+  }
+
+  /// A node with its arrival target replaced: for choices whose picker lives in a sheet (#4216).
+  private static func retargeted(_ node: SettingsMapNode, to target: SettingsMapID) -> SettingsMapNode {
+    SettingsMapNode(
+      id: node.id, structure: node.structure, item: node.item, title: node.title,
+      description: node.description, parent: node.parent, destination: node.destination,
+      dictionaryTab: node.dictionaryTab, visibility: node.visibility, target: target,
+      fallbacks: node.fallbacks)
   }
 
   /// Every node by id. A duplicate id is a wiring fault (the map tests fail on it); the first

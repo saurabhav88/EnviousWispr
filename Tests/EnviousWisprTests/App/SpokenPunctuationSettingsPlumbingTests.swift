@@ -64,7 +64,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
   }
 
   private func snapshot(
-    enabled: Bool?, words: [String: String]?
+    enabled: Bool?, words: [String: String]?, periodWord: Bool?
   ) -> RecordingSettingsSnapshot {
     RecordingSettingsSnapshot(
       backendType: .parakeet,
@@ -75,6 +75,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
       emojiFormatterEnabled: false,
       spokenPunctuationEnabled: enabled,
       spokenPunctuationStartWords: words,
+      spokenPunctuationEnglishPeriodWord: periodWord,
       llmProvider: "none",
       llmModel: "none",
       s1Control: nil,
@@ -90,7 +91,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
     settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
     sync.applyInitialSettings(settings)
 
-    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"])
+    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     #expect(parakeet.spokenPunctuation == expected)
     #expect(whisperDriver.spokenPunctuation == expected)
   }
@@ -105,12 +106,12 @@ struct SpokenPunctuationSettingsPlumbingTests {
     sync.handleSettingChanged(.spokenPunctuation, settings: settings)
     #expect(
       parakeet.spokenPunctuation
-        == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
+        == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true))
     #expect(whisperDriver.spokenPunctuation == parakeet.spokenPunctuation)
 
     settings.commitSpokenPunctuationStartWord("Schreibe", language: "de")
     sync.handleSettingChanged(.spokenPunctuation, settings: settings)
-    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Schreibe"])
+    let expected = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Schreibe"], englishPeriodWord: true)
     #expect(parakeet.spokenPunctuation == expected)
     #expect(whisperDriver.spokenPunctuation == expected)
   }
@@ -133,10 +134,10 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let context = TextProcessingContext(text: "hello world", language: nil)
 
     step.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: true, startWordOverrides: ["de": "Sprich"])
+      enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     _ = try await step.process(context)
     step.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: false, startWordOverrides: ["de": "Sprich"])
+      enabled: false, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     _ = try await step.process(context)
 
     #expect(seen.all == [true, false])
@@ -151,23 +152,22 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A snapshot reads back its switch and its recorded words; absent means off and none")
   func snapshotReadsBack() {
-    let recorded = snapshot(enabled: true, words: Self.allDefaults)
+    let recorded = snapshot(enabled: true, words: Self.allDefaults, periodWord: true)
     #expect(recorded.spokenPunctuationSettings.enabled == true)
     #expect(recorded.spokenPunctuationSettings.startWordOverrides == Self.allDefaults)
 
-    let legacy = snapshot(enabled: nil, words: nil)
+    let legacy = snapshot(enabled: nil, words: nil, periodWord: nil)
     #expect(legacy.spokenPunctuationSettings == SpokenPunctuationSettings.off)
 
-    let switchOnly = snapshot(enabled: true, words: nil)
+    let switchOnly = snapshot(enabled: true, words: nil, periodWord: true)
     #expect(
       switchOnly.spokenPunctuationSettings
-        == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:]))
+        == SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true))
   }
 
   @Test("A snapshot read-back drops an invalid recorded word and keeps the rest")
   func snapshotReadBackRevalidates() {
-    let tampered = snapshot(
-      enabled: true, words: ["de": "Punkt", "fr": "Sprich", "xx": "Wort", "es": "zwei Worte"])
+    let tampered = snapshot(enabled: true, words: ["de": "Punkt", "fr": "Sprich", "xx": "Wort", "es": "zwei Worte"], periodWord: true)
     #expect(tampered.spokenPunctuationSettings.startWordOverrides == ["fr": "Sprich"])
   }
 
@@ -177,16 +177,16 @@ struct SpokenPunctuationSettingsPlumbingTests {
   func recoveryAppliesTheRecordedValue() {
     let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
-    processor.applySettings(snapshot(enabled: true, words: recorded))
+    processor.applySettings(snapshot(enabled: true, words: recorded, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation
-        == SpokenPunctuationSettings(enabled: true, startWordOverrides: recorded))
+        == SpokenPunctuationSettings(enabled: true, startWordOverrides: recorded, englishPeriodWord: true))
   }
 
   @Test("A recorded word that equals today's default is still carried")
   func recoveryKeepsADefaultEqualWord() {
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
-    processor.applySettings(snapshot(enabled: true, words: Self.allDefaults))
+    processor.applySettings(snapshot(enabled: true, words: Self.allDefaults, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation.startWordOverrides
         == Self.allDefaults)
@@ -197,8 +197,8 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
     // Poison first, so the nil branch is shown to WRITE the default rather than leave a fresh one.
     processor.inverseTextNormalizationStep.spokenPunctuation = SpokenPunctuationSettings(
-      enabled: true, startWordOverrides: ["de": "Sprich"])
-    processor.applySettings(snapshot(enabled: nil, words: nil))
+      enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
+    processor.applySettings(snapshot(enabled: nil, words: nil, periodWord: nil))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation == SpokenPunctuationSettings.off)
     #expect(
@@ -244,12 +244,51 @@ struct SpokenPunctuationSettingsPlumbingTests {
   func importRunnerAppliesTheFrozenValue() {
     let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
     let runner = FileImportRunner(keychainManager: KeychainManager())
-    let steps = runner.makeSteps(settings: snapshot(enabled: true, words: recorded))
+    let steps = runner.makeSteps(settings: snapshot(enabled: true, words: recorded, periodWord: true))
     #expect(
       steps.inverseTextNormalization.spokenPunctuation
-        == SpokenPunctuationSettings(enabled: true, startWordOverrides: recorded))
+        == SpokenPunctuationSettings(enabled: true, startWordOverrides: recorded, englishPeriodWord: true))
 
-    let legacy = runner.makeSteps(settings: snapshot(enabled: nil, words: nil))
+    let legacy = runner.makeSteps(settings: snapshot(enabled: nil, words: nil, periodWord: nil))
     #expect(legacy.inverseTextNormalization.spokenPunctuation == SpokenPunctuationSettings.off)
+  }
+
+  // MARK: - #4216 the period switch travels with the value
+
+  @Test("Turning the period switch off reaches both drivers on initial sync and on change")
+  func periodSwitchReachesBothDrivers() {
+    let (sync, settings, parakeet, whisperDriver) = makeSync()
+    settings.spokenPunctuation.enabled = true
+    settings.spokenPunctuation.englishPeriodWord = false
+    sync.applyInitialSettings(settings)
+    #expect(parakeet.spokenPunctuation.englishPeriodWord == false)
+    #expect(whisperDriver.spokenPunctuation.englishPeriodWord == false)
+
+    settings.spokenPunctuation.englishPeriodWord = true
+    sync.handleSettingChanged(.spokenPunctuation, settings: settings)
+    #expect(parakeet.spokenPunctuation.englishPeriodWord == true)
+    #expect(whisperDriver.spokenPunctuation.englishPeriodWord == true)
+  }
+
+  @Test("A recovered take and an import replay the recorded period switch OFF")
+  func recordedPeriodSwitchOffIsReplayed() {
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    processor.applySettings(snapshot(enabled: true, words: [:], periodWord: false))
+    #expect(processor.inverseTextNormalizationStep.spokenPunctuation.englishPeriodWord == false)
+
+    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let steps = runner.makeSteps(settings: snapshot(enabled: true, words: [:], periodWord: false))
+    #expect(steps.inverseTextNormalization.spokenPunctuation.englishPeriodWord == false)
+  }
+
+  @Test("A file import freezes the period switch, and a later change does not reach the freeze")
+  func periodSwitchIsFrozenAtStart() {
+    let settings = Self.freshSettings()
+    #expect(FileImportSettingsFreeze.snapshot(settings: settings).spokenPunctuationEnglishPeriodWord == true)
+    settings.spokenPunctuation.englishPeriodWord = false
+    let frozen = FileImportSettingsFreeze.snapshot(settings: settings)
+    settings.spokenPunctuation.englishPeriodWord = true
+    #expect(frozen.spokenPunctuationEnglishPeriodWord == false)
+    #expect(frozen.spokenPunctuationSettings.englishPeriodWord == false)
   }
 }

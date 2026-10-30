@@ -71,7 +71,7 @@ struct FileImportBatchTests {
     return RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: language,
       wordCorrectionEnabled: correction, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
-      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
+      spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
       llmProvider: provider.rawValue, llmModel: model ?? batchModel, s1Control: nil,
       englishSpelling: spelling, casualModeEnabled: false)
   }

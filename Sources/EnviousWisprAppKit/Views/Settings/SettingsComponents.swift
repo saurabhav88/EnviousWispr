@@ -402,6 +402,25 @@ extension SettingsRow {
     self.init(map: map, icon: icon, runtimeShort: nil, helpContent: helpContent, control: control)
   }
 
+  /// A row the Settings Map deliberately leaves out, for an approved reason, with structured help
+  /// (#4216: the Start word row inside the Spoken punctuation window keeps its own help panel).
+  init(
+    notInSettingsMap reason: SettingsMapExemption,
+    icon: String,
+    resolvedTitle: String,
+    resolvedShort: String,
+    @ViewBuilder helpContent: () -> HelpContent,
+    @ViewBuilder control: () -> Control
+  ) {
+    self.registration = .exempt(reason)
+    self.icon = icon
+    self.title = resolvedTitle
+    self.short = resolvedShort
+    self.tooltip = nil
+    self.helpContent = helpContent()
+    self.control = control()
+  }
+
   /// A mapped row with structured help under a short line its node declares `.runtime`.
   init(
     map: SettingsMapRef,

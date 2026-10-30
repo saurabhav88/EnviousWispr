@@ -143,7 +143,7 @@ struct SpokenPunctuationStartWordTests {
     #expect(SpokenPunctuationSettings.off.startWordOverrides.isEmpty)
     #expect(
       SpokenPunctuationSettings.off
-        == SpokenPunctuationSettings(enabled: false, startWordOverrides: [:]))
+        == SpokenPunctuationSettings(enabled: false, startWordOverrides: [:], englishPeriodWord: true))
   }
 
 }

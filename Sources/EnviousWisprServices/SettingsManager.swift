@@ -162,7 +162,7 @@ public final class SettingsManager {
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
     "fillerRemovalEnabled", "emojiFormatterEnabled", "spokenPunctuationEnabled",
-    "spokenPunctuationStartWords", "casualModeEnabled",
+    "spokenPunctuationStartWords", "spokenPunctuationEnglishPeriodWord", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
     "whisperKitLanguage", "languageMode", "englishSpelling",
@@ -998,9 +998,10 @@ public final class SettingsManager {
   /// Canonical defaults in `SettingsDefaultValues.spokenPunctuationEnabled` and
   /// `SettingsDefaultValues.spokenPunctuationStartWordOverrides`.
   ///
-  /// Persisted as two keys: the existing `"spokenPunctuationEnabled"` Bool (user data already on
-  /// disk, kept) and a sparse `"spokenPunctuationStartWords"` dictionary that exists only while at
-  /// least one language is customised. Every write goes through `didSet`, so the pipeline sync sees
+  /// Persisted as three keys: the existing `"spokenPunctuationEnabled"` Bool (user data already on
+  /// disk, kept), a sparse `"spokenPunctuationStartWords"` dictionary that exists only while at
+  /// least one language is customised, and `"spokenPunctuationEnglishPeriodWord"` (#4216; absent
+  /// reads as `SettingsDefaultValues.spokenPunctuationEnglishPeriodWord`). Every write goes through `didSet`, so the pipeline sync sees
   /// one change whichever half moved. Change a start word through
   /// `commitSpokenPunctuationStartWord` / `resetSpokenPunctuationStartWord`, which validate; writing
   /// `startWordOverrides` directly bypasses that and is for tests and migrations only.
@@ -1012,6 +1013,8 @@ public final class SettingsManager {
       } else {
         defaults.set(spokenPunctuation.startWordOverrides, forKey: "spokenPunctuationStartWords")
       }
+      defaults.set(
+        spokenPunctuation.englishPeriodWord, forKey: "spokenPunctuationEnglishPeriodWord")
       onChange?(.spokenPunctuation)
     }
   }
@@ -1726,7 +1729,9 @@ public final class SettingsManager {
       enabled: defaults.object(forKey: "spokenPunctuationEnabled") as? Bool
         ?? SettingsDefaultValues.spokenPunctuationEnabled,
       startWordOverrides: Self.validatedStartWordOverrides(
-        defaults.object(forKey: "spokenPunctuationStartWords")))
+        defaults.object(forKey: "spokenPunctuationStartWords")),
+      englishPeriodWord: defaults.object(forKey: "spokenPunctuationEnglishPeriodWord") as? Bool
+        ?? SettingsDefaultValues.spokenPunctuationEnglishPeriodWord)
     crashRecoveryEnabled =
       defaults.object(forKey: "crashRecoveryEnabled") as? Bool
       ?? SettingsDefaultValues.crashRecoveryEnabled

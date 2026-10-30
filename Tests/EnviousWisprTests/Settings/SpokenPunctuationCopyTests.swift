@@ -19,11 +19,24 @@ struct SpokenPunctuationCopyTests {
     #expect(
       SpokenPunctuationCopy.helpFootnote
         == "In English with no start word, these words become marks even when you meant the word itself, like \"the grace "
-        + "period expires\". Slash works with this setting off: \"slash clear\" becomes /clear, "
+        + "period expires\". To keep \"period\" as a word, turn it off in Configure. "
+        + "Slash works with this setting off: \"slash clear\" becomes /clear, "
         + "\"command is slash wfp\" becomes command is /wfp, \"pros slash cons\" becomes "
         + "pros/cons, and \"slash the budget\" stays words. Some verb uses, like \"slash prices\", "
         + "can still become a symbol.")
     #expect(SpokenPunctuationCopy.helpFootnote.contains("always") == false)
+  }
+
+  /// #4216: the switch's own words must say what OFF does, and "full stop" must stay a command, so a
+  /// British speaker turning it off is told the truth on both counts.
+  @Test("The period switch names the word and says full stop still makes a dot")
+  func periodSwitchCopy() {
+    #expect(String(localized: SpokenPunctuationCopy.periodWordTitle) == "English: say \"period\" for a dot")
+    #expect(
+      String(localized: SpokenPunctuationCopy.periodWordShort)
+        == "Turn off to keep \"period\" as a normal word. \"Full stop\" still makes a dot.")
+    #expect(SpokenPunctuationCopy.helpPeriodWord.contains("Configure"))
+    #expect(SpokenPunctuationCopy.configureButton == "Configure…")
   }
 
   @Test("The help says English is unchanged and that the setting is meant for polish off")
@@ -86,6 +99,13 @@ struct SpokenPunctuationCopyTests {
         SpokenPunctuationCopy.helpEnglish,
         SpokenPunctuationCopy.helpPolish,
         SpokenPunctuationCopy.helpFootnote,
+        SpokenPunctuationCopy.helpPeriodWord,
+        SpokenPunctuationCopy.configureButton,
+        SpokenPunctuationCopy.configureAccessibilityLabel,
+        SpokenPunctuationCopy.configureTitle,
+        SpokenPunctuationCopy.configureSubtitle,
+        String(localized: SpokenPunctuationCopy.periodWordTitle),
+        String(localized: SpokenPunctuationCopy.periodWordShort),
         SpokenPunctuationCopy.learnMoreLabel,
         SpokenPunctuationCopy.learnMoreAccessibilityLabel,
         String(localized: SpokenPunctuationCopy.startWordTitleResource),

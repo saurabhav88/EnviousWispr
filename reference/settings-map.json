@@ -5,8 +5,8 @@
     "vocabularyBlocks" : 8512
   },
   "fingerprints" : {
-    "mapSHA256" : "f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d77062ce90c",
-    "uiCatalogSHA256" : "1009214ef4e01f2edf9d632b48956ef7ba3480c499f0b92207857fe12aa3bcef",
+    "mapSHA256" : "d81591c33d2990a3da23a7f2ccedcaa4c0a69b2d70a117234a50a9d685cc6f37",
+    "uiCatalogSHA256" : "a2941ce63a97c1ae7aa43e80db50a2869e7b2a1ab74db4e557bf95270bd973c4",
     "vocabularyCanonicalization" : "length-prefixed-v1",
     "vocabularySHA256" : "054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af"
   },
@@ -18682,14 +18682,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage",
       "kind" : "setting",
       "parent" : "spokenPunctuation",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Startwort",
@@ -19036,14 +19036,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordField",
       "kind" : "setting",
       "parent" : "spokenPunctuation",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordField",
+      "target" : "spokenPunctuation",
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Startwort für",
@@ -19431,14 +19431,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWord.save",
       "kind" : "action",
       "parent" : "startWordField",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWord.save",
+      "target" : "spokenPunctuation",
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Wort sichern",
@@ -19757,14 +19757,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWord.reset",
       "kind" : "action",
       "parent" : "startWordField",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWord.reset",
+      "target" : "spokenPunctuation",
       "title" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Zurücksetzen",
@@ -78966,14 +78966,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage.en",
       "kind" : "choice",
       "parent" : "startWordLanguage",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "owner" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift",
         "resolvedBy" : "SettingsMap.title(of:)",
@@ -79323,14 +79323,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage.de",
       "kind" : "choice",
       "parent" : "startWordLanguage",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "owner" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift",
         "resolvedBy" : "SettingsMap.title(of:)",
@@ -79680,14 +79680,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage.fr",
       "kind" : "choice",
       "parent" : "startWordLanguage",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "owner" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift",
         "resolvedBy" : "SettingsMap.title(of:)",
@@ -80037,14 +80037,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage.es",
       "kind" : "choice",
       "parent" : "startWordLanguage",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "owner" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift",
         "resolvedBy" : "SettingsMap.title(of:)",
@@ -80394,14 +80394,14 @@
       },
       "dictionaryTab" : null,
       "fallbacks" : [
-        "spokenPunctuation"
+
       ],
       "id" : "startWordLanguage.it",
       "kind" : "choice",
       "parent" : "startWordLanguage",
       "searchable" : true,
       "structure" : "item",
-      "target" : "startWordLanguage",
+      "target" : "spokenPunctuation",
       "title" : {
         "owner" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMapRegistration.swift",
         "resolvedBy" : "SettingsMap.title(of:)",

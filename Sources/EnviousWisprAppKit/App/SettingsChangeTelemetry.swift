@@ -57,6 +57,10 @@ enum SettingsProjection {
     /// switch, so each logical coalesces and suppresses its own net no-ops: flipping the switch
     /// never reports a customisation, and editing a word never reports the switch.
     case spokenPunctuationStartWord = "spoken_punctuation_start_word"
+    /// #4216: the English "say period for a dot" switch (`on` / `off`). Ships on; the question is
+    /// how many Spoken punctuation users turn it off. Written by the same `SettingKey` as the switch,
+    /// so it coalesces and suppresses its own net no-ops like the start word. On/off only.
+    case spokenPunctuationPeriodWord = "spoken_punctuation_period_word"
     /// #3737: Casual mode (leave off the final full stop). Ships off; adoption is the question.
     /// On/off only.
     case casualMode = "casual_mode"
@@ -189,7 +193,8 @@ enum SettingsProjection {
     case .fillerRemovalEnabled: return [.fillerRemoval]
     case .contactsSyncOnLaunchEnabled: return [.contactsSync]
     case .emojiFormatterEnabled: return [.emojiFormatter]
-    case .spokenPunctuation: return [.spokenPunctuation, .spokenPunctuationStartWord]
+    case .spokenPunctuation:
+      return [.spokenPunctuation, .spokenPunctuationStartWord, .spokenPunctuationPeriodWord]
     case .casualModeEnabled: return [.casualMode]
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
@@ -289,6 +294,7 @@ enum SettingsProjection {
     case .spokenPunctuation: return onOff(settings.spokenPunctuation.enabled)
     case .spokenPunctuationStartWord:
       return settings.spokenPunctuation.startWordOverrides.isEmpty ? "default" : "customised"
+    case .spokenPunctuationPeriodWord: return onOff(settings.spokenPunctuation.englishPeriodWord)
     case .casualMode: return onOff(settings.casualModeEnabled)
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)

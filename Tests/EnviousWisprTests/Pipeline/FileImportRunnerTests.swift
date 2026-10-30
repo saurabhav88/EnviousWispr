@@ -71,9 +71,10 @@ struct FileImportRunnerTests {
     let original = steps.orderedChainForFileImport
     #expect(stages.polish === steps.llmPolish)
     #expect(recombined.count == original.count)
-    #expect(zip(recombined, original).allSatisfy {
-      ObjectIdentifier($0 as AnyObject) == ObjectIdentifier($1 as AnyObject)
-    })
+    #expect(
+      zip(recombined, original).allSatisfy {
+        ObjectIdentifier($0 as AnyObject) == ObjectIdentifier($1 as AnyObject)
+      })
     #expect(stages.beforePolish.contains { $0 is LLMPolishStep } == false)
     #expect(stages.afterPolish.contains { $0 is LLMPolishStep } == false)
     #expect(recombined.contains { $0 is SnippetExpansionStep } == false)
@@ -86,7 +87,9 @@ struct FileImportRunnerTests {
       RecordingSettingsSnapshot(
         backendType: .parakeet, backendSupportsLanguageDetection: false,
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
-        emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, llmProvider: "none",
+        emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
+        spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
+        llmProvider: "none",
         llmModel: "none", s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
     }
     let british = FileImportRunner(keychainManager: KeychainManager())
@@ -97,14 +100,40 @@ struct FileImportRunnerTests {
 
     let american = FileImportRunner(keychainManager: KeychainManager())
     american.freeze(settings: snapshot(.american), vocabulary: nil)
-    #expect(try await american.process(part: "the color of the center").displayText
-      == "the color of the center")
+    #expect(
+      try await american.process(part: "the color of the center").displayText
+        == "the color of the center")
+  }
+
+  /// #4216: an imported part follows the period switch frozen at Start.
+  @Test("a part imported with the period switch OFF keeps the word; full stop still converts")
+  func importedPartFollowsFrozenPeriodSwitch() async throws {
+    func snapshot(_ periodWord: Bool?) -> RecordingSettingsSnapshot {
+      RecordingSettingsSnapshot(
+        backendType: .parakeet, backendSupportsLanguageDetection: false,
+        languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
+        emojiFormatterEnabled: false, spokenPunctuationEnabled: true,
+        spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: periodWord,
+        llmProvider: "none", llmModel: "none", s1Control: nil, englishSpelling: nil,
+        casualModeEnabled: nil)
+    }
+    let spoken = "We met over a period of weeks full stop"
+    let off = FileImportRunner(keychainManager: KeychainManager())
+    off.freeze(settings: snapshot(false), vocabulary: nil)
+    #expect(try await off.process(part: spoken).displayText == "We met over a period of weeks.")
+
+    let legacy = FileImportRunner(keychainManager: KeychainManager())
+    legacy.freeze(settings: snapshot(nil), vocabulary: nil)
+    let converted = try await legacy.process(part: spoken).displayText
+    #expect(converted.contains("period") == false, "\(converted)")
+    #expect(converted.hasSuffix("weeks."))
   }
 
   /// #3111: an EG-1 import is told the language its text is in, exactly like a dictation, and so is
   /// a second pass over the same saved text (what "Clean it again" runs). When this fails, an imported
   /// Polish recording comes back translated into English.
-  @Test("#3111 an EG-1 import names the text's language, and so does a second pass over the saved text")
+  @Test(
+    "#3111 an EG-1 import names the text's language, and so does a second pass over the saved text")
   func egOneImportNamesTheLanguage() async throws {
     let capture = NamedPromptCapture()
     let runner = FileImportRunner(
@@ -127,6 +156,7 @@ struct FileImportRunnerTests {
     backendType: .parakeet, backendSupportsLanguageDetection: false,
     languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
     emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
+    spokenPunctuationEnglishPeriodWord: nil,
     llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, s1Control: nil,
     englishSpelling: nil, casualModeEnabled: nil)
 

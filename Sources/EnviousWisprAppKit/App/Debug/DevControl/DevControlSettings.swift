@@ -883,7 +883,8 @@
       -> SetOutcome
     {
       guard let candidate = Codec.spokenPunctuation(value) else {
-        return .refused(code: "badValue", message: "wrong type or unknown value")
+        return .refused(
+          code: "badValue", message: "expected exactly \(Codec.spokenPunctuationShape)")
       }
       let requested = candidate.startWordOverrides
       let baseCodes = requested.keys.allSatisfy { LanguageNormalizer.baseCode($0) == $0 }
@@ -907,6 +908,9 @@
       }
       if settings.spokenPunctuation.enabled != candidate.enabled {
         settings.spokenPunctuation.enabled = candidate.enabled
+      }
+      if settings.spokenPunctuation.englishPeriodWord != candidate.englishPeriodWord {
+        settings.spokenPunctuation.englishPeriodWord = candidate.englishPeriodWord
       }
       for language in requested.keys.sorted() {
         settings.commitSpokenPunctuationStartWord(requested[language] ?? "", language: language)
@@ -1015,22 +1019,32 @@
         }
       }
 
-      /// `{"enabled": Bool, "startWordOverrides": {language: word}}`.
+      /// `{"enabled": Bool, "startWordOverrides": {language: word}, "englishPeriodWord": Bool}`.
+      /// All three keys are required (#4216), so a caller written for the old two-key shape is
+      /// refused rather than silently resetting the period switch.
+      static let spokenPunctuationShape =
+        #"{"enabled": Bool, "startWordOverrides": {language: word}, "englishPeriodWord": Bool}"#
+
       static func spokenPunctuation(_ value: Any) -> SpokenPunctuationSettings? {
-        guard let object = value as? [String: Any], object.count == 2,
+        guard let object = value as? [String: Any], object.count == 3,
           let enabledValue = object["enabled"], let enabled = bool(enabledValue),
-          let overrides = object["startWordOverrides"] as? [String: Any]
+          let overrides = object["startWordOverrides"] as? [String: Any],
+          let periodValue = object["englishPeriodWord"], let periodWord = bool(periodValue)
         else { return nil }
         var words: [String: String] = [:]
         for (language, word) in overrides {
           guard let word = word as? String else { return nil }
           words[language] = word
         }
-        return SpokenPunctuationSettings(enabled: enabled, startWordOverrides: words)
+        return SpokenPunctuationSettings(
+          enabled: enabled, startWordOverrides: words, englishPeriodWord: periodWord)
       }
 
       static func encode(_ settings: SpokenPunctuationSettings) -> [String: Any] {
-        ["enabled": settings.enabled, "startWordOverrides": settings.startWordOverrides]
+        [
+          "enabled": settings.enabled, "startWordOverrides": settings.startWordOverrides,
+          "englishPeriodWord": settings.englishPeriodWord,
+        ]
       }
 
       /// `{deviceUID: channel}` with integer channels.

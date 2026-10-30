@@ -56,6 +56,8 @@ enum FileImportSettingsFreeze {
       // #2450: the EFFECTIVE start word per language, frozen at Start like the language itself.
       spokenPunctuationStartWords: SpokenPunctuationRules.effectiveStartWords(
         overrides: settings.spokenPunctuation.startWordOverrides),
+      // #4216: the period switch in force, frozen with the start words.
+      spokenPunctuationEnglishPeriodWord: settings.spokenPunctuation.englishPeriodWord,
       customWordsVersion: nil,
       llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
       llmModel: settings.effectiveFileImportLLMModel,
