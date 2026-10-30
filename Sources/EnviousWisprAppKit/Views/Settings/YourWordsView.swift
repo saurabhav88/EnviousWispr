@@ -9,6 +9,8 @@ import SwiftUI
 private enum YourWordsSheetRoute: String, Identifiable {
   case addTerm
   case importWords
+  /// The "Switching from another app?" card: the same import, opened on the app picker (#3034).
+  case importWordsFromApp
   var id: Self { self }
 }
 
@@ -276,24 +278,32 @@ struct YourWordsView: View {
           onSave: saveNewWord
         )
       case .importWords:
-        // The import flow reads the live list and commits through the same
-        // coordinator every other Your Words mutation uses (#1669) — two
-        // narrow closures rather than handing the sheet the coordinator.
-        CustomWordsImportSheet(
-          dependencies: .live(
-            existingWords: { customWordsCoordinator.customWords },
-            commit: { await customWordsCoordinator.commitImport($0) },
-            // #2951: one row per landed import; the flow model cannot name
-            // the Services module, so the mapping lives here.
-            report: {
-              TelemetryService.shared.customWordsImported(
-                source: $0.sourceID, found: $0.found, imported: $0.imported,
-                skipped: $0.skipped)
-            }
-          )
-        )
+        importSheet(startingWith: nil)
+      case .importWordsFromApp:
+        importSheet(startingWith: .smartImport)
       }
     }
+  }
+
+  /// The import flow reads the live list and commits through the same
+  /// coordinator every other Your Words mutation uses (#1669) — two
+  /// narrow closures rather than handing the sheet the coordinator.
+  private func importSheet(startingWith method: CustomWordsImportFlowModel.Method?)
+    -> CustomWordsImportSheet
+  {
+    CustomWordsImportSheet(
+      dependencies: .live(
+        existingWords: { customWordsCoordinator.customWords },
+        commit: { await customWordsCoordinator.commitImport($0) },
+        // #2951: one row per landed import; the flow model cannot name
+        // the Services module, so the mapping lives here.
+        report: {
+          TelemetryService.shared.customWordsImported(
+            source: $0.sourceID, found: $0.found, imported: $0.imported,
+            skipped: $0.skipped)
+        }
+      ),
+      startingWith: method)
   }
 
   /// The tab this view draws, as arrival identifies content (#3545).
@@ -306,6 +316,12 @@ struct YourWordsView: View {
     switch selection {
     case .yourWords:
       yourWordsBanners
+      // #3034: always shown. A sibling, not wrapped with the section below, which must stay a
+      // direct child of the pane's `LazyVStack` for its header to pin.
+      SwitchingFromAnotherAppCard(
+        subtitle: SwitchingFromAnotherAppCopy.wordsSubtitle(names: SmartImportRegistry.v1.displayNames)
+      ) { sheetRoute = .importWordsFromApp }
+      .padding(.bottom, SettingsLayout.sectionSpacing)
       // The three page actions are handed to the list card rather than drawn
       // above it. They used to be their own right-aligned row, with the word
       // count on a third row below that, so the pane opened as three stacked

@@ -142,6 +142,9 @@ enum SettingsMapExemption: String, Sendable, CaseIterable {
   case bundledModelRemove
   /// The saved-key retry action (plan §5).
   case savedKeyRetry
+  /// The "Switching from another dictation app?" card (#3034): a discovery link with no
+  /// setting. The import it opens keeps its own map id, which is the search target.
+  case switchingHandoffCard
   /// Test-host render fixtures only (catalog German in the English test host, layout stress
   /// strings). No shipped page may report it; SettingsMapRenderingTests fails if one does, and
   /// SettingsMapRegistrationTests forbids the fixture forms in shipped code.

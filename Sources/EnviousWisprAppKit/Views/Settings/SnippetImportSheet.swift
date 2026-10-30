@@ -18,8 +18,15 @@ struct SnippetImportSheet: View {
   @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
 
-  init(dependencies: SnippetImportFlowModel.Dependencies) {
-    _model = State(initialValue: SnippetImportFlowModel(dependencies: dependencies))
+  /// `startingWith` opens on that method's screen instead of the method picker (#3034).
+  init(
+    dependencies: SnippetImportFlowModel.Dependencies,
+    startingWith method: SnippetImportFlowModel.Method? = nil
+  ) {
+    _model = State(
+      initialValue: method.map {
+        SnippetImportFlowModel.starting(at: $0, dependencies: dependencies)
+      } ?? SnippetImportFlowModel(dependencies: dependencies))
   }
 
   var body: some View {
@@ -355,8 +362,9 @@ private struct SnippetImportAppPickerScreen: View {
     .task {
       // Detached rather than a plain Task: a plain Task inherits MainActor from this view,
       // and these are disk existence checks across several locations.
+      let detect = model.detectInstalledApps
       let found = await Task.detached { () -> [String] in
-        SnippetImportAppRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+        detect()
       }.value
       installed = found
       didLookForApps = true

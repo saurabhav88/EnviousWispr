@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 import SwiftUI
 
 /// The Snippets page (#628), built to the approved Claude Design prototype
@@ -35,6 +36,11 @@ struct SnippetsView: View {
 
   var body: some View {
     SettingsContentView {
+      // #3034: always shown; opens the import on the app picker.
+      SwitchingFromAnotherAppCard(
+        subtitle: SwitchingFromAnotherAppCopy.snippetsSubtitle(
+          names: SnippetImportAppRegistry.v1.displayNames)
+      ) { sheetRoute = .importSnippetsFromApp }
       keywordCard
       listCard
     }
@@ -57,15 +63,24 @@ struct SnippetsView: View {
       case .edit(let draft):
         SnippetEditSheet(draft: draft, keyword: coordinator.keyword)
       case .importSnippets:
-        // Closures, not the coordinator: the sheet reads the list FROM DISK at each
-        // comparison so a stale rebuild sees what another process wrote, and commits
-        // through the coordinator's one import writer.
-        SnippetImportSheet(
-          dependencies: .live(
-            existingSnippets: { coordinator.refreshFromDisk().snippets },
-            commit: { await coordinator.commitImport($0) }))
+        importSheet(startingWith: nil)
+      case .importSnippetsFromApp:
+        importSheet(startingWith: .app)
       }
     }
+  }
+
+  /// Closures, not the coordinator: the sheet reads the list FROM DISK at each
+  /// comparison so a stale rebuild sees what another process wrote, and commits
+  /// through the coordinator's one import writer.
+  private func importSheet(startingWith method: SnippetImportFlowModel.Method?)
+    -> SnippetImportSheet
+  {
+    SnippetImportSheet(
+      dependencies: .live(
+        existingSnippets: { coordinator.refreshFromDisk().snippets },
+        commit: { await coordinator.commitImport($0) }),
+      startingWith: method)
   }
 
   // MARK: - Keyword
@@ -438,11 +453,14 @@ struct SnippetDraft: Identifiable {
 enum SnippetsSheetRoute: Identifiable {
   case edit(SnippetDraft)
   case importSnippets
+  /// The "Switching from another app?" card: the same import, opened on the app picker (#3034).
+  case importSnippetsFromApp
 
   var id: String {
     switch self {
     case .edit(let draft): return "edit-\(draft.id.uuidString)"
     case .importSnippets: return "import"
+    case .importSnippetsFromApp: return "import-from-app"
     }
   }
 }
