@@ -107,4 +107,15 @@ import Testing
     #expect(result.tripped == nil)
     #expect(result.polished == Self.cleanOutput)
   }
+  @Test("preserving a dictated opener still lets the classifier reject the answer")
+  func preservedOpeningStillClassified() async {
+    let input = "sure I can do that tomorrow"
+    let result = await EnviousOutputFilter.filterWithClassifier(
+      input: input, output: "Sure, I can do that tomorrow.",
+      classifier: StubOutputClassifier(.score(0.99)))
+    #expect(result.fellBackToRaw == true)
+    #expect(result.tripped == "classifier_discard")
+    #expect(result.polished == input)
+  }
+
 }

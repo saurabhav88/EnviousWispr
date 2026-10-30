@@ -599,7 +599,7 @@ def polish_case(
                                   thinking)
             # Production strips the LLM preamble before pasting; judge the same
             # text the user would get. Cloud keeps literal <transcript> tags.
-            candidate = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
+            candidate = _strip_llm_preamble_python(raw, transcript, strip_transcript_tags=False)
             row = {
                 "id": case["id"],
                 "candidate": candidate,
@@ -789,10 +789,10 @@ def polish_pack(
         return summary, _fallback_rows(pack, ids, sections, "error")
     summary.update(attempts=attempt, latencyMs=int((time.monotonic() - start) * 1000),
                    **{k: v for k, v in meta.items() if v is not None})
-    # The preamble strip runs on the WHOLE answer before unwrap (an assistant wrapper line
-    # before `<s1>` would otherwise fail the count), never per section, where it could
-    # remove a speaker's own words (Codex r1).
-    raw = _strip_llm_preamble_python(raw, strip_transcript_tags=False)
+    # Remove an added transport wrapper before mapping, then compare each piece
+    # against its own source. Output-only per-piece stripping could remove a
+    # speaker's own words (Codex r1); the required source prevents that (#3871).
+    raw = _strip_llm_preamble_python(raw, wrap_sections(sections), strip_transcript_tags=False)
     parts = unwrap_sections(raw, len(ids))
     if parts is None:
         summary["outcome"] = "miscount"
@@ -800,6 +800,7 @@ def polish_pack(
     rows = []
     statuses: dict[str, int] = {}
     for section_id, original, candidate in zip(ids, sections, parts):
+        candidate = _strip_llm_preamble_python(candidate, original, strip_transcript_tags=False)
         verdict = accept_section(original, candidate)
         statuses[verdict.status] = statuses.get(verdict.status, 0) + 1
         rows.append({

@@ -245,7 +245,6 @@ public struct ClaudeConnector: TranscriptPolisher {
 
     return LLMResult(
       polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble(stripTranscriptTags: false)
     )
   }
 

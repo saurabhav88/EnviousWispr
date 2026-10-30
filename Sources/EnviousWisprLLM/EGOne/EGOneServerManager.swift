@@ -742,7 +742,9 @@ public actor EGOneServerManager {
       )
       let start = ContinuousClock.now
       do {
-        let result = try await connector.polish(envelope: envelope, config: config, onToken: nil)
+        let response = try await connector.polish(envelope: envelope, config: config, onToken: nil)
+        let result = try response.removingModelChatter(
+          dictation: probeTranscript, provider: spec.provider)
         let elapsed = ContinuousClock.now - start
         let output = (result.polishedText ?? "").lowercased()
         // GREEN requires the FULL transformation: filler dropped AND the

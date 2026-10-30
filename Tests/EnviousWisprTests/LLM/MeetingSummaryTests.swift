@@ -838,6 +838,22 @@ struct MeetingSummaryTests {
         .openAI, model: model, keyID: KeychainManager.openAIKeyID))
   }
 
+  @Test("shared summary connector cleanup stays at the source-owning adapter")
+  func summaryChatterCompatibility() async throws {
+    let response = (200, #"{"choices":[{"message":{"content":"Sure, I can do that tomorrow."},"finish_reason":"stop"}]}"#)
+    let added = try await Self.openAI(Script([response]))("instructions", "I can do that tomorrow")
+    #expect(added == "I can do that tomorrow.")
+    let kept = try await Self.openAI(Script([response]))("instructions", "sure I can do that tomorrow")
+    #expect(kept == "Sure, I can do that tomorrow.")
+    let wrapper = Script([(200, #"{"choices":[{"message":{"content":"Here is the cleaned text:"},"finish_reason":"stop"}]}"#)])
+    await #expect(throws: MeetingSummary.Failure.empty) {
+      _ = try await MeetingSummary.write(
+        transcript: "the review is tomorrow", notes: "", window: Self.large,
+        callTimeoutSeconds: 60, admit: {}, complete: Self.openAI(wrapper))
+    }
+    #expect(wrapper.requests == 1)
+  }
+
   @Test(
     "real OpenAI replies: busy and rate-limited are retried and admitted; quota and key are not")
   func openAIReplies() async throws {

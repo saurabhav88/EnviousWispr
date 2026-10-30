@@ -13,6 +13,10 @@ Run from repo root:
 from __future__ import annotations
 
 import sys
+import json
+import tempfile
+import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -43,19 +47,83 @@ ROWS = [
 ]
 
 
-def main() -> int:
-    failures = 0
-    for text, expected in ROWS:
-        got = _strip_llm_preamble_python(text)
-        if got != expected:
-            failures += 1
-            print(f"FAIL: {text!r}\n  expected {expected!r}\n  got      {got!r}")
-    # two-way control: the mirror must still STRIP a real wrapper, or a mirror that strips
-    # nothing passes every survive row vacuously
-    assert _strip_llm_preamble_python("Here is the cleaned transcript:\nCall.") == "Call."
-    print(f"{len(ROWS) - failures} passed, {failures} failed")
-    return 1 if failures else 0
+SOURCE_ROWS = [
+    ("sure I can do that tomorrow", "Sure, I can do that tomorrow.", "Sure, I can do that tomorrow."),
+    ("I can do that tomorrow", "Sure, I can do that tomorrow.", "I can do that tomorrow."),
+    ("got it I will send the file tonight", "Got it. I will send the file tonight.", "Got it. I will send the file tonight."),
+    ("please send the file", "Got it. I will send the file tonight.", "I will send the file tonight."),
+    ("the corrected numbers for q3 are revenue four million", "The corrected numbers for Q3 are:\n- Revenue four million", "The corrected numbers for Q3 are:\n- Revenue four million"),
+    ("here’s the cleaned text for the report", "Here's the cleaned text:\nThe report is ready.", "Here's the cleaned text:\nThe report is ready."),
+    ("sure send the invoice today", "Sure! Here is the cleaned transcript:\nSure, send the invoice today.", "Sure! Here is the cleaned transcript:\nSure, send the invoice today."),
+]
+
+
+class PreambleMirrorTests(unittest.TestCase):
+    def test_existing_candidates_and_added_chatter(self):
+        self.assertGreater(len(ROWS), 0)
+        for text, expected in ROWS:
+            with self.subTest(text=text):
+                self.assertEqual(_strip_llm_preamble_python(
+                    text, "please send the invoice", strip_transcript_tags=False), expected)
+
+    def test_source_preservation_pairs(self):
+        for source, text, expected in SOURCE_ROWS:
+            with self.subTest(source=source):
+                self.assertEqual(_strip_llm_preamble_python(text, source, strip_transcript_tags=False), expected)
+
+    def test_uncertain_source_preserves(self):
+        for source in ("", "...", "\u0301send the invoice"):
+            with self.subTest(source=source):
+                self.assertEqual(_strip_llm_preamble_python("Sure, send the invoice.", source, False),
+                                 "Sure, send the invoice.")
+
+    def test_packed_outer_and_each_members_own_source(self):
+        import run_cloud_type_b as runner
+        originals = ["please send the final report tomorrow", "sure I can do that tomorrow",
+                     "I will send the file tonight"]
+        reply = ("Certainly! Here is the cleaned transcript:\n"
+                 "<s1>Please send the final report tomorrow.</s1>\n"
+                 "<s2>Sure, I can do that tomorrow.</s2>\n"
+                 "<s3>Sure, I will send the file tonight.</s3>")
+        with patch.object(runner, 'call_once', return_value=(reply, {})) as call:
+            summary, rows = runner.polish_pack(
+                provider='openai', model='gpt-6.1-sol', api_key='fixture',
+                pack={'section_ids': ['one', 'two', 'three']},
+                texts=dict(zip(['one', 'two', 'three'], originals)))
+        self.assertEqual(call.call_count, 1)
+        self.assertEqual(summary['outcome'], 'unwrapped')
+        self.assertEqual([row['candidate'] for row in rows],
+                         ['Please send the final report tomorrow.', 'Sure, I can do that tomorrow.',
+                          'I will send the file tonight.'])
+
+    def test_tier_path_does_not_strip_processed_http_output_again(self):
+        import acceptance_gate as gate
+        raw = "Here is the cleaned transcript:\nThe cleaned text:\nPlease send the invoice."
+        expected = "The cleaned text:\nPlease send the invoice."
+        class ReachedValidator(Exception):
+            pass
+        def inspect(candidates, cases, provider):
+            self.assertEqual(candidates, {"one": expected})
+            self.assertEqual(provider, "gpt-4o-mini")
+            raise ReachedValidator
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "cases.jsonl"
+            corpus.write_text(json.dumps({"id": "one", "asr_input": "please send the invoice"}) + "\n")
+            with patch.object(gate, "OUT_DIR", Path(directory)), \
+                 patch.object(gate, "_preflight_claude_judge"), \
+                 patch.object(gate, "call_openai", return_value=raw) as call, \
+                 patch.object(gate, "_apply_validator", side_effect=inspect):
+                with self.assertRaises(ReachedValidator):
+                    gate.mode_tier_bench(["gpt-4o-mini"], corpus, "offline", None, "")
+            self.assertEqual(call.call_count, 1)
+
+    def test_source_normalization_does_not_rewrite_output(self):
+        output = "The corrected re\u0301sume\u0301:\nThe report is ready."
+        self.assertEqual(_strip_llm_preamble_python(output, "the corrected résumé is ready", False), output)
+        literal = "<transcript>Hello world</transcript>"
+        self.assertEqual(_strip_llm_preamble_python(literal, "Hello world", False), literal)
+        self.assertEqual(_strip_llm_preamble_python(literal, "Hello world", True), "Hello world")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    unittest.main()

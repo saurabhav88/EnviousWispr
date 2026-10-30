@@ -95,7 +95,6 @@ public struct S1MiniConnector: TranscriptPolisher {
     }
 
     let cleaned = content.trimmingCharacters(in: .whitespacesAndNewlines)
-      .strippingLLMPreamble(stripTranscriptTags: false)
 
     guard !cleaned.isEmpty else {
       // THE delta. Empty is the correct answer to filler-only input, and a

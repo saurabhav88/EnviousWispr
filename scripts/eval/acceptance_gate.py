@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -566,11 +567,11 @@ def polish_one(model_key: str, transcript: str) -> str:
             if model_key.startswith("gpt")
             else call_gemini(api_model, system, user)
         )
-        # Mirror production: the cloud connectors strip the LLM preamble
-        # (String.strippingLLMPreamble) before returning, so every gate path (run /
+        # Mirror production: the app removes model chatter
+        # at its source-owning completion boundary, so every gate path (run /
         # baseline / bench) must judge and save the SAME text users paste, not raw API output.
         # Cloud is the no-sandwich fixed-prompt path, so keep literal <transcript> tags (r5).
-        return _strip_llm_preamble_python(raw, strip_transcript_tags=False)
+        return _strip_llm_preamble_python(raw, transcript, strip_transcript_tags=False)
     raise ValueError(f"Unknown polish model: {model_key}")
 
 
@@ -1848,32 +1849,62 @@ def _first_sentence_is_standalone_reply(t: str) -> bool:
     return len(first_sentence) <= 60 and first_sentence.count(",") <= 1
 
 
-def _strip_llm_preamble_python(text: str, strip_transcript_tags: bool = True) -> str:
-    """Faithful mirror of Swift String.strippingLLMPreamble (LLMProtocol.swift) so the
-    tier-bench judges the cloud text production would actually paste. Order matches Swift
-    exactly: acknowledgment strip -> first-line strip -> <transcript>. Conservative: only
-    narrow assistant wrappers, never user prose. `strip_transcript_tags` mirrors the Swift
-    param: the fixed cloud prompt sends no <transcript> sandwich, so cloud callers pass
-    False to keep a user's literal dictated tags (Codex code-review r5). AFM output skips
-    this entirely (already production-fidelity via apple_runner)."""
+def _cleanup_opening_words(text: str) -> list[str] | None:
+    """Mirror the source-only Unicode comparison; never normalize the output."""
+    text = unicodedata.normalize("NFC", text).lower()
+    words, word = [], ""
+    for index, char in enumerate(text):
+        if unicodedata.category(char).startswith("M"):
+            if not word:
+                return None
+            word += char
+        elif char.isalnum():
+            word += char
+        elif char in ("'", "’") and word and index + 1 < len(text) and text[index + 1].isalnum():
+            word += "'"
+        elif word:
+            words.append(word)
+            word = ""
+    if word:
+        words.append(word)
+    return words or None
+
+
+def _strip_llm_preamble_python(
+    text: str, dictation: str, strip_transcript_tags: bool = True
+) -> str:
+    """Source-aware Swift policy, plus the caller's explicit tag adaptation.
+
+    Cloud passes False because its prompt has no transcript wrapper (#1255).
+    Apple outputs already crossed the actual connector and must not run this again.
+    Existing candidate recognition and its thresholds remain unchanged (#3871).
+    """
     if not text:
         return text
     result = text.strip()
-    # Acknowledgment prefix, stripped only when followed by a wrapper line OR a
-    # short standalone reply (preserved when followed by user prose with commas).
+    if strip_transcript_tags:
+        result = re.sub(r"</?transcript>", "", result, flags=re.IGNORECASE).strip()
+    source = _cleanup_opening_words(dictation)
+    if source is None:
+        return result
+
+    def was_dictated(candidate: str) -> bool:
+        words = _cleanup_opening_words(candidate)
+        return words is None or source[:len(words)] == words
+
     for ack in _PREAMBLE_ACKS:
         if result.startswith(ack):
+            if was_dictated(ack):
+                return result
             after = result[len(ack):].strip()
             if _first_line_looks_like_preamble(after) or _first_sentence_is_standalone_reply(after):
                 result = after
             break
-    # Strip the first line if it looks like an assistant preamble.
     if _first_line_looks_like_preamble(result):
-        nl = result.find("\n")
-        result = (result[nl:] if nl != -1 else "").strip()
-    # <transcript> wrapper (case-insensitive; may be truncated at the token limit).
-    if strip_transcript_tags:
-        result = re.sub(r"</?transcript>", "", result, flags=re.IGNORECASE).strip()
+        first = result.split("\n", 1)[0]
+        if not was_dictated(first):
+            nl = result.find("\n")
+            result = (result[nl:] if nl != -1 else "").strip()
     return result
 
 
@@ -2060,13 +2091,8 @@ def mode_tier_bench(providers: list, corpus_path: Path | None, out_name: str | N
                 print(f"INFRA-ERROR: missing key for {prov}: {e}", file=sys.stderr)
                 return 2
             cands, _ = _load_candidates_jsonl(out_file, cases=cases)
-            # cloud fidelity: strip preamble before the validator (mirrors production). This
-            # HTTP branch serves the cloud providers (default --providers is gpt/gemini), the
-            # no-sandwich fixed-prompt path, so keep literal <transcript> tags (r5).
-            cands = {
-                k: (_strip_llm_preamble_python(v, strip_transcript_tags=False) if v else v)
-                for k, v in cands.items()
-            }
+            # polish_one already applied source-aware cleanup; a second pass can
+            # remove a newly exposed line and would not match production (#3871).
             reliability[prov] = {"cases_errored": info["errors"],
                                  "cases_bypassed": info.get("bypassed", 0)}
         # apple-candidate validates as production Apple. Since #1255 all providers use

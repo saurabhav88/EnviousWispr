@@ -110,8 +110,8 @@ public struct EGOneConnector: TranscriptPolisher {
     // it with a zero-width non-joiner before it reaches the model
     // (#1271 Codex r4).
     let cleaned = content.trimmingCharacters(in: .whitespacesAndNewlines)
-      .strippingLLMPreamble(stripTranscriptTags: true)
-    // Emptiness gates on the CLEANED text (#1271 Codex r12): whitespace-only
+      .strippingTranscriptTags()
+    // Emptiness gates on the tag-CLEANED text (#1271 Codex r12): whitespace-only
     // or tags-only content passes the raw check above, then cleans down to
     // nothing — which would paste empty text instead of the raw fallback.
     guard !cleaned.isEmpty else {
