@@ -78,7 +78,6 @@ struct LivePreviewSettingsCopyTests {
       LivePreviewCopy.needsNewerMacOS,
       LivePreviewCopy.languageUnsupported,
       LivePreviewCopy.notReady,
-      LivePreviewCopy.preparing,
       LivePreviewCopy.listening,
       // #3385: the Live Preview tab's short lines, notes and Change labels.
       String(localized: DictationSettingsCopy.Preview.privacyNote),

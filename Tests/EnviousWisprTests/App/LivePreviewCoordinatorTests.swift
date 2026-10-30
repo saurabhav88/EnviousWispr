@@ -610,6 +610,7 @@ struct LivePreviewCoordinatorTests {
       let event = try await waiter.waitForEvent(named: "live_preview.outcome")
       #expect(event.stringProps["outcome"] == "prepare_failed")
       #expect(event.stringProps["engine"] == "universal")
+      #expect(coordinator.display == .unavailable(LivePreviewCopy.notReady))
     }
 
     /// An engine that prepares but cannot open a session reports `open_failed` —
@@ -2344,6 +2345,39 @@ struct LivePreviewCoordinatorTests {
     coordinator.setRecording(false)
     await coordinator.releaseAndDrainForRemoval()
     await probe.finishOpens()
+  }
+
+  @Test(
+    "preparing a preview keeps the recording pill compact",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3919", "Preview pill flashes before words")
+  )
+  func preparationKeepsWaitingDisplay() async throws {
+    let probe = PreviewEngineProbe()
+    let gate = PreviewSetupGate()
+    let engine = FakePreviewEngine(probe: probe, prepareGate: gate)
+    let coordinator = LivePreviewCoordinator(
+      readSamples: { _ in ([], 0) },
+      isPreviewOn: { true },
+      isDictionaryOn: { true },
+      languageMode: { .locked("en") },
+      selectedRoute: previewRoute { _ in
+        .ready(LivePreviewEngineCandidate(
+          key: LivePreviewEngineKey(engine: "test", commitment: "en"),
+          makeEngine: { engine }))
+      })
+
+    coordinator.setRecording(true)
+    let entered = await gate.waitForEntry()
+    let displayWhilePreparing = coordinator.display
+    // Capture the pending display, then release and drain before any assertion
+    // can throw. Cancelling alone cannot release the fake's parked preparation.
+    coordinator.setRecording(false)
+    gate.release()
+    await coordinator.releaseAndDrainForRemoval()
+    await probe.finishOpens()
+
+    try #require(entered, "the preview must really be suspended in preparation")
+    #expect(displayWhilePreparing == .waiting)
   }
 
   @Test("Apple vocabulary is paired by generation, and its application flag freezes before preparation")
