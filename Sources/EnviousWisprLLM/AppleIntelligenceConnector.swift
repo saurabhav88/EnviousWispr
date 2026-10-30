@@ -770,7 +770,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         throw LLMError.frameworkUnavailable("Apple Intelligence isn't available on this Mac.")
       case .appleIntelligenceNotEnabled:
         throw LLMError.frameworkUnavailable(
-          "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
+          AppleIntelligenceSetupCopy.current.availabilityMessage
         )
       case .modelNotReady:
         // #1080: TRANSIENT — keep this distinct from the permanent

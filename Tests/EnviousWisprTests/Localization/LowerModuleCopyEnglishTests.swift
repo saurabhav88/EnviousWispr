@@ -47,10 +47,10 @@ struct LowerModuleCopyEnglishTests {
     // #3899: Apple's deviceNotEligible does not say why, so the sentence names no cause.
     #expect(message([.deviceNotEligible]) == "Apple Intelligence isn't available on this Mac.")
     #expect(message([.unsupportedHardware]) == "Apple Intelligence isn't available on this Mac.")
-    #expect(
-      message([.appleIntelligenceDisabled])
-        == "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
-    )
+    let disabledMessage = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+      ? "At the last check, macOS reported that Apple Intelligence wasn't enabled on this Mac. You can keep dictating or choose another model in Settings > AI Polish."
+      : "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
+    #expect(message([.appleIntelligenceDisabled]) == disabledMessage)
     #expect(
       message([.modelNotReady])
         == "The on-device model is not ready. It may still be downloading. Try again later.")

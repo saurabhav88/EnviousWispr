@@ -3438,7 +3438,7 @@
       }
     },
     "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri." : {
-      "comment" : "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.",
+      "comment" : "Apple Intelligence setup instruction on macOS 26.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3449,7 +3449,7 @@
       }
     },
     "Apple Intelligence is turned off" : {
-      "comment" : "AI Polish, leave pop-up title. Apple Intelligence is a product name.\nSetup notice title when Apple Intelligence is off in System Settings.",
+      "comment" : "Apple Intelligence setup title on macOS 26, which has the master switch.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3466,6 +3466,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple Intelligence ist nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Apple Intelligence isn't available for suggestions on this Mac" : {
+      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence ist auf diesem Mac für Vorschläge nicht verfügbar"
           }
         }
       }
@@ -3514,13 +3525,13 @@
         }
       }
     },
-    "Apple Intelligence needs macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. The status above says what this Mac reports." : {
+    "Apple Intelligence needs macOS 26 or later and a supported Mac. The on-device model must be available; the status above says what this Mac reported at the last check." : {
       "comment" : "AI Polish, Why use Apple Intelligence: when it is not available.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence braucht macOS 26 oder neuer, einen unterstützten Mac und eingeschaltetes Apple Intelligence in den Systemeinstellungen. Der Status oben zeigt, was dieser Mac meldet."
+            "value" : "Apple Intelligence benötigt macOS 26 oder neuer sowie einen unterstützten Mac. Das Modell auf dem Gerät muss verfügbar sein; der Status oben zeigt, was dieser Mac bei der letzten Prüfung gemeldet hat."
           }
         }
       }
@@ -3565,6 +3576,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status von Apple Intelligence"
+          }
+        }
+      }
+    },
+    "Apple Intelligence wasn't enabled" : {
+      "comment" : "Apple Intelligence setup title. The last check reported it not enabled; the cause is unknown.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence war nicht aktiviert"
+          }
+        }
+      }
+    },
+    "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without AI polish. System Settings may not offer a fix." : {
+      "comment" : "Apple Intelligence leave-page dialog on macOS 27 or later. Leave means navigating away from the page.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei der letzten Prüfung war Apple Intelligence nicht aktiviert. Wähle ein anderes Modell oder verlasse die Ansicht ohne KI-Nachbearbeitung. In den Systemeinstellungen lässt sich das Problem möglicherweise nicht beheben."
+          }
+        }
+      }
+    },
+    "Apple Intelligence wasn't enabled at the last check. You can keep dictating or choose another model in Settings > AI Polish. System Settings may not offer a fix." : {
+      "comment" : "Onboarding Apple Intelligence notice on macOS 27 or later. The Open System Settings button is not a guaranteed remedy.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Prüfung: nicht aktiviert. Diktiere weiter oder wähle unter Einstellungen > KI-Nachbearbeitung ein anderes Modell. Systemeinstellungen helfen evtl. nicht."
           }
         }
       }
@@ -3708,6 +3752,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Assamesisch"
+          }
+        }
+      }
+    },
+    "At the last check, macOS reported that Apple Intelligence wasn't enabled on this Mac. You can keep dictating or choose another model in Settings > AI Polish." : {
+      "comment" : "Apple Intelligence status on macOS 27 or later. Reports the last observation, never a cause or a promised repair.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei der letzten Prüfung meldete macOS, dass Apple Intelligence auf diesem Mac nicht aktiviert war. Du kannst weiter diktieren oder unter Einstellungen > KI-Nachbearbeitung ein anderes Modell wählen."
           }
         }
       }
@@ -21722,7 +21777,7 @@
       }
     },
     "Turn it on in System Settings, or pick another model." : {
-      "comment" : "AI Polish, leave pop-up. System Settings is the name of the macOS app.",
+      "comment" : "Apple Intelligence leave-page instruction on macOS 26.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21733,7 +21788,7 @@
       }
     },
     "Turn it on to enable free, on-device AI polish. Dictation works fine without it." : {
-      "comment" : "Setup notice when Apple Intelligence is off in System Settings.",
+      "comment" : "Apple Intelligence onboarding instruction on macOS 26.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21793,17 +21848,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bedienungshilfen aktivieren"
-          }
-        }
-      }
-    },
-    "Turn on Apple Intelligence in System Settings to get suggestions" : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: the line under the switch.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviere Apple Intelligence in den Systemeinstellungen, um Vorschläge zu erhalten"
           }
         }
       }

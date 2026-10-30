@@ -1506,7 +1506,7 @@ private var whyBlock: some View {
             comment: "AI Polish, Why use Apple Intelligence: bold lead-in of a paragraph."),
           body: String(
             localized:
-              "Apple Intelligence needs macOS 26 or later, a supported Mac, and Apple Intelligence turned on in System Settings. The status above says what this Mac reports.",
+              "Apple Intelligence needs macOS 26 or later and a supported Mac. The on-device model must be available; the status above says what this Mac reported at the last check.",
             comment: "AI Polish, Why use Apple Intelligence: when it is not available.")),
       ],
       link: (map: .aiPolishLinkAboutAppleIntelligence, url: URL(string: "https://support.apple.com/en-us/121115")!))

@@ -254,11 +254,7 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
       )
     }
     if failureReasons.contains(.appleIntelligenceDisabled) {
-      return String(
-        localized:
-          "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri.",
-        comment:
-          "AI Polish, Apple Intelligence: whether the on-device model can be used on this Mac.")
+      return AppleIntelligenceSetupCopy.current.availabilityMessage
     }
     if failureReasons.contains(.modelNotReady) {
       return String(
@@ -288,13 +284,13 @@ public struct AppleIntelligenceAvailabilityReport: Sendable, Codable {
   /// What onboarding should surface about on-device polish, or nil to stay
   /// silent. Only the two ACTIONABLE reasons map to a notice. (#1080)
   public enum OnboardingPolishNotice: String, Sendable, Equatable {
-    case enableInSettings  // appleIntelligenceDisabled — actionable (Open Settings)
+    case enableInSettings  // appleIntelligenceDisabled; review settings or choose another model
     case updateMacOS  // unsupportedOS — informational
   }
 
   /// Derived onboarding notice: non-nil ONLY when on-device Apple Intelligence
   /// polish is unavailable for a reason the user can act on —
-  /// `.enableInSettings` (switched off → Open Settings) or `.updateMacOS`
+  /// `.enableInSettings` (reported not enabled; review settings) or `.updateMacOS`
   /// (pre-macOS-26 → informational). Every other reason and status returns nil:
   /// transient ones (modelNotReady, modelAccessFailed, generationFailed),
   /// deviceNotEligible/unsupportedHardware (Apple reported deviceNotEligible. The

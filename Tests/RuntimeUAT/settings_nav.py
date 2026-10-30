@@ -329,6 +329,7 @@ _ACTIONABLE_TITLES = (
     "Finish AI polish setup",
     "Apple Intelligence isn't available",
     "Apple Intelligence is turned off",
+    "Apple Intelligence wasn't enabled",
 )
 _INFORMATIONAL_MESSAGES = (
     "The download is still in progress. Until setup finishes, text is pasted without AI polish.",

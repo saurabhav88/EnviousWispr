@@ -82,8 +82,8 @@ struct LearnFromEditsRowTests {
     #expect(!none.isEnabled && none.secondaryLine == "Not available on this version of macOS yet")
     let off = LearnFromEditsSettingsPresentation(selection: .unavailable(.afmUnavailableNoRulesFallback))
     #expect(
-      !off.isEnabled
-        && off.secondaryLine == "Turn on Apple Intelligence in System Settings to get suggestions")
+      off.isEnabled == false
+        && off.secondaryLine == "Apple Intelligence isn't available for suggestions on this Mac")
     #expect(LearnFromEditsSettingsPresentation.unwired == none, "before wiring the row is disabled")
     let classifier = LearnFromEditsSettingsPresentation(selection: .arm(.classifier), judge: .ready)
     #expect(classifier.isEnabled && classifier.secondaryLine == nil && classifier.action == nil)

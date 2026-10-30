@@ -1,3 +1,4 @@
+import Foundation
 import EnviousWisprCore
 import Testing
 
@@ -83,8 +84,12 @@ struct PolishSetupLeaveCopyTests {
   @Test("Apple Intelligence: off has three buttons, unavailable has two, never Go back")
   func apple() {
     let off = Self.content(.appleUnavailable(.appleIntelligenceDisabled), goBack: .egOne)
-    #expect(off.title == "Apple Intelligence is turned off")
-    #expect(off.message == "Turn it on in System Settings, or pick another model.")
+    let newerMacOS = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+    #expect(off.title == (newerMacOS
+      ? "Apple Intelligence wasn't enabled" : "Apple Intelligence is turned off"))
+    #expect(off.message == (newerMacOS
+      ? "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without AI polish. System Settings may not offer a fix."
+      : "Turn it on in System Settings, or pick another model."))
     #expect(
       off.buttons.map(\.title) == ["Open System Settings", "Pick another model", "Leave anyway"])
     #expect(off.buttons[1].role == .cancel)
