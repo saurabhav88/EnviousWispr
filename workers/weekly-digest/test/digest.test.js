@@ -192,7 +192,7 @@ function harness(overrides = {}) {
       state.feedCalls = (state.feedCalls || 0) + 1;
       return overrides.feed ? overrides.feed() : ok(FEED_BODY);
     }
-    if (String(url).includes("api.github.com") && String(url).includes("/issues/")) {
+    if (new URL(url).host === "api.github.com" && new URL(url).pathname.includes("/issues/")) {
       state.commentUrls = [...(state.commentUrls || []), String(url)];
       return overrides.comments ? overrides.comments() : ok([receipt(LAST_MONDAY)]);
     }
@@ -1072,7 +1072,8 @@ test("a receipt with picks names the count and links its pull request", async ()
   const pr = "https://github.com/saurabhav88/EnviousWispr/pull/9999";
   const h = harness({ comments: () => ok([receipt(LAST_MONDAY, { picked: 2, result: pr })]) });
   await h.run();
-  assert.match(ollamaEmbed(h).description, new RegExp(`proposed 2 models: ${pr.replace(/[./]/g, "\\$&")}$`, "m"));
+  const lines = ollamaEmbed(h).description.split("\n");
+  assert.ok(lines.includes(`The weekly routine completed on 2026-07-27 and proposed 2 models: ${pr}`), lines.join(" | "));
 });
 
 test("a failure receipt is a warning, never a completion", async () => {
