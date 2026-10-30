@@ -19001,6 +19001,17 @@
         }
       }
     },
+    "Switching from another dictation app?" : {
+      "comment" : "Dictionary and Snippets: title of the card that opens import from another app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechselst du von einer anderen Diktier-App?"
+          }
+        }
+      }
+    },
     "System" : {
       "comment" : "Menu bar menu: Appearance submenu: follow the system appearance.",
       "localizations" : {
@@ -26575,6 +26586,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "stereo"
+          }
+        }
+      }
+    },
+    "switching.card.snippets.body" : {
+      "comment" : "Snippets: line under the switching card title. %@ is a list of app names.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bring your snippets across from %@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernimm deine Textbausteine aus %@."
+          }
+        }
+      }
+    },
+    "switching.card.words.body" : {
+      "comment" : "Dictionary: line under the switching card title. %@ is a list of app names.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bring your words across from %@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernimm deine Wörter aus %@."
           }
         }
       }
