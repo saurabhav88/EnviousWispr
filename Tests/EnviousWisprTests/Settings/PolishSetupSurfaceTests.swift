@@ -102,6 +102,24 @@ struct PolishSetupSurfaceTests {
     #expect(monitor.shows(.banner))
   }
 
+  @Test("the sidebar row says 'Needs setup', not 'in progress'")
+  func sidebarSpokenValue() {
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: false, activity: .polishNeedsSetup)
+        == "Not selected. Needs setup")
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: true, activity: .polishNeedsSetup)
+        == "Selected. Needs setup")
+    #expect(
+      SettingsShellCopy.sidebarValue(isSelected: false, activity: .fileImport)
+        == "Not selected. Importing in progress")
+  }
+}
+
+/// Copy protection; reminder visibility is exercised separately above.
+@MainActor
+@Suite("AI polish setup reminder copy (#4016)", .tags(.driftGuard))
+struct PolishSetupSurfaceCopyTests {
   @Test("the banner, menu line and tag read the approved words")
   func words() {
     #expect(PolishSetupSurfaceCopy.menuLine == "Finish setting up AI polish")
@@ -130,18 +148,5 @@ struct PolishSetupSurfaceTests {
       #expect(text == reason, "\(problem)")
       #expect(text.hasSuffix(".") == false, "a short reason carries its own full stop")
     }
-  }
-
-  @Test("the sidebar row says 'Needs setup', not 'in progress'")
-  func sidebarSpokenValue() {
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: false, activity: .polishNeedsSetup)
-        == "Not selected. Needs setup")
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: true, activity: .polishNeedsSetup)
-        == "Selected. Needs setup")
-    #expect(
-      SettingsShellCopy.sidebarValue(isSelected: false, activity: .fileImport)
-        == "Not selected. Importing in progress")
   }
 }

@@ -30,6 +30,7 @@ GERMAN = {
     "Leave anyway": "Trotzdem verlassen", "Finish setup": "Einrichtung abschließen",
     "Pick another model": "Anderes Modell wählen", "Go back to %@": "Zurück zu %@",
     "Finish AI polish setup": "KI-Nachbearbeitung fertig einrichten",
+    "Apple Intelligence is turned off": "Apple Intelligence ist deaktiviert",
     "Apple Intelligence wasn't enabled": "Apple Intelligence war nicht aktiviert",
     "The download is still in progress. Until setup finishes, text is pasted without AI polish.":
         "Der Download läuft noch. Bis die Einrichtung fertig ist, wird Text ohne "
@@ -1715,6 +1716,7 @@ def leave_valued_cases():
                      (r.page, f.page, f.presses[-1]), ("History", "History", "leave:leave_anyway")))
     # #4016: preserve the 26 title and recognize the new 27+ title through the real navigator.
     for german, title in ((False, "Apple Intelligence is turned off"),
+                          (True, "Apple Intelligence is turned off"),
                           (False, "Apple Intelligence wasn't enabled"),
                           (True, "Apple Intelligence wasn't enabled")):
         f = _on_ai_polish("actionable", german=german)

@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Apple Intelligence setup guidance (#4016)", .tags(.productOutcome))
 struct AppleIntelligenceSetupCopyTests {
-  @Test("a restored disabled report gives guidance for the displaying Mac")
+  @Test("a disabled report with a saved OS version gives guidance for the displaying Mac")
   func disabledReportUsesDisplayHost() {
     let gate = AIGateResult.passed(summary: "fixture")
     let report = AppleIntelligenceAvailabilityReport(
@@ -19,6 +19,11 @@ struct AppleIntelligenceSetupCopyTests {
     #expect(report.onboardingPolishNotice == .enableInSettings)
   }
 
+}
+
+/// Literal and version-selector protection, not evidence of caller rendering.
+@Suite("Apple Intelligence setup copy (#4016)", .tags(.driftGuard))
+struct AppleIntelligenceSetupCopyDriftTests {
   @Test("macOS 26 keeps every established disabled-state instruction")
   func macOS26Instructions() {
     let copy = AppleIntelligenceSetupCopy.forOSMajorVersion(26)
