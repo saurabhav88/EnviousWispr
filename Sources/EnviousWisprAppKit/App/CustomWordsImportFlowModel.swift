@@ -39,6 +39,12 @@ final class CustomWordsImportFlowModel {
     /// site. No default on purpose: a fixture that forgets it fails to
     /// compile rather than silently dropping the report.
     var report: @MainActor (CustomWordsImportReport) -> Void
+    /// Which supported apps are on this Mac. Run only when the app picker appears, never at
+    /// launch or when a card renders (#3034); injected so a test can prove that. Defaulted so
+    /// existing call sites keep compiling.
+    var detectInstalled: @Sendable () -> [String] = {
+      SmartImportRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+    }
 
     /// Production wiring: one compare engine for the sheet's lifetime.
     static func live(
@@ -151,6 +157,18 @@ final class CustomWordsImportFlowModel {
   init(dependencies: Dependencies) {
     self.dependencies = dependencies
   }
+
+  /// A fresh flow already on `method`'s input screen, for an entry that skips the method
+  /// picker (the "Switching from another app?" card, #3034). Back still returns to the picker.
+  static func starting(at method: Method, dependencies: Dependencies) -> CustomWordsImportFlowModel {
+    let model = CustomWordsImportFlowModel(dependencies: dependencies)
+    model.select(method)
+    return model
+  }
+
+  /// The identifiers of supported apps found on this Mac. Touches disk: call only when the
+  /// app picker is on screen.
+  var detectInstalledApps: @Sendable () -> [String] { dependencies.detectInstalled }
 
   /// True exactly where `goBack()` does something — the three input screens
   /// and review. The sheet's Back button reads this instead of keeping its

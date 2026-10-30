@@ -9,6 +9,8 @@ import SwiftUI
 private enum YourWordsSheetRoute: String, Identifiable {
   case addTerm
   case importWords
+  /// The "Switching from another app?" card: the same import, opened on the app picker (#3034).
+  case importWordsFromApp
   var id: Self { self }
 }
 
@@ -276,24 +278,32 @@ struct YourWordsView: View {
           onSave: saveNewWord
         )
       case .importWords:
-        // The import flow reads the live list and commits through the same
-        // coordinator every other Your Words mutation uses (#1669) — two
-        // narrow closures rather than handing the sheet the coordinator.
-        CustomWordsImportSheet(
-          dependencies: .live(
-            existingWords: { customWordsCoordinator.customWords },
-            commit: { await customWordsCoordinator.commitImport($0) },
-            // #2951: one row per landed import; the flow model cannot name
-            // the Services module, so the mapping lives here.
-            report: {
-              TelemetryService.shared.customWordsImported(
-                source: $0.sourceID, found: $0.found, imported: $0.imported,
-                skipped: $0.skipped)
-            }
-          )
-        )
+        importSheet(startingWith: nil)
+      case .importWordsFromApp:
+        importSheet(startingWith: .smartImport)
       }
     }
+  }
+
+  /// The import flow reads the live list and commits through the same
+  /// coordinator every other Your Words mutation uses (#1669) — two
+  /// narrow closures rather than handing the sheet the coordinator.
+  private func importSheet(startingWith method: CustomWordsImportFlowModel.Method?)
+    -> CustomWordsImportSheet
+  {
+    CustomWordsImportSheet(
+      dependencies: .live(
+        existingWords: { customWordsCoordinator.customWords },
+        commit: { await customWordsCoordinator.commitImport($0) },
+        // #2951: one row per landed import; the flow model cannot name
+        // the Services module, so the mapping lives here.
+        report: {
+          TelemetryService.shared.customWordsImported(
+            source: $0.sourceID, found: $0.found, imported: $0.imported,
+            skipped: $0.skipped)
+        }
+      ),
+      startingWith: method)
   }
 
   /// The tab this view draws, as arrival identifies content (#3545).
@@ -329,6 +339,11 @@ struct YourWordsView: View {
   /// controls are what stay pinned.
   private var yourWordsBanners: some View {
     VStack(alignment: .leading, spacing: SettingsLayout.sectionSpacing) {
+      // #3034: always shown, above any notice.
+      SwitchingFromAnotherAppCard(
+        subtitle: SwitchingFromAnotherAppCopy.wordsSubtitle(names: SmartImportRegistry.v1.displayNames)
+      ) { sheetRoute = .importWordsFromApp }
+
       // Launch-time load failure (#1646): honest banner instead of a silent
       // empty list. Two distinct situations, two distinct messages.
       if let failure = customWordsCoordinator.wordsLoadFailureAtLaunch {
@@ -353,13 +368,8 @@ struct YourWordsView: View {
         )
       }
     }
-    // Space below only when a notice is showing; otherwise the card starts at
-    // the top of the pane, where it always has.
-    .padding(
-      .bottom,
-      customWordsCoordinator.wordsLoadFailureAtLaunch != nil
-        || customWordsCoordinator.pendingEnrichmentCount > 0
-        ? SettingsLayout.sectionSpacing : 0)
+    // Space below: the switching card is always above the list, so the gap is always needed.
+    .padding(.bottom, SettingsLayout.sectionSpacing)
   }
 
   /// The Your Words tab's three page-level actions, factored out so

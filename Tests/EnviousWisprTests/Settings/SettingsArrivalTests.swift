@@ -1190,10 +1190,17 @@ struct SettingsArrivalTests {
     let list = try #require(tallestScrollView(in: host), "the page has no scroll view")
     if scrolledToBottom {
       let document = try #require(list.documentView)
-      let bottom = max(0, document.frame.height - list.contentView.bounds.height)
-      list.contentView.scroll(to: NSPoint(x: 0, y: bottom))
-      list.reflectScrolledClipView(list.contentView)
-      host.layoutSubtreeIfNeeded()
+      // The lazy list's document grows as the rows near the bottom are laid out, so one jump
+      // lands short of the real bottom (measured #3034: 202 of 3109 at a 380 pane). Jump again
+      // until the document stops growing; a fixed count would hide a list that never settles.
+      for _ in 0..<4 {
+        let height = document.frame.height
+        let bottom = max(0, height - list.contentView.bounds.height)
+        list.contentView.scroll(to: NSPoint(x: 0, y: bottom))
+        list.reflectScrolledClipView(list.contentView)
+        host.layoutSubtreeIfNeeded()
+        if document.frame.height == height { break }
+      }
     }
     let before = list.contentView.bounds.origin.y
     // Finish the work the first layout and the scroll queued, so the page's own deferred decision

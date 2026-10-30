@@ -855,7 +855,9 @@
   "mapped": []
  },
  "dictionary.yourWords.empty": {
-  "exempt": {},
+  "exempt": {
+   "switchingHandoffCard": 1
+  },
   "mapped": [
    "dictionary.tab.learnFrom",
    "dictionary.tab.quickAdd",
@@ -880,7 +882,9 @@
   ]
  },
  "dictionary.yourWords.withWords": {
-  "exempt": {},
+  "exempt": {
+   "switchingHandoffCard": 1
+  },
   "mapped": [
    "dictionary.tab.learnFrom",
    "dictionary.tab.quickAdd",
@@ -911,7 +915,9 @@
   ]
  },
  "snippets": {
-  "exempt": {},
+  "exempt": {
+   "switchingHandoffCard": 1
+  },
   "mapped": [
    "snippetKeyword",
    "snippets",
@@ -923,7 +929,9 @@
   ]
  },
  "snippets.empty": {
-  "exempt": {},
+  "exempt": {
+   "switchingHandoffCard": 1
+  },
   "mapped": [
    "snippetKeyword",
    "snippets",
@@ -935,7 +943,9 @@
   ]
  },
  "snippets.searching": {
-  "exempt": {},
+  "exempt": {
+   "switchingHandoffCard": 1
+  },
   "mapped": [
    "snippetKeyword",
    "snippets",

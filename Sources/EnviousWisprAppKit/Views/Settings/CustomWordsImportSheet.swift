@@ -22,8 +22,15 @@ struct CustomWordsImportSheet: View {
   @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
 
-  init(dependencies: CustomWordsImportFlowModel.Dependencies) {
-    _model = State(initialValue: CustomWordsImportFlowModel(dependencies: dependencies))
+  /// `startingWith` opens on that method's screen instead of the method picker (#3034).
+  init(
+    dependencies: CustomWordsImportFlowModel.Dependencies,
+    startingWith method: CustomWordsImportFlowModel.Method? = nil
+  ) {
+    _model = State(
+      initialValue: method.map {
+        CustomWordsImportFlowModel.starting(at: $0, dependencies: dependencies)
+      } ?? CustomWordsImportFlowModel(dependencies: dependencies))
   }
 
   var body: some View {
@@ -669,11 +676,12 @@ private struct ImportSmartAppPickerScreen: View {
     }
     .task {
       // Off the main actor: this touches the filesystem.
+      let detect = model.detectInstalledApps
       let found = await Task.detached { () -> [String] in
         // Detached rather than a plain Task: a plain Task inherits MainActor
         // from this view, and these are disk existence checks across several
         // locations. Nothing here needs actor context.
-        SmartImportRegistry.v1.adapters.filter(\.isInstalled).map(\.identifier)
+        detect()
       }.value
       installed = found
       didLookForApps = true
