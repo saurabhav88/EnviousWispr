@@ -36,13 +36,6 @@
       "parameterCount": "14B",
       "sizeBytes": 9053115905,
       "reason": "Microsoft's 14B model with strong instruction following, for Macs with 16 GB of memory."
-    },
-    {
-      "name": "llama3.2:3b",
-      "displayName": "Llama 3.2 (3B)",
-      "parameterCount": "3B",
-      "sizeBytes": 2019392628,
-      "reason": "A small, fast Llama chat model that suits 8 GB Macs."
     }
   ]
 }
