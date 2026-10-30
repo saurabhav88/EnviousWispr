@@ -798,4 +798,24 @@ struct OllamaManageModelsPresentationTests {
       OllamaCatalogPresentation.rowIsPulling(
         pinned, currentPullingModel: "foo", hostedPullAdvertisedID: nil))
   }
+
+  @Test("a failed mistyped name and the corrected suggestion both show; the same model shows once")
+  func typedRowsKeepCorrectionReachable() {
+    let typo = OllamaModelCatalogEntry(
+      name: "smollm2:135mm", displayName: "smollm2:135mm", parameterCount: "", downloadSize: "")
+    let fixed = OllamaModelCatalogEntry(
+      name: "smollm2:135m", displayName: "smollm2:135m", parameterCount: "", downloadSize: "")
+    let alias = OllamaModelCatalogEntry(
+      name: "foo:latest", displayName: "foo:latest", parameterCount: "", downloadSize: "")
+    let foo = OllamaModelCatalogEntry(
+      name: "foo", displayName: "foo", parameterCount: "", downloadSize: "")
+
+    #expect(OllamaCatalogPresentation.typedRows(pinned: nil, suggestion: nil).isEmpty)
+    #expect(OllamaCatalogPresentation.typedRows(pinned: typo, suggestion: nil).map(\.name) == ["smollm2:135mm"])
+    #expect(OllamaCatalogPresentation.typedRows(pinned: nil, suggestion: fixed).map(\.name) == ["smollm2:135m"])
+    #expect(
+      OllamaCatalogPresentation.typedRows(pinned: typo, suggestion: fixed).map(\.name)
+        == ["smollm2:135mm", "smollm2:135m"])
+    #expect(OllamaCatalogPresentation.typedRows(pinned: foo, suggestion: alias).map(\.name) == ["foo"])
+  }
 }

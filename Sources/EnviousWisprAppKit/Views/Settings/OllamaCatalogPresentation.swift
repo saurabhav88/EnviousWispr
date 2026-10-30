@@ -118,6 +118,24 @@ enum OllamaCatalogPresentation {
       downloadSize: listed.downloadSize, isDownloaded: listed.isDownloaded)
   }
 
+  /// #3836: the typed rows in display order: the pinned one (a typed download running or failed),
+  /// then the current search's suggestion unless it is the same model. Both can show at once, so a
+  /// failed mistyped name never hides the offer for the corrected one.
+  static func typedRows(pinned: OllamaModelCatalogEntry?, suggestion: OllamaModelCatalogEntry?)
+    -> [OllamaModelCatalogEntry]
+  {
+    var rows = pinned.map { [$0] } ?? []
+    if let suggestion,
+      pinned.map({
+        OllamaSetupService.canonicalModelName($0.name)
+          != OllamaSetupService.canonicalModelName(suggestion.name)
+      }) ?? true
+    {
+      rows.append(suggestion)
+    }
+    return rows
+  }
+
   /// #3836: the grey line under a local row's name: the verdict note, then parameters and size.
   /// A typed suggestion has neither number, so it says what will happen instead.
   static func detailLine(for entry: OllamaModelCatalogEntry, note: String) -> String {

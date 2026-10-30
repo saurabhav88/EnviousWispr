@@ -2162,11 +2162,12 @@ private var ollamaBrowseModelsCard: some View {
       } ?? true
     }
     let hosted = groups.hosted.filter(matches)
-    // Otherwise, an exact unlisted name typed into a search that matched nothing becomes one row.
-    let typedRow =
-      pinnedTyped
-      ?? OllamaCatalogPresentation.typedDownloadSuggestion(
-        query: modelSearch, catalog: catalog, searchMatchedAnyRow: !local.isEmpty || !hosted.isEmpty)
+    // And an exact unlisted name typed into a search that matched nothing becomes a row too, so a
+    // mistyped name that failed never blocks offering the corrected one.
+    let typedRows = OllamaCatalogPresentation.typedRows(
+      pinned: pinnedTyped,
+      suggestion: OllamaCatalogPresentation.typedDownloadSuggestion(
+        query: modelSearch, catalog: catalog, searchMatchedAnyRow: !local.isEmpty || !hosted.isEmpty))
 
     VStack(alignment: .leading, spacing: 10) {
       Text(
@@ -2206,12 +2207,15 @@ private var ollamaBrowseModelsCard: some View {
       ForEach(local) { entry in
         ollamaCatalogRow(
           entry, isPulling: isPulling,
-          isLastInGroup: entry.id == local.last?.id && typedRow == nil)
+          isLastInGroup: entry.id == local.last?.id && typedRows.isEmpty)
       }
 
-      if let typedRow {
-        ollamaCatalogRow(typedRow, isPulling: isPulling, isLastInGroup: true, typedName: true)
-      } else if !query.isEmpty, local.isEmpty, hosted.isEmpty {
+      ForEach(typedRows) { entry in
+        ollamaCatalogRow(
+          entry, isPulling: isPulling, isLastInGroup: entry.id == typedRows.last?.id,
+          typedName: true)
+      }
+      if typedRows.isEmpty, !query.isEmpty, local.isEmpty, hosted.isEmpty {
         Text(OllamaCatalogPresentation.noMatchesText)
           .font(.stHelper)
           .foregroundStyle(Color.stTextSecondary)
