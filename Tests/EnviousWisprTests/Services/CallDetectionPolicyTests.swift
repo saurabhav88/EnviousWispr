@@ -723,6 +723,48 @@ struct CallDetectionPolicyTests {
     #expect(s.stops == 1)
   }
 
+  @Test("A newer menu Start retires an old Switch's Start and fallback notice",
+    arguments: [false, true])
+  func newerManualStartRetiresPendingSwitch(unknownAtCompletion: Bool) {
+    var s = recordingZoom()
+    let next = Self.teams(evidence: .call(family: .teams, room: "next-call"))
+    s.wait(Policy.questionInterval)
+    s.ongoing(next)
+    #expect(isSwitch(s.interaction))
+    s.press(.yes)
+    #expect(s.stops == 1)
+    // Production Stop exposes idle before its final document flush finishes.
+    s.meeting = .idle
+    s.step()
+    let request = s.acceptManual()
+    let newer = UUID()
+    s.meeting = .recording(meetingID: newer)
+    s.settleManual(request, recordingID: newer)
+    s.meeting = .idle
+    s.step()
+    if unknownAtCompletion {
+      s.observeCall(.unknown, holder: next)
+      s.read([.init(pid: next.pid, rule: next.rule, input: .active, evidence: .unknown)])
+    }
+    s.stopFinished()
+    #expect(s.starts == [.zoom], "an old Yes cannot start again after a newer manual request")
+    #expect(s.interaction == .none, "an old Switch cannot regain a stopped offer either")
+  }
+
+  @Test("Turning a native app Off relinquishes automatic end ownership",
+    arguments: [false, true])
+  func nativeAppOffCancelsCountdown(alreadyCountingDown: Bool) {
+    var s = recordingZoom()
+    let recording = s.meeting
+    if alreadyCountingDown { end(&s); #expect(isCountdown(s.interaction)) }
+    s.appsOff = ["zoom"]
+    s.step()
+    #expect(!isCountdown(s.interaction), "Off cancels an existing countdown")
+    for _ in 0..<7 { end(&s) }
+    #expect(s.stops == 0, "later completed end observations cannot regain automatic Stop")
+    #expect(s.meeting == recording)
+  }
+
   func recordingBrowser() -> Story {
     var s = Story()
     s.ongoing(Self.chrome(.active, url: Self.meetA))

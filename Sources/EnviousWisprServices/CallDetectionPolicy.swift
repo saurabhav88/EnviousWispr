@@ -469,8 +469,15 @@ public struct CallDetectionPolicy: Sendable {
     latestAcceptedGeneration = request.generation
     questionOpportunityAt = nil
     pendingManual = nil
-    guard request.route == .menu || request.route == .history,
-      c.setUp, c.mode != .off, c.meeting == .idle, request.acceptedAt <= c.now
+    guard request.route == .menu || request.route == .history else { return [] }
+    // A newer user request retires the old Switch answer, even if this request cannot start.
+    for (id, operation) in operations {
+      guard case .switchTo(let e, _, _) = operation else { continue }
+      operations[id] = nil
+      if startingOperation == id { startingOperation = nil }
+      if episode(e)?.phase == .starting(operation: id) { setPhase(e, .offered) }
+    }
+    guard c.setUp, c.mode != .off, c.meeting == .idle, request.acceptedAt <= c.now
     else { return [] }
     followMeeting(c)
     let plausible = episodes.filter { episode in
@@ -684,13 +691,20 @@ public struct CallDetectionPolicy: Sendable {
   private mutating func followMeeting(_ c: Context) {
     if c.meeting != .busy {
       for index in episodes.indices {
-        if case .confirmingEnd(let m) = episodes[index].phase,
-          c.meeting == .recording(meetingID: m),
+        let automaticRecording: UUID?
+        switch episodes[index].phase {
+        case .recording(let m), .ending(let m, _), .confirmingEnd(let m): automaticRecording = m
+        default: automaticRecording = nil
+        }
+        if let m = automaticRecording, c.meeting == .recording(meetingID: m),
           c.appsOff.contains(CallAppCatalog.switchID(for: episodes[index].rule)) {
           episodes[index].phase = .kept(meetingID: m)
           episodes[index].ownershipOverridden = true
           association = .overridden(m)
-          if case .endConfirmation(episodes[index].id, _) = interaction { set(.none) }
+          switch interaction {
+          case .countdown(episodes[index].id, _), .endConfirmation(episodes[index].id, _): set(.none)
+          default: break
+          }
         }
         switch episodes[index].phase {
         case .recording(let m), .kept(let m), .ending(let m, _), .confirmingEnd(let m):
