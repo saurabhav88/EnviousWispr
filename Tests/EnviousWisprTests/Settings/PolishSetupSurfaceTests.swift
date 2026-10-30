@@ -121,7 +121,9 @@ struct PolishSetupSurfaceTests {
       (.localEngineUpdatePaused(.egOne), "the EG-1 update is paused"),
       (.localEngineFailed(.egOne), "the EG-1 download did not finish"),
       (.appleUnavailable(.unsupportedOS), "Apple Intelligence isn't available on this Mac"),
-      (.appleUnavailable(.appleIntelligenceDisabled), "Apple Intelligence is turned off"),
+      (.appleUnavailable(.appleIntelligenceDisabled),
+       ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+         ? "Apple Intelligence wasn't enabled" : "Apple Intelligence is turned off"),
     ]
     for (problem, reason) in reasons {
       let text = PolishSetupSurfaceCopy.shortReason(problem)

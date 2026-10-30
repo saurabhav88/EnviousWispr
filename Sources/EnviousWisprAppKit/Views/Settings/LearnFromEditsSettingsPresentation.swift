@@ -228,7 +228,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
       (.unavailable(.afmUnavailableNoRulesFallback), .ready):
       isEnabled = false
       secondaryLine = String(
-        localized: "Turn on Apple Intelligence in System Settings to get suggestions",
+        localized: "Apple Intelligence isn't available for suggestions on this Mac",
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
