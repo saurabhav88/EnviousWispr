@@ -232,6 +232,7 @@ public final class SettingsManager {
   public var selectedBackend: ASRBackendType {
     didSet {
       defaults.set(selectedBackend.rawValue, forKey: "selectedBackend")
+      normalizeStreamingPreference()
       onChange?(.selectedBackend)
     }
   }
@@ -1122,8 +1123,30 @@ public final class SettingsManager {
     }
   }
 
+  /// #3809: eligibility of the selected settings, not readiness of the active engine.
+  /// Whisper must commit to a language before streaming; an early guess can spoil a take.
+  /// Parakeet streams in Auto too. Keep this choice shared between both engines.
+  public var canUseStreamingASR: Bool {
+    switch selectedBackend {
+    case .parakeet:
+      return true
+    case .whisper:
+      if case .locked = Self.validatedLanguageMode(languageMode) { return true }
+      return false
+    }
+  }
+
+  private func normalizeStreamingPreference() {
+    if useStreamingASR && !canUseStreamingASR { useStreamingASR = false }
+  }
+
   public var useStreamingASR: Bool {
     didSet {
+      if useStreamingASR && !canUseStreamingASR {
+        // #3809: measured Observation re-entry; the nested false write owns the persist/notify tail.
+        useStreamingASR = false
+        return
+      }
       defaults.set(useStreamingASR, forKey: "useStreamingASR")
       onChange?(.useStreamingASR)
     }
@@ -1328,6 +1351,7 @@ public final class SettingsManager {
       if let data = try? JSONEncoder().encode(languageMode) {
         defaults.set(data, forKey: "languageMode")
       }
+      normalizeStreamingPreference()
       onChange?(.languageMode)
     }
   }
@@ -1875,6 +1899,8 @@ public final class SettingsManager {
     // in `defaults` and no discovery runs at launch to fix it. The helper skips a follower,
     // whose fields are dictation's and already repaired one line up.
     canonicalizeFileImportLLMModelForProvider()
+    // Initial assignments bypass didSet; repair old incompatible ON values once loaded.
+    normalizeStreamingPreference()
   }
 
   /// Apply discovered models from async discovery. SettingsManager decides whether to update.
