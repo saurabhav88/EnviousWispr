@@ -103,14 +103,16 @@ struct SwitchingFromAnotherAppTests {
     #expect(spy.calls == 2)
   }
 
-  @Test("The card takes only a line and an action, so it has nothing to scan with")
-  func cardRendersWithoutDependencies() {
-    let spy = DetectSpy()
+  /// What this proves and what it does not: the card's only inputs are a line of text and an
+  /// action, so it cannot reach a detector; a scan added to its body would not be caught here.
+  /// The scan-on-picker-only behaviour is bound by `entryDoesNotScan` (the flow models) and
+  /// checked live in the running app.
+  @Test("The card renders from a line of text and an action alone")
+  func cardRendersFromTextAndActionOnly() {
     let card = SwitchingFromAnotherAppCard(subtitle: "Bring your words across from Vox.") {}
     let host = NSHostingView(rootView: card.frame(width: 600))
     host.layoutSubtreeIfNeeded()
     #expect(host.fittingSize.height > 0)
-    #expect(spy.calls == 0)
   }
 
   // MARK: - Copy and routes
