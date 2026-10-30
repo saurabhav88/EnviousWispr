@@ -144,7 +144,7 @@
           let next = CallPromptContent.countdown(secondsLeft: max(1, Int(ceil(left))))
           if next != current.content {
             playing?.content = next
-            presenter.show(next, actions: actions(generation: current.generation))
+            presenter.show(next, actions: actions(generation: current.generation, content: next))
           }
         } else {
           // A real call end hands the countdown over to Recording stopped.
@@ -166,7 +166,7 @@
           now().addingTimeInterval($0)
         },
         generation: generation)
-      presenter.show(content, actions: actions(generation: generation))
+      presenter.show(content, actions: actions(generation: generation, content: content))
       outcome = .shown(entry.title)
       startTimer()
     }
@@ -190,7 +190,10 @@
       timer = clock
     }
 
-    private func actions(generation: Int) -> CallPromptActions {
+    private func actions(generation: Int, content: CallPromptContent) -> CallPromptActions {
+      // The same label the card's first button shows.
+      let yesLabel: String
+      if case .switchMeeting = content { yesLabel = "Start a new recording" } else { yesLabel = "Start recording" }
       func press(_ name: String) -> @MainActor () -> Void {
         { [weak self] in
           // A button on an older card cannot close a newer one.
@@ -203,7 +206,7 @@
         }
       }
       return CallPromptActions(
-        yes: press("Start recording"), no: press("Not now"),
+        yes: press(yesLabel), no: press("Not now"),
         stopRecording: press("Stop recording"), keepRecording: press("Keep recording"),
         startNewRecording: press("Start a new recording"), openSettings: press("Open settings"),
         dismiss: press("Close"))

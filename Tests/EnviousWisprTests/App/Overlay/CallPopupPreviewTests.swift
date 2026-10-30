@@ -180,6 +180,26 @@
       #expect(rig.controller.lastEvent == nil)
     }
 
+    @Test("each card's buttons close it and report the label that card shows",
+      arguments: [
+        ("ask", "yes", "Start recording"), ("switchMeeting", "yes", "Start a new recording"),
+        ("switchMeeting", "no", "Not now"), ("endConfirmation", "keepRecording", "Keep recording"),
+        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "keepRecording", "Keep recording"),
+        ("stoppedByUser", "startNewRecording", "Start a new recording"), ("needsAttention", "openSettings", "Open settings"),
+      ])
+    func buttonsReportTheirCardLabel(id: String, button: String, label: String) throws {
+      let rig = Rig()
+      rig.play(id)
+      let content = try #require(rig.panel.content)
+      let action = try #require(rig.panel.actions.action(named: button, for: content), "\(id) shows no \(button)")
+      action()
+      #expect(!rig.panel.isShowing)
+      #expect(rig.controller.lastEvent == "Pressed \(label). A preview only closes; nothing else happens.")
+      // A countdown closed by Keep recording never hands over to Recording stopped.
+      rig.advance(CallDetectionPolicy.countdownLength + 1)
+      #expect(!rig.panel.isShowing)
+    }
+
     @Test("Dismiss closes the preview")
     func dismissCloses() {
       let rig = Rig()
