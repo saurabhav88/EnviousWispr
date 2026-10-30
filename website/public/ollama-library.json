@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-10-30",
   "models": [
     {
       "name": "gemma4:e4b",
@@ -22,6 +22,20 @@
       "parameterCount": "12B",
       "sizeBytes": 7071712741,
       "reason": "Well-known instruction-following 12B chat model from the Mistral family, a larger option for 16 GB Macs."
+    },
+    {
+      "name": "llama3.1:8b",
+      "displayName": "Llama 3.1 (8B)",
+      "parameterCount": "8B",
+      "sizeBytes": 4920752841,
+      "reason": "Meta's well-known general chat model, a solid all-round size for 16 GB Macs."
+    },
+    {
+      "name": "phi4:14b",
+      "displayName": "Phi-4 (14B)",
+      "parameterCount": "14B",
+      "sizeBytes": 9053115905,
+      "reason": "Microsoft's 14B model with strong instruction following, for Macs with 16 GB of memory."
     }
   ]
 }
