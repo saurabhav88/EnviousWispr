@@ -809,7 +809,8 @@ struct MeetingSummaryOwnerTests {
     var rowsAtEnd: [MeetingSummaryFinishedTelemetry]?
     harness.onEnded = { _ in rowsAtEnd = rig.world.finished }
     await coordinator.stop()
-    await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
+    // #4198: the mark settles after the History publication that follows `.ready`.
+    await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(harness.ended.last?.summaryPlan == .scheduled)
     #expect(rowsAtEnd == [], "nothing settled before the ready row")
     #expect(rig.world.finished == [Self.row(.failed, .hosted)], "settled at once, no attempt to lose")

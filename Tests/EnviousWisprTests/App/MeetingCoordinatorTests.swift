@@ -538,6 +538,35 @@ struct MeetingCoordinatorTests {
     #expect(queued, "Transcribe again was refused", sourceLocation: sourceLocation)
   }
 
+  /// #4218: the live pass the test drove has ended. `.ready` is persisted before the pass
+  /// publishes its History row, clears its commit receipt, settles the summary mark and clears
+  /// its checkpoint; the coordinator releases `processing` only after those steps (on success
+  /// or failure). So a test that reads any of those effects waits here, not on `.ready`.
+  ///
+  /// Pass completion is not publication success (a failed save keeps the receipt) and not
+  /// summary completion (`startOwed` runs its own task). It is also not a launch wait: launch
+  /// shows ready records and publishes their receipts without claiming `processing`. A retry
+  /// passes the generation it replaced, so the old ready record cannot satisfy the wait.
+  static func livePassFinished(
+    _ coordinator: MeetingCoordinator, _ meetingID: UUID, replacing previous: UUID? = nil,
+    timeout: Duration = .seconds(10), sourceLocation: SourceLocation = #_sourceLocation
+  ) async {
+    await eventually(
+      "live pass finished", timeout: timeout,
+      { livePassHasFinished(coordinator, meetingID, replacing: previous) },
+      sourceLocation: sourceLocation)
+  }
+
+  static func livePassHasFinished(
+    _ coordinator: MeetingCoordinator, _ meetingID: UUID, replacing previous: UUID? = nil
+  ) -> Bool {
+    guard let record = coordinator.record(id: meetingID), record.state == .ready else {
+      return false
+    }
+    if let previous, record.committedTranscriptGeneration == previous { return false }
+    return coordinator.processing?.meetingID != meetingID
+  }
+
   /// Waits for `condition` through Observation, with a deadline that only fails the test.
   static func eventually(
     _ label: String, timeout: Duration = .seconds(10),
@@ -584,6 +613,37 @@ struct MeetingCoordinatorTests {
     await withKnownIssue {
       await Self.eventually("never", timeout: .milliseconds(50)) { false }
     }
+  }
+
+  /// #4218 control: `.ready` is observable while the History save is parked, and the live-pass
+  /// wait does not accept it until the pass releases its claim.
+  @Test("the live-pass wait holds while the History save after ready is parked")
+  func livePassWaitHoldsDuringPublication() async throws {
+    let harness = try Harness()
+    let saving = Gate()
+    // Releases the parked save on every exit; the suite's time limit would not resume it.
+    defer { saving.open() }
+    harness.saveGate = saving
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop()
+    await Self.eventually("save in flight") { saving.parked }
+    #expect(coordinator.record(id: meetingID)?.state == .ready)
+    #expect(coordinator.processing?.meetingID == meetingID)
+    #expect(harness.saved.isEmpty)
+    // The wait itself, not only its predicate, stays blocked while the save is parked: it
+    // runs to its deadline (the expected known issues), exactly as `eventuallyFailsOnDeadline`.
+    await withKnownIssue {
+      await Self.livePassFinished(coordinator, meetingID, timeout: .milliseconds(50))
+    }
+    #expect(saving.parked, "still parked: the deadline above expired during publication")
+    saving.open()
+    await Self.livePassFinished(coordinator, meetingID)
+    #expect(harness.saved.count == 1)
+    // A retry names the generation it replaces; that ready record never satisfies its wait.
+    let generation = try #require(coordinator.record(id: meetingID)?.committedTranscriptGeneration)
+    #expect(Self.livePassHasFinished(coordinator, meetingID, replacing: generation) == false)
   }
 
   // MARK: - Start, stop and commit
@@ -639,9 +699,8 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     await coordinator.stop()
-    await Self.eventually("committed") {
-      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
-    }
+    // #4218: the pass ends with its publication failed; completion is not publication.
+    await Self.livePassFinished(coordinator, meetingID)
     #expect(harness.saved.isEmpty)
     #expect(coordinator.notice == .storageFailed)
     #expect(!coordinator.canTranscribeAgain(meetingID), "the receipt is settled first")
