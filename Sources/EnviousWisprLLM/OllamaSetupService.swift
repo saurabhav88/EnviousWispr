@@ -175,8 +175,44 @@ public final class OllamaSetupService {
   public private(set) var pullStatusText: String = ""
   public private(set) var currentPullingModel: String?
   public private(set) var downloadedModels: [OllamaDownloadedModel] = [] {
-    didSet { lastCommitAt = .now }
+    didSet {
+      lastCommitAt = .now
+      // #3836: a model the daemon now lists is installed, so a notice saying its download
+      // failed is stale. Every writer of this list confirms installation the same way.
+      if let failure = lastPullFailure,
+        downloadedModels.contains(where: {
+          $0.canonicalName == Self.canonicalModelName(failure.model)
+        })
+      {
+        lastPullFailure = nil
+      }
+    }
   }
+
+  /// #3836: why the last LOCAL download failed, keyed by the model it was for, so the Models
+  /// sheet can say it under that model's row. The page's `.error` state says the same thing
+  /// but sits behind the open sheet. Nil means "no notice", never "healthy".
+  package struct PullFailure: Equatable, Sendable {
+    package let model: String
+    package let message: String
+  }
+
+  /// #3836: set only by a failed local `pullModel`; a hosted Add reports through
+  /// `hostedModelAddState`. Cleared when any pull starts, on Cancel, when the user leaves
+  /// Ollama (`cancelHostedResolution`), and when the daemon lists the model.
+  package private(set) var lastPullFailure: PullFailure?
+
+  /// #3836: the exact name of the model a typed-name Download is for, so the Models sheet keeps
+  /// that row (with progress and Cancel while it runs) after the search text changes or the sheet
+  /// reopens. The service owns it because the pull outlives the sheet. It survives a FAILED pull,
+  /// so the row stays to show why and to offer Download again; it clears on success, on Cancel,
+  /// when another pull starts, and when the user leaves Ollama (`cancelHostedResolution`).
+  package private(set) var activeTypedPull: String?
+
+  /// #3836 test seam: called once when each pull task has finished handling its outcome, on
+  /// every exit path including a stale result that writes nothing, so tests learn "done" from
+  /// the service itself rather than from a fake or a clock. Nil in production.
+  @ObservationIgnored package var pullTaskDidFinish: (@MainActor () -> Void)?
 
   /// #3438: when `setupState` or `downloadedModels` was last committed, on the monotonic clock.
   /// A content-free receipt of freshness, comparable with when another producer (a dictation)
@@ -1233,6 +1269,10 @@ public final class OllamaSetupService {
     // attempted since — and the conditions that produced it may well have
     // changed. Leaving Ollama ends the whole episode, failure included.
     hostedModelAddState = .idle
+    // #3836: the local download notice, and the typed row it sits under, belong to the same
+    // episode.
+    lastPullFailure = nil
+    activeTypedPull = nil
   }
 
   /// Add a hosted model by resolving its pullable name against the daemon.
@@ -1388,8 +1428,10 @@ public final class OllamaSetupService {
     request.httpMethod = "GET"
     request.timeoutInterval = 5
 
+    // Same daemon seam as the server probe, so a test daemon answers this read too.
+    let send = localDaemonTransport ?? { try await URLSession.shared.data(for: $0) }
     do {
-      let (data, response) = try await URLSession.shared.data(for: request)
+      let (data, response) = try await send(request)
       guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["models"] as? [[String: Any]] else { return }
@@ -1815,13 +1857,18 @@ public final class OllamaSetupService {
   /// `hostedAdvertisedID` is non-nil only when a hosted Add started this, and it
   /// carries the id the ROW is keyed by. It decides two things: which row shows
   /// progress, and whether the status says Adding or Downloading.
-  public func pullModel(_ modelName: String, hostedAdvertisedID: String? = nil) {
+  /// `typedName` is true only for the Models sheet's typed-name Download row (#3836).
+  public func pullModel(
+    _ modelName: String, hostedAdvertisedID: String? = nil, typedName: Bool = false
+  ) {
     // Cancel any in-flight pull and invalidate its epoch so stale writes no-op.
     pullTask?.cancel()
     pullTask = nil
     pullEpoch &+= 1
     statusMutationEpoch &+= 1
     let epoch = pullEpoch
+    lastPullFailure = nil
+    activeTypedPull = typedName && hostedAdvertisedID == nil ? modelName : nil
 
     // Reset progress
     currentPullingModel = modelName
@@ -1844,6 +1891,7 @@ public final class OllamaSetupService {
 
     pullTask = Task { [weak self] in
       guard let self else { return }
+      defer { self.pullTaskDidFinish?() }
       do {
         if let pullPerformer = self.pullPerformer {
           try await pullPerformer(modelName)
@@ -1866,10 +1914,12 @@ public final class OllamaSetupService {
         // its own setupState; overwriting with .ready would clobber it.
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
+        self.activeTypedPull = nil
         self.setupState = .ready
       } catch is CancellationError {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
+        self.activeTypedPull = nil
         // Bug fix: don't force .runningNoModels if models exist
         if self.downloadedModels.isEmpty {
           self.setupState = .runningNoModels
@@ -1879,7 +1929,11 @@ public final class OllamaSetupService {
       } catch let urlError as URLError {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
-        self.setupState = .error(self.friendlyMessage(for: urlError))
+        let message = self.friendlyMessage(for: urlError)
+        if !self.pullOperationIsHostedRegistration {
+          self.lastPullFailure = PullFailure(model: modelName, message: message)
+        }
+        self.setupState = .error(message)
       } catch {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
@@ -1889,16 +1943,43 @@ public final class OllamaSetupService {
         // hosted failure never blames the user's free space for something that
         // needed none.
         if !hosted, Self.isDiskFull(error) {
-          self.setupState = .error(
-            String(
-              localized: "Not enough disk space. The model needs about 2 GB free.",
-              comment: "AI Polish, Ollama setup: the disk filled during a model download.")
-          )
+          let message = String(
+            localized: "Not enough disk space. The model needs about 2 GB free.",
+            comment: "AI Polish, Ollama setup: the disk filled during a model download.")
+          self.lastPullFailure = PullFailure(model: modelName, message: message)
+          self.setupState = .error(message)
         } else {
-          self.setupState = .error(self.failedMessage(hosted: hosted))
+          let message = self.failedMessage(hosted: hosted)
+          if !hosted {
+            // The page keeps its general message; the row under the model can say what the
+            // daemon actually answered when that answer is "no such model".
+            self.lastPullFailure = PullFailure(
+              model: modelName,
+              message: Self.isMissingModel(error) ? Self.missingModelMessage(modelName) : message)
+          }
+          self.setupState = .error(message)
         }
       }
     }
+  }
+
+  /// #3836: the daemon's answer when the registry has no manifest for a name. Ollama wraps a
+  /// registry 404 as `pull model manifest: file does not exist` (`server/images.go`), and the
+  /// stream reader surfaces it as `LLMError.requestFailed("Ollama pull error: <text>")`. Only
+  /// that exact pairing counts; any other "file does not exist" keeps the general message.
+  nonisolated static func isMissingModel(_ error: Error) -> Bool {
+    guard case LLMError.requestFailed(let detail) = error else { return false }
+    return detail.hasPrefix("Ollama pull error: ")
+      && detail.contains("pull model manifest: file does not exist")
+  }
+
+  nonisolated static func missingModelMessage(_ modelName: String) -> String {
+    String(
+      localized:
+        "No model named \(modelName) was found on ollama.com. Check the spelling, including the part after the colon.",
+      comment:
+        "AI Polish, Ollama Models sheet: shown under a typed or listed model whose download failed because ollama.com has no model by that name. The placeholder is the model name exactly as typed, for example smollm2:135m."
+    )
   }
 
   /// Cancel an in-progress model pull. Also clears stale row UI during the
@@ -1906,6 +1987,9 @@ public final class OllamaSetupService {
   /// set). Called from Cancel buttons AND from `onChange(llmProvider)` in
   /// `AIPolishSettingsView` when the user switches providers.
   public func cancelPull() {
+    // #3836: Cancel always ends the episode for the sheet, even when nothing is in flight.
+    lastPullFailure = nil
+    activeTypedPull = nil
     if pullTask != nil {
       // Active pull in flight: cancel, bump epoch, reset state.
       pullTask?.cancel()
