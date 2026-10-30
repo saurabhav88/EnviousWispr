@@ -1,5 +1,27 @@
 {
   "schema": 1,
-  "updated": "2026-10-16",
-  "models": []
+  "updated": "2026-10-29",
+  "models": [
+    {
+      "name": "gemma4:e4b",
+      "displayName": "Gemma 4 (E4B)",
+      "parameterCount": "E4B",
+      "sizeBytes": 6583656264,
+      "reason": "Newest Gemma family with an efficient 4B-class size that fits an 8 GB Mac and handles chat and instructions."
+    },
+    {
+      "name": "qwen3.5:9b",
+      "displayName": "Qwen 3.5 (9B)",
+      "parameterCount": "9B",
+      "sizeBytes": 6550825373,
+      "reason": "Latest Qwen generation at a 9B size that suits 16 GB Macs, a step up from the smaller Qwen sizes."
+    },
+    {
+      "name": "mistral-nemo:12b",
+      "displayName": "Mistral Nemo (12B)",
+      "parameterCount": "12B",
+      "sizeBytes": 7071712741,
+      "reason": "Well-known instruction-following 12B chat model from the Mistral family, a larger option for 16 GB Macs."
+    }
+  ]
 }
