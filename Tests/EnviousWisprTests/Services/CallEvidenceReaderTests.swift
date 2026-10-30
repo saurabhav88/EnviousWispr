@@ -1535,6 +1535,61 @@ struct CallEvidenceReaderTests {
     }
   }
 
+  /// The captured new-Teams home path (#4142): window > 4 groups > scroll area > one web area
+  /// > groups > "Meet navigation" table. The dialog subroles are synthetic, not observed live.
+  @Test("Teams home inside its one structural web document ends; other web or dialog scopes do not",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"),
+    arguments: ["actual", "secondWebArea", "nestedWebArea", "offPathWebArea", "dialog",
+      "alertDialog", "unreadableSubrole"])
+  func teamsWebDocumentHome(_ condition: String) {
+    let fixture = teamsFixture(home: true)
+    let ids = (0..<10).map { AXUIElementCreateApplication(Int32(86_000 + $0)) }
+    let (groups, scroll, web, inner, extraWeb) = (Array(ids[0..<4]), ids[4], ids[5], ids[6], ids[7])
+    let offPath = ids[8]
+    fixture.response = { f, node, attribute in
+      func role(_ value: String, _ children: [AXUIElement]) -> Reader.CopyResult {
+        attribute == "AXRole" ? .value(value as CFString)
+          : attribute == "AXChildren" && !children.isEmpty ? .value(children as CFArray) : .missing
+      }
+      if CFEqual(node, f.window) {
+        if attribute == "AXMinimized" { return .value(kCFBooleanFalse) }
+        return role("AXWindow", [groups[0]])
+      }
+      for (index, group) in groups.enumerated() where CFEqual(node, group) {
+        let next = index < 3 ? groups[index + 1] : (condition == "offPathWebArea" ? offPath : scroll)
+        return role("AXGroup", condition == "secondWebArea" && index == 3 ? [next, extraWeb] : [next])
+      }
+      if CFEqual(node, offPath) { return role("AXButton", [web]) }
+      if CFEqual(node, scroll) { return role("AXScrollArea", [web]) }
+      if CFEqual(node, web) {
+        return role("AXWebArea", condition == "nestedWebArea" ? [inner, extraWeb] : [inner])
+      }
+      if CFEqual(node, extraWeb) { return role("AXWebArea", []) }
+      if CFEqual(node, inner) {
+        if attribute == "AXSubrole" {
+          switch condition {
+          case "dialog": return .value("AXApplicationDialog" as CFString)
+          case "alertDialog": return .value("AXApplicationAlertDialog" as CFString)
+          case "unreadableSubrole": return .failed
+          default: return .missing
+          }
+        }
+        return role("AXGroup", [f.page])
+      }
+      guard CFEqual(node, f.page) else { return nil }
+      switch attribute {
+      case "AXRole": return .value("AXTable" as CFString)
+      case "AXTitle", "AXDescription": return .value("Meet navigation" as CFString)
+      default: return .missing
+      }
+    }
+    let expected: Reader.Snapshot = condition == "actual"
+      ? .init(startEvidence: .none, continuity: .ended(family: .teams, room: "pid-70000"))
+      : .init(startEvidence: .microphoneOnly(family: .teams, room: "pid-70000"))
+    #expect(Reader.nativeCallSnapshot(family: .teams, holderPID: fixture.pid, access: fixture.access)
+      == expected)
+  }
+
   @Test("A Teams home marker before unsearched descendants cannot establish end",
     arguments: [true, false])
   func teamsHomeTraversalCutoff(depth: Bool) {

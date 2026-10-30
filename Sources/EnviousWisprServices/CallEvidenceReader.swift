@@ -294,16 +294,20 @@ public enum CallEvidenceReader {
     var preview = false
     var recognizedWindow = false
     var supportedScope = true
+    var webAreas = 0
+    var homeInWebArea = false
     let visible: Bool
     if case .value(let minimized) = boundedCopy(
       window, kAXMinimizedAttribute as CFString, until: deadline, access: access),
       CFGetTypeID(minimized) == CFBooleanGetTypeID(), (minimized as? Bool) == false
     { visible = true }
     else { visible = false }
-    var queue: [(AXUIElement, Int)] = [(window, 0)]
+    // `structural`: only the window and plain layout containers lie above this node.
+    var queue: [(node: AXUIElement, level: Int, structural: Bool, inWebArea: Bool)] =
+      [(window, 0, true, false)]
     var cursor = 0
     while cursor < queue.count, cursor < 800, access.now() < deadline {
-      let (node, level) = queue[cursor]
+      let (node, level, structural, inWebArea) = queue[cursor]
       cursor += 1
       let role: String?
       if case .value(let rawRole) = boundedCopy(
@@ -316,9 +320,27 @@ public enum CallEvidenceReader {
       // and embedded-document scopes cannot borrow a home table elsewhere in this window.
       // Keep searching them for positive hang-up proof, but never infer end from them.
       if role == "AXSheet" || role == "AXDialog" || role == "AXSystemDialog"
-        || role == "AXDrawer" || role == "AXWebArea"
-        || (role == "AXWindow" && !CFEqual(node, window))
+        || role == "AXDrawer" || (role == "AXWindow" && !CFEqual(node, window))
       { supportedScope = false }
+      // New Teams draws its own UI in one web document reached only through layout
+      // containers (#4142). Any other web document is embedded content.
+      if role == "AXWebArea" {
+        webAreas += 1
+        if !structural || webAreas > 1 { supportedScope = false }
+      }
+      // Web modals surface as groups with a dialog subrole; an unreadable subrole is unknown.
+      if role == "AXGroup" {
+        switch boundedCopy(node, kAXSubroleAttribute as CFString, until: deadline, access: access) {
+        case .value(let value):
+          if let subrole = value as? String {
+            if subrole == "AXApplicationDialog" || subrole == "AXApplicationAlertDialog" {
+              supportedScope = false
+            }
+          } else { complete = false }
+        case .missing: break
+        case .failed, .unavailable: complete = false
+        }
+      }
       if role == "AXButton" {
         switch boundedCopy(node, "AXDOMIdentifier" as CFString, until: deadline, access: access) {
         case .value(let value):
@@ -334,19 +356,29 @@ public enum CallEvidenceReader {
         let description = controlText(
           node, kAXDescriptionAttribute as CFString, until: deadline, access: access)
         if !title.valid || !description.valid { complete = false }
-        if title.text == "Meet navigation", description.text == "Meet navigation" { home = true }
+        if title.text == "Meet navigation", description.text == "Meet navigation" {
+          home = true
+          if inWebArea { homeInWebArea = true }
+        }
       }
       switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
         guard let children = value as? [AXUIElement] else { complete = false; continue }
-        if level < 32 { queue.append(contentsOf: children.map { ($0, level + 1) }) }
+        let childStructural = structural
+          && (CFEqual(node, window) || role == "AXGroup" || role == "AXScrollArea")
+        let childInWebArea = inWebArea || role == "AXWebArea"
+        if level < 32 {
+          queue.append(contentsOf: children.map { ($0, level + 1, childStructural, childInWebArea) })
+        }
         else if !children.isEmpty { complete = false }
       case .missing: break
       case .failed, .unavailable: complete = false
       }
     }
     if cursor < queue.count || access.now() >= deadline { complete = false }
-    return complete && supportedScope && recognizedWindow && visible && home && !preview ? .home : .unknown
+    // A trusted web document must hold the home marker; web content beside it proves nothing.
+    return complete && supportedScope && recognizedWindow && visible && home && !preview
+      && (webAreas == 0 || homeInWebArea) ? .home : .unknown
   }
 
   /// A helper may hold the microphone; inspect only an unambiguous regular Teams owner.
