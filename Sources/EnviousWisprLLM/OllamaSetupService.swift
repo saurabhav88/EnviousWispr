@@ -202,10 +202,11 @@ public final class OllamaSetupService {
   /// Ollama (`cancelHostedResolution`), and when the daemon lists the model.
   package private(set) var lastPullFailure: PullFailure?
 
-  /// #3836: the exact name of the model a typed-name Download is pulling, so the Models sheet
-  /// keeps showing that row (with progress and Cancel) after the search text changes or the
-  /// sheet reopens. The service owns it because the pull outlives the sheet. Nil when the
-  /// current pull did not come from a typed name, and once the pull ends.
+  /// #3836: the exact name of the model a typed-name Download is for, so the Models sheet keeps
+  /// that row (with progress and Cancel while it runs) after the search text changes or the sheet
+  /// reopens. The service owns it because the pull outlives the sheet. It survives a FAILED pull,
+  /// so the row stays to show why and to offer Download again; it clears on success, on Cancel,
+  /// when another pull starts, and when the user leaves Ollama (`cancelHostedResolution`).
   package private(set) var activeTypedPull: String?
 
   /// #3836 test seam: called once when each pull task has finished handling its outcome, on
@@ -1268,8 +1269,10 @@ public final class OllamaSetupService {
     // attempted since — and the conditions that produced it may well have
     // changed. Leaving Ollama ends the whole episode, failure included.
     hostedModelAddState = .idle
-    // #3836: the local download notice belongs to the same episode.
+    // #3836: the local download notice, and the typed row it sits under, belong to the same
+    // episode.
     lastPullFailure = nil
+    activeTypedPull = nil
   }
 
   /// Add a hosted model by resolving its pullable name against the daemon.
@@ -1926,7 +1929,6 @@ public final class OllamaSetupService {
       } catch let urlError as URLError {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
-        self.activeTypedPull = nil
         let message = self.friendlyMessage(for: urlError)
         if !self.pullOperationIsHostedRegistration {
           self.lastPullFailure = PullFailure(model: modelName, message: message)
@@ -1935,7 +1937,6 @@ public final class OllamaSetupService {
       } catch {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
-        self.activeTypedPull = nil
         let hosted = self.pullOperationIsHostedRegistration
         // A hosted registration writes a manifest and nothing else, so it cannot
         // plausibly exhaust the disk. Keeping the disk branch local-only means a

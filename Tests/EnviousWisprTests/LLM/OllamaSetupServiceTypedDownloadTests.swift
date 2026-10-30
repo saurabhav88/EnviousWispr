@@ -319,7 +319,7 @@ struct OllamaSetupServiceTypedDownloadTests {
     }
   }
 
-  @Test("an ordinary or hosted pull replaces the typed one; a failure or Cancel ends it")
+  @Test("an ordinary or hosted pull replaces the typed one; Cancel ends it; a failure keeps it")
   func typedPullEnds() async {
     let gate = Gate()
     let service = service { _ in try await gate.park() }
@@ -340,10 +340,15 @@ struct OllamaSetupServiceTypedDownloadTests {
     #expect(await SettingsSearchModelTests.waitUntil { gate.started == 5 })
     #expect(await gate.drain(untilFinished: 5))
 
+    // A failed typed pull keeps its row, so the reason stays visible with Download to retry,
+    // until the user leaves Ollama.
     let failing = self.service { _ in throw Self.missing }
     failing.pullModel("typed:1b", typedName: true)
     #expect(await settled(failing))
-    #expect(failing.activeTypedPull == nil)
+    #expect(failing.activeTypedPull == "typed:1b")
     #expect(failing.lastPullFailure?.model == "typed:1b")
+    failing.cancelHostedResolution()
+    #expect(failing.activeTypedPull == nil)
+    #expect(failing.lastPullFailure == nil)
   }
 }
