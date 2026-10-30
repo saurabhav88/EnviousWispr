@@ -35,7 +35,7 @@ enum EnviousOutputFilter {
     let stripped =
       shouldStripPreamble
       ? rawOutput.strippingLLMPreamble()
-      : strippingTranscriptWrapperOnly(from: rawOutput)
+      : rawOutput.strippingTranscriptTags()
     let preambleStripped = stripped != rawOutput
 
     if looksLikeCode(stripped) && !looksLikeCode(rawInput) {
@@ -140,14 +140,6 @@ enum EnviousOutputFilter {
   private static func firstLine(of text: String) -> String {
     String(text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  private static func strippingTranscriptWrapperOnly(from text: String) -> String {
-    text.replacingOccurrences(
-      of: "</?transcript>",
-      with: "",
-      options: [.regularExpression, .caseInsensitive]
-    ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private static func looksLikeCode(_ text: String) -> Bool {

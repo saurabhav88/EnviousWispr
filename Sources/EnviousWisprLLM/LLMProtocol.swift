@@ -152,14 +152,19 @@ extension String {
     // Case-insensitive so both <transcript> and <TRANSCRIPT> are handled. Skipped on
     // the no-sandwich cloud path so literal dictated tags survive (see doc above).
     if stripTranscriptTags {
-      result = result.replacingOccurrences(
-        of: "</?transcript>",
-        with: "",
-        options: [.regularExpression, .caseInsensitive]
-      ).trimmingCharacters(in: .whitespacesAndNewlines)
+      result = result.strippingTranscriptTags()
     }
 
     return result
+  }
+
+  /// Remove only the echoed transcript wrapper, retaining fences and content.
+  func strippingTranscriptTags() -> String {
+    replacingOccurrences(
+      of: "</?transcript>",
+      with: "",
+      options: [.regularExpression, .caseInsensitive]
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }
 
