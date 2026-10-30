@@ -1,7 +1,7 @@
 {
   "polish_model": "gpt-4o-mini",
-  "captured_at": "2026-08-16T18:53:09.354863Z",
-  "reason": "cloud polish prompt v6 -> v7 (sealed_v1: 94.5% vs 87.0% on gpt-5-6-luna, holds across Sol/Terra)",
+  "captured_at": "2026-10-30T22:11:46.750750Z",
+  "reason": "Add three speech-grounded opening-preservation cases (#3871) from frozen-generation replay; retain all 161 existing reference answers unchanged to avoid adopting unrelated provider churn",
   "baseline": {
     "CLEAN-PRIYA-001": "Let's sync tomorrow at ten to review the API changes.",
     "CLEAN-DIANA-002": "The roadmap review is pushed to Thursday.",
@@ -163,6 +163,9 @@
     "EMOJI-PRESERVE-PRIYA-007": "Just merged the release, and everything is green. Great work, team! 🔥",
     "EMOJI-PRESERVE-DIANA-008": "Quick async update: I just wrapped with sales. They are greenlighting the enterprise tier for Q3. 🙏",
     "EMOJI-PRESERVE-FRANK-009": "Just saw the photos of the recital, Emma. You were wonderful! So proud. ❤️",
-    "EMOJI-PRESERVE-AARON-010": "I finished the accessibility audit today. Tomorrow, I'm working on the focus management issues. 🚀"
+    "EMOJI-PRESERVE-AARON-010": "I finished the accessibility audit today. Tomorrow, I'm working on the focus management issues. 🚀",
+    "CLEAN-MEERA-3871-001": "Sure, I can do that tomorrow.",
+    "CLEAN-AARON-3871-002": "Got it. I will send the file tonight.",
+    "CLEAN-DIANA-3871-003": "Of course, I can help with that."
   }
 }

@@ -2259,15 +2259,23 @@ def main():
 
     if args.mode == "selftest":
         import unittest
-        suite = unittest.defaultTestLoader.discover(
-            str(ROOT / "scripts/eval/tests"), pattern="test_acceptance_judge_routing.py")
-        count = suite.countTestCases()
-        if count == 0:
-            print("INFRA-ERROR: funded-judge routing tests were not discovered", file=sys.stderr)
-            sys.exit(2)
+        suite = unittest.TestSuite()
+        counts = []
+        for pattern, label in (
+            ("test_acceptance_judge_routing.py", "funded-judge routing"),
+            ("test_preamble_mirror.py", "source-aware cleanup"),
+        ):
+            discovered = unittest.defaultTestLoader.discover(
+                str(ROOT / "scripts/eval/tests"), pattern=pattern)
+            count = discovered.countTestCases()
+            if count == 0:
+                print(f"INFRA-ERROR: {label} tests were not discovered", file=sys.stderr)
+                sys.exit(2)
+            suite.addTests(discovered)
+            counts.append(f"{count} {label} tests passed")
         if not unittest.TextTestRunner().run(suite).wasSuccessful():
             sys.exit(1)
-        print(f"mirror self-tests passed; {count} funded-judge routing tests passed")
+        print("mirror self-tests passed; " + "; ".join(counts))
         sys.exit(0)
 
     if args.mode == "baseline":

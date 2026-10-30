@@ -110,7 +110,7 @@ class PreambleMirrorTests(unittest.TestCase):
             corpus = Path(directory) / "cases.jsonl"
             corpus.write_text(json.dumps({"id": "one", "asr_input": "please send the invoice"}) + "\n")
             with patch.object(gate, "OUT_DIR", Path(directory)), \
-                 patch.object(gate, "_preflight_claude_judge"), \
+                 patch.object(gate, "_preflight_judge"), \
                  patch.object(gate, "call_openai", return_value=raw) as call, \
                  patch.object(gate, "_apply_validator", side_effect=inspect):
                 with self.assertRaises(ReachedValidator):
