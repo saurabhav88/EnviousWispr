@@ -109,7 +109,7 @@ summarize() {
 | Component | Status | Type |
 |---|---|---|
 | Build/Package | $(status_emoji "$BUILD_RESULT") \`${BUILD_RESULT}\` | **HEART** |
-| Launch on macOS 14 (as shipped) | $(status_emoji "$LAUNCH_RESULT") \`${LAUNCH_RESULT}\` | **HEART** |
+| Launch on the oldest hosted macOS, 15 (as shipped) | $(status_emoji "$LAUNCH_RESULT") \`${LAUNCH_RESULT}\` | **HEART** |
 | GitHub Release | $(status_emoji "$RELEASE_RESULT") \`${RELEASE_RESULT}\` | **HEART** |
 | Appcast | $(status_emoji "$APPCAST_STATE") \`${APPCAST_STATE}\` | limb |
 | Sentry dSYMs | $(status_emoji "$SENTRY_RESULT") \`${SENTRY_RESULT}\` | limb |

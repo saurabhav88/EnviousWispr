@@ -48,7 +48,7 @@ permissions:
 #   preflight                — version, mode, secrets; a new build needs committed notes
 #                              and probes (.github/release-notes/v<V>.md, .probes)
 #   build-release-artifacts  — build, sign, notarize, package; probes checked in the binary
-#   launch-on-macos-14       — the notarized app, unmodified, launches on macOS 14 (#3348)
+#   launch-on-oldest-macos   — the notarized app, unmodified, launches on the oldest hosted macOS, 15 (#3348, #4239)
 #   publish-github-release   — GitHub Release with both DMGs and the committed notes
 #
 # LIMBS (report failure, never block shipping):
@@ -699,13 +699,16 @@ jobs:
           SUMMARY
 
   # ==========================================================================
-  # HEART gate — Launch the shipped app on macOS 14 (#3348)
+  # HEART gate — Launch the shipped app on the oldest hosted macOS (#3348)
   # The exact notarized DMG this run publishes (or, in release-only, the
-  # source run's), mounted and launched UNMODIFIED on the support floor. PR CI
+  # source run's), mounted and launched UNMODIFIED on the oldest hosted
+  # image: macos-15 since GitHub retired macos-14 on 2026-11-02 (#4239). The
+  # support floor stays macOS 14; 14.0 to 15.x is covered by the compiler's
+  # availability errors and the weak-link check, which the launch reports. PR CI
   # launches a testable build; this is the only check of production startup,
   # so publish-github-release and publish-appcast wait for it.
   # ==========================================================================
-  launch-on-macos-14:
+  launch-on-oldest-macos:
     needs: [preflight, build-release-artifacts]
     if: |
       !cancelled() &&
@@ -720,7 +723,7 @@ jobs:
           needs.build-release-artifacts.result == 'skipped'
         )
       )
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     permissions:
       contents: read  # checkout of the launch assertion
@@ -753,7 +756,7 @@ jobs:
           [ -d "$MOUNT/EnviousWispr.app" ] || { echo "::error::no EnviousWispr.app in $DMG"; exit 1; }
           # Launched from the mounted DMG, as a user first opens it. The notarization ticket
           # is stapled to the DMG, not the app: a copy taken out of the volume made Gatekeeper
-          # on macos-14 fall back to an online lookup and report "Unnotarized Developer ID"
+          # on the macos-14 image fall back to an online lookup and report "Unnotarized Developer ID"
           # (build-only run 36792148282) for an app the build job had just seen as notarized.
           ./scripts/ci/assert-app-launches.sh --as-shipped "$MOUNT/EnviousWispr.app"
 
@@ -762,8 +765,8 @@ jobs:
   # Idempotent: probes first, only clobbers in explicit recovery mode.
   # ==========================================================================
   publish-github-release:
-    needs: [preflight, build-release-artifacts, launch-on-macos-14]
-    # #3348: never publish an app that has not launched, as shipped, on macOS 14.
+    needs: [preflight, build-release-artifacts, launch-on-oldest-macos]
+    # #3348: never publish an app that has not launched, as shipped, on the oldest hosted macOS (#4239).
     if: |
       !cancelled() &&
       needs.preflight.result == 'success' &&
@@ -777,7 +780,7 @@ jobs:
           needs.build-release-artifacts.result == 'skipped'
         )
       ) &&
-      needs.launch-on-macos-14.result == 'success'
+      needs.launch-on-oldest-macos.result == 'success'
     runs-on: macos-26   # no Xcode use: download, notes, gh release upload; stays on the GA image (#3344)
     timeout-minutes: 15
     permissions:
@@ -978,9 +981,9 @@ jobs:
   # ==========================================================================
   publish-appcast:
     # #1117: LIMB — checkout + download + python3/xmllint + App token + git push + curl. All Linux-present.
-    needs: [preflight, build-release-artifacts, publish-github-release, launch-on-macos-14]
+    needs: [preflight, build-release-artifacts, publish-github-release, launch-on-oldest-macos]
     # #3348: the Sparkle feed offers the update to every installed app, so a
-    # push/full run publishes it only after the shipped app launched on macOS 14.
+    # push/full run publishes it only after the shipped app launched on the oldest hosted macOS.
     # appcast-only recovery republishes an already-released version and skips the gate.
     if: |
       always() && (
@@ -994,7 +997,7 @@ jobs:
         needs.build-release-artifacts.result == 'skipped'
       ) && (
         inputs.mode == 'appcast-only' ||
-        needs.launch-on-macos-14.result == 'success'
+        needs.launch-on-oldest-macos.result == 'success'
       )
     runs-on: ubuntu-latest   # #1117: Linux-eligible limb
     # #1217: the exact Pages run may wait behind one serialized 10-minute deploy,
@@ -1591,7 +1594,7 @@ jobs:
   # Always runs. Single truth source for what shipped and what didn't.
   # ==========================================================================
   release-summary:
-    needs: [preflight, build-release-artifacts, launch-on-macos-14, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask, verify-downloads]
+    needs: [preflight, build-release-artifacts, launch-on-oldest-macos, publish-github-release, publish-appcast, upload-sentry-dsyms, bump-homebrew-cask, verify-downloads]
     # #3729: runs even when preflight fails, so a missing notes file or a bad tag is
     # reported here like every other failure.
     if: always()
@@ -1613,7 +1616,7 @@ jobs:
           MODE: ${{ inputs.mode || 'full' }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           BUILD_RESULT: ${{ needs.build-release-artifacts.result }}
-          LAUNCH_RESULT: ${{ needs.launch-on-macos-14.result }}
+          LAUNCH_RESULT: ${{ needs.launch-on-oldest-macos.result }}
           RELEASE_RESULT: ${{ needs.publish-github-release.result }}
           APPCAST_JOB_RESULT: ${{ needs.publish-appcast.result }}
           APPCAST_DELIVERY_RESULT: ${{ needs.publish-appcast.outputs.delivery-result }}

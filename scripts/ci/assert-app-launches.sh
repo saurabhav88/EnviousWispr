@@ -103,7 +103,7 @@ fi
 #
 # EnviousWispr is Apple Silicon only. A launch on an x86_64 runner would either fail for a
 # reason unrelated to macOS compatibility, or succeed under Rosetta and certify a configuration
-# no user runs. The `macos-14` label resolves to `macos-14-arm64` today; asserted rather than
+# no user runs. The `macos-15` label resolves to an arm64 image today; asserted rather than
 # trusted, because a label remap would silently turn this job into theatre.
 RUNNER_ARCH=$(uname -m)
 if [ "$RUNNER_ARCH" != "arm64" ]; then
@@ -115,15 +115,17 @@ MINOS=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{pr
 echo "==> runner:     macOS $RUNNER_VERSION on $RUNNER_ARCH"
 echo "==> app:        $APP"
 echo "==> deployment: ${MINOS:-unknown}"
-echo "==> built with: SDK $(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')"
+SDK=$(otool -l "$BIN" 2>/dev/null | awk '/LC_BUILD_VERSION/{f=1} f&&/sdk /{print $2; exit}')
+echo "==> built with: SDK ${SDK:-unknown}"
 
 # **How far below the baseline this runner actually reaches, stated rather than implied.**
 #
 # Symbol availability is monotonic, so a launch ABOVE the deployment target cannot prove the
-# target itself. A major-version match is NOT enough: the `macos-14` image is 14.8.x while the
-# app targets 14.0, so an API introduced in 14.1 through 14.8 resolves here and would still
-# abort at launch for a user on 14.0. GitHub publishes no 14.0 image, so this residual range is
-# not closable by choosing a different runner and must not be papered over.
+# target itself. GitHub retired the `macos-14` image on 2026-11-02 (#4239), so the oldest hosted
+# image is macOS 15 while the app targets 14.0: an API introduced in 14.1 through 15.x resolves
+# here and would still abort at launch for a user on macOS 14. GitHub publishes no image that
+# old, so this residual range is not closable by choosing a different runner and must not be
+# papered over. (Before #4239 the gap was 14.0 to 14.8, on the `macos-14` image.)
 #
 # What covers it instead is the SWIFT COMPILER, which is the exhaustive defence and is already
 # run on every build: using an API newer than the deployment target without an `@available`
@@ -149,10 +151,15 @@ if ! version_gt "14.10" "14.9" || version_gt "14.9" "14.10" || version_gt "14.0"
   die "the version comparator is not ordering macOS versions correctly on this machine, so this job cannot tell whether the runner is old enough to prove anything" 2
 fi
 
+# The launch can only show the failure it is aimed at (a newer-than-target symbol bound
+# strongly) on an OS OLDER than the SDK: at or above the SDK every symbol resolves. So the runner
+# must sit below the SDK's major version; how far above the deployment target it sits is the
+# residual gap reported below (#4239: the oldest hosted image is now one major above the target).
+[ -n "$SDK" ] || die "could not read the SDK version from $BIN; without it this job cannot know whether the runner is old enough to prove anything" 2
 RUNNER_MAJOR=${RUNNER_VERSION%%.*}
-MINOS_MAJOR=${MINOS%%.*}
-if [ "$RUNNER_MAJOR" -gt "$MINOS_MAJOR" ]; then
-  die "runner is macOS $RUNNER_VERSION but the app targets $MINOS. A whole major version above the baseline proves nothing about supported users. Run this job on a macOS $MINOS_MAJOR image, or raise the deployment target to match the oldest image still available." 2
+SDK_MAJOR=${SDK%%.*}
+if [ "$RUNNER_MAJOR" -ge "$SDK_MAJOR" ]; then
+  die "runner is macOS $RUNNER_VERSION but the app was built with the macOS $SDK SDK. At or above the SDK every symbol resolves, so a launch here proves nothing. Run this job on the oldest hosted image below macOS $SDK_MAJOR." 2
 fi
 if version_gt "$RUNNER_VERSION" "$MINOS"; then
   echo "==> baseline: runner $RUNNER_VERSION, target $MINOS"
