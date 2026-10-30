@@ -1,4 +1,6 @@
 #if DEBUG
+  import AppKit
+  import EnviousWisprAppKitTestSupport
   import EnviousWisprServices
   import Foundation
   import Testing
@@ -198,6 +200,15 @@
       // A countdown closed by Keep recording never hands over to Recording stopped.
       rig.advance(CallDetectionPolicy.countdownLength + 1)
       #expect(!rig.panel.isShowing)
+    }
+
+    @Test("only a preview card may appear in screenshots; a real call pop-up stays out of screen sharing",
+      arguments: [false, true])
+    func onlyThePreviewIsCapturable(capturable: Bool) throws {
+      let driver = RecordingOverlayPanelDriver()
+      let panel = CallPromptPanel(anchor: { nil }, makePanel: { driver }, capturable: capturable)
+      panel.show(.firstTip, actions: CallPromptActions())
+      #expect(driver.sharingType == (capturable ? .readOnly : .none))
     }
 
     @Test("Dismiss closes the preview")

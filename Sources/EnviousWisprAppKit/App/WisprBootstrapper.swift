@@ -2746,7 +2746,7 @@ package final class WisprBootstrapper {
       self.callPopupPreviewController = CallPopupPreviewController(
         presenter: CallPromptPanel(
           anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame },
-          makePanel: overlayEffects.makePanel),
+          makePanel: overlayEffects.makePanel, capturable: true),
         realPopupIsShowing: { [callDetection] in callDetection.isPromptShowing },
         // The real prompt's uptime clock: changing the Mac's clock never moves a card's lifetime.
         now: callDetectionNow)
