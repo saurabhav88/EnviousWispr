@@ -339,6 +339,23 @@ struct SpokenPunctuationStartWordEditorTests {
     #expect(SpokenPunctuationLanguagePicker.startWordLine("Sprich") == "Sprich")
   }
 
+  /// #4216: the example names a command the pass accepts, so with the English period switch off it
+  /// says "full stop", with and without a start word; other languages keep their own word.
+  @Test("The English example says full stop while the period switch is off")
+  func examplesFollowThePeriodSwitch() {
+    let settings = Self.freshSettings()
+    let editor = SpokenPunctuationStartWordEditor(settings: settings)
+    editor.selectLanguage("en")
+    #expect(editor.exampleCommand == "period")
+    settings.spokenPunctuation.englishPeriodWord = false
+    #expect(editor.exampleCommand == "full stop")
+    editor.userEdited("Insert")
+    editor.commitDraft()
+    #expect(editor.exampleCommand == "Insert full stop")
+    editor.selectLanguage("de")
+    #expect(editor.exampleCommand == "Diktiere Punkt")
+  }
+
   @Test("English is offered first, starts with no start word, and takes one the user types")
   func englishStartWord() {
     let settings = Self.freshSettings()

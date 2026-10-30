@@ -54,6 +54,21 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.5.6
+
+    // Draft group opened by #4216 (2.5.5 shipped 2026-10-19). Founder reviews the wording at release.
+    // Facts behind the claim: the Configure button sits beside the Spoken punctuation switch
+    // (SpeechEngineSettingsView), the switch is "English: say "period" for a dot", default ON, and
+    // "full stop" converts in both positions (SpokenPunctuationRules.englishRules).
+    Entry(
+      id: "keep-period-as-a-word",
+      icon: "textformat.abc",
+      title: "Keep \"Period\" as a Word",
+      description:
+        "Say \"full stop\" instead of \"period\"? Open Configure beside Spoken punctuation and turn \"period\" off. It stays a normal word, and \"full stop\" still makes a dot.",
+      version: "2.5.6"
+    ),
+
     // MARK: - v2.5.5
 
     // Draft group, 2026-10-19; the founder asked for super brief notes. Facts behind the claims:

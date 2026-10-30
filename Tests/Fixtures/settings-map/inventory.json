@@ -753,10 +753,8 @@
    },
    "disposition": "mapped",
    "parent": "spokenPunctuation",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": "spokenPunctuation",
    "description": {
@@ -773,10 +771,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordLanguage",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": "startWordLanguage",
    "description": {
@@ -792,10 +788,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordLanguage",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": "startWordLanguage",
    "description": {
@@ -811,10 +805,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordLanguage",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": "startWordLanguage",
    "description": {
@@ -830,10 +822,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordLanguage",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": "startWordLanguage",
    "description": {
@@ -849,10 +839,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordLanguage",
-   "target": "startWordLanguage",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": true,
    "seedParent": "startWordLanguage",
    "description": {
@@ -868,10 +856,8 @@
    },
    "disposition": "mapped",
    "parent": "spokenPunctuation",
-   "target": "startWordField",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": "spokenPunctuation"
   },
@@ -884,10 +870,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordField",
-   "target": "startWord.save",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": "startWordField"
   },
@@ -900,10 +884,8 @@
    },
    "disposition": "mapped",
    "parent": "startWordField",
-   "target": "startWord.reset",
-   "fallbacks": [
-    "spokenPunctuation"
-   ],
+   "target": "spokenPunctuation",
+   "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": "startWordField"
   },

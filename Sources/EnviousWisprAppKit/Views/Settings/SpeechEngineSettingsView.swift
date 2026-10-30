@@ -19,6 +19,8 @@ struct SpeechEngineSettingsView: View {
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
 
   @State private var showLanguageLockSheet: Bool = false
+  /// #4216: the Spoken punctuation window (start word and the English period switch).
+  @State private var showSpokenPunctuationSheet = false
   /// #3385: whether the two engine cards are open under the summary.
   @State private var showEngineChoices: Bool = false
 
@@ -358,16 +360,22 @@ struct SpeechEngineSettingsView: View {
           ) {
             SpokenPunctuationHelpPanel()
           } control: {
-            Toggle("", isOn: $settings.spokenPunctuation.enabled)
-            .labelsHidden()
-            .toggleStyle(BrandedToggleStyle())
-            .fixedSize()
-            .accessibilityLabel(Text(SpokenPunctuationCopy.toggleLabel))
-          }
-        }
-        if settings.spokenPunctuation.enabled {
-          BrandedRow {
-            SpokenPunctuationStartWordRow(settings: settings)
+            HStack(spacing: 10) {
+              // #4216: the start word and the English period switch live in their own window.
+              if settings.spokenPunctuation.enabled {
+                Button(SpokenPunctuationCopy.configureButton) {
+                  showSpokenPunctuationSheet = true
+                }
+                .controlSize(.small)
+                .font(.stHelper)
+                .accessibilityLabel(Text(SpokenPunctuationCopy.configureAccessibilityLabel))
+              }
+              Toggle("", isOn: $settings.spokenPunctuation.enabled)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .accessibilityLabel(Text(SpokenPunctuationCopy.toggleLabel))
+            }
           }
         }
         BrandedRow {
@@ -433,6 +441,9 @@ struct SpeechEngineSettingsView: View {
     }
     .sheet(isPresented: $showLanguageLockSheet) {
       LanguageLockSheet(lockableCodes: lockableLanguageCodes)
+    }
+    .sheet(isPresented: $showSpokenPunctuationSheet) {
+      SpokenPunctuationConfigureSheet(settings: settings)
     }
   }
 

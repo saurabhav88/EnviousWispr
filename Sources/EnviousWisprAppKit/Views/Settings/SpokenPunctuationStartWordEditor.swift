@@ -97,13 +97,14 @@ final class SpokenPunctuationStartWordEditor {
   /// message still on screen.
   var canReset: Bool { isCustomised || hasUnsavedDraft || rejection != nil }
 
-  /// A spoken command that inserts a period in the picked language, built from the rules table so the
-  /// example can never name a word the pass does not accept. It stays in the dictation language.
+  /// A spoken command that inserts a period in the picked language, built from the ACTIVE rules (#4216:
+  /// "full stop" in English while the period switch is off) so the example can never name a word the
+  /// pass does not accept. It stays in the dictation language.
   var exampleCommand: String? {
     guard
-      let form = SpokenPunctuationRules.startWordRules(for: language)?.first(where: { $0.command == .period }
-      )?
-      .spokenForms.first
+      let form = SpokenPunctuationRules.activeStartWordRules(
+        for: language, englishPeriodWord: settings.spokenPunctuation.englishPeriodWord
+      )?.first(where: { $0.command == .period })?.spokenForms.first
     else { return nil }
     return effectiveWord.isEmpty ? form : effectiveWord + " " + form
   }

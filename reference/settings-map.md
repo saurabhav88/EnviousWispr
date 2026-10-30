@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 293 nodes, 266 searchable, 8512 vocabulary blocks.
 
-Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d77062ce90c`, uiCatalogSHA256 `ff44883205604a9b081dc76b14f7d0af8ba64c2b336c78e8564a4130b765e11a`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af`
+Fingerprints: mapSHA256 `d81591c33d2990a3da23a7f2ccedcaa4c0a69b2d70a117234a50a9d685cc6f37`, uiCatalogSHA256 `57ab9a40740fd0256597e5c33fb6afc645fe072011f106fba6e2884aaf96007b`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af`
 
 ## Structure
 
@@ -1451,8 +1451,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: choose which language I am editing the punctuation start word for; select the language for the punctuation trigger settings |
 | Search (de) | phrases: wähle, für welche Sprache ich das Startwort für Satzzeichen bearbeite; für welche Sprache stelle ich den Satzzeichenauslöser ein |
@@ -1472,8 +1472,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordField`](#node-startWordField) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: prefix, trigger<br>phrases: set the word I say before a punctuation mark; enter my own punctuation trigger word; change the spoken prefix for punctuation |
 | Search (de) | words: Auslösewort, Befehlswort, Signalwort<br>phrases: lege fest, welches Wort ich vor einem Satzzeichen sagen muss; gib mein eigenes Auslösewort für Satzzeichen ein; ändere das Wort vor dem Satzzeichenbefehl |
@@ -1493,8 +1493,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWord.save`](#node-startWord-save) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: save the punctuation start word I entered; apply my new punctuation trigger |
 | Search (de) | phrases: speichere mein eingegebenes Startwort für Satzzeichen; übernimm mein neues Auslösewort für Satzzeichen |
@@ -1514,8 +1514,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWord.reset`](#node-startWord-reset) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: restore the default punctuation start word; reset my custom punctuation trigger |
 | Search (de) | phrases: stell das voreingestellte Startwort für Satzzeichen wieder her; setze mein eigenes Auslösewort für Satzzeichen zurück |
@@ -4987,8 +4987,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select English for the punctuation start word; show the English punctuation trigger |
 | Search (de) | phrases: wähle Englisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für englische Satzzeichen |
@@ -5008,8 +5008,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select German for the punctuation start word; show the German punctuation trigger |
 | Search (de) | phrases: wähle Deutsch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für deutsche Satzzeichen |
@@ -5029,8 +5029,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select French for the punctuation start word; show the French punctuation trigger |
 | Search (de) | phrases: wähle Französisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für französische Satzzeichen |
@@ -5050,8 +5050,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select Spanish for the punctuation start word; show the Spanish punctuation trigger |
 | Search (de) | phrases: wähle Spanisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für spanische Satzzeichen |
@@ -5071,8 +5071,8 @@ Fingerprints: mapSHA256 `f269c6a9b2a07ca5cef356d316187ec74b9a0112aaf734f3b4406d7
 | Destination | `dictation` › `engine` |
 | Dictionary tab | none |
 | Shown when | `spokenPunctuationOn` |
-| Arrival target | [`startWordLanguage`](#node-startWordLanguage) |
-| Fallbacks, in order | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Arrival target | [`spokenPunctuation`](#node-spokenPunctuation) |
+| Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: select Italian for the punctuation start word; show the Italian punctuation trigger |
 | Search (de) | phrases: wähle Italienisch für das Startwort vor Satzzeichen; zeig mir das Auslösewort für italienische Satzzeichen |

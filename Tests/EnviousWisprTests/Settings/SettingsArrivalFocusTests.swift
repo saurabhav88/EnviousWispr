@@ -342,7 +342,8 @@ struct SettingsArrivalFocusTests {
     ("dictation.microphone", [.inputDevice, .micReadiness, .bluetoothGuideLearnMore], [.sectionMicrophone, .bluetoothGuide]),
     (
       "dictation.engine.switchesOn",
-      [.stopOnSilence, .pauseDuration, .unloadModelAfter, .transcriptionEngine, .startWordField],
+      // #4216: the Start word field moved into the Spoken punctuation window.
+      [.stopOnSilence, .pauseDuration, .unloadModelAfter, .transcriptionEngine],
       [.currentEngineSection, .sectionTranscriptionEngine]
     ),
     ("dictation.chimes", [.recordingChimes, .recordingChimeAirGlint], [.sectionChimes, .recordingChime]),
@@ -382,9 +383,8 @@ struct SettingsArrivalFocusTests {
     "snippets.export", "snippets.import", "cancelKeybind", "copyLastKeybind", "pasteLastKeybind",
     "quickAddKeybind", "mediaDuringDictation", "autoDetectLanguage",
     "autoDetectLanguage.resetSuggestions", "fasterTranscription", "fillerRemoval",
-    "lockedLanguage.change", "spokenEmoji", "spokenPunctuation", "casualMode", "startWord.reset",
-    "startWord.save",
-    "startWordLanguage", "transcriptionEngine.change", "transcriptionEngine.recheckFast",
+    "lockedLanguage.change", "spokenEmoji", "spokenPunctuation", "casualMode",
+    "transcriptionEngine.change", "transcriptionEngine.recheckFast",
     "recordingChime.cloudPop", "recordingChime.dustMote", "recordingChime.lowNod",
     "recordingChime.mutedConfirm", "recordingChime.paperTap", "recordingChime.roundPebble",
     "recordingChime.satinShift", "recordingChime.softHush", "recordingChime.velvetHush",
@@ -432,7 +432,9 @@ struct SettingsArrivalFocusTests {
   /// 7f9d24c6, before any focus adapter existed (the baseline worktree ran this exact count).
   static let baselineKeyViews: [String: Int] = [
     "appSettings.appearance": 0, "aiPolish.openAI.savedKey": 1, "snippets": 2, "keybinds": 0,
-    "dictation.microphone": 0, "dictation.engine.switchesOn": 1, "dictation.chimes": 0,
+    // #4216: the engine page's one key view was the Start word field, now in the Spoken punctuation
+    // window, so the page has none (a decrease; the rule is that adapters never ADD one).
+    "dictation.microphone": 0, "dictation.engine.switchesOn": 0, "dictation.chimes": 0,
     "dictation.pill": 0, "dictionary.learnFrom": 0, "appSettings.privacy": 0,
   ]
 
