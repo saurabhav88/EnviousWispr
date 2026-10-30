@@ -3608,7 +3608,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bei der letzten Prüfung war Apple Intelligence nicht aktiviert. Du kannst weiter diktieren oder unter Einstellungen > KI-Nachbearbeitung ein anderes Modell wählen. In den Systemeinstellungen lässt sich das Problem möglicherweise nicht beheben."
+            "value" : "Letzte Prüfung: nicht aktiviert. Diktiere weiter oder wähle unter Einstellungen > KI-Nachbearbeitung ein anderes Modell. Systemeinstellungen helfen evtl. nicht."
           }
         }
       }
