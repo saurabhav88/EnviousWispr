@@ -704,4 +704,75 @@ struct OllamaManageModelsPresentationTests {
     #expect(groups.hosted.map(\.name) == ["gpt-oss:20b-cloud", "glm-5.2"])
     #expect(groups.local.count + groups.hosted.count == catalog.count)
   }
+
+  // MARK: - #3836 typed-name Download row
+
+  private static let listed: [OllamaModelCatalogEntry] = [
+    OllamaModelCatalogEntry(
+      name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", downloadSize: "~2.0 GB"),
+    OllamaModelCatalogEntry(
+      name: "glm-5.2", displayName: "glm-5.2", parameterCount: "", downloadSize: "", isRemote: true),
+  ]
+
+  private func suggest(_ query: String, matched: Bool = false) -> OllamaModelCatalogEntry? {
+    OllamaCatalogPresentation.typedDownloadSuggestion(
+      query: query, catalog: Self.listed, searchMatchedAnyRow: matched)
+  }
+
+  @Test("an exact unlisted name, as typed, becomes one local Download entry with no size claim")
+  func typedSuggestionForUnlistedName() throws {
+    for (query, expected) in [
+      ("smollm2:135m", "smollm2:135m"), ("  smollm2:135m ", "smollm2:135m"),
+      ("foo:Q4_K_M", "foo:Q4_K_M"),
+    ] {
+      let entry = try #require(suggest(query), "\(query) was not offered")
+      #expect(entry.name == expected)
+      #expect(entry.displayName == expected)
+      #expect(entry.parameterCount.isEmpty && entry.downloadSize.isEmpty)
+      #expect(entry.isRemote == false && entry.isDownloaded == false)
+    }
+    #expect(Self.listed.count == 2, "the suggestion is never added to the catalog")
+    #expect(OllamaCatalogPresentation.installedCount(from: Self.listed) == (0, 1))
+  }
+
+  @Test("no offer for empty text, a search that found rows, or a name the feed rules refuse")
+  func typedSuggestionRefusals() {
+    for query in ["", "   ", "Gemma4", "Gemma 4", "foo:LATEST", "hf.co/x/y", "foo/bar", "gpt-oss:120b-cloud"] {
+      #expect(suggest(query) == nil, "\(query) was offered")
+    }
+    #expect(suggest("smollm2:135m", matched: true) == nil, "a search with matches never offers")
+  }
+
+  @Test("no offer for a model already listed under another spelling, local or hosted")
+  func typedSuggestionSuppressesListedIdentity() {
+    #expect(suggest("llama3.2:latest") == nil, "llama3.2:latest is the listed llama3.2")
+    #expect(suggest("llama3.2") == nil)
+    #expect(suggest("glm-5.2") == nil, "the hosted glm-5.2 row is already listed")
+    #expect(suggest("llama3.2:1b") != nil, "a different tag is a different model")
+  }
+
+  @Test("the detail line keeps today's text for listed rows and explains a typed row")
+  func detailLineText() {
+    let shipped = OllamaModelCatalogEntry(
+      name: "qwen2.5:3b", displayName: "Qwen 2.5", parameterCount: "3B", downloadSize: "~1.9 GB")
+    let downloaded = OllamaModelCatalogEntry(
+      name: "mine:7b", displayName: "mine:7b", parameterCount: "7B", downloadSize: "4.4 GB",
+      isDownloaded: true)
+    #expect(
+      Array(OllamaCatalogPresentation.detailLine(for: shipped, note: "").utf8)
+        == Array("3B · ~1.9 GB".utf8))
+    #expect(
+      Array(OllamaCatalogPresentation.detailLine(for: shipped, note: "Mixed results").utf8)
+        == Array("Mixed results · 3B · ~1.9 GB".utf8))
+    #expect(OllamaCatalogPresentation.detailLine(for: downloaded, note: "") == "7B · 4.4 GB")
+
+    let typed = OllamaModelCatalogEntry(
+      name: "smollm2:135m", displayName: "smollm2:135m", parameterCount: "", downloadSize: "")
+    #expect(
+      OllamaCatalogPresentation.detailLine(for: typed, note: "")
+        == "Not in our list. Downloads from ollama.com if a model by this name exists. Size appears after download.")
+    #expect(
+      OllamaCatalogPresentation.noMatchesText
+        == "No models match. Check the supported-name guidance beside Search.")
+  }
 }
