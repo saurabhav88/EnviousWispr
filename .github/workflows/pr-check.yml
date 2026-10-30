@@ -33,14 +33,14 @@ jobs:
   # `build-for-testing` with ENABLE_TESTABILITY=YES (#3348; issue #1539: a test file
   # referencing a #if DEBUG-only Sources symbol without gating itself compiles
   # in Debug and vanishes in Release), whose products feed the String Catalog
-  # check, the older-macOS linkage assert, the snapshot for the advisory macOS 14
+  # check, the older-macOS linkage assert, the snapshot for the advisory older-macOS
   # launch job, and the FULL logic suite (`test-without-building`, never a second
   # compile) + the FoundationModels compile probe. The standalone eval packages
   # compiled here until #3729 PR-B; the full local scripts/xcode-test.sh run now
   # compiles them and the pre-push receipt check requires that proof.
   # The testable app is a COMPATIBILITY SMOKE CHECK: production stripping and the
-  # exact production startup are not covered here; release.yml launch-on-macos-14
-  # launches the notarized DMG on macOS 14 before anything is published (#3348).
+  # exact production startup are not covered here; release.yml launch-on-oldest-macos
+  # launches the notarized DMG on the oldest hosted macOS before anything is published (#3348, #4239).
   #
   # The Debug lane that used to run beside this one is gone, and since #3729 no
   # hosted job runs the Debug suite: it runs locally (scripts/xcode-test.sh), so
@@ -168,7 +168,7 @@ jobs:
       # It lives here because `build-check` is the only check the branch ruleset requires: a
       # standalone workflow can go red without blocking the merge it exists to block. Since #3348
       # it inspects the testable Release app (see the build step for the measured equivalence);
-      # release.yml runs the same gate on the notarized DMG app. The empirical macOS 14 LAUNCH
+      # release.yml runs the same gate on the notarized DMG app. The empirical older-macOS LAUNCH
       # stays in `older-macos-launch` below and stays advisory — it depends on a hosted image with
       # a retirement date and on a headless app start, neither of which belongs on the required path.
       # Static, deterministic, seconds; the self-test runs first so a guard that has stopped
@@ -190,9 +190,9 @@ jobs:
           ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
           ./scripts/ci/check-weak-linked-symbols.sh "$APP"
 
-      # Snapshot for the advisory macOS 14 launch job: the TESTABLE Release app
+      # Snapshot for the advisory older-macOS launch job: the TESTABLE Release app
       # (compatibility smoke check, #3348); the exact shipped bundle is launched
-      # on macOS 14 by release.yml launch-on-macos-14. Tarred, never uploaded as a
+      # on the oldest hosted macOS by release.yml launch-on-oldest-macos. Tarred, never uploaded as a
       # directory: `upload-artifact` neither preserves symlinks nor keeps
       # permissions, and a macOS framework IS a symlink structure (carried over
       # from older-macos-launch.yml).
@@ -354,14 +354,15 @@ jobs:
   #
   # The app cannot be built on the older runner (it needs the macOS 26 SDK), so
   # build-and-test snapshots its testable Release app and this job carries it to
-  # macos-14: a compatibility smoke check (#3348). The notarized app users get is
-  # launched on macOS 14 by release.yml launch-on-macos-14 before publishing.
+  # macos-15, the oldest hosted image since GitHub retired macos-14 on 2026-11-02 (#4239):
+  # a compatibility smoke check (#3348). The notarized app users get is launched there by
+  # release.yml launch-on-oldest-macos before publishing.
   # Trigger is `needs_build`, deliberately broader than the old workflow's path list.
   older-macos-launch:
-    name: Launch on macOS 14 (the deployment target)
+    name: Launch on the oldest hosted macOS (15)
     needs: build-and-test
     if: needs.build-and-test.outputs.needs_build == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     # Least privilege: this job runs branch-controlled scripts; artifacts move
     # between jobs of the same run on the Actions runtime token.
