@@ -239,10 +239,8 @@ struct SpeechEngineSettingsView: View {
         }
 
         // ── Section 4: Transcription Mode ────────────────────────────────
-        // #1276 Step 2 (PR-2): the "Faster Transcription" toggle now shows for both
-        // engines (it binds the same `useStreamingASR`). On Whisper with
-        // Auto-detect language, streaming safely uses clean batch instead
-        // (the footnote explains why); a picked language streams.
+        // #3809: present the settings owner's language prerequisite without disabling
+        // its remedy or help. #1276's clean-batch runtime fallback stays unchanged.
         if settings.selectedBackend == .parakeet || settings.selectedBackend == .whisper {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 6) {
@@ -266,10 +264,11 @@ struct SpeechEngineSettingsView: View {
                 .toggleStyle(BrandedToggleStyle())
                 .fixedSize()
                 .accessibilityLabel(Text(LiveTranscriptionCopy.toggleLabel))
+                .accessibilityHint(Text(settings.canUseStreamingASR ? "" : LiveTranscriptionCopy.autoLanguageFootnote))
+                .disabled(!settings.canUseStreamingASR)
+                .opacity(settings.canUseStreamingASR ? 1 : 0.5)
               }
-              if settings.selectedBackend == .whisper,
-                isAutoLanguage(settings.languageMode)
-              {
+              if !settings.canUseStreamingASR {
                 Text(LiveTranscriptionCopy.autoLanguageFootnote)
                   .settingsReadingCopy()
                   .padding(.leading, 37)
