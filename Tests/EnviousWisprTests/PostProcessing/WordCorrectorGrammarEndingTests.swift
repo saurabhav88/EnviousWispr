@@ -117,6 +117,19 @@ struct WordCorrectorGrammarEndingTests {
     #expect(result == "we use Databricks daily", "the whole word is corrected, no second s: \(result)")
   }
 
+  @Test(
+    "a saved possessive in one apostrophe style never gets a second possessive from the other",
+    arguments: [
+      ("McDonald\u{2019}s", "McDonald's"),
+      ("McDonald's", "McDonald\u{2019}s"),
+    ])
+  func mixedApostropheStylesDoNotDouble(_ saved: String, _ spoken: String) {
+    let word = CustomWord(canonical: saved, aliases: [], category: .brand)
+    let result = corrected("lunch at \(spoken) today", [word])
+    // The saved spelling wins, exactly once (the parent commit's behavior too).
+    #expect(result == "lunch at \(saved) today", "no doubled possessive: \(result)")
+  }
+
   @Test("a word that ends in s and is itself saved is left alone")
   func savedWordEndingInSUntouched() {
     let word = CustomWord(canonical: "Jones", aliases: [], category: .person)

@@ -1369,7 +1369,11 @@ public struct WordCorrector: Sendable {
       func acceptFuzzy(unpeeled: Bool, canonical: String) -> String {
         // #3892: the stem fuzzy-matched a canonical and the ending put it back: the token was
         // already correct, so nothing is replaced and no replacement is counted.
-        if !unpeeled, grammarPeel, canonical + peeledSuffix == core { return token }
+        if !unpeeled, grammarPeel,
+          canonical + peeledSuffix == core || Self.endsWithEnding(canonical, peeledSuffix)
+        {
+          return token
+        }
         appendReplacement(forCanonical: canonical)
         return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
@@ -1410,7 +1414,8 @@ public struct WordCorrector: Sendable {
             // Unless the canonical already ends that way ("Databrics" is a misspelling of
             // "Databricks", not "Databrick" plus s): then the whole-token reading wins.
             let keepEnding =
-              grammarPeel && uc == pc && !pc.lowercased().hasSuffix(peeledSuffix.lowercased())
+              grammarPeel && uc == pc
+              && !Self.endsWithEnding(pc, peeledSuffix)
             return .accepted(
               us >= ps && !keepEnding
                 ? acceptFuzzy(unpeeled: true, canonical: uc)
@@ -1527,7 +1532,8 @@ public struct WordCorrector: Sendable {
     let lower = core.lowercased()
     // A token that already IS a saved or pack canonical ("Databricks") has nothing to peel. Pack
     // canonicals have no self-entry in `singleAliasMap`, so check the canonical lists directly.
-    if lookups.canonicalToWord[lower] != nil || lookups.packLowercasedCanonicals.contains(lower) {
+    for variant in Self.apostropheVariants(lower)
+    where lookups.canonicalToWord[variant] != nil || lookups.packLowercasedCanonicals.contains(variant) {
       return .none
     }
     var readings: [(stem: String, ending: String)] = []
@@ -1556,6 +1562,22 @@ public struct WordCorrector: Sendable {
       return .peel(stem: only.stem, ending: only.ending)
     }
     return .none
+  }
+
+  /// #3892: straight and curly apostrophes are one character for ending checks.
+  private static func normalizedApostrophes(_ text: String) -> String {
+    text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+  }
+
+  /// #3892: the text with straight, then curly, apostrophes (a saved name may use either style).
+  private static func apostropheVariants(_ lower: String) -> [String] {
+    let straight = lower.replacingOccurrences(of: "\u{2019}", with: "'")
+    return [straight, straight.replacingOccurrences(of: "'", with: "\u{2019}")]
+  }
+
+  /// #3892: the canonical already ends with this ending, in either apostrophe style.
+  private static func endsWithEnding(_ canonical: String, _ ending: String) -> Bool {
+    normalizedApostrophes(canonical).hasSuffix(normalizedApostrophes(ending))
   }
 
   /// #3892: the lowercased non-Latin token is a saved word followed by one to three more letters.
