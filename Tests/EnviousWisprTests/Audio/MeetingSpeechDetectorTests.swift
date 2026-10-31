@@ -161,10 +161,11 @@ struct MeetingSpeechDetectorTests {
     let d = detector(Script())
     try await d.append(audio(5_000))
     #expect(await d.classifiedSamples == Self.chunk)
-    #expect(await d.window(0..<Self.chunk) == .silent)
-    #expect(await d.window(0..<5_000) == .unknown, "904 samples wait for a whole chunk")
+    let first = await d.liveSpeech(in: 0..<5_000)
+    #expect(first.speech.isEmpty && first.classifiedEnd == Self.chunk, "904 samples wait for a whole chunk")
     try await d.append(audio(Self.chunk))
-    #expect(await d.window(0..<5_000) == .silent)
+    let second = await d.liveSpeech(in: 0..<5_000)
+    #expect(second.speech.isEmpty && second.classifiedEnd >= 5_000, "now all classified, all silent")
   }
 
   @Test("live: each sample reaches the model once, however the audio is split")
@@ -183,10 +184,11 @@ struct MeetingSpeechDetectorTests {
     ])
     let d = detector(script)
     try await d.append(audio(6 * Self.chunk))
-    #expect(await d.window(0..<6 * Self.chunk) == .speech([4_400..<16_600, 20_400..<24_576]))
-    #expect(await d.window(17_000..<20_000) == .silent)
+    let both = await d.liveSpeech(in: 0..<6 * Self.chunk)
+    #expect(both.speech == [4_400..<16_600, 20_400..<24_576] && both.speechOpen)
+    #expect(await d.liveSpeech(in: 17_000..<20_000).speech.isEmpty)
     await d.prune(before: 17_000)
-    #expect(await d.window(0..<6 * Self.chunk) == .speech([20_400..<24_576]))
+    #expect(await d.liveSpeech(in: 0..<6 * Self.chunk).speech == [20_400..<24_576])
   }
 
   @Test("live snapshot: closed and open speech, classified end, and padding alone is no speech")

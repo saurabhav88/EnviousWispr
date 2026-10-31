@@ -2,16 +2,6 @@ import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
 
-/// What a live window holds, as far as the detector has classified it (#4254 plan §16.2).
-public enum MeetingSpeechWindow: Sendable, Equatable {
-  /// Every sample of the window was classified, and none is speech.
-  case silent
-  /// Speech ranges inside the window (padded, merged, clamped to it; absolute sample indices).
-  case speech([Range<Int>])
-  /// Part of the window is not classified yet and the classified part holds no speech.
-  case unknown
-}
-
 /// One atomic look at a live window (#4254 plan §18 c3.1): what the detector knows about it,
 /// taken in one actor turn so the three parts always agree.
 public struct MeetingLiveSpeech: Sendable, Equatable {
@@ -37,7 +27,7 @@ public struct MeetingLiveSpeech: Sendable, Equatable {
 /// - Final pass: `spans(in:)` on a fresh detector for one decode input (one run, one retry),
 ///   released when that decode returns.
 /// - Live words: one detector per track session. `append(_:)` feeds each accepted sample once,
-///   indexed from session sample zero; `window(_:)` answers for a retained decode window;
+///   indexed from session sample zero; `liveSpeech(in:)` answers for a retained decode window;
 ///   `prune(before:)` drops ranges no window can reach. Released with the session.
 ///
 /// Samples go to the model in 4,096-sample chunks (256 ms), conditioned by the high-pass on
@@ -166,15 +156,6 @@ public actor MeetingSpeechDetector {
       if classified > start { closedSpans.append(start..<classified) }
       openStart = nil
     }
-  }
-
-  /// What `window` (absolute indices) holds so far.
-  public func window(_ window: Range<Int>) -> MeetingSpeechWindow {
-    var raw = closedSpans
-    if let start = openStart, classified > start { raw.append(start..<classified) }
-    let speech = Self.padded(raw, within: window)
-    if !speech.isEmpty { return .speech(speech) }
-    return window.upperBound <= classified ? .silent : .unknown
   }
 
   /// Live words (#4254 plan §18): the window's speech, whether speech is open and the classified
