@@ -63,7 +63,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     public let bufferCapacity: Int
     /// Appends the handoff can hold between drains before new audio is counted as dropped.
     public let maxPendingChunks: Int
-    /// The microphone silence hold in seconds (#4248); nil writes each chunk at once.
+    /// The microphone silence hold in seconds (#4248); nil writes each chunk at once. Ignored
+    /// for any track but the microphone.
     public let silenceHoldSeconds: Double?
 
     public init(
@@ -220,7 +221,9 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     self.onReleased = onReleased
     self.now = now
     self.scheduler = scheduler
-    self.silence = configuration.silenceHoldSeconds.map { hold in
+    // Only the microphone is ever silenced; call sound is written as captured.
+    self.silence = (configuration.track == .microphone ? configuration.silenceHoldSeconds : nil)
+      .map { hold in
       MeetingMicrophoneSilence(
         holdSeconds: hold,
         sampleCapacity: Int((hold + 2) * MeetingAudioFormat.sampleRate),
@@ -425,7 +428,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   // MARK: - Silence hold (#4248)
 
+  /// One released chunk. C is published first, so anything that sees this chunk downstream
+  /// also sees a watermark that covers it.
   private func emitHeld(_ frames: UnsafeBufferPointer<Float>, _ info: MeetingReleasedChunk) {
+    if let silence {
+      let end = silence.released
+      released.withLock { $0 = max($0, end) }
+    }
     guard !failed else { return }
     writeReleased(frames, info)
   }

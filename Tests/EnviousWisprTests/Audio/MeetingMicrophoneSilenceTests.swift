@@ -56,6 +56,11 @@ struct MeetingMicrophoneSilenceTests {
 
   final class Released: Sendable {
     let chunks = OSAllocatedUnfairLock<[(MeetingReleasedChunk, [Float])]>(initialState: [])
+    /// C as read from inside each release callback, beside that chunk's end.
+    let watermarks = OSAllocatedUnfairLock<[(seen: UInt64, chunkEnd: UInt64)]>(initialState: [])
+    let writer = OSAllocatedUnfairLock<MeetingTrackWriter?>(initialState: nil)
+    /// Fired once `count` samples have been released.
+    let target = OSAllocatedUnfairLock<(count: Int, signal: BoundedWait.Signal)?>(initialState: nil)
     var all: [(MeetingReleasedChunk, [Float])] { chunks.withLock { $0 } }
     var samples: [Float] { all.flatMap(\.1) }
   }
@@ -89,7 +94,7 @@ struct MeetingMicrophoneSilenceTests {
 
   private func rig(
     hold: Double? = 3.0, manual: Bool = true, segmentSeconds: Double = 60,
-    bufferCapacity: Int = 16_000 * 20
+    bufferCapacity: Int = 16_000 * 20, track: MeetingTrackKind = .microphone
   ) throws -> Rig {
     let dir = try folder()
     let anchor = mach_absolute_time()
@@ -97,17 +102,27 @@ struct MeetingMicrophoneSilenceTests {
     let clock = manual ? Clock(anchor) : nil
     let writer = MeetingTrackWriter(
       configuration: .init(
-        meetingID: UUID(), track: .microphone, folder: dir, anchorHostTime: anchor,
+        meetingID: UUID(), track: track, folder: dir, anchorHostTime: anchor,
         segmentSeconds: segmentSeconds, bufferCapacity: bufferCapacity, silenceHoldSeconds: hold),
       onSegmentFinalized: { _ in }, onFailure: { _ in },
       onReleased: { frames, info in
         let copy = Array(frames)
-        released.chunks.withLock { $0.append((info, copy)) }
+        let seen = released.writer.withLock { $0?.releasedHostTime } ?? 0
+        let chunkEnd = info.hostTime &+ MeetingMicrophoneSilence.ticks(forSamples: copy.count)
+        released.watermarks.withLock { $0.append((seen, chunkEnd)) }
+        let total = released.chunks.withLock { list -> Int in
+          list.append((info, copy))
+          return list.reduce(0) { $0 + $1.1.count }
+        }
+        if let target = released.target.withLock({ $0 }), total >= target.count {
+          target.signal.fire()
+        }
       },
       now: { clock?.now ?? mach_absolute_time() },
       scheduler: clock.map { c -> MeetingTrackWriter.ReleaseScheduler in
         .manual { due, run in c.pending.withLock { $0.append((due, run)) } }
       } ?? .live)
+    released.writer.withLock { $0 = writer }
     return Rig(dir: dir, anchor: anchor, writer: writer, released: released, clock: clock)
   }
 
@@ -263,29 +278,12 @@ struct MeetingMicrophoneSilenceTests {
   @Test("a real scheduled release runs without a later append")
   func liveScheduledRelease() async throws {
     let r = try rig(hold: 0.05, manual: false)
-    let signal = AsyncStream<Void>.makeStream()
-    let seen = OSAllocatedUnfairLock(initialState: false)
+    let signal = BoundedWait.Signal()
+    r.released.target.withLock { $0 = (1_600, signal) }
     feed(r, seconds: 0.1)
-    // Wait for the release itself, with a deadline as the fallback only.
-    let task = Task {
-      while !Task.isCancelled {
-        if r.released.samples.count == 1_600 {
-          seen.withLock { $0 = true }
-          signal.continuation.yield()
-          return
-        }
-        await r.writer.queueBarrierForTesting()
-        await Task.yield()
-      }
-    }
-    let deadline = Task {
-      try? await Task.sleep(for: .seconds(5))  // settle: deadline fallback around the signal
-      signal.continuation.yield()
-    }
-    for await _ in signal.stream { break }
-    task.cancel()
-    deadline.cancel()
-    #expect(seen.withLock { $0 }, "the held chunk was released by the writer's own schedule")
+    // The writer's own schedule releases it; nothing else is appended or forced.
+    try await BoundedWait.until(signal)
+    #expect(r.released.samples.count == 1_600)
     #expect(await r.writer.finish() == .finalized)
     #expect(try readBack(r.dir).samples.count == 1_600)
   }
@@ -328,6 +326,64 @@ struct MeetingMicrophoneSilenceTests {
     #expect(r.writer.currentHealth.gaps == 0)
     #expect(r.writer.currentHealth.segmentsFinalized == 1)
     #expect(r.released.all.first?.0.hostTime == r.anchor)
+  }
+
+  /// Capture stamps each chunk's start on its own, so chunk B can begin before chunk A ends.
+  /// Releasing A alone must not retire a mute that B still covers.
+  @Test("a mute stays in force for a held chunk that overlaps audio already released")
+  func overlappingChunkKeepsMute() async throws {
+    let r = try rig()
+    let clock = try #require(r.clock)
+    // A = [0.00, 0.10), B = [0.05, 0.15), mute = [0.06, 0.08).
+    r.writer.setSilencedIntervals([interval(r, 0.06, 0.08)])
+    r.writer.append([Float](repeating: Self.level, count: 1_600), hostTime: r.anchor)
+    r.writer.append(
+      [Float](repeating: Self.level, count: 1_600), hostTime: r.anchor &+ ticks(0.05))
+    // Due: A at 3.10, B at 3.15. Release A alone.
+    clock.set(r.anchor &+ ticks(3.12))
+    await r.writer.queueBarrierForTesting()
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    #expect(r.released.all.count == 1)
+    // The follower stops sending the mute once it ends before C.
+    r.writer.setSilencedIntervals([])
+    clock.set(r.anchor &+ ticks(3.2))
+    clock.fireDue()
+    #expect(await r.writer.finish() == .finalized)
+    let released = r.released.all
+    #expect(released.count == 2)
+    #expect(zeroRuns(released[0].1) == [960..<1_280])
+    #expect(zeroRuns(released[1].1) == [160..<480], "B's part of the mute is still silenced")
+  }
+
+  @Test("C already covers each chunk when its release callback runs, forced releases included")
+  func watermarkBeforeCallback() async throws {
+    let r = try rig()
+    let clock = try #require(r.clock)
+    feed(r, seconds: 1)
+    clock.set(r.anchor &+ ticks(3.5))
+    await r.writer.queueBarrierForTesting()
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    // A 7 s append forces early releases from full storage, then finish releases the rest.
+    r.writer.append([Float](repeating: Self.level, count: 7 * Self.rate), hostTime: r.anchor &+ ticks(1))
+    #expect(await r.writer.finish() == .finalized)
+    let marks = r.released.watermarks.withLock { $0 }
+    #expect(marks.count > 3)
+    #expect(marks.allSatisfy { $0.seen >= $0.chunkEnd })
+  }
+
+  @Test("call sound is never held or silenced, even when given a hold and intervals")
+  func callSoundUntouched() async throws {
+    let r = try rig(track: .callSound)
+    r.writer.setSilencedIntervals([interval(r, 0, 10)])
+    feed(r, seconds: 1)
+    await r.writer.queueBarrierForTesting()
+    #expect(r.released.samples.count == 16_000, "written at once, no hold")
+    #expect(r.released.samples.allSatisfy { $0 == Self.level })
+    #expect(r.writer.releasedHostTime == 0)
+    #expect(await r.writer.finish() == .finalized)
+    #expect(zeroRuns(try readBack(r.dir).samples) == [])
   }
 
   // MARK: - Metadata

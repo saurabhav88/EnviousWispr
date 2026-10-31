@@ -39,6 +39,12 @@ public struct MeetingReleasedChunk: Sendable, Equatable {
 /// `released` (the plan's C) moves to the chunk's end and never moves back, and an interval
 /// update can no longer change that audio. When storage is full, the oldest chunks are released
 /// early with the intervals known then, so accepted audio is never discarded.
+///
+/// **Retirement.** Chunk start times come from each chunk's own capture time, so a later chunk
+/// can begin before an earlier one ended (`MeetingRecorder`'s capture closure stamps each start
+/// independently). An interval is therefore kept until it ends at least `pastRetention` before
+/// both C and the oldest held chunk's start, and an interval the follower stops sending because
+/// it ended before C stays in force for held audio it still covers.
 final class MeetingMicrophoneSilence {
   /// Receives each released chunk on the writer's queue. The buffer is valid only during the call.
   typealias Emit = (UnsafeBufferPointer<Float>, MeetingReleasedChunk) -> Void
@@ -52,6 +58,9 @@ final class MeetingMicrophoneSilence {
   }
 
   let holdTicks: UInt64
+  /// How far before C and the oldest held chunk an interval is still kept: a bound on how much
+  /// a chunk's capture-stamped start can overlap the audio before it.
+  let pastRetentionTicks = MeetingMicrophoneSilence.ticks(nanos: 1_000_000_000)
   let sampleCapacity: Int
   let chunkCapacity: Int
   let intervalCapacity: Int
@@ -84,13 +93,16 @@ final class MeetingMicrophoneSilence {
   /// When the oldest held chunk becomes due; nil when nothing is held.
   var nextDue: UInt64? { chunks.first.map { end(of: $0) &+ holdTicks } }
 
-  /// Replaces the silence intervals, merged where they overlap or touch and kept in order.
-  /// Intervals wholly before C are dropped (that audio is out); beyond capacity, the latest are
-  /// left out and counted, so their audio stays live.
+  /// Replaces the silence intervals for audio not yet released, merged where they overlap or
+  /// touch and kept in order. Intervals that ended before C stay in force while held or late
+  /// audio can still reach them (the follower no longer sends those). Beyond capacity, the latest
+  /// are left out and counted, so their audio stays live.
   func setIntervals(_ new: [MeetingSilenceInterval]) {
+    let horizon = retirementHorizon
+    let kept = intervals.filter { $0.end <= released && $0.end > horizon }
     intervals.removeAll(keepingCapacity: true)
-    for interval in new.sorted(by: { $0.start < $1.start })
-    where interval.end > interval.start && interval.end > released {
+    for interval in (new + kept).sorted(by: { $0.start < $1.start })
+    where interval.end > interval.start && interval.end > horizon {
       if let last = intervals.last, interval.start <= last.end {
         intervals[intervals.count - 1] = MeetingSilenceInterval(
           start: last.start, end: max(last.end, interval.end))
@@ -102,6 +114,12 @@ final class MeetingMicrophoneSilence {
       }
       intervals.append(interval)
     }
+  }
+
+  /// Intervals ending at or before this can no longer touch held or arriving audio.
+  private var retirementHorizon: UInt64 {
+    let oldest = min(chunks.first?.hostTime ?? released, released)
+    return oldest > pastRetentionTicks ? oldest - pastRetentionTicks : 0
   }
 
   /// Holds a copy of `frames`. A chunk larger than the free room is held in pieces, each with the
@@ -166,7 +184,8 @@ final class MeetingMicrophoneSilence {
     samples.removeSubrange(0..<consumed)
     chunks.removeSubrange(0..<count)
     for i in chunks.indices { chunks[i].start -= consumed }
-    intervals.removeAll { $0.end <= released }
+    let horizon = retirementHorizon
+    intervals.removeAll { $0.end <= horizon }
   }
 
   private func end(of held: Held) -> UInt64 {
