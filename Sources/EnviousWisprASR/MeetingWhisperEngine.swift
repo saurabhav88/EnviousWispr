@@ -59,7 +59,7 @@ extension TranscribeCppWhisperBackend {
     var dropped = 0
     var groupLanguage = language
     var reportedLanguage = language
-    for group in groups {
+    for (index, group) in groups.enumerated() {
       // The pass or this route's admission may have ended since the last native call.
       guard await isAdmitted() else { throw MeetingEngineYield() }
       try Task.checkCancellation()
@@ -83,8 +83,9 @@ extension TranscribeCppWhisperBackend {
       let part = mapResult(
         tail.result, languageHint: groupLanguage, envelope: group,
         originalSampleCount: samples.count, processingTime: 0, enableTimestamps: true)
-      if groupLanguage == nil, let detected = part.language {
-        // One run keeps one language, as the single decode did.
+      if index == 0, language == nil, let detected = part.language {
+        // One run keeps one language, as the single decode did. Only the first group decides;
+        // when it detects none, later calls stay automatic and no language is reported.
         groupLanguage = detected
         reportedLanguage = detected
       }
@@ -111,7 +112,7 @@ extension TranscribeCppWhisperBackend {
     async
   {
     await AppLogger.shared.log(
-      "meeting_whisper_vad outcome=\(outcome) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups)",
+      "whisper_meeting_vad outcome=\(outcome) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups)",
       level: .info, category: "TranscribeCppWhisper")
   }
 

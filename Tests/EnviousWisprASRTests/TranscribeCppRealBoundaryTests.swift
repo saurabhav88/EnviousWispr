@@ -810,9 +810,20 @@ struct MeetingWhisperVADRealBoundaryTests {
       let placed = starts.contains { abs($0 - secondMs) <= 500 }
       print("GRP case=\(name) calls=\(calls) provenance=\(String(describing: result.meetingSpeechPreparation)) words=\(words.count)/\(reference.count) edits=\(edits.isEmpty ? "none" : edits.joined(separator: ";")) second_spoken_ms=\(secondMs) starts=\(starts) placed=\(placed)")
       #expect(result.meetingSpeechPreparation == .protectedSpeech, "\(name)")
-      // repeat_close keeps its 1 s pause inside one group: it is decoded exactly as spoken, so
-      // its words are the as-spoken baseline (reported, not a VAD outcome).
-      guard name != "repeat_close" else { continue }
+      // repeat_close keeps its 1 s pause inside one group. Its loss counts as inherited only
+      // when the same original input decoded WITHOUT detection loses the same words.
+      if name == "repeat_close" {
+        struct NoDetector: Error {}
+        let plain = MeetingWhisperEngine(driver: driver) { _ in throw NoDetector() }
+        try await plain.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+        let unfiltered = try await plain.transcribe(samples: samples, language: "en")
+        await plain.unload()
+        let baseline = MeetingVADFixture.words(unfiltered.text)
+        print("GRP baseline case=\(name) provenance=\(String(describing: unfiltered.meetingSpeechPreparation)) words=\(baseline.count)/\(reference.count) same_as_grouped=\(baseline == words) edits=\(WordDiff.edits(reference: reference, hypothesis: baseline).count)")
+        #expect(unfiltered.meetingSpeechPreparation == .detectionUnavailable)
+        #expect(words == baseline, "grouped output equals the unfiltered decode of the same input")
+        continue
+      }
       if !edits.isEmpty { failures.append("\(name): \(edits)") }
       #expect(edits.isEmpty, "\(name): \(result.text)")
       #expect(placed, "\(name): second sentence within 0.5 s of \(secondMs) ms: \(starts)")

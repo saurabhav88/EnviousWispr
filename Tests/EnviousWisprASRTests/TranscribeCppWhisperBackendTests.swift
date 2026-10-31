@@ -948,6 +948,30 @@ struct TranscribeCppWhisperBackendTests {
     #expect(result.duration == 20)
   }
 
+  @Test("#4254: when the first group detects no language, later calls stay automatic and none is reported")
+  func meetingFirstGroupWithoutLanguage() async throws {
+    let driver = FakeWhisperDriver()
+    let languages = LockedBox<[String?]>([])
+    driver.runOutcome = { _, language in
+      let n = languages.get().count
+      languages.set(languages.get() + [language])
+      return TranscribeCppRunResult(
+        text: " word\(n)", detectedLanguage: n == 0 ? nil : "fr", segments: [])
+    }
+    // Three groups: 1-2 s, 12-13 s, 24-25 s (10 s silences).
+    let run: [Float] = (0..<480_000).map {
+      (16_000..<32_000).contains($0) || (192_000..<208_000).contains($0)
+        || (384_000..<400_000).contains($0) ? 0.3 : 0
+    }
+    let engine = try await meetingEngine(driver) { _ in
+      [16_000..<32_000, 192_000..<208_000, 384_000..<400_000]
+    }
+    let result = try await engine.transcribe(samples: run, language: nil)
+    #expect(languages.get() == [nil, nil, nil], "every call automatic")
+    #expect(result.language == nil, "no language invented")
+    #expect(result.text == "word0 word1 word2")
+  }
+
   @Test("#4254: a failure in a later group returns nothing and drains; no partial result")
   func meetingAtomicFailure() async throws {
     struct Broken: Error {}
