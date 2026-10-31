@@ -247,12 +247,32 @@ struct WordCheckRuntimeTerminationTests {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
     let path = temp.path
-    let observed = await #expect(
-      processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
-    ) { [token = token as String, path = path as String, longEvaluation = longEvaluation as Bool] in
-      await Self.activeChild(token: token, root: path, longEvaluation: longEvaluation)
+    var observed: ExitTest.Result?
+    let runChild: () async -> Void = {
+      observed = await #expect(
+        processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
+      ) { [token = token as String, path = path as String, longEvaluation = longEvaluation as Bool] in
+        await Self.activeChild(token: token, root: path, longEvaluation: longEvaluation)
+      }
     }
-    let result = try #require(observed)
+    if longEvaluation {
+      // The drain gave up with the evaluation still running, so exit() can still crash in MLX's
+      // scheduler destructor (#3939; #3853 P5). Only a death by signal is that known crash.
+      await withKnownIssue(
+        "exit() during an MLX evaluation the drain gave up on can crash in MLX's scheduler destructor (#3939)",
+        isIntermittent: true
+      ) {
+        await runChild()
+      } matching: { issue in
+        String(describing: issue).contains(".signal(")
+      }
+    } else {
+      await runChild()
+    }
+    guard let result = observed else {
+      try #require(longEvaluation, "a drained evaluation must not crash")
+      return  // the known crash: nothing more to check
+    }
     let lines = Self.childLines(result.standardOutputContent)
     let stderr = String(decoding: result.standardErrorContent, as: UTF8.self)
     #expect(lines.last == "kev-exit \(token)", "stdout: \(lines) stderr: \(stderr)")
