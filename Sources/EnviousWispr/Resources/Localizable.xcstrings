@@ -7885,6 +7885,17 @@
         }
       }
     },
+    "EnviousMeet checks for calls on your Mac and never sends this anywhere." : {
+      "comment" : "EnviousMeet Call Apps tab: the privacy line under the list of call apps.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet prüft Anrufe auf deinem Mac und sendet diese Angaben nirgendwohin."
+          }
+        }
+      }
+    },
     "EnviousMeet checks which app uses your microphone and whether a call window or meeting page is open. It checks on your Mac and never sends this anywhere. Meetings in a browser covers Google Meet, Zoom, Microsoft Teams, Webex, Whereby and Jitsi in Chrome, Safari, Arc, Dia, Edge, Brave, Opera, Vivaldi, Zen, Comet and ChatGPT Atlas." : {
       "comment" : "EnviousMeet page: help for Notice calls in. App and browser names are not translated.",
       "localizations" : {
@@ -9372,6 +9383,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Google Gemini-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "Google Meet, Zoom, Teams, Webex and more, in Chrome, Safari, Arc and other browsers." : {
+      "comment" : "EnviousMeet Call Apps tab: the grey line under Meetings in a browser. App and browser names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Meet, Zoom, Teams, Webex und mehr, in Chrome, Safari, Arc und anderen Browsern."
           }
         }
       }

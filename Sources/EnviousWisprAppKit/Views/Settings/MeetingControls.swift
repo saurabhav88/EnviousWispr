@@ -472,41 +472,110 @@ struct MeetingCallDetectionRow: View {
 
 /// #4012 D5: a switch per call app on this Mac, plus one for every browser, all on by default.
 /// Switching one off stores its id in `meetingCallAppsOff`.
+/// #4284: each switch sits in its own row with the app's real logo (`CallAppIdentityTile`, the
+/// same pictures the call cards use), rows divided like the rest of Settings, and a privacy line.
+/// The list sits under the title row rather than inside it, so the title row's icon stays
+/// beside the title instead of centering on the whole list.
 struct MeetingCallAppsRow: View {
   @Environment(SettingsManager.self) private var settings
   @State private var installed: [CallAppFamily] = []
+  /// The browser whose logo stands for "Meetings in a browser"; nil shows a globe.
+  @State private var browserBundleID: String?
+
+  private static let tileSize: CGFloat = 30
 
   var body: some View {
-    SettingsRow(
-      map: .id(.meetingCallApps), icon: "app.badge.checkmark", help: MeetingsCopy.callAppsHelp
-    ) {
-      EmptyView()
-    }
-    .rowStatus {
-      VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 10) {
+      SettingsRow(
+        map: .id(.meetingCallApps), icon: "app.badge.checkmark", help: MeetingsCopy.callAppsHelp
+      ) {
+        EmptyView()
+      }
+      VStack(alignment: .leading, spacing: 0) {
         ForEach(installed, id: \.self) { family in
-          appSwitch(id: family.rawValue, name: family.displayName)
+          appSwitch(id: family.rawValue, name: family.displayName, detail: nil) {
+            CallAppIdentityTile(identity: .app(family, bundleID: nil), size: Self.tileSize)
+          }
+          rowDivider
         }
         appSwitch(
-          id: CallAppCatalog.browserSwitchID, name: String(localized: MeetingsCopy.browserMeetings))
+          id: CallAppCatalog.browserSwitchID, name: String(localized: MeetingsCopy.browserMeetings),
+          detail: MeetingsCopy.browserMeetingsDetail
+        ) {
+          browserTile
+        }
       }
-      .padding(.top, 6)
       .disabled(
         settings.meetingCallDetection == CallDetectionPolicy.Mode.off.rawValue
           || !CallMicrophoneWatcher.isSupported)
+      Label {
+        Text(MeetingsCopy.callAppsPrivacy)
+      } icon: {
+        Image(systemName: "lock")
+      }
+      .font(.stRowHelper)
+      .foregroundStyle(.stTextSecondary)
+      .padding(.top, 2)
     }
     .onAppear {
       installed = CallAppCatalog.installedNativeApps {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
       }
+      browserBundleID = Self.browserForLogo()
     }
   }
 
-  private func appSwitch(id: String, name: String) -> some View {
-    HStack(spacing: 10) {
-      Text(verbatim: name)
-        .font(.stRowHelper)
-        .foregroundStyle(.stTextPrimary)
+  private var rowDivider: some View {
+    Rectangle()
+      .fill(Color.stDivider)
+      .frame(height: 1)
+      .padding(.leading, Self.tileSize + 12)
+  }
+
+  @ViewBuilder private var browserTile: some View {
+    if let image = browserBundleID.flatMap(CallAppIcon.icon) {
+      Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+        .frame(width: Self.tileSize, height: Self.tileSize)
+        .accessibilityHidden(true)
+    } else {
+      Image(systemName: "globe")
+        .font(.system(size: Self.tileSize * 0.5, weight: .medium))
+        .foregroundStyle(Color.stAccent)
+        .frame(width: Self.tileSize, height: Self.tileSize)
+        .background(Color.stAccentLight, in: RoundedRectangle(cornerRadius: Self.tileSize * 0.25))
+        .accessibilityHidden(true)
+    }
+  }
+
+  /// The default browser when EnviousMeet supports it, else the first supported browser on this
+  /// Mac, so the logo never shows a browser whose meetings are not noticed (Firefox).
+  private static func browserForLogo() -> String? {
+    let supported = CallAppCatalog.Browser.allCases.flatMap(\.appBundleIDs)
+    if let url = URL(string: "https://example.com"),
+      let app = NSWorkspace.shared.urlForApplication(toOpen: url),
+      let id = Bundle(url: app)?.bundleIdentifier?.lowercased(), supported.contains(id)
+    {
+      return id
+    }
+    return supported.first { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+  }
+
+  private func appSwitch<Tile: View>(
+    id: String, name: String, detail: LocalizedStringResource?, @ViewBuilder tile: () -> Tile
+  ) -> some View {
+    HStack(spacing: 12) {
+      tile()
+      VStack(alignment: .leading, spacing: 1) {
+        Text(verbatim: name)
+          .font(.stRowLabel)
+          .foregroundStyle(.stTextPrimary)
+        if let detail {
+          Text(detail)
+            .font(.stRowHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
       Spacer(minLength: 8)
       Toggle(
         "",
@@ -523,6 +592,7 @@ struct MeetingCallAppsRow: View {
       .fixedSize()
       .accessibilityLabel(Text(verbatim: name))
     }
+    .padding(.vertical, 9)
     .accessibilityIdentifier("meetings.callApps.\(id)")
   }
 }
