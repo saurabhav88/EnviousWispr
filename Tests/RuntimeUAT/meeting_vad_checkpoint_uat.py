@@ -120,7 +120,7 @@ def dictation():
     if status != 0 or not reply.get("ok"):
         return {"problem": f"start refused: {json.dumps(reply)[:200]}", "offset": offset}
     receipt = reply["result"]["receipt"]
-    take = receipt.get("takeID")
+    take = take_of(receipt)
     text = wait_log(offset, lambda t: ready_ns(t, take) is not None and witness(t, "dictation.start", reply.get("id")) is not None, 20)
     stop_status, stop_reply = m.door("dictation", "stop", "--receipt", json.dumps(receipt))
     wait_status, wait_reply = m.door("dictation", "wait", "--receipt", json.dumps(receipt), timeout=120)
@@ -133,6 +133,12 @@ def dictation():
             "terminal": terminal_of(wait_status, wait_reply)}
     sample["problem"] = take_problem(sample)
     return sample
+
+
+def take_of(receipt):
+    """The kernel take id in a door receipt (`Receipt.json` in DevControlDictation.swift:
+    launch, backend, take)."""
+    return receipt.get("take") if isinstance(receipt, dict) else None
 
 
 def terminal_of(wait_status, wait_reply):
@@ -419,6 +425,11 @@ def self_test():
     cases.append(("a wait error reply has no terminal", terminal_of(1, {"ok": False, "error": {"code": "waitTimeout"}}) is None))
     cases.append(("a pending receipt has no terminal", terminal_of(0, {"ok": True, "result": {"terminal": {"status": "pending"}}}) is None))
     cases.append(("the flat shape is not read", terminal_of(0, {"ok": True, "result": {"status": "terminal", "ending": "noSpeech"}}) is None))
+    receipt = {"launch": "L", "backend": "whisper", "take": "D526A53C-8DFA-4C53-B7A7-D4710F472464"}
+    cases.append(("the receipt's take id is read", take_of(receipt) == receipt["take"]))
+    cases.append(("readiness pairs with the receipt's take",
+                  ready_ns("x RECORDING_READY take=D526A53C-8DFA-4C53-B7A7-D4710F472464 uptime_raw_ns=5\n", take_of(receipt)) == 5))
+    cases.append(("a receipt without a take has none", take_of({"launch": "L", "takeID": "x"}) is None))
     idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
     cases.append(("an idle status is idle", idle_reason(idle) is True))
     cases.append(("a processing pass is not idle", idle_reason({**idle, "processing": {"meetingID": "x"}}) is not True))
