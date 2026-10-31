@@ -130,6 +130,7 @@ struct MeetingLiveWordsIntegrationTests {
       }
     }
 
+    #if DEBUG  // the writer's DEBUG-only queue seam
     /// #4248: moves the clock past the microphone's silence hold and runs its due releases, so
     /// the audio spoken so far reaches live words, as it would 3 s later in a meeting.
     func releaseHeld() async {
@@ -139,6 +140,7 @@ struct MeetingLiveWordsIntegrationTests {
       releases.fire(upTo: clock.now.withLock { $0 })
       await writer?.queueBarrierForTesting()
     }
+    #endif
 
     /// Offers known call audio as the tap would.
     func play(_ samples: [Float]) {
@@ -382,6 +384,7 @@ struct MeetingLiveWordsIntegrationTests {
     #expect(mic.ends == 1)
   }
 
+  #if DEBUG  // releases the microphone hold through the writer's DEBUG-only queue seam
   @Test(
     "Delete and Quit return while live words are held; a late result never reaches the next meeting"
   )
@@ -421,6 +424,7 @@ struct MeetingLiveWordsIntegrationTests {
     #expect(await rig.owner.waitForCleanups(seconds: 10))
     #expect(oldMic.ends == 1)
   }
+  #endif
 
   @Test("the meeting's Universal route maps admission and language to the owner's resolution")
   func universalRouteWiring() async {

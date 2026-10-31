@@ -959,6 +959,7 @@ struct MeetingRecorderTests {
   }
 
   // MARK: - Microphone silence hold (#4248)
+  #if DEBUG  // the writer's DEBUG-only queue seams
 
   /// Waits for every block the microphone writer has queued (the hold's releases included).
   private func writerSettled(_ r: Rig) async {
@@ -990,6 +991,8 @@ struct MeetingRecorderTests {
     await r.recorder.stop()
     #expect(Self.same(try saved(r, .microphone), spoken))
   }
+
+  #endif
 
   @Test("Stop delivers the held microphone tail to live words before deliveries end")
   func stopDeliversHeldTail() async throws {
