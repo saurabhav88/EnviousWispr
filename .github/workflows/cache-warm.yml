@@ -254,7 +254,7 @@ jobs:
           save_s=""
           if [[ "$SAVE_T0" =~ ^[0-9]+$ ]] && [ "$SAVE_OUTCOME" != "skipped" ]; then save_s=$(( $(date +%s) - SAVE_T0 )); fi
           python3 scripts/ci/ci-metrics.py emit \
-            --job cache-warm --family release \
+            --job cache-warm --family release-onone \
             --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
             --log 'xcode-build-*.log' \
             --set "cache_matched_key=$CACHE_MATCHED_KEY" \

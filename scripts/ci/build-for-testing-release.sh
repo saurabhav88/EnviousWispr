@@ -2,8 +2,8 @@
 # scripts/ci/build-for-testing-release.sh — ONE owner for the CI Release
 # `xcodebuild build-for-testing` (#3729).
 #
-# pr-check.yml runs it before the full Release test run; the build-only
-# main cache warm runs the same command, so the compiler cache it saves holds
+# pr-check.yml runs it (profile gut-check, scheme EnviousWispr-Critical) before
+# the critical test run; the build-only main cache warm runs the same command, so the compiler cache it saves holds
 # exactly the products a PR build looks up. Two copies of the flag list would
 # drift, and a drifted cache key or flag is a cold PR build nobody notices.
 #
@@ -50,9 +50,8 @@
 # ONLY_ACTIVE_ARCH.
 #
 # #3729 PR-B: DEBUG_INFORMATION_FORMAT=dwarf skips dSYM generation. Nothing in
-# this build's consumers reads a dSYM (pr-check.yml's linkage, catalog, app
-# snapshot and launch, the full Release suite, the Settings Map export and the
-# FoundationModels probe; cache-warm saves the compiler cache, not products;
+# this build's consumers reads a dSYM (pr-check.yml's linkage, catalog, the
+# critical bundle, the Settings Map export and the FoundationModels probe; cache-warm saves the compiler cache, not products;
 # Project.swift has no build-phase scripts). The shipped app is archived by
 # scripts/build-release-dmg.sh with its own settings, and its dSYMs are
 # untouched by this. A command-line setting applies to every target in this

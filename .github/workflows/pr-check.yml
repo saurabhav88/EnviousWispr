@@ -217,8 +217,8 @@ jobs:
       # minutes). Green runs took 383-693 s (57 PR runs up to 2026-10-16), so 20 minutes is
       # about 1.7 times the slowest and fails a hang 40 minutes sooner. The failure report
       # below still runs and prints the last started test.
-      # #4243: the critical bundle runs in seconds (139 tests, ~1 s locally); 5 minutes
-      # still fails a hang 55 minutes before the job limit.
+      # #4243: critical execution measured about one second locally.
+      # Five minutes bounds test execution; the 60-minute job limit also includes setup/build.
       - name: Run logic tests (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
         timeout-minutes: 5
@@ -312,7 +312,7 @@ jobs:
           CAS_KB: ${{ steps.setup.outputs.cas-kb }}
         run: |
           python3 scripts/ci/ci-metrics.py emit \
-            --job build-and-test --family release \
+            --job build-and-test --family release-onone \
             --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
             --log 'xcode-build-*.log' \
             --set "cache_matched_key=$CACHE_MATCHED_KEY" \

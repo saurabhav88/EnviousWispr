@@ -820,8 +820,8 @@ let project = Project(
       ],
       settings: sourceAnalysisTestSettings
     ),
-    // #4243: the cloud PR gut check. Same dependencies as `EnviousWisprTests` (minus the
-    // source-scanning parser libraries), compiling only `criticalTestSources`.
+    // #4243: the cloud PR gut check compiles only criticalTestSources.
+    // Dependencies cover its imports and required static-link dependencies; no parser libraries.
     .target(
       name: "EnviousWisprCriticalTests",
       destinations: .macOS,
@@ -832,7 +832,6 @@ let project = Project(
       sources: criticalTestSources,
       dependencies: firstPartyTargetDeps + [
         .target(name: "EnviousWisprAppKit"),
-        .target(name: "EnviousWisprAppKitTestSupport"),
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprObservabilityCore"),
@@ -912,8 +911,8 @@ let project = Project(
       // run `xcodebuild test -scheme EnviousWispr-Release -configuration Release`
       // (#3729 retired that workflow).
       //
-      // #3013: this scheme is now the PR gate's test run, executed from
-      // `build-for-testing` products with `test-without-building`.
+      // #3013 used this scheme for full hosted Release tests.
+      // #4243 retains it for explicit full Release runs; PR CI uses EnviousWispr-Critical.
       //
       // STILL SERIAL, measured. `.testableTarget(…, parallelization:
       // .swiftTestingOnly)` was tried on 2026-09-16 (local M5 Max, Release):
