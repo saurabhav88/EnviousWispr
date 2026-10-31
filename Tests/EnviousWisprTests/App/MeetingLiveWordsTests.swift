@@ -93,7 +93,16 @@ struct MeetingLiveWordsTests {
         get { lock.withLock { _report } }
         set { lock.withLock { _report = newValue } }
       }
-      func detectionReport() async -> LiveDetectionReport? { report }
+      /// Runs inside `detectionReport()` before it answers (a test holds a read here).
+      private var _reportHold: (@Sendable () async -> Void)?
+      var reportHold: (@Sendable () async -> Void)? {
+        get { lock.withLock { _reportHold } }
+        set { lock.withLock { _reportHold = newValue } }
+      }
+      func detectionReport() async -> LiveDetectionReport? {
+        await reportHold?()
+        return report
+      }
     #endif
     /// Ends that have returned.
     var endsCompleted: Int { lock.withLock { _endsCompleted } }

@@ -424,6 +424,38 @@
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
+    @Test("detection reports read across two tracks are dropped when the recording ends meanwhile")
+    func detectionReportsRevalidatedAfterAllReads() async throws {
+      let world = MeetingLiveWordsTests.World()
+      world.apple = .ready(world.appleCandidate())
+      let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: true)
+      await live.coordinator.start(from: .menu)
+      await MeetingLiveWordsTests.until("both running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+          && MeetingLiveWordsTests.status($0, .callSound) == .running
+      }
+      let sessions = world.appleEngines.flatMap(\.sessions)
+      try #require(sessions.count == 2)
+      // The first track's read answers; the second is held while the recording ends.
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+      let hold = MeetingLiveWordsTests.Gate()
+      for session in sessions {
+        session.report = LiveDetectionReport(
+          run: 1, degraded: false, fed: 16_000, classified: 12_288, silentCycles: 1, coveredCycles: 0,
+          pendingCycles: 0, completedDecodes: 0)
+        session.reportHold = {
+          if reads.withLock({ $0 += 1; return $0 }) == 2 { await hold.pass() }
+        }
+      }
+      let reading = Task { await live.owner.detectionReports() }
+      await hold.reached(1)
+      await live.coordinator.stop()
+      hold.open()
+      let reports = await reading.value
+      #expect(reports.isEmpty, "a recording that ended during the reads reports nothing: \(reports.keys)")
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+    }
+
     @Test("live words status reports the saved choice and what it resolves to")
     func liveWordsStatusReportsTheChoice() async throws {
       let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()

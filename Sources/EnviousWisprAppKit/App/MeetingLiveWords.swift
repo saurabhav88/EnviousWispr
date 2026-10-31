@@ -397,22 +397,29 @@ final class MeetingLiveWords {
 
   #if DEBUG
     /// #4254 UAT evidence (DEBUG door): each captured track's session epoch and its speech
-    /// detection report. A report is nil when the session has none, or when the recording, the
-    /// track's slot, its epoch or its session changed during the read (unknown, never evidence).
+    /// detection report. Every entry is checked again after ALL reads: a recording that changed
+    /// meanwhile gives no reports, and a track whose slot, epoch or session changed gives nil
+    /// (unknown, never evidence). A session without detection also gives nil.
     func detectionReports() async -> [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] {
       guard let current = recording else { return [:] }
-      var reports: [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] = [:]
+      var read: [(track: MeetingTrackKind, slot: TrackSlot, epoch: Int, session: ObjectIdentifier?,
+        report: LiveDetectionReport?)] = []
       for (track, slot) in current.tracks {
         let epoch = slot.epoch
         guard let session = slot.session else {
-          reports[track] = (epoch, nil)
+          read.append((track, slot, epoch, nil, nil))
           continue
         }
-        let report = await session.detectionReport()
+        read.append(
+          (track, slot, epoch, ObjectIdentifier(session as AnyObject), await session.detectionReport()))
+      }
+      guard recording === current else { return [:] }
+      var reports: [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] = [:]
+      for entry in read {
         let unchanged =
-          recording === current && current.tracks[track] === slot && slot.epoch == epoch
-          && slot.session.map { $0 as AnyObject } === (session as AnyObject)
-        reports[track] = (epoch, unchanged ? report : nil)
+          current.tracks[entry.track] === entry.slot && entry.slot.epoch == entry.epoch
+          && entry.slot.session.map { ObjectIdentifier($0 as AnyObject) } == entry.session
+        reports[entry.track] = (entry.epoch, unchanged ? entry.report : nil)
       }
       return reports
     }
