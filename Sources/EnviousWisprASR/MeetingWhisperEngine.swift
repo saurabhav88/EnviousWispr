@@ -28,6 +28,11 @@ extension TranscribeCppWhisperBackend {
     let start = ContinuousClock.now
     let elapsed = { Double((ContinuousClock.now - start) / .milliseconds(1)) / 1000 }
     try Task.checkCancellation()
+    // Pairs this decode's detection start with its outcome line (counts only).
+    let token = UInt32.random(in: 1...UInt32.max)
+    await AppLogger.shared.log(
+      "whisper_meeting_vad_start token=\(token) route=\(route) run_samples=\(samples.count)",
+      level: .info, category: "TranscribeCppWhisper")
     let groups: [Range<Int>]
     let provenance: MeetingSpeechPreparation
     do {
@@ -46,7 +51,7 @@ extension TranscribeCppWhisperBackend {
     let speech = groups.reduce(0) { $0 + $1.count }
     await logVAD(
       groups.isEmpty ? "vad_skipped_all" : provenance == .protectedSpeech ? "vad_ok" : "vad_unavailable",
-      route: route, total: samples.count, speech: speech, groups: groups.count)
+      token: token, route: route, total: samples.count, speech: speech, groups: groups.count)
     guard !groups.isEmpty else {
       return ASRResult(
         text: "", language: language, duration: Double(samples.count) / Double(sampleRate),
@@ -108,11 +113,11 @@ extension TranscribeCppWhisperBackend {
 
   /// One counts-only line per meeting decode: route, outcome, detector version, and sample
   /// counts. No audio and no text.
-  static func logVAD(_ outcome: String, route: String, total: Int, speech: Int, groups: Int)
-    async
-  {
+  static func logVAD(
+    _ outcome: String, token: UInt32, route: String, total: Int, speech: Int, groups: Int
+  ) async {
     await AppLogger.shared.log(
-      "whisper_meeting_vad outcome=\(outcome) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups)",
+      "whisper_meeting_vad outcome=\(outcome) token=\(token) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups)",
       level: .info, category: "TranscribeCppWhisper")
   }
 
