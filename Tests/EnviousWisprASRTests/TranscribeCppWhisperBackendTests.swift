@@ -894,29 +894,29 @@ struct TranscribeCppWhisperBackendTests {
     #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty, "no native call")
   }
 
-  @Test("#4254: speech with a short pause is one group, decoded as recorded; times come back")
+  @Test("#4254: speech with a short pause and short edges is the whole run, decoded as recorded")
   func meetingOneGroup() async throws {
     let driver = FakeWhisperDriver()
     let seen = LockedBox<[[Float]]>([])
     driver.runOutcome = { input, _ in
       seen.set(seen.get() + [input])
-      // Group-relative times: the group starts at 1 s of the run.
+      // Group-relative times; edges under 8 s (c4.1) start the group at the run start.
       return TranscribeCppRunResult(
         text: " one two", detectedLanguage: nil,
         segments: [
-          TranscribeCppSegment(startMs: 0, endMs: 1_000, text: " one"),
-          TranscribeCppSegment(startMs: 2_000, endMs: 2_500, text: " two"),
+          TranscribeCppSegment(startMs: 1_000, endMs: 2_000, text: " one"),
+          TranscribeCppSegment(startMs: 3_000, endMs: 3_500, text: " two"),
         ])
     }
-    // Spans 1-2 s and 3-3.5 s: a 1 s pause, under the 8 s grouping gap.
+    // Spans 1-2 s and 3-3.5 s of a 5 s run: a 1 s pause and both edges under the 8 s gap.
     let engine = try await meetingEngine(driver) { _ in Self.meetingSpans }
     let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
     let inputs = seen.get()
     #expect(inputs.count == 1, "one native call for one group")
     #expect(
-      inputs.first.map { Array($0[0..<40_000]) } == Array(Self.meetingRun[16_000..<56_000]),
-      "the pause is kept as recorded")
-    #expect(inputs.first.map { $0.count } == 40_000 + 8_000)
+      inputs.first.map { Array($0[0..<80_000]) } == Self.meetingRun,
+      "the whole run, pause and short edges kept as recorded (c4.1)")
+    #expect(inputs.first.map { $0.count } == 80_000 + 8_000)
     #expect(result.meetingSpeechPreparation == .protectedSpeech)
     #expect(result.text == "one two")
     #expect(
@@ -946,14 +946,16 @@ struct TranscribeCppWhisperBackendTests {
     }
     let engine = try await meetingEngine(driver) { _ in [16_000..<32_000, 192_000..<208_000] }
     let result = try await engine.transcribe(samples: Self.twoGroupRun, language: nil)
+    // c4.1: the 1 s lead and the 7 s tail are under the gap, so they join their groups.
     #expect(
-      calls.get() == [16_000 + 8_000, 16_000 + 8_000], "two calls; the 10 s silence never decoded")
+      calls.get() == [32_000 + 8_000, 128_000 + 8_000], "two calls; the 10 s silence never decoded")
     #expect(result.text == "hello there bye now")
     #expect(
       result.segmentTimings?.map(\.range) == [0..<11, 12..<19],
       "ranges shifted past the inserted space")
     #expect(
-      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 1_900], [12_000, 12_900]])
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 900], [12_000, 12_900]],
+      "the second group's 12 s offset applied once")
     #expect(result.language == "de", "the first group's language")
     #expect(driver.lastLanguage == "de", "carried to the later group")
     #expect(result.duration == 20)

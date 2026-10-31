@@ -733,6 +733,31 @@ struct MeetingWhisperVADRealBoundaryTests {
   }
 
   @Test(
+    "speech then 3 s of silence (under the gap): the whole run is decoded, the ending kept, nothing invented",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func shortOuterSilenceOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let run = [Float](repeating: 0, count: 16_000) + clip + [Float](repeating: 0, count: 3 * 16_000)
+    let driver = CountingDriver()
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(samples: run, language: "en")
+    await engine.unload()
+    #expect(result.meetingSpeechPreparation == .protectedSpeech)
+    // c4.1: both outer silences are under 8 s, so the decoder hears the run's own boundaries.
+    #expect(driver.inputs.withLock { $0 } == [run.count + 8_000], "the whole run plus padding")
+    let words = MeetingVADFixture.words(result.text)
+    #expect(words == MeetingVADFixture.words(MeetingVADFixture.script), "every word, nothing added: \(result.text)")
+  }
+
+  @Test(
     "30 s of exact zeros: confirmed silence, empty, and the decoder is never entered",
     .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
     .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun

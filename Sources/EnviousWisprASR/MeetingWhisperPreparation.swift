@@ -12,6 +12,12 @@ import os
 /// inside it kept as recorded, so detection never brings speech closer together than the
 /// speaker did. A silence of `gap` or more between spans starts a new group; only those
 /// silences are left out. Each group is decoded on its own.
+///
+/// The run's edges follow the same rule (plan §19, c4.1): a first group starting less than
+/// `gap` after the run start begins at sample 0, and a last group ending less than `gap` before
+/// the run end ends at the run end. A run whose outer silences are both under the gap is
+/// decoded from its own boundaries, as without detection, so trimming a short edge never
+/// changes what Whisper hears; only silences of `gap` or more are left out.
 enum MeetingWhisperPreparation {
   static let sampleRate = 16_000
 
@@ -20,7 +26,7 @@ enum MeetingWhisperPreparation {
 
   /// The groups of `spans` within a run of `count` samples, in order and apart. Spans are
   /// clamped to the run; empty ones are dropped. Empty when no speech remains (confirmed
-  /// silence).
+  /// silence). An outer edge closer than `gap` to the nearest group joins that group.
   static func groups(spans: [Range<Int>], count: Int, gap: Int = groupGapSamples) -> [Range<Int>] {
     let bounds = 0..<count
     let kept = spans.map { $0.clamped(to: bounds) }.filter { !$0.isEmpty }
@@ -32,6 +38,13 @@ enum MeetingWhisperPreparation {
       } else {
         groups.append(span)
       }
+    }
+    // Plan §19 (c4.1): compared with the padded spans, strictly under the gap only.
+    if let first = groups.first, first.lowerBound < gap {
+      groups[0] = 0..<first.upperBound
+    }
+    if let last = groups.last, count - last.upperBound < gap {
+      groups[groups.count - 1] = last.lowerBound..<count
     }
     return groups
   }
