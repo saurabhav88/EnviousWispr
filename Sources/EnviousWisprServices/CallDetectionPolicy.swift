@@ -1091,6 +1091,10 @@ public struct CallDetectionPolicy: Sendable {
       }
       let episode = episodes[index]
       guard isKnownLive(episode, c) else { continue }
+      // A live replacement call cancels the old countdown even while its question waits (#4275).
+      if case .recording = c.meeting {
+        for other in episodes.indices { resetEnd(other) }
+      }
       let displaysQuestion = c.mode != .startByItself || c.meeting != .idle
       if displaysQuestion {
         let since: Date
@@ -1121,8 +1125,6 @@ public struct CallDetectionPolicy: Sendable {
       case .recording(let m):
         episodes[index].phase = .offered
         set(.switchCall(episode: episode.id, family: episode.family, from: m, since: c.now))
-        // The countdown would run on behind the question (review r9 F2).
-        for other in episodes.indices { resetEnd(other) }
       }
       return
     }

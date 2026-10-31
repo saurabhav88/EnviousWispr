@@ -2028,6 +2028,38 @@ struct CallDetectionPolicyTests {
     #expect(s.followed.isEmpty, "a switch's old meeting gets no notes card")
   }
 
+  @Test("a live call during question cooldown cancels the old call's countdown",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4275"))
+  func switchDuringCooldownCancelsCountdown() throws {
+    var s = recordingZoom()
+    let questionShownAt = s.now
+    let original = try #require(s.policy.episodes.first { $0.family == .zoom })
+    end(&s)
+    try #require(isCountdown(s.interaction), "call A has valid end evidence and a running countdown")
+
+    let next = [Self.zoom(.inactive), Self.chrome(.active, url: Self.meetA)]
+    s.read(next)
+    #expect(s.interaction == .none, "call B cancels the countdown even before question readiness")
+    #expect(s.policy.episodes.first { $0.id == original.id }?.phase == original.phase)
+    #expect(s.policy.episodes.first { $0.id == original.id }?.endSince == nil)
+    // A's last end observation stays fresh through its original deadline, so the unfixed
+    // policy emits Stop during B rather than escaping through stale-evidence cleanup.
+    s.hold(next, for: Policy.countdownLength + 2)
+    #expect(s.stops == 0, "call A must not stop the recording while call B is live")
+    #expect(isCountdown(s.interaction) == false)
+    #expect(isSwitch(s.interaction) == false, "the question still respects its cooldown")
+
+    s.hold(next, for: Policy.questionInterval - s.now.timeIntervalSince(questionShownAt) - 0.001)
+    #expect(isSwitch(s.interaction) == false)
+    s.wait(0.002)
+    s.read(next)
+    guard case .switchCall(_, .googleMeet, _, _) = s.interaction else {
+      Issue.record("the first tick after cooldown must ask to switch to call B")
+      return
+    }
+    #expect(s.stops == 0)
+  }
+
   @Test("a switch question pauses the old meeting's countdown")
   func switchPausesCountdown() {
     var s = recordingZoom()
