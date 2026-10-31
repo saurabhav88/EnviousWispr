@@ -347,7 +347,15 @@ final class WordCheckRuntime {
     }
     // os.Logger, not AppLogger: written synchronously, so the line survives the exit that follows.
     Self.quitLogger.notice("word check holder dropped reason=app_quit")
+    // Last: refuse new MLX work and wait, bounded, for what runs (a take, a load, the cleanup above)
+    // so `exit()` does not finalize MLX's scheduler under it (#3939).
+    let drained = KevWordCheckModel.drainForTermination(timeout: Self.quitDrainTimeout)
+    Self.quitLogger.notice("word check drain \(drained ? "complete" : "timed_out", privacy: .public) reason=app_quit")
   }
+
+  /// Longest quit waits for MLX work in flight. A real take evaluates in 20 to 50 ms and a load
+  /// reads for about 1.6 s, so this ends a take's wait and gives up on a load rather than hold quit.
+  static let quitDrainTimeout: TimeInterval = 0.5
 
   private static let quitLogger = Logger(subsystem: "com.enviouswispr.app", category: "WordCheck")
 

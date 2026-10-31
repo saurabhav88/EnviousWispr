@@ -50,6 +50,16 @@ public actor KevWordCheckModel {
   /// Every entry that can be this process's first MLX call marks it first (#3987).
   private static func beginMLXUse() { mlxUsed.withLock { $0 = true } }
 
+  private static let gate = QuitDrainGate()
+
+  /// Quit (#3939): refuse every new MLX entry, then wait a bounded time for the ones running (a
+  /// take's evaluation, a load's reads, a cache clear) so `exit()` does not finalize MLX under
+  /// them. Blocks the calling thread: call it last in `applicationWillTerminate`. False means the
+  /// wait ran out; the process then exits as it did before this drain.
+  public static func drainForTermination(timeout: TimeInterval) -> Bool {
+    gate.drain(timeout: timeout)
+  }
+
   public enum LoadError: Error, Equatable {
     case quantizationMissing
     case headTensorMissing(String)
@@ -57,6 +67,8 @@ public actor KevWordCheckModel {
     case padTokenMissing
     /// Asked a question after its weights were released (only reachable from deinit's own actor).
     case released
+    /// The app is quitting; MLX takes no new work (#3939).
+    case terminating
   }
 
   /// Loads the admitted folder. Throws rather than returning a half-built model: selection turns
@@ -75,6 +87,9 @@ public actor KevWordCheckModel {
       let quantization = try JSONDecoder().decode(BaseConfiguration.self, from: configData)
         .perLayerQuantization
     else { throw LoadError.quantizationMissing }
+    // Held to the end of the load: MLX's first use and every read after it count as one entry.
+    guard Self.gate.enter() else { throw LoadError.terminating }
+    defer { Self.gate.leave() }
     Self.beginMLXUse()
     Memory.cacheLimit = Self.cacheLimitBytes
     let model = Qwen35Model(configuration)
@@ -114,6 +129,8 @@ public actor KevWordCheckModel {
   /// `evalLock` in the pinned mlx-swift, so it cannot run inside another model's evaluation either.
   /// Kev is the only MLX user in the app.
   deinit {
+    _ = Self.gate.enter(duringQuit: true)
+    defer { Self.gate.leave() }
     let before = Memory.snapshot()
     weights = nil
     Memory.clearCache()
@@ -136,12 +153,16 @@ public actor KevWordCheckModel {
   @discardableResult
   public static func releaseCachedBuffers() -> Bool {
     guard mlxUsed.withLock({ $0 }) else { return false }
+    _ = gate.enter(duringQuit: true)
+    defer { gate.leave() }
     Memory.clearCache()
     return true
   }
 
   /// MLX's active and cached bytes, numbers only, for DEBUG log lines.
   public static func memorySnapshotForLog() -> (active: Int, cache: Int) {
+    guard gate.enter() else { return (0, 0) }
+    defer { gate.leave() }
     beginMLXUse()  // reading MLX's memory builds its allocator (#3987)
     let snapshot = Memory.snapshot()
     return (snapshot.activeMemory, snapshot.cacheMemory)
@@ -167,6 +188,8 @@ public actor KevWordCheckModel {
   /// sit after every real token and both layer kinds are causal, so no real token sees a pad.
   public func probabilities(forStates states: [String]) throws -> [Double] {
     guard !states.isEmpty else { return [] }
+    guard Self.gate.enter() else { throw LoadError.terminating }
+    defer { Self.gate.leave() }
     guard let weights else { throw LoadError.released }
     let model = weights.model
     let head = weights.head
