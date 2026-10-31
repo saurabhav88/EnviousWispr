@@ -41,7 +41,8 @@ inputs:
     default: 4.195.11
   configuration:
     description: >-
-      Build-cache family; `release` is the only one (#3729). #3013 gave each
+      Build-cache family; `release-onone` is the only one (#4243: the
+      unoptimized gut-check build; `release` before it, #3729). #3013 gave each
       configuration its own family so a Debug lane could never restore Release
       objects; the hosted Debug lanes are gone, and with them the `debug`
       family. The input stays explicit, and the key and every restore-keys
@@ -187,7 +188,8 @@ runs:
 
     # #3013: a wrong family name would build a key no writer ever saves, and a
     # permanently cold cache is silent (#2580). #3729: `release` is the only
-    # family with a writer, so `debug` is refused here too.
+    # family with a writer, so `debug` is refused here too. #4243 renamed it to
+    # `release-onone`.
     - name: Validate cache configuration
       shell: bash
       env:
@@ -195,8 +197,8 @@ runs:
       run: |
         set -euo pipefail
         case "$CONFIGURATION" in
-          release) echo "==> cache family: $CONFIGURATION" ;;
-          *) echo "::error::xcode-ci-setup: configuration must be 'release', got '$CONFIGURATION'"; exit 1 ;;
+          release-onone) echo "==> cache family: $CONFIGURATION" ;;
+          *) echo "::error::xcode-ci-setup: configuration must be 'release-onone', got '$CONFIGURATION'"; exit 1 ;;
         esac
 
     - name: Compute Xcode build cache key

@@ -14,7 +14,8 @@ env:
   DERIVED_DATA_PATH: .derivedData/CI
   XCODE_PROJECT: EnviousWispr.xcodeproj
   XCODE_SCHEME: EnviousWispr
-  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+  # #4243: the PR check builds and runs only the fixed critical bundle.
+  XCODE_CRITICAL_SCHEME: EnviousWispr-Critical
   # Xcode forwards TEST_RUNNER_* into the test process, stripping the prefix; an
   # INHERITED variable does not arrive at all, so a suite cannot answer "am I on a
   # hosted runner" by reading the runner's own CI. Measured both ways (#2376).
@@ -29,13 +30,19 @@ permissions:
   contents: read
 
 jobs:
-  # build-and-test: the ONE required macOS lane (#3013). ONE Release compile,
+  # build-and-test: the ONE required macOS lane (#3013) and, since #4243, the ONLY
+  # macOS job per PR: a ~10-minute gut check (founder 2026-10-30: local review is
+  # extensive; the cloud is a gut check). ONE Release-configuration compile,
   # `build-for-testing` with ENABLE_TESTABILITY=YES (#3348; issue #1539: a test file
   # referencing a #if DEBUG-only Sources symbol without gating itself compiles
-  # in Debug and vanishes in Release), whose products feed the String Catalog
-  # check, the older-macOS linkage assert, the snapshot for the advisory older-macOS
-  # launch job, and the FULL logic suite (`test-without-building`, never a second
-  # compile) + the FoundationModels compile probe. The standalone eval packages
+  # in Debug and vanishes in Release), unoptimized through the `gut-check` profile
+  # of scripts/ci/build-for-testing-release.sh, whose products feed the String
+  # Catalog check, the older-macOS linkage assert and the FIXED critical bundle
+  # (EnviousWisprCriticalTests, Project.swift criticalTestSources; never grown
+  # without the founder's approval, testing-philosophy.md
+  # RULE: cloud-critical-tests-are-fixed) + the FoundationModels compile probe.
+  # The full suite runs only in the local scripts/xcode-test.sh run before push;
+  # no cloud job runs it (founder 2026-10-30, #4243). The standalone eval packages
   # compiled here until #3729 PR-B; the full local scripts/xcode-test.sh run now
   # compiles them and the pre-push receipt check requires that proof.
   # The testable app is a COMPATIBILITY SMOKE CHECK: production stripping and the
@@ -98,7 +105,7 @@ jobs:
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
-          configuration: release
+          configuration: release-onone
 
       # #3524 PR 3: the Dev-build catalog receipt wrapper (scripts/lib/l10n-build-with-receipt.sh)
       # and its two callers, on owned git fixtures with a stub build; it asks the real Xcode
@@ -123,8 +130,9 @@ jobs:
         run: |
           set -euo pipefail
           scripts/ci/build-for-testing-release.sh \
+            --profile gut-check \
             --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_RELEASE_SCHEME" \
+            --scheme "$XCODE_CRITICAL_SCHEME" \
             --derived-data "$DERIVED_DATA_PATH" \
             --log xcode-build-for-testing-release.log \
             --result-bundle "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult"
@@ -167,10 +175,10 @@ jobs:
       #
       # It lives here because `build-check` is the only check the branch ruleset requires: a
       # standalone workflow can go red without blocking the merge it exists to block. Since #3348
-      # it inspects the testable Release app (see the build step for the measured equivalence);
-      # release.yml runs the same gate on the notarized DMG app. The empirical older-macOS LAUNCH
-      # stays in `older-macos-launch` below and stays advisory — it depends on a hosted image with
-      # a retirement date and on a headless app start, neither of which belongs on the required path.
+      # it inspects the testable Release app; since #4243 that app is UNOPTIMIZED, so this is an
+      # early warning, not proof about the shipped binary: release.yml runs the same gate on the
+      # notarized DMG app, and its launch-on-oldest-macos job launches it. #4243 removed the
+      # advisory PR launch job (one macOS runner per PR).
       # Static, deterministic, seconds; the self-test runs first so a guard that has stopped
       # inspecting anything fails here rather than passing quietly.
       - name: Assert older-macOS launch safety (linkage)
@@ -189,34 +197,6 @@ jobs:
           # strong post-baseline import inside one aborts the process just as surely.
           ./scripts/ci/check-weak-linked-symbols-test.sh "$APP/Contents/MacOS/EnviousWispr"
           ./scripts/ci/check-weak-linked-symbols.sh "$APP"
-
-      # Snapshot for the advisory older-macOS launch job: the TESTABLE Release app
-      # (compatibility smoke check, #3348); the exact shipped bundle is launched
-      # on the oldest hosted macOS by release.yml launch-on-oldest-macos. Tarred, never uploaded as a
-      # directory: `upload-artifact` neither preserves symlinks nor keeps
-      # permissions, and a macOS framework IS a symlink structure (carried over
-      # from older-macos-launch.yml).
-      - name: Snapshot testable Release app
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          APP="$DERIVED_DATA_PATH/Build/Products/Release/EnviousWispr.app"
-          [ -d "$APP" ] || {
-            echo "::error::Release app missing: $APP"
-            exit 1
-          }
-          tar -czf "$RUNNER_TEMP/enviouswispr-app.tar.gz" \
-            -C "$(dirname "$APP")" "$(basename "$APP")"
-          ls -lh "$RUNNER_TEMP/enviouswispr-app.tar.gz"
-
-      - name: Upload the app for the older-macOS launch
-        if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: enviouswispr-release-app
-          path: ${{ runner.temp }}/enviouswispr-app.tar.gz
-          retention-days: 1
-          if-no-files-found: error
 
       # #3013: RUN the suite from the bundles the step above produced. `ew_run_tests`
       # (scripts/lib/xcode-test-run.sh) is the one owner of the run shape (#3729
@@ -237,9 +217,11 @@ jobs:
       # minutes). Green runs took 383-693 s (57 PR runs up to 2026-10-16), so 20 minutes is
       # about 1.7 times the slowest and fails a hang 40 minutes sooner. The failure report
       # below still runs and prints the last started test.
+      # #4243: the critical bundle runs in seconds (139 tests, ~1 s locally); 5 minutes
+      # still fails a hang 55 minutes before the job limit.
       - name: Run logic tests (release, Xcode)
         if: steps.changes.outputs.needs_build == 'true'
-        timeout-minutes: 20
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           . "$GITHUB_WORKSPACE/scripts/lib/xcode-test-run.sh"
@@ -252,10 +234,10 @@ jobs:
           TEST_RUNNER_EW_SETTINGS_MAP_EXPORT="$RUNNER_TEMP/settings-map-export/settings-map.json" \
           TEST_RUNNER_CI="$TEST_RUNNER_CI" ew_phase tests_release /dev/null -- ew_run_tests \
             "$DERIVED_DATA_PATH/Build/Products" \
-            "$XCODE_RELEASE_SCHEME" \
+            "$XCODE_CRITICAL_SCHEME" \
             "$GITHUB_WORKSPACE/xcode-test-release" \
-            "PR Release lane" \
-            "EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
+            "PR critical lane" \
+            "EnviousWisprCriticalTests"
 
       # #3482: reference/settings-map.json and .md must equal the export the step above
       # just wrote from the compiled map and vocabulary (no second build or test run). A
@@ -340,62 +322,6 @@ jobs:
             --set "cas_validate=$CAS_VALIDATE" \
             --set "cas_validate_s=$CAS_VALIDATE_S" \
             --set "cas_kb=$CAS_KB"
-
-  # Older-macOS launch, advisory (#3013 moved it here from older-macos-launch.yml).
-  #
-  # Does the app still START on the oldest macOS we support? We build against the
-  # macOS 26 SDK with a macOS 14 deployment target: a reference to a macOS 26
-  # symbol that is bound STRONGLY makes dyld abort at LAUNCH on macOS 14/15,
-  # before any `#available` check in our code runs. The STATIC linkage check is
-  # on build-and-test (required). This EMPIRICAL launch stays advisory: it
-  # depends on a hosted image with a published retirement date and on starting
-  # a GUI app headlessly, neither of which belongs on the path that blocks every
-  # merge. It is deliberately NOT in build-check's `needs:`.
-  #
-  # The app cannot be built on the older runner (it needs the macOS 26 SDK), so
-  # build-and-test snapshots its testable Release app and this job carries it to
-  # macos-15, the oldest hosted image since GitHub retired macos-14 on 2026-11-02 (#4239):
-  # a compatibility smoke check (#3348). The notarized app users get is launched there by
-  # release.yml launch-on-oldest-macos before publishing.
-  # Trigger is `needs_build`, deliberately broader than the old workflow's path list.
-  older-macos-launch:
-    name: Launch on the oldest hosted macOS (15)
-    needs: build-and-test
-    if: needs.build-and-test.outputs.needs_build == 'true'
-    runs-on: macos-15
-    timeout-minutes: 20
-    # Least privilege: this job runs branch-controlled scripts; artifacts move
-    # between jobs of the same run on the Actions runtime token.
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-
-      - name: Report the runner's OS
-        run: sw_vers
-
-      - name: Download the app
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: enviouswispr-release-app
-          path: downloaded
-
-      - name: Unpack the bundle
-        run: |
-          set -euo pipefail
-          mkdir -p extracted
-          tar -xzf downloaded/enviouswispr-app.tar.gz -C extracted
-          # Symlinks must have survived, or the framework is malformed again and the launch would
-          # be testing a bundle users never receive.
-          links=$(find extracted -type l | wc -l | tr -d ' ')
-          echo "==> symlinks preserved: $links"
-          [ "$links" -gt 0 ] || { echo "FAIL: no symlinks in the unpacked bundle; the framework structure did not survive transfer" >&2; exit 1; }
-
-      - name: Launch and assert it survives
-        run: ./scripts/ci/assert-app-launches.sh extracted/EnviousWispr.app
 
   # Worker unit suites (#1589). Deliberately UNCONDITIONAL and deliberately
   # running BOTH workers every time: the point is to catch a change under

@@ -8,9 +8,24 @@
 # drift, and a drifted cache key or flag is a cold PR build nobody notices.
 #
 # Usage:
-#   build-for-testing-release.sh --project <path> --scheme <name> \
-#     --derived-data <path> --log <path> --result-bundle <path>
+#   build-for-testing-release.sh --profile <gut-check|full> --project <path> \
+#     --scheme <name> --derived-data <path> --log <path> --result-bundle <path>
 #   build-for-testing-release.sh --self-test
+#
+# #4243 profiles. `gut-check` (pr-check.yml and cache-warm.yml, scheme
+# EnviousWispr-Critical) adds SWIFT_OPTIMIZATION_LEVEL=-Onone and
+# SWIFT_COMPILATION_MODE=singlefile on the command line, so EVERY target in the
+# invocation, product modules and SwiftPM dependencies included, compiles
+# unoptimized and in parallel: AppKit alone was one 318 s single-core -O
+# wholemodule job (run 41082480604). DEBUG stays off (it comes from
+# SWIFT_ACTIVE_COMPILATION_CONDITIONS, not the optimization level), so the
+# Release-configuration compile check (#1358/#1498) holds; optimizer-only
+# behaviour is no longer tested in the cloud (founder 2026-10-30). `full` is the
+# optimized build with no extra settings. gut-check also sets ENABLE_DEBUG_DYLIB=NO:
+# Xcode turns the debug dylib on for -Onone, which ships the app as a 40 KB
+# launcher plus EnviousWispr.debug.dylib; the linkage check reads the main
+# executable and refuses that shape (measured locally 2026-10-30, #4243). Both callers must pass the same
+# profile and scheme, so the cache the warm saves is the cache PRs look up.
 #
 # Every path is the caller's; nothing here reads GITHUB_WORKSPACE or a
 # workflow env name. The compile runs through `ew_phase` (scripts/lib/ci-phase.sh)
@@ -49,21 +64,22 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
-  echo "usage: $0 --project <path> --scheme <name> --derived-data <path> --log <path> --result-bundle <path>" >&2
+  echo "usage: $0 --profile <gut-check|full> --project <path> --scheme <name> --derived-data <path> --log <path> --result-bundle <path>" >&2
   echo "       $0 --self-test" >&2
 }
 
 run_build() {
-  local project="" scheme="" derived="" log="" bundle=""
+  local profile="" project="" scheme="" derived="" log="" bundle=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --project|--scheme|--derived-data|--log|--result-bundle)
+      --profile|--project|--scheme|--derived-data|--log|--result-bundle)
         if [ "$#" -lt 2 ] || [ -z "$2" ]; then
           echo "build-for-testing-release: $1 needs a non-empty value" >&2
           usage
           return 2
         fi
         case "$1" in
+          --profile) profile="$2" ;;
           --project) project="$2" ;;
           --scheme) scheme="$2" ;;
           --derived-data) derived="$2" ;;
@@ -80,7 +96,7 @@ run_build() {
     esac
   done
   local name
-  for name in project scheme derived log bundle; do
+  for name in profile project scheme derived log bundle; do
     if [ -z "${!name}" ]; then
       echo "build-for-testing-release: missing required argument (${name})" >&2
       usage
@@ -88,6 +104,16 @@ run_build() {
     fi
   done
 
+  local -a profile_settings
+  case "$profile" in
+    gut-check) profile_settings=(SWIFT_OPTIMIZATION_LEVEL=-Onone SWIFT_COMPILATION_MODE=singlefile ENABLE_DEBUG_DYLIB=NO) ;;
+    full) profile_settings=() ;;
+    *)
+      echo "build-for-testing-release: --profile must be gut-check or full, got: $profile" >&2
+      usage
+      return 2
+      ;;
+  esac
   # shellcheck source=scripts/lib/ci-phase.sh
   . "$HERE/../lib/ci-phase.sh"
   ew_phase build_for_testing_release "$log" -- xcodebuild build-for-testing \
@@ -101,7 +127,8 @@ run_build() {
     ONLY_ACTIVE_ARCH=YES \
     VALID_ARCHS=arm64 \
     ENABLE_TESTABILITY=YES \
-    DEBUG_INFORMATION_FORMAT=dwarf
+    DEBUG_INFORMATION_FORMAT=dwarf \
+    ${profile_settings[@]+"${profile_settings[@]}"}
 }
 
 # Drives the REAL entrypoint (this file, as a new process) with a stub
@@ -143,21 +170,25 @@ STUB
     echo "$got" >"$dir/rc"
   }
 
+  # $1 profile, $2 project, $3 scheme, $4 derived data, $5 result bundle.
   expected_args() {
     printf '%s\n' build-for-testing \
-      -project "$1" -scheme "$2" -configuration Release \
-      -derivedDataPath "$3" -destination 'platform=macOS,arch=arm64' \
-      -resultBundlePath "$4" \
+      -project "$2" -scheme "$3" -configuration Release \
+      -derivedDataPath "$4" -destination 'platform=macOS,arch=arm64' \
+      -resultBundlePath "$5" \
       ARCHS=arm64 ONLY_ACTIVE_ARCH=YES VALID_ARCHS=arm64 ENABLE_TESTABILITY=YES \
       DEBUG_INFORMATION_FORMAT=dwarf
+    if [ "$1" = gut-check ]; then
+      printf '%s\n' SWIFT_OPTIMIZATION_LEVEL=-Onone SWIFT_COMPILATION_MODE=singlefile ENABLE_DEBUG_DYLIB=NO
+    fi
   }
 
   # 1. Success: exact argument list, status 0, log and metrics written.
   local d="$tmp/case-ok"
-  invoke 0 "$d" --project P.xcodeproj --scheme S --derived-data DD \
+  invoke 0 "$d" --profile full --project P.xcodeproj --scheme S --derived-data DD \
     --log "$d/build.log" --result-bundle "$d/r.xcresult"
   if [ "$(cat "$d/rc")" = 0 ] \
-    && diff -u <(expected_args P.xcodeproj S DD "$d/r.xcresult") "$d/args" >&2 \
+    && diff -u <(expected_args full P.xcodeproj S DD "$d/r.xcresult") "$d/args" >&2 \
     && /usr/bin/grep -qx "stub xcodebuild output" "$d/build.log" \
     && /usr/bin/grep -qE '^phase_build_for_testing_release_s=[0-9]+$' "$d/metrics.env"; then
     check ok "success: exact arguments, status 0, log and metrics written"
@@ -165,12 +196,23 @@ STUB
     check fail "success case (rc=$(cat "$d/rc")); output: $(cat "$d/out")"
   fi
 
+  # 1b. gut-check adds exactly the two unoptimized-compile settings, last.
+  d="$tmp/case-gut"
+  invoke 0 "$d" --profile gut-check --project P.xcodeproj --scheme S --derived-data DD \
+    --log "$d/build.log" --result-bundle "$d/r.xcresult"
+  if [ "$(cat "$d/rc")" = 0 ] \
+    && diff -u <(expected_args gut-check P.xcodeproj S DD "$d/r.xcresult") "$d/args" >&2; then
+    check ok "gut-check: exact arguments incl. -Onone, singlefile, no debug dylib"
+  else
+    check fail "gut-check case (rc=$(cat "$d/rc")); output: $(cat "$d/out")"
+  fi
+
   # 2. Paths with spaces and quotes reach xcodebuild as single arguments.
   d="$tmp/case quoting"
-  invoke 0 "$d" --project "My Proj/E W.xcodeproj" --scheme "Scheme 'Q'" \
+  invoke 0 "$d" --profile full --project "My Proj/E W.xcodeproj" --scheme "Scheme 'Q'" \
     --derived-data "Derived Data" --log "$d/b l.log" --result-bundle "$d/r b.xcresult"
   if [ "$(cat "$d/rc")" = 0 ] \
-    && diff -u <(expected_args "My Proj/E W.xcodeproj" "Scheme 'Q'" "Derived Data" "$d/r b.xcresult") "$d/args" >&2; then
+    && diff -u <(expected_args full "My Proj/E W.xcodeproj" "Scheme 'Q'" "Derived Data" "$d/r b.xcresult") "$d/args" >&2; then
     check ok "quoting: spaced and quoted values arrive intact"
   else
     check fail "quoting case (rc=$(cat "$d/rc")); output: $(cat "$d/out")"
@@ -178,7 +220,7 @@ STUB
 
   # 3. A compiler failure is the script's own status.
   d="$tmp/case-fail"
-  invoke 65 "$d" --project P --scheme S --derived-data DD \
+  invoke 65 "$d" --profile gut-check --project P --scheme S --derived-data DD \
     --log "$d/build.log" --result-bundle "$d/r.xcresult"
   if [ "$(cat "$d/rc")" = 65 ] \
     && /usr/bin/grep -qE '^phase_build_for_testing_release_s=[0-9]+$' "$d/metrics.env"; then
@@ -187,14 +229,16 @@ STUB
     check fail "compiler failure case (rc=$(cat "$d/rc")); output: $(cat "$d/out")"
   fi
 
-  # 4-6. Bad arguments exit 2 and xcodebuild never runs.
+  # 4-8. Bad arguments (incl. a missing or unknown profile) exit 2 and xcodebuild never runs.
   local label
-  for label in missing empty unknown; do
+  for label in missing empty unknown no-profile bad-profile; do
     d="$tmp/case-$label"
     case "$label" in
-      missing) invoke 0 "$d" --project P --scheme S --derived-data DD --log "$d/l" ;;
-      empty) invoke 0 "$d" --project "" --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" ;;
-      unknown) invoke 0 "$d" --project P --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" --arch x86_64 ;;
+      missing) invoke 0 "$d" --profile full --project P --scheme S --derived-data DD --log "$d/l" ;;
+      empty) invoke 0 "$d" --profile full --project "" --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" ;;
+      unknown) invoke 0 "$d" --profile full --project P --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" --arch x86_64 ;;
+      no-profile) invoke 0 "$d" --project P --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" ;;
+      bad-profile) invoke 0 "$d" --profile fast --project P --scheme S --derived-data DD --log "$d/l" --result-bundle "$d/r" ;;
     esac
     if [ "$(cat "$d/rc")" = 2 ] && [ ! -e "$d/args" ]; then
       check ok "$label argument: exit 2 before xcodebuild runs"
@@ -204,7 +248,7 @@ STUB
   done
 
   echo "build-for-testing-release self-test: executed=$((pass + fail)) passed=$pass failed=$fail"
-  [ "$fail" -eq 0 ] && [ "$pass" -eq 6 ]
+  [ "$fail" -eq 0 ] && [ "$pass" -eq 9 ]
 }
 
 if [ "${1:-}" = "--self-test" ] && [ "$#" -eq 1 ]; then

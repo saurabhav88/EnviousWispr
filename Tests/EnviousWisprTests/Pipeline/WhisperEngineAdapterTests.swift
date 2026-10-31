@@ -1617,15 +1617,3 @@ import Testing
   }
 
 }
-
-// MARK: - Test-only inspectors on the adapter
-
-extension WhisperEngineAdapter {
-  var observedSpeechSegmentsForTests: [SpeechSegment] { observedSpeechSegmentsForUnitTests }
-
-  /// Supply fixture-owned capture audio explicitly, as the kernel supplies
-  /// `captureResult.samples` in production.
-  func observeSpeechSegments(_ segments: [SpeechSegment], captureSamples: [Float]) {
-    observeSpeechSegments(segments, rawCaptureSamples: captureSamples)
-  }
-}

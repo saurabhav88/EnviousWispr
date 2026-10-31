@@ -138,11 +138,18 @@ func targetSettings(
 // Deliberately NOT set on the xcodebuild command line: a command-line
 // `SETTING=value` has highest precedence and applies to EVERY target in the
 // invocation, which would de-optimize the PRODUCT modules too. Per-target is what
-// the intent actually is, and it keeps the PR gate's Release suite (`pr-check.yml`)
-// running unoptimized tests against fully optimized product code — so the
-// Debug/Release behavioural divergences that suite exists to catch (#2070/#2083,
-// `Parser.defaultMaximumNestingLevel` is 20 under `#if DEBUG` and 256 otherwise)
-// stay caught.
+// the intent actually is: unoptimized tests against fully optimized product code,
+// so `#if DEBUG` divergences (#2070/#2083, `Parser.defaultMaximumNestingLevel` is
+// 20 under `#if DEBUG` and 256 otherwise) stay visible to a Release test run.
+//
+// #4243 (founder 2026-10-30): the cloud PR check no longer runs the full Release
+// suite. It builds the `gut-check` profile of scripts/ci/build-for-testing-release.sh,
+// which DOES set -Onone on the command line for every target (product included, on
+// purpose, for compile speed), and runs only `EnviousWisprCriticalTests`. `#if DEBUG`
+// stays off there, so Debug/Release divergences in the critical files are still
+// caught; optimizer-only product behaviour and divergences outside the critical set
+// are not tested by any cloud job. The per-target setting below still governs a
+// local `-scheme EnviousWispr-Release` run (scripts/xcode-test.sh --configuration Release).
 //
 // The one thing this gives up: optimization-sensitive behavior inside TEST code,
 // the reachable case being a side effect inside `assert(...)`, which `-O` strips
@@ -176,6 +183,39 @@ let testReleaseSettings: SettingsDictionary = [
   "SWIFT_COMPILATION_MODE": "singlefile",
 ]
 let testTargetSettings = targetSettings(releaseExtra: testReleaseSettings)
+
+// #4243: the ONLY tests the cloud PR check runs (scheme `EnviousWispr-Critical`).
+// Each file also stays in `EnviousWisprTests`, so local and full runs are unchanged.
+// FIXED LIST: never add a file here, or a new @Test to a file listed here, without
+// Saurabh's explicit approval. New tests go in the normal bundles.
+// Rule owner: .claude/rules/testing-philosophy.md RULE: cloud-critical-tests-are-fixed.
+let criticalTestSources: SourceFilesList = [
+  "Tests/EnviousWisprTests/Support/TestClassTags.swift",
+  "Tests/EnviousWisprTests/Support/TestDefaults.swift",
+  "Tests/EnviousWisprTests/Architecture/RepoRoot.swift",
+  "Tests/EnviousWisprTests/Localization/InterfaceCatalogSourceTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/Simulator/FakeAudioCapture.swift",
+  "Tests/EnviousWisprTests/Pipeline/StubWhisperBackend.swift",
+  "Tests/EnviousWisprTests/Pipeline/TestSupport/PipelineSignalWaiters.swift",
+  "Tests/EnviousWisprTests/Pipeline/WhisperEngineAdapter+TestInspectors.swift",
+  "Tests/EnviousWisprTests/Pipeline/RecordStartFocusPolicyTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/WhisperEngineAdapterLastResultLifecycleTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/InverseTextNormalizationRouteTests.swift",
+  "Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerLanguageTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/FillerRemovalLanguageProtectionTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/PolishSymbolGuardTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/LLMPolishResultFinisherTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/SnippetFinalizerTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/PasteCascadeClipboardSeamTests.swift",
+  "Tests/EnviousWisprTests/Pipeline/PasteCascadeAXOutcomeTests.swift",
+  "Tests/EnviousWisprTests/Services/PasteLandingPolicyTests.swift",
+  "Tests/EnviousWisprTests/Settings/PolishSettingsTests.swift",
+  "Tests/EnviousWisprTests/Services/SpokenPunctuationSettingsPersistenceTests.swift",
+  "Tests/EnviousWisprTests/Services/S1ControlPersistenceTests.swift",
+  "Tests/EnviousWisprTests/Services/StoredTelemetrySwitchesTests.swift",
+  "Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift",
+  "Tests/EnviousWisprTests/Settings/SettingsMapExportTests.swift",
+]
 
 // #4089: Xcode supplies optimized, compiler-matched parser libraries. Link them only in
 // the source-scanning test bundle; first-party Debug modules remain -Onone (#3925).
@@ -780,6 +820,31 @@ let project = Project(
       ],
       settings: sourceAnalysisTestSettings
     ),
+    // #4243: the cloud PR gut check. Same dependencies as `EnviousWisprTests` (minus the
+    // source-scanning parser libraries), compiling only `criticalTestSources`.
+    .target(
+      name: "EnviousWisprCriticalTests",
+      destinations: .macOS,
+      product: .unitTests,
+      bundleId: "com.enviouswispr.criticaltests",
+      deploymentTargets: deploymentTargets,
+      infoPlist: .default,
+      sources: criticalTestSources,
+      dependencies: firstPartyTargetDeps + [
+        .target(name: "EnviousWisprAppKit"),
+        .target(name: "EnviousWisprAppKitTestSupport"),
+        .target(name: "EnviousWisprContacts"),
+        .target(name: "EnviousWisprLivePreview"),
+        .target(name: "EnviousWisprObservabilityCore"),
+        .target(name: "EnviousWisprFluidAudioBridge"),
+        .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
+        .package(product: "MLX"),  // #3242, as EnviousWisprTests
+        .package(product: "Sparkle"),
+        .package(product: "CTranscribe"),  // #3735, as EnviousWisprTests
+      ],
+      settings: testTargetSettings
+    ),
     .target(
       name: "EnviousWisprASRTests",
       destinations: .macOS,
@@ -864,6 +929,20 @@ let project = Project(
       // RULE: a-flaky-suite-earns-no-new-cases-until-its-wait-seam-is-fixed).
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
+        configuration: "Release"
+      )
+    ),
+    // #4243: the cloud PR gut check runs only this scheme's test action. Not part of the
+    // three schemes above, whose bundles already contain the same files.
+    .scheme(
+      name: "EnviousWispr-Critical",
+      shared: true,
+      buildAction: .buildAction(
+        targets: ["EnviousWispr"],
+        findImplicitDependencies: true
+      ),
+      testAction: .targets(
+        ["EnviousWisprCriticalTests"],
         configuration: "Release"
       )
     ),
