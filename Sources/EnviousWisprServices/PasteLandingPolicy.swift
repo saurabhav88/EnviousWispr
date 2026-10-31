@@ -77,6 +77,12 @@ package enum PasteLandingPolicy {
     // late `found` at 1825 ms) and its editor (`absent`, `completed_no_hit`, value "\n"), so it
     // follows VS Code. The separate Antigravity agent app read `found` and is not listed.
     Exclusion(bundleID: "com.google.antigravity-ide"),
+    // #3947, PostHog production 2026-10-31 (30 days): 841 takes into Meta's desktop app, 0 `found`
+    // (786 `absent` with `late_check=completed_no_hit`, 37 censored, 18 inconclusive or unreadable),
+    // 16 installs, versions 2.5.1 to 2.5.5. The same shape as the VS Code and Orca entries. NOT
+    // established: whether the text lands (the app is not installed on the dev Mac). Cost if it
+    // never lands: no clipboard recovery for that app.
+    Exclusion(bundleID: "com.meta.endo"),
     // cmux is deliberately NOT listed (#3863): on the key route its reader reads the prompt.
     // Fleet: 40 found / 0 absent on 2.5.4-2.5.5 (every absent was 2.5.2-2.5.3); live 2026-10-24,
     // 9 valid takes of the founder's own saved dictations: 7 found, 2 cannot_read, 0 absent.
