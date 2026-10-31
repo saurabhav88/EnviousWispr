@@ -364,6 +364,33 @@ import os
       session.cancel()
     }
 
+    @Test("a check during naming's settle drops naming's copy in flight, never mute's")
+    func settleCheckKeepsMuteCopy() async throws {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig)
+      session.start()
+      let observer = try #require(session.captureObserverForTesting)
+      let observationsBefore = session.currentLog?.segments.first?.observations.count
+      sources.answer = Self.teams
+      session.check()
+      // A Teams copy starts, then another check runs while naming still settles.
+      rig.holding.withLock { $0 = true }
+      observer.tick()
+      await eventually("teams copy started") { rig.copies.withLock { $0 } == 1 }
+      clock.ms.withLock { $0 += 500 }
+      session.check()
+      rig.letGo()
+      await eventually("teams copy delivered") { observer.deliveriesForTesting == 1 }
+      #expect(rig.readings.map(\.surface) == [.teamsApp], "mute keeps the new call's copy")
+      #expect(rig.readings.map(\.generation) == [2])
+      #expect(
+        session.currentLog?.segments.first?.observations.count == observationsBefore,
+        "naming counts nothing during its settle")
+      session.cancel()
+    }
+
     @Test("without talker rules the mute button is still read, and nothing is saved")
     func muteWithoutRules() async throws {
       let sources = Sources(Self.teams)

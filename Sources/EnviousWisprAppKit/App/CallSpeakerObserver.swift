@@ -30,6 +30,19 @@ struct CallMuteCopy: Equatable, Sendable {
   let generation: UInt64
 }
 
+/// What became of one chance to read the mute button (#4248 timing receipt): counted for
+/// every tick whose live binding follows the mute button, whatever naming does.
+enum CallMuteCaptureEvent: Sendable, Equatable {
+  /// A copy started.
+  case started
+  case dictationSkip
+  case noPermission
+  /// The lane was still busy with an earlier copy.
+  case busySkip
+  /// The copy landed after something changed and gave no reading.
+  case staleDrop
+}
+
 /// Takes one recording's call copies on the shared lane and hands out what they show
 /// (#4013 chunk 13A, 13B; #4248). With naming, it collects one segment of speaker evidence:
 /// one call app instance, one surface. `CallSpeakerSession` decides which call to read and when
@@ -81,6 +94,7 @@ final class CallSpeakerObserver {
     var sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     /// Receives each valid mute reading (#4248).
     var mute: @MainActor (CallMuteCopy) -> Void = { _ in }
+    var muteEvent: @MainActor (CallMuteCaptureEvent) -> Void = { _ in }
     var hostTime: @Sendable () -> UInt64 = { mach_absolute_time() }
   }
 
@@ -99,6 +113,9 @@ final class CallSpeakerObserver {
   /// Bumped whenever copies in flight must no longer count: closing, dictation running, trust
   /// lost, a different app instance.
   private var generation = 0
+  /// Bumped when the session sees a different answer while naming's segment settles: only
+  /// naming's copies in flight stop counting; mute's copies of the live binding still do.
+  private var namingGeneration = 0
   /// Bumped synchronously by the Observation change handler, which may run off the main actor.
   private let dictationChanges = OSAllocatedUnfairLock(initialState: 0)
   private(set) var open = true
@@ -125,6 +142,23 @@ final class CallSpeakerObserver {
         status: CallSpeakerSurfaceChoice.hasTalkerReader(surface) ? nil : .unsupported,
         presencePolicy: presencePolicy, startMs: startMs, limits: limits, baseline: baseline))
     watchDictation()
+  }
+
+  /// Turns a mute-only observer into `source`'s naming observer, keeping its copy loop: naming
+  /// starts counting from the next copy.
+  func attachNaming(
+    surface: CallSpeakerSurface, source: CallSpeakerSourceAnswer.Source, startMs: Int,
+    rules: TalkerRulesSnapshot, presencePolicy: CallPresencePolicy, lag: CallSpeakerLag?,
+    limits: CallEvidenceLimits, baseline: CallEvidenceUsage
+  ) {
+    guard open, naming == nil else { return }
+    namingGeneration += 1
+    naming = Naming(
+      source: source, rules: rules.rules,
+      accumulator: CallSpeakerAccumulator(
+        surface: surface, rules: rules.frozen, lag: lag,
+        status: CallSpeakerSurfaceChoice.hasTalkerReader(surface) ? nil : .unsupported,
+        presencePolicy: presencePolicy, startMs: startMs, limits: limits, baseline: baseline))
   }
 
   /// An observer that only reads the mute button.
@@ -191,6 +225,7 @@ final class CallSpeakerObserver {
   func tick() {
     guard open else { return }
     let collects = namingCollects
+    let muteWanted = deps.binding()?.mute == true
     // A whole dictation between two ticks still interrupts presence.
     let changes = dictationChanges.withLock { $0 }
     if changes != seenDictationChanges {
@@ -200,11 +235,13 @@ final class CallSpeakerObserver {
     guard deps.isDictationIdle() else {
       generation += 1
       if collects { naming?.accumulator.noteDictationSkip() }
+      if muteWanted { deps.muteEvent(.dictationSkip) }
       return
     }
     guard deps.isTrusted() else {
       generation += 1
       if collects { naming?.accumulator.noteNoPermission() }
+      if muteWanted { deps.muteEvent(.noPermission) }
       return
     }
     let binding = deps.binding()
@@ -224,10 +261,13 @@ final class CallSpeakerObserver {
     }
     guard claimed else {
       if forNaming { naming?.accumulator.noteBusySkip() }
+      if binding.mute { deps.muteEvent(.busySkip) }
       return
     }
+    if binding.mute { deps.muteEvent(.started) }
     let taken = Taken(
       binding: binding, forNaming: forNaming, generation: generation,
+      namingGeneration: namingGeneration,
       dictation: dictationChanges.withLock { $0 }, source: deps.sourceRevision())
     let capture = deps.capture
     let isTrusted = deps.isTrusted
@@ -260,6 +300,7 @@ final class CallSpeakerObserver {
     let binding: CallCaptureBinding
     let forNaming: Bool
     let generation: Int
+    let namingGeneration: Int
     let dictation: Int
     let source: Int
   }
@@ -294,6 +335,7 @@ final class CallSpeakerObserver {
       deps.isDictationIdle(), deps.isTrusted(), deps.binding() == taken.binding
     else {
       if taken.forNaming { naming?.accumulator.noteStaleDrop() }
+      if taken.binding.mute { deps.muteEvent(.staleDrop) }
       return
     }
     if let mute = parsed.mute {
@@ -303,7 +345,13 @@ final class CallSpeakerObserver {
           copyEnd: copy.readEndHostTime, received: received, completeness: copy.completeness,
           nodes: copy.nodesVisited, generation: taken.binding.generation))
     }
-    guard taken.forNaming, namingCollects, let startMs = naming?.accumulator.startMs,
+    guard taken.forNaming else { return }
+    // A different answer while naming settles drops naming's copy, not mute's.
+    guard taken.namingGeneration == namingGeneration else {
+      naming?.accumulator.noteStaleDrop()
+      return
+    }
+    guard namingCollects, let startMs = naming?.accumulator.startMs,
       let ms = CallSpeakerTimeline.observationMs(
         readStart: copy.readStartHostTime, readEnd: copy.readEndHostTime, anchor: anchor),
       ms >= startMs
@@ -315,7 +363,7 @@ final class CallSpeakerObserver {
   /// in flight no longer count and runs of missing names start again.
   func noteSourceInterruption() {
     guard open else { return }
-    generation += 1
+    namingGeneration += 1
     naming?.accumulator.noteInterruption()
   }
 

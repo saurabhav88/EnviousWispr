@@ -38,6 +38,24 @@ final class MeetingMuteGate: Sendable {
     let outcome: MeetingMuteFollower.Outcome
   }
 
+  /// Every reading the gate decided, by outcome, for the timing receipt.
+  struct Totals: Sendable, Equatable {
+    var applied = 0
+    var staleAtDelivery = 0
+    var ignored = 0
+    var inactive = 0
+    var readings: Int { applied + staleAtDelivery + ignored + inactive }
+
+    mutating func count(_ outcome: MeetingMuteFollower.Outcome) {
+      switch outcome {
+      case .applied: applied += 1
+      case .staleAtDelivery: staleAtDelivery += 1
+      case .ignored: ignored += 1
+      case .inactive: inactive += 1
+      }
+    }
+  }
+
   struct Snapshot: Sendable, Equatable {
     let recording: UUID
     let seq: UInt64
@@ -45,20 +63,29 @@ final class MeetingMuteGate: Sendable {
     let state: MeetingMuteFollower.State
     let missed: MeetingMuteFollower.Missed
     let trace: Trace?
+    let totals: Totals
+    /// The `.end` step ran: this is the recording's last decision.
+    let ended: Bool
   }
 
-  /// Keeps the newest snapshot of one recording; snapshots hop to the MainActor in no
-  /// guaranteed order.
+  /// Keeps the newest snapshot of one recording for the live card; snapshots hop to the
+  /// MainActor in no guaranteed order. (The timing trace logs every snapshot, accepted or not.)
   struct SnapshotFence: Sendable {
     let recording: UUID
     private(set) var lastSeq: UInt64 = 0
+    /// The newest call generation accepted; a snapshot from an earlier call is refused.
+    private(set) var lastGeneration: UInt64 = 0
 
     init(recording: UUID) { self.recording = recording }
 
-    /// Whether `snapshot` is this recording's and newer than every one accepted so far.
+    /// Whether `snapshot` is this recording's, from the current call or a later one, and newer
+    /// than every one accepted so far.
     mutating func accept(_ snapshot: Snapshot) -> Bool {
-      guard snapshot.recording == recording, snapshot.seq > lastSeq else { return false }
+      guard snapshot.recording == recording, snapshot.seq > lastSeq,
+        snapshot.generation.map({ $0 >= lastGeneration }) ?? true
+      else { return false }
       lastSeq = snapshot.seq
+      if let generation = snapshot.generation { lastGeneration = generation }
       return true
     }
   }
@@ -71,6 +98,7 @@ final class MeetingMuteGate: Sendable {
     var applied: [MeetingSilenceInterval]?
     var lastState: MeetingMuteFollower.State
     var lastMissed = MeetingMuteFollower.Missed()
+    var totals = Totals()
   }
 
   let recording: UUID
@@ -111,6 +139,7 @@ final class MeetingMuteGate: Sendable {
         let outcome = s.follower.record(
           copy.reading, copyStart: copy.copyStart, delivered: now, generation: copy.generation)
         trace = Trace(copy: copy, delivered: now, released: released, outcome: outcome)
+        s.totals.count(outcome)
       case .bind(let surface, let generation):
         s.follower.bind(surface: surface, generation: generation)
         s.generation = generation
@@ -132,7 +161,8 @@ final class MeetingMuteGate: Sendable {
       if changed { s.applied = current }
       let state = s.follower.state
       let missed = s.follower.missed
-      guard trace != nil || state != s.lastState || missed != s.lastMissed else {
+      let ended = input == .end
+      guard trace != nil || ended || state != s.lastState || missed != s.lastMissed else {
         return (changed ? current : nil, nil)
       }
       s.lastState = state
@@ -142,7 +172,7 @@ final class MeetingMuteGate: Sendable {
         changed ? current : nil,
         Snapshot(
           recording: recording, seq: s.seq, generation: s.generation, state: state,
-          missed: missed, trace: trace)
+          missed: missed, trace: trace, totals: s.totals, ended: ended)
       )
     }
     if let snapshot { publish(snapshot) }

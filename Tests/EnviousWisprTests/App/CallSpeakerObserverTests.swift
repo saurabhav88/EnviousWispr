@@ -375,6 +375,55 @@ import os
       await coordinator.stop()
     }
 
+    @Test("mute reading starts before the rules arrive; naming attaches to the same capture")
+    func muteBeforeRules() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let gate = AsyncStream<Void>.makeStream()
+      let coordinator = try coordinator(harness, capture: capture, rulesGate: gate.stream)
+      _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let recorder = try #require(harness.recorders.first)
+      // Rules still held: the bind and readings already flow.
+      await eventually("bind and a reading before rules") { recorder.steps.count >= 2 }
+      let copiesBeforeRules = capture.calls.withLock { $0 }
+      gate.continuation.yield()
+      // Naming attaches as soon as the rules land; let two more copies reach it.
+      await eventually("copies after the rules") {
+        capture.calls.withLock { $0 } >= copiesBeforeRules + 2
+      }
+      await coordinator.stop()
+      await eventually("ready") { coordinator.processing == nil && coordinator.phase == .idle }
+      guard case .usable(let log)? = harness.jobs.last?.receivedCallSpeakers.first else {
+        Issue.record("naming did not attach after the rules arrived")
+        return
+      }
+      #expect(log.surface == .meet)
+    }
+
+    @Test("a Stop before the held rules return ends mute reading and attaches no naming")
+    func stopBeforeRulesWithMute() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let gate = AsyncStream<Void>.makeStream()
+      let coordinator = try coordinator(harness, capture: capture, rulesGate: gate.stream)
+      let outcome = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let meetingID = try #require(harness.recorders.first).configuration.meetingID
+      let recorder = try #require(harness.recorders.first)
+      #expect(outcome == .recording(meetingID: meetingID))
+      await eventually("mute bound before rules") { recorder.steps.count >= 1 }
+      await coordinator.stop()
+      let copiesAtStop = capture.calls.withLock { $0 }
+      gate.continuation.yield()
+      await eventually("ready") {
+        coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+      }
+      // settle: absence check; the capture loop ticks every 500 ms, so 1.2 s covers two ticks
+      try await Task.sleep(for: .milliseconds(1_200))
+      #expect(capture.calls.withLock { $0 } == copiesAtStop, "no copy after Stop")
+      #expect(recorder.events.last == "stop", "nothing sent after the recorder stopped")
+      #expect(coordinator.muteState == nil)
+    }
+
     @Test("a recording started for a Meet call saves its evidence before the transcript is made")
     func detectedRecordingSavesEvidence() async throws {
       let harness = try Harness()
@@ -474,7 +523,9 @@ import os
       let harness = try Harness()
       let capture = Capture()
       let gate = AsyncStream<Void>.makeStream()
-      let coordinator = try coordinator(harness, capture: capture, rulesGate: gate.stream)
+      // Mute following off: with it on, mute reading starts before the rules (tested below).
+      let coordinator = try coordinator(
+        harness, capture: capture, rulesGate: gate.stream, muteFollowing: { false })
       let outcome = await coordinator.start(from: .detected, callApp: .googleMeet)
       let meetingID = try #require(harness.recorders.first).configuration.meetingID
       #expect(outcome == .recording(meetingID: meetingID), "Start does not wait for the rules")

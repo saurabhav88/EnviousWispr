@@ -58,6 +58,7 @@ final class CallSpeakerSession {
     var muteFollowing: @MainActor () -> Bool = { false }
     var muteBinding: @MainActor (CallCaptureBinding?) -> Void = { _ in }
     var muteReading: @MainActor (CallMuteCopy) -> Void = { _ in }
+    var muteEvent: @MainActor (CallMuteCaptureEvent) -> Void = { _ in }
     /// Every check: time passed, so an expired mute reading closes even with no copy.
     var muteTick: @MainActor () -> Void = {}
   }
@@ -69,8 +70,9 @@ final class CallSpeakerSession {
   private let deps: Dependencies
   private let anchor: UInt64
   /// Nil: naming is off for this recording and nothing is saved; only the mute button is read.
-  private let rules: TalkerRulesSnapshot?
-  private let bundled: TalkerRules?
+  /// Set once by `attachNaming` when the rules arrive after the session started.
+  private var rules: TalkerRulesSnapshot?
+  private var bundled: TalkerRules?
   private let presencePolicy = CallPresencePolicy.current
   private var lifecycle = Lifecycle.open
   private var loop: Task<Void, Never>?
@@ -196,8 +198,17 @@ final class CallSpeakerSession {
     else { return }
     let lag = TalkerRules.recordingStartLag(
       for: surface, selected: rules.rules, bundled: bundled)
-    // One copy taker at a time on the lane.
-    retireMuteOnly()
+    // One copy taker at a time on the lane: a running mute-only observer becomes this
+    // segment's, keeping its copy loop.
+    if let observer = muteOnly {
+      muteOnly = nil
+      observer.attachNaming(
+        surface: surface, source: source, startMs: startMs, rules: rules,
+        presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage)
+      current = (source, observer)
+      deps.log("meeting speaker segment started surface=\(surface.rawValue)")
+      return
+    }
     let observer = CallSpeakerObserver(
       surface: surface, source: source, anchor: anchor, startMs: startMs, rules: rules,
       presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage,
@@ -234,7 +245,8 @@ final class CallSpeakerSession {
       sourceRevision: { sources.speakerSourceRevision }, capture: deps.capture,
       isTrusted: deps.isTrusted, isDictationIdle: deps.isDictationIdle, lane: deps.lane,
       tick: deps.observerTick, sleep: deps.sleep,
-      mute: { [weak self] copy in self?.deps.muteReading(copy) }, hostTime: deps.hostTime)
+      mute: { [weak self] copy in self?.deps.muteReading(copy) },
+      muteEvent: { [weak self] event in self?.deps.muteEvent(event) }, hostTime: deps.hostTime)
   }
 
   /// Binds the live call from `answer`, at once.
@@ -254,6 +266,16 @@ final class CallSpeakerSession {
     guard mute != muteBound else { return }
     muteBound = mute
     deps.muteBinding(mute)
+  }
+
+  /// The talker rules arrived after the session started (mute reading never waits for them):
+  /// naming starts at the next check, on the running copy loop. Ignored after admission closed
+  /// or when rules are already set.
+  func attachNaming(rules: TalkerRulesSnapshot, bundled: TalkerRules) {
+    guard lifecycle == .open, stoppedAtMs == nil, self.rules == nil else { return }
+    self.rules = rules
+    self.bundled = bundled
+    check()
   }
 
   /// Mute following was switched; the binding follows at once.

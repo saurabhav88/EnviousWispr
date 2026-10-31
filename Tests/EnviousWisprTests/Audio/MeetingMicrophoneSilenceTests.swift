@@ -9,6 +9,8 @@ import os
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
 
+#if DEBUG
+// Uses the writer's DEBUG-only queue seams.
 /// #4248: when these fail, room talk the user meant to keep out is saved while they are muted,
 /// words they said are lost, audio is written twice or out of place, or the recording's length
 /// and segments change because silence was written.
@@ -402,7 +404,7 @@ struct MeetingMicrophoneSilenceTests {
     r.writer.append(
       [Float](repeating: Self.level, count: 7 * Self.rate), hostTime: r.anchor &+ ticks(0.0))
     await r.writer.queueBarrierForTesting()
-    #expect(!r.released.samples.isEmpty, "storage forced a release before the finish")
+    #expect(r.released.samples.isEmpty == false, "storage forced a release before the finish")
     #expect(zeroRuns(r.released.samples).first == 0..<16_000)
     #expect(await r.writer.finish() == .finalized)
     #expect(zeroRuns(try readBack(r.dir).samples) == [0..<16_000])
@@ -419,7 +421,7 @@ struct MeetingMicrophoneSilenceTests {
       return nil
     }
     await r.writer.queueBarrierForTesting()
-    #expect(!ran.withLock { $0 })
+    #expect(ran.withLock { $0 } == false)
   }
 
   /// Capture stamps each chunk's start on its own, so chunk B can begin before chunk A ends.
@@ -606,3 +608,4 @@ struct MeetingMicrophoneSilenceTests {
     #expect(r.released.samples.count == 40_000, "the observer gets the untrimmed chunks")
   }
 }
+#endif

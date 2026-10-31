@@ -156,7 +156,8 @@ struct MeetingMuteGateTests {
     var fence = MeetingMuteGate.SnapshotFence(recording: id)
     func snap(_ recording: UUID, _ seq: UInt64) -> MeetingMuteGate.Snapshot {
       .init(
-        recording: recording, seq: seq, generation: 1, state: .muted, missed: .init(), trace: nil)
+        recording: recording, seq: seq, generation: 1, state: .muted, missed: .init(), trace: nil,
+        totals: .init(), ended: false)
     }
     let first = fence.accept(snap(id, 2))
     let late = fence.accept(snap(id, 1))
@@ -164,12 +165,42 @@ struct MeetingMuteGateTests {
     let other = fence.accept(snap(UUID(), 3))
     let next = fence.accept(snap(id, 3))
     #expect(first)
-    #expect(!late, "older, arrived late")
-    #expect(!repeated, "repeat")
-    #expect(!other, "another recording")
+    #expect(late == false, "older, arrived late")
+    #expect(repeated == false, "repeat")
+    #expect(other == false, "another recording")
     #expect(next)
+    // A snapshot from an earlier call is refused even with a newer sequence.
+    var calls = MeetingMuteGate.SnapshotFence(recording: id)
+    func at(_ seq: UInt64, _ generation: UInt64?) -> MeetingMuteGate.Snapshot {
+      .init(
+        recording: id, seq: seq, generation: generation, state: .muted, missed: .init(),
+        trace: nil, totals: .init(), ended: false)
+    }
+    let second = calls.accept(at(1, 2))
+    let earlier = calls.accept(at(2, 1))
+    let unbound = calls.accept(at(3, nil))
+    #expect(second)
+    #expect(earlier == false, "an earlier call's snapshot")
+    #expect(unbound)
   }
 
+  @Test("the end step reports every decided reading once, with totals, even when nothing changed")
+  func endTotals() throws {
+    let published = Published()
+    let g = gate(published)
+    read(g, .muted, t: 10, d: 12)
+    read(g, .muted, t: 12.5, d: 12.6)
+    read(g, .unknown, t: 13, d: 13.1, generation: 9)
+    _ = g.step(.end)(s(13.2), 0)
+    let all = published.all.withLock { $0 }
+    #expect(all.compactMap(\.trace).count == 3, "one trace per reading")
+    let last = try #require(all.last)
+    #expect(last.ended)
+    #expect(last.totals == .init(applied: 1, staleAtDelivery: 1, ignored: 1, inactive: 0))
+  }
+
+  #if DEBUG
+  // Uses the writer's DEBUG-only queue seams.
   @Test("on a real writer, a stale reading never silences audio and the clock expires a mute")
   func onRealWriter() async throws {
     let dir = TestTemporaryDirectory.url.appendingPathComponent(
@@ -224,4 +255,5 @@ struct MeetingMuteGateTests {
     #expect(published.all.withLock { $0 }.contains { $0.trace?.outcome == .staleAtDelivery })
     #expect(published.last?.state == .cannotSee)
   }
+  #endif
 }
