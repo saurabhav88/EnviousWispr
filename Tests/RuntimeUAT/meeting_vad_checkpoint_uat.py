@@ -97,28 +97,53 @@ def log_size(log=None):
     return (st.st_ino, st.st_size)
 
 
-def log_since(position, log=None):
+def log_since(position, log=None, after_lookup=None):
     """Everything logged after `position`, across a rotation. `AppLogger.rotateIfNeeded` renames
     `app.log` to `app.1.log` (older files shift up to `app.5.log`) at its size bound; a bare byte
     offset would then point past the new file's end and read nothing. The remembered inode finds
-    the renamed file: its remainder from the offset, then every newer file in full."""
+    the renamed file: its remainder from the offset, then every newer file in full.
+
+    Each opened file's identity is checked against the lookup, so a rotation between the lookup
+    and the reads is retried (three tries); a required file that cannot be read, or a shelf that
+    keeps moving, raises Setup rather than returning a partial history. `after_lookup` is an
+    offline-control hook."""
     log = log or LOG
     inode, offset = position
     directory = os.path.dirname(log)
     shelf = [os.path.join(directory, f"app.{i}.log") for i in range(5, 0, -1)] + [log]
-    start = next((n for n, path in enumerate(shelf) if os.path.exists(path) and os.stat(path).st_ino == inode), None)
-    if start is None:
-        raise m.Setup("the app log rotated past every kept file during the run")
-    parts = []
-    for n, path in enumerate(shelf[start:]):
-        try:
-            with open(path, "rb") as f:
-                if n == 0:
-                    f.seek(offset)
-                parts.append(f.read().decode("utf-8", "replace"))
-        except OSError:
-            continue
-    return "".join(parts)
+    for _ in range(3):
+        identities = []
+        for path in shelf:
+            try:
+                identities.append(os.stat(path).st_ino)
+            except FileNotFoundError:
+                identities.append(None)
+        if inode not in identities:
+            raise m.Setup("the app log rotated past every kept file during the run")
+        start = identities.index(inode)
+        if after_lookup:
+            after_lookup()
+        parts = []
+        moved = False
+        for n, path in enumerate(shelf[start:], start):
+            if identities[n] is None:
+                continue
+            try:
+                with open(path, "rb") as f:
+                    if os.fstat(f.fileno()).st_ino != identities[n]:
+                        moved = True
+                        break
+                    if n == start:
+                        f.seek(offset)
+                    parts.append(f.read().decode("utf-8", "replace"))
+            except FileNotFoundError:
+                moved = True
+                break
+            except OSError as error:
+                raise m.Setup(f"the app log could not be read completely: {path}: {error}")
+        if not moved:
+            return "".join(parts)
+    raise m.Setup("the app log kept rotating while it was read")
 
 
 def wait_log(offset, predicate, seconds):
@@ -547,6 +572,34 @@ def self_test():
         with open(log, "a") as f:
             f.write("more\n")
         cases.append(("no rotation: the plain tail", log_since(plain, log) == "more\n"))
+        # A rotation between the lookup and the opens: retried, both sides kept.
+        live = log_size(log)
+        with open(log, "a") as f:
+            f.write("tail\n")
+        fired = []
+
+        def rotate_once():
+            if fired:
+                return
+            fired.append(1)
+            for i in range(4, 0, -1):
+                old = os.path.join(work, f"app.{i}.log")
+                if os.path.exists(old):
+                    os.rename(old, os.path.join(work, f"app.{i + 1}.log"))
+            os.rename(log, os.path.join(work, "app.1.log"))
+            open(log, "w").write("fresh\n")
+        cases.append(("a rotation between lookup and open is retried",
+                      log_since(live, log, after_lookup=rotate_once) == "tail\nfresh\n"))
+        # A required file that cannot be read is a setup failure, never a partial history.
+        locked = log_size(log)
+        os.chmod(log, 0)
+        try:
+            log_since(locked, log)
+            cases.append(("an unreadable required log raises", False))
+        except m.Setup:
+            cases.append(("an unreadable required log raises", True))
+        finally:
+            os.chmod(log, 0o644)
     good = {"readyMs": 40.0, "clockOk": True, "stopOk": True, "terminal": "noSpeech"}
     cases.append(("a healthy sample has no problem", take_problem(good) is None))
     cases.append(("a short ending is healthy", take_problem({**good, "terminal": "discarded"}) is None))

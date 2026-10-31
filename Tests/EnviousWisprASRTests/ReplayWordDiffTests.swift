@@ -43,4 +43,21 @@ struct ReplayWordDiffTests {
     #expect(Diff.compare("anything", reference: "  ") == .notAdjudicated)
     #expect(Diff.compare("same words", reference: "Same words.") == .compared([]))
   }
+
+  @Test("cleanup runs once on success, on an error and on cancellation")
+  func cleanupAlwaysRuns() async {
+    struct Broken: Error {}
+    final class Count: @unchecked Sendable { var value = 0 }
+    let count = Count()
+    let ok = try? await ReplayCleanup.run({ 7 }, finally: { count.value += 1 })
+    #expect(ok == 7 && count.value == 1)
+    await #expect(throws: Broken.self) {
+      try await ReplayCleanup.run({ throw Broken() }, finally: { count.value += 1 })
+    }
+    #expect(count.value == 2, "an error still cleans up")
+    await #expect(throws: CancellationError.self) {
+      try await ReplayCleanup.run({ throw CancellationError() }, finally: { count.value += 1 })
+    }
+    #expect(count.value == 3, "cancellation still cleans up")
+  }
 }

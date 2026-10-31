@@ -98,3 +98,19 @@ enum ReplayWordDiff {
     return ranges.contains { $0.contains(scalar) }
   }
 }
+
+/// #4254 chunk 4: runs `body`, then awaits `cleanup` on success, error and cancellation alike,
+/// so a replay never leaves the executor's model loaded behind a failed clip.
+enum ReplayCleanup {
+  static func run<T>(_ body: () async throws -> T, finally cleanup: () async -> Void) async throws -> T {
+    let value: T
+    do {
+      value = try await body()
+    } catch {
+      await cleanup()
+      throw error
+    }
+    await cleanup()
+    return value
+  }
+}

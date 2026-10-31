@@ -49,6 +49,11 @@ private enum TailReplayConfig {
   }
   static var outPath: String { env["EW_TAIL_OUT"] ?? (manifestPath ?? "/tmp/x") + ".results.jsonl" }
   static var referencesPath: String? { env["EW_TAIL_REFERENCES"] }
+  /// #4254: a saved replay.jsonl to rescore offline with the current comparator (no decoding).
+  static var rescorePath: String? { env["EW_TAIL_RESCORE"] }
+  static var isRescoreConfigured: Bool {
+    isConfigured && (rescorePath.map { FileManager.default.fileExists(atPath: $0) } ?? false)
+  }
   static var diffsPath: String { env["EW_TAIL_DIFFS"] ?? outPath + ".diffs.json" }
   /// The approved #3705 turbo Q8_0 (the real-boundary fixture's identity).
   static let turboDigest = "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183"
@@ -181,7 +186,9 @@ private func shape(_ samples: [Float], arm: String) -> [Float] {
 struct WhisperTailReplayHarnessTests {
   @Test(
     "replays the manifest through every arm and records raw text",
-    .enabled(if: TailReplayConfig.isConfigured && TailReplayConfig.refilterPath == nil),
+    .enabled(
+      if: TailReplayConfig.isConfigured && TailReplayConfig.refilterPath == nil
+        && TailReplayConfig.rescorePath == nil),
     .tags(.realBoundary), .realBoundaryRun
   )
   func replay() async throws {
@@ -211,7 +218,14 @@ struct WhisperTailReplayHarnessTests {
       try await made.load(modelPath: TailReplayConfig.modelPath)
       engine = made
       let nativeBefore = driver.entries.withLock { $0 }
-      let control = try await made.transcribe(samples: [Float](repeating: 0, count: 30 * 16_000), language: nil)
+      // The model is loaded from here on: a failing control frees it before throwing.
+      let control: ASRResult
+      do {
+        control = try await made.transcribe(samples: [Float](repeating: 0, count: 30 * 16_000), language: nil)
+      } catch {
+        await made.unload()
+        throw error
+      }
       let controlNative = driver.entries.withLock { $0 } - nativeBefore
       #expect(control.meetingSpeechPreparation == .confirmedSilence, "control: confirmed silence")
       #expect(controlNative == 0, "control: no native entry on silence")
@@ -224,6 +238,8 @@ struct WhisperTailReplayHarnessTests {
     }
     var texts: [String: [String: String]] = [:]  // "id|rep" -> arm -> text
     var rows = 0
+    // The loaded model is freed on every exit: a failed clip, an error or a cancellation.
+    try await ReplayCleanup.run({
     for rep in 0..<TailReplayConfig.reps {
       for item in manifest {
         let samples = try readPCM16Mono(item.path)
@@ -296,13 +312,35 @@ struct WhisperTailReplayHarnessTests {
         }
       }
     }
-    await engine?.unload()
+    }, finally: { await engine?.unload() })
     #expect(!manifest.isEmpty)
     // Fails loudly on any silently skipped decode.
     #expect(rows == manifest.count * arms.count * TailReplayConfig.reps)
     if usesMeeting, arms.contains("zeros500") {
       try writeDiffs(manifest: manifest, texts: texts)
     }
+  }
+
+  @Test(
+    "rescores a saved replay with the current comparator, without decoding",
+    .enabled(if: TailReplayConfig.isRescoreConfigured)
+  )
+  func rescore() throws {
+    let manifest = try JSONDecoder().decode(
+      [TailReplayItem].self, from: Data(contentsOf: URL(filePath: TailReplayConfig.manifestPath!)))
+    var texts: [String: [String: String]] = [:]
+    var rows = 0
+    for line in try String(contentsOfFile: TailReplayConfig.rescorePath!, encoding: .utf8).split(separator: "\n") {
+      let row = try #require(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+      let arm = try #require(row["arm"] as? String)
+      guard arm == "zeros500" || arm == "meeting" else { continue }
+      let id = try #require(row["id"] as? String)
+      let rep = try #require(row["rep"] as? Int)
+      texts["\(id)|\(rep)", default: [:]][arm] = try #require(row["text"] as? String)
+      rows += 1
+    }
+    #expect(rows == manifest.count * 2 * TailReplayConfig.reps, "every saved arm row rescored")
+    try writeDiffs(manifest: manifest, texts: texts)
   }
 
   /// #4254: per clip and repetition, the meeting arm's ordered edits against the unfiltered
