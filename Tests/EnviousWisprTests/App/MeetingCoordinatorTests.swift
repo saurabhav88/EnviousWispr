@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import Observation
 import Testing
@@ -98,7 +97,7 @@ struct MeetingCoordinatorTests {
     var callSoundLevel: Float { 0 }
     @ObservationIgnored var liveSamples: MeetingRecorder.LiveSamplesObserver?
     /// #4013 chunk 13A: the host time the stand-in's timeline starts at.
-    var anchor: UInt64 = mach_absolute_time()
+    var anchor: UInt64 = 1_000
   }
 
   @MainActor
