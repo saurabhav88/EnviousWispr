@@ -71,11 +71,15 @@ private func pinnedVADBundle() throws -> Bundle {
   return try #require(Bundle(path: root.path))
 }
 
-/// The live executor driver, counting native transcribe entries.
+/// The live executor driver, counting native transcribe entries; with `EW_TAIL_TRACE` set it
+/// also keeps each native input's sha256, count and language and the raw native result (before
+/// production filtering), for attribution of a single clip.
 private struct CountingReplayDriver: WhisperExecutorDriving {
   typealias Handle = TranscribeCppExecutor.ModelHandle
   let live = LiveWhisperExecutorDriver()
   let entries = OSAllocatedUnfairLock(initialState: 0)
+  /// JSON lines, one per native call (Data is Sendable; dictionaries of Any are not).
+  let traces = OSAllocatedUnfairLock(initialState: [Data]())
 
   func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle {
     try await live.load(modelPath: modelPath, lane: lane)
@@ -90,9 +94,18 @@ private struct CountingReplayDriver: WhisperExecutorDriving {
     onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
   ) async throws -> TranscribeCppRunResult {
     entries.withLock { $0 += 1 }
-    return try await live.transcribe(
+    let result = try await live.transcribe(
       handle, samples: samples, language: language, lane: lane,
       onInferenceEntered: onInferenceEntered, onProgress: onProgress)
+    if TailReplayConfig.env["EW_TAIL_TRACE"] != nil {
+      let line = try JSONSerialization.data(withJSONObject: [
+        "inputSha256": replaySHA(samples), "inputSamples": samples.count,
+        "language": language as Any, "rawText": result.text,
+        "rawSegments": result.segments.map { ["t0": $0.startMs, "t1": $0.endMs, "text": $0.text] },
+      ])
+      traces.withLock { $0.append(line) }
+    }
+    return result
   }
   func waitForDrain(_ handle: Handle) async { await live.waitForDrain(handle) }
   func unload(_ handle: Handle) async { await live.unload(handle) }
@@ -131,6 +144,13 @@ private func readPCM16Mono(_ path: String) throws -> [Float] {
     offset += 8 + size + (size & 1)
   }
   throw CocoaError(.fileReadCorruptFile)
+}
+
+/// sha256 of the samples' little-endian Float32 bytes.
+private func replaySHA(_ samples: [Float]) -> String {
+  samples.withUnsafeBufferPointer { buffer in
+    SHA256.hash(data: UnsafeRawBufferPointer(buffer)).map { String(format: "%02x", $0) }.joined()
+  }
 }
 
 /// Deterministic low-level white noise (fixed seed, fixed RMS) for the noise-pad arm.
@@ -218,6 +238,10 @@ struct WhisperTailReplayHarnessTests {
             let result = try await engine.transcribe(samples: samples, language: item.language)
             let ms = Double((ContinuousClock.now - start) / .microseconds(1)) / 1000
             let preparation = result.meetingSpeechPreparation
+            let traced = try driver.traces.withLock { all -> [Data] in
+              defer { all = [] }
+              return all
+            }.map { try JSONSerialization.jsonObject(with: $0) }
             #expect(
               preparation == .protectedSpeech || preparation == .confirmedSilence,
               "\(item.id): detection must run (got \(preparation?.rawValue ?? "nil"))")
@@ -229,6 +253,7 @@ struct WhisperTailReplayHarnessTests {
               "segments": (result.segmentTimings ?? []).map {
                 ["t0": $0.startMs as Any, "t1": $0.endMs as Any, "range": [$0.range.lowerBound, $0.range.upperBound]]
               },
+              "nativeTrace": traced,
             ]
             texts["\(item.id)|\(rep)", default: [:]][arm] = result.text
             out.write(try JSONSerialization.data(withJSONObject: row) + Data("\n".utf8))
@@ -241,7 +266,8 @@ struct WhisperTailReplayHarnessTests {
           let ms = Double((ContinuousClock.now - start) / .microseconds(1)) / 1000
           var row: [String: Any] = [
             "id": item.id, "arm": arm, "rep": rep, "ms": ms,
-            "inputSamples": input.count, "text": result.text,
+            "inputSamples": input.count, "text": result.text, "inputSha256": replaySHA(input),
+            "language": item.language as Any,
             "segments": result.segments.map {
               ["t0": $0.startMs, "t1": $0.endMs, "text": $0.text]
             },
