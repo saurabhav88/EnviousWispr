@@ -15,7 +15,7 @@ internal enum SampleFilter {
   static func filter(
     from allSamples: [Float],
     segments: [SpeechSegment],
-    padding: Int = 1600
+    padding: Int = AudioConstants.speechPaddingSamples
   ) -> [Float] {
     guard !segments.isEmpty else { return allSamples }
 

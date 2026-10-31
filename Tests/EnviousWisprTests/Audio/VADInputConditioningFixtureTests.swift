@@ -164,7 +164,8 @@ struct VADInputConditioningFixtureTests {
     configuration.computeUnits = .cpuAndNeuralEngine
     configuration.allowLowPrecisionAccumulationOnGPU = true
     let model = try MLModel(contentsOf: modelURL, configuration: configuration)
-    return VadManager(config: VadConfig(defaultThreshold: 0.5), vadModel: model)
+    // #4254: the shipped settings' one owner, so this suite cannot drift from production.
+    return SpeechVADSettings.manager(model: model)
   }
 
   private enum FixtureError: Error {
@@ -174,7 +175,7 @@ struct VADInputConditioningFixtureTests {
 
   /// Minimal 16 kHz mono int16 WAV reader. Deliberately strict: a fixture in any
   /// other format is a broken fixture, not something to resample quietly.
-  fileprivate static func loadPCM16(at url: URL) throws -> [Float] {
+  static func loadPCM16(at url: URL) throws -> [Float] {
     let data = try Data(contentsOf: url)
     guard data.count > 12,
       data[0..<4].elementsEqual("RIFF".utf8),
