@@ -451,14 +451,49 @@ public enum CallEvidenceReader {
     let running = NSWorkspace.shared.runningApplications.filter {
       browser.appBundleIDs.contains(($0.bundleIdentifier ?? "").lowercased())
     }
-    if let own = running.first(where: { $0.processIdentifier == holderPID }) { return own }
-    if let path = executablePath(holderPID),
-      let appPath = CallAppCatalog.owningAppPath(ofExecutable: path),
-      let owner = running.first(where: { $0.bundleURL?.path == appPath })
-    {
-      return owner
+    let appPath = executablePath(holderPID).flatMap(CallAppCatalog.owningAppPath(ofExecutable:))
+    let chosen = chooseBrowserCopy(
+      holderPID: holderPID, ancestorPIDs: ancestorPIDs(of: holderPID),
+      copies: running.map { (pid: $0.processIdentifier, bundlePath: $0.bundleURL?.path) },
+      holderAppPath: appPath)
+    return chosen.flatMap { pid in running.first { $0.processIdentifier == pid } }
+  }
+
+  /// #4168: which running copy of a browser owns a microphone-holding process. Order: the holder
+  /// itself, else the nearest ancestor that is a running copy (a Chromium helper's parent is the
+  /// copy that started it, which tells two copies of one app bundle apart), else the copy at the
+  /// holder's app path when exactly one copy is there, else the only running copy. Several copies
+  /// at that path with no parent link is unknown, never the first one listed.
+  package static func chooseBrowserCopy(
+    holderPID: Int32, ancestorPIDs: [Int32],
+    copies: [(pid: Int32, bundlePath: String?)], holderAppPath: String?
+  ) -> Int32? {
+    if copies.contains(where: { $0.pid == holderPID }) { return holderPID }
+    for ancestor in ancestorPIDs where copies.contains(where: { $0.pid == ancestor }) {
+      return ancestor
     }
-    return running.count == 1 ? running[0] : nil
+    if let holderAppPath {
+      let atPath = copies.filter { $0.bundlePath == holderAppPath }
+      if atPath.count == 1 { return atPath[0].pid }
+      if atPath.count > 1 { return nil }
+    }
+    return copies.count == 1 ? copies[0].pid : nil
+  }
+
+  /// The process's parent chain, nearest first, stopping at launchd or after eight levels.
+  private static func ancestorPIDs(of pid: Int32) -> [Int32] {
+    var chain: [Int32] = []
+    var current = pid
+    for _ in 0..<8 {
+      var info = proc_bsdinfo()
+      let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+      guard proc_pidinfo(current, PROC_PIDTBSDINFO, 0, &info, size) == size else { break }
+      let parent = Int32(info.pbi_ppid)
+      guard parent > 1, parent != current else { break }
+      chain.append(parent)
+      current = parent
+    }
+    return chain
   }
 
   private static func executablePath(_ pid: Int32) -> String? {
