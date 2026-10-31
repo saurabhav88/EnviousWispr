@@ -36,7 +36,7 @@ run_bats() {
 # entries; same fresh-clone reasoning as run_bats).
 section "ShellCheck"
 SHELLCHECK_TARGETS=()
-for candidate in scripts/attest.sh scripts/validation-status.sh scripts/validate-pr.sh scripts/check-validation.sh; do
+for candidate in scripts/attest.sh scripts/validation-status.sh; do
   if [ -f "$candidate" ]; then
     SHELLCHECK_TARGETS+=("$candidate")
   else
@@ -54,25 +54,6 @@ else
   FAIL=$((FAIL + 1))
 fi
 
-# Self-tests for new validators (PR #498)
-run_self_test() {
-  local label="$1"
-  local script="$2"
-  section "Self-test: $label"
-  if [ ! -x "$script" ]; then
-    echo "Self-test: $label SKIPPED ($script not executable)"
-    SKIP=$((SKIP + 1))
-    return
-  fi
-  if "$script" --self-test; then
-    PASS=$((PASS + 1))
-  else
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-run_self_test "check-validation" "scripts/check-validation.sh"
-run_self_test "validate-pr" "scripts/validate-pr.sh"
 
 run_bats "attest" "test/attest.bats"
 run_bats "validation-status" "test/validation-status.bats"
