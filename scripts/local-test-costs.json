@@ -10,7 +10,7 @@
     "parser_slice_cases": 119,
     "parser_slice_console_seconds": 24.657,
     "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
-    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. Left the list on 2026-10-31: MeetingCoordinatorTests (its #4102 tests race a real 1-second deadline) and KernelFinalizationWiringTests (a real 100 ms deadline must not win).",
+    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. Left the list on 2026-10-31: MeetingCoordinatorTests (its #4102 tests race a real 1-second deadline), KernelFinalizationWiringTests (a real 100 ms deadline must not win) and WordCheckRuntimeTerminationTests (two everyday tests load the installed real model on the GPU).",
     "integration_base_head": "a01dab18ec4999f00e244c557f375aa29dab333d",
     "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates."
   },
@@ -333,16 +333,6 @@
         {
           "suite": "EnviousWisprTests/RecognizerMarksTests",
           "file": "Tests/EnviousWisprTests/PostProcessing/RecognizerMarksTests.swift"
-        }
-      ]
-    },
-    {
-      "name": "isolated/WordCheckRuntimeTerminationTests",
-      "reason": "Unchanged shutdown fixture: UUID roots/defaults and APFS model clones; allocation only, no V2 optimization.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/WordCheckRuntimeTerminationTests",
-          "file": "Tests/EnviousWisprTests/App/WordCheckRuntimeTerminationTests.swift"
         }
       ]
     },
