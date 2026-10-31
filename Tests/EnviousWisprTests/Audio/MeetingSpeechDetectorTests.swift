@@ -201,10 +201,8 @@ struct MeetingSpeechDetectorTests {
     // Cut inside the padding after the speech ended (15,000 to 16,600): nothing real is there.
     let paddingOnly = await d.liveSpeech(in: 15_200..<20_000)
     #expect(paddingOnly.speech.isEmpty, "\(paddingOnly)")
-    // A sliver under 100 ms of speech that began before the window is a remnant, not speech;
-    // 100 ms or more still counts.
-    #expect(await d.liveSpeech(in: 14_000..<20_000).speech.isEmpty, "1,000 samples of remnant")
-    #expect(await d.liveSpeech(in: 13_400..<20_000).speech == [13_400..<16_600], "1,600 samples count")
+    // Any real speech inside the window counts, however short.
+    #expect(await d.liveSpeech(in: 14_900..<20_000).speech == [14_900..<16_600], "100 real samples count")
     let open = Script([1: (.speechStart, 6_000)])
     let o = detector(open)
     try await o.append(audio(3 * Self.chunk))

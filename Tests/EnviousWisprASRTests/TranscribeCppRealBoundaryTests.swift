@@ -1239,7 +1239,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
       "meeting live long gap: gated missing \(gated.missing) extra \(gated.extra) native \(inputs.count);"
         + " baseline missing \(ungated.missing) extra \(ungated.extra) native \(baseline.inputs.count)")
     #expect(gated.missing.isEmpty, "every reference word, in order, on both sides: \(gated.missing) in \(text)")
-    #expect(!words.contains("thank"), "nothing invented over the gap: \(text)")
+    #expect(gated.extra.isEmpty, "nothing invented, over the gap or anywhere: \(gated.extra) in \(text)")
     #expect(inputs.count < (audio.count + 63_999) / 64_000, "silent cycles skipped the decoder: \(inputs)")
   }
 
@@ -1259,6 +1259,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let result = Self.edits(MeetingVADFixture.words(text), against: reference)
     print("meeting live interior gap: missing \(result.missing) extra \(result.extra)")
     #expect(result.missing.isEmpty, "both sides whole, in order: \(result.missing) in \(text)")
+    #expect(result.extra.isEmpty, "nothing invented: \(result.extra) in \(text)")
   }
 
   @Test(
@@ -1276,8 +1277,10 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let today = Self.edits(ungated, against: script)
     print("meeting live soft speech: gated missing \(withDetection.missing) extra \(withDetection.extra); baseline missing \(today.missing)")
     #expect(!ungated.isEmpty, "control: today's live words hear the soft clip")
-    #expect(
-      Set(withDetection.missing).isSubset(of: Set(today.missing)),
-      "detection loses no reference word today's live words keep: \(withDetection.missing) vs \(today.missing)")
+    // Ordered, occurrence by occurrence: today's live words miss nothing on this clip, so
+    // neither may detection.
+    #expect(today.missing.isEmpty, "control: today's live words keep the whole soft clip: \(today.missing)")
+    #expect(withDetection.missing.isEmpty, "every reference word, in order: \(withDetection.missing)")
+    #expect(withDetection.extra.isEmpty, "nothing invented: \(withDetection.extra)")
   }
 }

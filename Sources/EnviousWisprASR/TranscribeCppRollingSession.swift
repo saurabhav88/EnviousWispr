@@ -117,6 +117,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private let meetingSpeech: MeetingSpeech?
   /// This run's speech detection (meeting sessions only).
   private var speechGate: MeetingLiveSpeechGate?
+  /// #4254 plan §18 point 7, meeting sessions only: the absolute input interval of the last
+  /// heard decode, and whether the origin was last moved by the committed-boundary branch.
+  /// Only a heard decode records the interval; forced origin moves and `start` clear both.
+  private var recognizedInput: Range<Int>?
+  private var originAtCommit = false
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
   /// The held-back words last handed to `Publication.onTranscript`.
@@ -254,6 +259,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     lastPublished = ""
     lastTranscriptInProgress = ""
     speechGate = meetingSpeech.map { MeetingLiveSpeechGate(detector: $0.makeDetector()) }
+    recognizedInput = nil
+    originAtCommit = false
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -445,6 +452,13 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
           completeCycle()
           continue
         case .speech(let from, let to):
+          let proposed = (originSample + from)..<(originSample + to)
+          if isCovered(proposed, closed: to < window.count) {
+            // Already recognized and committed: no native work; not silence.
+            lastDecodeSampleCount = max(lastDecodeSampleCount, proposed.upperBound)
+            completeCycle()
+            continue
+          }
           slice = (from, to)
           origin += Float(from) / Self.sampleRate
         case .raw:
@@ -487,6 +501,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       let realEnd = slice.map { originSample + $0.to } ?? count
       if apply(segments, realAudioEnd: Float(realEnd) / Self.sampleRate) {
         lastDecodeSampleCount = max(lastDecodeSampleCount, realEnd)
+        if speechGate != nil {
+          recognizedInput = slice.map { (originSample + $0.from)..<(originSample + $0.to) }
+            ?? (originSample..<count)
+        }
         // After the `live` check: a terminal that won the race never publishes.
         publishHypothesis()
       }
@@ -593,6 +611,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       }
       committedInBuffer.removeAll { $0.end <= boundary }
       bufferStart = boundary
+      originAtCommit = true
       releaseAudio()
       return
     }
@@ -604,6 +623,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       appendTranscript(&scrolledOutText, entry.unit.text)
     }
     committedInBuffer.removeAll { $0.end <= retentionLine }
+    // #4254: a forced move is never recognition coverage.
+    originAtCommit = false
+    recognizedInput = nil
     // #4254: a meeting session advancing through confirmed silence, with no word in dispute,
     // discards nothing: the origin moves and no discontinuity is reported.
     if speechGate != nil, heldBack.isEmpty, previousHypothesis.isEmpty {
@@ -625,6 +647,26 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       lastTranscriptInProgress = ""
       onTranscript(.discontinuity)
     }
+  }
+
+  /// #4254 plan §18 point 7: a closed speech slice already recognized by a heard decode whose
+  /// words all committed, with the origin at that commit. Nothing inferred from times.
+  private func isCovered(_ proposed: Range<Int>, closed: Bool) -> Bool {
+    Self.covers(
+      recognized: recognizedInput, proposed: proposed, closed: closed,
+      originAtCommit: originAtCommit, originIsLastCommit: bufferStart == lastCommittedEnd,
+      nothingInDispute: heldBack.isEmpty && previousHypothesis.isEmpty)
+  }
+
+  static func covers(
+    recognized: Range<Int>?, proposed: Range<Int>, closed: Bool, originAtCommit: Bool,
+    originIsLastCommit: Bool, nothingInDispute: Bool
+  ) -> Bool {
+    guard let recognized, closed, originAtCommit, originIsLastCommit, nothingInDispute else {
+      return false
+    }
+    return proposed.lowerBound >= recognized.lowerBound
+      && proposed.upperBound <= recognized.upperBound
   }
 
   /// Preview mode: hands the transcript owner this decode's committed delta (exactly once, from

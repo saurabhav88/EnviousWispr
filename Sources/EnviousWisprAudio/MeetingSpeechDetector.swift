@@ -160,19 +160,11 @@ public actor MeetingSpeechDetector {
 
   /// Live words (#4254 plan §18): the window's speech, whether speech is open and the classified
   /// end, from one snapshot. A window holds speech only where real (unpadded) speech falls
-  /// inside it. The remnant of speech that began before the window, with less than one padding
-  /// length (100 ms) of it inside, is the scrolled-out end of words already decoded, not
-  /// speech to decode again: alone, Whisper turns such a sliver into "Thank you." (#4254 c3.1
-  /// real-model gate). Speech that starts inside the window always counts.
+  /// inside it: a window cut inside a range's padding alone is silence, never padding to decode.
   public func liveSpeech(in window: Range<Int>) -> MeetingLiveSpeech {
     var raw = closedSpans
     if let start = openStart, classified > start { raw.append(start..<classified) }
-    let pad = AudioConstants.speechPaddingSamples
-    raw.removeAll { span in
-      guard span.overlaps(window) else { return true }
-      let isRemnant = span.lowerBound < window.lowerBound
-      return isRemnant && span.upperBound - window.lowerBound < pad
-    }
+    raw.removeAll { !$0.overlaps(window) }
     return MeetingLiveSpeech(
       speech: Self.padded(raw, within: window), speechOpen: openStart != nil,
       classifiedEnd: classified)

@@ -430,12 +430,17 @@ struct MeetingLiveSpeechGateTests {
   func remainderSpeechIsReachedLater() async {
     // Classified end at 20 s is 319,488; the second speech starts after it.
     let detector = FakeDetector(speech: [(2 * Self.rate)..<(4 * Self.rate), 319_600..<(30 * Self.rate)])
-    let decoder = Decoder()
+    // Times relative to the slice start (2 s): the second speech is heard at 20 s to 21 s.
+    let decoder = Decoder([
+      [Self.seg(0, 1_000, " one.")],
+      [Self.seg(0, 1_000, " one."), Self.seg(18_000, 19_000, " two.")],
+    ])
     let audio = Self.audio(seconds: 30)
     let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
     audio.set(seconds: 20)
     await s.start(audioSamplesProvider: audio.provider)
     await Rolling.within("decode 1") { await s.cyclesCompleted(reach: 1) }
+    #expect(await s.processedSampleMarkForTests == 4 * Self.rate, "the remainder is not counted as processed")
     audio.set(seconds: 23)
     await Rolling.within("decode 2") { await s.cyclesCompleted(reach: 2) }
     await s.cancel()
@@ -443,6 +448,8 @@ struct MeetingLiveSpeechGateTests {
     #expect(froms.first?.to == 4 * Self.rate, "the remainder is not decoded with the closed speech")
     #expect(froms.last?.to == 23 * Self.rate, "open speech keeps the window end: the remainder is reached")
     #expect(froms.count == 2)
+    #expect(await s.committedTextForTests == "one.", "the closed speech agreed")
+    #expect(await s.heldBackTextForTests == " two.", "the remainder's speech is recognized")
   }
 
   @Test("empty and refused decodes past the retention ceiling keep the window bounded")
@@ -505,6 +512,85 @@ struct MeetingLiveSpeechGateTests {
     await Rolling.within("older cancel") { await older.value }
     #expect(await s.speechDetectionDegradedForTests == false, "the newer run keeps its detector")
     await s.cancel()
+  }
+
+  // MARK: - Covered tails (plan §18 point 7)
+
+  @Test("coverage needs the whole slice inside the recorded input, and every other condition")
+  func coverageRule() {
+    let recognized = 32_000..<64_000
+    func covers(
+      _ proposed: Range<Int>, recognized: Range<Int>? = recognized, closed: Bool = true,
+      atCommit: Bool = true, isLast: Bool = true, calm: Bool = true
+    ) -> Bool {
+      TranscribeCppRollingSession.covers(
+        recognized: recognized, proposed: proposed, closed: closed, originAtCommit: atCommit,
+        originIsLastCommit: isLast, nothingInDispute: calm)
+    }
+    #expect(covers(62_400..<64_000), "the tail inside the recorded input")
+    #expect(!covers(62_400..<64_001), "one sample beyond is not covered")
+    #expect(!covers(62_400..<65_600), "new speech within 100 ms after the input still decodes")
+    #expect(!covers(62_400..<64_000, recognized: nil), "no heard decode, no coverage")
+    #expect(!covers(62_400..<64_000, closed: false), "open speech")
+    #expect(!covers(62_400..<64_000, atCommit: false), "a forced origin")
+    #expect(!covers(62_400..<64_000, isLast: false), "words committed after the origin")
+    #expect(!covers(62_400..<64_000, calm: false), "words held back or awaiting agreement")
+  }
+
+  /// Speech 2 s to 4 s; two agreeing decodes commit it; at 20 s the committed boundary moves
+  /// the origin to 3.9 s, leaving a 0.1 s tail of that same speech in the window.
+  static func tailRun(_ script: [[TranscribeCppSegment]]) async -> (Decoder, TranscribeCppRollingSession) {
+    let detector = FakeDetector(speech: [(2 * Self.rate)..<(4 * Self.rate)])
+    let decoder = Decoder(script)
+    let audio = Self.audio(seconds: 30)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
+    audio.set(seconds: 10)
+    await s.start(audioSamplesProvider: audio.provider)
+    for (step, seconds) in [11.5, 20].enumerated() {
+      await Rolling.within("cycle \(step + 1)") { await s.cyclesCompleted(reach: step + 1) }
+      audio.set(seconds: Float(seconds))
+    }
+    await Rolling.within("tail cycle") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+    return (decoder, s)
+  }
+
+  @Test("the tail of committed speech, inside its recorded input, is skipped as covered")
+  func coveredTailSkipped() async {
+    let words = [Self.seg(0, 1_000, " one."), Self.seg(1_000, 1_900, " two.")]
+    let (decoder, s) = await Self.tailRun([words, words])
+    #expect(await s.committedTextForTests == "one. two.")
+    #expect(await s.bufferStartForTests == 3.9, "control: the committed boundary moved the origin")
+    #expect(decoder.calls == 2, "no third native decode for the covered tail")
+    #expect(await s.processedSampleMarkForTests == 4 * Self.rate)
+  }
+
+  @Test("held-back words keep the tail decoded")
+  func heldBackTailDecoded() async {
+    let first = [Self.seg(0, 1_000, " one."), Self.seg(1_000, 1_900, " two.")]
+    let second = first + [Self.seg(1_900, 2_000, " three")]
+    let (decoder, _) = await Self.tailRun([first, second, second])
+    #expect(decoder.calls == 3, "words in dispute: the tail is decoded")
+  }
+
+  @Test("a forced origin over a short speech tail after empty or refused recognition decodes it")
+  func forcedOriginTailDecoded() async {
+    for decoder in [Decoder(), Decoder(failing: true)] {
+      // Speech ends 50 ms after the forced origin (32 s at 40 s captured).
+      let detector = FakeDetector(speech: [(20 * Self.rate)..<(32 * Self.rate + 800)])
+      let audio = Self.audio(seconds: 60)
+      let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
+      audio.set(seconds: 20)
+      await s.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("cycle 1") { await s.cyclesCompleted(reach: 1) }
+      audio.set(seconds: 40)
+      let before = decoder.calls
+      await Rolling.within("tail") { await s.cyclesCompleted(reach: 3) }
+      await s.cancel()
+      #expect(await s.bufferStartForTests == 32, "control: a forced origin")
+      #expect(decoder.calls > before, "the short tail is decoded, never treated as covered")
+      #expect(decoder.froms.last.map { $0.to - $0.from } == 800)
+    }
   }
 
   @Test("a session without the meeting flag has no speech detection")
