@@ -58,7 +58,10 @@ struct MeetingMicrophoneSilenceTests {
     let chunks = OSAllocatedUnfairLock<[(MeetingReleasedChunk, [Float])]>(initialState: [])
     /// C as read from inside each release callback, beside that chunk's end.
     let watermarks = OSAllocatedUnfairLock<[(seen: UInt64, chunkEnd: UInt64)]>(initialState: [])
-    let writer = OSAllocatedUnfairLock<MeetingTrackWriter?>(initialState: nil)
+    /// Weak, so the writer's callback holding this collector forms no cycle; the rig keeps the
+    /// writer alive.
+    struct WeakWriter { weak var writer: MeetingTrackWriter? }
+    let writer = OSAllocatedUnfairLock(initialState: WeakWriter())
     /// Fired once `count` samples have been released.
     let target = OSAllocatedUnfairLock<(count: Int, signal: BoundedWait.Signal)?>(initialState: nil)
     var all: [(MeetingReleasedChunk, [Float])] { chunks.withLock { $0 } }
@@ -107,7 +110,7 @@ struct MeetingMicrophoneSilenceTests {
       onSegmentFinalized: { _ in }, onFailure: { _ in },
       onReleased: { frames, info in
         let copy = Array(frames)
-        let seen = released.writer.withLock { $0?.releasedHostTime } ?? 0
+        let seen = released.writer.withLock { $0.writer?.releasedHostTime } ?? 0
         let chunkEnd = info.hostTime &+ MeetingMicrophoneSilence.ticks(forSamples: copy.count)
         released.watermarks.withLock { $0.append((seen, chunkEnd)) }
         let total = released.chunks.withLock { list -> Int in
@@ -122,7 +125,7 @@ struct MeetingMicrophoneSilenceTests {
       scheduler: clock.map { c -> MeetingTrackWriter.ReleaseScheduler in
         .manual { due, run in c.pending.withLock { $0.append((due, run)) } }
       } ?? .live)
-    released.writer.withLock { $0 = writer }
+    released.writer.withLock { $0.writer = writer }
     return Rig(dir: dir, anchor: anchor, writer: writer, released: released, clock: clock)
   }
 
@@ -354,6 +357,54 @@ struct MeetingMicrophoneSilenceTests {
     #expect(released.count == 2)
     #expect(zeroRuns(released[0].1) == [960..<1_280])
     #expect(zeroRuns(released[1].1) == [160..<480], "B's part of the mute is still silenced")
+  }
+
+  /// A and B as in the overlap case; A is released, then the decisions are replaced. B's first
+  /// half lies before C and keeps the decision made when that time was released; its second half
+  /// follows the update.
+  private func replaceAfterRelease(old: [MeetingSilenceInterval], new: [MeetingSilenceInterval], _ r: Rig)
+    async throws -> [Float]
+  {
+    let clock = try #require(r.clock)
+    r.writer.setSilencedIntervals(old)
+    r.writer.append([Float](repeating: Self.level, count: 1_600), hostTime: r.anchor)
+    r.writer.append(
+      [Float](repeating: Self.level, count: 1_600), hostTime: r.anchor &+ ticks(0.05))
+    clock.set(r.anchor &+ ticks(3.12))
+    await r.writer.queueBarrierForTesting()
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    #expect(r.released.all.count == 1)
+    r.writer.setSilencedIntervals(new)
+    #expect(await r.writer.finish() == .finalized)
+    return try #require(r.released.all.last?.1)
+  }
+
+  @Test("an update never lifts a mute already applied before C")
+  func updateCannotUnmuteReleasedTime() async throws {
+    let r = try rig()
+    let b = try await replaceAfterRelease(old: [interval(r, 0, 0.2)], new: [], r)
+    #expect(zeroRuns(b) == [0..<800], "before C stays muted; from C on follows the update")
+  }
+
+  @Test("an update never mutes time already released as live")
+  func updateCannotMuteReleasedTime() async throws {
+    let r = try rig()
+    let b = try await replaceAfterRelease(old: [], new: [interval(r, 0, 0.2)], r)
+    #expect(zeroRuns(b) == [800..<1_600], "before C stays live; from C on follows the update")
+  }
+
+  @Test("audio stamped more than the late-arrival bound behind C is judged live and counted")
+  func lateArrivalCounted() async throws {
+    let r = try rig()
+    feed(r, seconds: 3)
+    await r.writer.waitUntilWritten()
+    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(samples: 48_000))
+    r.writer.setSilencedIntervals([interval(r, 0, 10)])
+    // Stamped at 1.5 s: 0.5 s earlier than C minus the 1 s bound.
+    r.writer.append([Float](repeating: Self.level, count: 16_000), hostTime: r.anchor &+ ticks(1.5))
+    #expect(await r.writer.finish() == .finalized)
+    #expect(r.writer.currentHealth.silenceLateFrames == 8_000)
   }
 
   @Test("C already covers each chunk when its release callback runs, forced releases included")

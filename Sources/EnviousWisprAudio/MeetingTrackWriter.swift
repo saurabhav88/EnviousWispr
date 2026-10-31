@@ -127,6 +127,9 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     /// Silence intervals left out because the hold's interval storage was full; their audio was
     /// written as recorded.
     public var silenceIntervalOverflows = 0
+    /// Microphone frames that arrived stamped more than the hold's late-arrival bound before
+    /// released audio; judged as live (#4248 arrival contract).
+    public var silenceLateFrames = 0
     public var failed = false
   }
 
@@ -476,13 +479,14 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   private func recordSilenceHealth() {
     guard let silence else { return }
-    let (end, silenced, overflows) = (
-      silence.released, silence.silencedFrames, silence.intervalOverflows
+    let (end, silenced, overflows, late) = (
+      silence.released, silence.silencedFrames, silence.intervalOverflows, silence.lateFrames
     )
     released.withLock { $0 = max($0, end) }
     health.withLock {
       $0.silencedFrames = silenced
       $0.silenceIntervalOverflows = overflows
+      $0.silenceLateFrames = late
     }
   }
 
