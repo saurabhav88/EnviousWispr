@@ -1172,7 +1172,9 @@ extension TranscribeCppPreviewRealBoundaryTests {
   /// The ordered word alignment of `words` to the literal `reference`: reference words missing
   /// (deletions, in order) and words not in the reference (insertions), by longest common
   /// subsequence.
-  static func edits(_ words: [String], against reference: [String]) -> (missing: [String], extra: [String]) {
+  static func edits(_ words: [String], against reference: [String]) -> (
+    missing: [String], extra: [String], missingAt: [Int]
+  ) {
     let n = words.count
     let m = reference.count
     var table = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
@@ -1183,6 +1185,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
       }
     }
     var missing: [String] = []
+    var missingAt: [Int] = []
     var extra: [String] = []
     var (i, j) = (0, 0)
     while i < n || j < m {
@@ -1191,17 +1194,20 @@ extension TranscribeCppPreviewRealBoundaryTests {
         j += 1
       } else if j < m, i == n || table[i][j + 1] >= table[i + 1][j] {
         missing.append(reference[j])
+        missingAt.append(j)
         j += 1
       } else {
         extra.append(words[i])
         i += 1
       }
     }
-    return (missing, extra)
+    return (missing, extra, missingAt)
   }
 
   /// Runs `audio` through one live transcript session; returns its text and native inputs.
-  static func live(_ audio: [Float], gated: Bool) async throws -> (text: String, inputs: [Int]) {
+  static func live(_ audio: [Float], gated: Bool, language: String = "en") async throws -> (
+    text: String, inputs: [Int]
+  ) {
     let bundle = try MeetingVADFixture.modelBundle
     let driver = CountingDriver()
     let runtime = TranscribeCppPreviewRuntime(
@@ -1214,7 +1220,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
       gated
       ? { @Sendable in MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) } : nil
     let session = try await runtime.makeSession(
-      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
+      language: language, hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
       onAudioReleased: { _ in }, onTranscript: text.append,
       liveSpeechDetector: detector)
     let rolling = try #require(session as? TranscribeCppRollingSession)
@@ -1307,5 +1313,81 @@ extension TranscribeCppPreviewRealBoundaryTests {
     #expect(today.missing.isEmpty, "control: today's live words keep the whole soft clip: \(today.missing)")
     #expect(withDetection.missing.isEmpty, "every reference word, in order: \(withDetection.missing)")
     #expect(withDetection.extra.isEmpty, "nothing invented: \(withDetection.extra)")
+  }
+
+  /// The pinned preview model (#3705), by content.
+  static let smallDigest = "9b9c8811bbcc82a7766f0fb0925614bdacb0923b2cc630daeac17108b655b860"
+
+  /// One case of `Tests/Fixtures/meeting-voices/manifest.json` (see its `generate-fixtures.py`).
+  struct VoiceCase: Decodable {
+    struct Voice: Decodable { let text: String }
+    let id: String
+    let file: String
+    let reference: String?
+    let language: String?
+    let voices: [Voice]
+    let sha256: String
+    /// The whole reference when the words have one order; per voice when voices overlap.
+    var references: [[String]] {
+      if let reference { return [MeetingVADFixture.words(reference)] }
+      return voices.map { MeetingVADFixture.words($0.text) }
+    }
+  }
+
+  /// #4254 §16.5: each representative voice case through a meeting live words session on the
+  /// pinned preview model, with the pinned detector and without it (today's live words). The
+  /// score is every finalized delta plus the latest words in progress at cancellation; no flush.
+  /// Detection may lose no word today's live words keep; music and noise alone give no words.
+  /// **What the user sees when this fails:** a quiet, soft, brief, overlapping, accompanied or
+  /// non-English contribution is missing from the live words, or background music becomes words.
+  @Test(
+    "meeting live words: representative voices keep the words today's live words keep",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(20)), .realBoundaryRun
+  )
+  func meetingLiveRepresentativeVoices() async throws {
+    let digest = SHA256.hash(data: try Data(contentsOf: URL(filePath: Self.smallPath), options: .mappedIfSafe))
+      .map { String(format: "%02x", $0) }.joined()
+    try #require(digest == Self.smallDigest, "requires the pinned preview model")
+    let root = TranscribeCppRealBoundaryFixture.repoRoot
+    let cases = try JSONDecoder().decode(
+      [VoiceCase].self,
+      from: Data(contentsOf: root.appending(path: "Tests/Fixtures/meeting-voices/manifest.json")))
+    try #require(cases.count == 7, "every §16.5 case is in the manifest")
+    var lost: [String: [String]] = [:]
+    for item in cases {
+      let path = root.appending(path: "Tests/Fixtures/meeting-voices/\(item.file)").path
+      let bytes = try Data(contentsOf: URL(filePath: path))
+      try #require(
+        SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined() == item.sha256,
+        "\(item.id): fixture matches its manifest hash")
+      // Trailing quiet so the last words can settle, up to whole 4 s steps: the loop completes
+      // no cycle for a final step shorter than its minimum new audio, so `live` would wait.
+      var audio = try AudioConverter().resampleAudioFile(path: path) + [Float](repeating: 0, count: 4 * 16_000)
+      audio += [Float](repeating: 0, count: (64_000 - audio.count % 64_000) % 64_000)
+      let language = item.language ?? "en"
+      let gated = try await Self.live(audio, gated: true, language: language)
+      let ungated = try await Self.live(audio, gated: false, language: language)
+      let words = MeetingVADFixture.words(gated.text)
+      let baseline = MeetingVADFixture.words(ungated.text)
+      if item.references == [[]] {
+        print("VOICES live case=\(item.id) detected=\(words) undetected=\(baseline) native=\(gated.inputs.count)")
+        #expect(words.isEmpty, "\(item.id): music and noise alone give no words: \(gated.text)")
+        continue
+      }
+      for (index, reference) in item.references.enumerated() {
+        let g = Self.edits(words, against: reference)
+        let u = Self.edits(baseline, against: reference)
+        print(
+          "VOICES live case=\(item.id) ref=\(index) detected_missing=\(g.missing) detected_extra=\(g.extra) "
+            + "undetected_missing=\(u.missing) undetected_extra=\(u.extra) native=\(gated.inputs.count)/\(ungated.inputs.count) "
+            + "detected=\"\(gated.text)\" undetected=\"\(ungated.text)\"")
+        // By reference occurrence: a word detection lost is never offset by one it kept elsewhere.
+        let kept = Set(u.missingAt)
+        let vadLost = g.missingAt.filter { !kept.contains($0) }.map { "\($0):\(reference[$0])" }
+        if !vadLost.isEmpty { lost["\(item.id)#\(index)"] = vadLost }
+      }
+    }
+    #expect(lost.isEmpty, "words detection lost that today's live words kept: \(lost)")
   }
 }

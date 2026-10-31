@@ -1,0 +1,133 @@
+[
+ {
+  "id": "quiet-beside-loud",
+  "reference": "The quarterly numbers came in higher than we expected this time. Can you send me the full report by Friday? Sure, I will send it this afternoon.",
+  "voices": [
+   {
+    "voice": "Daniel",
+    "text": "The quarterly numbers came in higher than we expected this time.",
+    "levelDb": -20.0,
+    "startMs": 1000,
+    "endMs": 4444
+   },
+   {
+    "voice": "Samantha",
+    "text": "Can you send me the full report by Friday?",
+    "levelDb": -29.92,
+    "startMs": 5444,
+    "endMs": 7700
+   },
+   {
+    "voice": "Daniel",
+    "text": "Sure, I will send it this afternoon.",
+    "levelDb": -20.0,
+    "startMs": 8700,
+    "endMs": 11157
+   }
+  ],
+  "file": "quiet-beside-loud.wav",
+  "seconds": 13.158,
+  "sha256": "41a39aa66e1814e451e25492e4d993ffa8a5df9f9f7e048099b6cabfdfa8b23f"
+ },
+ {
+  "id": "soft-onset-and-ending",
+  "reference": "Let me start with a quick summary of where the project stands today.",
+  "voices": [
+   {
+    "voice": "Samantha",
+    "text": "Let me start with a quick summary of where the project stands today.",
+    "levelDb": -23.08,
+    "fadeMs": 600,
+    "startMs": 2000,
+    "endMs": 5532
+   }
+  ],
+  "file": "soft-onset-and-ending.wav",
+  "seconds": 7.532,
+  "sha256": "0e6cc6bea5d54e46aea9766c8069293e6dc324693620789fc705cea1226858b0"
+ },
+ {
+  "id": "yes-no-between-silences",
+  "reference": "Yes. No.",
+  "voices": [
+   {
+    "voice": "Samantha",
+    "text": "Yes.",
+    "levelDb": -21.99,
+    "startMs": 3000,
+    "endMs": 3455
+   },
+   {
+    "voice": "Daniel",
+    "text": "No.",
+    "levelDb": -22.0,
+    "startMs": 7455,
+    "endMs": 7878
+   }
+  ],
+  "file": "yes-no-between-silences.wav",
+  "seconds": 11.879,
+  "sha256": "299c02160d16d452f555cfe610c9df52e62a59747918adb92b5719a589550b1d"
+ },
+ {
+  "id": "two-voices-overlapping",
+  "reference": null,
+  "voices": [
+   {
+    "voice": "Samantha",
+    "text": "I think we should finish the design review before we talk about the budget.",
+    "levelDb": -21.98,
+    "startMs": 1000,
+    "endMs": 4680
+   },
+   {
+    "voice": "Daniel",
+    "text": "Right, and the budget depends on how many people we hire next month.",
+    "levelDb": -21.97,
+    "startMs": 2680,
+    "endMs": 6718
+   }
+  ],
+  "file": "two-voices-overlapping.wav",
+  "seconds": 8.718,
+  "sha256": "6c97623d93a93a1c935b2e7f484b9d89e95a29a70b502321f7fb1dda8c74c004"
+ },
+ {
+  "id": "speech-over-music-and-noise",
+  "reference": "We should move the launch to the second week of March.",
+  "voices": [
+   {
+    "voice": "Samantha",
+    "text": "We should move the launch to the second week of March.",
+    "levelDb": -21.99,
+    "startMs": 2000,
+    "endMs": 4518
+   }
+  ],
+  "bedDb": -28.54,
+  "file": "speech-over-music-and-noise.wav",
+  "seconds": 6.518,
+  "sha256": "f8a0667cb8b47a518114a95c7481005d520af1dc239da138ee9d6f9de070aaa8"
+ },
+ {
+  "id": "music-and-noise-only",
+  "reference": "",
+  "voices": [],
+  "file": "music-and-noise-only.wav",
+  "seconds": 12.0,
+  "sha256": "5dbfcd9e6dc82df97b2f75c1e1612426d1f1f6aa5caafd0cd9bd0e58d8f0f259"
+ },
+ {
+  "id": "non-english-ru",
+  "file": "../language-lock/lock-ru.wav",
+  "language": "ru",
+  "reference": "Доброе утро, встреча начнётся в десять часов утра.",
+  "voices": [
+   {
+    "voice": "ru-RU-SvetlanaNeural",
+    "text": "Доброе утро, встреча начнётся в десять часов утра."
+   }
+  ],
+  "sha256": "2ae763d18b661010b5e77baf2e8625b8db4aa8e9b573b6ecc9f3a72536f0cd95"
+ }
+]
