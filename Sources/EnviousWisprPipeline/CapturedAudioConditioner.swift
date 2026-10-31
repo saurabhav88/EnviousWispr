@@ -167,7 +167,8 @@ enum CapturedAudioConditioner {
   /// are 16kHz mono scalar samples; `padding` matches `SampleFilter`'s default.
   /// Overflow-hardened to parity with `SampleFilter` (#387) — pure, total.
   static func droppedTrailingSamples(
-    rawSampleCount: Int, vadSegments: [SpeechSegment], padding: Int = 1600
+    rawSampleCount: Int, vadSegments: [SpeechSegment],
+    padding: Int = AudioConstants.speechPaddingSamples
   ) -> Int {
     guard !vadSegments.isEmpty else { return 0 }
     var voiced = 0  // saturates at 4800 (only the >=4800 gate cares)

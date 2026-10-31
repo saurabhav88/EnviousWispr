@@ -23,11 +23,28 @@ struct MeetingSpeechDetectorTests {
     private let events: [Int: VadStreamEvent]
     private let failAt: Int?
     private(set) var firstSamples: [Float] = []
+    /// Chunk index whose model call waits until `release()`; `reached` fires as it waits.
+    private let holdAt: Int?
+    let reached = BoundedWait.Signal()
+    private var held: CheckedContinuation<Void, Never>?
+    private var released = false
     struct Boom: Error {}
 
-    init(_ events: [Int: (VadStreamEvent.Kind, Int)] = [:], failAt: Int? = nil) {
+    init(
+      _ events: [Int: (VadStreamEvent.Kind, Int)] = [:], failAt: Int? = nil, holdAt: Int? = nil
+    ) {
       self.events = events.mapValues { VadStreamEvent(kind: $0.0, sampleIndex: $0.1) }
       self.failAt = failAt
+      self.holdAt = holdAt
+    }
+
+    func release() {
+      let waiting = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+        released = true
+        defer { held = nil }
+        return held
+      }
+      waiting?.resume()
     }
 
     var chunks: Int { lock.withLock { calls } }
@@ -42,6 +59,17 @@ struct MeetingSpeechDetectorTests {
         return calls
       }
       if n == failAt { throw Boom() }
+      if n == holdAt {
+        await withCheckedContinuation { c in
+          let go = lock.withLock { () -> Bool in
+            if released { return true }
+            held = c
+            return false
+          }
+          reached.fire()
+          if go { c.resume() }
+        }
+      }
       var next = state
       next.processedSamples += audioChunk.count
       return VadStreamResult(state: next, event: events[n], probability: 0)
@@ -170,5 +198,48 @@ struct MeetingSpeechDetectorTests {
       try await d.append(audio(Self.chunk))
     }
     #expect(await d.classifiedSamples == 2 * Self.chunk, "the clock never passes unprocessed audio")
+  }
+
+  // MARK: - Ordering and cancellation
+
+  @Test("overlapping appends and finish run in call order; no chunk is classified twice")
+  func overlappingCallsAreOrdered() async throws {
+    let script = Script(holdAt: 0)
+    let d = detector(script)
+    // Distinct values per chunk, so a repeat or reorder is visible in what the model saw.
+    let first = audio(Self.chunk, 0.1)
+    let second = audio(Self.chunk, 0.2)
+    let third = audio(1_000, 0.3)
+    let a = Task { try await d.append(first) }
+    try await BoundedWait.until(script.reached)
+    let b = Task { try await d.append(second + third) }
+    let c = Task { try await d.finish() }
+    script.release()
+    try await a.value
+    try await b.value
+    try await c.value
+    #expect(script.chunks == 3, "two whole chunks and the remainder, once each")
+    let seen = script.firstSamples
+    var conditioned = VADInputHighPass()
+    let expected = [first, second, third + audio(Self.chunk - 1_000, 0)].map {
+      conditioned.process($0).first ?? 0
+    }
+    #expect(seen == expected, "in call order")
+    #expect(await d.classifiedSamples == 2 * Self.chunk + 1_000)
+  }
+
+  @Test("cancellation during the last, partial chunk's model call is cancellation")
+  func cancelDuringLastChunk() async throws {
+    // 9,000 samples: chunks 0 and 1 whole, chunk 2 partial (the last); hold its model call.
+    let script = Script(holdAt: 2)
+    let d = detector(script)
+    let task = Task { try await d.finalSpans(audio(9_000)) }
+    try await BoundedWait.until(script.reached)
+    task.cancel()
+    script.release()
+    await #expect(throws: CancellationError.self) { try await task.value }
+    await #expect(throws: MeetingSpeechDetector.DetectorError.stopped) {
+      try await d.append(audio(Self.chunk))
+    }
   }
 }

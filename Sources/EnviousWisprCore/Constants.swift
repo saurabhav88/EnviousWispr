@@ -280,8 +280,8 @@ public enum AudioConstants {
 
   /// Audio kept on each side of a detected speech range before recognition (100 ms): dictation's
   /// trim (`SampleFilter`) and meeting Whisper's speech-only decode (#4254) both use it. It is
-  /// the measured padding that restores a soft start (pipeline-mechanics.md FACT:
-  /// vad-config-and-filtering), separate from the VAD's own segmentation padding (zero).
+  /// the padding measured to restore a soft spoken start that the detector's boundary trimmed
+  /// (#604), separate from the VAD's own segmentation padding (zero).
   public static let speechPaddingSamples: Int = 1600
 
   /// Mid-take all-exact-zero ceiling for a BLUETOOTH capture (#1788), 3.0s.

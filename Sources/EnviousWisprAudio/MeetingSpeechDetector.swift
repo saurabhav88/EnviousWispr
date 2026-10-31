@@ -30,7 +30,11 @@ public enum MeetingSpeechWindow: Sendable, Equatable {
 ///
 /// A detector error stops the detector for good: its recurrent state never resumes across audio
 /// it did not process. Callers choose what an error means (the plan fails open per decode, and
-/// disables live detection for the rest of a session). Cancellation is reported as cancellation.
+/// disables live detection for the rest of a session). Cancellation is reported as cancellation,
+/// and a cancelled detector is stopped too, since its caller cannot know which samples it took.
+///
+/// `append` and `finish` run one at a time, in call order, across their awaits (an actor alone
+/// would let a second call interleave with the first's model call and reuse its stale state).
 public actor MeetingSpeechDetector {
   public enum DetectorError: Error, Equatable {
     /// A previous error stopped this detector.
@@ -56,6 +60,9 @@ public actor MeetingSpeechDetector {
   private var closedSpans: [Range<Int>] = []
   private var openStart: Int?
   private var failed = false
+  /// One `append`/`finish` at a time: true while one runs; later callers wait in call order.
+  private var busy = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
 
   /// The pinned bundled model from `modelBundle` (the app's own bundle in production).
   public init(modelBundle: Bundle = .main) {
@@ -90,6 +97,7 @@ public actor MeetingSpeechDetector {
       offset = end
     }
     try await finish()
+    try Task.checkCancellation()
     return Self.padded(closedSpans, within: 0..<samples.count)
   }
 
@@ -98,6 +106,8 @@ public actor MeetingSpeechDetector {
   /// Feeds newly accepted samples, in order, each exactly once. Whole chunks are classified
   /// now; a remainder waits for more.
   public func append(_ samples: [Float]) async throws {
+    await acquire()
+    defer { release() }
     guard !failed else { throw DetectorError.stopped }
     var offset = 0
     while offset < samples.count {
@@ -105,8 +115,9 @@ public actor MeetingSpeechDetector {
       pending.append(contentsOf: samples[offset..<(offset + take)])
       offset += take
       if pending.count == Self.chunkSize {
-        try await classify(pending, realCount: Self.chunkSize)
+        let chunk = pending
         pending.removeAll(keepingCapacity: true)
+        try await classify(chunk, realCount: Self.chunkSize)
       }
     }
   }
@@ -114,13 +125,15 @@ public actor MeetingSpeechDetector {
   /// End of input: classifies the waiting remainder (padded privately) and closes open speech
   /// at the last real sample.
   public func finish() async throws {
+    await acquire()
+    defer { release() }
     guard !failed else { throw DetectorError.stopped }
     if !pending.isEmpty {
       let real = pending.count
       var chunk = pending
       chunk.append(contentsOf: [Float](repeating: 0, count: Self.chunkSize - real))
-      try await classify(chunk, realCount: real)
       pending.removeAll(keepingCapacity: true)
+      try await classify(chunk, realCount: real)
     }
     if let start = openStart {
       if classified > start { closedSpans.append(start..<classified) }
@@ -152,6 +165,7 @@ public actor MeetingSpeechDetector {
 
   private func classify(_ chunk: [Float], realCount: Int) async throws {
     do {
+      try Task.checkCancellation()
       if vad == nil { vad = try await makeStreamingVad() }
       guard let vad else { return }
       let result = try await vad.processStreamingChunk(
@@ -174,12 +188,34 @@ public actor MeetingSpeechDetector {
         }
       }
       classified = limit
+      // The vendor's model call has no cancellation check of its own: report it here, after
+      // the state moved on (the detector is stopped, so that state is never used again).
+      try Task.checkCancellation()
     } catch is CancellationError {
       failed = true
       throw CancellationError()
     } catch {
       failed = true
       throw error
+    }
+  }
+
+  // MARK: - Ordering
+
+  private func acquire() async {
+    guard busy else {
+      busy = true
+      return
+    }
+    // Ownership is handed over by `release`, so `busy` stays true for the waiter.
+    await withCheckedContinuation { waiters.append($0) }
+  }
+
+  private func release() {
+    if waiters.isEmpty {
+      busy = false
+    } else {
+      waiters.removeFirst().resume()
     }
   }
 
