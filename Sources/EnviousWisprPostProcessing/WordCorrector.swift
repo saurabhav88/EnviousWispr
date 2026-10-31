@@ -1238,12 +1238,26 @@ public struct WordCorrector: Sendable {
       var matchCore = core
       var peeledSuffix = ""
       let hasPeelableSuffix: Bool
+      // #3892: a possessive or plural ending of a word we know is kept, not eaten. Only when no
+      // domain peel applies; the grammar peel is a second kind of peel in the SAME ladder.
+      var grammarPeel = false
+      var grammarAmbiguous = false
       if let split = Self.splitDomainSuffix(core) {
         matchCore = split.bare
         peeledSuffix = split.suffix
         hasPeelableSuffix = true
       } else {
         hasPeelableSuffix = false
+        switch Self.chooseGrammarPeel(core: core, lookups: lookups) {
+        case .peel(let stem, let ending):
+          matchCore = stem
+          peeledSuffix = ending
+          grammarPeel = true
+        case .ambiguous:
+          grammarAmbiguous = true
+        case .none:
+          break
+        }
       }
       let matchCoreLower = matchCore.lowercased()
       let matchCoreEligible =
@@ -1254,7 +1268,9 @@ public struct WordCorrector: Sendable {
       // specifies its own domain, whatever suffix the user actually said
       // (Codex review, PR for #2281, finding P2, rounds 2-4).
       func reattached(_ canonical: String) -> String {
-        let reattach = peeledSuffix.isEmpty || Self.isDomainShaped(canonical) ? "" : peeledSuffix
+        // A grammar ending is always kept; only a domain suffix yields to a domain-shaped canonical.
+        let reattach =
+          peeledSuffix.isEmpty || (!grammarPeel && Self.isDomainShaped(canonical)) ? "" : peeledSuffix
         return prefix + canonical + reattach + suffix
       }
 
@@ -1351,6 +1367,9 @@ public struct WordCorrector: Sendable {
       // 14). Ties favor unpeeled, consistent with the exact-match tier's
       // own unpeeled-before-peeled precedence.
       func acceptFuzzy(unpeeled: Bool, canonical: String) -> String {
+        // #3892: the stem fuzzy-matched a canonical and the ending put it back: the token was
+        // already correct, so nothing is replaced and no replacement is counted.
+        if !unpeeled, grammarPeel, canonical + peeledSuffix == core { return token }
         appendReplacement(forCanonical: canonical)
         return unpeeled ? prefix + canonical + suffix : reattached(canonical)
       }
@@ -1387,8 +1406,10 @@ public struct WordCorrector: Sendable {
           // does (Codex cloud review, PR #2298, round 15). Neither attempt
           // is confident enough to override the other.
           guard uc != pc, abs(us - ps) < Self.ambiguityMargin else {
+            // #3892: the same canonical reached with and without a grammar ending keeps the ending.
+            let keepEnding = grammarPeel && uc == pc
             return .accepted(
-              us >= ps
+              us >= ps && !keepEnding
                 ? acceptFuzzy(unpeeled: true, canonical: uc)
                 : acceptFuzzy(unpeeled: false, canonical: pc))
           }
@@ -1422,11 +1443,22 @@ public struct WordCorrector: Sendable {
       // only at step 4 -- "enviouswhisper" scoring against
       // "enviouswhisper.com" purely because the strings share a long
       // prefix, with no dot in the input at all.
+      // #3892: two stems both saved words ("es" versus "s" readings) leave the token as dictated.
+      if grammarAmbiguous { return token }
+      // #3892 (option B, founder away, decided 2026-10-31): outside Latin letters a token that
+      // is a saved word plus a short ending (Иванову for Иванов) is an inflection, never a
+      // mishearing, so fuzzy matching leaves it as dictated. Exact matches ran above.
+      if !CorrectionCandidateFilter.isLatin(core), Self.extendsSavedWord(coreLower, lookups: lookups) {
+        return token
+      }
       let unpeeledNonPackFuzzy =
         hasPeelableSuffix
         ? nonPackFuzzySingleWordMatch(
           core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
-        : .noCandidate
+        : (grammarPeel
+          ? nonPackFuzzySingleWordMatch(
+            core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: false)
+          : .noCandidate)
       let peeledNonPackFuzzy =
         matchCoreEligible
         ? nonPackFuzzySingleWordMatch(
@@ -1453,7 +1485,10 @@ public struct WordCorrector: Sendable {
         hasPeelableSuffix
         ? packFuzzySingleWordMatch(
           core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: true)
-        : .noCandidate
+        : (grammarPeel
+          ? packFuzzySingleWordMatch(
+            core: core, coreLower: coreLower, lookups: lookups, domainShapedOnly: false)
+          : .noCandidate)
       let peeledPackFuzzy =
         matchCoreEligible
         ? packFuzzySingleWordMatch(
@@ -1469,6 +1504,58 @@ public struct WordCorrector: Sendable {
     }
 
     return (Self.restoreMasked(corrected.joined(separator: " "), learnedMask), replacements)
+  }
+
+  /// #3892: what to do with a possessive or plural ending on a single token.
+  private enum GrammarPeel {
+    case none
+    case ambiguous
+    case peel(stem: String, ending: String)
+  }
+
+  /// #3892: split "'s" / "’s" / "s" / "es" off a token when the stem is a word we know. The stem
+  /// must be a CANONICAL self-entry (a saved or built-in word, never only an alias): an alias plus
+  /// an ending is a different word, not a mishearing (#3339: "clods" is not "Claudes"). Without that
+  /// evidence a single reading is still tried for fuzzy repair ("ChatGBT's"), on a stem of four or
+  /// more letters. Two readings with evidence ("es" versus "s") are ambiguous: leave the token.
+  private static func chooseGrammarPeel(core: String, lookups: Lookups) -> GrammarPeel {
+    // A token with a space is a phrase an earlier pass already wrote ("Envious Labs"): not one word.
+    guard !core.contains(where: \.isWhitespace) else { return .none }
+    let lower = core.lowercased()
+    var readings: [(stem: String, ending: String)] = []
+    for apostrophe in ["'s", "\u{2019}s"] where lower.hasSuffix(apostrophe) {
+      readings.append((String(core.dropLast(2)), String(core.suffix(2))))
+    }
+    if readings.isEmpty {
+      if lower.hasSuffix("s") { readings.append((String(core.dropLast(1)), String(core.suffix(1)))) }
+      if lower.hasSuffix("es") { readings.append((String(core.dropLast(2)), String(core.suffix(2)))) }
+    }
+    readings = readings.filter { $0.stem.count >= 2 && $0.stem.contains { $0.isLetter || $0.isNumber } }
+    let known = readings.filter { reading in
+      let key = reading.stem.lowercased()
+      guard let canonical = lookups.singleAliasMap[key] else { return false }
+      return canonical.lowercased() == key
+    }
+    if known.count == 1, let only = known.first { return .peel(stem: only.stem, ending: only.ending) }
+    if known.count > 1 { return .ambiguous }
+    // No evidence: fuzzy repair only. A stem that is an alias is excluded, or the exact slots would
+    // turn "clods" into "Claudes" (an alias plus an ending is another word, #3339).
+    if readings.count == 1, let only = readings.first, only.stem.count >= 4,
+      lookups.singleAliasMap[only.stem.lowercased()] == nil
+    {
+      return .peel(stem: only.stem, ending: only.ending)
+    }
+    return .none
+  }
+
+  /// #3892: the lowercased non-Latin token is a saved word followed by one to three more letters.
+  private static func extendsSavedWord(_ lower: String, lookups: Lookups) -> Bool {
+    let letters = Array(lower)
+    guard letters.count >= 4 else { return false }
+    for tail in 1...3 where letters.count - tail >= 3 {
+      if lookups.singleAliasMap[String(letters.dropLast(tail))] != nil { return true }
+    }
+    return false
   }
 
   /// Pass 3 alone: exact single-word alias (includes canonical self-entries).
