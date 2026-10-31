@@ -1306,6 +1306,41 @@ struct MeetingLiveWordsTests {
     owner.stop()
   }
 
+  /// #4248: Stop during that held end still keeps the old session's final words, then the
+  /// replacement's words for the drained tail, each once and in order.
+  @Test("Stop during a restart keeps the old session's finals and then the drained tail's words")
+  func finalsDuringHeldEndThenStop() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    let end = Gate()
+    world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner, release: end.open) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let old = try #require(engine.sessions.first)
+    Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+    await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
+    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))  // while ending
+    Self.speak(observer, .microphone, (0..<3_200).map { 0.5 + Float($0) / 100_000 })
+    owner.stop()
+    end.open()
+    await PreviewWait.within("the replacement") { await engine.opened.reached(2) }
+    let replacement = try #require(engine.sessions.last)
+    replacement.emit(.update(finalized: " Tail words.", inProgress: ""))
+    #expect(await owner.waitForCleanups(seconds: 10))
+    let mic = (owner.transcript?.lines ?? []).filter { $0.track == .microphone }.map(\.text)
+    #expect(mic.joined(separator: " ").contains("Flushed at the end."))
+    #expect(mic.joined(separator: " ").contains("Tail words."))
+    let joined = mic.joined(separator: " ")
+    #expect(joined.components(separatedBy: "Flushed at the end.").count == 2, "once")
+    #expect(joined.components(separatedBy: "Tail words.").count == 2, "once")
+    let flushed = try #require(joined.range(of: "Flushed at the end."))
+    let tail = try #require(joined.range(of: "Tail words."))
+    #expect(flushed.lowerBound < tail.lowerBound, "in order")
+  }
+
   /// The per-session sample sequences `RestartFeeder` sends for `chunks`, restarting into a new
   /// session at each restart point.
   private static func sessions(

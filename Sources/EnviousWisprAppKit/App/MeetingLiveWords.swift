@@ -693,6 +693,12 @@ final class MeetingLiveWords {
     // handed to the Stop's drain through the track's target, which ends it after the drain.
     if slot.drainAfterStop, slot.epoch == epoch {
       guard ended != nil else { return }  // the old end timed out: no second analyzer
+      // The old session's finals are accepted by now: apply them before the epoch moves on,
+      // and only while these lines are still this meeting's.
+      let finalEntries = bridge.take()
+      if transcript?.meetingID == current.meetingID {
+        apply(finalEntries, to: current)
+      }
       slot.epoch += 1
       let next = slot.epoch
       bridge.openEpoch(next, for: track)
