@@ -86,6 +86,15 @@ struct MeetingLiveWordsTests {
     }
     var fed: [Float] { lock.withLock { _fed } }
     var ends: Int { lock.withLock { _ends } }
+    #if DEBUG
+      /// #4254: what `detectionReport()` returns (nil: no speech detection).
+      private var _report: LiveDetectionReport?
+      var report: LiveDetectionReport? {
+        get { lock.withLock { _report } }
+        set { lock.withLock { _report = newValue } }
+      }
+      func detectionReport() async -> LiveDetectionReport? { report }
+    #endif
     /// Ends that have returned.
     var endsCompleted: Int { lock.withLock { _endsCompleted } }
     func feed(_ samples: [Float]) async {

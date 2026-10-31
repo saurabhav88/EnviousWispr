@@ -396,6 +396,29 @@ final class MeetingLiveWords {
   var currentLanguage: String? { recording?.language }
 
   #if DEBUG
+    /// #4254 UAT evidence (DEBUG door): each captured track's session epoch and its speech
+    /// detection report. A report is nil when the session has none, or when the recording, the
+    /// track's slot, its epoch or its session changed during the read (unknown, never evidence).
+    func detectionReports() async -> [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] {
+      guard let current = recording else { return [:] }
+      var reports: [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] = [:]
+      for (track, slot) in current.tracks {
+        let epoch = slot.epoch
+        guard let session = slot.session else {
+          reports[track] = (epoch, nil)
+          continue
+        }
+        let report = await session.detectionReport()
+        let unchanged =
+          recording === current && current.tracks[track] === slot && slot.epoch == epoch
+          && slot.session.map { $0 as AnyObject } === (session as AnyObject)
+        reports[track] = (epoch, unchanged ? report : nil)
+      }
+      return reports
+    }
+  #endif
+
+  #if DEBUG
     /// DEBUG door only (`meeting start --live-engine apple|universal`, runtime UAT): the next
     /// recording uses this engine with the stored language matched to it, never storing it and
     /// never downloading. Consumed by that recording's `captureStarted`, and cleared by the door

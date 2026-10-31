@@ -229,6 +229,23 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
   /// Retained audio, in samples (tests and the long-run harness).
   package var retainedSampleCountForTests: Int { state.withLock { $0.samples.count } }
 
+  #if DEBUG
+    /// #4254 UAT evidence: the attached session's meeting speech detection, or nil when it has
+    /// none or the attached session changed during the read.
+    package func detectionReport() async -> LiveDetectionReport? {
+      guard let rolling = state.withLock({ $0.session }) as? TranscribeCppRollingSession,
+        let snapshot = await rolling.meetingDetectionSnapshot(),
+        state.withLock({ $0.session.map { ObjectIdentifier($0 as AnyObject) } })
+          == ObjectIdentifier(rolling)
+      else { return nil }
+      return LiveDetectionReport(
+        run: snapshot.run, degraded: snapshot.degraded, fed: snapshot.fed,
+        classified: snapshot.classified, silentCycles: snapshot.silentCycles,
+        coveredCycles: snapshot.coveredCycles, pendingCycles: snapshot.pendingCycles,
+        completedDecodes: snapshot.completedDecodes)
+    }
+  #endif
+
   package func feed(_ newSamples: [Float]) async {
     let justCapped: Bool = state.withLock { s in
       guard !s.ended, !s.capped else { return false }

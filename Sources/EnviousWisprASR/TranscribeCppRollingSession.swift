@@ -129,6 +129,12 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// whose words are still in dispute; nil when nothing is. Empty and refused decodes never set
   /// it; `start` and a forced discard clear it.
   private var disputedInputEnd: Int?
+  #if DEBUG
+    /// #4254 UAT evidence: this run's meeting cycles by outcome.
+    private var silentCycles = 0
+    private var coveredCycles = 0
+    private var pendingCycles = 0
+  #endif
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
   /// The held-back words last handed to `Publication.onTranscript`.
@@ -222,6 +228,32 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   var recognizedInputForTests: Range<Int>? { recognizedInput }
   var speechDetectionDegradedForTests: Bool? { speechGate?.isDegraded }
 
+  #if DEBUG
+    /// #4254 UAT evidence: this run's meeting speech detection; nil without detection, or when
+    /// a newer run or a cancel replaced it during the read.
+    package struct MeetingDetectionSnapshot: Sendable, Equatable {
+      package var run: Int
+      package var degraded: Bool
+      package var fed: Int
+      package var classified: Int
+      package var silentCycles: Int
+      package var coveredCycles: Int
+      package var pendingCycles: Int
+      package var completedDecodes: Int
+    }
+
+    package func meetingDetectionSnapshot() async -> MeetingDetectionSnapshot? {
+      guard let gate = speechGate else { return nil }
+      let run = generation
+      let classified = await gate.classifiedEnd()
+      guard run == generation, speechGate === gate else { return nil }
+      return MeetingDetectionSnapshot(
+        run: run, degraded: gate.isDegraded, fed: gate.fed, classified: classified,
+        silentCycles: silentCycles, coveredCycles: coveredCycles, pendingCycles: pendingCycles,
+        completedDecodes: decodeCount)
+    }
+  #endif
+
   /// Returns once `count` loop cycles have finished applying (or accounting for) their decode.
   /// The decoder's own call signal fires at decode ENTRY, before the result is applied.
   func cyclesCompleted(reach count: Int) async {
@@ -270,6 +302,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     recognizedInput = nil
     originAtCommit = false
     disputedInputEnd = nil
+    #if DEBUG
+      silentCycles = 0
+      coveredCycles = 0
+      pendingCycles = 0
+    #endif
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -455,9 +492,15 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
         case .silent(let through):
           // Confirmed silence: no native work and no agreement change; only the mark moves.
           lastDecodeSampleCount = max(lastDecodeSampleCount, through)
+          #if DEBUG
+            silentCycles += 1
+          #endif
           completeCycle()
           continue
         case .pending:
+          #if DEBUG
+            pendingCycles += 1
+          #endif
           completeCycle()
           continue
         case .speech(let from, let to):
@@ -465,6 +508,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
           if isCovered(proposed, closed: to < window.count) {
             // Already recognized and committed: no native work; not silence.
             lastDecodeSampleCount = max(lastDecodeSampleCount, proposed.upperBound)
+            #if DEBUG
+              coveredCycles += 1
+            #endif
             completeCycle()
             continue
           }

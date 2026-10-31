@@ -48,6 +48,18 @@ final class MeetingLiveSpeechGate {
 
   var isDegraded: Bool { detector == nil }
 
+  #if DEBUG
+    /// The last classified end read from the detector; kept when detection turns off.
+    private(set) var lastClassified = 0
+
+    /// #4254 UAT evidence: samples the real detector has classified so far.
+    nonisolated(nonsending) func classifiedEnd() async -> Int {
+      guard let detector else { return lastClassified }
+      lastClassified = await detector.liveSpeech(in: fed..<fed).classifiedEnd
+      return lastClassified
+    }
+  #endif
+
   /// Feeds the samples captured since the last call. `samples` holds the last `samples.count`
   /// of `count` captured samples. Returns true when detection turned off in this call; throws
   /// only `CancellationError`.
@@ -84,6 +96,9 @@ final class MeetingLiveSpeechGate {
   {
     guard let detector else { return .raw }
     let live = await detector.liveSpeech(in: window)
+    #if DEBUG
+      lastClassified = live.classifiedEnd
+    #endif
     guard let first = live.speech.first, let last = live.speech.last else {
       // The classified part holds no speech. A partial chunk at the end waits for more audio
       // and stays unknown, so only the classified part counts as processed.

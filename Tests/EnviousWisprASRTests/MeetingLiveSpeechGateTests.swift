@@ -461,6 +461,88 @@ struct MeetingLiveSpeechGateTests {
     #expect(await gate.classify(0..<40_000, holdingTo: 38_000) == .pending, "unclassified: wait")
   }
 
+  #if DEBUG
+    // MARK: - #4254 UAT evidence (DEBUG door)
+
+    @Test("the detection snapshot reports silent and pending cycles and the real classified end")
+    func snapshotSilentAndPending() async throws {
+      let detector = FakeDetector()
+      let audio = Self.audio(seconds: 30)
+      let silent = Self.meeting({ detector }, decoder: Decoder(), audio: audio, events: .init())
+      audio.set(seconds: 20)
+      await silent.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("silent cycle") { await silent.cyclesCompleted(reach: 1) }
+      let snapshot = try #require(await silent.meetingDetectionSnapshot())
+      #expect(snapshot.degraded == false)
+      #expect(snapshot.fed == 20 * Self.rate)
+      #expect(snapshot.classified == 320_000 / 4_096 * 4_096, "the detector's own classified end")
+      #expect(snapshot.silentCycles == 1)
+      #expect(snapshot.pendingCycles == 0)
+      #expect(snapshot.completedDecodes == 0)
+      await silent.cancel()
+      #expect(await silent.meetingDetectionSnapshot() == nil, "a cancelled run reports nothing")
+
+      let waiting = FakeDetector(chunk: 1_000_000)
+      let a2 = Self.audio(seconds: 30)
+      let pending = Self.meeting({ waiting }, decoder: Decoder(), audio: a2, events: .init())
+      a2.set(seconds: 20)
+      await pending.start(audioSamplesProvider: a2.provider)
+      await Rolling.within("pending cycles") { await pending.cyclesCompleted(reach: 2) }
+      let waited = try #require(await pending.meetingDetectionSnapshot())
+      #expect(waited.classified == 0, "nothing classified yet")
+      #expect(waited.pendingCycles >= 2)
+      #expect(waited.silentCycles == 0)
+      await pending.cancel()
+    }
+
+    @Test("the detection snapshot reports covered cycles and completed decodes")
+    func snapshotCoveredAndDecodes() async throws {
+      let words = [Self.seg(0, 1_000, " one."), Self.seg(1_000, 1_900, " two.")]
+      final class Seen: @unchecked Sendable { var snapshot: TranscribeCppRollingSession.MeetingDetectionSnapshot? }
+      let seen = Seen()
+      _ = await Self.tailRun([words, words]) { seen.snapshot = await $0.meetingDetectionSnapshot() }
+      let snapshot = try #require(seen.snapshot)
+      #expect(snapshot.coveredCycles == 1, "the covered tail")
+      #expect(snapshot.completedDecodes == 2)
+      #expect(snapshot.degraded == false)
+    }
+
+    @Test("a restart reports a new run with fresh counts; a failed detector reports degraded")
+    func snapshotRestartAndFailure() async throws {
+      let detectors = [FakeDetector(), FakeDetector()]
+      let made = Box(0)
+      let audio = Self.audio(seconds: 30)
+      let s = Self.meeting(
+        { detectors[made.update { $0 += 1 } - 1] }, decoder: Decoder(), audio: audio, events: .init())
+      audio.set(seconds: 20)
+      await s.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("first run") { await s.cyclesCompleted(reach: 1) }
+      let first = try #require(await s.meetingDetectionSnapshot())
+      #expect(first.silentCycles == 1)
+      await s.cancel()
+      await s.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("second run") { await s.cyclesCompleted(reach: 1) }
+      let fresh = try #require(await s.meetingDetectionSnapshot())
+      #expect(fresh.run == first.run + 1, "a new run")
+      #expect(fresh.silentCycles == 1, "counted from zero again, not carried over")
+      #expect(fresh.coveredCycles == 0 && fresh.pendingCycles == 0)
+      await s.cancel()
+
+      let failing = FakeDetector(failOnAppend: 1)
+      let a2 = Self.audio(seconds: 30)
+      let broken = Self.meeting({ failing }, decoder: Decoder(), audio: a2, events: .init())
+      a2.set(seconds: 20)
+      await broken.start(audioSamplesProvider: a2.provider)
+      await Rolling.within("silent cycle") { await broken.cyclesCompleted(reach: 1) }
+      a2.set(seconds: 22)
+      await Rolling.within("failed cycle") { await broken.cyclesCompleted(reach: 2) }
+      let degraded = try #require(await broken.meetingDetectionSnapshot())
+      #expect(degraded.degraded == true, "truthful degradation, not a positive report")
+      #expect(degraded.classified == 320_000 / 4_096 * 4_096, "the last classified end before the failure")
+      await broken.cancel()
+    }
+  #endif
+
   @Test("speech starting in the unclassified remainder is left out, then reached later")
   func remainderSpeechIsReachedLater() async {
     // Classified end at 20 s is 319,488; the second speech starts after it.
@@ -574,7 +656,10 @@ struct MeetingLiveSpeechGateTests {
 
   /// Speech 2 s to 4 s; two agreeing decodes commit it; at 20 s the committed boundary moves
   /// the origin to 3.9 s, leaving a 0.1 s tail of that same speech in the window.
-  static func tailRun(_ script: [[TranscribeCppSegment]]) async -> (Decoder, TranscribeCppRollingSession) {
+  static func tailRun(
+    _ script: [[TranscribeCppSegment]],
+    beforeCancel: (TranscribeCppRollingSession) async -> Void = { _ in }
+  ) async -> (Decoder, TranscribeCppRollingSession) {
     let detector = FakeDetector(speech: [(2 * Self.rate)..<(4 * Self.rate)])
     let decoder = Decoder(script)
     let audio = Self.audio(seconds: 30)
@@ -586,6 +671,7 @@ struct MeetingLiveSpeechGateTests {
       audio.set(seconds: Float(seconds))
     }
     await Rolling.within("tail cycle") { await s.cyclesCompleted(reach: 3) }
+    await beforeCancel(s)
     await s.cancel()
     return (decoder, s)
   }
