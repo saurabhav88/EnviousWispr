@@ -58,7 +58,6 @@ struct SidebarStatsHeader: View {
       .pickerStyle(.segmented)
       .labelsHidden()
       .controlSize(.small)
-      .frame(maxWidth: .infinity)
       .accessibilityLabel("Show")
       .opacity(isRecording ? 0.4 : 1.0)
 
