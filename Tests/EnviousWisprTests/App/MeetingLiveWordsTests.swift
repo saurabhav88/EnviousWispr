@@ -1334,7 +1334,10 @@ struct MeetingLiveWordsTests {
     Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
     await PreviewWait.within("the old end", onExpiry: release) { await old.until { old.ends == 1 } }
     // 1. The tail is queued while the old end is held. 2. Stop. 3. The old final arrives
-    // after Stop, while its end is still held, so only the restart path can keep it.
+    // after Stop, while its end is still held. This checks lifecycle order and that both
+    // sessions' words are kept once; it does not force which of the two continuations
+    // (cleanup's join of the old end, or the restart's epoch advance) runs first, so it does
+    // not tell the repaired order apart (a negative control passed without the repair).
     Self.speak(observer, .microphone, (0..<3_200).map { 0.5 + Float($0) / 100_000 })
     owner.stop()
     old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))
