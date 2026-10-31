@@ -1,0 +1,214 @@
+import AudioToolbox
+import CoreAudio
+import EnviousWisprCore
+import Foundation
+
+/// A stretch of host time (`mach_absolute_time` ticks), half open: `[start, end)`, during which
+/// the microphone track is written as silence (#4248). `end == .max` is still open. Audio only
+/// receives these times; which call app, which button and why belong to the AppKit follower.
+public struct MeetingSilenceInterval: Sendable, Equatable {
+  public let start: UInt64
+  public let end: UInt64
+
+  public init(start: UInt64, end: UInt64) {
+    self.start = start
+    self.end = end
+  }
+}
+
+/// One released microphone chunk's original metadata, as the filtered-output observer gets it.
+public struct MeetingReleasedChunk: Sendable, Equatable {
+  /// The capture clock's time of the chunk's first sample, unchanged by the hold.
+  public let hostTime: UInt64
+  /// Audio was dropped at the handoff before this chunk.
+  public let afterDrop: Bool
+  /// The producer said this chunk does not continue the previous one.
+  public let sourceBreak: Bool
+}
+
+/// The microphone hold of one `MeetingTrackWriter` (#4248 plan §3.3). Accepted audio waits here
+/// for `hold`, so a mute reading that arrives late can still decide it; then the samples whose
+/// times fall inside a silence interval are replaced with zeros and the chunk is released, in
+/// order, with its original host time, frame count, drop and run-break flags.
+///
+/// **Ownership.** Confined to the writer's serial queue: every method runs there, so it needs no
+/// lock and is not thread-safe. Its sample, chunk and interval storage is reserved once and
+/// reused; it keeps no pointer into the writer's handoff buffers or the caller's audio.
+///
+/// **Release.** A chunk is due once its last sample is `hold` old. Releasing is irreversible:
+/// `released` (the plan's C) moves to the chunk's end and never moves back, and an interval
+/// update can no longer change that audio. When storage is full, the oldest chunks are released
+/// early with the intervals known then, so accepted audio is never discarded.
+final class MeetingMicrophoneSilence {
+  /// Receives each released chunk on the writer's queue. The buffer is valid only during the call.
+  typealias Emit = (UnsafeBufferPointer<Float>, MeetingReleasedChunk) -> Void
+
+  private struct Held {
+    var start: Int
+    var count: Int
+    var hostTime: UInt64
+    var afterDrop: Bool
+    var sourceBreak: Bool
+  }
+
+  let holdTicks: UInt64
+  let sampleCapacity: Int
+  let chunkCapacity: Int
+  let intervalCapacity: Int
+
+  private var samples: [Float] = []
+  private var chunks: [Held] = []
+  private var intervals: [MeetingSilenceInterval] = []
+
+  /// C: the end host time of the last released audio.
+  private(set) var released: UInt64 = 0
+  /// Frames written as zeros.
+  private(set) var silencedFrames = 0
+  /// Intervals beyond `intervalCapacity` that were left out (their audio stays live).
+  private(set) var intervalOverflows = 0
+  /// Chunks released before they were due because storage was full.
+  private(set) var forcedReleases = 0
+
+  init(holdSeconds: Double, sampleCapacity: Int, chunkCapacity: Int, intervalCapacity: Int = 64) {
+    holdTicks = Self.ticks(nanos: UInt64(max(0, holdSeconds) * 1_000_000_000))
+    self.sampleCapacity = max(1, sampleCapacity)
+    self.chunkCapacity = max(1, chunkCapacity)
+    self.intervalCapacity = max(1, intervalCapacity)
+    samples.reserveCapacity(self.sampleCapacity)
+    chunks.reserveCapacity(self.chunkCapacity)
+    intervals.reserveCapacity(self.intervalCapacity)
+  }
+
+  var isEmpty: Bool { chunks.isEmpty }
+
+  /// When the oldest held chunk becomes due; nil when nothing is held.
+  var nextDue: UInt64? { chunks.first.map { end(of: $0) &+ holdTicks } }
+
+  /// Replaces the silence intervals, merged where they overlap or touch and kept in order.
+  /// Intervals wholly before C are dropped (that audio is out); beyond capacity, the latest are
+  /// left out and counted, so their audio stays live.
+  func setIntervals(_ new: [MeetingSilenceInterval]) {
+    intervals.removeAll(keepingCapacity: true)
+    for interval in new.sorted(by: { $0.start < $1.start })
+    where interval.end > interval.start && interval.end > released {
+      if let last = intervals.last, interval.start <= last.end {
+        intervals[intervals.count - 1] = MeetingSilenceInterval(
+          start: last.start, end: max(last.end, interval.end))
+        continue
+      }
+      guard intervals.count < intervalCapacity else {
+        intervalOverflows += 1
+        continue
+      }
+      intervals.append(interval)
+    }
+  }
+
+  /// Holds a copy of `frames`. A chunk larger than the free room is held in pieces, each with the
+  /// host time of its first sample; room is made by releasing the oldest chunks early.
+  func accept(
+    _ frames: UnsafeBufferPointer<Float>, hostTime: UInt64, afterDrop: Bool, sourceBreak: Bool,
+    emit: Emit
+  ) {
+    var offset = 0
+    while offset < frames.count {
+      if chunks.count >= chunkCapacity || samples.count >= sampleCapacity {
+        releaseFront(1, emit: emit)
+        forcedReleases += 1
+        continue
+      }
+      let take = min(frames.count - offset, sampleCapacity - samples.count)
+      let first = offset == 0
+      chunks.append(
+        Held(
+          start: samples.count, count: take,
+          hostTime: first ? hostTime : hostTime &+ Self.ticks(forSamples: offset),
+          afterDrop: first && afterDrop, sourceBreak: first && sourceBreak))
+      samples.append(contentsOf: UnsafeBufferPointer(rebasing: frames[offset..<(offset + take)]))
+      offset += take
+    }
+  }
+
+  /// Releases every chunk whose last sample is at least `hold` old at `now`.
+  func releaseDue(now: UInt64, emit: Emit) {
+    var due = 0
+    while due < chunks.count, end(of: chunks[due]) &+ holdTicks <= now { due += 1 }
+    releaseFront(due, emit: emit)
+  }
+
+  /// Releases everything held, with the intervals known now (Stop, close, `waitUntilWritten`).
+  func releaseAll(emit: Emit) {
+    releaseFront(chunks.count, emit: emit)
+  }
+
+  private func releaseFront(_ count: Int, emit: Emit) {
+    guard count > 0 else { return }
+    var consumed = 0
+    samples.withUnsafeMutableBufferPointer { all in
+      for held in chunks[0..<count] {
+        let frames = UnsafeMutableBufferPointer(
+          rebasing: all[held.start..<(held.start + held.count)])
+        for interval in intervals {
+          let range = Self.silencedRange(
+            of: interval, chunkHostTime: held.hostTime, count: held.count)
+          guard !range.isEmpty else { continue }
+          for i in range { frames[i] = 0 }
+          silencedFrames += range.count
+        }
+        released = max(released, end(of: held))
+        emit(
+          UnsafeBufferPointer(frames),
+          MeetingReleasedChunk(
+            hostTime: held.hostTime, afterDrop: held.afterDrop, sourceBreak: held.sourceBreak))
+        consumed = held.start + held.count
+      }
+    }
+    samples.removeSubrange(0..<consumed)
+    chunks.removeSubrange(0..<count)
+    for i in chunks.indices { chunks[i].start -= consumed }
+    intervals.removeAll { $0.end <= released }
+  }
+
+  private func end(of held: Held) -> UInt64 {
+    held.hostTime &+ Self.ticks(forSamples: held.count)
+  }
+
+  // MARK: - Sample boundaries
+
+  /// 1 s / 16,000 = 62,500 ns exactly.
+  static let nanosPerSample = UInt64(1_000_000_000 / Int(MeetingAudioFormat.sampleRate))
+
+  /// The sample indexes of a chunk inside `interval`. Sample `i` is at
+  /// `chunkHostTime + i × 62.5 µs`; it is silenced when `start <= its time < end`.
+  static func silencedRange(
+    of interval: MeetingSilenceInterval, chunkHostTime: UInt64, count: Int
+  ) -> Range<Int> {
+    let first =
+      interval.start <= chunkHostTime ? 0 : index(atOrAfter: interval.start - chunkHostTime)
+    let last: Int
+    if interval.end == .max {
+      last = count
+    } else if interval.end <= chunkHostTime {
+      last = 0
+    } else {
+      last = index(atOrAfter: interval.end - chunkHostTime)
+    }
+    let lower = min(first, count)
+    let upper = min(max(last, lower), count)
+    return lower..<upper
+  }
+
+  /// The first sample index whose time offset is at least `ticks`.
+  private static func index(atOrAfter ticks: UInt64) -> Int {
+    let nanos = AudioConvertHostTimeToNanos(ticks)
+    let whole = nanos / nanosPerSample
+    let index = nanos % nanosPerSample == 0 ? whole : whole + 1
+    return index > UInt64(Int.max) ? Int.max : Int(index)
+  }
+
+  static func ticks(forSamples count: Int) -> UInt64 {
+    ticks(nanos: UInt64(count) * nanosPerSample)
+  }
+
+  static func ticks(nanos: UInt64) -> UInt64 { AudioConvertNanosToHostTime(nanos) }
+}
