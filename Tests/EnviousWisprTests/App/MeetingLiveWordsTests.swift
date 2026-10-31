@@ -152,6 +152,8 @@ struct MeetingLiveWordsTests {
     var feed = Gate(open: true)
     /// Opens after the first one (an Apple restart's replacement).
     var reopen = Gate(open: true)
+    /// Ends of sessions after the first (a restart's replacement); nil uses `end`.
+    var replacementEnd: Gate? = nil
   }
 
   final class FakeEngine: LivePreviewEngine, @unchecked Sendable {
@@ -160,6 +162,7 @@ struct MeetingLiveWordsTests {
     let endGate: Gate
     let feedGate: Gate
     let reopenGate: Gate
+    let replacementEndGate: Gate?
     var failPrepare = false
     var failOpen = false
     /// Opens after the first one fail (an Apple restart's replacement).
@@ -176,6 +179,7 @@ struct MeetingLiveWordsTests {
       self.endGate = gates.end
       self.feedGate = gates.feed
       self.reopenGate = gates.reopen
+      self.replacementEndGate = gates.replacementEnd
     }
     var sessions: [FakeSession] { lock.withLock { _sessions } }
     /// Each open's event callback, recorded as the open begins (before it can return).
@@ -201,7 +205,9 @@ struct MeetingLiveWordsTests {
       }
       await (first ? openGate : reopenGate).pass()
       if failOpen || (!first && failReopen) { throw Refused() }
-      let session = FakeSession(onEvent: onEvent, endGate: endGate, feedGate: feedGate)
+      let session = FakeSession(
+        onEvent: onEvent, endGate: first ? endGate : (replacementEndGate ?? endGate),
+        feedGate: feedGate)
       lock.withLock { _sessions.append(session) }
       await opened.pass()
       return session
@@ -1313,29 +1319,39 @@ struct MeetingLiveWordsTests {
     let world = World()
     world.restartAfterSamples = 1_600
     let end = Gate()
-    world.engineGates = { $0 == 0 ? Gates(end: end) : Gates() }
+    let replacementEnd = Gate()
+    world.engineGates = { $0 == 0 ? Gates(end: end, replacementEnd: replacementEnd) : Gates() }
     world.apple = .ready(world.appleCandidate())
     let owner = Self.owner(world)
     let observer = Self.record(owner)
-    await Self.until("running", owner, release: end.open) { Self.bothRunning($0) }
+    let release: @Sendable () -> Void = {
+      end.open()
+      replacementEnd.open()
+    }
+    await Self.until("running", owner, release: release) { Self.bothRunning($0) }
     let engine = world.appleEngines[0]
     let old = try #require(engine.sessions.first)
     Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
-    await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
-    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))  // while ending
+    await PreviewWait.within("the old end", onExpiry: release) { await old.until { old.ends == 1 } }
+    // 1. The tail is queued while the old end is held. 2. Stop. 3. The old final arrives
+    // after Stop, while its end is still held, so only the restart path can keep it.
     Self.speak(observer, .microphone, (0..<3_200).map { 0.5 + Float($0) / 100_000 })
     owner.stop()
+    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))
     end.open()
-    await PreviewWait.within("the replacement") { await engine.opened.reached(2) }
+    // The replacement opens and is fed the tail; its end is held until its final is emitted.
+    await PreviewWait.within("the replacement", onExpiry: release) { await engine.opened.reached(2) }
     let replacement = try #require(engine.sessions.last)
+    await PreviewWait.within("the replacement's end", onExpiry: release) {
+      await replacement.until { replacement.ends == 1 }
+    }
     replacement.emit(.update(finalized: " Tail words.", inProgress: ""))
+    replacementEnd.open()
     #expect(await owner.waitForCleanups(seconds: 10))
-    let mic = (owner.transcript?.lines ?? []).filter { $0.track == .microphone }.map(\.text)
-    #expect(mic.joined(separator: " ").contains("Flushed at the end."))
-    #expect(mic.joined(separator: " ").contains("Tail words."))
-    let joined = mic.joined(separator: " ")
-    #expect(joined.components(separatedBy: "Flushed at the end.").count == 2, "once")
-    #expect(joined.components(separatedBy: "Tail words.").count == 2, "once")
+    let joined = (owner.transcript?.lines ?? []).filter { $0.track == .microphone }
+      .map(\.text).joined(separator: " ")
+    #expect(joined.components(separatedBy: "Flushed at the end.").count == 2, "once: \(joined)")
+    #expect(joined.components(separatedBy: "Tail words.").count == 2, "once: \(joined)")
     let flushed = try #require(joined.range(of: "Flushed at the end."))
     let tail = try #require(joined.range(of: "Tail words."))
     #expect(flushed.lowerBound < tail.lowerBound, "in order")
