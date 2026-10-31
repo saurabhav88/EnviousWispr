@@ -198,7 +198,7 @@ final class TranscriptCoordinator {
   /// #2807: the kind filter runs FIRST. A pending Escape-recovery row is a dictation that was
   /// cancelled, so it stays under All and Dictations exactly as it did before the filter
   /// existed. #3972 R45: a meeting is one item (`.meeting`) whether or not its History row
-  /// exists yet; it is listed under All and Recordings, never under Dictations or Transcripts.
+  /// exists yet; it is listed under All and Meetings, never under Dictations or Transcripts.
   /// A meeting marked for deletion is not listed. The search then keeps its own rule below.
   var listedItems: [HistoryListItem] { keptList.items }
 
@@ -574,7 +574,7 @@ final class TranscriptCoordinator {
   var emptyState: HistoryEmptyState? {
     let hasMeetings = (meetingRecords?() ?? []).contains { !$0.deletionRequested }
     guard listedItems.isEmpty else { return nil }
-    // R34: an empty Recordings filter says how to make a recording, also on a fresh install.
+    // R34: an empty Meetings filter says how to make a recording, also on a fresh install.
     if historyFilter == .recordings, searchQuery.isEmpty { return .noRecordings }
     guard !visibleTranscripts.isEmpty || hasMeetings else { return .nothingYet }
     guard searchQuery.isEmpty else { return .noMatches }
@@ -1239,7 +1239,7 @@ final class TranscriptCoordinator {
     var pendingMeetingReconcileForTesting: Task<Void, Never>? { meetingReconcileTask }
   #endif
 
-  /// Lists Recordings with no search and selects `meetingID` when given (#3972 R45): the menu's
+  /// Shows the Meetings tab with no search and selects `meetingID` when given (#3972 R45): the menu's
   /// "Show Live Transcript" and "Show in History", and the EnviousMeet page's "Show
   /// recordings". The caller brings History forward.
   func showRecordings(meetingID: UUID? = nil) {
@@ -1944,13 +1944,40 @@ final class TranscriptCoordinator {
 /// through Transcribe a File, a **Recording** is an EnviousMeet meeting (#3972 R34, founder
 /// F17), and History is the collection of all three. The kind is read from
 /// `Transcript.isImported` and the item kind; nothing stores a second flag.
+/// The tab for the meeting kind reads "Meetings" (#4256); the case keeps its name.
 enum HistoryFilter: String, CaseIterable, Sendable {
   case all
   case dictations
   case transcripts
   case recordings
 
-  /// The word on the control.
+  /// The letter on the control (#4256): the sidebar is narrow, so the tabs read A | D | T | M.
+  /// The full name is `title`, which the control also gives to hover and VoiceOver.
+  var shortTitle: String {
+    switch self {
+    case .all:
+      return String(
+        localized: "history.filter.all.short", defaultValue: "A",
+        comment: "History tab letter for All. The full name is the tab's hover and VoiceOver text.")
+    case .dictations:
+      return String(
+        localized: "history.filter.dictations.short", defaultValue: "D",
+        comment:
+          "History tab letter for Dictations. The full name is the tab's hover and VoiceOver text.")
+    case .transcripts:
+      return String(
+        localized: "history.filter.transcripts.short", defaultValue: "T",
+        comment:
+          "History tab letter for Transcripts. The full name is the tab's hover and VoiceOver text.")
+    case .recordings:
+      return String(
+        localized: "history.filter.meetings.short", defaultValue: "M",
+        comment:
+          "History tab letter for Meetings. The full name is the tab's hover and VoiceOver text.")
+    }
+  }
+
+  /// The full name of the tab: its hover text and its VoiceOver name.
   var title: String {
     switch self {
     case .all: return String(localized: "All", comment: "History filter: show every row.")
@@ -1964,7 +1991,7 @@ enum HistoryFilter: String, CaseIterable, Sendable {
         comment: "History filter: rows made with Transcribe a File.")
     case .recordings:
       return String(
-        localized: "Recordings",
+        localized: "Meetings",
         comment: "History filter: meetings recorded with EnviousMeet, finished or still recording.")
     }
   }

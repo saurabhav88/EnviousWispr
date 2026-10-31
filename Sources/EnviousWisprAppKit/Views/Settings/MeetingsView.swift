@@ -5,7 +5,7 @@ import EnviousWisprServices
 import SwiftUI
 
 /// The EnviousMeet page (#3972 §3.8, R34, founder F18): EnviousMeet's settings, in tabs since
-/// #4058. Recordings live in History (Recordings), and recording is managed from the menu bar and
+/// #4058. Recordings live in History (Meetings), and recording is managed from the menu bar and
 /// History, so this page never shows a recording. It still shows the call-sound explainer, because a first
 /// call-sound Start from the menu brings this page forward to explain it.
 struct MeetingsView: View {
@@ -388,7 +388,7 @@ enum MeetingsCopy {
     comment: "EnviousMeet page: how long recordings and their audio are kept.")
   static let showRecordings = LocalizedStringResource(
     "Show recordings",
-    comment: "EnviousMeet page: opens History with the Recordings filter.")
+    comment: "EnviousMeet page: opens History with the Meetings filter.")
   static let callSoundTitle = LocalizedStringResource(
     "Record only my voice",
     comment: "EnviousMeet page: switch that leaves out what the Mac plays, like a call, and records only the microphone.")

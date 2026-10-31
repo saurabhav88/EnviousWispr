@@ -6,11 +6,19 @@ import Testing
 /// checked against independent literals.
 @Suite("History copy", .tags(.productOutcome))
 struct HistoryCopyTests {
-  @Test("the History filter reads All, Dictations and Transcripts")
+  @Test("the History filter reads All, Dictations, Transcripts and Meetings")
   func filterTitles() {
     #expect(HistoryFilter.all.title == "All")
     #expect(HistoryFilter.dictations.title == "Dictations")
     #expect(HistoryFilter.transcripts.title == "Transcripts")
+    #expect(HistoryFilter.recordings.title == "Meetings")
+  }
+
+  @Test("the History tabs show the letters A, D, T and M, all different")
+  func filterLetters() {
+    let letters = HistoryFilter.allCases.map(\.shortTitle)
+    #expect(letters == ["A", "D", "T", "M"])
+    #expect(Set(letters).count == HistoryFilter.allCases.count)
   }
 
   @Test("both speaker-rename failures keep their English")

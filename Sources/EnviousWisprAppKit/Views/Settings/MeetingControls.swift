@@ -7,7 +7,7 @@ import SwiftUI
 
 /// EnviousMeet's shared controls (#3972 §3.8, R34): the call-sound explainer (coverage C5), the
 /// live recording panel, the after-recording progress, the notice banner and the call-sound
-/// switch. The EnviousMeet page (settings) and History's Recordings use the same views, so the
+/// switch. The EnviousMeet page (settings) and History's Meetings tab use the same views, so the
 /// two can never say a recording differently. Every Start goes through `MeetingStartFlow`, the
 /// route the menu bar uses; Stop goes straight to `MeetingCoordinator`.
 

@@ -44,11 +44,15 @@ struct SidebarStatsHeader: View {
       }
       .opacity(isRecording ? 0.4 : 1.0)
 
-      // #2807: which kind of row the list shows. A segmented control rather than chips: three
-      // short words fit the sidebar at its narrowest, and it reads to VoiceOver as one choice.
+      // #2807: which kind of row the list shows. A segmented control rather than chips: four
+      // letters fit the sidebar at its narrowest (#4256), each carrying its full name as hover
+      // text and as its VoiceOver name, and the control reads to VoiceOver as one choice.
       Picker("Show", selection: $tc.historyFilter) {
         ForEach(HistoryFilter.allCases, id: \.self) { filter in
-          Text(filter.title).tag(filter)
+          Text(filter.shortTitle)
+            .help(filter.title)
+            .accessibilityLabel(filter.title)
+            .tag(filter)
         }
       }
       .pickerStyle(.segmented)
@@ -57,7 +61,7 @@ struct SidebarStatsHeader: View {
       .accessibilityLabel("Show")
       .opacity(isRecording ? 0.4 : 1.0)
 
-      // #3972 R34: the in-app place to start a meeting, under the Recordings filter only.
+      // #3972 R34: the in-app place to start a meeting, under the Meetings filter only.
       if transcriptCoordinator.historyFilter == .recordings {
         recordingControl
         // Meetings a newer EnviousWispr saved stay on disk, untouched; this build cannot open
@@ -97,13 +101,13 @@ struct SidebarStatsHeader: View {
         localized:
           "A recording was saved by a newer version of EnviousWispr. Update the app to open it.",
         comment:
-          "History, Recordings: one meeting this version cannot open (a newer version saved it).")
+          "History, Meetings: one meeting this version cannot open (a newer version saved it).")
     }
     return String(
       localized:
         "\(String(count)) recordings were saved by a newer version of EnviousWispr. Update the app to open them.",
       comment:
-        "History, Recordings: how many meetings this version cannot open because a newer version saved them. Never 1."
+        "History, Meetings: how many meetings this version cannot open because a newer version saved them. Never 1."
     )
   }
 
@@ -138,7 +142,7 @@ struct SidebarStatsHeader: View {
           Label(
             String(
               localized: "Show the recording",
-              comment: "History, Recordings: selects the meeting that is recording now."),
+              comment: "History, Meetings: selects the meeting that is recording now."),
             systemImage: "record.circle")
         }
         .buttonStyle(.link)

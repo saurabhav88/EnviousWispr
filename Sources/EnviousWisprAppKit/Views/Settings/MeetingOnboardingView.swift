@@ -449,7 +449,7 @@ private struct MeetingSetupDone: View {
       .fixedSize(horizontal: false, vertical: true)
       .padding(.bottom, 6)
       Text(
-        "Your recordings appear in History, under Recordings.",
+        "Your recordings appear in History, under M (Meetings).",
         comment: "EnviousMeet setup: where recordings are, on the last screen."
       )
       .font(.setupBody)
