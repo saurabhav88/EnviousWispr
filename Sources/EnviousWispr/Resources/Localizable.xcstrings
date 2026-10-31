@@ -16080,6 +16080,17 @@
         }
       }
     },
+    "Record a meeting" : {
+      "comment" : "EnviousMeet: the button that starts a meeting recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting aufnehmen"
+          }
+        }
+      }
+    },
     "Record a meeting on your Mac and get a transcript with who said what." : {
       "comment" : "EnviousMeet page: the line under the title.",
       "localizations" : {
@@ -18595,7 +18606,7 @@
       }
     },
     "Start Recording" : {
-      "comment" : "EnviousMeet: the button that starts a meeting recording.\nMenu bar menu: starts a dictation.",
+      "comment" : "Menu bar menu: starts a dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
