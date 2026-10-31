@@ -122,6 +122,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// Only a heard decode records the interval; forced origin moves and `start` clear both.
   private var recognizedInput: Range<Int>?
   private var originAtCommit = false
+  /// Forced origin moves so far: a heard decode whose own retention forced a move records no
+  /// coverage, since part of its hypothesis was discarded, not committed.
+  private var forcedOriginMoves = 0
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
   /// The held-back words last handed to `Publication.onTranscript`.
@@ -212,6 +215,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   var discardedUnstableAudioForTests: Bool { discardedUnstableAudio }
   var processedSampleMarkForTests: Int { lastDecodeSampleCount }
   var lastCommittedEndForTests: Float { lastCommittedEnd }
+  var recognizedInputForTests: Range<Int>? { recognizedInput }
   var speechDetectionDegradedForTests: Bool? { speechGate?.isDegraded }
 
   /// Returns once `count` loop cycles have finished applying (or accounting for) their decode.
@@ -499,9 +503,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       // A slice that ended at the last closed speech covers audio only up to that end: the
       // excluded tail is neither real audio for this decode nor processed (plan §18).
       let realEnd = slice.map { originSample + $0.to } ?? count
+      let forcedBefore = forcedOriginMoves
       if apply(segments, realAudioEnd: Float(realEnd) / Self.sampleRate) {
         lastDecodeSampleCount = max(lastDecodeSampleCount, realEnd)
-        if speechGate != nil {
+        if speechGate != nil, forcedOriginMoves == forcedBefore {
           recognizedInput = slice.map { (originSample + $0.from)..<(originSample + $0.to) }
             ?? (originSample..<count)
         }
@@ -623,9 +628,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       appendTranscript(&scrolledOutText, entry.unit.text)
     }
     committedInBuffer.removeAll { $0.end <= retentionLine }
-    // #4254: a forced move is never recognition coverage.
+    // #4254: a forced move is never recognition coverage, including for the decode whose own
+    // retention made it.
     originAtCommit = false
     recognizedInput = nil
+    forcedOriginMoves += 1
     // #4254: a meeting session advancing through confirmed silence, with no word in dispute,
     // discards nothing: the origin moves and no discontinuity is reported.
     if speechGate != nil, heldBack.isEmpty, previousHypothesis.isEmpty {

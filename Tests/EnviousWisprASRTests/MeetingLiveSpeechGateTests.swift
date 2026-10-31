@@ -573,6 +573,33 @@ struct MeetingLiveSpeechGateTests {
     #expect(decoder.calls == 3, "words in dispute: the tail is decoded")
   }
 
+  @Test("a heard decode whose own retention forces the origin records no coverage")
+  func forcedInsideApplyRecordsNoCoverage() async {
+    // Two agreeing decodes commit a segment ending at 1 s. A large jump to 40 s: the pre-cut
+    // retention moves the origin to that committed boundary, leaving 39 s; the next decode
+    // agrees with nothing, so its own retention must force the origin forward and discard.
+    let committed = [Self.seg(0, 1_000, " one.")]
+    let decoder = Decoder([committed, committed, [Self.seg(0, 2_000, " other words")]])
+    let detector = FakeDetector(speech: [0..<(60 * Self.rate)])
+    let events = Rolling.Events()
+    let audio = Self.audio(seconds: 60)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: events)
+    audio.set(seconds: 10)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("decode 1") { await s.cyclesCompleted(reach: 1) }
+    audio.set(seconds: 11.5)
+    await Rolling.within("decode 2") { await s.cyclesCompleted(reach: 2) }
+    #expect(await s.recognizedInputForTests != nil, "control: a heard, committed decode records coverage")
+    audio.set(seconds: 40)
+    await Rolling.within("decode 3") { await s.cyclesCompleted(reach: 3) }
+    let origin = await s.bufferStartForTests
+    let recognized = await s.recognizedInputForTests
+    await s.cancel()
+    #expect(origin == 32, "control: the decode's own retention forced the origin")
+    #expect(events.all.contains(.discontinuity), "control: held words were discarded")
+    #expect(recognized == nil, "a decode whose retention forced a move is never coverage")
+  }
+
   @Test("a forced origin over a short speech tail after empty or refused recognition decodes it")
   func forcedOriginTailDecoded() async {
     for decoder in [Decoder(), Decoder(failing: true)] {
