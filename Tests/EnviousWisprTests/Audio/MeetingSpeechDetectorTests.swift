@@ -205,19 +205,21 @@ struct MeetingSpeechDetectorTests {
   @Test("overlapping appends and finish run in call order; no chunk is classified twice")
   func overlappingCallsAreOrdered() async throws {
     let script = Script(holdAt: 0)
-    let d = detector(script)
+    let queued = BoundedWait.Signal()
+    let d = MeetingSpeechDetector(makeStreamingVad: { script }, onWait: { queued.fire() })
     // Distinct values per chunk, so a repeat or reorder is visible in what the model saw.
     let first = audio(Self.chunk, 0.1)
     let second = audio(Self.chunk, 0.2)
     let third = audio(1_000, 0.3)
     let a = Task { try await d.append(first) }
     try await BoundedWait.until(script.reached)
-    // One task, so its append and finish keep their own order; both overlap the held first
-    // call. (Two separate tasks start in no guaranteed order.)
+    // The second append waits behind the held first call; finish follows it in the same task,
+    // so its order is fixed. (Two separate tasks start in no guaranteed order.)
     let b = Task {
       try await d.append(second + third)
       try await d.finish()
     }
+    try await BoundedWait.until(queued)
     script.release()
     try await a.value
     try await b.value
@@ -229,6 +231,28 @@ struct MeetingSpeechDetectorTests {
     }
     #expect(seen == expected, "in call order")
     #expect(await d.classifiedSamples == 2 * Self.chunk + 1_000)
+  }
+
+  @Test("a cancelled append that would only buffer, and a cancelled finish, are cancellation")
+  func cancelledBufferOnlyCalls() async throws {
+    let script = Script()
+    let a = detector(script)
+    let append = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      try await a.append(audio(100))
+    }
+    await #expect(throws: CancellationError.self) { try await append.value }
+    await #expect(throws: MeetingSpeechDetector.DetectorError.stopped) { try await a.finish() }
+    let b = detector(script)
+    let finish = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      try await b.finish()
+    }
+    await #expect(throws: CancellationError.self) { try await finish.value }
+    await #expect(throws: MeetingSpeechDetector.DetectorError.stopped) {
+      try await b.append(audio(100))
+    }
+    #expect(script.chunks == 0, "nothing reached the model")
   }
 
   @Test("cancellation during the last, partial chunk's model call is cancellation")

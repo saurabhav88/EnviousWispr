@@ -63,6 +63,8 @@ public actor MeetingSpeechDetector {
   /// One `append`/`finish` at a time: true while one runs; later callers wait in call order.
   private var busy = false
   private var waiters: [CheckedContinuation<Void, Never>] = []
+  /// Test seam: runs when a call starts waiting behind another.
+  private let onWait: (@Sendable () -> Void)?
 
   /// The pinned bundled model from `modelBundle` (the app's own bundle in production).
   public init(modelBundle: Bundle = .main) {
@@ -71,9 +73,13 @@ public actor MeetingSpeechDetector {
     })
   }
 
-  /// Test seam: a fake streaming VAD.
-  init(makeStreamingVad: @Sendable @escaping () async throws -> any StreamingVad) {
+  /// Test seam: a fake streaming VAD, and a hook for a call that starts waiting.
+  init(
+    makeStreamingVad: @Sendable @escaping () async throws -> any StreamingVad,
+    onWait: (@Sendable () -> Void)? = nil
+  ) {
     self.makeStreamingVad = makeStreamingVad
+    self.onWait = onWait
     pending.reserveCapacity(Self.chunkSize)
   }
 
@@ -109,6 +115,7 @@ public actor MeetingSpeechDetector {
     await acquire()
     defer { release() }
     guard !failed else { throw DetectorError.stopped }
+    try stopIfCancelled()
     var offset = 0
     while offset < samples.count {
       let take = min(Self.chunkSize - pending.count, samples.count - offset)
@@ -128,6 +135,7 @@ public actor MeetingSpeechDetector {
     await acquire()
     defer { release() }
     guard !failed else { throw DetectorError.stopped }
+    try stopIfCancelled()
     if !pending.isEmpty {
       let real = pending.count
       var chunk = pending
@@ -200,6 +208,14 @@ public actor MeetingSpeechDetector {
     }
   }
 
+  /// A cancelled call is cancellation even when it would only buffer, and stops the detector
+  /// like any other cancellation.
+  private func stopIfCancelled() throws {
+    guard Task.isCancelled else { return }
+    failed = true
+    throw CancellationError()
+  }
+
   // MARK: - Ordering
 
   private func acquire() async {
@@ -208,7 +224,10 @@ public actor MeetingSpeechDetector {
       return
     }
     // Ownership is handed over by `release`, so `busy` stays true for the waiter.
-    await withCheckedContinuation { waiters.append($0) }
+    await withCheckedContinuation {
+      waiters.append($0)
+      onWait?()
+    }
   }
 
   private func release() {
