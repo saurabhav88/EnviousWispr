@@ -198,6 +198,7 @@ let criticalTestSources: SourceFilesList = [
   "Tests/EnviousWisprTests/Pipeline/StubWhisperBackend.swift",
   "Tests/EnviousWisprTests/Pipeline/TestSupport/PipelineSignalWaiters.swift",
   "Tests/EnviousWisprTests/Pipeline/WhisperEngineAdapter+TestInspectors.swift",
+  "Tests/EnviousWisprTests/Pipeline/EGOneTestFixtures.swift",
   "Tests/EnviousWisprTests/Pipeline/RecordStartFocusPolicyTests.swift",
   "Tests/EnviousWisprTests/Pipeline/WhisperEngineAdapterLastResultLifecycleTests.swift",
   "Tests/EnviousWisprTests/Pipeline/InverseTextNormalizationRouteTests.swift",
@@ -874,8 +875,12 @@ let project = Project(
     .scheme(
       name: "EnviousWispr",
       shared: true,
+      // #4243: the critical bundle is also BUILT here (never run: it is not in the
+      // test action), so the full local scripts/xcode-test.sh run fails when a listed
+      // file starts using a helper the critical sources do not include, instead of
+      // the cloud PR check finding it first (PR #4253's first run, ReadyEGOneRuntime).
       buildAction: .buildAction(
-        targets: ["EnviousWispr"],
+        targets: ["EnviousWispr", "EnviousWisprCriticalTests"],
         findImplicitDependencies: true
       ),
       testAction: .targets(
