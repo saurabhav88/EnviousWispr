@@ -86,10 +86,10 @@ import os
       session.check()
       clock.ms.withLock { $0 = 6_000 }
       session.check()
-      #expect(session.currentLog.segments.count == 1, "a one-second change is not a switch")
+      #expect(session.currentLog?.segments.count == 1, "a one-second change is not a switch")
       clock.ms.withLock { $0 = 7_000 }
       session.check()
-      let log = session.currentLog
+      let log = try #require(session.currentLog)
       #expect(log.segments.count == 2)
       #expect(log.segments[0].surface == .meet)
       #expect(log.segments[0].endMs == 7_000)
@@ -113,8 +113,8 @@ import os
       session.check()
       clock.ms.withLock { $0 = 5_000 }
       session.check()
-      #expect(session.currentLog.segments.count == 1)
-      #expect(session.currentLog.segments[0].endMs == nil)
+      #expect(session.currentLog?.segments.count == 1)
+      #expect(session.currentLog?.segments[0].endMs == nil)
     }
 
     @Test("two competing calls end the segment and read nothing until one call remains")
@@ -132,12 +132,12 @@ import os
       clock.ms.withLock { $0 = 3_000 }
       session.check()
       #expect(session.currentObserverForTesting == nil)
-      #expect(session.currentLog.segments.map(\.endReason) == [.sourceLost])
+      #expect(session.currentLog?.segments.map(\.endReason) == [.sourceLost])
       sources.answer = Self.meet
       clock.ms.withLock { $0 = 4_000 }
       session.check()
-      #expect(session.currentLog.segments.count == 2, "one call again: read at once")
-      #expect(session.currentLog.sessionHealth?.ambiguousSources == 2)
+      #expect(session.currentLog?.segments.count == 2, "one call again: read at once")
+      #expect(session.currentLog?.sessionHealth?.ambiguousSources == 2)
     }
 
     @Test("finish saves once with the segment ended at Stop; a copy after Stop adds nothing")
@@ -225,7 +225,7 @@ import os
         sources.answer = Self.zoom
         session.check()
         session.check()
-        #expect(session.currentLog.segments.count == 2, "the change asked for a save")
+        #expect(session.currentLog?.segments.count == 2, "the change asked for a save")
         if quit {
           #expect(session.takeFinalLog()?.segments.count == 2)
         } else {
@@ -248,6 +248,179 @@ import os
       #expect((saved.last?.sessionHealth?.noSource ?? 0) >= 2)
     }
 
+    // MARK: - Mute following (#4248 plan §18)
+
+    private static let teams = CallSpeakerSourceAnswer.unique(
+      .init(family: .teams, target: CallSpeakerTarget(pid: 3, rule: .callApp(.teams))))
+
+    /// What a session told mute following, and a copy taker that can be held mid-copy.
+    @MainActor
+    final class MuteRig {
+      var following = true
+      var bindings: [CallCaptureBinding?] = []
+      var readings: [CallMuteCopy] = []
+      var saves = 0
+      let holding = OSAllocatedUnfairLock(initialState: false)
+      let gate = DispatchSemaphore(value: 0)
+      let copies = OSAllocatedUnfairLock(initialState: 0)
+
+      /// Lets one held copy finish.
+      func letGo() {
+        holding.withLock { $0 = false }
+        gate.signal()
+      }
+    }
+
+    private func muteSession(
+      _ sources: Sources, clock: Clock, rig: MuteRig, rules withRules: Bool = true
+    ) throws -> CallSpeakerSession {
+      let rules = try TalkerRulesSnapshot(
+        validating: Data(
+          contentsOf: RepoRoot.url.appending(
+            path: "Sources/EnviousWisprServices/Resources/talker-rules.json")), origin: .bundled)
+      let holding = rig.holding
+      let gate = rig.gate
+      let copies = rig.copies
+      return CallSpeakerSession(
+        anchor: 0, rules: withRules ? rules : nil, bundled: withRules ? rules.rules : nil,
+        dependencies: .init(
+          sources: sources,
+          capture: { _, _ in
+            copies.withLock { $0 += 1 }
+            if holding.withLock({ $0 }) { gate.wait() }
+            let page = CallSpeakerObserverTests.meetCopy()
+            let host = clock.host()
+            return CallAXCapture(
+              windows: page.windows, documents: page.documents, completeness: .complete,
+              readStartHostTime: host, readEndHostTime: host)
+          },
+          isTrusted: { true }, isDictationIdle: { true },
+          save: { _ in rig.saves += 1 }, lane: .init(), hostTime: { clock.host() },
+          tick: .seconds(3_600), settle: .milliseconds(2_000), observerTick: .seconds(3_600),
+          saveEvery: 2, muteFollowing: { rig.following },
+          muteBinding: { rig.bindings.append($0) }, muteReading: { rig.readings.append($0) }))
+    }
+
+    /// One tick of whichever observer takes copies, and its copy delivered.
+    private func capture(_ session: CallSpeakerSession) async throws {
+      let observer = try #require(session.captureObserverForTesting)
+      let before = observer.deliveriesForTesting
+      observer.tick()
+      await eventually("copy delivered") { observer.deliveriesForTesting > before }
+    }
+
+    @Test("a single supported call binds the mute button at once; a change rebinds or unbinds at once")
+    func muteBindsWithoutSettle() throws {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig)
+      session.start()
+      #expect(rig.bindings.map { $0?.surface } == [.meet])
+      #expect(rig.bindings.last??.generation == 1)
+      sources.answer = Self.zoom
+      session.check()
+      #expect(rig.bindings.map { $0?.surface } == [.meet, .zoomApp], "no settle for mute")
+      #expect(rig.bindings.last??.generation == 2)
+      #expect(session.currentLog?.segments.map(\.surface) == [.meet], "naming still settles")
+      sources.answer = .none
+      session.check()
+      #expect(rig.bindings.count == 3)
+      #expect(rig.bindings.last == .some(nil), "unbound at once")
+      session.cancel()
+    }
+
+    @Test(
+      "a copy in flight when the call changes gives no mute reading; the next copy reads the new call",
+      arguments: [
+        ("zoom to teams", 0, true), ("browser to native", 1, true),
+        ("zoom to teams, mute only", 0, false), ("browser to native, mute only", 1, false),
+      ])
+    func switchWithCopyInFlight(_ name: String, _ which: Int, _ rules: Bool) async throws {
+      let from = which == 0 ? Self.zoom : Self.meet
+      let sources = Sources(from)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig, rules: rules)
+      session.start()
+      let observer = try #require(session.captureObserverForTesting)
+      let observationsBefore = session.currentLog?.segments.first?.observations.count
+      rig.holding.withLock { $0 = true }
+      observer.tick()
+      await eventually("old copy started") { rig.copies.withLock { $0 } == 1 }
+      sources.answer = Self.teams
+      session.check()
+      rig.letGo()
+      await eventually("old copy delivered") { observer.deliveriesForTesting == 1 }
+      #expect(rig.readings.isEmpty, "\(name): the old call's copy is fenced")
+      // Still inside naming's settle: the same observer copies the new call for mute only.
+      #expect(session.captureObserverForTesting === observer)
+      try await capture(session)
+      #expect(rig.readings.map(\.surface) == [.teamsApp], "\(name)")
+      #expect(rig.readings.map(\.generation) == [2], "\(name)")
+      #expect(
+        session.currentLog?.segments.first?.observations.count == observationsBefore,
+        "\(name): naming counted neither copy")
+      session.cancel()
+    }
+
+    @Test("without talker rules the mute button is still read, and nothing is saved")
+    func muteWithoutRules() async throws {
+      let sources = Sources(Self.teams)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig, rules: false)
+      session.start()
+      #expect(session.isMuteOnlyForTesting)
+      try await capture(session)
+      #expect(rig.readings.map(\.surface) == [.teamsApp])
+      #expect(session.currentLog == nil)
+      #expect(await session.finish())
+      #expect(rig.saves == 0, "no log is made up without rules")
+    }
+
+    @Test("after the segment cap the mute button is still read")
+    func muteAfterCapacity() async throws {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig)
+      session.start()
+      for n in 0..<CallSpeakerLog.maximumSegments {
+        sources.answer = n.isMultiple(of: 2) ? Self.zoom : Self.meet
+        session.check()
+        clock.ms.withLock { $0 += 3_000 }
+        session.check()
+      }
+      #expect(session.currentLog?.sessionHealth?.capacityReason == "segments")
+      #expect(session.isMuteOnlyForTesting)
+      let before = rig.readings.count
+      try await capture(session)
+      #expect(rig.readings.count == before + 1)
+      session.cancel()
+    }
+
+    @Test("with mute following off, naming reads as before; switching it on binds at once")
+    func muteOffNamingUnchanged() async throws {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      let rig = MuteRig()
+      rig.following = false
+      let session = try muteSession(sources, clock: clock, rig: rig)
+      session.start()
+      try await capture(session)
+      #expect(session.currentLog?.segments.first?.observations.count == 1)
+      #expect(rig.bindings.isEmpty)
+      #expect(rig.readings.isEmpty)
+      rig.following = true
+      session.muteFollowingChanged()
+      #expect(rig.bindings.map { $0?.surface } == [.meet])
+      try await capture(session)
+      #expect(rig.readings.count == 1)
+      #expect(session.currentLog?.segments.first?.observations.count == 2)
+      session.cancel()
+    }
+
     @Test("past the most segments a log may hold, no segment opens and the refusal is counted")
     func segmentCapacity() async throws {
       let sources = Sources(Self.meet)
@@ -259,7 +432,7 @@ import os
         session.check()
         session.check()
       }
-      let log = session.currentLog
+      let log = try #require(session.currentLog)
       #expect(log.segments.count == CallSpeakerLog.maximumSegments)
       #expect(log.sessionHealth?.capacityReason == "segments")
       #expect(log.shapeProblem == nil, "the log still saves")

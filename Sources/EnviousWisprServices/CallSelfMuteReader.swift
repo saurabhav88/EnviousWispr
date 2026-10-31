@@ -48,7 +48,7 @@ package struct CallMuteRules: Sendable, Equatable {
   }
 
   /// The surfaces this build follows a mute button on, with the call family each belongs to.
-  static let families: [CallSpeakerSurface: CallAppFamily] = [
+  package static let families: [CallSpeakerSurface: CallAppFamily] = [
     .zoomApp: .zoom, .teamsApp: .teams, .meet: .googleMeet,
   ]
 

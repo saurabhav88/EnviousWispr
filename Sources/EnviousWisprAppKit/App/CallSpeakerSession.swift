@@ -23,6 +23,12 @@ import Foundation
 ///   open segment ends (`capacityReached`), nothing more is read, and session health names the
 ///   cap; what was kept stays.
 ///
+/// - Binds the mute button (#4248 plan §18): every check, a single call on a surface whose mute
+///   button is followed binds at once, with a new generation when the call changes; any other
+///   answer unbinds at once. Naming's settle does not delay it. One observer takes every copy
+///   on the shared lane, for the live binding; without a naming segment (no talker rules, the
+///   caps reached, or between segments) a mute-only observer does.
+///
 /// It never starts or stops audio, and nothing here is on the dictation path: discovery's reads
 /// and the copies run off the main actor; a tick only compares cached answers.
 @MainActor
@@ -48,6 +54,10 @@ final class CallSpeakerSession {
     /// Checks between periodic saves: 10 seconds.
     var saveEvery = 20
     var limits = CallEvidenceLimits.current
+    /// Mute following (#4248): whether it is on, binding changes (nil: unbound) and readings.
+    var muteFollowing: @MainActor () -> Bool = { false }
+    var muteBinding: @MainActor (CallCaptureBinding?) -> Void = { _ in }
+    var muteReading: @MainActor (CallMuteCopy) -> Void = { _ in }
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -56,8 +66,9 @@ final class CallSpeakerSession {
 
   private let deps: Dependencies
   private let anchor: UInt64
-  private let rules: TalkerRulesSnapshot
-  private let bundled: TalkerRules
+  /// Nil: naming is off for this recording and nothing is saved; only the mute button is read.
+  private let rules: TalkerRulesSnapshot?
+  private let bundled: TalkerRules?
   private let presencePolicy = CallPresencePolicy.current
   private var lifecycle = Lifecycle.open
   private var loop: Task<Void, Never>?
@@ -74,9 +85,16 @@ final class CallSpeakerSession {
   /// The save running now, and whether another was asked for meanwhile.
   private var saving: Task<Void, Never>?
   private var saveQueued = false
+  /// The live call every copy is taken for; nil when there is no single supported call.
+  private var binding: CallCaptureBinding?
+  private var bindingGeneration: UInt64 = 0
+  /// The binding last handed to `muteBinding` (nil: unbound).
+  private var muteBound: CallCaptureBinding?
+  /// The copy taker while no naming segment is open.
+  private var muteOnly: CallSpeakerObserver?
 
   init(
-    anchor: UInt64, rules: TalkerRulesSnapshot, bundled: TalkerRules, dependencies: Dependencies
+    anchor: UInt64, rules: TalkerRulesSnapshot?, bundled: TalkerRules?, dependencies: Dependencies
   ) {
     self.deps = dependencies
     self.anchor = anchor
@@ -84,11 +102,12 @@ final class CallSpeakerSession {
     self.bundled = bundled
   }
 
-  /// Everything collected so far: every closed segment, then the open one.
-  var currentLog: CallSpeakerLog {
-    CallSpeakerLog(
+  /// Everything collected so far: every closed segment, then the open one. Nil without rules.
+  var currentLog: CallSpeakerLog? {
+    guard let rules else { return nil }
+    return CallSpeakerLog(
       rules: rules.frozen, presencePolicy: presencePolicy,
-      segments: closed + (current.map { [$0.observer.currentSegment] } ?? []),
+      segments: closed + (current.flatMap { $0.observer.currentSegment.map { [$0] } } ?? []),
       sessionHealth: health)
   }
 
@@ -125,7 +144,9 @@ final class CallSpeakerSession {
     case .ambiguous: health.ambiguousSources += 1
     case .unavailable: health.unavailableSources += 1
     }
-    guard health.capacityReason == nil else { return }
+    rebind(answer)
+    defer { driveCapture() }
+    guard rules != nil, health.capacityReason == nil else { return }
     let now = nowMs
     if let full = current?.observer.capacityReached {
       closeCurrent(at: now, reason: .capacityReached)
@@ -161,6 +182,7 @@ final class CallSpeakerSession {
   }
 
   private func open(_ source: CallSpeakerSourceAnswer.Source, at startMs: Int) {
+    guard let rules, let bundled else { return }
     guard closed.count < CallSpeakerLog.maximumSegments else {
       reachedCapacity(.segments)
       return
@@ -171,19 +193,12 @@ final class CallSpeakerSession {
     else { return }
     let lag = TalkerRules.recordingStartLag(
       for: surface, selected: rules.rules, bundled: bundled)
-    let sources = deps.sources
-    let capture = deps.capture
-    let family = source.family
+    // One copy taker at a time on the lane.
+    retireMuteOnly()
     let observer = CallSpeakerObserver(
-      surface: surface, family: family, anchor: anchor, startMs: startMs, rules: rules,
+      surface: surface, source: source, anchor: anchor, startMs: startMs, rules: rules,
       presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage,
-      dependencies: .init(
-        // This segment's app instance only while it is still the single live call.
-        target: { sources.speakerSource() == .unique(source) ? source.target : nil },
-        sourceRevision: { sources.speakerSourceRevision },
-        capture: { capture($0, family) }, isTrusted: deps.isTrusted,
-        isDictationIdle: deps.isDictationIdle, lane: deps.lane, tick: deps.observerTick,
-        sleep: deps.sleep))
+      dependencies: observerDependencies())
     current = (source, observer)
     deps.log("meeting speaker segment started surface=\(surface.rawValue)")
     observer.start()
@@ -192,11 +207,76 @@ final class CallSpeakerSession {
   private func closeCurrent(at endMs: Int, reason: CallSpeakerSegmentEnd) {
     guard let current else { return }
     current.observer.closeAdmission()
-    let segment = current.observer.segment(
-      endingAt: max(endMs, current.observer.currentSegment.startMs), reason: reason)
-    closed.append(segment)
-    closedUsage.add(segment)
+    let startMs = current.observer.currentSegment?.startMs ?? endMs
+    if let segment = current.observer.segment(endingAt: max(endMs, startMs), reason: reason) {
+      closed.append(segment)
+      closedUsage.add(segment)
+    }
     self.current = nil
+  }
+
+  // MARK: - Capture binding (#4248)
+
+  /// What every observer of this session copies with: the live binding, re-checked against
+  /// discovery's answer now, so a change of call stops copies before the next check.
+  private func observerDependencies() -> CallSpeakerObserver.Dependencies {
+    let sources = deps.sources
+    return .init(
+      binding: { [weak self] in
+        guard let self, let binding = self.binding,
+          sources.speakerSource() == .unique(binding.source)
+        else { return nil }
+        return binding
+      },
+      sourceRevision: { sources.speakerSourceRevision }, capture: deps.capture,
+      isTrusted: deps.isTrusted, isDictationIdle: deps.isDictationIdle, lane: deps.lane,
+      tick: deps.observerTick, sleep: deps.sleep,
+      mute: { [weak self] copy in self?.deps.muteReading(copy) }, hostTime: deps.hostTime)
+  }
+
+  /// Binds the live call from `answer`, at once.
+  private func rebind(_ answer: CallSpeakerSourceAnswer) {
+    var next: CallCaptureBinding?
+    if case .unique(let source) = answer,
+      let surface = CallSpeakerSurfaceChoice.surface(
+        family: source.family, rule: source.target.rule)
+    {
+      if binding?.source != source { bindingGeneration += 1 }
+      next = CallCaptureBinding(
+        source: source, surface: surface, generation: bindingGeneration,
+        mute: deps.muteFollowing() && CallMuteRules.families[surface] != nil)
+    }
+    binding = next
+    let mute = next?.mute == true ? next : nil
+    guard mute != muteBound else { return }
+    muteBound = mute
+    deps.muteBinding(mute)
+  }
+
+  /// Mute following was switched; the binding follows at once.
+  func muteFollowingChanged() {
+    guard lifecycle == .open, stoppedAtMs == nil else { return }
+    rebind(deps.sources.speakerSource())
+    driveCapture()
+  }
+
+  /// Keeps one copy taker running: the naming segment's observer, or else a mute-only one
+  /// while the binding follows the mute button.
+  private func driveCapture() {
+    guard current == nil else {
+      retireMuteOnly()
+      return
+    }
+    guard binding?.mute == true, muteOnly == nil else { return }
+    let observer = CallSpeakerObserver(
+      muteOnlyAnchor: anchor, dependencies: observerDependencies())
+    muteOnly = observer
+    observer.start()
+  }
+
+  private func retireMuteOnly() {
+    muteOnly?.closeAdmission()
+    muteOnly = nil
   }
 
   /// Collection stops for good; what was kept is saved.
@@ -213,7 +293,7 @@ final class CallSpeakerSession {
   /// Asks for a save of everything so far; one runs at a time, and one asked for meanwhile runs
   /// next. A save that has not started when admission closes never starts.
   private func requestSave() {
-    guard acceptsSaves else { return }
+    guard acceptsSaves, rules != nil else { return }
     guard saving == nil else {
       saveQueued = true
       return
@@ -235,9 +315,10 @@ final class CallSpeakerSession {
   /// Saves everything so far. The log is put together when the write is queued, so writes
   /// land in the order asked and a later one never carries less.
   private func save() async throws {
+    guard let log = currentLog else { return }
     health.saveAttempts += 1
     do {
-      try await deps.save(currentLog)
+      try await deps.save(log)
     } catch {
       health.saveFailures += 1
       throw error
@@ -251,6 +332,7 @@ final class CallSpeakerSession {
     loop?.cancel()
     loop = nil
     current?.observer.closeAdmission()
+    retireMuteOnly()
   }
 
   /// Normal stop: closes admission, lets the save already running land, ends the open segment
@@ -300,6 +382,9 @@ final class CallSpeakerSession {
 
   #if DEBUG
     var currentObserverForTesting: CallSpeakerObserver? { current?.observer }
+    /// Whichever observer takes copies now: the naming segment's, or the mute-only one.
+    var captureObserverForTesting: CallSpeakerObserver? { current?.observer ?? muteOnly }
+    var isMuteOnlyForTesting: Bool { current == nil && muteOnly != nil }
     /// The periodic save, now.
     func saveNowForTesting() { requestSave() }
     /// Waits for the save running now, if any.

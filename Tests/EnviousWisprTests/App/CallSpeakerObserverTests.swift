@@ -102,12 +102,18 @@ import os
     ) throws -> CallSpeakerObserver {
       let trusted = world.trustedLock
       return CallSpeakerObserver(
-        surface: .meet, family: .googleMeet, anchor: 0, startMs: 0, rules: try Self.bundled(),
+        surface: .meet, anchor: 0, startMs: 0, rules: try Self.bundled(),
         presencePolicy: .current, lag: CallSpeakerLag(milliseconds: 500),
         dependencies: .init(
-          target: { world.target },
+          binding: {
+            world.target.map {
+              CallCaptureBinding(
+                source: .init(family: .googleMeet, target: $0), surface: .meet, generation: 1,
+                mute: false)
+            }
+          },
           sourceRevision: { world.sourceRevision },
-          capture: { _ in capture.take() },
+          capture: { _, _ in capture.take() },
           isTrusted: { trusted.withLock { $0 } },
           isDictationIdle: { dictation.idle }, lane: lane))
     }
@@ -124,12 +130,12 @@ import os
       observer.tick()
       #expect(capture.calls.withLock { $0 } == 1)
       capture.letGo()
-      await eventually("copy landed") { observer.currentSegment.observations.count == 1 }
-      #expect(observer.currentSegment.observations.map(\.speaking) == [["Alex Rivera"]])
-      #expect(observer.currentSegment.lag?.milliseconds == 500)
-      #expect(observer.currentSegment.surface == .meet)
+      await eventually("copy landed") { observer.currentSegment?.observations.count == 1 }
+      #expect(observer.currentSegment?.observations.map(\.speaking) == [["Alex Rivera"]])
+      #expect(observer.currentSegment?.lag?.milliseconds == 500)
+      #expect(observer.currentSegment?.surface == .meet)
       observer.tick()
-      await eventually("second copy") { observer.currentSegment.observations.count == 2 }
+      await eventually("second copy") { observer.currentSegment?.observations.count == 2 }
     }
 
     @Test("a copy still blocked from an ended recording keeps a new recording from starting one")
@@ -148,8 +154,8 @@ import os
       old.letGo()
       await eventually("lane free") { !lane.isBusy }
       next.tick()
-      await eventually("new copy") { next.currentSegment.observations.count == 1 }
-      #expect(ended.currentSegment.observations.isEmpty)
+      await eventually("new copy") { next.currentSegment?.observations.count == 1 }
+      #expect(ended.currentSegment?.observations.isEmpty == true)
     }
 
     @Test("dictation that starts and ends while a copy is taken drops that copy, with no tick")
@@ -164,9 +170,9 @@ import os
       dictation.idle = true
       capture.letGo()
       await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
-      #expect(observer.currentSegment.observations.isEmpty)
+      #expect(observer.currentSegment?.observations.isEmpty == true)
       observer.tick()
-      await eventually("next copy counts") { observer.currentSegment.observations.count == 1 }
+      await eventually("next copy counts") { observer.currentSegment?.observations.count == 1 }
     }
 
     @Test("no copy is taken while dictating")
@@ -179,7 +185,7 @@ import os
       #expect(capture.calls.withLock { $0 } == 0)
       dictation.idle = true
       observer.tick()
-      await eventually("copy after dictation") { observer.currentSegment.observations.count == 1 }
+      await eventually("copy after dictation") { observer.currentSegment?.observations.count == 1 }
     }
 
     @Test("a copy whose app instance changed or whose trust was lost before delivery adds nothing")
@@ -200,7 +206,7 @@ import os
         }
         capture.letGo()
         await eventually("copy delivered") { observer.deliveriesForTesting == 1 }
-        #expect(observer.currentSegment.observations.isEmpty, "\(change)")
+        #expect(observer.currentSegment?.observations.isEmpty == true, "\(change)")
       }
     }
 
@@ -232,11 +238,15 @@ import os
       _ copies: Copies, dictation: Dictation
     ) throws -> CallSpeakerObserver {
       CallSpeakerObserver(
-        surface: .teamsApp, family: .teams, anchor: 0, startMs: 0, rules: try Self.bundled(),
+        surface: .teamsApp, anchor: 0, startMs: 0, rules: try Self.bundled(),
         presencePolicy: .current, lag: CallSpeakerLag(milliseconds: 0),
         dependencies: .init(
-          target: { CallSpeakerTarget(pid: 1, rule: .callApp(.teams)) },
-          capture: { _ in copies.take() }, isTrusted: { true },
+          binding: {
+            CallCaptureBinding(
+              source: .init(family: .teams, target: CallSpeakerTarget(pid: 1, rule: .callApp(.teams))),
+              surface: .teamsApp, generation: 1, mute: false)
+          },
+          capture: { _, _ in copies.take() }, isTrusted: { true },
           isDictationIdle: { dictation.idle }, lane: .init()))
     }
 
@@ -270,7 +280,7 @@ import os
           observer.tick()
           await eventually("copy \(n) delivered") { observer.deliveriesForTesting == n }
         }
-        return observer.currentSegment.presence?.first { $0.name == "Priya Shah" }
+        return observer.currentSegment?.presence?.first { $0.name == "Priya Shah" }
       }
       #expect(try await run(.nothing)?.absences.count == 1, "control: the run confirms")
       #expect(try await run(.dictation)?.absences.isEmpty == true)
