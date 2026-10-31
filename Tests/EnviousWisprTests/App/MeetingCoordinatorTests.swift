@@ -687,6 +687,82 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.isWorkInFlight == false)
   }
 
+  #if DEBUG
+    @Test(
+      "a failed Stop save keeps audio and never leaves the live meeting recording",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4267", "Stop save failure"))
+    func stopSaveFailureDoesNotLeaveMeetingRecording() async throws {
+      for failedSaves in [2, 0] {
+        let harness = try Harness()
+        let coordinator = harness.coordinator
+        await coordinator.start(from: .history)
+        let meetingID = try onlyMeeting(harness).id
+        // Keep the successful Stop queued instead of letting its final pass claim it.
+        harness.freeBytes = 0
+        harness.writeGate.failNext(failedSaves)
+
+        await coordinator.stop()
+
+        let record = try #require(coordinator.liveRecordForTesting(meetingID))
+        #expect(record.state != .recording)
+        #expect(record.audioKept == true)
+        #expect(coordinator.phase == .idle)
+        #expect(harness.logs.filter { $0.hasPrefix("meeting save failed") }.count == failedSaves)
+        if failedSaves == 2 {
+          #expect(record.state == .interrupted)
+          #expect(record.wasInterrupted == true)
+          #expect(coordinator.isCloseOwned(meetingID))
+          #expect(coordinator.notice == .storageFailed)
+          // Neither failed write became durable; launch recovery still sees the old record.
+          let durable = try harness.store.load(id: meetingID)
+          #expect(durable.state == .recording)
+          #expect(durable.audioKept == true)
+        } else {
+          #expect(record.state == .queued)
+          #expect(try harness.store.load(id: meetingID).state == .queued)
+          #expect(coordinator.isCloseOwned(meetingID) == false)
+        }
+      }
+    }
+
+    @Test(
+      "a Stop save retry keeps a rename queued during the failed save",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4267", "Stop retry keeps rename"))
+    func stopSaveRetryKeepsRenameMadeDuringFailedSave() async throws {
+      let harness = try Harness()
+      let coordinator = harness.coordinator
+      await coordinator.start(from: .history)
+      let meetingID = try onlyMeeting(harness).id
+      harness.freeBytes = 0
+      let gate = harness.writeGate
+      gate.arm()
+      gate.failNext(1)
+      defer { gate.release.signal() }
+
+      let stopping = Task { await coordinator.stop() }
+      // The semaphore must wait off the main actor so Stop and rename can enter while held.
+      try #require(
+        await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+        "the first Stop save never started")
+      let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "Board sync") }
+      await Self.eventually("rename pending during Stop save", drainFiles: false) {
+        coordinator.liveRecordForTesting(meetingID)?.title == "Board sync"
+      }
+      gate.release.signal()
+      await stopping.value
+      await renaming.value
+
+      let durable = try harness.store.load(id: meetingID)
+      let live = try #require(coordinator.liveRecordForTesting(meetingID))
+      #expect(durable.title == "Board sync")
+      #expect(live.title == "Board sync")
+      #expect(durable.state != .recording)
+      #expect(live.state != .recording)
+      #expect(harness.logs.filter { $0.hasPrefix("meeting save failed") }.count == 1)
+      #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    }
+  #endif
+
   /// #3973 C2 (plan §3 item 5): the History row is written after the ready barrier. A write
   /// that fails there leaves the transcript committed and its receipt kept (storage failure
   /// shown, Transcribe again waiting), and the next launch publishes exactly that row.
