@@ -1546,10 +1546,12 @@ public struct WordCorrector: Sendable {
     }
     if known.count == 1, let only = known.first { return .peel(stem: only.stem, ending: only.ending) }
     if known.count > 1 { return .ambiguous }
-    // No evidence: fuzzy repair only. A stem that is an alias is excluded, or the exact slots would
+    // No saved stem: fuzzy repair only, and only for an apostrophe ending, which cannot be part of a
+    // word ("ChatGBT's"). A plain final s on a misspelling may belong to the word ("Salesfors"), so it
+    // keeps today's whole-token reading. A stem that is an alias is excluded, or the exact slots would
     // turn "clods" into "Claudes" (an alias plus an ending is another word, #3339).
-    if readings.count == 1, let only = readings.first, only.stem.count >= 4,
-      lookups.singleAliasMap[only.stem.lowercased()] == nil
+    if readings.count == 1, let only = readings.first, only.ending.contains(where: { $0 == "'" || $0 == "\u{2019}" }),
+      only.stem.count >= 4, lookups.singleAliasMap[only.stem.lowercased()] == nil
     {
       return .peel(stem: only.stem, ending: only.ending)
     }
@@ -1560,8 +1562,11 @@ public struct WordCorrector: Sendable {
   private static func extendsSavedWord(_ lower: String, lookups: Lookups) -> Bool {
     let letters = Array(lower)
     guard letters.count >= 4 else { return false }
+    // The prefix must be a saved CANONICAL (self-entry), never only an alias: Иваноф is a mishearing
+    // of Иванов even when "иван" is an alias of something else.
     for tail in 1...3 where letters.count - tail >= 3 {
-      if lookups.singleAliasMap[String(letters.dropLast(tail))] != nil { return true }
+      let prefix = String(letters.dropLast(tail))
+      if let canonical = lookups.singleAliasMap[prefix], canonical.lowercased() == prefix { return true }
     }
     return false
   }

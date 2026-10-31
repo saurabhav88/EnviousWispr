@@ -45,10 +45,22 @@ struct WordCorrectorGrammarEndingTests {
     #expect(corrected("two MacBooks are here", [word]) == "two MacBooks are here")
   }
 
-  @Test("a misheard plural is corrected and keeps its s")
-  func misheardPluralKeepsEnding() {
+  @Test("a misheard possessive is corrected and keeps its apostrophe s")
+  func misheardPossessiveKeepsEnding() {
     let word = CustomWord(canonical: "MacBook", aliases: [], category: .brand)
-    #expect(corrected("two MacBoks are here", [word]) == "two MacBooks are here")
+    #expect(corrected("the MacBok's screen is bright", [word]) == "the MacBook's screen is bright")
+  }
+
+  @Test("a misspelling that ends in s keeps the whole-word correction (Salesfors is Salesforce)")
+  func misspellingEndingInSIsNotAPlural() {
+    let word = CustomWord(canonical: "Salesforce", aliases: [], category: .brand)
+    #expect(corrected("we use Salesfors daily", [word]) == "we use Salesforce daily")
+  }
+
+  @Test("an alias prefix does not block a non-Latin spelling fix (Иваноф is Иванов)")
+  func aliasPrefixDoesNotBlockNonLatinFix() {
+    let word = CustomWord(canonical: "Иванов", aliases: ["иван"], category: .person)
+    #expect(corrected("письмо Иваноф вчера", [word]) == "письмо Иванов вчера")
   }
 
   @Test(
