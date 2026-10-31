@@ -126,15 +126,22 @@ def dictation():
     wait_status, wait_reply = m.door("dictation", "wait", "--receipt", json.dumps(receipt), timeout=120)
     ready = ready_ns(text, take)
     seen = witness(text, "dictation.start", reply.get("id"))
-    # Terminal metadata only; never transcript text.
-    result = (wait_reply or {}).get("result") or {}
     sample = {"id": reply.get("id"), "take": take, "offset": offset, "text": text,
             "readyMs": round((ready - before) / 1e6, 1) if ready else None,
             "clockOk": seen is not None and before <= seen[1] <= after, "witness": seen,
             "stopOk": stop_status == 0 and bool((stop_reply or {}).get("ok")),
-            "terminal": result.get("ending") if result.get("status") == "terminal" else None}
+            "terminal": terminal_of(wait_status, wait_reply)}
     sample["problem"] = take_problem(sample)
     return sample
+
+
+def terminal_of(wait_status, wait_reply):
+    """The take's ending from a `dictation wait` CLI reply (`result.terminal`), or None when
+    the wait failed or no terminal was read. Terminal metadata only; never transcript text."""
+    if wait_status != 0 or not isinstance(wait_reply, dict) or wait_reply.get("ok") is not True:
+        return None
+    terminal = (wait_reply.get("result") or {}).get("terminal") or {}
+    return terminal.get("ending") if terminal.get("status") == "terminal" else None
 
 
 # The probe says nothing, so a short or no-speech ending is the expected healthy ending; any
@@ -405,6 +412,13 @@ def self_test():
     cases.append(("no terminal is not a sample", take_problem({**good, "terminal": None}) is not None))
     cases.append(("a dead-microphone ending is not a sample", take_problem({**good, "terminal": "audioInterrupted"}) is not None))
     cases.append(("a failed ending is not a sample", take_problem({**good, "terminal": "failed"}) is not None))
+    reply = {"ok": True, "result": {"terminal": {"status": "terminal", "ending": "noSpeech"}, "row": None, "polls": 3}}
+    cases.append(("the wait reply's nested ending is read", terminal_of(0, reply) == "noSpeech"))
+    cases.append(("a failed wait exit has no terminal", terminal_of(1, reply) is None))
+    cases.append(("a not-ok wait reply has no terminal", terminal_of(0, {**reply, "ok": False}) is None))
+    cases.append(("a wait error reply has no terminal", terminal_of(1, {"ok": False, "error": {"code": "waitTimeout"}}) is None))
+    cases.append(("a pending receipt has no terminal", terminal_of(0, {"ok": True, "result": {"terminal": {"status": "pending"}}}) is None))
+    cases.append(("the flat shape is not read", terminal_of(0, {"ok": True, "result": {"status": "terminal", "ending": "noSpeech"}}) is None))
     idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
     cases.append(("an idle status is idle", idle_reason(idle) is True))
     cases.append(("a processing pass is not idle", idle_reason({**idle, "processing": {"meetingID": "x"}}) is not True))
