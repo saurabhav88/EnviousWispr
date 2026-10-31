@@ -14,6 +14,7 @@ import Testing
 ///
 /// Fixture is loaded from disk via `#filePath` → repo root (the OutputClassifier parity
 /// precedent), so the test is hermetic and CI-safe with no `resources:` glob.
+@Suite(.tags(.localParallel))
 struct InverseTextNormalizerParityTests {
 
   struct Row: Decodable {

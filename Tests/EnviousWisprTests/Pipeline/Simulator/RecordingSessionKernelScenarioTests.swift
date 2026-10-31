@@ -12,7 +12,7 @@ import Testing
 // tests are a separate, unchanged suite.
 
 @MainActor
-@Suite("RecordingSessionKernel — scenario inventory")
+@Suite("RecordingSessionKernel — scenario inventory", .tags(.localParallel))
 struct RecordingSessionKernelScenarioTests {
 
   /// Build a fresh fakes + kernel-wrapper bundle. Each scenario runs against

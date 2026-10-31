@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "slots": 4,
   "provenance": {
     "issue": 4089,
@@ -10,7 +10,7 @@
     "parser_slice_cases": 119,
     "parser_slice_console_seconds": 24.657,
     "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
-    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. Changed reviewed test files fall back to the protected worker.",
+    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. Left the list on 2026-10-31: MeetingCoordinatorTests (its #4102 tests race a real 1-second deadline), KernelFinalizationWiringTests (a real 100 ms deadline must not win) and WordCheckRuntimeTerminationTests (two everyday tests load the installed real model on the GPU).",
     "integration_base_head": "a01dab18ec4999f00e244c557f375aa29dab333d",
     "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates."
   },
@@ -74,103 +74,83 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/TestInventoryFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/TestInventoryFreezeTests.swift",
-          "sha256": "6c43c51ca916360ca731522858861750e701c326e12442b6dd73ab256d628d62"
+          "file": "Tests/EnviousWisprTests/Architecture/TestInventoryFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/ClipboardIsolationFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift",
-          "sha256": "94003e1fcca376779605dde92518854d23598e9a62e3412de249be434f1fc101"
+          "file": "Tests/EnviousWisprTests/Architecture/ClipboardIsolationFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/EngineMutationInventoryFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift",
-          "sha256": "c7848ec2a38592890314f2b02537f1ee1c06275e0bac2b42457d2eb9cbbfc9ab"
+          "file": "Tests/EnviousWisprTests/Architecture/EngineMutationInventoryFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/TelemetryEmitterRegistryTests",
-          "file": "Tests/EnviousWisprTests/Architecture/TelemetryEmitterRegistryTests.swift",
-          "sha256": "25e73705725568025f7d90396ac988ec2a7136be43da2eca661feae182cd0af3"
+          "file": "Tests/EnviousWisprTests/Architecture/TelemetryEmitterRegistryTests.swift"
         },
         {
           "suite": "EnviousWisprTests/DesktopEffectIsolationFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/DesktopEffectIsolationFreezeTests.swift",
-          "sha256": "a0a0173e57f67148b65e91826b7ccda56189a29169fbebe02ad29a398d978a46"
+          "file": "Tests/EnviousWisprTests/Architecture/DesktopEffectIsolationFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/ProviderSetupCredentialOwnershipTests",
-          "file": "Tests/EnviousWisprTests/App/ProviderSetupCredentialTests.swift",
-          "sha256": "d3ac18c4ac4a2a8eb086d864364aa46a6d7af71d070a47bf450d3ccea9b25829"
+          "file": "Tests/EnviousWisprTests/App/ProviderSetupCredentialTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsMapRegistrationTests",
-          "file": "Tests/EnviousWisprTests/Architecture/SettingsMapRegistrationTests.swift",
-          "sha256": "f5e80c93556f8da6c7b72932cab515fbaef7a64164b8a5fd6509eb5f67730148"
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsMapRegistrationTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SentryScopeWriterFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/SentryScopeWriterFreezeTests.swift",
-          "sha256": "7466131002919ed680685dae5bccaa69e58cc485fee82f29678f02a97b2cb976"
+          "file": "Tests/EnviousWisprTests/Architecture/SentryScopeWriterFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/CachedSwiftParserTests",
-          "file": "Tests/EnviousWisprTests/Architecture/CachedSwiftParserTests.swift",
-          "sha256": "e31f6d989b20118417d71a1e4b623523b1f3eba38abc72f26efe6fa5d200e7c3"
+          "file": "Tests/EnviousWisprTests/Architecture/CachedSwiftParserTests.swift"
         },
         {
           "suite": "EnviousWisprTests/ClipboardSettingsWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/ClipboardSettingsWiringTests.swift",
-          "sha256": "64d94b739ab3ba30d343a12771d9b39ea3e84b106bdc0c4183a554dd8c81329e"
+          "file": "Tests/EnviousWisprTests/Architecture/ClipboardSettingsWiringTests.swift"
         },
         {
           "suite": "EnviousWisprTests/EngineProtocolSurfaceFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/EngineProtocolSurfaceFreezeTests.swift",
-          "sha256": "1a3abb810a12dc0b19d1b98a94e9cb85781c5ce8765d046018689a1e04bdce16"
+          "file": "Tests/EnviousWisprTests/Architecture/EngineProtocolSurfaceFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/LivePreviewSettingsWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/LivePreviewSettingsWiringTests.swift",
-          "sha256": "e9028bfe4e120d5b0e87cb6cd671d970591164032b2fbb1fca036c40e8574a50"
+          "file": "Tests/EnviousWisprTests/Architecture/LivePreviewSettingsWiringTests.swift"
         },
         {
           "suite": "EnviousWisprTests/MarkedUpPassageAccessibilityFreezeTests",
-          "file": "Tests/EnviousWisprTests/Architecture/MarkedUpPassageAccessibilityFreezeTests.swift",
-          "sha256": "ee35ccd8589f271cedfcbd4b996186c893471403d1e368292a83b75da5423164"
+          "file": "Tests/EnviousWisprTests/Architecture/MarkedUpPassageAccessibilityFreezeTests.swift"
         },
         {
           "suite": "EnviousWisprTests/MicrophoneCaptureWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneCaptureWiringTests.swift",
-          "sha256": "c67f6ba740a2a3904ff4abd708d40e73227ffbcc8e5d15320ad8e04b1b3da88c"
+          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneCaptureWiringTests.swift"
         },
         {
           "suite": "EnviousWisprTests/MicrophoneSettingsWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneSettingsWiringTests.swift",
-          "sha256": "4df22bd296ebb913e75d78885063c0f85bca5fe243d9d9bd5c8baff03f507966"
+          "file": "Tests/EnviousWisprTests/Architecture/MicrophoneSettingsWiringTests.swift"
         },
         {
           "suite": "EnviousWisprTests/ModelPreparingImpressionPlacementTests",
-          "file": "Tests/EnviousWisprTests/Architecture/ModelPreparingImpressionPlacementTests.swift",
-          "sha256": "e5d4e2b350f5c888530c0dd98b23dd38013d2565157524569e9435836b324a7e"
+          "file": "Tests/EnviousWisprTests/Architecture/ModelPreparingImpressionPlacementTests.swift"
         },
         {
           "suite": "EnviousWisprTests/RecordingChimeWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/RecordingChimeWiringTests.swift",
-          "sha256": "4cc31ae21affa607e6a779ac55013de7e7e5d1e765ac01f368b21db288df5e9a"
+          "file": "Tests/EnviousWisprTests/Architecture/RecordingChimeWiringTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsControlAffordanceTests",
-          "file": "Tests/EnviousWisprTests/Architecture/SettingsControlAffordanceTests.swift",
-          "sha256": "e9d9ef8971668d2e358ad882831707cc19c5ecef17b32224976973b13d7e879d"
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsControlAffordanceTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsNavigationProducerTests",
-          "file": "Tests/EnviousWisprTests/Architecture/SettingsNavigationProducerTests.swift",
-          "sha256": "13000ee65f9a7fc2a26e04179f4ff0ed7d30b1343d1db300046e02de28291da1"
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsNavigationProducerTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsShellWiringTests",
-          "file": "Tests/EnviousWisprTests/Architecture/SettingsShellWiringTests.swift",
-          "sha256": "37bba0d5ba7e459d8b0cb4e9a742fcb7c8e5ec0dfb70d39d76650978fe57396d"
+          "file": "Tests/EnviousWisprTests/Architecture/SettingsShellWiringTests.swift"
         }
       ]
     },
@@ -180,48 +160,39 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/SettingsSearchBenchParityTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBenchParityTests.swift",
-          "sha256": "e99af1c67fff217ce8b8517baab21d529df3ab03667fdb0e01b295f88b5e4ecf"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBenchParityTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchUnigramTokenizerTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchUnigramTokenizerTests.swift",
-          "sha256": "2d978551dabe8e15de02f730f0cbcda4d731d40fb819f75dd9574c78e0ad58a8"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchUnigramTokenizerTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchBothLegsTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBothLegsTests.swift",
-          "sha256": "de4af4059fbe1755818baadad2366c007e59b3243cd043fff783aa2b28a59e60"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchBothLegsTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchTelemetryTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchTelemetryTests.swift",
-          "sha256": "48334bc13f2d11ed6014fb9586680c6fb1ee63cca7262267616f75e887ad0232"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchTelemetryTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchMeaningEncoderTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningEncoderTests.swift",
-          "sha256": "2cd09fbe567f0e7d1504ff63708272ecbcc55d0335766d7a7efc09a7c99e81e1"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningEncoderTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchVocabularyTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchVocabularyTests.swift",
-          "sha256": "d7f0321a894f675e06c685517be3228be7909388f1b1082cb7e38909b35ad48f"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchVocabularyTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchMatchingTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMatchingTests.swift",
-          "sha256": "5becc196d0b243bc044fc43b7c439920720ec08d430f05becfb57381877153af"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMatchingTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchMeaningAssetsTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningAssetsTests.swift",
-          "sha256": "d5de59a9784869e9aae791e40af43cf8c6495b0e787914222441a5fde11e1f08"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchMeaningAssetsTests.swift"
         },
         {
           "suite": "EnviousWisprTests/SettingsSearchModelTests",
-          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchModelTests.swift",
-          "sha256": "cbbdfc3949325ddf96071bc0c36936e5c95da72cf6db26a4b988574671628faa"
+          "file": "Tests/EnviousWisprTests/Settings/SettingsSearchModelTests.swift"
         }
       ]
     },
@@ -231,8 +202,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ParakeetUpgradePolicyTests",
-          "file": "Tests/EnviousWisprTests/Pipeline/ParakeetUpgradeCoordinatorTests.swift",
-          "sha256": "461fcf95f98714352ce3a3342ebb13a20ddefcf449245fc39e2684e4739f3ca1"
+          "file": "Tests/EnviousWisprTests/Pipeline/ParakeetUpgradeCoordinatorTests.swift"
         }
       ]
     },
@@ -242,8 +212,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ModelDeliveryControllerTests",
-          "file": "Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift",
-          "sha256": "9cf042bcb9a77040f7ae4da05018c7779ff28740c85b74e7282244718e930fb7"
+          "file": "Tests/EnviousWisprTests/ModelDelivery/ModelDeliveryControllerTests.swift"
         }
       ]
     },
@@ -253,8 +222,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ManifestFetchTaskTests",
-          "file": "Tests/EnviousWisprTests/ModelDelivery/ManifestFetchTaskTests.swift",
-          "sha256": "75c0cf5be8902add8833eb3eae7f762c131bc32146f568729e1221e0c9556434"
+          "file": "Tests/EnviousWisprTests/ModelDelivery/ManifestFetchTaskTests.swift"
         }
       ]
     },
@@ -264,8 +232,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/EGOneAdapterLifecycleTests",
-          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
-          "sha256": "98cf4523ede444da8d95fd52112ad7b78bb6ba81fba803203e8295d3f0d5162f"
+          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift"
         }
       ]
     },
@@ -275,8 +242,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/EGOneOutsideStopRecoveryTests",
-          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift",
-          "sha256": "98cf4523ede444da8d95fd52112ad7b78bb6ba81fba803203e8295d3f0d5162f"
+          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift"
         }
       ]
     },
@@ -286,8 +252,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/InverseTextNormalizerParityTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerParityTests.swift",
-          "sha256": "1bc391d9b5ddf242cffec47afedc5f1ab2ff7db7cc93660b141dbb9de3e86a4f"
+          "file": "Tests/EnviousWisprTests/PostProcessing/InverseTextNormalizerParityTests.swift"
         }
       ]
     },
@@ -297,8 +262,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/SpokenPunctuationToggleTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/SpokenPunctuationToggleTests.swift",
-          "sha256": "1bad20861e4e60c02e8c51fd358f9259b2d491985b1af126de67b2bc6ba100da"
+          "file": "Tests/EnviousWisprTests/PostProcessing/SpokenPunctuationToggleTests.swift"
         }
       ]
     },
@@ -308,8 +272,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ContactsImportCorrectorBenchmark",
-          "file": "Tests/EnviousWisprTests/PostProcessing/ContactsImportCorrectorBenchmark.swift",
-          "sha256": "5ccedf93fa11d9d1732947b133dcfb55e56ab5653ca4d8239624e3b6ef0b49b7"
+          "file": "Tests/EnviousWisprTests/PostProcessing/ContactsImportCorrectorBenchmark.swift"
         }
       ]
     },
@@ -319,8 +282,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ImportFileParserTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift",
-          "sha256": "8e691cf573761ef68d86ec87f600d618ac53b9d381bd893399aa65d617b339b8"
+          "file": "Tests/EnviousWisprTests/PostProcessing/ImportFileParserTests.swift"
         }
       ]
     },
@@ -330,8 +292,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/SnippetImportParsersTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/SnippetImportParsersTests.swift",
-          "sha256": "bfdefe40c00ee37d61dd22ddcc344a4a7613c8d136f67db2dee7b6f345b32eaa"
+          "file": "Tests/EnviousWisprTests/PostProcessing/SnippetImportParsersTests.swift"
         }
       ]
     },
@@ -341,8 +302,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/LanguageNumberParserTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/LanguageNumberParserTests.swift",
-          "sha256": "67ee0d89b1172e3dfb7718e2c571298e5e040ed649ae67f531e4e519659245a0"
+          "file": "Tests/EnviousWisprTests/PostProcessing/LanguageNumberParserTests.swift"
         }
       ]
     },
@@ -352,8 +312,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/WordDiffTests",
-          "file": "Tests/EnviousWisprTests/Core/WordDiffTests.swift",
-          "sha256": "08a6931d65c8a3071ea0ff086713b551a690057c960f1e2c92b72da33fee5c00"
+          "file": "Tests/EnviousWisprTests/Core/WordDiffTests.swift"
         }
       ]
     },
@@ -363,8 +322,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/ITNGeneratedDataTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/ITNGeneratedDataTests.swift",
-          "sha256": "62386a8b39f6f4510087bf0c15bb34ab7d56c68a53c08432c2b5e2707ac677ac"
+          "file": "Tests/EnviousWisprTests/PostProcessing/ITNGeneratedDataTests.swift"
         }
       ]
     },
@@ -374,19 +332,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/RecognizerMarksTests",
-          "file": "Tests/EnviousWisprTests/PostProcessing/RecognizerMarksTests.swift",
-          "sha256": "b57c526fcd1e469d126eacf16e989f1c6469fbf9275e3215da686d6c3764373f"
-        }
-      ]
-    },
-    {
-      "name": "isolated/WordCheckRuntimeTerminationTests",
-      "reason": "Unchanged shutdown fixture: UUID roots/defaults and APFS model clones; allocation only, no V2 optimization.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/WordCheckRuntimeTerminationTests",
-          "file": "Tests/EnviousWisprTests/App/WordCheckRuntimeTerminationTests.swift",
-          "sha256": "53fc552863f9d4e794fac1ccfcb67d4ce3b660db5a56d5a7253ecdf3918884c8"
+          "file": "Tests/EnviousWisprTests/PostProcessing/RecognizerMarksTests.swift"
         }
       ]
     },
@@ -396,19 +342,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/LanguageGateBenchmarkTests",
-          "file": "Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift",
-          "sha256": "e4a5c7ef16eb34830a6279e6c474931f7e65333c61a7dc7cfba87dc4565b1a5a"
-        }
-      ]
-    },
-    {
-      "name": "isolated/MeetingCoordinatorTests",
-      "reason": "Fresh private coordinator harness, injected callbacks/stores and UUID checkpoint root.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/MeetingCoordinatorTests",
-          "file": "Tests/EnviousWisprTests/App/MeetingCoordinatorTests.swift",
-          "sha256": "b40c10f1047f049e02b5ff90c94f0ca8c20fdd0e7f6db34fa863771e36ce34f2"
+          "file": "Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift"
         }
       ]
     },
@@ -418,19 +352,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/OnboardingSetupKickTests",
-          "file": "Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift",
-          "sha256": "fd874b61091ff137aa8af1d31325de074ad82b4e592c81b8fea187206159c43b"
-        }
-      ]
-    },
-    {
-      "name": "isolated/KernelFinalizationWiringTests",
-      "reason": "Injected stores/paste closures and private finalization state; source review required.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/KernelFinalizationWiringTests",
-          "file": "Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift",
-          "sha256": "b9cceea79ac1b2e98e2234ae0a4d41fbc71b8aa09ec4b6cfb3dd6c47e8233ee6"
+          "file": "Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift"
         }
       ]
     },
@@ -440,8 +362,7 @@
       "suites": [
         {
           "suite": "EnviousWisprTests/RecordingSessionKernelScenarioTests",
-          "file": "Tests/EnviousWisprTests/Pipeline/Simulator/RecordingSessionKernelScenarioTests.swift",
-          "sha256": "8cf9f69ef55184db7b188f5c6cb2f32d5cbf1beb8fcddfc9a0c855aa46adeb5c"
+          "file": "Tests/EnviousWisprTests/Pipeline/Simulator/RecordingSessionKernelScenarioTests.swift"
         }
       ]
     }

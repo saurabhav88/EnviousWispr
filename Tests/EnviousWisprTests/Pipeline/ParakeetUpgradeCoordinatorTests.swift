@@ -407,7 +407,7 @@ struct ParakeetUpgradeStageGateTests {
 /// `ParakeetRealBoundaryTests`). If this breaks, a Mac can loop on a bad Ultra,
 /// lose working v3 service, or delete a model it still needs.
 @MainActor
-@Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome))
+@Suite("Parakeet upgrade policy", .serialized, .tags(.productOutcome, .localParallel))
 struct ParakeetUpgradePolicyTests {
 
   @Test("initial eligibility survives cancelled frozen successor takeover")

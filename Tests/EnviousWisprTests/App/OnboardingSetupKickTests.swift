@@ -17,7 +17,7 @@ import Testing
   /// a no-op, and the workflow drives the checklist to completion regardless
   /// of what happened to its kicker.
   @MainActor
-  @Suite("Onboarding setup kick", .serialized)
+  @Suite("Onboarding setup kick", .serialized, .tags(.localParallel))
   struct OnboardingSetupKickTests {
 
     @MainActor

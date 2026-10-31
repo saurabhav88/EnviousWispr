@@ -2,7 +2,6 @@
 """Process-boundary tests of the real local group supervisor and verdict owners."""
 
 import json
-import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -103,7 +102,8 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
                     "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
-                    "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE"):
+                    "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
+                    "TEST_RUNNER_EW_REAL_BOUNDARY"):
             self.env.pop(key, None)
         self.command = [sys.executable, str(self.root / "scripts/local-test-groups.py"),
                         "--products", str(self.products), "--scheme", "EnviousWispr",
@@ -143,17 +143,16 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
             self.assertEqual(args[args.index("-parallel-testing-enabled") + 1], "NO")
 
     def four_worker_profile(self):
-        (self.root / "Tests").mkdir()
-        profile = {"schema": 1, "slots": 4,
+        (self.root / "Tests/EnviousWisprTests").mkdir(parents=True)
+        profile = {"schema": 2, "slots": 4,
                    "costs": {"__protected__": 100}, "blocks": []}
         for name in ("A", "B", "C"):
-            path = self.root / "Tests" / (name + ".swift")
+            path = self.root / "Tests/EnviousWisprTests" / (name + ".swift")
             path.write_text("struct " + name + " {}\n")
             suite = "EnviousWisprTests/" + name
             profile["costs"][suite] = 100
             profile["blocks"].append({"suites": [{"suite": suite,
-                "file": "Tests/" + path.name,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}]})
+                "file": "Tests/EnviousWisprTests/" + path.name}]})
         (self.root / "scripts/local-test-costs.json").write_text(json.dumps(profile))
 
     def test_four_workers_use_disjoint_outputs_and_preserve_all_results(self):
@@ -183,6 +182,14 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
     def test_writer_mode_is_one_process_without_skip_selections(self):
         self.four_worker_profile()
         self.run_groups(EXPECTED_GROUPS="serial", TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE="1")
+        args = json.loads((self.root / "serial-args.json").read_text())
+        self.assertFalse(any(a.startswith(("-skip-testing:", "-only-testing:")) for a in args))
+        self.assertFalse((self.root / "worker-1.started").exists())
+
+    def test_real_boundary_mode_is_one_process_without_skip_selections(self):
+        # #4279: real-model and GPU tests in tagged suites must never run beside the protected worker.
+        self.four_worker_profile()
+        self.run_groups(EXPECTED_GROUPS="serial", TEST_RUNNER_EW_REAL_BOUNDARY="1")
         args = json.loads((self.root / "serial-args.json").read_text())
         self.assertFalse(any(a.startswith(("-skip-testing:", "-only-testing:")) for a in args))
         self.assertFalse((self.root / "worker-1.started").exists())

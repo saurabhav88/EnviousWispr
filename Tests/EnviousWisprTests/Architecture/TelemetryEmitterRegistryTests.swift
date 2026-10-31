@@ -32,7 +32,7 @@ import Testing
 /// `.serialized` for the same RESOURCE reason as `TestInventoryFreezeTests`: three members
 /// read the whole-tree scan, and one cached scan run once beats three concurrent parses of
 /// every file under `Sources/` on a constrained CI runner.
-@Suite("Telemetry emitter registry (#2987)", .serialized, .tags(.driftGuard))
+@Suite("Telemetry emitter registry (#2987)", .serialized, .tags(.driftGuard, .localParallel))
 struct TelemetryEmitterRegistryTests {
 
   // MARK: - Model

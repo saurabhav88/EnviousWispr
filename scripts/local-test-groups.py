@@ -108,9 +108,13 @@ def balanced_groups(root, group_dir):
         return [("source", TARGET, selectors), ("serial", REQUIRED, [])]
     from local_test_plan import plan_groups
     profile = json.loads(profile_path.read_text())
+    # #4279: a --real-boundary run (TEST_RUNNER_EW_REAL_BOUNDARY, set by xcode-test.sh) includes
+    # real-model and GPU tests in any suite, tagged or not; those must never overlap, so it stays one
+    # process like the inventory baseline writer.
     groups, loads = plan_groups(
         root, profile,
-        baseline_writer=os.environ.get("TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE") == "1")
+        single_worker=os.environ.get("TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE") == "1"
+        or os.environ.get("TEST_RUNNER_EW_REAL_BOUNDARY") == "1")
     (group_dir / "worker-plan.json").write_text(json.dumps(
         {"estimated_case_seconds": loads, "groups": dict(groups)}, indent=2) + "\n")
     print("==> Worker estimated case-seconds (not wall time): "

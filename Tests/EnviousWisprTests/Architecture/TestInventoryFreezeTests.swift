@@ -45,7 +45,7 @@ import Testing
 /// use for parallelism and a real appetite for memory.
 @Suite(
   "Test inventory — every suite declares what it protects (#2141)", .serialized,
-  .tags(.driftGuard))
+  .tags(.driftGuard, .localParallel))
 struct TestInventoryFreezeTests {
 
   // MARK: - Model
@@ -56,6 +56,9 @@ struct TestInventoryFreezeTests {
 
     /// Applied IN ADDITION to a class tag; not a class of its own.
     static let realBoundaryTag = "realBoundary"
+
+    /// #4279: the local runner's review mark for a suite that may run in a parallel worker process.
+    static let localParallelTag = "localParallel"
   }
 
   struct SuiteRecord {
@@ -78,6 +81,8 @@ struct TestInventoryFreezeTests {
     let classes: [TestClass]
     let testCount: Int
     let boundaryCount: Int
+    /// #4279: the suite's type, or its tag carrier in the same file, declares `.localParallel`.
+    let localParallel: Bool
 
     var key: String { "\(file)\t\(qualifiedName)" }
   }
@@ -88,6 +93,8 @@ struct TestInventoryFreezeTests {
     var records: [SuiteRecord] = []
     var tagCarriers: [String: Set<TestClass>] = [:]
     var boundaryCarriers: Set<BoundaryCarrier> = []
+    /// #4279: identities whose declaring type carries `.localParallel`, resolved like class tags.
+    var parallelCarriers: Set<String> = []
   }
 
   private struct BoundaryCarrier: Hashable {
@@ -144,7 +151,8 @@ struct TestInventoryFreezeTests {
         file: record.file, name: record.name, qualifiedName: record.qualifiedName,
         identity: record.identity, branches: record.branches, classes: classes,
         testCount: record.testCount,
-        boundaryCount: boundaryCount)
+        boundaryCount: boundaryCount,
+        localParallel: record.localParallel || state.parallelCarriers.contains(record.identity))
     }
   }
 
@@ -226,6 +234,8 @@ struct TestInventoryFreezeTests {
     // Registered whether or not this declaration holds tests: a tag on a bodiless `@Suite struct S {}`
     // exists precisely so the tests in `extension S` can find it.
     if !classes.isEmpty { state.tagCarriers[identity, default: []].formUnion(classes) }
+    let localParallel = declared.contains(TestClass.localParallelTag)
+    if localParallel { state.parallelCarriers.insert(identity) }
     if declared.contains(TestClass.realBoundaryTag) {
       state.boundaryCarriers.insert(
         BoundaryCarrier(qualifiedName: qualifiedName, branches: scope.branches))
@@ -242,7 +252,7 @@ struct TestInventoryFreezeTests {
         SuiteRecord(
           file: file, name: named.name, qualifiedName: qualifiedName, identity: identity,
           branches: scope.branches, classes: classes, testCount: directTests,
-          boundaryCount: directBoundary))
+          boundaryCount: directBoundary, localParallel: localParallel))
     }
   }
 
@@ -746,6 +756,57 @@ struct TestInventoryFreezeTests {
       Decide with: "when this fails, the user sees ___." Can you finish it? .productOutcome.
       A plain struct of @Test functions is an IMPLICIT suite and cannot carry a tag — add @Suite(...).
       Owner: .claude/rules/testing-philosophy.md
+      """)
+  }
+
+  /// #4279: the full local run starts suites listed in `scripts/local-test-costs.json` in parallel
+  /// worker processes. The review mark is the `.localParallel` tag in the suite's own source, so an
+  /// edit keeps admission and the editor sees the mark. This keeps the list and the tags identical, in
+  /// both directions, by suite AND file: a tag without a list entry would never be scheduled, and a
+  /// list entry whose tag was removed would keep running in parallel against the editor's intent.
+  @Test("the local parallel worker list equals the suites tagged .localParallel")
+  func localParallelListMatchesTheTags() throws {
+    let records = try Self.inventory()
+    try #require(
+      records.count > 400,
+      "found only \(records.count) suites — the sweep is broken, not the tree")
+    let prefix = "Tests/EnviousWisprTests/"
+    let tagged = Set(
+      records.filter { $0.localParallel && $0.file.hasPrefix(prefix) }
+        .map { "EnviousWisprTests/\($0.qualifiedName) :: \($0.file)" })
+    let misplaced = records.filter { $0.localParallel && !$0.file.hasPrefix(prefix) }
+    #expect(
+      misplaced.isEmpty,
+      """
+      the local runner schedules only EnviousWisprTests suites; remove .localParallel from:
+      \(misplaced.map { "  \($0.file) :: \($0.qualifiedName)" }.joined(separator: "\n"))
+      """)
+
+    let data = try Data(contentsOf: RepoRoot.sourceURL("scripts/local-test-costs.json"))
+    let profile = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let blocks = try #require(profile["blocks"] as? [[String: Any]], "profile has no blocks array")
+    var listed: Set<String> = []
+    for block in blocks {
+      let entries = try #require(block["suites"] as? [[String: Any]], "block has no suites array")
+      for entry in entries {
+        let suite = try #require(entry["suite"] as? String, "entry has no suite: \(entry)")
+        let file = try #require(entry["file"] as? String, "entry has no file: \(entry)")
+        listed.insert("\(suite) :: \(file)")
+      }
+    }
+    // Fail closed: two empty sets agree.
+    try #require(listed.count > 10, "only \(listed.count) listed suites; the list read is broken")
+
+    let untagged = listed.subtracting(tagged).sorted()
+    let unlisted = tagged.subtracting(listed).sorted()
+    #expect(
+      untagged.isEmpty && unlisted.isEmpty,
+      """
+      scripts/local-test-costs.json and the .localParallel tags disagree.
+      Listed but not tagged (tag removed, suite renamed or moved): \(untagged)
+      Tagged but not listed: \(unlisted)
+      Keep both or neither. Before adding either, review the suite as the tag's doc comment says
+      (Tests/EnviousWisprTests/Support/LocalParallelTag.swift); a list entry also needs a measured cost.
       """)
   }
 

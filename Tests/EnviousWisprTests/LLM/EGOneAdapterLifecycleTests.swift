@@ -9,7 +9,7 @@ import os
 @testable import EnviousWisprPipeline
 import EnviousWisprAppKitTestSupport
 
-@Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard))
+@Suite("EG-1 adapter server lifecycle (#3105)", .serialized, .tags(.driftGuard, .localParallel))
 struct EGOneAdapterLifecycleTests {
   /// A tiny HTTP server that records argv before answering /health. An
   /// adapter-failure marker makes only --lora-scaled launches exit before readiness.
@@ -360,7 +360,7 @@ struct EGOneAdapterLifecycleTests {
 /// activation instead of spending the crash restart and giving up for the
 /// session. When this fails, the user loses AI polish silently until they
 /// restart the app.
-@Suite("Local polish server stopped from outside (#3988)", .serialized, .tags(.productOutcome))
+@Suite("Local polish server stopped from outside (#3988)", .serialized, .tags(.productOutcome, .localParallel))
 struct EGOneOutsideStopRecoveryTests {
   fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
   typealias State = EGOneServerManager.Lifecycle

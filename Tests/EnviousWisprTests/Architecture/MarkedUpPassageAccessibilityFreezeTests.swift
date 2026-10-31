@@ -16,7 +16,7 @@ import Testing
 
 /// Drift Guard: when this fails, a Marked up passage may be drawn with a label-plus-selection
 /// pairing that crashes the app for anyone using an accessibility tool.
-@Suite("Marked up passages keep the safe accessibility pairing (#3573)", .tags(.driftGuard))
+@Suite("Marked up passages keep the safe accessibility pairing (#3573)", .tags(.driftGuard, .localParallel))
 struct MarkedUpPassageAccessibilityFreezeTests {
 
   /// Calls to `markedUpText` with the type each sits in, and the modifier names applied inside

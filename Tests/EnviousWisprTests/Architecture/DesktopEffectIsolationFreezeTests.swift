@@ -33,7 +33,7 @@ import Testing
 /// year will not be in that list. This suite bans the MODULE and its known adapter
 /// names, so a new adapter is covered by the module ban on the day it is written.
 @MainActor
-@Suite(.tags(.driftGuard))
+@Suite(.tags(.driftGuard, .localParallel))
 struct DesktopEffectIsolationFreezeTests {
 
   /// The live adapters. Named individually as well as by module, because a test

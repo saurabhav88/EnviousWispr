@@ -9,7 +9,7 @@ import Testing
 /// nothing about what people cannot find in Settings, or receives text it must never receive: an
 /// email, a web address, a number, a key, or any query from someone who switched usage metrics off.
 @MainActor
-@Suite("Settings search telemetry (#3482)", .tags(.productOutcome))
+@Suite("Settings search telemetry (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchTelemetryTests {
   // MARK: - The privacy filter
 

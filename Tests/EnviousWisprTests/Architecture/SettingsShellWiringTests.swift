@@ -9,7 +9,7 @@ import Testing
 /// for each page; updates live in the toolbar; a selected row rests flat and
 /// glows only under the pointer. Read with SwiftParser: comments and strings cannot satisfy it.
 /// A drift guard: real hover, presses and VoiceOver are final Live UAT.
-@Suite("Settings shell wiring (#3385)", .tags(.driftGuard))
+@Suite("Settings shell wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct SettingsShellWiringTests {
   static let settingsDir = "Sources/EnviousWisprAppKit/Views/Settings"
 

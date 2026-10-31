@@ -15,7 +15,7 @@ import Testing
 // When this fails, a later pass would read a wrong value, accept a prefix of a longer phrase, or
 // treat an article or a fraction word as a number.
 
-@Suite("German number parser (#1677)", .tags(.driftGuard))
+@Suite("German number parser (#1677)", .tags(.driftGuard, .localParallel))
 struct LanguageNumberParserTests {
 
   let grammar: LanguageNumberGrammar

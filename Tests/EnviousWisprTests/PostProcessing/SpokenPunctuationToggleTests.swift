@@ -16,6 +16,7 @@ import Testing
 /// rely on. We do not rely on this one: it is known-bad (#1367), now ships OFF, and the
 /// long-term answer is the model handling it natively (#1364). What must be proven is
 /// narrower — the switch works, and nothing else moved.
+@Suite(.tags(.localParallel))
 struct SpokenPunctuationToggleTests {
 
   private static let itn = InverseTextNormalizer()

@@ -9,7 +9,7 @@ import Testing
 /// This reports per (vocab-size) bucket and asserts a generous floor well under
 /// that cap — the printed numbers are the signal; the assert is a regression
 /// backstop, not a tight bound (timeout-numbers-need-distribution-evidence).
-@Suite("Corrector latency at import scale (#636 §3a)")
+@Suite("Corrector latency at import scale (#636 §3a)", .tags(.localParallel))
 struct ContactsImportCorrectorBenchmark {
   /// Worst case for the fuzzy passes: distinctive single-token person canonicals
   /// (each becomes an exact self-entry AND a single-token fuzzy candidate).

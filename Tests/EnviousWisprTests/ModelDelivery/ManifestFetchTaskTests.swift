@@ -142,7 +142,7 @@ final class DeliveryStubProtocol: URLProtocol {
 /// the EG-1-inherited behaviors (200-ignores-Range truncate, 416 discard,
 /// non-success stop) plus the Phase 2 length gate. Signal-based — the stub
 /// responds immediately; no clock waits (test-timing rule).
-@Suite(.serialized, .tags(.productOutcome)) struct ManifestFetchTaskTests {
+@Suite(.serialized, .tags(.productOutcome, .localParallel)) struct ManifestFetchTaskTests {
   private func makeStaging() throws -> URL {
     let dir = TestTemporaryDirectory.url
       .appendingPathComponent("fetch-\(UUID().uuidString)", isDirectory: true)

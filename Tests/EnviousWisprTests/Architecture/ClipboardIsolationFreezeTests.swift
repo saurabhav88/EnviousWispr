@@ -50,7 +50,7 @@ import Testing
 // (validation-discipline.md RULE: false-positives-not-gates-train-evasion).
 /// Drift Guard: this freezes a call-site inventory in our own test tree. When it fails, no USER sees
 /// anything — a DEVELOPER's clipboard is at risk. Layers 1 and 2 above are what protect the outcome.
-@Suite("Clipboard isolation freeze (#2146)", .tags(.driftGuard))
+@Suite("Clipboard isolation freeze (#2146)", .tags(.driftGuard, .localParallel))
 struct ClipboardIsolationFreezeTests {
 
   /// The one suite allowed to touch clipboard capability, because it is the

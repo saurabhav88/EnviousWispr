@@ -8,7 +8,7 @@ import Testing
 /// so its vector moves and unrelated settings rank first** (the tokenizer the app already links did
 /// exactly that: cosine 0.84 to 0.95 against the reference). The oracle is the Hugging Face tokenizer
 /// itself, run by `scripts/settings-map/meaning-tokenizer-fixture.py`, never this code.
-@Suite("Settings search Unigram tokenizer (#3482)", .tags(.productOutcome))
+@Suite("Settings search Unigram tokenizer (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchUnigramTokenizerTests {
   struct Fixture: Decodable {
     struct Case: Decodable {

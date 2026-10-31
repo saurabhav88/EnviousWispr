@@ -21,7 +21,7 @@ import Testing
 ///
 /// Class: `driftGuard`. When this fails, nobody's dictation breaks; a settings
 /// button starts depending on its container again.
-@Suite("Settings controls own their own affordance (#2447)", .tags(.driftGuard))
+@Suite("Settings controls own their own affordance (#2447)", .tags(.driftGuard, .localParallel))
 struct SettingsControlAffordanceTests {
 
   private final class AccessibilityLabelFinder: SyntaxVisitor {

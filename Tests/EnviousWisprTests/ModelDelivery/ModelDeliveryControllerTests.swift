@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 /// accept-gated), single-flight join, and the marker fast path. Network-
 /// dependent behaviors (failover, resume, cancel drain under live transfers)
 /// are covered by `ManifestFetchTaskTests`' stubs and the D7 drill matrix.
-@Suite struct ModelDeliveryControllerTests {
+@Suite(.tags(.localParallel)) struct ModelDeliveryControllerTests {
   init() {
     // Deterministic network: unmatched requests fail fast through the stub
     // (cannotConnectToHost → source_unreachable), never real DNS.

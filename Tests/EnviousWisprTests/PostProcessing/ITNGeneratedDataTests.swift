@@ -17,7 +17,7 @@ import Testing
 // whose output no runtime caller uses yet": `LanguageNumberGrammar.swift` is the only allowed
 // reader, and the reachability test below still fails on any other one.
 
-@Suite("Generated German number data (#1677)", .tags(.driftGuard))
+@Suite("Generated German number data (#1677)", .tags(.driftGuard, .localParallel))
 struct ITNGeneratedDataTests {
 
   private typealias Data = GermanNumberData
