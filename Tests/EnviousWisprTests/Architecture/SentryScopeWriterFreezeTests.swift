@@ -21,7 +21,7 @@ import Testing
 /// - Every `SentryBreadcrumb.add(stage:...)` producer.
 /// Guards against a session that FORGETS; an author working to evade a syntax scan is a review
 /// finding.
-@Suite("Sentry scope writer freeze (#3153)", .serialized, .tags(.driftGuard))
+@Suite("Sentry scope writer freeze (#3153)", .serialized, .tags(.driftGuard, .localParallel))
 struct SentryScopeWriterFreezeTests {
 
   static let sdkWriters: Set<String> = [

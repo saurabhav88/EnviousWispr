@@ -523,7 +523,7 @@ struct ProviderSetupSavedBadgeTests {
 /// `SavedKeyPresence`'s mutations or `apiKeyChanged` itself again, so two copies drift; the
 /// first copy to get a fix leaves the other emitting or recording differently. Parsed with
 /// SwiftParser, so comments and strings never count as calls.
-@Suite(.tags(.driftGuard))
+@Suite(.tags(.driftGuard, .localParallel))
 struct ProviderSetupCredentialOwnershipTests {
   /// Every call in `Sources/` whose callee is a member named one of `names`, as
   /// (file name, callee name). Declarations do not count.

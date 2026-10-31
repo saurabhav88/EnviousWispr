@@ -1,16 +1,18 @@
 """Conservative, measured-cost scheduling for four local test processes.
 
-Only reviewed suites move out of the protected remainder. A changed test file
-loses its parallel admission until reviewed again; new suites stay protected.
+Only reviewed suites move out of the protected remainder; new suites stay
+protected. The review mark lives in the test source as the `.localParallel`
+tag, so editing a reviewed file keeps its admission (#4279). The full run's
+TestInventoryFreezeTests fails when this list and the tagged suites differ.
+A listed file that no longer exists falls back to the protected worker.
 """
 
-import hashlib
 import math
 from pathlib import Path
 
 
 def plan_groups(root, profile, *, baseline_writer=False):
-    if profile.get("schema") != 1 or profile.get("slots") != 4:
+    if profile.get("schema") != 2 or profile.get("slots") != 4:
         raise ValueError("local test profile must describe four worker slots")
     costs = profile["costs"]
     if not costs or any(not isinstance(v, (int, float)) or isinstance(v, bool)
@@ -18,24 +20,22 @@ def plan_groups(root, profile, *, baseline_writer=False):
         raise ValueError("invalid measured suite costs")
     if baseline_writer:
         return [("serial", ())], [sum(costs.values())]
-    admitted, seen, blocks, hashes = set(), set(), [], {}
+    admitted, seen, blocks = set(), set(), []
     for block in profile["blocks"]:
         selected = []
         for entry in block["suites"]:
+            if set(entry) != {"suite", "file"}:
+                raise ValueError(f"admitted entry must hold exactly suite and file: {entry}")
             name, relative = entry["suite"], entry["file"]
             if name in seen or name not in costs or not name.startswith("EnviousWisprTests/"):
                 raise ValueError(f"invalid or duplicate admitted suite: {name}")
             seen.add(name)
             path = Path(relative)
-            if path.is_absolute() or ".." in path.parts or not relative.startswith("Tests/"):
+            if (path.is_absolute() or ".." in path.parts
+                    or not relative.startswith("Tests/EnviousWisprTests/")):
                 raise ValueError(f"invalid reviewed test path: {relative}")
-            if relative not in hashes:
-                try:
-                    hashes[relative] = hashlib.sha256((root / path).read_bytes()).hexdigest()
-                except FileNotFoundError:
-                    hashes[relative] = None
-            if hashes[relative] != entry["sha256"]:
-                print(f"==> Protected fallback (test source changed): {name}", flush=True)
+            if not (root / path).is_file():
+                print(f"==> Protected fallback (test file missing): {name}", flush=True)
                 continue
             admitted.add(name)
             selected.append(name)

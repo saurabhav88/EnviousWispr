@@ -23,7 +23,7 @@ import EnviousWisprAppKitTestSupport
 /// When this fails, the user sees a real word of their own language rewritten or deleted:
 /// Dutch "ten minste" pasted as "10 minste", German "er" (he) stripped as a hesitation.
 @MainActor
-@Suite("LanguageGateBenchmark", .tags(.productOutcome))
+@Suite("LanguageGateBenchmark", .tags(.productOutcome, .localParallel))
 struct LanguageGateBenchmarkTests {
 
   // MARK: - Fixture

@@ -11,7 +11,7 @@ import Testing
 ///
 /// Speed and memory are printed for the machine that ran the test and asserted nowhere: nothing
 /// measured here describes an M1 or the slowest Mac on hand.
-@Suite("Settings search meaning encoder (#3482)", .tags(.productOutcome), .serialized)
+@Suite("Settings search meaning encoder (#3482)", .tags(.productOutcome, .localParallel), .serialized)
 struct SettingsSearchMeaningEncoderTests {
   struct QueryFixture: Decodable {
     struct Item: Decodable {

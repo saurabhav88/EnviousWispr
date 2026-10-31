@@ -16,7 +16,7 @@ import Testing
 /// WhisperKit), the hand-authored intended text, and the output of the code BEFORE this change (`today*`
 /// fields), so no expectation is derived from the candidate.
 @MainActor
-@Suite("Recognizer marks beside spoken commands (#3594)", .tags(.productOutcome))
+@Suite("Recognizer marks beside spoken commands (#3594)", .tags(.productOutcome, .localParallel))
 struct RecognizerMarksTests {
 
   private static let itn = InverseTextNormalizer()

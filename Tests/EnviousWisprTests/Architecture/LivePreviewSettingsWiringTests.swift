@@ -9,7 +9,7 @@ import Testing
 /// persistent status region, choosing an engine only writes the choice, the catalogue opens from
 /// a fresh request carrying its search, and the pack list reloads keyed on the language with the
 /// window's model. A drift guard; presses and installs are Live UAT.
-@Suite("Live Preview settings wiring (#3385)", .tags(.driftGuard))
+@Suite("Live Preview settings wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct LivePreviewSettingsWiringTests {
   static let path = "Sources/EnviousWisprAppKit/Views/Settings/LivePreviewSettingsView.swift"
 

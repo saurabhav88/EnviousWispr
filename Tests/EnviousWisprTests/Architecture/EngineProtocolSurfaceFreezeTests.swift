@@ -47,7 +47,7 @@ import Testing
 // require the same kind of human grounding pass that found the
 // protocols and escape hatches here — this suite is a guardrail on top
 // of that judgment, not a replacement for it.
-@Suite struct EngineProtocolSurfaceFreezeTests {
+@Suite(.tags(.localParallel)) struct EngineProtocolSurfaceFreezeTests {
 
   private struct ScanFailedError: Error, CustomStringConvertible {
     let context: String

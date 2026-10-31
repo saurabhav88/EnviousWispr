@@ -10,7 +10,7 @@ import Testing
 /// Map identity or an approved exemption, and every place a search can land on is registered.
 /// A drift guard over the SOURCE; SettingsMapRenderingTests checks what the pages actually render.
 /// Counts were measured on the completed migration and are frozen: a change must be deliberate.
-@Suite("Settings Map registration (#3482)", .tags(.driftGuard))
+@Suite("Settings Map registration (#3482)", .tags(.driftGuard, .localParallel))
 struct SettingsMapRegistrationTests {
   static let components = [
     "SettingsRow", "PolishRow", "SettingsSectionHeading", "KeybindSettingsRow",

@@ -11,7 +11,7 @@ import Testing
 /// Each route is found by its OWNER (the closure argument, binding or property it lives in),
 /// so a `.request(.appSettings(.permissions))` added somewhere else cannot stand in for a route that lost its
 /// own. A missing or doubled route fails by name.
-@Suite("Settings navigation producers (#3385)", .tags(.driftGuard))
+@Suite("Settings navigation producers (#3385)", .tags(.driftGuard, .localParallel))
 struct SettingsNavigationProducerTests {
 
   static let app = "Sources/EnviousWisprAppKit/App/"

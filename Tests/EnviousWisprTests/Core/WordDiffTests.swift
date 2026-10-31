@@ -5,7 +5,7 @@ import Testing
 
 /// #2773: the marked-up view's engine. What fails when these fail is a person told the
 /// cleanup removed words it kept, or shown a mark on the wrong word.
-@Suite("WordDiff (#2773)", .tags(.productOutcome))
+@Suite("WordDiff (#2773)", .tags(.productOutcome, .localParallel))
 struct WordDiffTests {
 
   // MARK: - The founder's two treatments

@@ -8,7 +8,7 @@ import Testing
 /// the clicked card through the one stored preview task, gated only by live dictation. These
 /// read that shape from the source with SwiftParser; comments and strings cannot satisfy them.
 /// A drift guard: real presses, focus and VoiceOver are final Live UAT.
-@Suite("Recording chime wiring (#3385)", .tags(.driftGuard))
+@Suite("Recording chime wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct RecordingChimeWiringTests {
   static let contentPath = "Sources/EnviousWisprAppKit/Views/Settings/RecordingChimesContent.swift"
   static let pagePath =

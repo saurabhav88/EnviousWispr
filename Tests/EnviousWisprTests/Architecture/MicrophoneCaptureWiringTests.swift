@@ -6,7 +6,7 @@ import Testing
 /// A drift guard: only the microphone status view may observe capture changes, and the cue
 /// reads actual capture evidence, never the selected preference. These syntax checks
 /// establish where reads execute, not a measured recording-latency improvement.
-@Suite("Microphone capture wiring (#3385)", .tags(.driftGuard))
+@Suite("Microphone capture wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct MicrophoneCaptureWiringTests {
   @Test("main window defers every capture read to the injected reader")
   func mainWindowProjectsCaptureEvidence() throws {

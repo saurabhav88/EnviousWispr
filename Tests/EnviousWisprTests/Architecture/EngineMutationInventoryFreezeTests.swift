@@ -135,7 +135,7 @@ import EnviousWisprAppKitTestSupport
 // suite documents them; it does not fix them, and a test cannot substitute
 // for the documentation, code review, and engineering judgment an actual
 // fix or a future architecture change would need.
-@Suite struct EngineMutationInventoryFreezeTests {
+@Suite(.tags(.localParallel)) struct EngineMutationInventoryFreezeTests {
 
   // MARK: Classification
 

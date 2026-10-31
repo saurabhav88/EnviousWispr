@@ -9,7 +9,7 @@ import Testing
 /// it describes, the socket choice keeps its eligibility and per-device write, and the media
 /// row still pairs its output listener with the page's appearance. A drift guard; the
 /// rebuilt-app UAT proves a microphone switch reaches RAW ASR.
-@Suite("Microphone settings wiring (#3385)", .tags(.driftGuard))
+@Suite("Microphone settings wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct MicrophoneSettingsWiringTests {
   static let audioPath = "Sources/EnviousWisprAppKit/Views/Settings/AudioSettingsView.swift"
   static let mediaPath = "Sources/EnviousWisprAppKit/Views/Settings/OtherAudioSettingsPanel.swift"

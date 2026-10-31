@@ -2,7 +2,6 @@
 """Process-boundary tests of the real local group supervisor and verdict owners."""
 
 import json
-import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -143,17 +142,16 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
             self.assertEqual(args[args.index("-parallel-testing-enabled") + 1], "NO")
 
     def four_worker_profile(self):
-        (self.root / "Tests").mkdir()
-        profile = {"schema": 1, "slots": 4,
+        (self.root / "Tests/EnviousWisprTests").mkdir(parents=True)
+        profile = {"schema": 2, "slots": 4,
                    "costs": {"__protected__": 100}, "blocks": []}
         for name in ("A", "B", "C"):
-            path = self.root / "Tests" / (name + ".swift")
+            path = self.root / "Tests/EnviousWisprTests" / (name + ".swift")
             path.write_text("struct " + name + " {}\n")
             suite = "EnviousWisprTests/" + name
             profile["costs"][suite] = 100
             profile["blocks"].append({"suites": [{"suite": suite,
-                "file": "Tests/" + path.name,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}]})
+                "file": "Tests/EnviousWisprTests/" + path.name}]})
         (self.root / "scripts/local-test-costs.json").write_text(json.dumps(profile))
 
     def test_four_workers_use_disjoint_outputs_and_preserve_all_results(self):

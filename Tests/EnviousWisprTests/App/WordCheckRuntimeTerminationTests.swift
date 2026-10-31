@@ -19,7 +19,7 @@ import EnviousWisprAppKitTestSupport
 /// does; skipped elsewhere, including CI, which has no model. They use an APFS clone of that
 /// folder, never the folder itself.
 @MainActor
-@Suite("WordCheckRuntime: quit drops the model without waiting (#3853)", .tags(.productOutcome))
+@Suite("WordCheckRuntime: quit drops the model without waiting (#3853)", .tags(.productOutcome, .localParallel))
 struct WordCheckRuntimeTerminationTests {
   /// The runtime's inputs, changeable mid-test.
   @MainActor final class Inputs {

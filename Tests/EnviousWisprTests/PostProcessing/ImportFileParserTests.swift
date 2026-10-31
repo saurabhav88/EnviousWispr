@@ -12,7 +12,7 @@ import EnviousWisprAppKitTestSupport
 /// should be told which wrong thing they picked, not handed "damaged" for a
 /// perfectly healthy document.
 @MainActor
-@Suite("ImportFileParser")
+@Suite("ImportFileParser", .tags(.localParallel))
 struct ImportFileParserTests {
 
   private func write(_ contents: Data, as name: String) throws -> URL {

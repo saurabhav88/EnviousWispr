@@ -9,7 +9,7 @@ import Testing
 /// `ModelPreparingCopy.label`. #3385 moved the engine page into a summary card; this guard keeps
 /// the emitter off the page root, the collapsed choices, an initializer and a help popover.
 /// A drift guard over the SOURCE; the rebuilt-app UAT proves the label and the event arrive.
-@Suite("Model preparing impression placement", .tags(.driftGuard))
+@Suite("Model preparing impression placement", .tags(.driftGuard, .localParallel))
 struct ModelPreparingImpressionPlacementTests {
 
   static let path = "Sources/EnviousWisprAppKit/Views/Settings/SpeechEngineSettingsView.swift"

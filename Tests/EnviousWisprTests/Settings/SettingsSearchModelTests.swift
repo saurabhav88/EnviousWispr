@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 /// Settings search shows a stale or wrong selection, Return opens something the person cannot
 /// see, or a closed search comes back on its own.
 @MainActor
-@Suite("Settings search field model (#3482)", .tags(.productOutcome))
+@Suite("Settings search field model (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchModelTests {
   @Test("the result list never runs past the window: at most eight rows, else the room left")
   func listHeightFitsTheWindow() {

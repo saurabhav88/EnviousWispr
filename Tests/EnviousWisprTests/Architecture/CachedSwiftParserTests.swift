@@ -4,7 +4,7 @@ import EnviousWisprAppKitTestSupport
 import SwiftSyntax
 import Testing
 
-@Suite("Shared source preparation keeps current file identity (#4089)", .tags(.harnessContract))
+@Suite("Shared source preparation keeps current file identity (#4089)", .tags(.harnessContract, .localParallel))
 struct CachedSwiftParserTests {
   private func fixture() throws -> (URL, URL) {
     let root = TestTemporaryDirectory.url.appendingPathComponent("ast-cache-\(UUID())")

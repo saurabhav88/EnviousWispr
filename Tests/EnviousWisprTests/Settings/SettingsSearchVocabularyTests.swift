@@ -9,7 +9,7 @@ import EnviousWisprAppKitTestSupport
 /// validator, against independent expectations: the literal language list below, the map
 /// inventory fixture (`Tests/Fixtures/settings-map/inventory.json`, never derived from the map),
 /// a hand-built rejection fixture, and the review receipt in `scripts/settings-map/receipts/`.
-@Suite("Settings search vocabulary (#3482)", .tags(.driftGuard))
+@Suite("Settings search vocabulary (#3482)", .tags(.driftGuard, .localParallel))
 struct SettingsSearchVocabularyTests {
   /// Plan §3.7a's declared search languages, written out independently of the source.
   static let languages = [

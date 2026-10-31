@@ -8,7 +8,7 @@ import Testing
 /// would refuse its own files at launch (and Settings search falls back to words only), or would
 /// score settings against vectors built for a different map.** Hashes are recomputed here from the
 /// files; sizes come from plan §3.7a, written as literals.
-@Suite("Settings search meaning assets (#3482)", .tags(.driftGuard))
+@Suite("Settings search meaning assets (#3482)", .tags(.driftGuard, .localParallel))
 struct SettingsSearchMeaningAssetsTests {
   static let directory = RepoRoot.sourceURL("Sources/EnviousWispr/Resources/SettingsSearchMeaning")
   static let regenerate =

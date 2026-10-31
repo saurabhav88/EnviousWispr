@@ -7,7 +7,7 @@ import Testing
 /// uses (#3482 plan §3.7a, §18). When this fails, a search the measured winner answers (or a plain
 /// name the word leg already answers) shows the wrong setting first in the shipped search box.
 @MainActor
-@Suite("Settings search with the meaning pass (#3482)", .tags(.productOutcome))
+@Suite("Settings search with the meaning pass (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchBothLegsTests {
   /// The committed assets.
   static func worker() -> SettingsSearchMeaningWorker {

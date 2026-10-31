@@ -14,7 +14,7 @@ import EnviousWisprAppKitTestSupport
 /// transcriptionEngine.parakeet / .whisper → transcriptionEngine.fast / .allLanguages;
 /// learnFromEdits → selfLearningDictionary; aiPolishEngine.ollama → aiPolishProvider.ollama;
 /// exportWords → yourWords.export; playRecordingSounds → recordingChimes.
-@Suite("Settings search matching (#3482)", .tags(.productOutcome))
+@Suite("Settings search matching (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchMatchingTests {
   /// Interface text from the built app's compiled catalog, the copy users actually read; English
   /// and German resolve the same way the Settings Map export does.

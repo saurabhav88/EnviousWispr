@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 ///
 /// `.productOutcome`: when this fails a user sees a snippet missing from review, a trigger
 /// or expansion mangled, a good file refused, or a bad one silently accepted.
-@Suite("Snippet import parsers and contract (#2997)", .tags(.productOutcome))
+@Suite("Snippet import parsers and contract (#2997)", .tags(.productOutcome, .localParallel))
 struct SnippetImportParsersTests {
 
   private func pairs(_ result: SnippetLineListParser.Result) -> [(String, String)] {

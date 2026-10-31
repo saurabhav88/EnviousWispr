@@ -10,7 +10,7 @@ import Testing
 /// next-recording note, and Quick Add under its own heading with no note. Read from the source
 /// with SwiftParser; comments, strings and stray calls cannot satisfy it. A drift guard: real
 /// toggles, persistence and clipboard outcomes are final Live UAT.
-@Suite("Clipboard settings wiring (#3385)", .tags(.driftGuard))
+@Suite("Clipboard settings wiring (#3385)", .tags(.driftGuard, .localParallel))
 struct ClipboardSettingsWiringTests {
   static let path = "Sources/EnviousWisprAppKit/Views/Settings/ClipboardSettingsView.swift"
 

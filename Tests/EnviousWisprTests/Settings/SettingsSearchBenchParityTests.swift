@@ -13,7 +13,7 @@ import Testing
 /// sealed final sets). It was produced by `settings-search-bench run` (see the fixture's
 /// `producedBy` and `sourceSHA256`), never by this matcher. Here the app index is built from the
 /// same inputs exactly as the bench builds them, and every search must return the same top five.
-@Suite("Settings search matches the Phase 0 bench (#3482)", .tags(.productOutcome))
+@Suite("Settings search matches the Phase 0 bench (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsSearchBenchParityTests {
   struct Fixture: Decodable {
     struct Entry: Decodable {
