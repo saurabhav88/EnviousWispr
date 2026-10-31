@@ -18606,7 +18606,7 @@
       }
     },
     "Start Recording" : {
-      "comment" : "EnviousMeet: the button that starts a meeting recording.\nMenu bar menu: starts a dictation.",
+      "comment" : "Menu bar menu: starts a dictation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
