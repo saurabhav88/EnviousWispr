@@ -104,10 +104,17 @@ struct MeetingMuteFollower: Sendable {
   /// Whether a mute state was read since binding or switching on (checking versus cannot-see).
   private var following = false
   private var closed: [MeetingMuteInterval] = []
+  /// Readings copied before this host time are not used: the switch was off when they began.
+  private var acceptFrom: UInt64 = 0
+  private let timingFor: @Sendable (CallSpeakerSurface) -> Timing
 
-  init(enabled: Bool, timebase: mach_timebase_info_data_t = CallSpeakerTimeline.liveTimebase) {
+  init(
+    enabled: Bool, timebase: mach_timebase_info_data_t = CallSpeakerTimeline.liveTimebase,
+    timing: @escaping @Sendable (CallSpeakerSurface) -> Timing = { Timing.for($0) }
+  ) {
     self.enabled = enabled
     self.timebase = timebase
+    timingFor = timing
     state = enabled ? .unbound : .disabled
   }
 
@@ -123,7 +130,7 @@ struct MeetingMuteFollower: Sendable {
   /// ignored from now on; an open stretch closes at its last muted reading.
   mutating func bind(surface: CallSpeakerSurface, generation: UInt64) {
     closeAtLastMuted()
-    timing = Timing.for(surface)
+    timing = timingFor(surface)
     self.generation = generation
     lastReadingT = nil
     following = false
@@ -139,9 +146,10 @@ struct MeetingMuteFollower: Sendable {
     if enabled { state = .unbound }
   }
 
-  /// The Settings switch. Turning it off closes an open stretch; audio already released is never
-  /// restored. Turning it on starts checking again.
-  mutating func setEnabled(_ on: Bool) {
+  /// The Settings switch, changed at `hostTime`. Turning it off closes an open stretch; audio
+  /// already released is never restored. Turning it on starts checking again, and a copy that
+  /// began before `hostTime` (while the switch was off) is never used.
+  mutating func setEnabled(_ on: Bool, at hostTime: UInt64) {
     guard on != enabled else { return }
     enabled = on
     if !on {
@@ -149,6 +157,7 @@ struct MeetingMuteFollower: Sendable {
       state = .disabled
     } else {
       lastReadingT = nil
+      acceptFrom = max(acceptFrom, hostTime)
       following = false
       state = timing == nil ? .unbound : .checking
     }
@@ -160,7 +169,9 @@ struct MeetingMuteFollower: Sendable {
     _ reading: CallSelfMute, copyStart t: UInt64, delivered d: UInt64, generation: UInt64
   ) -> Outcome {
     guard enabled, let timing, let current = self.generation else { return .inactive }
-    guard generation == current, lastReadingT.map({ t > $0 }) ?? true else { return .ignored }
+    guard generation == current, t >= acceptFrom, lastReadingT.map({ t > $0 }) ?? true else {
+      return .ignored
+    }
     lastReadingT = t
     // A reading already too old when it arrives counts as unknown.
     let fresh = d < t || d - t <= ticks(timing.staleness)

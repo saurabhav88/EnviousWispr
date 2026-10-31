@@ -160,15 +160,31 @@ struct MeetingMuteFollowerTests {
     var f = follower()
     _ = read(&f, .muted, at: 10)
     _ = read(&f, .muted, at: 10.5)
-    f.setEnabled(false)
+    f.setEnabled(false, at: s(10.8))
     #expect(f.state == .disabled)
     #expect(f.intervals == [interval(10, 10.5)])
     #expect(read(&f, .muted, at: 11) == .inactive)
     #expect(f.intervals == [interval(10, 10.5)])
-    f.setEnabled(true)
+    f.setEnabled(true, at: s(11.5))
     #expect(f.state == .checking)
     _ = read(&f, .muted, at: 12)
     #expect(f.intervals == [interval(10, 10.5), open(12)])
+  }
+
+  @Test("a copy begun while the switch was off is ignored after it is turned back on")
+  func switchCycleFence() {
+    var f = follower()
+    _ = read(&f, .unmuted, at: 10.5)
+    // The copy starts at 11.0; the switch goes off at 11.1 and on at 11.2; the copy lands at 11.3.
+    f.setEnabled(false, at: s(11.1))
+    f.setEnabled(true, at: s(11.2))
+    #expect(read(&f, .muted, at: 11.0, delay: 0.3) == .ignored)
+    #expect(f.intervals == [])
+    #expect(f.state == .checking)
+    // The next copy, begun after switching on, is followed.
+    #expect(read(&f, .muted, at: 11.5) == .applied)
+    #expect(f.intervals == [open(11.5)])
+    #expect(f.state == .muted)
   }
 
   @Test("a new target closes the stretch and fences the old target's readings")
@@ -249,8 +265,8 @@ struct MeetingMuteFollowerTests {
 
   /// W + L above H: the unmute's correction reaches audio the gate already released as silence.
   /// It is counted, never applied to that audio and never reported as recovered.
-  @Test("W > H: an unmute whose correction reaches released audio counts it as missed")
-  func windowAboveHold() {
+  @Test("W + L > H: an unmute whose correction reaches released audio counts it as missed")
+  func windowPlusDeliveryAboveHold() {
     let zoom = MeetingMuteFollower.Timing.for(.zoomApp)
     #expect(zoom.window == 2.5)
     #expect(zoom.hold == 3.0)
@@ -264,6 +280,35 @@ struct MeetingMuteFollowerTests {
     #expect(f.missed.silencedTicks == s(0.5))
     #expect(f.missed.keptTicks == 0)
     #expect(f.missed.events == 1)
+  }
+
+  /// W itself above H (a 4 s window with the 3 s hold): even a reading delivered at once moves
+  /// the unmute W back past audio the gate already released as silence.
+  @Test("W > H: the unmute correction reaches released silence and is counted as missed")
+  func windowItselfAboveHold() {
+    var f = MeetingMuteFollower(
+      enabled: true, timebase: Self.nanos,
+      timing: { _ in MeetingMuteFollower.Timing(window: 4.0, hold: 3.0, staleness: 1.5) })
+    f.bind(surface: .teamsApp, generation: 1)
+    _ = read(&f, .muted, at: 10)
+    _ = read(&f, .muted, at: 15)
+    // The unmuted reading copied at 20 arrives at 20.1; the gate has released up to 20.1 - 3.
+    f.commit(through: s(17.1))
+    _ = read(&f, .unmuted, at: 20, delay: 0.1)
+    #expect(f.intervals == [], "[10, 16) ends before C = 17.1: wholly released")
+    #expect(f.missed.silencedTicks == s(1.1), "[16, 17.1) went out as silence")
+    #expect(f.missed.keptTicks == 0)
+    #expect(f.missed.events == 1)
+    // Before C reaches the corrected end, the stretch is published with its literal bounds.
+    var g = MeetingMuteFollower(
+      enabled: true, timebase: Self.nanos,
+      timing: { _ in MeetingMuteFollower.Timing(window: 4.0, hold: 3.0, staleness: 1.5) })
+    g.bind(surface: .teamsApp, generation: 1)
+    _ = read(&g, .muted, at: 10)
+    g.commit(through: s(15))
+    _ = read(&g, .unmuted, at: 20, delay: 0.1)
+    #expect(g.intervals == [interval(10, 16)])
+    #expect(g.missed == MeetingMuteFollower.Missed())
   }
 
   @Test("an update after release: closing at the last muted reading counts silence already out")
