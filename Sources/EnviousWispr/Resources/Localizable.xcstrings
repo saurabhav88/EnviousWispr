@@ -610,7 +610,7 @@
       }
     },
     "%@ recordings were saved by a newer version of EnviousWispr. Update the app to open them." : {
-      "comment" : "History, Recordings: how many meetings this version cannot open because a newer version saved them. Never 1.",
+      "comment" : "History, Meetings: how many meetings this version cannot open because a newer version saved them. Never 1.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1548,7 +1548,7 @@
       }
     },
     "A recording was saved by a newer version of EnviousWispr. Update the app to open it." : {
-      "comment" : "History, Recordings: one meeting this version cannot open (a newer version saved it).",
+      "comment" : "History, Meetings: one meeting this version cannot open (a newer version saved it).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11988,6 +11988,17 @@
         }
       }
     },
+    "Meetings" : {
+      "comment" : "History filter: meetings recorded with EnviousMeet, finished or still recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings"
+          }
+        }
+      }
+    },
     "Meetings in a browser" : {
       "comment" : "EnviousMeet page: the switch for meetings in any web browser, like Google Meet in Chrome.",
       "localizations" : {
@@ -16330,17 +16341,6 @@
         }
       }
     },
-    "Recordings" : {
-      "comment" : "History filter: meetings recorded with EnviousMeet, finished or still recording.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahmen"
-          }
-        }
-      }
-    },
     "Recovered" : {
       "localizations" : {
         "de" : {
@@ -17964,7 +17964,7 @@
       }
     },
     "Show recordings" : {
-      "comment" : "EnviousMeet page: opens History with the Recordings filter.",
+      "comment" : "EnviousMeet page: opens History with the Meetings filter.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17986,7 +17986,7 @@
       }
     },
     "Show the recording" : {
-      "comment" : "History, Recordings: selects the meeting that is recording now.",
+      "comment" : "History, Meetings: selects the meeting that is recording now.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24240,13 +24240,13 @@
         }
       }
     },
-    "Your recordings appear in History, under Recordings." : {
+    "Your recordings appear in History, under M (Meetings)." : {
       "comment" : "EnviousMeet setup: where recordings are, on the last screen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Aufnahmen findest du im „Verlauf“ unter „Aufnahmen“."
+            "value" : "Deine Aufnahmen findest du im „Verlauf“ unter „M“ (Meetings)."
           }
         }
       }
@@ -25578,6 +25578,78 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "von deinem Mac"
+          }
+        }
+      }
+    },
+    "history.filter.all.short" : {
+      "comment" : "History tab letter for All. The full name is the tab's hover and VoiceOver text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A"
+          }
+        }
+      }
+    },
+    "history.filter.dictations.short" : {
+      "comment" : "History tab letter for Dictations. The full name is the tab's hover and VoiceOver text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "D"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "D"
+          }
+        }
+      }
+    },
+    "history.filter.meetings.short" : {
+      "comment" : "History tab letter for Meetings. The full name is the tab's hover and VoiceOver text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "M"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M"
+          }
+        }
+      }
+    },
+    "history.filter.transcripts.short" : {
+      "comment" : "History tab letter for Transcripts. The full name is the tab's hover and VoiceOver text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "T"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "T"
           }
         }
       }
