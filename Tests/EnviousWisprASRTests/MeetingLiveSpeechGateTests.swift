@@ -426,6 +426,41 @@ struct MeetingLiveSpeechGateTests {
     #expect(await s.processedSampleMarkForTests == 44 * Self.rate, "processed only to the slice end")
   }
 
+  @Test("words in dispute keep the next closed slice ending where the disputed decode's input ended")
+  func disputedWordsKeepTheInputEnd() async {
+    // Traced on overlapping voices (§16.5): speech still open when decode 2 heard the window to
+    // 8 s, closed at 7.95 s by decode 3. Ending decode 3 there changed the disputed words.
+    let detector = FakeDetector(speech: [Self.rate..<127_200])
+    let first = [Self.seg(0, 2_000, " one.")]
+    let second = [Self.seg(0, 2_500, " one."), Self.seg(2_500, 6_000, " right two.")]
+    let decoder = Decoder([first, second, second])
+    let audio = Self.audio(seconds: 20)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
+    audio.set(seconds: 4)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("decode 1") { await s.cyclesCompleted(reach: 1) }
+    audio.set(seconds: 8)
+    await Rolling.within("decode 2") { await s.cyclesCompleted(reach: 2) }
+    #expect(await s.heldBackTextForTests == " right two.", "control: words in dispute after decode 2")
+    audio.set(seconds: 12)
+    await Rolling.within("decode 3") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+    #expect(decoder.froms.map(\.to) == [4 * Self.rate, 8 * Self.rate, 8 * Self.rate],
+      "decode 3 hears to decode 2's input end, not the closed speech end (127,200)")
+    #expect(await s.committedTextForTests == "one. right two.", "the disputed words agree and commit")
+  }
+
+  @Test("a disputed input end extends a closed slice only within classified audio")
+  func disputedEndNeedsClassifiedAudio() async throws {
+    // Chunks of 4,096: 40,000 fed classifies 36,864. Speech closes at 16,000.
+    let gate = MeetingLiveSpeechGate(detector: FakeDetector(speech: [0..<16_000]))
+    _ = try await gate.feed([Float](repeating: 0.1, count: 40_000), count: 40_000)
+    #expect(await gate.classify(0..<40_000) == .speech(from: 0, to: 16_000), "control: the closed end")
+    #expect(await gate.classify(0..<40_000, holdingTo: 12_000) == .speech(from: 0, to: 16_000))
+    #expect(await gate.classify(0..<40_000, holdingTo: 30_000) == .speech(from: 0, to: 30_000))
+    #expect(await gate.classify(0..<40_000, holdingTo: 38_000) == .pending, "unclassified: wait")
+  }
+
   @Test("speech starting in the unclassified remainder is left out, then reached later")
   func remainderSpeechIsReachedLater() async {
     // Classified end at 20 s is 319,488; the second speech starts after it.

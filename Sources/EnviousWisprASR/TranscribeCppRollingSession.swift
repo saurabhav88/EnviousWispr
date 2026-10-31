@@ -125,6 +125,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// Forced origin moves so far: a heard decode whose own retention forced a move records no
   /// coverage, since part of its hypothesis was discarded, not committed.
   private var forcedOriginMoves = 0
+  /// #4254 §16.5, meeting sessions only: the absolute end of the input of the heard decode
+  /// whose words are still in dispute; nil when nothing is. Empty and refused decodes never set
+  /// it; `start` and a forced discard clear it.
+  private var disputedInputEnd: Int?
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
   /// The held-back words last handed to `Publication.onTranscript`.
@@ -265,6 +269,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     speechGate = meetingSpeech.map { MeetingLiveSpeechGate(detector: $0.makeDetector()) }
     recognizedInput = nil
     originAtCommit = false
+    disputedInputEnd = nil
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -444,7 +449,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       var slice: (from: Int, to: Int)?
       if let gate = speechGate {
         await gate.prune(before: originSample)
-        let classified = await gate.classify(originSample..<count)
+        let classified = await gate.classify(originSample..<count, holdingTo: disputedInputEnd)
         guard live else { break }
         switch classified {
         case .silent(let through):
@@ -509,6 +514,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
         if speechGate != nil, forcedOriginMoves == forcedBefore {
           recognizedInput = slice.map { (originSample + $0.from)..<(originSample + $0.to) }
             ?? (originSample..<count)
+        }
+        if speechGate != nil {
+          disputedInputEnd = heldBack.isEmpty && previousHypothesis.isEmpty ? nil : realEnd
         }
         // After the `live` check: a terminal that won the race never publishes.
         publishHypothesis()
@@ -647,6 +655,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     discardedUnstableAudio = true
     heldBack = []
     previousHypothesis = []
+    disputedInputEnd = nil
     bufferStart = retentionLine
     releaseAudio()
     // The held-back words go with their agreement state: they never become finalized.

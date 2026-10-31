@@ -73,7 +73,15 @@ final class MeetingLiveSpeechGate {
   }
 
   /// What `window` (absolute) holds so far, from one detector snapshot.
-  nonisolated(nonsending) func classify(_ window: Range<Int>) async -> MeetingLiveWindow {
+  ///
+  /// `holdingTo` (absolute): the end of the input that produced the words still in dispute. A
+  /// closed slice never ends before it, so the decode compared for agreement hears at least
+  /// what the disputed decode heard (#4254 §16.5: an earlier end changed the disputed words of
+  /// overlapping voices, and the origin move then released them). An end not yet classified
+  /// waits (`.pending`).
+  nonisolated(nonsending) func classify(_ window: Range<Int>, holdingTo: Int? = nil) async
+    -> MeetingLiveWindow
+  {
     guard let detector else { return .raw }
     let live = await detector.liveSpeech(in: window)
     guard let first = live.speech.first, let last = live.speech.last else {
@@ -86,10 +94,12 @@ final class MeetingLiveSpeechGate {
     // A closed last speech ends the slice at its padding (never past what was classified);
     // open speech, or speech reaching the window end, keeps the window end.
     let end = min(last.upperBound, live.classifiedEnd)
-    let to =
-      !live.speechOpen && end < window.upperBound && end > first.lowerBound
-      ? end - window.lowerBound : window.count
-    return .speech(from: from, to: to)
+    guard !live.speechOpen && end < window.upperBound && end > first.lowerBound else {
+      return .speech(from: from, to: window.count)
+    }
+    guard let holdingTo, holdingTo > end else { return .speech(from: from, to: end - window.lowerBound) }
+    guard holdingTo <= live.classifiedEnd else { return .pending }
+    return .speech(from: from, to: min(holdingTo, window.upperBound) - window.lowerBound)
   }
 
   /// Drops detected ranges no window from `sample` on can reach.
