@@ -379,7 +379,7 @@ enum MeetingsCopy {
     "Record a meeting on your Mac and get a transcript with who said what.",
     comment: "EnviousMeet page: the line under the title.")
   static let startRecording = LocalizedStringResource(
-    "Start Recording", comment: "EnviousMeet: the button that starts a meeting recording.")
+    "Record a meeting", comment: "EnviousMeet: the button that starts a meeting recording.")
   static let whereRecordingsLive = LocalizedStringResource(
     "Start and stop a recording from the menu bar. Your recordings are in History.",
     comment: "EnviousMeet page: where recording is controlled and where recordings are.")
