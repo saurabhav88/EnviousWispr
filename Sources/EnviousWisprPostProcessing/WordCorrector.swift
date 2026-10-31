@@ -1251,7 +1251,8 @@ public struct WordCorrector: Sendable {
         switch Self.chooseGrammarPeel(core: core, lookups: lookups) {
         case .peel(let stem, let ending):
           matchCore = stem
-          peeledSuffix = ending
+          // A dictated "SLACKS" gets the saved spelling plus a lowercase ending ("Slacks").
+          peeledSuffix = ending.lowercased()
           grammarPeel = true
         case .ambiguous:
           grammarAmbiguous = true

@@ -136,6 +136,18 @@ struct WordCorrectorGrammarEndingTests {
     #expect(corrected("lunch at macdonal's today", [word]) == "lunch at McDonald's today")
   }
 
+  @Test("an all-caps plural gets the saved spelling and a lowercase ending")
+  func allCapsPluralGetsLowercaseEnding() {
+    let word = CustomWord(canonical: "Slack", aliases: [], category: .brand)
+    #expect(corrected("my SLACKS", [word]) == "my Slacks")
+  }
+
+  @Test("a possessive on a saved domain keeps its ending")
+  func possessiveOnSavedDomainKept() {
+    let word = CustomWord(canonical: "GitHub.com", aliases: [], category: .brand)
+    #expect(corrected("check github.com's page", [word]) == "check GitHub.com's page")
+  }
+
   @Test("a word that ends in s and is itself saved is left alone")
   func savedWordEndingInSUntouched() {
     let word = CustomWord(canonical: "Jones", aliases: [], category: .person)
