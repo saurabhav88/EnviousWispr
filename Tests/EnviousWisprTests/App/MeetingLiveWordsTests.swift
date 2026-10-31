@@ -571,7 +571,7 @@ struct MeetingLiveWordsTests {
     let id = UUID()
     let observer = owner.prepareCapture(meetingID: id)
     let early: [Float] = (0..<1_600).map(Float.init)
-    early.withUnsafeBufferPointer { observer(.microphone, $0) }
+    early.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty, "nothing resolved yet")
     owner.captureStarted(
       meetingID: id, captured: [.microphone, .callSound], vocabulary: Self.vocabulary,
@@ -746,7 +746,7 @@ struct MeetingLiveWordsTests {
     let late = try #require(world.appleEngines.first?.sessions.first)
     #expect(late.ends == 1, "ended once by the old recording's cleanup")
     let samples: [Float] = [1, 2, 3]
-    samples.withUnsafeBufferPointer { observer(.microphone, $0) }
+    samples.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     #expect(late.fed.isEmpty, "never fed: it was never the recording's session")
     owner.stop()
   }
@@ -865,11 +865,11 @@ struct MeetingLiveWordsTests {
     let mic = try #require(world.appleEngines[0].sessions.first)
     let call = try #require(world.appleEngines[1].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0) }
+    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     // The tail arrives while the feed is held (the recorder's released 3 s), then Stop.
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0) }
+    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     owner.stop()
     await PreviewWait.within("the other track ended", onExpiry: feed.open) {
       await call.until { call.ends == 1 }
@@ -897,10 +897,10 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0) }
+    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0) }
+    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     let meetingID = try #require(owner.transcript?.meetingID)
     owner.delete(meetingID: meetingID)
     await PreviewWait.within("the end started", onExpiry: feed.open) {
@@ -1001,7 +1001,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     let second = [Float](repeating: 0.1, count: 16_000)
-    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0) } }
+    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0, .test) } }
     await Self.until("the dropped flag", owner, release: feed.open) {
       $0.transcript?.tracks[.microphone]?.droppedAudio == true
     }
@@ -1089,7 +1089,7 @@ struct MeetingLiveWordsTests {
   private static func speak(
     _ observer: MeetingRecorder.LiveSamplesObserver, _ track: MeetingTrackKind, _ samples: [Float]
   ) {
-    samples.withUnsafeBufferPointer { observer(track, $0) }
+    samples.withUnsafeBufferPointer { observer(track, $0, .test) }
   }
 
   @Test("no restart before the audio threshold, and voiced audio postpones it to the first quiet window")
@@ -1191,9 +1191,11 @@ struct MeetingLiveWordsTests {
   }
 
   @Test(
-    "Stop, Delete or Quit during a restart's end or its replacement open installs nothing and ends late handles once",
+    "Stop during a restart drains the held tail into the replacement; Delete or Quit installs nothing and ends late handles once",
     arguments: Exit.allCases)
   func exitDuringRestart(_ exit: Exit) async throws {
+    // #4248: a tail held in the pump at the exit, distinct from anything spoken before.
+    let tail: [Float] = (0..<3_200).map { 0.5 + Float($0) / 100_000 }
     // The old session is still ending.
     do {
       let world = World()
@@ -1208,11 +1210,19 @@ struct MeetingLiveWordsTests {
       let old = try #require(engine.sessions.first)
       Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
       await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
+      Self.speak(observer, .microphone, tail)
       try Self.exit(owner, exit)
       end.open()
       #expect(await owner.waitForCleanups(seconds: 10))
-      #expect(engine.openEvents.count == 1, "no replacement after the exit")
       #expect(old.ends == 1)
+      if exit == .stop {
+        #expect(engine.openEvents.count == 2, "the replacement opens for the drain")
+        let replacement = try #require(engine.sessions.last)
+        #expect(replacement.fed.suffix(tail.count) == ArraySlice(tail), "the held tail, in order")
+        #expect(replacement.ends == 1, "ended once, after the drain")
+      } else {
+        #expect(engine.openEvents.count == 1, "no replacement after the exit")
+      }
     }
     // The replacement open is held.
     do {
@@ -1229,13 +1239,18 @@ struct MeetingLiveWordsTests {
       await PreviewWait.within("the replacement open", onExpiry: reopen.open) {
         await reopen.reached(1)
       }
+      Self.speak(observer, .microphone, tail)
       try Self.exit(owner, exit)
       reopen.open()
       await PreviewWait.within("the late handle") { await engine.opened.reached(2) }
       let late = engine.sessions[1]
       #expect(await owner.waitForCleanups(seconds: 10))
       #expect(late.ends == 1, "ended once")
-      #expect(late.fed.isEmpty, "never fed")
+      if exit == .stop {
+        #expect(late.fed.suffix(tail.count) == ArraySlice(tail), "the held tail, in order")
+      } else {
+        #expect(late.fed.isEmpty, "never fed")
+      }
       #expect(engine.sessions[0].ends == 1)
     }
   }
@@ -1616,4 +1631,9 @@ struct MeetingLiveWordsTests {
       #expect(await owner.waitForCleanups(seconds: 10))
     }
   }
+}
+
+extension MeetingReleasedChunk {
+  /// Metadata for a chunk a test offers directly (live words do not read it).
+  static let test = MeetingReleasedChunk(hostTime: 0, afterDrop: false, sourceBreak: false)
 }

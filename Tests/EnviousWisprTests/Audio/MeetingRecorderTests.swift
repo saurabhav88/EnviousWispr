@@ -540,6 +540,8 @@ struct MeetingRecorderTests {
   @Test("a microphone back within 1.5 s keeps its gap: the reopened audio starts where it arrived")
   func quickReopenKeepsTheGap() async throws {
     let r = try rig(microphones: 2, callSound: false)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
     _ = try await r.recorder.start()
     speak(r.microphones[0], r.clock, seconds: 1)
     r.microphones[0].onInterrupted?(.deviceRemoved)
@@ -563,6 +565,11 @@ struct MeetingRecorderTests {
     #expect(segments.last?.frameCount == 32_000, "the run break is taken once, not per buffer")
     #expect(r.recorder.microphoneHealth?.gaps == 1)
     #expect(r.recorder.microphoneSourceHealth.framesNotAdmitted == 800, "the pre-roll was refused")
+    // #4248: live words get the same chunks through the hold, the run break included.
+    let infos = observed.infos(of: .microphone)
+    #expect(infos.filter(\.sourceBreak).count == 1, "the reopen's run break reaches live words once")
+    #expect(infos.first?.hostTime == r.recorder.anchor, "original capture time, never restamped")
+    #expect(observed.of(.microphone).count == 48_000)
   }
 
   @Test("a microphone that stops delivering while recording is replaced and the stall counted")
@@ -672,14 +679,19 @@ struct MeetingRecorderTests {
   /// What the live observer saw, copied during each call (the pointer is borrowed).
   final class Observed: Sendable {
     let chunks = OSAllocatedUnfairLock<[(MeetingTrackKind, [Float])]>(initialState: [])
+    let infos = OSAllocatedUnfairLock<[(MeetingTrackKind, MeetingReleasedChunk)]>(initialState: [])
+    func infos(of track: MeetingTrackKind) -> [MeetingReleasedChunk] {
+      infos.withLock { $0.filter { $0.0 == track }.map(\.1) }
+    }
     func of(_ track: MeetingTrackKind) -> [Float] {
       chunks.withLock { $0.filter { $0.0 == track }.flatMap(\.1) }
     }
     var count: Int { chunks.withLock { $0.count } }
     var observer: MeetingRecorder.LiveSamplesObserver {
-      { [self] track, samples in
+      { [self] track, samples, info in
         let copy = Array(samples)  // inside the borrow, before anything else
         chunks.withLock { $0.append((track, copy)) }
+        infos.withLock { $0.append((track, info)) }
       }
     }
   }
@@ -780,7 +792,7 @@ struct MeetingRecorderTests {
   func liveSamplesDepthStaysFlat() async throws {
     let r = try rig(callSound: true)
     let depths = OSAllocatedUnfairLock(initialState: [Int]())
-    r.recorder.liveSamples = { track, _ in
+    r.recorder.liveSamples = { track, _, _ in
       guard track == .callSound else { return }
       // The address of a local: how far down the stack this call runs (cheap on every chunk).
       var marker = 0
@@ -989,6 +1001,7 @@ struct MeetingRecorderTests {
     speak(r.microphones[0], r.clock, spoken)
     await r.recorder.stop()
     #expect(observed.of(.microphone) == spoken, "the whole held tail, once, in order")
+    #expect(observed.infos(of: .microphone).first?.hostTime == r.recorder.anchor)
     r.recorder.liveSamples = observed.observer
     #expect(r.recorder.liveSamples == nil, "deliveries ended for good after the files closed")
   }

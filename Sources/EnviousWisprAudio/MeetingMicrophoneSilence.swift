@@ -24,6 +24,12 @@ public struct MeetingReleasedChunk: Sendable, Equatable {
   public let afterDrop: Bool
   /// The producer said this chunk does not continue the previous one.
   public let sourceBreak: Bool
+
+  public init(hostTime: UInt64, afterDrop: Bool, sourceBreak: Bool) {
+    self.hostTime = hostTime
+    self.afterDrop = afterDrop
+    self.sourceBreak = sourceBreak
+  }
 }
 
 /// The microphone hold of one `MeetingTrackWriter` (#4248 plan §3.3). Accepted audio waits here

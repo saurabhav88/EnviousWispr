@@ -55,8 +55,11 @@ public final class MeetingRecorder {
   public typealias SegmentHandler = @Sendable (MeetingTrackKind, MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @MainActor (MeetingTrackKind, Error) -> Void
   /// See `liveSamples`.
-  public typealias LiveSamplesObserver = @Sendable (MeetingTrackKind, UnsafeBufferPointer<Float>)
-    -> Void
+  /// A chunk, its track and its original metadata (#4248: the capture host time of its first
+  /// sample, a drop before it, and a producer run break), as the file gets them.
+  public typealias LiveSamplesObserver = @Sendable (
+    MeetingTrackKind, UnsafeBufferPointer<Float>, MeetingReleasedChunk
+  ) -> Void
 
   public struct Configuration: Sendable {
     public let meetingID: UUID
@@ -370,7 +373,11 @@ public final class MeetingRecorder {
         { samples, hostTime, startsNewRun in
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
           // Borrowed for this call only; read under the lock, invoked outside it.
-          if let observe = live.currentForCallSound() { observe(.callSound, samples) }
+          if let observe = live.currentForCallSound() {
+            observe(
+              .callSound, samples,
+              MeetingReleasedChunk(hostTime: hostTime, afterDrop: false, sourceBreak: startsNewRun))
+          }
         },
         { [weak self] reason in
           Task { @MainActor in
@@ -656,8 +663,8 @@ public final class MeetingRecorder {
   private nonisolated static func microphoneRelease(to live: LiveObserverBox)
     -> MeetingTrackWriter.ReleasedHandler
   {
-    { frames, _ in
-      if let observe = live.current() { observe(.microphone, frames) }
+    { frames, info in
+      if let observe = live.current() { observe(.microphone, frames, info) }
     }
   }
 
