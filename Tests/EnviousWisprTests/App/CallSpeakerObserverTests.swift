@@ -392,7 +392,7 @@ import os
         capture.calls.withLock { $0 } >= copiesBeforeRules + 2
       }
       await coordinator.stop()
-      await eventually("ready") { coordinator.processing == nil && coordinator.phase == .idle }
+      await MeetingCoordinatorTests.livePassFinished(coordinator, recorder.configuration.meetingID)
       guard case .usable(let log)? = harness.jobs.last?.receivedCallSpeakers.first else {
         Issue.record("naming did not attach after the rules arrived")
         return
