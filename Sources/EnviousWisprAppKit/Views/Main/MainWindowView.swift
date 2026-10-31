@@ -17,7 +17,13 @@ struct StatusView: View {
   // #3886: the error actions for a denied or missing microphone.
   @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
+  // #4257: the idle pane must know which History tab is open.
+  @Environment(TranscriptCoordinator.self) private var transcriptCoordinator
   @State private var elapsed: TimeInterval = 0
+
+  /// Whether the idle pane shows the dictation prompt. On the Meetings tab the user is looking at
+  /// meetings, so "start dictating" is the wrong sentence there (#4257).
+  static func showsDictationPrompt(filter: HistoryFilter) -> Bool { filter != .recordings }
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -25,6 +31,13 @@ struct StatusView: View {
   var body: some View {
     VStack(spacing: 16) {
       switch liveRecordingState.pipelineState {
+      case .idle where !Self.showsDictationPrompt(filter: transcriptCoordinator.historyFilter):
+        ContentUnavailableView {
+          Label("Meetings", systemImage: "person.2")
+        } description: {
+          Text("Select an item from the sidebar to view it.")
+        }
+
       case .idle:
         ContentUnavailableView {
           Label("Ready to Transcribe", systemImage: "mic")
