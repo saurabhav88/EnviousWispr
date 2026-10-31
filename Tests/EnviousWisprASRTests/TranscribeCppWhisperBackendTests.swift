@@ -1054,9 +1054,9 @@ struct TranscribeCppWhisperBackendTests {
     await TranscribeCppRollingSessionTests.within("decode") { await rolling.cyclesCompleted(reach: 1) }
     await rolling.cancel()
     #expect(
-      inputs.get() == [320_000 - 80_000 + LiveTranscribeCppWhisperBackend.silencePaddingSamples],
-      "the native input starts at the speech; padding added once")
-    #expect(await rolling.heldBackTextForTests == "hello.", "the hallucination over silence is filtered")
+      inputs.get() == [144_000 - 80_000 + LiveTranscribeCppWhisperBackend.silencePaddingSamples],
+      "the native input is the speech slice; padding added once")
+    #expect(await rolling.heldBackTextForTests == "hello.", "nothing past the slice end is real")
     await runtime.releaseAndDrain()
   }
 

@@ -79,9 +79,10 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// padding, occupancy and the native-boundary observer; a cancelled call returns only after
   /// the aborted native run ended.
   typealias Decode = @Sendable ([Float]) async throws -> TranscribeCppRunResult
-  /// A meeting decode of `window` from `from` samples in (leading silence trimmed): segment
-  /// times are relative to that start; the owner filters against the whole `window`.
-  typealias DecodeFrom = @Sendable ([Float], Int) async throws -> TranscribeCppRunResult
+  /// A meeting decode of the slice `from..<to` of `window` (silence before the first and after
+  /// the last speech trimmed, plan §18): segment times are relative to `from`; the owner
+  /// filters against the whole `window` with `to` as the real end.
+  typealias DecodeFrom = @Sendable ([Float], Int, Int) async throws -> TranscribeCppRunResult
 
   /// Meeting transcript sessions only (#4254 plan §16.2, §16.6): live speech detection.
   struct MeetingSpeech: Sendable {
@@ -365,12 +366,15 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// Cancels the loop AND a running flush, and returns only after both native runs physically
   /// ended. A finalize still in progress returns `streaming_cancelled`, never text.
   package func cancel() async {
+    let run = generation
     cancelled = true
     audioSamplesProvider = nil
     let flush = flushTask
     flush?.cancel()
     await stopLoop()
     _ = await flush?.result
+    // #4254: the drained run's detector goes with it; a newer run keeps its own.
+    if run == generation { speechGate = nil }
   }
 
   /// Ends the loop: no cycle mutates state after this, an in-flight decode is cancelled (the
@@ -426,7 +430,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       let originSample = Self.originSample(bufferStart, count: count, samples: samples)
       var origin = Float(originSample) / Self.sampleRate
       let window = Self.audio(samples, count: count, from: originSample)
-      var trim: Int?
+      var slice: (from: Int, to: Int)?
       if let gate = speechGate {
         await gate.prune(before: originSample)
         let classified = await gate.classify(originSample..<count)
@@ -440,8 +444,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
         case .pending:
           completeCycle()
           continue
-        case .speech(let from):
-          trim = from
+        case .speech(let from, let to):
+          slice = (from, to)
           origin += Float(from) / Self.sampleRate
         case .raw:
           break
@@ -451,8 +455,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       loopDecodeInFlight = true
       let native: TranscribeCppRunResult
       do {
-        if let trim, let decodeFrom = meetingSpeech?.decodeFrom {
-          native = try await decodeFrom(window, trim)
+        if let slice, let decodeFrom = meetingSpeech?.decodeFrom {
+          native = try await decodeFrom(window, slice.from, slice.to)
         } else {
           native = try await decode(window)
         }
@@ -478,8 +482,11 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
           start: origin + Float($0.0.startMs) / 1000, end: origin + Float($0.0.endMs) / 1000,
           text: $0.1)
       }
-      if apply(segments, realAudioEnd: Float(count) / Self.sampleRate) {
-        lastDecodeSampleCount = count
+      // A slice that ended at the last closed speech covers audio only up to that end: the
+      // excluded tail is neither real audio for this decode nor processed (plan §18).
+      let realEnd = slice.map { originSample + $0.to } ?? count
+      if apply(segments, realAudioEnd: Float(realEnd) / Self.sampleRate) {
+        lastDecodeSampleCount = max(lastDecodeSampleCount, realEnd)
         // After the `live` check: a terminal that won the race never publishes.
         publishHypothesis()
       }

@@ -189,6 +189,26 @@ struct MeetingSpeechDetectorTests {
     #expect(await d.window(0..<6 * Self.chunk) == .speech([20_400..<24_576]))
   }
 
+  @Test("live snapshot: closed and open speech, classified end, and padding alone is no speech")
+  func liveSnapshot() async throws {
+    let script = Script([1: (.speechStart, 6_000), 3: (.speechEnd, 15_000)])
+    let d = detector(script)
+    try await d.append(audio(5 * Self.chunk + 100))
+    let closed = await d.liveSpeech(in: 0..<(5 * Self.chunk + 100))
+    #expect(closed == MeetingLiveSpeech(speech: [4_400..<16_600], speechOpen: false, classifiedEnd: 5 * Self.chunk))
+    // Cut inside the padding after the speech ended (15,000 to 16,600): nothing real is there.
+    let paddingOnly = await d.liveSpeech(in: 15_200..<20_000)
+    #expect(paddingOnly.speech.isEmpty, "\(paddingOnly)")
+    // A sliver under 100 ms of speech that began before the window is a remnant, not speech;
+    // 100 ms or more still counts.
+    #expect(await d.liveSpeech(in: 14_000..<20_000).speech.isEmpty, "1,000 samples of remnant")
+    #expect(await d.liveSpeech(in: 13_400..<20_000).speech == [13_400..<16_600], "1,600 samples count")
+    let open = Script([1: (.speechStart, 6_000)])
+    let o = detector(open)
+    try await o.append(audio(3 * Self.chunk))
+    #expect(await o.liveSpeech(in: 0..<(3 * Self.chunk)).speechOpen)
+  }
+
   @Test("live: an error after good chunks stops the detector for good")
   func liveFailureStops() async throws {
     let d = detector(Script(failAt: 2))

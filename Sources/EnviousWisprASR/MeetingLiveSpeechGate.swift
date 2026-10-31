@@ -4,9 +4,8 @@ import EnviousWisprAudio
 /// `MeetingSpeechDetector` in the app, a fake in tests.
 package protocol LiveSpeechDetecting: Sendable {
   func append(_ samples: [Float]) async throws
-  func window(_ window: Range<Int>) async -> MeetingSpeechWindow
+  func liveSpeech(in window: Range<Int>) async -> MeetingLiveSpeech
   func prune(before sample: Int) async
-  var classifiedSamples: Int { get async }
 }
 
 extension MeetingSpeechDetector: LiveSpeechDetecting {}
@@ -21,9 +20,11 @@ enum MeetingLiveWindow: Equatable {
   case silent(through: Int)
   /// Nothing in the window is classified yet: no decode this cycle, no mark change.
   case pending
-  /// Speech: decode from `from` samples into the window (leading silence trimmed; the
-  /// detector's speech padding is already in it).
-  case speech(from: Int)
+  /// Speech: decode the window from `from` to `to` (window-relative). Leading silence is
+  /// trimmed (the detector's padding is already in `from`); `to` is the padded end of the last
+  /// speech when that speech is closed and only classified silence follows it, else the
+  /// window end (plan §18 c3.1).
+  case speech(from: Int, to: Int)
   /// Detection is off for this session: today's untrimmed decode.
   case raw
 }
@@ -71,21 +72,24 @@ final class MeetingLiveSpeechGate {
     }
   }
 
-  /// What `window` (absolute) holds so far.
+  /// What `window` (absolute) holds so far, from one detector snapshot.
   nonisolated(nonsending) func classify(_ window: Range<Int>) async -> MeetingLiveWindow {
     guard let detector else { return .raw }
-    switch await detector.window(window) {
-    case .speech(let ranges):
-      return .speech(
-        from: max(0, (ranges.first?.lowerBound ?? window.lowerBound) - window.lowerBound))
-    case .silent:
-      return .silent(through: window.upperBound)
-    case .unknown:
-      // The classified part holds no speech; a partial chunk at the end waits for more audio
+    let live = await detector.liveSpeech(in: window)
+    guard let first = live.speech.first, let last = live.speech.last else {
+      // The classified part holds no speech. A partial chunk at the end waits for more audio
       // and stays unknown, so only the classified part counts as processed.
-      let classified = min(window.upperBound, await detector.classifiedSamples)
+      let classified = min(window.upperBound, live.classifiedEnd)
       return classified > window.lowerBound ? .silent(through: classified) : .pending
     }
+    let from = max(0, first.lowerBound - window.lowerBound)
+    // A closed last speech ends the slice at its padding (never past what was classified);
+    // open speech, or speech reaching the window end, keeps the window end.
+    let end = min(last.upperBound, live.classifiedEnd)
+    let to =
+      !live.speechOpen && end < window.upperBound && end > first.lowerBound
+      ? end - window.lowerBound : window.count
+    return .speech(from: from, to: to)
   }
 
   /// Drops detected ranges no window from `sample` on can reach.

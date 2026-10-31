@@ -12,6 +12,23 @@ public enum MeetingSpeechWindow: Sendable, Equatable {
   case unknown
 }
 
+/// One atomic look at a live window (#4254 plan §18 c3.1): what the detector knows about it,
+/// taken in one actor turn so the three parts always agree.
+public struct MeetingLiveSpeech: Sendable, Equatable {
+  /// Speech ranges inside the window (padded, merged, clamped to it; absolute indices).
+  public let speech: [Range<Int>]
+  /// Whether speech is still open (started and not yet closed by a silence).
+  public let speechOpen: Bool
+  /// Samples classified so far (absolute); later samples are unknown.
+  public let classifiedEnd: Int
+
+  public init(speech: [Range<Int>], speechOpen: Bool, classifiedEnd: Int) {
+    self.speech = speech
+    self.speechOpen = speechOpen
+    self.classifiedEnd = classifiedEnd
+  }
+}
+
 /// Silero speech detection for meeting Whisper (#4254), with dictation's settings and input
 /// conditioning (`SpeechVADSettings`, `VADInputHighPass`), so meeting and dictation agree on
 /// what speech is.
@@ -158,6 +175,26 @@ public actor MeetingSpeechDetector {
     let speech = Self.padded(raw, within: window)
     if !speech.isEmpty { return .speech(speech) }
     return window.upperBound <= classified ? .silent : .unknown
+  }
+
+  /// Live words (#4254 plan §18): the window's speech, whether speech is open and the classified
+  /// end, from one snapshot. A window holds speech only where real (unpadded) speech falls
+  /// inside it. The remnant of speech that began before the window, with less than one padding
+  /// length (100 ms) of it inside, is the scrolled-out end of words already decoded, not
+  /// speech to decode again: alone, Whisper turns such a sliver into "Thank you." (#4254 c3.1
+  /// real-model gate). Speech that starts inside the window always counts.
+  public func liveSpeech(in window: Range<Int>) -> MeetingLiveSpeech {
+    var raw = closedSpans
+    if let start = openStart, classified > start { raw.append(start..<classified) }
+    let pad = AudioConstants.speechPaddingSamples
+    raw.removeAll { span in
+      guard span.overlaps(window) else { return true }
+      let isRemnant = span.lowerBound < window.lowerBound
+      return isRemnant && span.upperBound - window.lowerBound < pad
+    }
+    return MeetingLiveSpeech(
+      speech: Self.padded(raw, within: window), speechOpen: openStart != nil,
+      classifiedEnd: classified)
   }
 
   /// Drops closed ranges whose padded end is at or before `sample`.

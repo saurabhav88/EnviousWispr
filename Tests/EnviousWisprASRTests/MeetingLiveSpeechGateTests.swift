@@ -75,15 +75,16 @@ struct MeetingLiveSpeechGateTests {
 
     var classifiedSamples: Int { fedCount / chunk * chunk }
 
-    func window(_ window: Range<Int>) -> MeetingSpeechWindow {
+    /// A range reaching past the classified end is speech still open.
+    func liveSpeech(in window: Range<Int>) -> MeetingLiveSpeech {
       let classified = classifiedSamples
       let inside = speech.compactMap { range -> Range<Int>? in
         let lower = max(range.lowerBound, window.lowerBound)
         let upper = min(range.upperBound, classified, window.upperBound)
         return upper > lower ? lower..<upper : nil
       }
-      if !inside.isEmpty { return .speech(inside) }
-      return window.upperBound <= classified ? .silent : .unknown
+      let open = speech.contains { $0.lowerBound < classified && $0.upperBound > classified }
+      return MeetingLiveSpeech(speech: inside, speechOpen: open, classifiedEnd: classified)
     }
 
     func prune(before sample: Int) { prunes.append(sample) }
@@ -103,7 +104,7 @@ struct MeetingLiveSpeechGateTests {
   final class Decoder: @unchecked Sendable {
     private let lock = NSLock()
     private var script: [[TranscribeCppSegment]]
-    private(set) var fromCalls: [(count: Int, from: Int)] = []
+    private(set) var fromCalls: [(count: Int, from: Int, to: Int)] = []
     private(set) var rawCalls: [Int] = []
     private let failing: Bool
     private let neverAgree: Bool
@@ -115,7 +116,7 @@ struct MeetingLiveSpeechGateTests {
     }
 
     var calls: Int { lock.withLock { fromCalls.count + rawCalls.count } }
-    var froms: [(count: Int, from: Int)] { lock.withLock { fromCalls } }
+    var froms: [(count: Int, from: Int, to: Int)] { lock.withLock { fromCalls } }
     var raws: [Int] { lock.withLock { rawCalls } }
 
     private func next(_ count: Int) throws -> TranscribeCppRunResult {
@@ -133,9 +134,9 @@ struct MeetingLiveSpeechGateTests {
     }
 
     var from: TranscribeCppRollingSession.DecodeFrom {
-      { [self] samples, from in
-        lock.withLock { fromCalls.append((samples.count, from)) }
-        return try next(samples.count - from)
+      { [self] samples, from, to in
+        lock.withLock { fromCalls.append((samples.count, from, to)) }
+        return try next(to - from)
       }
     }
 
@@ -264,8 +265,8 @@ struct MeetingLiveSpeechGateTests {
       meetingSpeech: .init(makeDetector: { detector }, decodeFrom: decoder.from))
     await s.start(audioSamplesProvider: provider)
     await Rolling.within("two cycles") { await s.cyclesCompleted(reach: 2) }
-    await s.cancel()
     #expect(await s.speechDetectionDegradedForTests == true)
+    await s.cancel()
     #expect(await detector.appends.count == 1, "never fed across the gap")
     #expect(decoder.raws.first != nil, "later windows take today's raw route")
   }
@@ -295,6 +296,7 @@ struct MeetingLiveSpeechGateTests {
     #expect(
       froms.map(\.from) == [9 * Self.rate, 9 * Self.rate], "leading silence trimmed to the speech")
     #expect(froms.map(\.count) == [18 * Self.rate, Int(19.5 * Float(Self.rate))])
+    #expect(froms.map(\.to) == [12 * Self.rate, 12 * Self.rate], "the slice ends where the closed speech ends")
     #expect(events.finalized == "hello there.", "held-back words commit on agreement")
     #expect(await s.lastCommittedEndForTests == 52 + 9 + 1.5, "origin + trim + segment end, once")
     #expect(!events.all.contains(.discontinuity))
@@ -315,6 +317,7 @@ struct MeetingLiveSpeechGateTests {
     #expect(
       decoder.froms.first?.count == 20 * Self.rate, "the whole window, interior silence included")
     #expect(decoder.froms.first?.from == 2 * Self.rate)
+    #expect(decoder.froms.first?.to == 14 * Self.rate, "interior silence kept; the slice ends at the last speech")
     #expect(await s.heldBackTextForTests == "one. two.", "both sides kept")
   }
 
@@ -348,8 +351,8 @@ struct MeetingLiveSpeechGateTests {
     await Rolling.within("silent cycle") { await s.cyclesCompleted(reach: 1) }
     audio.set(seconds: 22)
     await Rolling.within("raw cycle") { await s.cyclesCompleted(reach: 2) }
-    await s.cancel()
     #expect(await s.speechDetectionDegradedForTests == true)
+    await s.cancel()
     #expect(decoder.raws == [22 * Self.rate], "the untrimmed window from origin 0")
     #expect(decoder.froms.isEmpty)
     #expect(await detector.appends.count == 2, "no append after the failure")
@@ -390,11 +393,118 @@ struct MeetingLiveSpeechGateTests {
       await s.cancel()
       done.update { $0 = true }
     }
-    await Task.yield()
+    // The terminal has reached the shared drain, which waits on the held append.
+    await Rolling.within("cancel at the drain") { await s.drainJoins(reach: 1) }
     #expect(!done.current, "cancel waits for the detector")
     await detector.release()
     await Rolling.within("cancel") { await cancelling.value }
     #expect(done.current)
+  }
+
+  @Test("a closed speech ends the slice: padding-only text dropped, crossing ends clamped, mark at the slice end")
+  func closedSpeechEndsTheSlice() async {
+    let detector = FakeDetector(speech: [(41 * Self.rate)..<(44 * Self.rate)])
+    // Times relative to the slice start (41 s); the slice is 3 s long.
+    let words = [Self.seg(0, 1_000, " hi."), Self.seg(2_000, 4_000, " crossing"), Self.seg(3_500, 3_800, " pad")]
+    let decoder = Decoder([words, words])
+    let events = Rolling.Events()
+    let audio = Self.audio(seconds: 60)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: events)
+    audio.set(seconds: 40)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("silent cycle") { await s.cyclesCompleted(reach: 1) }
+    #expect(await s.bufferStartForTests == 32, "control: a nonzero origin")
+    audio.set(seconds: 50)
+    await Rolling.within("decode 1") { await s.cyclesCompleted(reach: 2) }
+    audio.set(seconds: 51.5)
+    await Rolling.within("decode 2") { await s.cyclesCompleted(reach: 3) }
+    await s.cancel()
+    #expect(decoder.froms.map(\.from) == [9 * Self.rate, 9 * Self.rate])
+    #expect(decoder.froms.map(\.to) == [12 * Self.rate, 12 * Self.rate])
+    #expect(events.finalized == "hi. crossing", "the segment starting past the slice end is not real")
+    #expect(await s.lastCommittedEndForTests == 44, "the crossing end clamped to the slice end")
+    #expect(await s.processedSampleMarkForTests == 44 * Self.rate, "processed only to the slice end")
+  }
+
+  @Test("speech starting in the unclassified remainder is left out, then reached later")
+  func remainderSpeechIsReachedLater() async {
+    // Classified end at 20 s is 319,488; the second speech starts after it.
+    let detector = FakeDetector(speech: [(2 * Self.rate)..<(4 * Self.rate), 319_600..<(30 * Self.rate)])
+    let decoder = Decoder()
+    let audio = Self.audio(seconds: 30)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
+    audio.set(seconds: 20)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("decode 1") { await s.cyclesCompleted(reach: 1) }
+    audio.set(seconds: 23)
+    await Rolling.within("decode 2") { await s.cyclesCompleted(reach: 2) }
+    await s.cancel()
+    let froms = decoder.froms
+    #expect(froms.first?.to == 4 * Self.rate, "the remainder is not decoded with the closed speech")
+    #expect(froms.last?.to == 23 * Self.rate, "open speech keeps the window end: the remainder is reached")
+    #expect(froms.count == 2)
+  }
+
+  @Test("empty and refused decodes past the retention ceiling keep the window bounded")
+  func emptyAndRefusedStayBounded() async {
+    for decoder in [Decoder(), Decoder(failing: true)] {
+      let detector = FakeDetector(speech: [0..<(60 * Self.rate)])
+      let audio = Self.audio(seconds: 60)
+      let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
+      audio.set(seconds: 20)
+      await s.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("cycle 1") { await s.cyclesCompleted(reach: 1) }
+      audio.set(seconds: 40)
+      await Rolling.within("cycle past the ceiling") { await s.cyclesCompleted(reach: 2) }
+      await s.cancel()
+      #expect(!audio.released.isEmpty, "the origin moved past the ceiling")
+      #expect(audio.retained <= 30 * Self.rate, "bounded: \(audio.retained)")
+    }
+  }
+
+  @Test("cancel releases the drained run's detector; an older cancel never clears a newer run's")
+  func cancelReleasesTheDetector() async {
+    final class Weak: @unchecked Sendable {
+      private let lock = NSLock()
+      private weak var stored: FakeDetector?
+      var value: FakeDetector? { lock.withLock { stored } }
+      func set(_ detector: FakeDetector) { lock.withLock { stored = detector } }
+    }
+    let released = Weak()
+    do {
+      let audio = Self.audio(seconds: 30)
+      let s = Self.meeting(
+        {
+          let made = FakeDetector()
+          released.set(made)
+          return made
+        }, decoder: Decoder(), audio: audio, events: .init())
+      audio.set(seconds: 20)
+      await s.start(audioSamplesProvider: audio.provider)
+      await Rolling.within("cycle") { await s.cyclesCompleted(reach: 1) }
+      #expect(released.value != nil, "control: the detector is alive while the session runs")
+      await s.cancel()
+      #expect(released.value == nil, "the retained, cancelled session holds no detector")
+      #expect(await s.speechDetectionDegradedForTests == nil)
+    }
+    // An older cancel still draining while a newer run starts.
+    let held = FakeDetector(holdFirst: true)
+    let fresh = FakeDetector()
+    let runs = Box(0)
+    let audio = Self.audio(seconds: 30)
+    let s = Self.meeting(
+      { runs.update { $0 += 1 } == 1 ? held : fresh }, decoder: Decoder(), audio: audio,
+      events: .init())
+    audio.set(seconds: 20)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("held append") { await held.entered() }
+    let older = Task { await s.cancel() }
+    await Rolling.within("older cancel at the drain") { await s.drainJoins(reach: 1) }
+    await s.start(audioSamplesProvider: audio.provider)
+    await held.release()
+    await Rolling.within("older cancel") { await older.value }
+    #expect(await s.speechDetectionDegradedForTests == false, "the newer run keeps its detector")
+    await s.cancel()
   }
 
   @Test("a session without the meeting flag has no speech detection")

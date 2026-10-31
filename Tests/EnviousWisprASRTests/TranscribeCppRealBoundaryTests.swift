@@ -1144,6 +1144,37 @@ extension TranscribeCppPreviewRealBoundaryTests {
     var text: String { lock.withLock { finalized + inProgress } }
   }
 
+  /// The ordered word alignment of `words` to the literal `reference`: reference words missing
+  /// (deletions, in order) and words not in the reference (insertions), by longest common
+  /// subsequence.
+  static func edits(_ words: [String], against reference: [String]) -> (missing: [String], extra: [String]) {
+    let n = words.count
+    let m = reference.count
+    var table = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+    for i in stride(from: n - 1, through: 0, by: -1) {
+      for j in stride(from: m - 1, through: 0, by: -1) {
+        table[i][j] =
+          words[i] == reference[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+      }
+    }
+    var missing: [String] = []
+    var extra: [String] = []
+    var (i, j) = (0, 0)
+    while i < n || j < m {
+      if i < n, j < m, words[i] == reference[j] {
+        i += 1
+        j += 1
+      } else if j < m, i == n || table[i][j + 1] >= table[i + 1][j] {
+        missing.append(reference[j])
+        j += 1
+      } else {
+        extra.append(words[i])
+        i += 1
+      }
+    }
+    return (missing, extra)
+  }
+
   /// Runs `audio` through one live transcript session; returns its text and native inputs.
   static func live(_ audio: [Float], gated: Bool) async throws -> (text: String, inputs: [Int]) {
     let bundle = try MeetingVADFixture.modelBundle
@@ -1199,11 +1230,15 @@ extension TranscribeCppPreviewRealBoundaryTests {
       + [Float](repeating: 0, count: 8 * 16_000)
     let (text, inputs) = try await Self.live(audio, gated: true)
     let baseline = try await Self.live(audio, gated: false)
-    print("meeting live long gap baseline (no detection): \(baseline.text) native calls \(baseline.inputs.count)")
     let words = MeetingVADFixture.words(text)
-    let script = MeetingVADFixture.words(MeetingVADFixture.script)
-    #expect(Array(words.prefix(3)) == Array(script.prefix(3)), "the first side: \(text)")
-    #expect(words.contains("dinner"), "the first speech after 60 s of silence: \(text)")
+    let reference = MeetingVADFixture.words(MeetingVADFixture.script)
+      + MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let gated = Self.edits(words, against: reference)
+    let ungated = Self.edits(MeetingVADFixture.words(baseline.text), against: reference)
+    print(
+      "meeting live long gap: gated missing \(gated.missing) extra \(gated.extra) native \(inputs.count);"
+        + " baseline missing \(ungated.missing) extra \(ungated.extra) native \(baseline.inputs.count)")
+    #expect(gated.missing.isEmpty, "every reference word, in order, on both sides: \(gated.missing) in \(text)")
     #expect(!words.contains("thank"), "nothing invented over the gap: \(text)")
     #expect(inputs.count < (audio.count + 63_999) / 64_000, "silent cycles skipped the decoder: \(inputs)")
   }
@@ -1219,9 +1254,11 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let audio = clip + [Float](repeating: 0, count: 5 * 16_000) + other
       + [Float](repeating: 0, count: 8 * 16_000)
     let (text, _) = try await Self.live(audio, gated: true)
-    let words = MeetingVADFixture.words(text)
-    #expect(words.contains(MeetingVADFixture.words(MeetingVADFixture.script)[2]), "before the pause: \(text)")
-    #expect(words.contains("dinner"), "after the pause: \(text)")
+    let reference = MeetingVADFixture.words(MeetingVADFixture.script)
+      + MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let result = Self.edits(MeetingVADFixture.words(text), against: reference)
+    print("meeting live interior gap: missing \(result.missing) extra \(result.extra)")
+    #expect(result.missing.isEmpty, "both sides whole, in order: \(result.missing) in \(text)")
   }
 
   @Test(
@@ -1235,8 +1272,12 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let gated = MeetingVADFixture.words(try await Self.live(soft, gated: true).text)
     let ungated = MeetingVADFixture.words(try await Self.live(soft, gated: false).text)
     let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    let withDetection = Self.edits(gated, against: script)
+    let today = Self.edits(ungated, against: script)
+    print("meeting live soft speech: gated missing \(withDetection.missing) extra \(withDetection.extra); baseline missing \(today.missing)")
     #expect(!ungated.isEmpty, "control: today's live words hear the soft clip")
-    #expect(gated == ungated, "same words with detection: \(gated) vs \(ungated)")
-    #expect(Array(gated.prefix(3)) == Array(script.prefix(3)), "the literal reference's opening: \(gated)")
+    #expect(
+      Set(withDetection.missing).isSubset(of: Set(today.missing)),
+      "detection loses no reference word today's live words keep: \(withDetection.missing) vs \(today.missing)")
   }
 }

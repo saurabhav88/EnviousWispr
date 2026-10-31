@@ -37,11 +37,11 @@ package actor TranscribeCppPreviewRuntime {
 
   /// One loaded model, as closures over the driver's own handle type.
   struct LoadedModel: Sendable {
-    /// One preview-lane decode of a window from a sample offset into it (#4254: a meeting
-    /// window's leading silence is trimmed; 0 everywhere else). Segment times are relative to
-    /// that offset. A cancelled or preempted call returns only after the native run
-    /// physically ended.
-    let transcribe: @Sendable ([Float], Int, String?) async throws -> TranscribeCppRunResult
+    /// One preview-lane decode of the slice `from..<to` of a window (#4254 plan §18: a meeting
+    /// window's silence before and after its speech is trimmed; the whole window everywhere
+    /// else). Segment times are relative to `from`. A cancelled or preempted call returns only
+    /// after the native run physically ended.
+    let transcribe: @Sendable ([Float], Int, Int, String?) async throws -> TranscribeCppRunResult
     /// Aborts and drains any work on the model, then frees it.
     let unload: @Sendable () async -> Void
   }
@@ -89,8 +89,9 @@ package actor TranscribeCppPreviewRuntime {
       let handle = try await driver.load(modelPath: path, lane: .preview)
       residency.didLoad()
       return LoadedModel(
-        transcribe: { samples, from, language in
-          var input = Array(samples[min(from, samples.count)...])
+        transcribe: { samples, from, to, language in
+          let end = min(max(to, 0), samples.count)
+          var input = Array(samples[min(from, end)..<end])
           // The heart's look-ahead padding: without it abruptly-ending audio loses its last
           // words. Segments starting in it are dropped by the rolling session.
           input.append(
@@ -102,9 +103,10 @@ package actor TranscribeCppPreviewRuntime {
               onInferenceEntered: nil, onProgress: nil)
             // #3801: preview hypotheses pass the same silent-tail filter as heart decodes.
             // Nothing below throws, so the catch still sees only the native call's errors.
-            // #4254: loudness is read on the whole retained window, never the trimmed input.
+            // #4254: loudness is read on the whole retained window, never the trimmed input;
+            // real audio ends at the slice end, so the excluded tail and the padding are after it.
             let tail = WhisperSilentTailFilter.filter(
-              run, statsSamples: samples, segmentOffsetSamples: from, realEndSample: samples.count)
+              run, statsSamples: samples, segmentOffsetSamples: from, realEndSample: end)
             await LiveTranscribeCppWhisperBackend.logSilentTail(tail.dropped, route: "preview")
             return tail.result
           } catch {
@@ -211,14 +213,14 @@ package actor TranscribeCppPreviewRuntime {
       retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis,
       onAudioReleased: onAudioReleased)
     publication.onTranscript = onTranscript
-    let decodeFrom: TranscribeCppRollingSession.DecodeFrom = { [self] samples, from in
+    let decodeFrom: TranscribeCppRollingSession.DecodeFrom = { [self] samples, from, to in
       // The session keeps the model's owner alive while it can decode.
       try await admitDecode()
       // A session cancelled while its admission waited never starts native work.
       try Task.checkCancellation()
       try await enterNativeDecode()
       do {
-        let result = try await model.transcribe(samples, from, language)
+        let result = try await model.transcribe(samples, from, to, language)
         await nativeDecodeReturned()
         return result
       } catch {
@@ -227,7 +229,7 @@ package actor TranscribeCppPreviewRuntime {
       }
     }
     return TranscribeCppRollingSession(
-      decode: { samples in try await decodeFrom(samples, 0) },
+      decode: { samples in try await decodeFrom(samples, 0, samples.count) },
       cadence: cadence,
       publication: publication,
       meetingSpeech: liveSpeechDetector.map {
