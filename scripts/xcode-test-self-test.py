@@ -205,13 +205,20 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
     def configurations(self):
         return [row[row.index('-configuration') + 1] for row in self.tests]
 
+    def critical_builds(self):
+        """#4243: configurations of the build-only compiles of the cloud critical bundle."""
+        return [row[row.index('-configuration') + 1] for row in self.calls
+                if row[0] == 'build-for-testing' and 'EnviousWispr-Critical' in row]
+
     def test_batch_runs_all_eight_filters_with_one_setup(self):
         filters = [f'Target/Suite{i}' for i in range(8)]
         self.run_runner(*[arg for name in filters for arg in ('--filter', name)])
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertEqual([arg for arg in self.tests[0] if arg.startswith('-only-testing:')],
                          ['-only-testing:' + name for name in filters])
-        self.assertEqual(len(self.calls), 2)  # one resolution, one test command
+        # One resolution, one critical-bundle compile (#4243), one test command.
+        self.assertEqual(len(self.calls), 3)
+        self.assertEqual(self.critical_builds(), ['Debug'])
         trace = (self.root / 'trace').read_text().splitlines()
         self.assertEqual(trace.count('generate'), 1)
         self.assertIn('verdict:Debug lane:required=', trace)
@@ -231,8 +238,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
 
     def test_grouped_run_builds_once_then_judges_the_complete_result(self):
         result = self.run_runner('--grouped', execution=None)
-        builds = [row for row in self.calls if row[0] == 'build-for-testing']
+        builds = [row for row in self.calls
+                  if row[0] == 'build-for-testing' and 'EnviousWispr-Critical' not in row]
         self.assertEqual(len(builds), 1)
+        self.assertEqual(self.critical_builds(), ['Debug'])  # #4243: built, never run
         self.assertEqual(builds[0][builds[0].index('-configuration') + 1], 'Debug')
         self.assertEqual(self.tests, [])
         trace = self.trace()

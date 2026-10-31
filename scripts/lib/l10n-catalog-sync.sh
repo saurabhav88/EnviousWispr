@@ -82,6 +82,7 @@ PRODUCTION_TARGETS = [
 NON_PRODUCTION = {
     "EnviousWisprAppKitTestSupport", "EnviousWisprTests", "EnviousWisprASRTests",
     "EnviousWisprDesktopEffectsTests",
+    "EnviousWisprCriticalTests",  # #4243: the cloud PR gut-check bundle
 }
 # Tuist-generated resource-bundle targets: recognized so they are not "unknown", never
 # read (they hold resources, not compiled Swift).

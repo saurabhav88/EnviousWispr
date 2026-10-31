@@ -44,7 +44,8 @@ on:
 env:
   DERIVED_DATA_PATH: .derivedData/CI
   XCODE_PROJECT: EnviousWispr.xcodeproj
-  XCODE_RELEASE_SCHEME: EnviousWispr-Release
+  # #4243: the warm builds exactly what the PR gut check builds (writer = reader).
+  XCODE_CRITICAL_SCHEME: EnviousWispr-Critical
 
 permissions:
   contents: read
@@ -176,15 +177,16 @@ jobs:
         uses: ./.github/actions/xcode-ci-setup
         with:
           derived-data-path: ${{ env.DERIVED_DATA_PATH }}
-          configuration: release
+          configuration: release-onone
 
       - name: Build for testing (release, Xcode)
         id: release-test-build
         run: |
           set -euo pipefail
           scripts/ci/build-for-testing-release.sh \
+            --profile gut-check \
             --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_RELEASE_SCHEME" \
+            --scheme "$XCODE_CRITICAL_SCHEME" \
             --derived-data "$DERIVED_DATA_PATH" \
             --log xcode-build-for-testing-release.log \
             --result-bundle "$GITHUB_WORKSPACE/xcode-build-for-testing-release.xcresult"
@@ -252,7 +254,7 @@ jobs:
           save_s=""
           if [[ "$SAVE_T0" =~ ^[0-9]+$ ]] && [ "$SAVE_OUTCOME" != "skipped" ]; then save_s=$(( $(date +%s) - SAVE_T0 )); fi
           python3 scripts/ci/ci-metrics.py emit \
-            --job cache-warm --family release \
+            --job cache-warm --family release-onone \
             --metrics-file "${EW_CI_METRICS_FILE:-${RUNNER_TEMP:-.}/ew-ci-metrics.env}" \
             --log 'xcode-build-*.log' \
             --set "cache_matched_key=$CACHE_MATCHED_KEY" \
