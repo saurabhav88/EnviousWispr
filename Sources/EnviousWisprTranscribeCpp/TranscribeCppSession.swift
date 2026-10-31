@@ -217,6 +217,14 @@ public struct TranscribeCppSegment: Sendable, Equatable {
   public let startMs: Int64
   public let endMs: Int64
   public let text: String
+
+  /// #4254: lets the ASR module restore a segment's times onto the original meeting run
+  /// (`MeetingWhisperPreparation`); values are kept exactly as given, invalid ones included.
+  package init(startMs: Int64, endMs: Int64, text: String) {
+    self.startMs = startMs
+    self.endMs = endMs
+    self.text = text
+  }
 }
 
 public struct TranscribeCppRunResult: Sendable, Equatable {

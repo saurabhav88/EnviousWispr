@@ -42,6 +42,8 @@ public actor MeetingSpeechDetector {
   }
 
   static let chunkSize = SilenceDetector.chunkSize
+  /// #4254: the pinned model's name, for the meeting decode's counts-only log.
+  package static let modelVersion = BundledVADModelLoader.pinnedModelName
   /// Dictation's default silence timeout: a pause shorter than this stays inside one speech
   /// range, so a breath never splits a sentence.
   static let minimumSilenceSeconds: TimeInterval = 1.5

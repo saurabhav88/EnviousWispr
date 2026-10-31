@@ -1073,6 +1073,110 @@ struct MeetingTranscriptionJobTests {
     #expect(cut.calls.count >= 3, "a cut-pieces pass must not reuse whole-run pieces")
   }
 
+  // MARK: - #4254 speech-detection provenance
+
+  /// A whole-run job whose Whisper decodes report `next()` as their preparation, with a real
+  /// checkpoint store. Each call records its sample count.
+  private func whisperCheckpointJob(
+    calls: OSAllocatedUnfairLock<[Int]>,
+    preparation: @escaping @Sendable (Int) -> MeetingSpeechPreparation?
+  ) -> MeetingTranscriptionJob {
+    var config = MeetingTranscriptionJob.Configuration()
+    config.cutsPieces = false
+    return MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        loadEngine: {},
+        transcribe: { samples, _ in
+          calls.withLock { $0.append(samples.count) }
+          let prep = preparation(samples.count)
+          let silent = prep == .confirmedSilence
+          return ASRResult(
+            text: silent ? "" : "Hello there.", language: "en",
+            duration: Double(samples.count) / 16_000, processingTime: 0, backendType: .whisper,
+            segmentTimings: silent ? [] : [ASRSegmentTiming(range: 0..<12, startMs: 0, endMs: 900)],
+            meetingSpeechPreparation: prep)
+        },
+        unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) },
+        engineIdentity: { "whisper:r1" }),
+      configuration: config)
+  }
+
+  @Test("#4254: a Whisper piece without speech detection, or of unknown preparation, is decoded again; protected and silent pieces are reused")
+  func whisperProvenanceDecidesReuse() async throws {
+    let dir = try folder()
+    // Two runs: 4 s (64,000 samples) and, after a gap, 2 s (32,000 samples).
+    let audio = MeetingTrackAudio(files: [
+      try segment(in: dir, index: 1, startMs: 0, seconds: 4),
+      try segment(in: dir, index: 2, startMs: 10_000, seconds: 2),
+    ])
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+
+    // Pass 1: the 4 s run's detector could not run; the 2 s run was protected. Fully covered.
+    let first = OSAllocatedUnfairLock<[Int]>(initialState: [])
+    _ = try await whisperCheckpointJob(calls: first) { $0 == 64_000 ? .detectionUnavailable : .protectedSpeech }
+      .runTestAttempt(tracks: [.microphone: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(first.withLock { $0 } == [64_000, 32_000])
+    guard case .checkpoint(let saved) = store.load() else {
+      Issue.record("no checkpoint saved")
+      return
+    }
+    #expect(saved.tracks[.microphone]?.pieces.map(\.speechPreparation) == [.detectionUnavailable, .protectedSpeech])
+
+    // Pass 2: the degraded piece is decoded again (now confirmed silent); the protected one is reused.
+    let second = OSAllocatedUnfairLock<[Int]>(initialState: [])
+    let result = try await whisperCheckpointJob(calls: second) { _ in .confirmedSilence }
+      .runTestAttempt(tracks: [.microphone: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(second.withLock { $0 } == [64_000], "only the degraded piece is decoded again")
+    #expect(result.failedPieces == 0, "a confirmed-silent piece is a success")
+
+    // Pass 3: every piece is sound: nothing is decoded.
+    let third = OSAllocatedUnfairLock<[Int]>(initialState: [])
+    _ = try await whisperCheckpointJob(calls: third) { _ in .protectedSpeech }
+      .runTestAttempt(tracks: [.microphone: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID)) { _ in }
+    #expect(third.withLock { $0 }.isEmpty)
+  }
+
+  @Test("#4254: a Whisper result with no preparation is unknown; other engines are not applicable")
+  func provenanceOfResults() {
+    let unknown = ASRResult(
+      text: "Hi", language: "en", duration: 1, processingTime: 0, backendType: .whisper,
+      segmentTimings: [])
+    #expect(MeetingTranscriptionJob.speechPreparation(of: unknown) == nil)
+    let parakeet = ASRResult(
+      text: "Hi", language: "en", duration: 1, processingTime: 0, backendType: .parakeet)
+    #expect(MeetingTranscriptionJob.speechPreparation(of: parakeet) == .notApplicable)
+    var protected = unknown
+    protected.meetingSpeechPreparation = .protectedSpeech
+    let piece = MeetingTranscriptionJob.wholeRunPiece(result: protected, startMs: 37_000, endMs: 38_000)
+    #expect(piece.speechPreparation == .protectedSpeech)
+    #expect(MeetingTranscriptionJob.ownedPiece(
+      result: parakeet, paddedStartMs: 0, startMs: 0, endMs: 1_000).speechPreparation == .notApplicable)
+    let stored = MeetingProcessingCheckpoint.Piece(
+      startSample: 0, endSample: 16_000, forcedCut: false, text: "Hi", words: [], segments: [],
+      speechPreparation: .protectedSpeech)
+    #expect(MeetingTranscriptionJob.trackPiece(stored)?.speechPreparation == .protectedSpeech)
+  }
+
+  @Test("#4254: Whisper segment times land on the meeting timeline once, from a run at 37 s")
+  func whisperRunOriginAddedOnce() {
+    var result = ASRResult(
+      text: "one two", language: "en", duration: 5, processingTime: 0, backendType: .whisper,
+      segmentTimings: [
+        ASRSegmentTiming(range: 0..<3, startMs: 1_000, endMs: 2_000),
+        ASRSegmentTiming(range: 4..<7, startMs: 3_000, endMs: 3_500),
+        ASRSegmentTiming(range: 4..<7, startMs: nil, endMs: nil),
+      ])
+    result.meetingSpeechPreparation = .protectedSpeech
+    let piece = MeetingTranscriptionJob.wholeRunPiece(result: result, startMs: 37_000, endMs: 42_000)
+    #expect(piece.segments.map { [$0.startMs, $0.endMs] } == [[38_000, 39_000], [40_000, 40_500], [nil, nil]])
+  }
+
   @Test("a piece that fails twice is a reported gap; its neighbours keep their words")
   func failedPieceIsAGap() async throws {
     let dir = try folder()

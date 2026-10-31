@@ -5,19 +5,64 @@ import Foundation
 extension TranscribeCppWhisperBackend {
   /// #3973 C3: the meeting decode on `handle` at preview priority, with dictation's batch
   /// conditioning (silence padding, the silent-tail filter, segment binding with timestamps).
-  /// The whole input is speech for a meeting run, so there is no envelope.
+  ///
+  /// #4254: a fresh speech detector reads the run first (`detectSpeech`). No speech: an empty,
+  /// successful result and no native call. Speech: only the padded stretches, joined, reach the
+  /// decoder in ONE run, and segment times are restored onto the original run before the
+  /// silent-tail filter, which reads the original samples. A detector that cannot run decodes
+  /// the whole run as before, marked unavailable; its cancellation is cancellation. After
+  /// detection, cancellation and `isAdmitted` are checked again before the native call.
   ///
   /// Every native exit is joined before this returns. A cancelled pass throws
-  /// `CancellationError`; preemption, a refusal while dictation's work runs, an aborted run and
-  /// a model gone under it throw `MeetingEngineYield`; any other native failure is a run
-  /// failure the job counts.
+  /// `CancellationError`; preemption, a refusal while dictation's work runs, an aborted run, a
+  /// model gone under it and a lost admission throw `MeetingEngineYield`; any other native
+  /// failure is a run failure the job counts.
   static func meetingDecode(
-    driver: Driver, handle: Driver.Handle, samples: [Float], language: String?
+    driver: Driver, handle: Driver.Handle, samples: [Float], language: String?,
+    route: String, detectSpeech: MeetingSpeechSpans,
+    isAdmitted: @Sendable () async -> Bool
   ) async throws -> ASRResult {
-    var input = samples
-    input.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
     let start = ContinuousClock.now
     try Task.checkCancellation()
+    var preparation: MeetingWhisperPreparation?
+    let provenance: MeetingSpeechPreparation
+    do {
+      let spans = try await detectSpeech(samples)
+      guard
+        let prepared = MeetingWhisperPreparation(
+          samples: samples, stretches: spans, lookAhead: silencePaddingSamples)
+      else {
+        await logVAD(
+          "vad_skipped_all", route: route, total: samples.count, speech: 0, stretches: 0)
+        return ASRResult(
+          text: "", language: language, duration: Double(samples.count) / Double(sampleRate),
+          processingTime: Double((ContinuousClock.now - start) / .milliseconds(1)) / 1000,
+          backendType: .whisper, segmentTimings: [], meetingSpeechPreparation: .confirmedSilence)
+      }
+      preparation = prepared
+      provenance = .protectedSpeech
+      await logVAD(
+        "vad_ok", route: route, total: samples.count, speech: prepared.speechSamples,
+        stretches: prepared.stretches.count)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      if Task.isCancelled { throw CancellationError() }
+      provenance = .detectionUnavailable
+      await logVAD(
+        "vad_unavailable", route: route, total: samples.count, speech: samples.count,
+        stretches: 1)
+    }
+    var input: [Float]
+    if let preparation {
+      input = preparation.input
+    } else {
+      input = samples
+      input.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
+    }
+    // Detection took time: the pass or this route's admission may have ended meanwhile.
+    try Task.checkCancellation()
+    guard await isAdmitted() else { throw MeetingEngineYield() }
     let run: TranscribeCppRunResult
     do {
       run = try await driver.transcribe(
@@ -28,16 +73,32 @@ extension TranscribeCppWhisperBackend {
       if Task.isCancelled { throw CancellationError() }
       throw meetingError(error)
     }
+    input = []
+    // Restore first, then filter against the ORIGINAL run (§16.1): its statistics never come
+    // from the joined speech, and look-ahead segments stay past the real end.
+    let restored = preparation?.restore(run) ?? run
     let envelope = 0..<samples.count
     let tail = WhisperSilentTailFilter.filter(
-      run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
+      restored, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
     await logSilentTail(tail.dropped, route: "meeting")
     var filtered = tail.result
     filtered.silentTailDropped = tail.dropped
-    return mapResult(
+    var result = mapResult(
       filtered, languageHint: language, envelope: envelope, originalSampleCount: samples.count,
       processingTime: Double((ContinuousClock.now - start) / .milliseconds(1)) / 1000,
       enableTimestamps: true)
+    result.meetingSpeechPreparation = provenance
+    return result
+  }
+
+  /// One counts-only line per meeting decode: route, outcome, detector version, and sample
+  /// counts. No audio and no text.
+  static func logVAD(_ outcome: String, route: String, total: Int, speech: Int, stretches: Int)
+    async
+  {
+    await AppLogger.shared.log(
+      "meeting_whisper_vad outcome=\(outcome) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) speech_samples=\(speech) stretches=\(stretches)",
+      level: .info, category: "TranscribeCppWhisper")
   }
 
   /// A meeting decode's error once its run has ended (the caller was not cancelled).
@@ -84,11 +145,20 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
   /// Tests only: told, on the engine, the moment `closeForRemoval()` is about to return.
   private var removalObserver: (@Sendable () -> Void)?
 
-  package init(driver: Driver) {
+  /// #4254: the speech detector each decode creates fresh; tests pass their own.
+  private let detectSpeech: MeetingSpeechSpans
+
+  package init(driver: Driver, detectSpeech: @escaping MeetingSpeechSpans = MeetingWhisperPreparation.bundled) {
     self.driver = driver
+    self.detectSpeech = detectSpeech
   }
 
   package var isLoaded: Bool { handle != nil }
+
+  /// Whether `handle` is still this engine's loaded model (no unload or Remove since).
+  private func holds(_ loaded: Driver.Handle) -> Bool {
+    !isClosed && handle.map { $0 == loaded } == true
+  }
   package var isClosedForRemoval: Bool { isClosed }
 
   /// Loads the model at `modelPath`. A load refused or preempted because dictation's engine
@@ -128,7 +198,8 @@ package actor MeetingWhisperEngine<Driver: WhisperExecutorDriving> {
   package func transcribe(samples: [Float], language: String?) async throws -> ASRResult {
     guard let handle else { throw MeetingEngineYield() }
     return try await TranscribeCppWhisperBackend<Driver>.meetingDecode(
-      driver: driver, handle: handle, samples: samples, language: language)
+      driver: driver, handle: handle, samples: samples, language: language, route: "own_model",
+      detectSpeech: detectSpeech, isAdmitted: { await self.holds(handle) })
   }
 
   /// Aborts and drains any run, frees the model, and waits until every free already running

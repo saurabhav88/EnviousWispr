@@ -866,6 +866,145 @@ struct TranscribeCppWhisperBackendTests {
       }
     }
   }
+
+  // MARK: - #4254 meeting speech detection
+
+  /// 5 s of run: speech (0.3) at [16,000, 32,000) and [48,000, 56,000), exact zeros elsewhere.
+  fileprivate static let meetingRun: [Float] = (0..<80_000).map {
+    (16_000..<32_000).contains($0) || (48_000..<56_000).contains($0) ? 0.3 : 0
+  }
+  fileprivate static let meetingSpans = [16_000..<32_000, 48_000..<56_000]
+
+  private func meetingEngine(
+    _ driver: FakeWhisperDriver, detect: @escaping MeetingSpeechSpans
+  ) async throws -> MeetingWhisperEngine<FakeWhisperDriver> {
+    let engine = MeetingWhisperEngine(driver: driver, detectSpeech: detect)
+    try await engine.load(modelPath: "turbo.gguf")
+    return engine
+  }
+
+  @Test("#4254: a run with no speech is an empty success and the decoder is never entered")
+  func meetingConfirmedSilence() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in [] }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    #expect(result.text == "")
+    #expect(result.meetingSpeechPreparation == .confirmedSilence)
+    #expect(result.segmentTimings == [])
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty, "no native call")
+  }
+
+  @Test("#4254: only the joined speech and the look-ahead reach the decoder; times come back")
+  func meetingProtectedSpeech() async throws {
+    let driver = FakeWhisperDriver()
+    let seen = LockedBox<[Float]>([])
+    driver.runOutcome = { input, _ in
+      seen.set(input)
+      // Decoder-input times: 0-1,000 ms is stretch 1; 1,000-1,500 ms is stretch 2.
+      return TranscribeCppRunResult(
+        text: " one two", detectedLanguage: nil,
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 1_000, text: " one"),
+          TranscribeCppSegment(startMs: 1_000, endMs: 1_500, text: " two"),
+        ])
+    }
+    let engine = try await meetingEngine(driver) { _ in Self.meetingSpans }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    let input = seen.get()
+    #expect(input.count == 24_000 + 8_000)
+    #expect(Array(input[0..<24_000]) == Array(Self.meetingRun[16_000..<32_000]) + Array(Self.meetingRun[48_000..<56_000]))
+    #expect(input[24_000...].allSatisfy { $0 == 0 })
+    #expect(result.meetingSpeechPreparation == .protectedSpeech)
+    #expect(result.text == "one two")
+    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 2_000], [3_000, 3_500]])
+    #expect(result.duration == 5)
+  }
+
+  @Test("#4254: an invented ending over the look-ahead is removed against the original run")
+  func meetingLookAheadEndingRemoved() async throws {
+    let driver = FakeWhisperDriver()
+    driver.runOutcome = { _, _ in
+      TranscribeCppRunResult(
+        text: " one Thank you.", detectedLanguage: nil,
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 1_000, text: " one"),
+          // Starts in the synthetic look-ahead (decoded 1,500 ms = past the joined speech).
+          TranscribeCppSegment(startMs: 1_500, endMs: 1_900, text: " Thank you."),
+        ])
+    }
+    let engine = try await meetingEngine(driver) { _ in Self.meetingSpans }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    #expect(result.text == "one")
+    #expect(result.silentTailDropped == 1)
+    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 2_000]])
+  }
+
+  @Test("#4254: a quiet genuine ending after a long silence keeps its words")
+  func meetingQuietEndingKept() async throws {
+    // Loud speech early, a long silence, then a quiet but voiced ending at 4.5-5 s.
+    let run: [Float] = (0..<80_000).map {
+      if (0..<16_000).contains($0) { return 0.3 }
+      if (72_000..<80_000).contains($0) { return 0.05 }
+      return 0
+    }
+    let driver = FakeWhisperDriver()
+    driver.runOutcome = { _, _ in
+      TranscribeCppRunResult(
+        text: " hello bye", detectedLanguage: nil,
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 1_000, text: " hello"),
+          TranscribeCppSegment(startMs: 1_000, endMs: 1_500, text: " bye"),
+        ])
+    }
+    let engine = try await meetingEngine(driver) { _ in [0..<16_000, 72_000..<80_000] }
+    let result = try await engine.transcribe(samples: run, language: "en")
+    #expect(result.text == "hello bye")
+    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 1_000], [4_500, 5_000]])
+  }
+
+  @Test("#4254: a detector that cannot run decodes the whole run, marked unavailable")
+  func meetingDetectorUnavailable() async throws {
+    struct Broken: Error {}
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in throw Broken() }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    #expect(result.meetingSpeechPreparation == .detectionUnavailable)
+    #expect(driver.lastSampleCount == 80_000 + 8_000)
+  }
+
+  @Test("#4254: cancellation during detection is cancellation, never an unfiltered decode")
+  func meetingCancelledDuringDetection() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in throw CancellationError() }
+    await #expect(throws: CancellationError.self) {
+      _ = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    }
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty)
+  }
+
+  @Test("#4254: a model unloaded during detection yields before the native call")
+  func meetingAdmissionLostDuringDetection() async throws {
+    let driver = FakeWhisperDriver()
+    let box = LockedBox<MeetingWhisperEngine<FakeWhisperDriver>?>(nil)
+    let engine = try await meetingEngine(driver) { _ in
+      await box.get()?.unload()
+      return Self.meetingSpans
+    }
+    box.set(engine)
+    await #expect(throws: MeetingEngineYield.self) {
+      _ = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    }
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty)
+  }
+}
+
+/// A value shared with a `@Sendable` closure.
+private final class LockedBox<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Value
+  init(_ value: Value) { self.value = value }
+  func get() -> Value { lock.withLock { value } }
+  func set(_ new: Value) { lock.withLock { value = new } }
 }
 
 // MARK: - Helpers

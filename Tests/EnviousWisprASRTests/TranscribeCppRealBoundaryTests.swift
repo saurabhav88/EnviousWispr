@@ -1,5 +1,6 @@
 import CryptoKit
 import Darwin
+import EnviousWisprAudio
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
@@ -620,5 +621,219 @@ private final class ProgressRecorder: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return calls
+  }
+}
+
+/// Records each native decode's input length, then forwards to the real executor.
+private struct CountingDriver: WhisperExecutorDriving {
+  typealias Handle = TranscribeCppExecutor.ModelHandle
+  let live = LiveWhisperExecutorDriver()
+  let inputs = OSAllocatedUnfairLock<[Int]>(initialState: [])
+
+  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle {
+    try await live.load(modelPath: modelPath, lane: lane)
+  }
+  func detectLanguage(_ handle: Handle, samples: [Float], lane: TranscribeCppExecutor.Lane)
+    async throws -> TranscribeCppLanguageObservation
+  {
+    try await live.detectLanguage(handle, samples: samples, lane: lane)
+  }
+  func transcribe(
+    _ handle: Handle, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane,
+    onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
+  ) async throws -> TranscribeCppRunResult {
+    inputs.withLock { $0.append(samples.count) }
+    return try await live.transcribe(
+      handle, samples: samples, language: language, lane: lane,
+      onInferenceEntered: onInferenceEntered, onProgress: onProgress)
+  }
+  func waitForDrain(_ handle: Handle) async { await live.waitForDrain(handle) }
+  func unload(_ handle: Handle) async { await live.unload(handle) }
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+    await live.awaitSettled(openedOn: lane)
+  }
+}
+
+/// #4254 on the real models: the pinned Silero detector through its production loader (from a
+/// fixture bundle holding the checked-in asset) and the approved turbo Q8_0 decoder.
+private enum MeetingVADFixture {
+  static var modelBundle: Bundle {
+    get throws {
+      let model = TranscribeCppRealBoundaryFixture.repoRoot.appending(
+        path: "Sources/EnviousWispr/Resources/VAD/\(MeetingSpeechDetector.modelVersion).mlmodelc")
+      try #require(FileManager.default.fileExists(atPath: model.path), "pinned VAD model missing")
+      let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MeetingVADFixture-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      try FileManager.default.createSymbolicLink(
+        at: root.appendingPathComponent("\(MeetingSpeechDetector.modelVersion).mlmodelc"),
+        withDestinationURL: model)
+      return try #require(Bundle(path: root.path))
+    }
+  }
+
+  /// The committed clip's words, the literal reference.
+  static let script = TranscribeCppRealBoundaryFixture.expectedWords
+
+  /// A second, different committed clip and its script (`scripts/freeze-suite/mumbled-speech.txt`).
+  static let otherURL = TranscribeCppRealBoundaryFixture.repoRoot.appending(
+    path: "scripts/freeze-suite/clips/mumbled-speech.wav")
+  static var otherScript: String {
+    get throws {
+      try String(
+        contentsOf: TranscribeCppRealBoundaryFixture.repoRoot.appending(
+          path: "scripts/freeze-suite/mumbled-speech.txt"), encoding: .utf8)
+    }
+  }
+
+  static func words(_ text: String) -> [String] {
+    text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+  }
+}
+
+@Suite("Meeting Whisper speech detection on the real models (#4254)", .serialized, .tags(.productOutcome))
+struct MeetingWhisperVADRealBoundaryTests {
+  @Test(
+    "speech, 20 s of silence, speech: only speech is decoded, both sides survive, times come back",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func protectedSpeechOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let gap = 20 * 16_000
+    let run = clip + [Float](repeating: 0, count: gap) + other
+    let driver = CountingDriver()
+    let detectorRuns = OSAllocatedUnfairLock(initialState: 0)
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      detectorRuns.withLock { $0 += 1 }
+      return try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(samples: run, language: "en")
+    await engine.unload()
+
+    #expect(detectorRuns.withLock { $0 } == 1)
+    #expect(result.meetingSpeechPreparation == .protectedSpeech, "the detector really ran")
+    let decoded = try #require(driver.inputs.withLock { $0 }.first)
+    #expect(decoded < run.count, "the silent gap never reached the decoder: \(decoded) of \(run.count)")
+    let words = MeetingVADFixture.words(result.text)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    #expect(Array(words.prefix(script.count)) == script, "the first side, whole: \(result.text)")
+    #expect(words.contains("dinner"), "the second side survives: \(result.text)")
+    #expect(!words.contains("thank"), "nothing invented over the gap: \(result.text)")
+    let clipMs = clip.count * 1000 / 16_000
+    let timed = (result.segmentTimings ?? []).compactMap { t in t.startMs.map { ($0, t.endMs ?? $0) } }
+    #expect(timed.contains { $0.0 < clipMs }, "a line in the first spoken side")
+    #expect(timed.contains { $0.0 >= clipMs + 20_000 - 200 }, "a line restored past the gap: \(timed)")
+    #expect(timed.allSatisfy { $0.1 <= run.count * 1000 / 16_000 })
+  }
+
+  @Test(
+    "30 s of exact zeros: confirmed silence, empty, and the decoder is never entered",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func confirmedSilenceOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let driver = CountingDriver()
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(
+      samples: [Float](repeating: 0, count: 30 * 16_000), language: "en")
+    await engine.unload()
+    #expect(result.meetingSpeechPreparation == .confirmedSilence)
+    #expect(result.text.isEmpty)
+    #expect(driver.inputs.withLock { $0 }.isEmpty, "no native call")
+  }
+
+  /// Q-b (plan, required before chunk 3): an interior silent gap with speech on both sides
+  /// inside ONE retained window of at most 30 s, decoded with leading-only trimming versus
+  /// interior-gap removal. Both arms keep the whole original window for the tail filter and
+  /// restore coordinates once (the shared meeting decode). Each arm runs twice (repeat control).
+  /// A separate control: speech, 60 s of silence, speech. Prints `QB` lines for the receipt.
+  @Test(
+    "Q-b: interior silent gap, leading-only trimming versus gap removal, with a 60 s control",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(10)), .realBoundaryRun
+  )
+  func interiorGapExperiment() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    let clipSeconds = Double(clip.count) / 16_000
+    let lead = [Float](repeating: 0, count: 3 * 16_000)
+    let interiorGap = max(0, Int((30 - 3 - 2 * clipSeconds - 1) * 16_000))
+    let window = lead + clip + [Float](repeating: 0, count: interiorGap) + clip
+      + [Float](repeating: 0, count: 16_000)
+    let control = clip + [Float](repeating: 0, count: 60 * 16_000) + clip
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let otherWords = MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let distinctGap = max(0, Int((30 - 3 - clipSeconds - Double(other.count) / 16_000 - 1) * 16_000))
+    let distinct = lead + clip + [Float](repeating: 0, count: distinctGap) + other
+      + [Float](repeating: 0, count: 16_000)
+    let spansDistinct = try await MeetingSpeechDetector.spans(in: distinct, modelBundle: bundle)
+    print("QB input distinct_window_s=\(String(format: "%.2f", Double(distinct.count) / 16_000)) distinct_gap_s=\(String(format: "%.2f", Double(distinctGap) / 16_000)) spans_distinct=\(spansDistinct) second_reference=\(otherWords.count)_words")
+    let spansWindow = try await MeetingSpeechDetector.spans(in: window, modelBundle: bundle)
+    let spansControl = try await MeetingSpeechDetector.spans(in: control, modelBundle: bundle)
+    print("QB input clip_s=\(String(format: "%.2f", clipSeconds)) window_s=\(String(format: "%.2f", Double(window.count) / 16_000)) interior_gap_s=\(String(format: "%.2f", Double(interiorGap) / 16_000)) control_s=\(String(format: "%.2f", Double(control.count) / 16_000)) spans_window=\(spansWindow) spans_control=\(spansControl) model=turbo-q8_0 vad=\(MeetingSpeechDetector.modelVersion) language=en")
+
+    let driver = CountingDriver()
+    func decode(_ samples: [Float], _ spans: [Range<Int>]) async throws -> (EnviousWisprCore.ASRResult, Double) {
+      let engine = MeetingWhisperEngine(driver: driver) { _ in spans }
+      try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+      let start = ContinuousClock.now
+      let result = try await engine.transcribe(samples: samples, language: "en")
+      let elapsed = ContinuousClock.now - start
+      await engine.unload()
+      return (result, Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
+    }
+    let first = try #require(spansWindow.first?.lowerBound)
+    let leadingOnly = [first..<window.count]
+    var outcomes: [String: [String]] = [:]
+    let distinctFirst = try #require(spansDistinct.first?.lowerBound)
+    /// The kept stretches joined with `separator` samples of zeros between them, decoded whole
+    /// (the decoder input a separator-joined preparation would give; times are not mapped).
+    func separated(_ samples: [Float], _ spans: [Range<Int>], _ separator: Int) -> [Float] {
+      var out: [Float] = []
+      for (i, span) in spans.enumerated() {
+        if i > 0 { out.append(contentsOf: repeatElement(0, count: separator)) }
+        out.append(contentsOf: samples[span])
+      }
+      return out
+    }
+    let sep1 = separated(distinct, spansDistinct, 16_000)
+    let sepW = separated(window, spansWindow, 16_000)
+    let sepC = separated(control, spansControl, 16_000)
+    for (name, samples, spans) in [
+      ("distinct_separator_1s", sep1, [0..<sep1.count]),
+      ("window_separator_1s", sepW, [0..<sepW.count]),
+      ("control_separator_1s", sepC, [0..<sepC.count]),
+      ("distinct_leading_only", distinct, [distinctFirst..<distinct.count]),
+      ("distinct_gap_removed", distinct, spansDistinct),
+      ("window_leading_only", window, leadingOnly), ("window_gap_removed", window, spansWindow),
+      ("control_leading_only", control, [(spansControl.first?.lowerBound ?? 0)..<control.count]),
+      ("control_gap_removed", control, spansControl),
+    ] {
+      for repeatIndex in 0..<2 {
+        let (result, seconds) = try await decode(samples, spans)
+        let words = MeetingVADFixture.words(result.text)
+        outcomes[name, default: []].append(words.joined(separator: " "))
+        let timed = (result.segmentTimings ?? []).map { "\($0.startMs ?? -1)-\($0.endMs ?? -1)" }
+        print("QB arm=\(name) repeat=\(repeatIndex) decode_s=\(String(format: "%.2f", seconds)) both_sides=\(words == script + script) words=\(words.count) reference=\(2 * script.count) text=\"\(words.joined(separator: " "))\" segments=\(timed)")
+      }
+    }
+    for (name, runs) in outcomes.sorted(by: { $0.key < $1.key }) {
+      print("QB repeat_control arm=\(name) identical=\(Set(runs).count == 1)")
+    }
+    #expect(outcomes.count == 9, "every arm ran")
   }
 }
