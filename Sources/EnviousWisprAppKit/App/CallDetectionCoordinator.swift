@@ -67,6 +67,9 @@ final class CallDetectionCoordinator {
 
   private let deps: Dependencies
   private var policy = CallDetectionPolicy()
+  /// #4249: the last decision state written to `app.log`, without its changing age, so a quiet
+  /// call writes nothing and a change writes one line.
+  private var lastDecisionKey: String?
   /// Shared with speaker capture, including recordings made with prompts Off.
   let discovery: CallSourceDiscovery
   private lazy var panel: any CallPromptPresenting = deps.makePresenter(deps.anchor)
@@ -292,6 +295,7 @@ final class CallDetectionCoordinator {
     guard !readStopped else { return }
     let current = context()
     let commands = policy.step(current)
+    logDecision(current, commands)
     draw()
     run(commands)
     discovery.pruneTrackedCalls()
@@ -302,8 +306,33 @@ final class CallDetectionCoordinator {
     if case .pressed = event { press = true }
     let current = context(forPress: press)
     let commands = policy.handle(event, current)
+    logDecision(current, commands)
     draw()
     run(commands)
+  }
+
+  /// #4249: content-free decision lines (states and counts only) so a call whose end never
+  /// started the countdown can be diagnosed from `app.log`. Written on a change, plus every command.
+  private func logDecision(_ current: CallDetectionPolicy.Context, _ commands: [CallDetectionPolicy.Command]) {
+    let line = policy.diagnosticLine(current)
+    let key = line.split(separator: " ").filter { !$0.hasPrefix("age_ms=") }.joined(separator: " ")
+    var lines: [String] = []
+    if key != lastDecisionKey {
+      lastDecisionKey = key
+      lines.append("state \(line)")
+    }
+    for command in commands {
+      switch command {
+      case .start(_, let family): lines.append("command start app=\(family.rawValue)")
+      case .startByUser(_, let family): lines.append("command start_by_user app=\(family.rawValue)")
+      case .stop: lines.append("command stop")
+      default: break
+      }
+    }
+    guard !lines.isEmpty else { return }
+    Task {
+      for line in lines { await AppLogger.shared.log(line, level: .info, category: "CallDetection") }
+    }
   }
 
   private func run(_ commands: [CallDetectionPolicy.Command]) {

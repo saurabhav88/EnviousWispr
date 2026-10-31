@@ -439,6 +439,86 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// #4249: one content-free line saying what the call rules see now, so `app.log` can explain why
+  /// a call's end did or did not start the countdown. Only words for states and small counts: no
+  /// room, title, URL, bundle or process id. The coordinator writes it when it changes.
+  public func diagnosticLine(_ c: Context) -> String {
+    var parts: [String] = ["meeting=\(Self.word(c.meeting))", "mode=\(c.mode.rawValue)"]
+    if let reading {
+      let age = max(0, Int(c.now.timeIntervalSince(reading.takenAt) * 1000))
+      parts.append(
+        "reading=\(reading.complete ? "complete" : "partial") age_ms=\(age) holders=\(reading.holders.count)"
+          + " mic_on=\(reading.holders.filter { $0.input == .active }.count)"
+          + " mic_unknown=\(reading.holders.filter { $0.input == .unknown }.count)"
+          + " ambiguous=\(reading.ambiguous)")
+    } else {
+      parts.append("reading=none")
+    }
+    parts.append("interaction=\(Self.word(interaction))")
+    if inHoldoff(c) { parts.append("holdoff=on") }
+    for episode in episodes {
+      let applicable = (reading?.continuity ?? []).filter { state($0, for: episode) != nil }
+      let latest = applicable.max { $0.id < $1.id }
+      var view = "none"
+      // `trackEnds` lets any fresh ongoing observation block an end, so it wins over a newer ended one.
+      let anyFreshOngoing = applicable.contains { observation in
+        guard fresh(observation, c), case .ongoing? = state(observation, for: episode) else { return false }
+        return true
+      }
+      if anyFreshOngoing {
+        view = "ongoing"
+      } else if let latest {
+        let value: String
+        switch state(latest, for: episode) {
+        case .ongoing?: value = "ongoing"
+        case .ended?: value = "ended"
+        default: value = "unknown"
+        }
+        view = "\(value)\(fresh(latest, c) ? "" : "_stale")"
+      }
+      let live = members(of: episode).contains { $0.input == .active }
+      parts.append(
+        "episode=\(episode.id) app=\(episode.family.rawValue) phase=\(Self.word(episode.phase))"
+          + " native=\(Self.isNative(episode.rule)) owner=\(episode.owner != nil ? "known" : "none")"
+          + " evidence=\(view) observations=\(applicable.count) mic_on=\(live)"
+          + " end_reads=\(episode.endReadings)/\(Self.endReadingsRequired)")
+    }
+    return parts.joined(separator: " ")
+  }
+
+  private static func word(_ meeting: Meeting) -> String {
+    switch meeting {
+    case .idle: "idle"
+    case .busy: "busy"
+    case .recording: "recording"
+    }
+  }
+
+  private static func word(_ interaction: Interaction) -> String {
+    switch interaction {
+    case .none: "none"
+    case .ask: "ask"
+    case .switchCall: "switch"
+    case .countdown: "countdown"
+    case .endConfirmation: "end_confirmation"
+    case .switchNotConfirmed: "switch_not_confirmed"
+    case .note: "note"
+    }
+  }
+
+  private static func word(_ phase: Episode.Phase) -> String {
+    switch phase {
+    case .waiting: "waiting"
+    case .offered: "offered"
+    case .starting: "starting"
+    case .recording: "recording"
+    case .kept: "kept"
+    case .ending: "ending"
+    case .confirmingEnd: "confirming_end"
+    case .stopping: "stopping"
+    }
+  }
+
   /// The rules for this moment: ends, timeouts, new calls, questions.
   public mutating func step(_ c: Context) -> [Command] {
     var out: [Command] = []
