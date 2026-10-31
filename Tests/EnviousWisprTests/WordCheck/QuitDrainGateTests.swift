@@ -28,14 +28,21 @@ struct QuitDrainGateTests {
     #expect(gate.enter() == false)
   }
 
-  @Test("quit cleanup is still admitted after quit began, and the drain waits for it")
-  func cleanupAdmittedAndAwaited() async {
+  @Test("pending quit cleanup holds the drain through nested model and cache releases")
+  func cleanupAdmittedAndAwaited() {
     let gate = QuitDrainGate()
-    let drain = Task.detached { gate.drain(timeout: 5) }
-    waitUntilRefusing(gate)
+    // Reserve on the caller before cleanup is dispatched: it has not started yet.
+    #expect(gate.enter(duringQuit: true))
+    #expect(gate.drain(timeout: 0) == false)
+    // Model deinit and cache clear can enter after quit, nested inside that reservation.
+    #expect(gate.enter(duringQuit: true))
     #expect(gate.enter(duringQuit: true))
     gate.leave()
-    #expect(await drain.value)
+    #expect(gate.drain(timeout: 0) == false)
+    gate.leave()
+    #expect(gate.drain(timeout: 0) == false, "the outer cleanup still owns its reservation")
+    gate.leave()
+    #expect(gate.drain(timeout: 0))
   }
 
   @Test("a quit waits for the evaluation running, then returns true")

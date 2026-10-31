@@ -46,8 +46,10 @@ struct WordCheckRuntimeTerminationTests {
   /// at once. With it, the real model is cloned into the install folder after the launch probe has
   /// finished, so the probe never sees (or touches) those files. Admission is then forced, as the
   /// residency tests force it. Throws instead of recording, so a child process can call it.
-  private static func makeRuntime(in temp: URL, realModel: Bool = false) async throws
-    -> WordCheckRuntime
+  private static func makeRuntime(
+    in temp: URL, realModel: Bool = false,
+    drainForTermination: @escaping (TimeInterval) -> Bool = KevWordCheckModel.drainForTermination
+  ) async throws -> WordCheckRuntime
   {
     try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
     guard let flags = TestDefaults.suite("ew-3853-\(UUID().uuidString)"),
@@ -80,7 +82,7 @@ struct WordCheckRuntimeTerminationTests {
       delivery: delivery,
       isDictionaryEnabled: { inputs.dictionary },
       someEngineLacksOwnChecker: { inputs.needed },
-      isOnboardingComplete: { inputs.onboarding })
+      isOnboardingComplete: { inputs.onboarding }, drainForTermination: drainForTermination)
     // The delivery handle replays its current state (not admitted) to the runtime on a later main
     // actor turn; forced admission must land after it, or that replay unloads what a test loads.
     let replayed = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
@@ -135,7 +137,8 @@ struct WordCheckRuntimeTerminationTests {
   func laterLoadsRefused() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp)
+    // In-process tests must not permanently close the shared MLX gate (#3939).
+    let runtime = try await Self.makeRuntime(in: temp, drainForTermination: { _ in true })
     runtime.releaseForTermination()
     #expect(runtime.isLoadedForTelemetry == false)
     #expect(runtime.terminationCleanupForTests != nil, "the cleanup is handed off, not skipped")
@@ -157,7 +160,8 @@ struct WordCheckRuntimeTerminationTests {
   func dropsLoadedModel() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp, realModel: true)
+    let runtime = try await Self.makeRuntime(
+      in: temp, realModel: true, drainForTermination: { _ in true })
     let selection = await runtime.selection()
     let checker = try #require(selection.checker, "fixture: the real model must load")
     #expect(runtime.isLoadedForTelemetry)
@@ -177,7 +181,8 @@ struct WordCheckRuntimeTerminationTests {
   func inFlightLoadDiscarded() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp, realModel: true)
+    let runtime = try await Self.makeRuntime(
+      in: temp, realModel: true, drainForTermination: { _ in true })
     let (reading, signal) = AsyncStream<Void>.makeStream()
     runtime.onLoadReadingForTests = { signal.yield() }
     runtime.recordingStarted(needsWordCheckForRecording: true)

@@ -52,6 +52,13 @@ public actor KevWordCheckModel {
 
   private static let gate = QuitDrainGate()
 
+  /// Reserve the whole quit cleanup before dispatching it, so a drain also counts pending work.
+  /// Deinit and cache clearing may enter the same gate again while this reservation stays open.
+  package static func beginQuitCleanup() { _ = gate.enter(duringQuit: true) }
+
+  /// Called by the cleanup task only after model destruction and cache clearing finish.
+  package static func endQuitCleanup() { gate.leave() }
+
   /// Quit (#3939): refuse every new MLX entry, then wait a bounded time for the ones running (a
   /// take's evaluation, a load's reads, a cache clear) so `exit()` does not finalize MLX under
   /// them. Blocks the calling thread: call it last in `applicationWillTerminate`. False means the

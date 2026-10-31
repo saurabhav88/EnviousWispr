@@ -16,7 +16,7 @@ import os
 /// has no checker, a take's selection, Try again), never because the settings say some engine
 /// might (#3289), and released after `idleUnloadDelay` without a take, when the Dictionary switch
 /// goes off, or when no chosen engine needs it any more; at quit the runtime drops its hold
-/// without waiting (`releaseForTermination`, #3853).
+/// with a bounded drain (`releaseForTermination`, #3939).
 ///
 /// Ownership of a load is a GENERATION, never the task handle: `unload` bumps it, and a
 /// load that finishes under an older generation publishes nothing (a Dictionary off-and-on during
@@ -33,6 +33,7 @@ final class WordCheckRuntime {
   private let isDictionaryEnabled: @MainActor () -> Bool
   private let someEngineLacksOwnChecker: @MainActor () -> Bool
   private let isOnboardingComplete: @MainActor () -> Bool
+  private let drainForTermination: (TimeInterval) -> Bool
   /// The Dictionary row re-reads its status when this fires.
   var onStatusChange: @MainActor () -> Void = {}
   /// Whether the work in flight polishes (by its FROZEN provider: the dictation's session provider,
@@ -95,12 +96,14 @@ final class WordCheckRuntime {
     delivery: ModelDeliveryHome,
     isDictionaryEnabled: @escaping @MainActor () -> Bool,
     someEngineLacksOwnChecker: @escaping @MainActor () -> Bool,
-    isOnboardingComplete: @escaping @MainActor () -> Bool
+    isOnboardingComplete: @escaping @MainActor () -> Bool,
+    drainForTermination: @escaping (TimeInterval) -> Bool = KevWordCheckModel.drainForTermination
   ) {
     self.delivery = delivery
     self.isDictionaryEnabled = isDictionaryEnabled
     self.someEngineLacksOwnChecker = someEngineLacksOwnChecker
     self.isOnboardingComplete = isOnboardingComplete
+    self.drainForTermination = drainForTermination
     wire()
   }
 
@@ -313,14 +316,13 @@ final class WordCheckRuntime {
     #endif
   }
 
-  /// The app is quitting (#3853): drop the runtime's hold on the model and return at once. Called
-  /// from `WisprBootstrapper.applicationWillTerminate`, which is synchronous on the main thread.
+  /// The app is quitting (#3853): drop the runtime's hold off-main, then drain MLX work for at
+  /// most `quitDrainTimeout` (#3939). Called synchronously by `applicationWillTerminate`.
   ///
-  /// Never waits on MLX: the model's deinit and `releaseCachedBuffers()` both clear MLX's cache,
-  /// which takes MLX's evaluation lock, so on the main thread either could stall quit behind a
-  /// take's evaluation. Both run on a detached task instead, which may still be unfinished at
-  /// `exit()`. A take or an import part holding the model keeps it until then; this frees nothing
-  /// it holds. Terminal: no load starts after it, and a load in flight publishes nothing.
+  /// The model's deinit and `releaseCachedBuffers()` take MLX's evaluation lock, so the main
+  /// thread must not run either directly. Reserve their entire cleanup before dispatching it;
+  /// the drain then counts it even before the task starts. A take or import part keeps its own
+  /// model hold. No load starts after this, and a load in flight publishes nothing.
   func releaseForTermination() {
     terminated = true
     loadGeneration &+= 1
@@ -334,7 +336,11 @@ final class WordCheckRuntime {
     loaded = nil
     let logger = Self.quitLogger
     let completed = onTerminationCleanupForTests
+    KevWordCheckModel.beginQuitCleanup()
+    // Detached so cleanup can run while this main thread blocks in the drain. Task would inherit
+    // this actor; a task group or @concurrent call would require an await in this synchronous hook.
     terminationCleanupForTests = Task.detached(priority: .utility) {
+      defer { KevWordCheckModel.endQuitCleanup() }
       held.drop()
       // A process that never used MLX has nothing to clear; cleanup must not start MLX (#3987).
       // Log synchronously if cleanup reaches its outcome. A missing notice means outcome unobserved.
@@ -349,7 +355,7 @@ final class WordCheckRuntime {
     Self.quitLogger.notice("word check holder dropped reason=app_quit")
     // Last: refuse new MLX work and wait, bounded, for what runs (a take, a load, the cleanup above)
     // so `exit()` does not finalize MLX's scheduler under it (#3939).
-    let drained = KevWordCheckModel.drainForTermination(timeout: Self.quitDrainTimeout)
+    let drained = drainForTermination(Self.quitDrainTimeout)
     Self.quitLogger.notice("word check drain \(drained ? "complete" : "timed_out", privacy: .public) reason=app_quit")
   }
 
