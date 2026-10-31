@@ -380,6 +380,20 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
     *) echo "ERROR: result bundle path must end in .xcresult: $bundle" >&2; exit 2 ;;
   esac
   set -o pipefail
+  # #4243: compile the cloud critical bundle (scheme EnviousWispr-Critical) first, so a
+  # listed test file that starts using a helper outside Project.swift criticalTestSources
+  # fails here, not first in the cloud PR check (PR #4253's first run, ReadyEGOneRuntime).
+  # It is only built, never run: the executed bundles and the receipt stay unchanged, and
+  # the production scheme's archive graph never contains test code.
+  if [ "$config" = Debug ]; then
+    xcodebuild build-for-testing \
+      -project "$PROJECT" -scheme EnviousWispr-Critical \
+      -configuration "$config" \
+      -derivedDataPath "$DERIVED_DATA" -destination "$DEST" \
+      -onlyUsePackageVersionsFromResolvedFile \
+      ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "$@" \
+      2>&1 | tee "$LOG_DIR/xcode-build-critical-debug.log" || return "$?"
+  fi
   if [ "$TEST_EXECUTION" = "grouped" ]; then
     local build_start=$SECONDS supervisor rc
     xcodebuild build-for-testing \
