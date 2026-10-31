@@ -135,18 +135,25 @@ def dictation():
     return sample
 
 
-def wait_exit(pid, seconds):
-    """Polls every 0.2 s for `pid` to exit: the last poll that saw it alive and the first that
-    saw it gone (CLOCK_UPTIME_RAW ns); goneNs is None when it never exited."""
-    alive = now_ns()
+def wait_exit(pid, seconds, sent_ns, alive=None, clock=None, pause=None):
+    """Brackets `pid`'s exit after a Quit sent at `sent_ns` (CLOCK_UPTIME_RAW ns), polling every
+    0.2 s. lastAliveNs starts at sent_ns and moves only to the clock reading taken BEFORE a
+    query that saw the process alive; goneNs is the reading taken AFTER the first query that
+    saw it gone, so the exit lies inside the pair. goneNs is None when it never exited."""
+    alive = alive or (lambda: any(p == pid for p, _ in m.dev_pids()))
+    clock = clock or now_ns
+    pause = pause or (lambda: time.sleep(0.2))  # deadline-fallback: the process table is the only exit signal
+    lower = sent_ns
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        stamp = now_ns()
-        if not any(p == pid for p, _ in m.dev_pids()):
-            return {"lastAliveNs": alive, "goneNs": stamp}
-        alive = stamp
-        time.sleep(0.2)  # deadline-fallback: the process table is the only exit signal
-    return {"lastAliveNs": alive, "goneNs": None}
+        before = clock()
+        running = alive()
+        after = clock()
+        if not running:
+            return {"lastAliveNs": lower, "goneNs": after}
+        lower = before
+        pause()
+    return {"lastAliveNs": lower, "goneNs": None}
 
 
 def exit_window_ms(sent_ns, window):
@@ -334,7 +341,7 @@ def run(args):
                 sent = now_ns()
                 if not app.terminate():
                     raise m.Setup("the quit request was not sent")
-                exit_window = wait_exit(pid_now, 60)
+                exit_window = wait_exit(pid_now, 60, sent)
                 gone = exit_window["goneNs"] is not None
                 text = log_since(offset)
                 seen = witness(text, "quit")
@@ -369,10 +376,20 @@ def run(args):
                 if token is None:
                     c.cannot_tell("delete during detection", "no detection start line")
                 else:
+                    dispatched = now_ns()
                     st, reply = m.door("meeting", "delete", args.delete_meeting)
+                    replied = now_ns()
                     text = wait_log(offset, lambda t: witness(t, "meeting.delete", reply.get("id")) is not None, 20)
                     seen = witness(text, "meeting.delete", reply.get("id"))
-                    detail["delete"] = {"token": token, "witness": seen, "reply": st == 0 and bool(reply.get("ok"))}
+                    row_gone = m.door("meeting", "get", args.delete_meeting)[0] != 0
+                    folder_gone = not os.path.exists(folder)
+                    verified = now_ns() if row_gone and folder_gone else None
+                    detail["delete"] = {
+                        "token": token, "witness": seen, "reply": st == 0 and bool(reply.get("ok")),
+                        "dispatchNs": dispatched, "replyNs": replied, "verifiedNs": verified,
+                        "requestToReplyMs": round((replied - dispatched) / 1e6, 1),
+                        "requestToVerifiedRemovalMs": round((verified - dispatched) / 1e6, 1) if verified else None,
+                        "note": "harness-side; includes dev_control.py process start and the row and folder checks"}
                     print(json.dumps(detail["delete"], default=str))
                     inside = during(seen, token)
                     if inside is None:
@@ -380,8 +397,8 @@ def run(args):
                     else:
                         c.check("delete received during detection", inside)
                     c.check("the delete reply succeeded", detail["delete"]["reply"])
-                    c.check("the deleted meeting's row is gone", m.door("meeting", "get", args.delete_meeting)[0] != 0)
-                    c.check("the deleted meeting's folder is gone", not os.path.exists(folder), folder)
+                    c.check("the deleted meeting's row is gone", row_gone)
+                    c.check("the deleted meeting's folder is gone", folder_gone, folder)
             else:
                 c.cannot_tell("delete during detection", "no --delete-meeting named: not run")
     except m.Setup as error:
@@ -457,6 +474,15 @@ def self_test():
     cases.append(("a receipt without a take has none", take_of({"launch": "L", "takeID": "x"}) is None))
     cases.append(("the exit window spans last alive to first gone",
                   exit_window_ms(1_000_000, {"lastAliveNs": 201_000_000, "goneNs": 401_000_000}) == [200.0, 400.0]))
+    ticks = iter([10, 11, 20, 21])
+    window = wait_exit(0, 5, 3, alive=iter([True, False]).__next__, clock=ticks.__next__, pause=lambda: None)
+    cases.append(("exit brackets: before the last alive query, after the first gone one", window == {"lastAliveNs": 10, "goneNs": 21}))
+    ticks = iter([10, 11])
+    window = wait_exit(0, 5, 3, alive=lambda: False, clock=ticks.__next__, pause=lambda: None)
+    cases.append(("already gone on the first poll: the lower bound is the Quit request", window == {"lastAliveNs": 3, "goneNs": 11}))
+    ticks = iter([10, 30])
+    window = wait_exit(0, 5, 3, alive=lambda: False, clock=ticks.__next__, pause=lambda: None)
+    cases.append(("exit during a slow query: the upper bound is after the query", window["goneNs"] == 30))
     cases.append(("no exit has no window", exit_window_ms(0, {"lastAliveNs": 5, "goneNs": None}) is None))
     idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
     cases.append(("an idle status is idle", idle_reason(idle) is True))
