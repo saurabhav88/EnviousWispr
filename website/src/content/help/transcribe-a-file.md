@@ -113,7 +113,7 @@ Below the chips you can:
 
 A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. If the save did not go through, the Done step says **This version is not saved** instead, and Copy, Save and Share still work on the text in front of you.
 
-In History, the row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **A** (All), **D** (Dictations), **T** (Transcripts) and **M** (Meetings) buttons above the list show one kind or all of them. You can search, copy, paste, rename speakers and delete from there.
+In History, the row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
 
 ### Does my recording leave my Mac?
 

@@ -125,7 +125,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Dictation Settings > Recording Pill, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
-- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts, with an A / D / T / M filter (All, Dictations, Transcripts, Meetings) above the list
+- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts, with an All / Dictations / Transcripts filter above the list
 - 🔎 **Settings search**: type in the Settings sidebar, or press ⌘F, to jump straight to any setting
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
