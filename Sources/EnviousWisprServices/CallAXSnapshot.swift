@@ -10,6 +10,9 @@ package struct CallAXNode: Sendable, Equatable {
   package let description: String?
   package let value: String?
   package let identifier: String?
+  /// A web element's DOM id (`AXDOMIdentifier`), copied for buttons only: the Teams app's
+  /// microphone button is found by it (#4248).
+  package let domIdentifier: String?
   package let domClassList: [String]
   package let width: Double?
   package let height: Double?
@@ -17,14 +20,15 @@ package struct CallAXNode: Sendable, Equatable {
 
   package init(
     role: String, title: String? = nil, description: String? = nil, value: String? = nil,
-    identifier: String? = nil, domClassList: [String] = [], width: Double? = nil,
-    height: Double? = nil, children: [CallAXNode] = []
+    identifier: String? = nil, domIdentifier: String? = nil, domClassList: [String] = [],
+    width: Double? = nil, height: Double? = nil, children: [CallAXNode] = []
   ) {
     self.role = role
     self.title = title
     self.description = description
     self.value = value
     self.identifier = identifier
+    self.domIdentifier = domIdentifier
     self.domClassList = domClassList
     self.width = width
     self.height = height

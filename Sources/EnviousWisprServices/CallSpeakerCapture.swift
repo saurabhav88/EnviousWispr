@@ -5,13 +5,15 @@ import EnviousWisprCore
 import Foundation
 
 /// The Accessibility attributes a speaker capture copies (#4013 chunk 13A). Exactly what the
-/// native and rules readers consume (`CallAXNode`), plus a window's title and a page's address.
+/// native, rules and self-mute (#4248) readers consume (`CallAXNode`), plus a window's title and
+/// a page's address.
 package enum CallAXAttribute: String, Sendable, CaseIterable {
   case role = "AXRole"
   case title = "AXTitle"
   case description = "AXDescription"
   case value = "AXValue"
   case identifier = "AXIdentifier"
+  case domIdentifier = "AXDOMIdentifier"
   case domClassList = "AXDOMClassList"
   case size = "AXSize"
   case children = "AXChildren"
@@ -101,6 +103,12 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
       return false
     }
     return Self.zoomToolbarIdentifiers.contains(identifier)
+  }
+
+  /// Whether an element's DOM id is read: buttons only, where the Teams app's microphone button
+  /// carries it (#4248), and never in the Zoom app, a native app that has none.
+  func readsDOMIdentifier(role: String) -> Bool {
+    self != .zoomApp && role == "AXButton"
   }
 
   func isEvidence(role: String) -> Bool {
@@ -284,6 +292,8 @@ package enum CallSpeakerCapture {
       let description = text(element, .description)
       let value = text(element, .value)
       let identifier = text(element, .identifier)
+      let domIdentifier =
+        policy.readsDOMIdentifier(role: role) ? text(element, .domIdentifier) : nil
       var classes: [String] = []
       switch read(element, .domClassList) {
       case .texts(let list)?: classes = list
@@ -326,8 +336,8 @@ package enum CallSpeakerCapture {
       }
       let copy = CallAXNode(
         role: role, title: title, description: description, value: value,
-        identifier: identifier, domClassList: classes, width: width, height: height,
-        children: children)
+        identifier: identifier, domIdentifier: domIdentifier, domClassList: classes, width: width,
+        height: height, children: children)
       if role == "AXWebArea", keptPage, let url {
         documents.append(CallAXDocument(url: url, root: copy))
       }

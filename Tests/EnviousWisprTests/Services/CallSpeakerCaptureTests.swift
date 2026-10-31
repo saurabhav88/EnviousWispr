@@ -105,7 +105,10 @@ struct CallSpeakerCaptureTests {
     tree.texts[110] = [.identifier: "addAccount:"]
     tree.node(111, "AXMenu", children: [112, 113])
     tree.node(112, "AXMenuItem")
-    tree.texts[112] = [.identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)", .markChar: "\u{2713}"]
+    tree.texts[112] = [
+      .identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)",
+      .markChar: "\u{2713}",
+    ]
     tree.node(113, "AXMenuItem")
     tree.texts[113] = [.identifier: "signOutAllAccounts:"]
     return tree
@@ -260,6 +263,40 @@ struct CallSpeakerCaptureTests {
     let mail = copy.windows.first?.root.children.last
     #expect(mail?.role == "AXWebArea")
     #expect(mail?.children.isEmpty == true, "the other page's content is not copied")
+  }
+
+  /// #4248: the Teams app's microphone button is found by its DOM id, so the copy must carry it.
+  @Test("a button's DOM id is copied; other roles and the Zoom app never read it")
+  func domIdentifier() {
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 3, 4])
+    tree.node(2, "AXButton")
+    tree.texts[2] = [.domIdentifier: "microphone-button"]
+    tree.node(3, "AXButton")
+    tree.node(4, "AXGroup")
+    tree.texts[4] = [.domIdentifier: "roster"]
+    let copy = capture(tree)
+    #expect(copy.completeness == .complete)
+    let kids = copy.windows.first?.root.children ?? []
+    #expect(kids.map(\.domIdentifier) == ["microphone-button", nil, nil])
+    #expect(tree.queried.contains("2.AXDOMIdentifier"))
+    #expect(tree.queried.contains("3.AXDOMIdentifier"), "a missing id is asked and stays missing")
+    #expect(tree.queried.contains("4.AXDOMIdentifier") == false)
+    #expect(tree.queried.contains("1.AXDOMIdentifier") == false)
+
+    // The Zoom app is native: it is never asked.
+    let zoom = Tree()
+    zoom.node(1, "AXWindow", children: [2])
+    zoom.node(2, "AXButton")
+    zoom.texts[2] = [.domIdentifier: "microphone-button", .identifier: "audio"]
+    let zoomCopy = capture(zoom, policy: .zoomApp)
+    #expect(zoomCopy.windows.first?.root.children.first?.domIdentifier == nil)
+    #expect(zoom.queried.contains("2.AXDOMIdentifier") == false)
+
+    // A failed read makes the copy unreadable, like any other attribute.
+    tree.queried = []
+    tree.failing = ["2.AXDOMIdentifier"]
+    #expect(capture(tree).completeness == .unreadable)
   }
 
   // MARK: - Timeline
@@ -873,10 +910,16 @@ struct CallSpeakerCaptureTests {
   @Test("the same two people listed the other way round continue the same stretch")
   func pairStretchIgnoresOrder() {
     var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
-    log.add(pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good, observationMs: 1_000)
-    log.add(pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good, observationMs: 1_500)
+    log.add(
+      pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good,
+      observationMs: 1_000)
+    log.add(
+      pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good,
+      observationMs: 1_500)
     // A different spelling of one name is a different stretch.
-    log.add(pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    log.add(
+      pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good,
+      observationMs: 2_000)
     let pairs = log.log.segments[0].pairs ?? []
     #expect(pairs.map(\.firstMs) == [1_000, 2_000])
     #expect(pairs.map(\.lastMs) == [1_500, 2_000])
@@ -903,7 +946,8 @@ struct CallSpeakerCaptureTests {
           nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved),
           observationMs: 1_200)
       }.count == 2)
-    #expect(run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
+    #expect(
+      run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
     #expect(
       run { $0.add(self.pair(marked: []), context: Self.good, observationMs: 1_200) }.count == 3,
       "different marks are a different stretch")
