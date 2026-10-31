@@ -135,6 +135,27 @@ def dictation():
     return sample
 
 
+def wait_exit(pid, seconds):
+    """Polls every 0.2 s for `pid` to exit: the last poll that saw it alive and the first that
+    saw it gone (CLOCK_UPTIME_RAW ns); goneNs is None when it never exited."""
+    alive = now_ns()
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        stamp = now_ns()
+        if not any(p == pid for p, _ in m.dev_pids()):
+            return {"lastAliveNs": alive, "goneNs": stamp}
+        alive = stamp
+        time.sleep(0.2)  # deadline-fallback: the process table is the only exit signal
+    return {"lastAliveNs": alive, "goneNs": None}
+
+
+def exit_window_ms(sent_ns, window):
+    """[earliest, latest] ms from the Quit request to exit, or None when it never exited."""
+    if window["goneNs"] is None:
+        return None
+    return [round(max(0, window["lastAliveNs"] - sent_ns) / 1e6, 1), round((window["goneNs"] - sent_ns) / 1e6, 1)]
+
+
 def take_of(receipt):
     """The kernel take id in a door receipt (`Receipt.json` in DevControlDictation.swift:
     launch, backend, take)."""
@@ -229,75 +250,76 @@ def run(args):
                 raise m.Setup(f"meeting {meeting_id} has no audio or is not ready")
         work = tempfile.mkdtemp(prefix="vad-checkpoint-", dir=args.run_dir)
         with audio_rig.AudioRig(), NoiseFloor(work):
-            baseline = {}
-            for engine in ("parakeet", "whisper"):
-                switch(engine)
-                idle_before = meeting_idle()
-                takes = [dictation() for _ in range(5)]
-                idle_after = meeting_idle()
-                baseline[engine] = [{"readyMs": t.get("readyMs"), "terminal": t.get("terminal"),
-                                     "problem": t.get("problem")} for t in takes]
-                c.check(f"baseline {engine}: no meeting work before or after",
-                        idle_before is True and idle_after is True, f"{idle_before} / {idle_after}")
-                c.check(f"baseline {engine}: 5 healthy take-matched readiness samples",
-                        all(t.get("problem") is None for t in takes), json.dumps(baseline[engine]))
-            detail["baseline"] = baseline
-            passes = detail.setdefault("passes", [])
-
-            def judge(label, meeting_id, token, start, offset, request, request_id, extra):
-                text = wait_log(offset, lambda t: outcome_of(t, token)[0] is not None, 1800)
-                outcome, end = outcome_of(text, token)
-                seen = witness(text, request, request_id)
-                inside = during(seen, token)
-                row = {"label": label, "meeting": meeting_id, "token": token, "startNs": start,
-                       "outcome": outcome, "endNs": end, "witness": seen, "during": inside, **extra}
-                passes.append(row)
-                print(json.dumps(row, default=str))
-                if inside is None:
-                    c.cannot_tell(f"{label} during detection", "no request witness")
-                else:
-                    c.check(f"{label} received during detection", inside, json.dumps(row, default=str))
-                c.check(f"{label} detection succeeded", outcome == "vad_ok", outcome or "none")
-                wait_ready(meeting_id)
-
-            for engine in ("parakeet", "whisper"):
-                switch(engine)
-                for i in range(3):
-                    meeting_id = meetings[i % len(meetings)]
-                    token, start, offset = start_pass(meeting_id)
-                    if token is None:
-                        c.cannot_tell(f"dictation-{engine}-{i}", "no detection start line")
-                        continue
-                    take = dictation()
-                    c.check(f"dictation-{engine}-{i} healthy take-matched readiness sample",
-                            take.get("problem") is None, str(take.get("problem")))
-                    judge(f"dictation-{engine}-{i}", meeting_id, token, start, offset, "dictation.start",
-                          take.get("id"), {"readyMs": take.get("readyMs"), "clockOk": take.get("clockOk"),
-                                           "stopOk": take.get("stopOk"), "terminal": take.get("terminal"),
-                                           "problem": take.get("problem")})
             primary = meetings[0]
-            switch("parakeet")
-            for target in ("whisper", "parakeet"):
+            if not args.quit_delete_only:
+                baseline = {}
+                for engine in ("parakeet", "whisper"):
+                    switch(engine)
+                    idle_before = meeting_idle()
+                    takes = [dictation() for _ in range(5)]
+                    idle_after = meeting_idle()
+                    baseline[engine] = [{"readyMs": t.get("readyMs"), "terminal": t.get("terminal"),
+                                         "problem": t.get("problem")} for t in takes]
+                    c.check(f"baseline {engine}: no meeting work before or after",
+                            idle_before is True and idle_after is True, f"{idle_before} / {idle_after}")
+                    c.check(f"baseline {engine}: 5 healthy take-matched readiness samples",
+                            all(t.get("problem") is None for t in takes), json.dumps(baseline[engine]))
+                detail["baseline"] = baseline
+                passes = detail.setdefault("passes", [])
+
+                def judge(label, meeting_id, token, start, offset, request, request_id, extra):
+                    text = wait_log(offset, lambda t: outcome_of(t, token)[0] is not None, 1800)
+                    outcome, end = outcome_of(text, token)
+                    seen = witness(text, request, request_id)
+                    inside = during(seen, token)
+                    row = {"label": label, "meeting": meeting_id, "token": token, "startNs": start,
+                           "outcome": outcome, "endNs": end, "witness": seen, "during": inside, **extra}
+                    passes.append(row)
+                    print(json.dumps(row, default=str))
+                    if inside is None:
+                        c.cannot_tell(f"{label} during detection", "no request witness")
+                    else:
+                        c.check(f"{label} received during detection", inside, json.dumps(row, default=str))
+                    c.check(f"{label} detection succeeded", outcome == "vad_ok", outcome or "none")
+                    wait_ready(meeting_id)
+
+                for engine in ("parakeet", "whisper"):
+                    switch(engine)
+                    for i in range(3):
+                        meeting_id = meetings[i % len(meetings)]
+                        token, start, offset = start_pass(meeting_id)
+                        if token is None:
+                            c.cannot_tell(f"dictation-{engine}-{i}", "no detection start line")
+                            continue
+                        take = dictation()
+                        c.check(f"dictation-{engine}-{i} healthy take-matched readiness sample",
+                                take.get("problem") is None, str(take.get("problem")))
+                        judge(f"dictation-{engine}-{i}", meeting_id, token, start, offset, "dictation.start",
+                              take.get("id"), {"readyMs": take.get("readyMs"), "clockOk": take.get("clockOk"),
+                                               "stopOk": take.get("stopOk"), "terminal": take.get("terminal"),
+                                               "problem": take.get("problem")})
+                switch("parakeet")
+                for target in ("whisper", "parakeet"):
+                    token, start, offset = start_pass(primary)
+                    if token is None:
+                        c.cannot_tell(f"switch-to-{target}", "no detection start line")
+                        continue
+                    result = switch(target)
+                    judge(f"switch-to-{target}", primary, token, start, offset, "engine_switch",
+                          result["id"], {"switchMs": result["switchMs"]})
+                # Sampled residency across one pass.
+                pid = m.this_build_pid()
+                samples = []
                 token, start, offset = start_pass(primary)
-                if token is None:
-                    c.cannot_tell(f"switch-to-{target}", "no detection start line")
-                    continue
-                result = switch(target)
-                judge(f"switch-to-{target}", primary, token, start, offset, "engine_switch",
-                      result["id"], {"switchMs": result["switchMs"]})
-            # Sampled residency across one pass.
-            pid = m.this_build_pid()
-            samples = []
-            token, start, offset = start_pass(primary)
-            end = time.monotonic() + 1800
-            while time.monotonic() < end and state(primary) != "ready":
-                value = m.footprint_bytes(pid)
-                if value:
-                    samples.append(value)
-                time.sleep(1)  # deadline-fallback: 1 s sampling period
-            detail["sampledResidency"] = {"peakMB": round(max(samples) / 1048576) if samples else None,
-                                          "samples": len(samples), "clock": "footprint, 1 s"}
-            c.check("sampled residency has samples", bool(samples), str(len(samples)))
+                end = time.monotonic() + 1800
+                while time.monotonic() < end and state(primary) != "ready":
+                    value = m.footprint_bytes(pid)
+                    if value:
+                        samples.append(value)
+                    time.sleep(1)  # deadline-fallback: 1 s sampling period
+                detail["sampledResidency"] = {"peakMB": round(max(samples) / 1048576) if samples else None,
+                                              "samples": len(samples), "clock": "footprint, 1 s"}
+                c.check("sampled residency has samples", bool(samples), str(len(samples)))
             # Quit during detection.
             before = m.crash_reports()
             token, start, offset = start_pass(primary)
@@ -312,10 +334,13 @@ def run(args):
                 sent = now_ns()
                 if not app.terminate():
                     raise m.Setup("the quit request was not sent")
-                gone = m.wait_for("exit", lambda: not any(p == pid_now for p, _ in m.dev_pids()), 60, 0.2)
+                exit_window = wait_exit(pid_now, 60)
+                gone = exit_window["goneNs"] is not None
                 text = log_since(offset)
                 seen = witness(text, "quit")
                 detail["quit"] = {"token": token, "startNs": start, "sentNs": sent, "witness": seen,
+                                  "exitWindowMs": exit_window_ms(sent, exit_window),
+                                  "note": "includes the DEBUG quit witness write; 0.2 s exit polls",
                                   "outcome": outcome_of(text, token)[0], "exited": bool(gone)}
                 print(json.dumps(detail["quit"], default=str))
                 inside = during(seen, token)
@@ -430,6 +455,9 @@ def self_test():
     cases.append(("readiness pairs with the receipt's take",
                   ready_ns("x RECORDING_READY take=D526A53C-8DFA-4C53-B7A7-D4710F472464 uptime_raw_ns=5\n", take_of(receipt)) == 5))
     cases.append(("a receipt without a take has none", take_of({"launch": "L", "takeID": "x"}) is None))
+    cases.append(("the exit window spans last alive to first gone",
+                  exit_window_ms(1_000_000, {"lastAliveNs": 201_000_000, "goneNs": 401_000_000}) == [200.0, 400.0]))
+    cases.append(("no exit has no window", exit_window_ms(0, {"lastAliveNs": 5, "goneNs": None}) is None))
     idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
     cases.append(("an idle status is idle", idle_reason(idle) is True))
     cases.append(("a processing pass is not idle", idle_reason({**idle, "processing": {"meetingID": "x"}}) is not True))
@@ -448,6 +476,8 @@ def main():
     parser.add_argument("--meeting", action="append", default=[])
     parser.add_argument("--delete-meeting")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--quit-delete-only", action="store_true",
+                        help="run only Quit and (with --delete-meeting) Delete during detection")
     args = parser.parse_args()
     if args.self_test:
         sys.exit(1 if self_test() else 0)
