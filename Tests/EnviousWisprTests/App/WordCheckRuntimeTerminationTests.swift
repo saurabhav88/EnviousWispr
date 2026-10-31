@@ -355,17 +355,36 @@ struct WordCheckRuntimeTerminationTests {
       }
     }
     say("kev-batch ms=\(batchMs) \(token)")
-    let evaluation = ChildResult()
+    var evaluation = ChildResult()
     let activeBatch = batch
-    let work = Task.detached {
+    var work = Task.detached { [evaluation] in
       let count = try? await checker.decide(activeBatch).count
       evaluation.record(count == activeBatch.count)
     }
     let probe = EvalLockProbe()
     probe.start()
+    let shortStagingAttemptLimit = 10
+    var stagingAttempt = 1
     // Measured lock contention is the precondition, not a fixed pause. The watchdog bounds it.
     while probe.blockedMs() < 1 {
-      guard evaluation.value == nil else { childFail("evaluation ended before quit") }
+      if let result = evaluation.value {
+        guard longEvaluation == false else { childFail("evaluation ended before quit") }
+        guard result else { childFail("short staging evaluation failed") }
+        await work.value
+        guard stagingAttempt < shortStagingAttemptLimit else {
+          childFail(
+            "short staging exhausted \(shortStagingAttemptLimit) attempts: "
+              + "evaluation=\(result), probe.blockedMs=\(probe.blockedMs())")
+        }
+        // A short evaluation can finish before the probe thread starts or observes contention.
+        // Retry only after its completion signal, keeping the same probe running (#3939).
+        stagingAttempt += 1
+        evaluation = ChildResult()
+        work = Task.detached { [evaluation] in
+          let count = try? await checker.decide(activeBatch).count
+          evaluation.record(count == activeBatch.count)
+        }
+      }
     }
     probe.stopAfterCurrentClear()
     let started = ContinuousClock.now
