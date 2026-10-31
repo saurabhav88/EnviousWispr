@@ -1205,8 +1205,10 @@ extension TranscribeCppPreviewRealBoundaryTests {
   }
 
   /// Runs `audio` through one live transcript session; returns its text and native inputs.
+  /// `degraded`: whether the session's detection had turned off, read before cancel (which
+  /// releases it); nil when the session had none.
   static func live(_ audio: [Float], gated: Bool, language: String = "en") async throws -> (
-    text: String, inputs: [Int]
+    text: String, inputs: [Int], degraded: Bool?
   ) {
     let bundle = try MeetingVADFixture.modelBundle
     let driver = CountingDriver()
@@ -1233,9 +1235,10 @@ extension TranscribeCppPreviewRealBoundaryTests {
       }
       stepped.step(n + 1)
     }
+    let degraded = await rolling.speechDetectionDegradedForTests
     await rolling.cancel()
     await runtime.releaseAndDrain()
-    return (text.text, driver.inputs.withLock { $0 })
+    return (text.text, driver.inputs.withLock { $0 }, degraded)
   }
 
   @Test(
@@ -1244,7 +1247,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
     .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
   )
   func meetingLiveSilenceSkipsNative() async throws {
-    let (text, inputs) = try await Self.live([Float](repeating: 0, count: 30 * 16_000), gated: true)
+    let (text, inputs, _) = try await Self.live([Float](repeating: 0, count: 30 * 16_000), gated: true)
     #expect(inputs.isEmpty, "no native call on confirmed silence: \(inputs)")
     #expect(text.isEmpty)
   }
@@ -1259,7 +1262,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
     let audio = clip + [Float](repeating: 0, count: 60 * 16_000) + other
       + [Float](repeating: 0, count: 8 * 16_000)
-    let (text, inputs) = try await Self.live(audio, gated: true)
+    let (text, inputs, _) = try await Self.live(audio, gated: true)
     let baseline = try await Self.live(audio, gated: false)
     let words = MeetingVADFixture.words(text)
     let reference = MeetingVADFixture.words(MeetingVADFixture.script)
@@ -1284,7 +1287,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
     let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
     let audio = clip + [Float](repeating: 0, count: 5 * 16_000) + other
       + [Float](repeating: 0, count: 8 * 16_000)
-    let (text, _) = try await Self.live(audio, gated: true)
+    let (text, _, _) = try await Self.live(audio, gated: true)
     let reference = MeetingVADFixture.words(MeetingVADFixture.script)
       + MeetingVADFixture.words(try MeetingVADFixture.otherScript)
     let result = Self.edits(MeetingVADFixture.words(text), against: reference)
@@ -1368,11 +1371,14 @@ extension TranscribeCppPreviewRealBoundaryTests {
       let language = item.language ?? "en"
       let gated = try await Self.live(audio, gated: true, language: language)
       let ungated = try await Self.live(audio, gated: false, language: language)
+      #expect(gated.degraded == false, "\(item.id): detection stayed on to the end")
+      #expect(ungated.degraded == nil, "\(item.id): the baseline has no detection")
       let words = MeetingVADFixture.words(gated.text)
       let baseline = MeetingVADFixture.words(ungated.text)
       if item.references == [[]] {
         print("VOICES live case=\(item.id) detected=\(words) undetected=\(baseline) native=\(gated.inputs.count)")
         #expect(words.isEmpty, "\(item.id): music and noise alone give no words: \(gated.text)")
+        #expect(gated.inputs.isEmpty, "\(item.id): confirmed silence, no native call: \(gated.inputs)")
         continue
       }
       for (index, reference) in item.references.enumerated() {

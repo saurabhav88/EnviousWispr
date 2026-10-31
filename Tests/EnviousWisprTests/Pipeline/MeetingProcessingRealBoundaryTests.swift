@@ -491,7 +491,10 @@ extension MeetingProcessingRealBoundaryTests {
     let vadPath = vadRoot.path
     let detections = OSAllocatedUnfairLock(initialState: 0)
 
-    func pass(_ fixture: URL, language: String, detect: Bool) async throws -> String {
+    /// The pass's text and each decode's speech preparation.
+    func pass(_ fixture: URL, language: String, detect: Bool) async throws -> (
+      text: String, preparations: [MeetingSpeechPreparation?]
+    ) {
       let dir = try folder("voices")
       defer { try? FileManager.default.removeItem(at: dir) }
       let audio = try segments(from: fixture, into: dir, track: track)
@@ -505,19 +508,22 @@ extension MeetingProcessingRealBoundaryTests {
         })
       var configuration = MeetingTranscriptionJob.Configuration()
       configuration.cutsPieces = false
+      var preparations: [MeetingSpeechPreparation?] = []
       let job = MeetingTranscriptionJob(
         dependencies: .init(
           isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
           loadEngine: { try await engine.load(modelPath: modelPath) },
           transcribe: { samples, language in
-            try await engine.transcribe(samples: samples, language: language)
+            let decoded = try await engine.transcribe(samples: samples, language: language)
+            preparations.append(decoded.meetingSpeechPreparation)
+            return decoded
           },
           unloadEngine: { await engine.unload() },
           analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
         configuration: configuration)
       let result = try await job.runTestAttempt(tracks: [track: audio], language: language) { _ in }
       #expect(result.failedPieces == 0, "no piece failed")
-      return result.composition.text
+      return (result.composition.text, preparations)
     }
 
     var lost: [String: [String]] = [:]
@@ -529,9 +535,19 @@ extension MeetingProcessingRealBoundaryTests {
         "\(item.id): fixture matches its manifest hash")
       let language = item.language ?? "en"
       let before = detections.withLock { $0 }
-      let detected = try await pass(fixture, language: language, detect: true)
-      #expect(detections.withLock { $0 } > before, "\(item.id): the detector really ran")
-      let undetected = try await pass(fixture, language: language, detect: false)
+      let (detected, detectedPreparations) = try await pass(fixture, language: language, detect: true)
+      #expect(detections.withLock { $0 } > before, "\(item.id): the detector was asked")
+      // A detector error fails open to the undetected decode: only the result's provenance
+      // shows detection actually ran.
+      #expect(!detectedPreparations.isEmpty)
+      #expect(
+        detectedPreparations.allSatisfy { $0 == .protectedSpeech || $0 == .confirmedSilence },
+        "\(item.id): detection ran on every decode: \(detectedPreparations)")
+      let (undetected, undetectedPreparations) = try await pass(fixture, language: language, detect: false)
+      #expect(!undetectedPreparations.isEmpty)
+      #expect(
+        undetectedPreparations.allSatisfy { $0 == .detectionUnavailable },
+        "\(item.id): the baseline is the undetected decode: \(undetectedPreparations)")
       let words = MeetingVoiceCase.words(detected)
       let baseline = MeetingVoiceCase.words(undetected)
       if item.references == [[]] {
