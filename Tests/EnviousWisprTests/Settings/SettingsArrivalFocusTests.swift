@@ -370,6 +370,16 @@ struct SettingsArrivalFocusTests {
       ],
       []
     ),
+    // #4284: the call-app switches sit under the row's title, outside the row; a search for
+    // "Notice calls in" must still land on a switch, not only on the heading.
+    (
+      "meetings.callApps",
+      [
+        .meetingCallApps, .meetingsTabGeneral, .meetingsTabModels, .meetingsTabCallApps,
+        .meetingsTabPermissions,
+      ],
+      []
+    ),
   ]
 
   /// Real controls the per-page lists above leave out: the tab strips, per-row buttons, links,

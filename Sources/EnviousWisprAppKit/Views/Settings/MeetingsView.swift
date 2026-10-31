@@ -574,6 +574,12 @@ enum MeetingsCopy {
   static let browserMeetings = LocalizedStringResource(
     "Meetings in a browser",
     comment: "EnviousMeet page: the switch for meetings in any web browser, like Google Meet in Chrome.")
+  static let browserMeetingsDetail = LocalizedStringResource(
+    "Google Meet, Zoom, Teams, Webex and more, in Chrome, Safari, Arc and other browsers.",
+    comment: "EnviousMeet Call Apps tab: the grey line under Meetings in a browser. App and browser names are not translated.")
+  static let callAppsPrivacy = LocalizedStringResource(
+    "EnviousMeet checks for calls on your Mac and never sends this anywhere.",
+    comment: "EnviousMeet Call Apps tab: the privacy line under the list of call apps.")
   static let callSoundHelp = LocalizedStringResource(
     "Off records your microphone and the sound your Mac plays, so the other people on a call are in the transcript. On records only your microphone. Without headphones, your microphone still hears the call through your speakers. The choice applies to the next meeting you start.",
     comment: "EnviousMeet page: help for Record only my voice.")
