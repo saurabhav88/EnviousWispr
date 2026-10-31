@@ -316,8 +316,8 @@ if __name__ == "__main__":
     # **A failed precondition EXITS NONZERO and writes no report.** The previous
     # entrypoint let every failure become a JSON file full of plausible-looking
     # fields, which is worse than no file: a caller reading it cannot tell a real
-    # result from a run that never opened a window. `validate-pr.sh` and any human
-    # reading the exit status now get an unambiguous answer.
+    # result from a run that never opened a window. Any caller or human reading the
+    # exit status now gets an unambiguous answer.
     try:
         main()
     except UATPreconditionFailed as failure:

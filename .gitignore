@@ -260,11 +260,9 @@ scripts/lib/*
 !scripts/generate-british-spelling.py
 # UAT scripts — required by workflow tooling (workflow-process.md §1 step 9 + §11)
 # clear-uat.sh removed in PR #498 (per-task .needs-uat marker convention dropped).
-# validate-pr.sh + check-validation.sh added in PR #498 (run-directory model).
+# validate-pr.sh + check-validation.sh (PR #498 run-directory model) retired 2026-10-31.
 !scripts/attest.sh
-!scripts/check-validation.sh
 !scripts/test-validation.sh
-!scripts/validate-pr.sh
 !scripts/validation-status.sh
 !scripts/lid-perf-bench.sh
 !scripts/lid-perf-bench.py

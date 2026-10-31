@@ -131,7 +131,7 @@ report one width.
 
 ## How this fits the workflow
 
-- Phase 3 validation (`scripts/validate-pr.sh`) Live UAT step calls into this harness for the Code lane.
+- Phase 3 Live UAT for the Code lane drives this harness; record the verdict in the PR body.
 - Runtime UAT is mandatory before declaring a feature ship-ready.
 - Drive UAT directly via `wispr_eyes.py` from the main thread; agent-dispatched UAT is not reliable for end-to-end dictation flows.
 
