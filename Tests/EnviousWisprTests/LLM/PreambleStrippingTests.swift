@@ -189,6 +189,14 @@ struct PreambleStrippingTests {
     #expect(result.polishedText == output)
   }
 
+  @Test("an unchanged answer keeps its surrounding whitespace for the transport (#4238)")
+  func unchangedAnswerKeepsWhitespace() throws {
+    let output = "\n  I can do that tomorrow.  \n"
+    let result = try LLMResult(polishedText: output).removingModelChatter(
+      dictation: "I can do that tomorrow", provider: .openAI)
+    #expect(result.polishedText == output, "an unchanged answer is returned byte-for-byte")
+  }
+
   @Test("result adaptation preserves metadata and early-stop state")
   func resultFields() throws {
     let metadata = PolishMetadata(filterTripped: "fixture", filterFellBackToRaw: false)
