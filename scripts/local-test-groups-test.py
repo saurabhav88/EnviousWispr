@@ -102,7 +102,8 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
                         FIXTURE_ROOT=str(self.root), CI="")
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
                     "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
-                    "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE"):
+                    "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
+                    "TEST_RUNNER_EW_REAL_BOUNDARY"):
             self.env.pop(key, None)
         self.command = [sys.executable, str(self.root / "scripts/local-test-groups.py"),
                         "--products", str(self.products), "--scheme", "EnviousWispr",
@@ -181,6 +182,14 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
     def test_writer_mode_is_one_process_without_skip_selections(self):
         self.four_worker_profile()
         self.run_groups(EXPECTED_GROUPS="serial", TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE="1")
+        args = json.loads((self.root / "serial-args.json").read_text())
+        self.assertFalse(any(a.startswith(("-skip-testing:", "-only-testing:")) for a in args))
+        self.assertFalse((self.root / "worker-1.started").exists())
+
+    def test_real_boundary_mode_is_one_process_without_skip_selections(self):
+        # #4279: real-model and GPU tests in tagged suites must never run beside the protected worker.
+        self.four_worker_profile()
+        self.run_groups(EXPECTED_GROUPS="serial", TEST_RUNNER_EW_REAL_BOUNDARY="1")
         args = json.loads((self.root / "serial-args.json").read_text())
         self.assertFalse(any(a.startswith(("-skip-testing:", "-only-testing:")) for a in args))
         self.assertFalse((self.root / "worker-1.started").exists())

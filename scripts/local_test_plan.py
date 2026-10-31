@@ -5,20 +5,22 @@ protected. The review mark lives in the test source as the `.localParallel`
 tag, so editing a reviewed file keeps its admission (#4279). The full run's
 TestInventoryFreezeTests fails when this list and the tagged suites differ.
 A listed file that no longer exists falls back to the protected worker.
+single_worker runs everything in one process: the inventory baseline writer,
+and every --real-boundary run, whose real models and GPU work must not overlap.
 """
 
 import math
 from pathlib import Path
 
 
-def plan_groups(root, profile, *, baseline_writer=False):
+def plan_groups(root, profile, *, single_worker=False):
     if profile.get("schema") != 2 or profile.get("slots") != 4:
         raise ValueError("local test profile must describe four worker slots")
     costs = profile["costs"]
     if not costs or any(not isinstance(v, (int, float)) or isinstance(v, bool)
                         or not math.isfinite(v) or v < 0 for v in costs.values()):
         raise ValueError("invalid measured suite costs")
-    if baseline_writer:
+    if single_worker:
         return [("serial", ())], [sum(costs.values())]
     admitted, seen, blocks = set(), set(), []
     for block in profile["blocks"]:

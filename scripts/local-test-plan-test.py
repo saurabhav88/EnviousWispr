@@ -69,8 +69,8 @@ class PlanningContract(unittest.TestCase):
         self.assertEqual(loads[0], 150)
         self.assertNotIn("EnviousWisprTests/NewSuite", str(groups[1:]))
 
-    def test_baseline_writer_has_one_worker_and_no_selectors(self):
-        groups, loads = plan_groups(self.root, self.profile, baseline_writer=True)
+    def test_single_worker_mode_has_one_worker_and_no_selectors(self):
+        groups, loads = plan_groups(self.root, self.profile, single_worker=True)
         self.assertEqual(groups, [("serial", ())])
         self.assertEqual(loads, [400])
 
