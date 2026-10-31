@@ -17,6 +17,13 @@ public struct MeetingSilenceInterval: Sendable, Equatable {
 }
 
 /// One released microphone chunk's original metadata, as the filtered-output observer gets it.
+/// One mute decision step, run on the microphone writer's queue (#4248 plan §18). It receives
+/// that queue's clock reading and C (the end of audio released for good) and returns the new
+/// silence intervals, or nil to keep the current ones. It runs synchronously and must not wait
+/// on another thread.
+public typealias MeetingSilenceStep =
+  @Sendable (_ queueNow: UInt64, _ released: UInt64) -> [MeetingSilenceInterval]?
+
 public struct MeetingReleasedChunk: Sendable, Equatable {
   /// The capture clock's time of the chunk's first sample, unchanged by the hold.
   public let hostTime: UInt64
@@ -108,6 +115,10 @@ final class MeetingMicrophoneSilence {
     pending.reserveCapacity(self.intervalCapacity)
     frozen.reserveCapacity(self.intervalCapacity)
   }
+
+  /// Runs before every release decision, forced releases included, so the latest intervals
+  /// (for example an expired mute) decide the audio about to leave. Set once by the writer.
+  var beforeRelease: (() -> Void)?
 
   var isEmpty: Bool { chunks.isEmpty }
 
@@ -201,6 +212,7 @@ final class MeetingMicrophoneSilence {
 
   private func releaseFront(_ count: Int, emit: Emit) {
     guard count > 0 else { return }
+    beforeRelease?()
     var consumed = 0
     samples.withUnsafeMutableBufferPointer { all in
       for held in chunks[0..<count] {

@@ -193,6 +193,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   private var releaseScheduledAt: UInt64?
   /// Set by the close: a scheduled release that fires later does nothing.
   private var silenceClosed = false
+  /// Run before every release decision (`setSilenceClock`).
+  private var silenceClock: MeetingSilenceStep?
   #if DEBUG
     private var phaseHook: (@Sendable (Phase) -> Void)?
   #endif
@@ -245,6 +247,11 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     self.framesPerSegment = max(
       16, Int(configuration.segmentSeconds * MeetingAudioFormat.sampleRate))
     self.gapThresholdSamples = configuration.gapThresholdMs * Self.samplesPerMs
+    // Weak: the hold belongs to this writer.
+    silence?.beforeRelease = { [weak self] in
+      guard let self, let clock = self.silenceClock else { return }
+      self.runSilenceStep(clock)
+    }
   }
 
   public var currentHealth: Health { health.withLock { $0 } }
@@ -253,14 +260,34 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// C): an interval update can no longer change audio before it. 0 before the first release.
   public var releasedHostTime: UInt64 { released.withLock { $0 } }
 
-  /// Replaces the silence intervals for audio not yet released. Applied on the writer's queue in
-  /// call order, so a later update always wins. A writer without a hold ignores it.
-  public func setSilencedIntervals(_ intervals: [MeetingSilenceInterval]) {
+  /// Runs `step` on the writer's queue, in call order with appends, drains and the close. The
+  /// queue's clock is read first (the plan's D), then C, and the intervals `step` returns apply
+  /// in the same queue operation, before any later release. A writer without a hold, or one
+  /// already closed, ignores it.
+  public func applySilenceStep(_ step: @escaping MeetingSilenceStep) {
     guard silence != nil else { return }
-    queue.async { [self] in
-      silence?.setIntervals(intervals)
-      recordSilenceHealth()
-    }
+    queue.async { [self] in runSilenceStep(step) }
+  }
+
+  /// Sets the step run before every release decision, forced releases included (nil removes
+  /// it), so expiry is judged at the queue's own time. The writer keeps `step`; it must not keep
+  /// the writer.
+  public func setSilenceClock(_ step: MeetingSilenceStep?) {
+    guard silence != nil else { return }
+    queue.async { [self] in silenceClock = step }
+  }
+
+  /// Fixed intervals for audio not yet released (tests).
+  func setSilencedIntervals(_ intervals: [MeetingSilenceInterval]) {
+    applySilenceStep { _, _ in intervals }
+  }
+
+  private func runSilenceStep(_ step: MeetingSilenceStep) {
+    let delivered = now()
+    guard let silence, !silenceClosed else { return }
+    guard let intervals = step(delivered, silence.released) else { return }
+    silence.setIntervals(intervals)
+    recordSilenceHealth()
   }
 
   // MARK: - Producer side (any thread)

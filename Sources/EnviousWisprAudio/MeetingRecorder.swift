@@ -183,9 +183,8 @@ public final class MeetingRecorder {
   private let micLevelBox = OSAllocatedUnfairLock<Float>(initialState: 0)
   /// The live mute state (#4248): while true the microphone meter reads 0.
   private let micMutedBox = OSAllocatedUnfairLock(initialState: false)
-  /// The silence intervals the microphone writer applies, kept so a writer made later (start)
-  /// gets the latest set.
-  private var silenceIntervals: [MeetingSilenceInterval] = []
+  /// The microphone writer's release clock step, kept so a writer made later (start) gets it.
+  private var silenceClock: MeetingSilenceStep?
   private let micHealthBox = OSAllocatedUnfairLock(initialState: MicrophoneHealth())
   /// Whether the current microphone's samples are recorded; false while `beginDelivery` runs.
   private let micAdmission = OSAllocatedUnfairLock<Int?>(initialState: nil)
@@ -320,12 +319,18 @@ public final class MeetingRecorder {
 
   // MARK: - Mute following (#4248)
 
-  /// Replaces the stretches of the microphone track written as silence. Applies to audio the
-  /// microphone writer has not released yet; survives a microphone reopen (one writer per
-  /// recording).
-  public func setSilencedIntervals(_ intervals: [MeetingSilenceInterval]) {
-    silenceIntervals = intervals
-    micWriter?.setSilencedIntervals(intervals)
+  /// Runs one mute decision step on the microphone writer's queue
+  /// (`MeetingTrackWriter.applySilenceStep`). Before the writer exists there is nothing to
+  /// decide, and the step is not run.
+  public func applySilenceStep(_ step: @escaping MeetingSilenceStep) {
+    micWriter?.applySilenceStep(step)
+  }
+
+  /// The step run before every microphone release (`MeetingTrackWriter.setSilenceClock`). Kept
+  /// for the recording, so a clock set before `start` applies to its writer.
+  public func setSilenceClock(_ step: MeetingSilenceStep?) {
+    silenceClock = step
+    micWriter?.setSilenceClock(step)
   }
 
   /// The end host time of microphone audio released for good (the plan's C); 0 before any.
@@ -655,7 +660,7 @@ public final class MeetingRecorder {
         Task { @MainActor in self?.trackFailed(track, error) }
       },
       onReleased: released, now: sources.hostTime, scheduler: sources.releaseScheduler)
-    if track == .microphone { writer.setSilencedIntervals(silenceIntervals) }
+    if track == .microphone { writer.setSilenceClock(silenceClock) }
     return writer
   }
 

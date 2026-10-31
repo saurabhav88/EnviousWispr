@@ -331,6 +331,97 @@ struct MeetingMicrophoneSilenceTests {
     #expect(r.released.all.first?.0.hostTime == r.anchor)
   }
 
+  // MARK: - Decision steps (#4248 plan §18)
+
+  @Test("a step sees the queue's own clock when it runs, and C; never the time it was sent")
+  func stepStampsQueueTime() async throws {
+    let r = try rig()
+    let clock = try #require(r.clock)
+    feed(r, seconds: 1)
+    clock.set(r.anchor &+ ticks(4.0))
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    let c = r.writer.releasedHostTime
+    let seen = OSAllocatedUnfairLock<(UInt64, UInt64)?>(initialState: nil)
+    r.writer.suspendQueueForTesting()
+    // Sent at 4 s; the queue runs it at 9 s.
+    r.writer.applySilenceStep { now, released in
+      seen.withLock { $0 = (now, released) }
+      return nil
+    }
+    clock.set(r.anchor &+ ticks(9.0))
+    r.writer.resumeQueueForTesting()
+    await r.writer.queueBarrierForTesting()
+    let got = try #require(seen.withLock { $0 })
+    #expect(got.0 == r.anchor &+ ticks(9.0))
+    #expect(got.1 == c)
+    #expect(await r.writer.finish() == .finalized)
+  }
+
+  @Test("a step judged too late at the queue installs nothing, so no audio is silenced")
+  func staleAtQueueInstallsNothing() async throws {
+    let r = try rig()
+    let clock = try #require(r.clock)
+    feed(r, seconds: 1)
+    let copied = r.anchor
+    let staleness = ticks(1.5)
+    r.writer.suspendQueueForTesting()
+    r.writer.applySilenceStep { now, _ in
+      now - copied <= staleness ? [MeetingSilenceInterval(start: copied, end: .max)] : nil
+    }
+    clock.set(r.anchor &+ ticks(2.0))
+    r.writer.resumeQueueForTesting()
+    #expect(await r.writer.finish() == .finalized)
+    #expect(zeroRuns(try readBack(r.dir).samples) == [])
+  }
+
+  @Test("the clock step decides each release at release time, with no step sent")
+  func clockRunsBeforeScheduledRelease() async throws {
+    let r = try rig()
+    let clock = try #require(r.clock)
+    let expiresAt = r.anchor &+ ticks(3.5)
+    // Muted until the reading expires at 3.5 s; after that the open stretch ends at 0.5 s.
+    r.writer.setSilenceClock { now, _ in
+      [MeetingSilenceInterval(start: r.anchor, end: now < expiresAt ? .max : r.anchor &+ ticks(0.5))]
+    }
+    feed(r, seconds: 1)
+    clock.set(r.anchor &+ ticks(4.0))
+    await r.writer.queueBarrierForTesting()
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    #expect(r.released.samples.count == 16_000)
+    #expect(zeroRuns(r.released.samples) == [0..<8_000], "expiry judged at 4 s, before release")
+    #expect(await r.writer.finish() == .finalized)
+  }
+
+  @Test("the clock step runs before forced releases when storage fills")
+  func clockRunsBeforeForcedRelease() async throws {
+    let r = try rig()
+    r.writer.setSilenceClock { _, _ in [MeetingSilenceInterval(start: r.anchor, end: r.anchor &+ ticks(1))] }
+    // 7 s in one append: the first 2 s leave as forced releases inside the append.
+    r.writer.append(
+      [Float](repeating: Self.level, count: 7 * Self.rate), hostTime: r.anchor &+ ticks(0.0))
+    await r.writer.queueBarrierForTesting()
+    #expect(!r.released.samples.isEmpty, "storage forced a release before the finish")
+    #expect(zeroRuns(r.released.samples).first == 0..<16_000)
+    #expect(await r.writer.finish() == .finalized)
+    #expect(zeroRuns(try readBack(r.dir).samples) == [0..<16_000])
+  }
+
+  @Test("a step sent after the close does not run")
+  func stepAfterCloseIgnored() async throws {
+    let r = try rig()
+    feed(r, seconds: 0.5)
+    #expect(await r.writer.finish() == .finalized)
+    let ran = OSAllocatedUnfairLock(initialState: false)
+    r.writer.applySilenceStep { _, _ in
+      ran.withLock { $0 = true }
+      return nil
+    }
+    await r.writer.queueBarrierForTesting()
+    #expect(!ran.withLock { $0 })
+  }
+
   /// Capture stamps each chunk's start on its own, so chunk B can begin before chunk A ends.
   /// Releasing A alone must not retire a mute that B still covers.
   @Test("a mute stays in force for a held chunk that overlaps audio already released")

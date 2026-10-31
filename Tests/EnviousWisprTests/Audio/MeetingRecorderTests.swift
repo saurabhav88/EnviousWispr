@@ -1006,16 +1006,15 @@ struct MeetingRecorderTests {
     #expect(r.recorder.liveSamples == nil, "deliveries ended for good after the files closed")
   }
 
-  @Test("silence intervals reach the file and live words; set before start, they still apply")
+  @Test("silence decided on the writer reaches the file and live words; a clock set before start applies")
   func silenceIntervalsApply() async throws {
     let r = try rig(callSound: false)
     let observed = Observed()
     r.recorder.liveSamples = observed.observer
     let anchor = r.recorder.anchor
     let quarter = AudioConvertNanosToHostTime(250_000_000)
-    r.recorder.setSilencedIntervals([
-      MeetingSilenceInterval(start: anchor &+ quarter, end: anchor &+ 2 * quarter)
-    ])
+    let muted = [MeetingSilenceInterval(start: anchor &+ quarter, end: anchor &+ 2 * quarter)]
+    r.recorder.setSilenceClock { _, _ in muted }
     _ = try await r.recorder.start()
     let spoken = Self.micPattern(16_000)
     speak(r.microphones[0], r.clock, spoken)
