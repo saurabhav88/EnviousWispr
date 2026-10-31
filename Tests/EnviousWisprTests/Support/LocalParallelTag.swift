@@ -9,7 +9,9 @@ extension Tag {
   /// `UserDefaults` suite (`.standard`, `com.enviouswispr.app`), the Keychain, a fixed path outside its
   /// own UUID temporary directory (`app.log`, Application Support, caches), the pasteboard, a real
   /// audio device, model or GPU, a helper process with a fixed name, port or socket, or a wall-clock
-  /// deadline that CPU contention can miss. Check what the code under test touches, not only the test.
+  /// deadline that CPU contention can miss. A latency bound stays only with wide margin in past full
+  /// runs, as the 50 ms settings-search keystroke bound has (about 18 ms worst in four-process runs,
+  /// 2026-10-26 to 2026-10-31). Check what the code under test touches, not only the test.
   ///
   /// If an edit adds any of these, remove the tag AND the suite's entry in
   /// `scripts/local-test-costs.json`; the suite then runs in the protected worker. To admit a suite,

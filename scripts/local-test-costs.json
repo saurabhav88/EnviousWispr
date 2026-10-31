@@ -10,7 +10,7 @@
     "parser_slice_cases": 119,
     "parser_slice_console_seconds": 24.657,
     "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
-    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. MeetingCoordinatorTests left the list on 2026-10-31: its #4102 tests race a real 1-second deadline.",
+    "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. Left the list on 2026-10-31: MeetingCoordinatorTests (its #4102 tests race a real 1-second deadline) and KernelFinalizationWiringTests (a real 100 ms deadline must not win).",
     "integration_base_head": "a01dab18ec4999f00e244c557f375aa29dab333d",
     "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates."
   },
@@ -363,16 +363,6 @@
         {
           "suite": "EnviousWisprTests/OnboardingSetupKickTests",
           "file": "Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift"
-        }
-      ]
-    },
-    {
-      "name": "isolated/KernelFinalizationWiringTests",
-      "reason": "Injected stores/paste closures and private finalization state; source review required.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/KernelFinalizationWiringTests",
-          "file": "Tests/EnviousWisprTests/Pipeline/KernelFinalizationWiringTests.swift"
         }
       ]
     },

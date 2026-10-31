@@ -16,7 +16,7 @@ import os
 // are fake closures so the suite touches neither disk nor the AX paste APIs.
 
 @MainActor
-@Suite(.tags(.localParallel)) struct KernelFinalizationWiringTests {
+@Suite struct KernelFinalizationWiringTests {
 
   /// A deterministic word oracle, injected through the wiring's own seam.
   ///
