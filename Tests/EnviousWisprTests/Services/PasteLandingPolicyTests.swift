@@ -131,7 +131,7 @@ struct PasteLandingPolicyTests {
   func shippedExclusionsAreTheFailedGates() {
     let apps = [
       "com.microsoft.VSCode", "com.microsoft.Excel",
-      "com.stablyai.orca", "com.google.antigravity-ide",
+      "com.stablyai.orca", "com.google.antigravity-ide", "com.meta.endo",
     ]
     #expect(
       PasteLandingPolicy.excludedRoutes
@@ -154,7 +154,7 @@ struct PasteLandingPolicyTests {
     for id in [
       "com.google.antigravity", "com.google.Chrome", "com.cmuxterm.app",
       "com.stablyai.orca.helper", "com.google.antigravity-ide.helper",
-      "com.cmuxterm.app.helper", "COM.CMUXTERM.APP",
+      "com.cmuxterm.app.helper", "COM.CMUXTERM.APP", "com.meta.endo.helper",
     ] {
       for tier in Self.keyRoutes {
         #expect(PasteLandingPolicy.routeMayRetain(bundleID: id, tier: tier), "\(id) \(tier)")
