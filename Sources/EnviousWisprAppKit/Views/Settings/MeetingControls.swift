@@ -475,7 +475,9 @@ struct MeetingCallDetectionRow: View {
 /// #4284: each switch sits in its own row with the app's real logo (`CallAppIdentityTile`, the
 /// same pictures the call cards use), rows divided like the rest of Settings, and a privacy line.
 /// The list sits under the title row rather than inside it, so the title row's icon stays
-/// beside the title instead of centering on the whole list.
+/// beside the title instead of centering on the whole list. Outside the row it no longer inherits
+/// the row's arrival place, so it names the same place itself: a Settings search arrival still
+/// focuses the first switch, as before (`BrandedToggleStyle` reads `settingsArrivalRegisteredID`).
 struct MeetingCallAppsRow: View {
   @Environment(SettingsManager.self) private var settings
   @State private var installed: [CallAppFamily] = []
@@ -508,6 +510,7 @@ struct MeetingCallAppsRow: View {
       .disabled(
         settings.meetingCallDetection == CallDetectionPolicy.Mode.off.rawValue
           || !CallMicrophoneWatcher.isSupported)
+      .environment(\.settingsArrivalRegisteredID, SettingsMapID.meetingCallApps)
       Label {
         Text(MeetingsCopy.callAppsPrivacy)
       } icon: {
