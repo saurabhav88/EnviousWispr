@@ -178,6 +178,33 @@ struct MeetingSpeechDetectorRealBoundaryTests {
       "calc_storage_mb raw=\(hour * 4 / 1_048_576) speech_only=\(speechSamples * 4 / 1_048_576) (Float32; calculated, not measured; this input has almost no 1.5 s pauses)"
     )
 
+    // 2b. Decode-input memory, measured: the hour's raw input (held above) plus a separately
+    // allocated, reserved concatenated input with the 8,000-sample look-ahead, worst case all
+    // speech. The native decoder's own copy is measured by the transcribe.cpp Q-a test.
+    let lookAhead = 8_000
+    let concatBefore = Self.footprintMB()
+    let concatPeak = PeakSampler()
+    let concatSampler = Task.detached {
+      while !Task.isCancelled {
+        concatPeak.note(Self.footprintMB())
+        try? await Task.sleep(for: .milliseconds(20))  // test-fixture-timer: sampling period
+      }
+    }
+    var concatenated: [Float] = []
+    concatenated.reserveCapacity(audio.count + lookAhead)
+    // Worst case: the whole hour is one speech stretch.
+    concatenated.append(contentsOf: audio)
+    concatenated.append(contentsOf: repeatElement(0, count: lookAhead))
+    let concatHeld = Self.footprintMB()
+    concatPeak.note(concatHeld)
+    concatSampler.cancel()
+    _ = await concatSampler.value
+    lines.append(
+      "measured_decode_input_mb raw_hour_held_before=\(String(format: "%.0f", concatBefore)) with_concatenated=\(String(format: "%.0f", concatHeld)) peak=\(String(format: "%.0f", concatPeak.max)) concatenated_samples=\(concatenated.count)"
+    )
+    concatenated = []
+    lines.append("after_concatenated_freed_mb=\(String(format: "%.0f", Self.footprintMB()))")
+
     // 3. Create, process and release three times: residency before, during, after.
     var cycles: [String] = []
     for _ in 0..<3 {
@@ -192,13 +219,17 @@ struct MeetingSpeechDetectorRealBoundaryTests {
     }
     lines.append("cycles_mb before/during/after=\(cycles)")
 
-    // 4. Dictation under contention: its VAD model preparation (what a new dictation pays at
-    // start) and its per-chunk VAD step, alone and with two live meeting detectors and a final
-    // detection running. Not press-to-recording latency.
-    func dictationPrepareMs() async throws -> Double {
+    // 4. Under contention: two live meeting detectors (one per track) and a final detection,
+    // each proven running before and during every measurement window. Measured: dictation's
+    // VAD startup component (model preparation plus its first chunk), its per-chunk VAD step,
+    // and an hour of final detection with a fresh detector. Not press-to-recording latency:
+    // the audio engine and recognizer start do not use the VAD model and are not measured here.
+    func dictationStartMs() async throws -> Double {
       let dictation = SilenceDetector(silenceTimeout: 1.5, modelBundle: bundle)
       let s = clock.now
       try await dictation.prepare()
+      await dictation.reset()
+      _ = await dictation.processChunk(Array(speech[0..<Self.chunk]))
       return Self.seconds(clock.now - s) * 1000
     }
     func dictationChunkMs() async throws -> [Double] {
@@ -214,48 +245,83 @@ struct MeetingSpeechDetectorRealBoundaryTests {
       }
       return times.sorted()
     }
-    let prepareAlone = try await dictationPrepareMs()
+    var startAlone: [Double] = []
+    for _ in 0..<10 { startAlone.append(try await dictationStartMs()) }
     let alone = try await dictationChunkMs()
     let activity = Activity()
     // detached: the competing meeting detectors run off this test's task, as a pass and two
     // live tracks would, while dictation is measured here.
     let load = Task.detached {
       try await withThrowingTaskGroup(of: Void.self) { group in
-        for _ in 0..<2 {
+        for track in 0..<2 {
           group.addTask {
             let live = MeetingSpeechDetector(modelBundle: bundle)
-            for i in 0..<100_000 {
+            for i in 0..<10_000_000 {
               try Task.checkCancellation()
               let offset = (i * 1_600) % (speech.count - 1_600)
               try await live.append(Array(speech[offset..<(offset + 1_600)]))
-              activity.liveChunk()
+              activity.liveChunk(track: track)
             }
           }
         }
         group.addTask {
-          _ = try await MeetingSpeechDetector.spans(in: tenMinutes, modelBundle: bundle)
-          activity.finalDone()
+          // Final detection, again and again, so it is running in every window.
+          while true {
+            try Task.checkCancellation()
+            let final = MeetingSpeechDetector(modelBundle: bundle)
+            var offset = 0
+            while offset < tenMinutes.count {
+              try Task.checkCancellation()
+              let end = min(offset + Self.chunk, tenMinutes.count)
+              try await final.append(Array(tenMinutes[offset..<end]))
+              activity.finalChunk()
+              offset = end
+            }
+            try await final.finish()
+          }
         }
         try await group.waitForAll()
       }
     }
-    let liveBefore = activity.live
-    let prepareContended = try await dictationPrepareMs()
-    let contended = try await dictationChunkMs()
-    let liveDuring = activity.live - liveBefore
-    let finalFinished = activity.finalFinished
+    // Every competitor has started before the first window.
+    try await BoundedWait.until(activity.started[0])
+    try await BoundedWait.until(activity.started[1])
+    try await BoundedWait.until(activity.started[2])
+    var windows: [String] = []
+    /// Runs `body` as one measurement window and records each competitor's progress in it.
+    func window<T>(_ name: String, _ body: () async throws -> T) async throws -> T {
+      let before = activity.counts
+      let value = try await body()
+      let after = activity.counts
+      let deltas = zip(after, before).map { $0 - $1 }
+      windows.append("\(name)=\(deltas)")
+      #expect(deltas.allSatisfy { $0 > 0 }, "every competitor ran during \(name): \(deltas)")
+      return value
+    }
+    var startContended: [Double] = []
+    for n in 0..<10 {
+      startContended.append(try await window("start\(n)") { try await dictationStartMs() })
+    }
+    let contended = try await window("chunks") { try await dictationChunkMs() }
+    let hourContendedSeconds = try await window("hour") { () async throws -> Double in
+      let s = clock.now
+      _ = try await MeetingSpeechDetector.spans(in: audio, modelBundle: bundle)
+      return Self.seconds(clock.now - s)
+    }
     load.cancel()
     _ = try? await load.value
+    lines.append("competition_window_progress [track1, track2, final_chunks]: \(windows.joined(separator: " "))")
+    startAlone.sort()
+    startContended.sort()
     lines.append(
-      "competition_during_measure live_appends=\(liveDuring) final_finished_before_end=\(finalFinished)"
-    )
-    lines.append(
-      "dictation_prepare_ms alone=\(String(format: "%.1f", prepareAlone)) contended=\(String(format: "%.1f", prepareContended))"
+      "dictation_vad_start_ms (prepare + first chunk) alone p50=\(Self.pct(startAlone, 0.5)) max=\(Self.pct(startAlone, 1)) | contended p50=\(Self.pct(startContended, 0.5)) max=\(Self.pct(startContended, 1))"
     )
     lines.append(
       "dictation_chunk_ms alone p50=\(Self.pct(alone, 0.5)) p95=\(Self.pct(alone, 0.95)) max=\(Self.pct(alone, 1)) | contended p50=\(Self.pct(contended, 0.5)) p95=\(Self.pct(contended, 0.95)) max=\(Self.pct(contended, 1))"
     )
-    #expect(liveDuring > 0, "the live detectors ran while dictation was measured")
+    lines.append(
+      "final_detection_preparation_s hour alone=\(String(format: "%.2f", hourSeconds)) contended=\(String(format: "%.2f", hourContendedSeconds)) (fresh detector, load included; detector preparation cost only, not a Delete, quit or engine-switch delay)"
+    )
 
     // 5. Task cancellation during final preparation of an hour.
     // detached: the cancellation target must be its own task.
@@ -271,7 +337,7 @@ struct MeetingSpeechDetectorRealBoundaryTests {
     lines.append("task_cancel_ms=\(String(format: "%.1f", cancelMs)) cancelled=\(cancelled)")
     #expect(cancelled)
     lines.append(
-      "not_measured: M1/8 GB floor; concatenated/padded/native decode copies and Delete/quit/engine-switch delay (need chunk 2's decode path); user Cancel stays at the job's unit boundary"
+      "not_measured: M1/8 GB floor; actual dictation press-to-recording responsiveness; end-to-end Delete, quit and engine-switch delay (each has its own path); user Cancel stays at the job's unit boundary"
     )
 
     let text = lines.joined(separator: "\n") + "\n"
@@ -290,15 +356,23 @@ final class PeakSampler: @unchecked Sendable {
   var max: Double { lock.withLock { value } }
 }
 
-/// Counts the competing detectors' progress, to prove they ran during a measurement.
+/// Counts each competing detector's progress (live track 1, live track 2, final chunks), to
+/// prove each ran before and during every measurement window.
 final class Activity: @unchecked Sendable {
   private let lock = NSLock()
-  private var liveCount = 0
-  private var finalCount = 0
-  func liveChunk() { lock.withLock { liveCount += 1 } }
-  func finalDone() { lock.withLock { finalCount += 1 } }
-  var live: Int { lock.withLock { liveCount } }
-  var finalFinished: Int { lock.withLock { finalCount } }
+  private var values = [0, 0, 0]
+  /// Fired at each competitor's first progress.
+  let started = [BoundedWait.Signal(), BoundedWait.Signal(), BoundedWait.Signal()]
+  private func bump(_ i: Int) {
+    let first = lock.withLock { () -> Bool in
+      values[i] += 1
+      return values[i] == 1
+    }
+    if first { started[i].fire() }
+  }
+  func liveChunk(track: Int) { bump(track) }
+  func finalChunk() { bump(2) }
+  var counts: [Int] { lock.withLock { values } }
 }
 
 /// The checked-in pinned VAD model the real-model suite loads (kept outside the suite so its

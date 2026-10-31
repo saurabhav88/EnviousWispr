@@ -1,8 +1,10 @@
 import CryptoKit
+import Darwin
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
@@ -224,6 +226,63 @@ struct TranscribeCppExecutorRealBoundaryTests {
 
     await executor.unload(model)
     #expect(await executor.counters.freed == 1)
+  }
+
+  /// #4254 Q-a: the native decoder's own copy of a meeting's decode input. One hour of real
+  /// speech (the committed clip repeated, worst case all speech) through the executor on the
+  /// real model, with the process footprint sampled before the load, after it, and while the
+  /// decode runs. Prints one `QA-NATIVE` line for the #4254 receipt.
+  @Test(
+    "#4254 Q-a: peak footprint of an hour-long real decode",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(15)), .realBoundaryRun
+  )
+  func hourDecodeFootprint() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let hour = 3_600 * 16_000
+    var samples: [Float] = []
+    samples.reserveCapacity(hour)
+    while samples.count < hour { samples.append(contentsOf: clip.prefix(hour - samples.count)) }
+    let beforeLoad = Self.footprintMB()
+    let executor = TranscribeCppExecutor()
+    let model = try await executor.load(
+      modelPath: TranscribeCppRealBoundaryFixture.modelPath, lane: .heart)
+    let loaded = Self.footprintMB()
+    let peak = OSAllocatedUnfairLock(initialState: loaded)
+    // detached: samples the process from outside the decode being measured.
+    let sampler = Task.detached {
+      while !Task.isCancelled {
+        let now = Self.footprintMB()
+        peak.withLock { $0 = max($0, now) }
+        try? await Task.sleep(for: .milliseconds(50))  // test-fixture-timer: sampling period
+      }
+    }
+    let start = ContinuousClock.now
+    let result = try await executor.transcribe(model, samples: samples, language: "en", lane: .heart)
+    let elapsed = ContinuousClock.now - start
+    sampler.cancel()
+    _ = await sampler.value
+    let after = Self.footprintMB()
+    await executor.unload(model)
+    let unloaded = Self.footprintMB()
+    #expect(!result.text.isEmpty)
+    print(
+      "QA-NATIVE hour_decode input_samples=\(samples.count) input_mb=\(samples.count * 4 / 1_048_576) footprint_mb before_load=\(Int(beforeLoad)) loaded=\(Int(loaded)) peak_during_decode=\(Int(peak.withLock { $0 })) after_decode=\(Int(after)) after_unload=\(Int(unloaded)) decode_s=\(elapsed.components.seconds)"
+    )
+  }
+
+  private static func footprintMB() -> Double {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(
+      MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+      }
+    }
+    return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
   }
 
   /// #3849 plan §11 item 2: the crash on quit itself. A child process loads the real model,
