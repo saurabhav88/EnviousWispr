@@ -43,6 +43,26 @@ struct CallDetectionDiagnosticLineTests {
     #expect(silentLine.contains("evidence=unknown"))
   }
 
+  @Test(
+    "a fresh ongoing view blocks the end, so the line says ongoing even when an ended view is newer"
+  )
+  func ongoingBlocksEndedInTheLine() {
+    var s = fixture.recordingZoom()
+    // Two sources of the same call: one still says ongoing, a later one says ended.
+    let other = CallDetectionPolicyTests.zoom(.active, pid: 101)
+    s.observeCall(
+      .ongoing(family: .zoom, room: "w"), holder: CallDetectionPolicyTests.zoom(.active),
+      owner: CallDetectionPolicyTests.Story.owner(for: CallDetectionPolicyTests.zoom(.active)))
+    s.observeCall(
+      .ended(family: .zoom, room: "w"), holder: other,
+      owner: CallDetectionPolicyTests.Story.owner(for: CallDetectionPolicyTests.zoom(.active)))
+    s.read([CallDetectionPolicyTests.zoom(.active), other])
+    let line = s.policy.diagnosticLine(s.context)
+    #expect(line.contains("observations=2"), "both views apply to the call: \(line)")
+    #expect(line.contains("evidence=ongoing"), "an ongoing view blocks the end: \(line)")
+    #expect(!line.contains("end_reads=1"), "no end read is counted: \(line)")
+  }
+
   @Test("the line carries no room, process id or link, only states and counts")
   func lineHasNoContent() {
     var s = CallDetectionPolicyTests.Story()

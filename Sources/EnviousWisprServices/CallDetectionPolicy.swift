@@ -460,7 +460,14 @@ public struct CallDetectionPolicy: Sendable {
       let applicable = (reading?.continuity ?? []).filter { state($0, for: episode) != nil }
       let latest = applicable.max { $0.id < $1.id }
       var view = "none"
-      if let latest {
+      // `trackEnds` lets any fresh ongoing observation block an end, so it wins over a newer ended one.
+      let anyFreshOngoing = applicable.contains { observation in
+        guard fresh(observation, c), case .ongoing? = state(observation, for: episode) else { return false }
+        return true
+      }
+      if anyFreshOngoing {
+        view = "ongoing"
+      } else if let latest {
         let value: String
         switch state(latest, for: episode) {
         case .ongoing?: value = "ongoing"
