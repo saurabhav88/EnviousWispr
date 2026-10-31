@@ -163,6 +163,33 @@ def exit_window_ms(sent_ns, window):
     return [round(max(0, window["lastAliveNs"] - sent_ns) / 1e6, 1), round((window["goneNs"] - sent_ns) / 1e6, 1)]
 
 
+DELETE_TIMEOUT_S = 120.0
+
+
+def delete_meeting(meeting_id, runner=None, timeout=DELETE_TIMEOUT_S):
+    """(exit status, reply) of one meeting.delete through dev_control's own `run`, whose
+    `timeout` is the door connection's read timeout (the CLI's default is 10 s, shorter than a
+    pass's teardown). A timeout reads outcomeUnknown, never a refusal."""
+    if runner is None:
+        import dev_control
+        runner = lambda argv, t: dev_control.run(argv, dev_control.Boundaries(), timeout=t)
+    return runner(["meeting", "delete", meeting_id], timeout)
+
+
+def wait_idle(seconds, status=None, clock=None, pause=None):
+    """CLOCK_UPTIME_RAW ns read after the first meeting.status showing no meeting work, or
+    None when it never went idle within `seconds`."""
+    status = status or (lambda: m.door_ok("meeting", "status"))
+    clock = clock or now_ns
+    pause = pause or (lambda: time.sleep(0.2))  # deadline-fallback: meeting.status is the only end signal
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if idle_reason(status()) is True:
+            return clock()
+        pause()
+    return None
+
+
 def take_of(receipt):
     """The kernel take id in a door receipt (`Receipt.json` in DevControlDictation.swift:
     launch, backend, take)."""
@@ -377,8 +404,9 @@ def run(args):
                     c.cannot_tell("delete during detection", "no detection start line")
                 else:
                     dispatched = now_ns()
-                    st, reply = m.door("meeting", "delete", args.delete_meeting)
+                    st, reply = delete_meeting(args.delete_meeting)
                     replied = now_ns()
+                    pass_ended = wait_idle(600)
                     text = wait_log(offset, lambda t: witness(t, "meeting.delete", reply.get("id")) is not None, 20)
                     seen = witness(text, "meeting.delete", reply.get("id"))
                     row_gone = m.door("meeting", "get", args.delete_meeting)[0] != 0
@@ -387,6 +415,9 @@ def run(args):
                     detail["delete"] = {
                         "token": token, "witness": seen, "reply": st == 0 and bool(reply.get("ok")),
                         "dispatchNs": dispatched, "replyNs": replied, "verifiedNs": verified,
+                        "passEndedNs": pass_ended,
+                        "requestToPassEndMs": round((pass_ended - dispatched) / 1e6, 1) if pass_ended else None,
+                        "replyError": (reply.get("error") or {}).get("code") if not reply.get("ok") else None,
                         "requestToReplyMs": round((replied - dispatched) / 1e6, 1),
                         "requestToVerifiedRemovalMs": round((verified - dispatched) / 1e6, 1) if verified else None,
                         "note": "harness-side; includes dev_control.py process start and the row and folder checks"}
@@ -396,7 +427,11 @@ def run(args):
                         c.cannot_tell("delete received during detection", "no delete witness")
                     else:
                         c.check("delete received during detection", inside)
-                    c.check("the delete reply succeeded", detail["delete"]["reply"])
+                    if detail["delete"]["replyError"] == "outcomeUnknown":
+                        c.cannot_tell("the delete reply succeeded", "the door read timed out: outcome unknown")
+                    else:
+                        c.check("the delete reply succeeded", detail["delete"]["reply"], str(detail["delete"]["replyError"]))
+                    c.check("meeting work ended after the delete", pass_ended is not None)
                     c.check("the deleted meeting's row is gone", row_gone)
                     c.check("the deleted meeting's folder is gone", folder_gone, folder)
             else:
@@ -484,6 +519,29 @@ def self_test():
     window = wait_exit(0, 5, 3, alive=lambda: False, clock=ticks.__next__, pause=lambda: None)
     cases.append(("exit during a slow query: the upper bound is after the query", window["goneNs"] == 30))
     cases.append(("no exit has no window", exit_window_ms(0, {"lastAliveNs": 5, "goneNs": None}) is None))
+    seen = {}
+    delete_meeting("M", runner=lambda argv, t: seen.update(argv=argv, timeout=t) or (0, {"ok": True}))
+    cases.append(("delete passes the long timeout to dev_control.run", seen == {"argv": ["meeting", "delete", "M"], "timeout": 120.0}))
+    # The real dev_control.run, with only the worktree, lock and socket opening stood in for:
+    # the timeout it gives the connection is the one delete_meeting chose.
+    import dev_control as dc
+    opened = {}
+    saved_fns = (dc.resolve_worktree, dc.require_mutation_ownership, dc._open_session)
+
+    def fake_open(root, boundaries, timeout):
+        opened["timeout"] = timeout
+        raise dc.CliError("stopped", "offline control", 1)
+    dc.resolve_worktree, dc.require_mutation_ownership, dc._open_session = (
+        lambda requested, boundaries: "/offline", lambda boundaries: None, fake_open)
+    try:
+        delete_meeting("00000000-0000-0000-0000-000000000000")
+    finally:
+        dc.resolve_worktree, dc.require_mutation_ownership, dc._open_session = saved_fns
+    cases.append(("the long timeout reaches the door connection", opened.get("timeout") == 120.0))
+    replies = iter([{"phase": {"name": "idle"}, "processing": {"meetingID": "x"}, "workInFlight": True},
+                    {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}])
+    clock_ticks = iter([77])
+    cases.append(("the pass end is the first idle status", wait_idle(5, status=replies.__next__, clock=clock_ticks.__next__, pause=lambda: None) == 77))
     idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
     cases.append(("an idle status is idle", idle_reason(idle) is True))
     cases.append(("a processing pass is not idle", idle_reason({**idle, "processing": {"meetingID": "x"}}) is not True))
