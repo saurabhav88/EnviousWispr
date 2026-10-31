@@ -1316,7 +1316,15 @@ final class MeetingCoordinator {
       } else {
         record.state = .queued
       }
-      await persist(record)
+      if await persist(record) == false, !quitting, live[meetingID] != nil {
+        // #4267: retry the same stopped record once before leaving recovery to the next launch.
+        if await persist(record) == false, !quitting, live[meetingID] != nil {
+          record.state = .interrupted
+          record.wasInterrupted = true
+          closeOwned.insert(meetingID)
+          live[meetingID] = record
+        }
+      }
     }
     activeMeetingID = nil
     boundMicrophoneUID = nil
