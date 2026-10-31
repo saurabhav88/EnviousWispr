@@ -212,12 +212,15 @@ struct MeetingSpeechDetectorTests {
     let third = audio(1_000, 0.3)
     let a = Task { try await d.append(first) }
     try await BoundedWait.until(script.reached)
-    let b = Task { try await d.append(second + third) }
-    let c = Task { try await d.finish() }
+    // One task, so its append and finish keep their own order; both overlap the held first
+    // call. (Two separate tasks start in no guaranteed order.)
+    let b = Task {
+      try await d.append(second + third)
+      try await d.finish()
+    }
     script.release()
     try await a.value
     try await b.value
-    try await c.value
     #expect(script.chunks == 3, "two whole chunks and the remainder, once each")
     let seen = script.firstSamples
     var conditioned = VADInputHighPass()
