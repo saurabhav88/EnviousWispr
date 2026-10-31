@@ -145,7 +145,7 @@ struct MeetingMuteFollowerTests {
   @Test("a reading delivered more than 1.5 s after its copy began counts as unknown")
   func delayedDelivery() {
     var f = follower()
-    #expect(read(&f, .muted, at: 10, delay: 1.6) == .applied)
+    #expect(read(&f, .muted, at: 10, delay: 1.6) == .staleAtDelivery)
     #expect(f.intervals == [])
     #expect(f.state == .checking)
     _ = read(&f, .muted, at: 10.5, delay: 1.4)

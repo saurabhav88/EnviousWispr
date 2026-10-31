@@ -48,6 +48,8 @@ struct MeetingMuteFollower: Sendable {
   /// What became of one reading.
   enum Outcome: Sendable, Equatable {
     case applied
+    /// Applied as unknown: already older than the staleness limit when it was delivered.
+    case staleAtDelivery
     /// From an earlier target, or not newer than the last reading.
     case ignored
     /// Off, or no call bound.
@@ -198,7 +200,7 @@ struct MeetingMuteFollower: Sendable {
       closeAtLastMuted()
       state = following ? .cannotSee : .checking
     }
-    return .applied
+    return fresh ? .applied : .staleAtDelivery
   }
 
   /// Time moved on to `now` with no new reading: a reading older than the staleness limit no
