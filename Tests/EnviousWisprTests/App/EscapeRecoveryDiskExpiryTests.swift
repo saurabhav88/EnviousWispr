@@ -103,9 +103,27 @@ struct EscapeRecoveryDiskExpiryTests {
     private final class PulseGate {
       var iterations = 0
       var onWait: ((Int) -> Void)?
-      func advance() {
+      private var firstStep: CheckedContinuation<Void, Never>?
+      private var firstStepReleased = false
+
+      /// #4108: the pulse starts INSIDE `sweepExpiredPending`, so under load it can reach its sleep
+      /// seam before the test has installed `onWait`; the unhandled first step was then consumed
+      /// and the `iteration == 1` rewrite never ran (the 20-iteration net fired). The first step
+      /// now waits here until the test releases it, so nothing depends on which side gets there
+      /// first. The pulse's own signal (reaching this seam) is the only thing the test waits for.
+      func advance() async {
         iterations += 1
+        if iterations == 1, !firstStepReleased {
+          await withCheckedContinuation { firstStep = $0 }
+        }
         onWait?(iterations)
+      }
+
+      /// Lets the held first step run. Safe before the pulse got there (it then passes straight through).
+      func releaseFirstStep() {
+        firstStepReleased = true
+        firstStep?.resume()
+        firstStep = nil
       }
     }
 
@@ -424,6 +442,8 @@ struct EscapeRecoveryDiskExpiryTests {
           coordinator.cancelPulseForTesting()
         }
       }
+      // The handler is installed; only now may the pulse's first step run (#4108).
+      gate.releaseFirstStep()
       await coordinator.waitForPulseForTesting()
 
       #expect(
