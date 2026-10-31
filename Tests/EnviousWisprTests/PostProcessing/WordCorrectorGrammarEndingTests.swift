@@ -92,6 +92,19 @@ struct WordCorrectorGrammarEndingTests {
     #expect(corrected("I like kelloggs cereal", [word]) == "I like Kellogg's cereal")
   }
 
+  @Test("a correctly spelled pack word that ends in s is left alone (Databricks, not Databrickss)")
+  func packWordEndingInSUntouched() {
+    let word = CustomWord(canonical: "Databricks", aliases: [], source: .pack)
+    #expect(corrected("we use Databricks daily", [word]) == "we use Databricks daily")
+  }
+
+  @Test("a misspelled pack word that ends in s is not given a second s")
+  func misspelledPackWordEndingInSNoDoubleS() {
+    let word = CustomWord(canonical: "Databricks", aliases: [], source: .pack)
+    let result = corrected("we use Databrics daily", [word])
+    #expect(result == "we use Databricks daily", "the whole word is corrected, no second s: \(result)")
+  }
+
   @Test("a word that ends in s and is itself saved is left alone")
   func savedWordEndingInSUntouched() {
     let word = CustomWord(canonical: "Jones", aliases: [], category: .person)

@@ -1407,7 +1407,10 @@ public struct WordCorrector: Sendable {
           // is confident enough to override the other.
           guard uc != pc, abs(us - ps) < Self.ambiguityMargin else {
             // #3892: the same canonical reached with and without a grammar ending keeps the ending.
-            let keepEnding = grammarPeel && uc == pc
+            // Unless the canonical already ends that way ("Databrics" is a misspelling of
+            // "Databricks", not "Databrick" plus s): then the whole-token reading wins.
+            let keepEnding =
+              grammarPeel && uc == pc && !pc.lowercased().hasSuffix(peeledSuffix.lowercased())
             return .accepted(
               us >= ps && !keepEnding
                 ? acceptFuzzy(unpeeled: true, canonical: uc)
@@ -1522,6 +1525,11 @@ public struct WordCorrector: Sendable {
     // A token with a space is a phrase an earlier pass already wrote ("Envious Labs"): not one word.
     guard !core.contains(where: \.isWhitespace) else { return .none }
     let lower = core.lowercased()
+    // A token that already IS a saved or pack canonical ("Databricks") has nothing to peel. Pack
+    // canonicals have no self-entry in `singleAliasMap`, so check the canonical lists directly.
+    if lookups.canonicalToWord[lower] != nil || lookups.packLowercasedCanonicals.contains(lower) {
+      return .none
+    }
     var readings: [(stem: String, ending: String)] = []
     for apostrophe in ["'s", "\u{2019}s"] where lower.hasSuffix(apostrophe) {
       readings.append((String(core.dropLast(2)), String(core.suffix(2))))
