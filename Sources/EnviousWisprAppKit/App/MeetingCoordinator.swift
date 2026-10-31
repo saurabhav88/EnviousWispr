@@ -1318,10 +1318,12 @@ final class MeetingCoordinator {
       }
       if await persist(record) == false, !quitting, live[meetingID] != nil {
         // #4267: retry the same stopped record once before leaving recovery to the next launch.
+        preserveEditsDuringStop(into: &record)
         if await persist(record) == false, !quitting, live[meetingID] != nil {
           record.state = .interrupted
           record.wasInterrupted = true
           closeOwned.insert(meetingID)
+          preserveEditsDuringStop(into: &record)
           live[meetingID] = record
         }
       }
@@ -1332,6 +1334,13 @@ final class MeetingCoordinator {
     workChanged()
     startQueueIfNeeded()
     await documents.flush(meetingID)
+  }
+
+  // #4267: keep concurrent edits without replacing Stop's final state or capture report.
+  private func preserveEditsDuringStop(into record: inout MeetingRecord) {
+    guard let current = live[record.id] else { return }
+    record.title = current.title
+    record.deletionRequested = current.deletionRequested
   }
 
   /// #4121: keeps the recorder's frozen call-sound summary on the open attempt, for its

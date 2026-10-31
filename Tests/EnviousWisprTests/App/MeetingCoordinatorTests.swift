@@ -724,6 +724,43 @@ struct MeetingCoordinatorTests {
         }
       }
     }
+
+    @Test(
+      "a Stop save retry keeps a rename queued during the failed save",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4267", "Stop retry keeps rename"))
+    func stopSaveRetryKeepsRenameMadeDuringFailedSave() async throws {
+      let harness = try Harness()
+      let coordinator = harness.coordinator
+      await coordinator.start(from: .history)
+      let meetingID = try onlyMeeting(harness).id
+      harness.freeBytes = 0
+      let gate = harness.writeGate
+      gate.arm()
+      gate.failNext(1)
+      defer { gate.release.signal() }
+
+      let stopping = Task { await coordinator.stop() }
+      // The semaphore must wait off the main actor so Stop and rename can enter while held.
+      try #require(
+        await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
+        "the first Stop save never started")
+      let renaming = Task { await coordinator.rename(meetingID: meetingID, title: "Board sync") }
+      await Self.eventually("rename pending during Stop save", drainFiles: false) {
+        coordinator.liveRecordForTesting(meetingID)?.title == "Board sync"
+      }
+      gate.release.signal()
+      await stopping.value
+      await renaming.value
+
+      let durable = try harness.store.load(id: meetingID)
+      let live = try #require(coordinator.liveRecordForTesting(meetingID))
+      #expect(durable.title == "Board sync")
+      #expect(live.title == "Board sync")
+      #expect(durable.state != .recording)
+      #expect(live.state != .recording)
+      #expect(harness.logs.filter { $0.hasPrefix("meeting save failed") }.count == 1)
+      #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    }
   #endif
 
   /// #3973 C2 (plan §3 item 5): the History row is written after the ready barrier. A write
