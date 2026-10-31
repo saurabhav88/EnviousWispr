@@ -32,6 +32,7 @@ struct ReplayWordDiffTests {
   @Test("unspaced scripts compare character by character")
   func unspacedScripts() {
     #expect(Diff.tokens("今日は晴れ") == ["今", "日", "は", "晴", "れ"])
+    #expect(Diff.edits(expected: Diff.tokens("東京・大阪。"), actual: Diff.tokens("東京大阪")).isEmpty, "marks are not words")
     let edits = Diff.edits(expected: Diff.tokens("今日は晴れ"), actual: Diff.tokens("今日晴れ"))
     #expect(edits == [.init(kind: .delete, position: 2, expected: "は", actual: nil)])
   }

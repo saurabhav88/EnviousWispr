@@ -91,14 +91,34 @@ def during(witnessed, token):
     return token in witnessed[0]
 
 
-def log_size():
-    return os.path.getsize(LOG)
+def log_size(log=None):
+    """A position in the app log: the live file's inode and its size now."""
+    st = os.stat(log or LOG)
+    return (st.st_ino, st.st_size)
 
 
-def log_since(offset):
-    with open(LOG, "rb") as f:
-        f.seek(offset)
-        return f.read().decode("utf-8", "replace")
+def log_since(position, log=None):
+    """Everything logged after `position`, across a rotation. `AppLogger.rotateIfNeeded` renames
+    `app.log` to `app.1.log` (older files shift up to `app.5.log`) at its size bound; a bare byte
+    offset would then point past the new file's end and read nothing. The remembered inode finds
+    the renamed file: its remainder from the offset, then every newer file in full."""
+    log = log or LOG
+    inode, offset = position
+    directory = os.path.dirname(log)
+    shelf = [os.path.join(directory, f"app.{i}.log") for i in range(5, 0, -1)] + [log]
+    start = next((n for n, path in enumerate(shelf) if os.path.exists(path) and os.stat(path).st_ino == inode), None)
+    if start is None:
+        raise m.Setup("the app log rotated past every kept file during the run")
+    parts = []
+    for n, path in enumerate(shelf[start:]):
+        try:
+            with open(path, "rb") as f:
+                if n == 0:
+                    f.seek(offset)
+                parts.append(f.read().decode("utf-8", "replace"))
+        except OSError:
+            continue
+    return "".join(parts)
 
 
 def wait_log(offset, predicate, seconds):
@@ -188,6 +208,24 @@ def wait_idle(seconds, status=None, clock=None, pause=None):
             return clock()
         pause()
     return None
+
+
+def readiness_report(baseline, passes):
+    """Median healthy readiness per engine, idle baseline and during detection (None when no
+    healthy sample)."""
+    import statistics
+
+    def median(values):
+        values = [v for v in values if v is not None]
+        return statistics.median(values) if values else None
+    report = {}
+    for engine in ("parakeet", "whisper"):
+        idle = [t["readyMs"] for t in baseline.get(engine, []) if t.get("problem") is None]
+        during = [p.get("readyMs") for p in passes
+                  if p["label"].startswith(f"dictation-{engine}-") and p.get("problem") is None]
+        report[engine] = {"idleMedian": median(idle), "duringMedian": median(during),
+                          "idleCount": len(idle), "duringCount": len([d for d in during if d is not None])}
+    return report
 
 
 def take_of(receipt):
@@ -332,6 +370,11 @@ def run(args):
                               take.get("id"), {"readyMs": take.get("readyMs"), "clockOk": take.get("clockOk"),
                                                "stopOk": take.get("stopOk"), "terminal": take.get("terminal"),
                                                "problem": take.get("problem")})
+                # Measurements only: the plan sets no numeric readiness bound, so healthy samples
+                # are reported side by side and the speed itself is never certified here.
+                detail["readinessMs"] = readiness_report(detail.get("baseline", {}), passes)
+                c.cannot_tell("readiness during detection vs baseline",
+                              "reported, not judged: " + json.dumps(detail["readinessMs"]))
                 switch("parakeet")
                 for target in ("whisper", "parakeet"):
                     token, start, offset = start_pass(primary)
@@ -485,6 +528,25 @@ def self_test():
     f.check("x", False)
     cases.append(("a failed check is FAIL", f.status() == 1))
     cases.append(("the clock is CLOCK_UPTIME_RAW", now_ns() > 0))
+    report = readiness_report(
+        {"parakeet": [{"readyMs": 30, "problem": None}, {"readyMs": 99, "problem": "x"}]},
+        [{"label": "dictation-parakeet-0", "readyMs": 10_000, "problem": None}])
+    cases.append(("a slow start is reported, never hidden", report["parakeet"] == {"idleMedian": 30, "duringMedian": 10_000, "idleCount": 1, "duringCount": 1}))
+    # A rotation between the saved position and the read: the renamed file's remainder, then the
+    # new live file. Without rotation: the plain tail.
+    with tempfile.TemporaryDirectory() as work:
+        log = os.path.join(work, "app.log")
+        open(log, "w").write("old line\n")
+        position = log_size(log)
+        with open(log, "a") as f:
+            f.write("before rotation\n")
+        os.rename(log, os.path.join(work, "app.1.log"))
+        open(log, "w").write("after rotation\n")
+        cases.append(("a rotation keeps both sides", log_since(position, log) == "before rotation\nafter rotation\n"))
+        plain = log_size(log)
+        with open(log, "a") as f:
+            f.write("more\n")
+        cases.append(("no rotation: the plain tail", log_since(plain, log) == "more\n"))
     good = {"readyMs": 40.0, "clockOk": True, "stopOk": True, "terminal": "noSpeech"}
     cases.append(("a healthy sample has no problem", take_problem(good) is None))
     cases.append(("a short ending is healthy", take_problem({**good, "terminal": "discarded"}) is None))

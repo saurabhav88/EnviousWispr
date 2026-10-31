@@ -22,7 +22,8 @@ enum ReplayWordDiff {
       word = ""
     }
     for character in text.lowercased() {
-      if isUnspaced(character) {
+      // Punctuation first: an unspaced script's marks (・, 。) are separators, not words.
+      if (character.isLetter || character.isNumber) && isUnspaced(character) {
         flush()
         out.append(String(character))
       } else if character.isLetter || character.isNumber {
