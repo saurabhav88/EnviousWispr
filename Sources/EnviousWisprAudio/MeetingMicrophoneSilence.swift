@@ -61,6 +61,9 @@ final class MeetingMicrophoneSilence {
     var hostTime: UInt64
     var afterDrop: Bool
     var sourceBreak: Bool
+    /// The arrival contract's cutoff, fixed when the chunk was accepted: its samples before this
+    /// are live, never frozen-masked.
+    var liveBefore: UInt64
   }
 
   let holdTicks: UInt64
@@ -152,12 +155,12 @@ final class MeetingMicrophoneSilence {
     _ frames: UnsafeBufferPointer<Float>, hostTime: UInt64, afterDrop: Bool, sourceBreak: Bool,
     emit: Emit
   ) {
-    let horizon = released > lateArrivalTicks ? released - lateArrivalTicks : 0
-    if hostTime < horizon {
-      let lateTicks = horizon - hostTime
-      let late = Int(AudioConvertHostTimeToNanos(lateTicks) / Self.nanosPerSample)
-      lateFrames += min(frames.count, late)
-    }
+    let liveBefore = released > lateArrivalTicks ? released - lateArrivalTicks : 0
+    // The same boundary rule as silencing: a sample is late when its time is before the cutoff.
+    lateFrames += Self.silencedRange(
+      of: MeetingSilenceInterval(start: 0, end: liveBefore), chunkHostTime: hostTime,
+      count: frames.count
+    ).count
     var offset = 0
     while offset < frames.count {
       if chunks.count >= chunkCapacity || samples.count >= sampleCapacity {
@@ -171,7 +174,8 @@ final class MeetingMicrophoneSilence {
         Held(
           start: samples.count, count: take,
           hostTime: first ? hostTime : hostTime &+ Self.ticks(forSamples: offset),
-          afterDrop: first && afterDrop, sourceBreak: first && sourceBreak))
+          afterDrop: first && afterDrop, sourceBreak: first && sourceBreak,
+          liveBefore: liveBefore))
       samples.append(contentsOf: UnsafeBufferPointer(rebasing: frames[offset..<(offset + take)]))
       offset += take
     }
@@ -199,7 +203,8 @@ final class MeetingMicrophoneSilence {
         let chunkEnd = end(of: held)
         let cut = min(max(held.hostTime, released), chunkEnd)
         // Before C: the frozen decisions. From C on: the latest, which this release freezes.
-        silence(frames, held.hostTime, frozen, from: held.hostTime, to: cut)
+        silence(
+          frames, held.hostTime, frozen, from: max(held.hostTime, held.liveBefore), to: cut)
         silence(frames, held.hostTime, pending, from: cut, to: chunkEnd)
         if chunkEnd > cut {
           let decided = pending.compactMap { Self.clip($0, from: cut, to: chunkEnd) }

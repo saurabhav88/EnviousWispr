@@ -394,17 +394,52 @@ struct MeetingMicrophoneSilenceTests {
     #expect(zeroRuns(b) == [800..<1_600], "before C stays live; from C on follows the update")
   }
 
-  @Test("audio stamped more than the late-arrival bound behind C is judged live and counted")
-  func lateArrivalCounted() async throws {
+  @Test("audio stamped more than the late-arrival bound behind C stays live and is counted")
+  func lateArrivalLiveAndCounted() async throws {
     let r = try rig()
-    feed(r, seconds: 3)
-    await r.writer.waitUntilWritten()
-    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(samples: 48_000))
-    r.writer.setSilencedIntervals([interval(r, 0, 10)])
-    // Stamped at 1.5 s: 0.5 s earlier than C minus the 1 s bound.
+    let clock = try #require(r.clock)
+    // Old chunk [1.5, 2.5) is held under a mute [1.5, 2.5), then released: that mute is frozen.
+    // A chunk ending at 3.0 is still held, which keeps the frozen mute from retiring.
+    r.writer.setSilencedIntervals([interval(r, 1.5, 2.5)])
+    feed(r, from: 1.5, seconds: 1.5, chunk: 8_000)
+    clock.set(r.anchor &+ ticks(5.55))
+    await r.writer.queueBarrierForTesting()
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(2.5))
+    // Advance C to 3.0 by releasing the second chunk, holding a later one so the mute stays.
+    feed(r, from: 3.0, seconds: 0.5, chunk: 8_000)
+    clock.set(r.anchor &+ ticks(6.05))
+    clock.fireDue()
+    await r.writer.queueBarrierForTesting()
+    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(3.0))
+    // A late chunk stamped [1.5, 2.5): its part before C - 1 s = 2.0 is late and stays live; the
+    // rest falls under the frozen mute.
     r.writer.append([Float](repeating: Self.level, count: 16_000), hostTime: r.anchor &+ ticks(1.5))
     #expect(await r.writer.finish() == .finalized)
+    let lateChunk = try #require(r.released.all.last { $0.0.hostTime == r.anchor &+ ticks(1.5) })
+    #expect(zeroRuns(lateChunk.1) == [8_000..<16_000], "before 2.0 live; 2.0 to 2.5 frozen-muted")
     #expect(r.writer.currentHealth.silenceLateFrames == 8_000)
+  }
+
+  @Test("a sample straddling the late cutoff counts as late, by the silencing boundary rule")
+  func lateBoundaryRule() {
+    let silence = MeetingMicrophoneSilence(
+      holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 64)
+    let base: UInt64 = 10_000_000_000
+    let two = [Float](repeating: 1, count: 32_000)
+    two.withUnsafeBufferPointer {
+      silence.accept($0, hostTime: base, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+    }
+    silence.releaseAll(emit: { _, _ in })
+    // C = base + 2 s, so the cutoff is base + 1 s. Sample 0 of the next chunk sits one tick
+    // before it (late); sample 1 sits after it.
+    let cutoff = base &+ MeetingMicrophoneSilence.ticks(nanos: 1_000_000_000)
+    [Float](repeating: 1, count: 1_600).withUnsafeBufferPointer {
+      silence.accept(
+        $0, hostTime: cutoff - 1, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+    }
+    #expect(silence.lateFrames == 1)
   }
 
   @Test("C already covers each chunk when its release callback runs, forced releases included")
