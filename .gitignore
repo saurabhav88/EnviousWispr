@@ -479,3 +479,9 @@ routine-session-logs-*/
 .cache/
 .derivedData-review/
 .build-review/
+
+# Python bytecode is never tracked, even under a directory re-included with `!dir/**` (#4246):
+# a later `!scripts/eval/tests/**` style line un-ignores everything beneath it, `.pyc` included.
+# Last match wins, so this stays at the end of the file.
+**/__pycache__/
+**/*.pyc
