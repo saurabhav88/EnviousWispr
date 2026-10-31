@@ -1864,6 +1864,41 @@ struct MeetingTranscriptionJobTests {
     #expect(result.composition.turns.allSatisfy { $0.granularity == .segment })
   }
 
+  @Test("#4254: grouped Whisper sentences bind to their own speakers through the job and composer; one spanning both is Both")
+  func groupedSentencesBindSpeakers() async throws {
+    let dir = try folder()
+    let files = [try segment(in: dir, index: 1, startMs: 0, seconds: 20)]
+    // What the grouped decode returns for groups at 1-2 s and 12-13 s (offsets applied once),
+    // plus a sentence a speaker change runs through.
+    let text = "Hello there. Bye now. Both of us."
+    var result = ASRResult(
+      text: text, language: "en", duration: 20, processingTime: 0, backendType: .whisper,
+      segmentTimings: [
+        ASRSegmentTiming(range: 0..<12, startMs: 1_000, endMs: 1_900),
+        ASRSegmentTiming(range: 13..<21, startMs: 12_000, endMs: 12_900),
+        ASRSegmentTiming(range: 22..<33, startMs: 15_000, endMs: 17_000),
+      ])
+    result.meetingSpeechPreparation = .protectedSpeech
+    let job = wholeRunJob(
+      transcribe: { _, _ in result },
+      analyze: { _ in
+        MeetingSpeakerAnalysis(
+          outcome: .labeled,
+          segments: [
+            SpeakerSegment(speakerId: "1", startMs: 0, endMs: 6_000, quality: 1),
+            SpeakerSegment(speakerId: "2", startMs: 10_000, endMs: 16_000, quality: 1),
+            SpeakerSegment(speakerId: "1", startMs: 16_000, endMs: 20_000, quality: 1),
+          ])
+      })
+
+    let outcome = try await job.runTestAttempt(
+      tracks: [.callSound: MeetingTrackAudio(files: files)], language: nil) { _ in }
+
+    #expect(outcome.failedPieces == 0)
+    #expect(outcome.composition.turns.map(\.speakerId) == ["sys:1", "sys:2", TurnAssembler.bothSpeakersID])
+    #expect(outcome.composition.turns.allSatisfy { $0.granularity == .segment })
+  }
+
   @Test("#3973 C3: a decode that gave way to dictation waits for it and runs again, with no gap counted")
   func yieldIsRetriedNotFailed() async throws {
     let dir = try folder()
