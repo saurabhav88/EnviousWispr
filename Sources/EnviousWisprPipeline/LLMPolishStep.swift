@@ -1197,10 +1197,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
 
     let llmStart = CFAbsoluteTimeGetCurrent()
-    let result: LLMResult
+    let response: LLMResult
     setupObservation.requestStartedAt = .now
     do {
-      result = try await polisher.polish(
+      response = try await polisher.polish(
         envelope: envelope,
         config: config,
         onToken: onToken
@@ -1216,6 +1216,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       setupObservation.requestEndedAt = .now
       throw error
     }
+    // This source-owning boundary replaces connector chatter stripping. Native
+    // cleaned-empty skips still precede completion breadcrumbs and warmth stamps.
+    let result = try response.removingModelChatter(dictation: context.text, provider: provider)
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
     logPolishCompletion(
@@ -1244,8 +1247,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if let batch = fileBatchInput {
       guard let sections = SectionEnvelope.unwrap(result.polishedText, expected: batch.members.count)
       else { throw LLMError.requestFailed("Invalid file cleanup section mapping") }
-      let contexts = zip(batch.members, sections).map { member, text in
-        finishResult(
+      let contexts = try zip(batch.members, sections).map { member, text in
+        try finishResult(
           LLMResult(polishedText: text, polishMetadata: result.polishMetadata),
           context: member.context, mode: member.mode, provider: provider, model: model,
           ollamaRemote: nil, family: .cloudFixed, policy: .batchPiece)
@@ -1256,7 +1259,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       return completed
     }
 
-    return finishResult(
+    return finishCleanedResult(
       result, context: context, mode: plan.mode, provider: provider, model: model,
       ollamaRemote: ollamaRemote, family: plan.family)
   }
@@ -1360,6 +1363,18 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   enum ResultPolicy: Equatable { case ordinary, batchPiece }
 
   func finishResult(
+    _ result: LLMResult, context: TextProcessingContext, mode: PolishMode,
+    provider: LLMProvider, model: String, ollamaRemote: Bool?, family: PromptFamily,
+    policy: ResultPolicy = .ordinary
+  ) throws -> TextProcessingContext {
+    let cleaned = try result.removingModelChatter(dictation: context.text, provider: provider)
+    return finishCleanedResult(
+      cleaned, context: context, mode: mode, provider: provider, model: model,
+      ollamaRemote: ollamaRemote, family: family, policy: policy)
+  }
+
+  /// This stage receives a source-cleaned answer, so validation never strips twice.
+  private func finishCleanedResult(
     _ result: LLMResult, context: TextProcessingContext, mode: PolishMode,
     provider: LLMProvider, model: String, ollamaRemote: Bool?, family: PromptFamily,
     policy: ResultPolicy = .ordinary

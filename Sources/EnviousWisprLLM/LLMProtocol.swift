@@ -14,6 +14,10 @@ public protocol TranscriptPolisher: Sendable {
     onToken: (@Sendable (String) -> Void)?
   ) async throws -> LLMResult
 
+  /// Non-Apple results are transport-adapted, not yet source-checked. The caller
+  /// owning the original transcript applies removingModelChatter before accepting
+  /// the result. Apple performs its own source-aware filtering before its guards.
+  ///
   /// Polish using a structured PromptEnvelope (new prompt planner path).
   /// Connectors map roles to their API format. Default implementation bridges
   /// to the legacy method for Apple Intelligence (which never uses this path).
@@ -43,26 +47,18 @@ extension TranscriptPolisher {
 // MARK: - Preamble Stripping
 
 extension String {
-  /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
-  ///
-  /// Strategy (v30 — conservative):
-  ///   1. Detect "wrapper shape" — either:
-  ///      a) First line is short, ends with ":", and starts with an assistant
-  ///         phrase (Here/Below/The corrected/etc.), OR
-  ///      b) Acknowledgment prefix ("Sure,", "Certainly!") is IMMEDIATELY followed
-  ///         by wrapper shape (a) on the remaining content.
-  ///   2. Only strip when wrapper shape is present. This prevents false-stripping
-  ///      user dictation that happens to start with "Sure, here is the plan..."
-  ///      (which flows into prose without a colon).
-  ///   3. Strip `<transcript>` wrapper tags if echoed back — ONLY when
-  ///      `stripTranscriptTags` is true. That cleanup exists for the sandwich
-  ///      prompt paths (Ollama, Apple) whose user message wraps the transcript in
-  ///      `<transcript>` tags the model can echo. The fixed cloud prompt (#1255)
-  ///      sends NO sandwich, so stripping those tags there would delete a user's
-  ///      literal dictated `<transcript>` text (XML, prompt notes); cloud callers
-  ///      pass `false` (Codex code-review r5).
-  func strippingLLMPreamble(stripTranscriptTags: Bool = true) -> String {
+  /// Remove recognized model chatter only when its opening was not dictated.
+  /// Recognition remains the existing closed candidate set and shape heuristics.
+  /// Source-prefix preservation wins even when another apparent wrapper follows:
+  /// visible extra text is safer than silently deleting the user's opening (#3871).
+  /// Prompt-specific tag adaptation belongs to the connector, not this decision.
+  func strippingLLMPreamble(dictation: String) -> String {
     var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let sourceWords = Self.cleanupOpeningWords(dictation) else { return result }
+    func wasDictated(_ candidate: String) -> Bool {
+      guard let words = Self.cleanupOpeningWords(candidate) else { return true }
+      return sourceWords.starts(with: words)
+    }
 
     // Helper — does the first line look like an assistant-emitted preamble?
     // (short, ends with ":", starts with a wrapper phrase)
@@ -132,6 +128,7 @@ extension String {
     ]
     for ack in acknowledgments {
       if result.hasPrefix(ack) {
+        if wasDictated(ack) { return result }
         let afterAck = String(result.dropFirst(ack.count))
           .trimmingCharacters(in: .whitespacesAndNewlines)
         if firstLineLooksLikePreamble(afterAck) || firstSentenceIsStandaloneReply(afterAck) {
@@ -144,22 +141,84 @@ extension String {
     // Strip the first line if it looks like an assistant preamble.
     if firstLineLooksLikePreamble(result) {
       let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
-      result = String(result[firstNewline...])
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // Strip <transcript> wrapper if echoed back (may be truncated at token limit).
-    // Case-insensitive so both <transcript> and <TRANSCRIPT> are handled. Skipped on
-    // the no-sandwich cloud path so literal dictated tags survive (see doc above).
-    if stripTranscriptTags {
-      result = result.replacingOccurrences(
-        of: "</?transcript>",
-        with: "",
-        options: [.regularExpression, .caseInsensitive]
-      ).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !wasDictated(String(result[..<firstNewline])) {
+        result = String(result[firstNewline...])
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+      }
     }
 
     return result
+  }
+
+  /// Compare whole words, not punctuation or substrings. Unclassifiable source
+  /// boundaries authorize no deletion; combining marks require an existing base.
+  private static func cleanupOpeningWords(_ text: String) -> [String]? {
+    let scalars = Array(text.precomposedStringWithCanonicalMapping.lowercased().unicodeScalars)
+    var words: [String] = []
+    var word = ""
+    func isMark(_ scalar: Unicode.Scalar) -> Bool {
+      switch scalar.properties.generalCategory {
+      case .nonspacingMark, .spacingMark, .enclosingMark: true
+      default: false
+      }
+    }
+    for (index, scalar) in scalars.enumerated() {
+      if isMark(scalar) {
+        guard !word.isEmpty else { return nil }
+        word.unicodeScalars.append(scalar)
+      } else if CharacterSet.alphanumerics.contains(scalar) {
+        word.unicodeScalars.append(scalar)
+      } else if (scalar == "'" || scalar == "’"), !word.isEmpty,
+        index + 1 < scalars.count,
+        CharacterSet.alphanumerics.contains(scalars[index + 1]), !isMark(scalars[index + 1])
+      {
+        word.append("'")
+      } else if !word.isEmpty {
+        words.append(word)
+        word = ""
+      }
+    }
+    if !word.isEmpty { words.append(word) }
+    return words.isEmpty ? nil : words
+  }
+
+  /// Strip <transcript> wrapper if echoed back (may be truncated at token limit).
+  /// Case-insensitive so both <transcript> and <TRANSCRIPT> are handled. Skipped on
+  /// the no-sandwich cloud path so literal dictated tags survive.
+  /// Remove only the echoed transcript wrapper, retaining fences and content.
+  func strippingTranscriptTags() -> String {
+    replacingOccurrences(
+      of: "</?transcript>",
+      with: "",
+      options: [.regularExpression, .caseInsensitive]
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+}
+
+public extension LLMResult {
+  /// Finalize chatter only at a boundary holding the actual source (#3871).
+  /// Apple has already filtered before its guards/classifier and must not run again.
+  func removingModelChatter(dictation: String, provider: LLMProvider) throws -> LLMResult {
+    if provider == .appleIntelligence { return self }
+    let cleaned = polishedText.strippingLLMPreamble(dictation: dictation)
+    if cleaned.isEmpty {
+      switch provider {
+      case .egOne:
+        throw LLMError.localEngineSkipped(.crashed, provider)
+      case .s1Mini:
+        if LocalPolishEmptyDisposition.classify(input: dictation) == .unexpectedEmpty {
+          throw LLMError.localEngineSkipped(.crashed, provider)
+        }
+      case .none, .appleIntelligence, .openAI, .gemini, .claude, .ollama:
+        break
+      }
+    }
+    // Transport owns whitespace adaptation. An unchanged answer must reach
+    // continuation byte-for-byte; this boundary only removes actual chatter.
+    let transportTrimmed = polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !cleaned.isEmpty, cleaned.utf8.elementsEqual(transportTrimmed.utf8) { return self }
+    return LLMResult(
+      polishedText: cleaned, polishMetadata: polishMetadata, stoppedEarly: stoppedEarly)
   }
 }
 

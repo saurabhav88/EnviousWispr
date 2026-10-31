@@ -43,6 +43,11 @@ struct FileImportBatchTests {
       {
         var outputs = parts.map(clean)
         if replyMode == "blank" { outputs[1] = "" }
+        if replyMode == "chatter" {
+          outputs[1] = "Sure, I can do that for you and the team tomorrow."
+          outputs[2] = "Sure, I will send the file to you and the team tonight."
+          return LLMResult(polishedText: "Certainly! Here is the cleaned transcript:\n" + SectionEnvelope.wrap(outputs))
+        }
         return LLMResult(polishedText: SectionEnvelope.wrap(outputs))
       }
       return LLMResult(polishedText: clean(text))
@@ -142,6 +147,23 @@ struct FileImportBatchTests {
     #expect(capture.configs.count == 1)
     #expect(capture.configs.first?.model == model)
     #expect(outcomes.map { $0.displayText } == Self.cleaned)
+  }
+
+  @Test("outer chatter is removed while the second section keeps its own dictated opening")
+  func sourceBoundChatter() async throws {
+    let capture = Capture(); capture.replyMode = "chatter"
+    let subject = runner(capture)
+    subject.freeze(settings: snapshot(), vocabulary: nil)
+    var outputs: [FileImportRunner.PartOutcome] = []
+    try await subject.process(parts: [Self.passages[0], "sure I can do that for you and the team tomorrow", "I will send the file to you and the team tonight"]) { _, outcome in
+      outputs.append(outcome); return true
+    }
+    #expect(capture.users.count == 1)
+    #expect(outputs.count == 3)
+    #expect(outputs[0].displayText == Self.cleaned[0])
+    #expect(outputs[1].displayText == "Sure, I can do that for you and the team tomorrow.")
+    #expect(outputs[2].displayText == "I will send the file to you and the team tonight.")
+    #expect(outputs[1].isUnpolished == false)
   }
 
   @Test("Compatible sections share one call and emit their independently expected text in source order")

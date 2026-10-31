@@ -235,7 +235,7 @@ public struct OllamaConnector: TranscriptPolisher {
     accepted = true
     return LLMResult(
       polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble(),
+        .strippingTranscriptTags(),
       stoppedEarly: Self.stoppedEarly(json)
     )
   }
@@ -363,8 +363,8 @@ public struct OllamaConnector: TranscriptPolisher {
     let sentTranscriptTags = OllamaSetupService.isFirstPartyModel(config.model)
     accepted = true
     return LLMResult(
-      polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-        .strippingLLMPreamble(stripTranscriptTags: sentTranscriptTags),
+      polishedText: sentTranscriptTags ? content.strippingTranscriptTags()
+        : content.trimmingCharacters(in: .whitespacesAndNewlines),
       stoppedEarly: Self.stoppedEarly(json)
     )
   }

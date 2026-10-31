@@ -19,7 +19,7 @@ struct EnviousOutputFilterTests {
 
   @Test("blank-line wrapper preamble is stripped")
   func stripsBlankLinePreambleWrapper() {
-    let input = "Here is your revised transcript, please send the invoice before noon."
+    let input = "please send the invoice before noon"
     let output = "Here is your revised transcript:\n\nPlease send the invoice before noon."
 
     let filtered = EnviousOutputFilter.filter(input: input, output: output)
@@ -128,4 +128,37 @@ struct EnviousOutputFilterTests {
     #expect(filtered.tripped == "imperative_execution_guard")
     #expect(filtered.polished == input)
   }
+  @Test("Apple preserves dictated single-line and multiline openings",
+    arguments: ["Sure, I can do that tomorrow.", "Sure, I can do that tomorrow.\n\nThanks, Alex"])
+  func sourceOpening(output: String) {
+    let filtered = EnviousOutputFilter.filter(
+      input: "sure I can do that tomorrow thanks alex", output: output)
+    #expect(filtered.fellBackToRaw == false)
+    #expect(filtered.polished == output)
+    #expect(filtered.tripped == nil)
+  }
+
+  @Test("Apple also removes an added single-line acknowledgment")
+  func addedSingleLine() {
+    let filtered = EnviousOutputFilter.filter(
+      input: "I can do that tomorrow", output: "Sure, I can do that tomorrow.")
+    #expect(filtered.polished == "I can do that tomorrow.")
+    #expect(filtered.tripped == "preamble_stripped")
+  }
+
+  @Test("a source-like wrapper is content, while exposed code still reaches the guards")
+  func sourceWrapperAndCode() {
+    let output = "Here is your revised transcript:\n\nPlease send the invoice before noon."
+    let kept = EnviousOutputFilter.filter(
+      input: "here is your revised transcript please send the invoice before noon", output: output)
+    #expect(kept.polished == output)
+    #expect(kept.fellBackToRaw == false)
+    let rejected = EnviousOutputFilter.filter(
+      input: "please write a python script",
+      output: "Certainly! Here is the cleaned transcript:\n```python\nimport os\n```")
+    #expect(rejected.fellBackToRaw == true)
+    #expect(rejected.tripped == "code_shape_guard")
+    #expect(rejected.polished == "please write a python script")
+  }
+
 }

@@ -114,4 +114,19 @@ struct S1MiniConnectorTests {
       }
     }
   }
+  @Test("source-owning S1 cleanup distinguishes wrapper-only lexical and filler answers")
+  func wrapperOnlyDisposition() throws {
+    let lexical = Self.userMessage("please send the invoice before noon")
+    let result = try S1MiniConnector.parseSuccess(
+      data: Self.body(content: "Here is the cleaned text:"), userMessage: lexical)
+    #expect(result.polishedText == "Here is the cleaned text:")
+    #expect(throws: LLMError.localEngineSkipped(.crashed, .s1Mini)) {
+      _ = try result.removingModelChatter(dictation: "please send the invoice before noon", provider: .s1Mini)
+    }
+    let filler = try S1MiniConnector.parseSuccess(
+      data: Self.body(content: "Here is the cleaned text:"), userMessage: Self.userMessage("um uh"))
+    let empty = try filler.removingModelChatter(dictation: "um uh", provider: .s1Mini)
+    #expect(empty.polishedText == "")
+  }
+
 }

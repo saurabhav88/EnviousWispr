@@ -10,8 +10,8 @@ import Foundation
 ///      transcript:\n\n<actual content>".
 ///
 /// Pipeline (applied in order):
-///   1. Preamble strip via `String.strippingLLMPreamble()` (shared shape-based
-///      helper used by all cloud connectors, covered by `PreambleStrippingTests`).
+///   1. Source-aware preamble strip via `String.strippingLLMPreamble`, shared
+///      with the non-Apple source-owning result boundaries.
 ///   2. Code-shape detection on the stripped body. If the output body looks
 ///      like code (fenced, code-keyword lines, or high brace density) AND the
 ///      input didn't, AFM executed instead of cleaned. Fall back to raw input.
@@ -29,13 +29,8 @@ enum EnviousOutputFilter {
     let rawInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
     let rawOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    let shouldStripPreamble =
-      rawOutput.contains("\n\n")
-      || firstLine(of: rawOutput).hasSuffix(":")
-    let stripped =
-      shouldStripPreamble
-      ? rawOutput.strippingLLMPreamble()
-      : strippingTranscriptWrapperOnly(from: rawOutput)
+    let stripped = rawOutput.strippingTranscriptTags()
+      .strippingLLMPreamble(dictation: rawInput)
     let preambleStripped = stripped != rawOutput
 
     if looksLikeCode(stripped) && !looksLikeCode(rawInput) {
@@ -140,14 +135,6 @@ enum EnviousOutputFilter {
   private static func firstLine(of text: String) -> String {
     String(text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  private static func strippingTranscriptWrapperOnly(from text: String) -> String {
-    text.replacingOccurrences(
-      of: "</?transcript>",
-      with: "",
-      options: [.regularExpression, .caseInsensitive]
-    ).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private static func looksLikeCode(_ text: String) -> Bool {

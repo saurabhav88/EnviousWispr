@@ -204,7 +204,9 @@ public enum MeetingSummaryProviders {
           PromptMessage(role: .user, content: prompt),
         ]), config: config, onToken: nil)
       guard !result.stoppedEarly else { throw MeetingSummary.Failure.truncated }
-      return result.polishedText
+      // The source here is the summary request, not a dictated reply. Preserve
+      // the connector's prior added-chatter cleanup at this direct consumer.
+      return result.polishedText.strippingLLMPreamble(dictation: prompt)
     }
   }
 

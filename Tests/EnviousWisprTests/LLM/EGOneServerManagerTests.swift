@@ -165,6 +165,21 @@ struct EGOneConnectorResponseTests {
     #expect(inner.contains("<\u{200C}TRANSCRIPT>"))
   }
 
+  @Test("native response keeps its opener until the source-owning consumer runs")
+  func sourceOwnsAcknowledgment() throws {
+    let result = try EGOneConnector.parseSuccess(data: Self.wireData(
+      content: "<TRANSCRIPT>Sure, I can do that tomorrow.</TRANSCRIPT>"))
+    #expect(result.polishedText == "Sure, I can do that tomorrow.")
+    let kept = try result.removingModelChatter(dictation: "sure I can do that tomorrow", provider: .egOne)
+    #expect(kept.polishedText == result.polishedText)
+    let wrapper = try EGOneConnector.parseSuccess(data: Self.wireData(content: "Here is the cleaned text:"))
+    // The probe's existing catch maps this rejection to red probe_failed, not
+    // the yellow transformation check that an accepted empty would reach.
+    #expect(throws: LLMError.localEngineSkipped(.crashed, .egOne)) {
+      _ = try wrapper.removingModelChatter(dictation: "move the meeting to friday", provider: .egOne)
+    }
+  }
+
   @Test func plainPolishedTextPassesThroughUnchanged() throws {
     let data = try Self.wireData(content: "Move the meeting to Friday.")
     let result = try EGOneConnector.parseSuccess(data: data)
