@@ -46,8 +46,10 @@ struct WordCheckRuntimeTerminationTests {
   /// at once. With it, the real model is cloned into the install folder after the launch probe has
   /// finished, so the probe never sees (or touches) those files. Admission is then forced, as the
   /// residency tests force it. Throws instead of recording, so a child process can call it.
-  private static func makeRuntime(in temp: URL, realModel: Bool = false) async throws
-    -> WordCheckRuntime
+  private static func makeRuntime(
+    in temp: URL, realModel: Bool = false,
+    drainForTermination: @escaping (TimeInterval) -> Bool = KevWordCheckModel.drainForTermination
+  ) async throws -> WordCheckRuntime
   {
     try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
     guard let flags = TestDefaults.suite("ew-3853-\(UUID().uuidString)"),
@@ -80,7 +82,7 @@ struct WordCheckRuntimeTerminationTests {
       delivery: delivery,
       isDictionaryEnabled: { inputs.dictionary },
       someEngineLacksOwnChecker: { inputs.needed },
-      isOnboardingComplete: { inputs.onboarding })
+      isOnboardingComplete: { inputs.onboarding }, drainForTermination: drainForTermination)
     // The delivery handle replays its current state (not admitted) to the runtime on a later main
     // actor turn; forced admission must land after it, or that replay unloads what a test loads.
     let replayed = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
@@ -135,7 +137,8 @@ struct WordCheckRuntimeTerminationTests {
   func laterLoadsRefused() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp)
+    // In-process tests must not permanently close the shared MLX gate (#3939).
+    let runtime = try await Self.makeRuntime(in: temp, drainForTermination: { _ in true })
     runtime.releaseForTermination()
     #expect(runtime.isLoadedForTelemetry == false)
     #expect(runtime.terminationCleanupForTests != nil, "the cleanup is handed off, not skipped")
@@ -157,7 +160,8 @@ struct WordCheckRuntimeTerminationTests {
   func dropsLoadedModel() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp, realModel: true)
+    let runtime = try await Self.makeRuntime(
+      in: temp, realModel: true, drainForTermination: { _ in true })
     let selection = await runtime.selection()
     let checker = try #require(selection.checker, "fixture: the real model must load")
     #expect(runtime.isLoadedForTelemetry)
@@ -177,7 +181,8 @@ struct WordCheckRuntimeTerminationTests {
   func inFlightLoadDiscarded() async throws {
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
-    let runtime = try await Self.makeRuntime(in: temp, realModel: true)
+    let runtime = try await Self.makeRuntime(
+      in: temp, realModel: true, drainForTermination: { _ in true })
     let (reading, signal) = AsyncStream<Void>.makeStream()
     runtime.onLoadReadingForTests = { signal.yield() }
     runtime.recordingStarted(needsWordCheckForRecording: true)
@@ -204,8 +209,7 @@ struct WordCheckRuntimeTerminationTests {
     return Int(line.split(separator: " ")[1].dropFirst("ms=".count))
   }
 
-  /// The quit release's bound, in milliseconds. Generous for a loaded host; a release that waited
-  /// on MLX's evaluation lock would wait out the batch the child times first, several times this.
+  /// Idle quit's bound, in milliseconds. Active evaluations use the production drain timeout.
   nonisolated static let releaseBoundMs = 100
 
   /// Retained-after-inference: the model has answered a real question and a take still holds it
@@ -232,47 +236,55 @@ struct WordCheckRuntimeTerminationTests {
     #expect(ms < Self.releaseBoundMs, "the quit release took \(ms) ms")
   }
 
-  /// Active work: a take's evaluation is running on MLX when the production quit release runs and
-  /// the process calls `exit()`. The release must return within the bound, not after the batch.
-  ///
-  /// KNOWN CRASH (#3853 §2 P5 reopen condition, found by this control 2026-10-19): `exit()` runs
-  /// MLX's static scheduler destructor, which synchronizes the GPU stream and commits the command
-  /// buffer the evaluation is still encoding into; the Metal driver then faults
-  /// (`exit` → `mlx::core::scheduler::Scheduler::~Scheduler` → `mlx::core::gpu::synchronize` →
-  /// `Device::commit_command_buffer` → `AGXG17XFamilyCommandBuffer commit`, SIGSEGV; a SIGTRAP
-  /// was also seen). Intermittent: 3 of 14 runs alongside other tests, 0 of 32 run alone.
-  /// `releaseForTermination` cannot prevent it, since a take's hold keeps evaluating; the fix
-  /// is a latch-and-drain release (#3849 §3.1 model), which returns the plan to review. Until
-  /// then the crash is a known issue, and the bound is checked on every run the child survives.
+  /// Active work (#3939): a short evaluation drains before quit returns; a long one is still
+  /// running when the bounded drain gives up. Both children must survive the real `exit()`.
   @Test(
-    "mlx-kev: quit during a running evaluation returns at once and exit() ends the process cleanly",
-    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)), .realBoundaryRun)
-  func exitControlActive() async throws {
+    "mlx-kev: quit drains short evaluations and bounds long evaluations, then exits cleanly",
+    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)), .realBoundaryRun,
+    arguments: [false, true])
+  func exitControlActive(longEvaluation: Bool) async throws {
     let token = UUID().uuidString
     let temp = Self.makeTempRoot()
     defer { try? FileManager.default.removeItem(at: temp) }
     let path = temp.path
     var observed: ExitTest.Result?
-    await withKnownIssue(
-      "exit() during an MLX evaluation can crash in MLX's scheduler destructor (#3853 P5)",
-      isIntermittent: true
-    ) {
+    let runChild: () async -> Void = {
       observed = await #expect(
         processExitsWith: .success, observing: [\.standardOutputContent, \.standardErrorContent]
-      ) { [token = token as String, path = path as String] in
-        await Self.activeChild(token: token, root: path)
+      ) { [token = token as String, path = path as String, longEvaluation = longEvaluation as Bool] in
+        await Self.activeChild(token: token, root: path, longEvaluation: longEvaluation)
       }
-    } matching: { issue in
-      // Only a death by signal is the known crash; a child that fails a step (a slow release
-      // included) exits with status 1 and stays a failure.
-      String(describing: issue).contains(".signal(")
     }
-    guard let result = observed else { return }  // the known crash: nothing more to check
+    if longEvaluation {
+      // The drain gave up with the evaluation still running, so exit() can still crash in MLX's
+      // scheduler destructor (#3939; #3853 P5). Only a death by signal is that known crash.
+      await withKnownIssue(
+        "exit() during an MLX evaluation the drain gave up on can crash in MLX's scheduler destructor (#3939)",
+        isIntermittent: true
+      ) {
+        await runChild()
+      } matching: { issue in
+        String(describing: issue).contains(".signal(")
+      }
+    } else {
+      await runChild()
+    }
+    guard let result = observed else {
+      try #require(longEvaluation, "a drained evaluation must not crash")
+      return  // the known crash: nothing more to check
+    }
     let lines = Self.childLines(result.standardOutputContent)
     let stderr = String(decoding: result.standardErrorContent, as: UTF8.self)
     #expect(lines.last == "kev-exit \(token)", "stdout: \(lines) stderr: \(stderr)")
     let ms = try #require(Self.releaseMs(in: lines), "stdout: \(lines) stderr: \(stderr)")
-    #expect(ms < Self.releaseBoundMs, "the quit release waited \(ms) ms behind the evaluation")
+    #expect(ms <= Self.activeReleaseBoundMs, "the quit release took \(ms) ms")
+    #expect(lines.contains("kev-drained \(longEvaluation ? "false" : "true") \(token)"))
+  }
+
+  /// The existing 100 ms idle allowance covers scheduling/cache-cleanup overhead beyond the
+  /// production timeout, not extra evaluation time. The long fixture must outlast twice this bound.
+  private static var activeReleaseBoundMs: Int {
+    Int((WordCheckRuntime.quitDrainTimeout * 1000).rounded(.up)) + releaseBoundMs
   }
 
   nonisolated private static func milliseconds(_ duration: Duration) -> Int {
@@ -305,42 +317,109 @@ struct WordCheckRuntimeTerminationTests {
     }
   }
 
-  /// Child body for the active-work control. Releases while a take's evaluation HOLDS MLX's
-  /// evaluation lock, the moment a synchronous cache clear would wait for: `EvalLockProbe` sees
-  /// its own cache clear blocked. The batch is timed first and must outlast the bound several
-  /// times over, or the control proves nothing and fails.
-  private static func activeChild(token: String, root: String) async {
+  /// Releases while MLX's evaluation lock is held, observed by a blocked real cache clear.
+  /// Calibrate with measured model work, never a sleeping fake. These real-boundary controls
+  /// intentionally take seconds: only real MLX work plus `exit()` reaches the shutdown race.
+  private static func activeChild(token: String, root: String, longEvaluation: Bool) async {
     // deadline-fallback: a hung child fails by name instead of running out the time limit
     DispatchQueue.global().asyncAfter(deadline: .now() + 90) { childFail("watchdog") }
-    guard let runtime = try? await makeRuntime(in: URL(filePath: root), realModel: true) else {
-      childFail("fixture")
-    }
+    let drainResult = ChildResult()
+    guard let runtime = try? await makeRuntime(
+      in: URL(filePath: root), realModel: true,
+      drainForTermination: { timeout in
+        let drained = KevWordCheckModel.drainForTermination(timeout: timeout)
+        drainResult.record(drained)
+        return drained
+      })
+    else { childFail("fixture") }
     guard let checker = await runtime.selection().checker else { childFail("load") }
-    let batch = (0..<16).map { question(id: $0, padding: 60) }
-    let timed = ContinuousClock.now
-    guard (try? await checker.decide(batch))?.count == batch.count else { childFail("batch") }
-    let batchMs = milliseconds(ContinuousClock.now - timed)
-    guard batchMs >= 4 * releaseBoundMs else { childFail("batch too short: \(batchMs) ms") }
+    let timeoutMs = WordCheckRuntime.quitDrainTimeout * 1000
+    var batch = longEvaluation
+      ? (0..<16).map { question(id: $0, padding: 60) } : [question(id: 0)]
+    var batchMs = 0
+    // At most three measured sizes; fail the fixture if this Mac cannot stage the requested case.
+    for _ in 0..<3 {
+      let timed = ContinuousClock.now
+      guard (try? await checker.decide(batch))?.count == batch.count else { childFail("batch") }
+      batchMs = milliseconds(ContinuousClock.now - timed)
+      if longEvaluation == false || batchMs >= 2 * activeReleaseBoundMs { break }
+      batch += batch.map { question(id: $0.id + batch.count, padding: 60) }
+    }
+    if longEvaluation {
+      guard batchMs >= 2 * activeReleaseBoundMs else {
+        childFail("long batch too short: \(batchMs) ms")
+      }
+    } else {
+      guard batchMs >= 4, Double(batchMs) < timeoutMs / 2 else {
+        childFail("short batch outside fixture range: \(batchMs) ms")
+      }
+    }
     say("kev-batch ms=\(batchMs) \(token)")
-    // Evaluations back to back from here to exit().
-    let work = Task.detached {
-      while true { _ = try? await checker.decide(batch) }
+    var evaluation = ChildResult()
+    let activeBatch = batch
+    var work = Task.detached { [evaluation] in
+      let count = try? await checker.decide(activeBatch).count
+      evaluation.record(count == activeBatch.count)
     }
     let probe = EvalLockProbe()
     probe.start()
-    // settle: polls the probe's blocked time; the watchdog above is the deadline
-    while probe.blockedMs() < 30 { try? await Task.sleep(for: .milliseconds(5)) }
+    let shortStagingAttemptLimit = 10
+    var stagingAttempt = 1
+    // Measured lock contention is the precondition, not a fixed pause. The watchdog bounds it.
+    while probe.blockedMs() < 1 {
+      if let result = evaluation.value {
+        guard longEvaluation == false else { childFail("evaluation ended before quit") }
+        guard result else { childFail("short staging evaluation failed") }
+        await work.value
+        guard stagingAttempt < shortStagingAttemptLimit else {
+          childFail(
+            "short staging exhausted \(shortStagingAttemptLimit) attempts: "
+              + "evaluation=\(result), probe.blockedMs=\(probe.blockedMs())")
+        }
+        // A short evaluation can finish before the probe thread starts or observes contention.
+        // Retry only after its completion signal, keeping the same probe running (#3939).
+        stagingAttempt += 1
+        evaluation = ChildResult()
+        work = Task.detached { [evaluation] in
+          let count = try? await checker.decide(activeBatch).count
+          evaluation.record(count == activeBatch.count)
+        }
+      }
+    }
+    probe.stopAfterCurrentClear()
     let started = ContinuousClock.now
     runtime.releaseForTermination()
-    let ms = milliseconds(ContinuousClock.now - started)
+    let elapsed = ContinuousClock.now - started
+    let ms = milliseconds(elapsed)
     guard runtime.isLoadedForTelemetry == false else { childFail("still loaded") }
-    // Checked here too, so a slow release fails by name even if the exit below then crashes.
-    guard ms < releaseBoundMs else { childFail("the quit release took \(ms) ms") }
+    guard ms <= activeReleaseBoundMs else { childFail("the quit release took \(ms) ms") }
+    if longEvaluation {
+      guard drainResult.value == false, elapsed >= .seconds(WordCheckRuntime.quitDrainTimeout),
+        probe.blockedMs() > 0, evaluation.value == nil
+      else { childFail("long evaluation did not outlast the bounded drain") }
+    } else {
+      // A successful production drain means the evaluation AND the cache clear have left the
+      // MLX gate. This observes actual completion without racing the detached task's resumption.
+      guard drainResult.value == true else {
+        childFail("short evaluation did not finish before quit returned")
+      }
+      await work.value
+      guard evaluation.value == true else { childFail("short evaluation failed") }
+    }
+    say("kev-drained \(drainResult.value == true ? "true" : "false") \(token)")
     say("kev-released ms=\(ms) \(token)")
     withExtendedLifetime(work) {
       say("kev-exit \(token)")
       exit(0)
     }
+  }
+
+  /// Cross-thread observations; nil means the operation has not returned yet.
+  private final class ChildResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Bool?
+    func record(_ value: Bool) { lock.withLock { result = value } }
+    var value: Bool? { lock.withLock { result } }
   }
 
   // MARK: - #3987: the quit cleanup must never be MLX's first use
@@ -556,17 +635,23 @@ struct WordCheckRuntimeTerminationTests {
   private final class EvalLockProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var enteredAt: ContinuousClock.Instant?
+    private var stopping = false
 
     func start() {
       Thread.detachNewThread { [self] in
         while true {
           lock.withLock { enteredAt = .now }
           KevWordCheckModel.releaseCachedBuffers()
-          lock.withLock { enteredAt = nil }
-          usleep(1000)  // settle: lets the evaluation take the lock between clears
+          let stopped = lock.withLock {
+            enteredAt = nil
+            return stopping
+          }
+          if stopped { return }
         }
       }
     }
+
+    func stopAfterCurrentClear() { lock.withLock { stopping = true } }
 
     /// How long the current clear has been blocked, or 0 when none is.
     func blockedMs() -> Int {
