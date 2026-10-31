@@ -130,6 +130,12 @@ struct WordCorrectorGrammarEndingTests {
     #expect(result == "lunch at \(saved) today", "no doubled possessive: \(result)")
   }
 
+  @Test("a misheard saved possessive is corrected once, not abandoned and not doubled")
+  func misheardSavedPossessiveCorrectedOnce() {
+    let word = CustomWord(canonical: "McDonald's", aliases: ["macdonald"], category: .brand)
+    #expect(corrected("lunch at macdonal's today", [word]) == "lunch at McDonald's today")
+  }
+
   @Test("a word that ends in s and is itself saved is left alone")
   func savedWordEndingInSUntouched() {
     let word = CustomWord(canonical: "Jones", aliases: [], category: .person)

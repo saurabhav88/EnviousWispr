@@ -1369,10 +1369,12 @@ public struct WordCorrector: Sendable {
       func acceptFuzzy(unpeeled: Bool, canonical: String) -> String {
         // #3892: the stem fuzzy-matched a canonical and the ending put it back: the token was
         // already correct, so nothing is replaced and no replacement is counted.
-        if !unpeeled, grammarPeel,
-          canonical + peeledSuffix == core || Self.endsWithEnding(canonical, peeledSuffix)
-        {
-          return token
+        if !unpeeled, grammarPeel, canonical + peeledSuffix == core { return token }
+        // The canonical already carries the ending ("McDonald's" for the stem "macdonal"): apply it
+        // as saved, once, instead of reattaching a second ending or dropping a valid correction.
+        if !unpeeled, grammarPeel, Self.endsWithEnding(canonical, peeledSuffix) {
+          appendReplacement(forCanonical: canonical)
+          return prefix + canonical + suffix
         }
         appendReplacement(forCanonical: canonical)
         return unpeeled ? prefix + canonical + suffix : reattached(canonical)
