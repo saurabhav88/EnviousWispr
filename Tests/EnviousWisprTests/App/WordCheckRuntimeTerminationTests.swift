@@ -367,9 +367,10 @@ struct WordCheckRuntimeTerminationTests {
     ) { [path = path as String] in
       await Self.unusedMLXQuitChild(root: path)
     }
-    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
-    let output = try #require(result).standardOutputContent
-    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
+    // Clean exit only (#4155): production lets this detached cleanup stay unfinished at `exit()`, so
+    // whether its line reaches stdout first is a race and is not asserted here. That the cleanup
+    // runs to completion is asserted deterministically by `cleanupCompletesWhenAwaited*` below.
+    _ = try #require(result)
   }
 
   /// Child body: no model, no MLX call before the production quit release.
@@ -378,9 +379,6 @@ struct WordCheckRuntimeTerminationTests {
     DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
     registerBusyExit()
-    runtime.onTerminationCleanupForTests = {
-      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
-    }
     runtime.releaseForTermination()
     exit(0)
   }
@@ -413,9 +411,10 @@ struct WordCheckRuntimeTerminationTests {
     ) { [path = path as String] in
       await Self.usedMLXQuitChild(root: path)
     }
-    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
-    let output = try #require(result).standardOutputContent
-    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
+    // Clean exit only (#4155): production lets this detached cleanup stay unfinished at `exit()`, so
+    // whether its line reaches stdout first is a race and is not asserted here. That the cleanup
+    // runs to completion is asserted deterministically by `cleanupCompletesWhenAwaited*` below.
+    _ = try #require(result)
   }
 
   private static func usedMLXQuitChild(root: String) async {
@@ -424,9 +423,6 @@ struct WordCheckRuntimeTerminationTests {
     guard let runtime = try? await makeRuntime(in: URL(filePath: root)) else { childFail("fixture") }
     _ = KevWordCheckModel.memorySnapshotForLog()
     registerBusyExit()
-    runtime.onTerminationCleanupForTests = {
-      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
-    }
     runtime.releaseForTermination()
     exit(0)
   }
@@ -448,9 +444,10 @@ struct WordCheckRuntimeTerminationTests {
     ) { [path = path as String] in
       await Self.realModelQuitChild(root: path)
     }
-    // The cleanup ran before the process ended; a clean exit alone could hide one that never ran.
-    let output = try #require(result).standardOutputContent
-    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
+    // Clean exit only (#4155): production lets this detached cleanup stay unfinished at `exit()`, so
+    // whether its line reaches stdout first is a race and is not asserted here. That the cleanup
+    // runs to completion is asserted deterministically by `cleanupCompletesWhenAwaited*` below.
+    _ = try #require(result)
   }
 
   private static func realModelQuitChild(root: String) async {
@@ -461,9 +458,6 @@ struct WordCheckRuntimeTerminationTests {
     }
     await answerOneQuestion(runtime)
     registerBusyExit()
-    runtime.onTerminationCleanupForTests = {
-      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
-    }
     runtime.releaseForTermination()
     exit(0)
   }
@@ -473,6 +467,58 @@ struct WordCheckRuntimeTerminationTests {
   private static func answerOneQuestion(_ runtime: WordCheckRuntime) async {
     guard let checker = await runtime.selection().checker else { childFail("load") }
     guard (try? await checker.decide([question(id: 1)]))?.count == 1 else { childFail("inference") }
+  }
+
+  /// #4155: the cleanup reaches its end. The child waits for the detached cleanup task itself (the
+  /// subject's own completion signal) before it exits, so the line is not racing `exit()`.
+  @Test(
+    "the quit cleanup runs to its end when the process waits for it (no model)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4155", "line raced exit()"),
+    .timeLimit(.minutes(2)))
+  func cleanupCompletesWhenAwaitedNoModel() async throws {
+    let temp = Self.makeTempRoot()
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let path = temp.path
+    let result = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent]
+    ) { [path = path as String] in
+      await Self.awaitedCleanupChild(root: path, realModel: false)
+    }
+    let output = try #require(result).standardOutputContent
+    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
+  }
+
+  @Test(
+    "the quit cleanup runs to its end when the process waits for it (real model answered)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4155", "line raced exit()"),
+    .enabled(if: realModelPresent), .tags(.realBoundary), .timeLimit(.minutes(2)),
+    .realBoundaryRun)
+  func cleanupCompletesWhenAwaitedRealModel() async throws {
+    let temp = Self.makeTempRoot()
+    defer { try? FileManager.default.removeItem(at: temp) }
+    let path = temp.path
+    let result = await #expect(
+      processExitsWith: .success, observing: [\.standardOutputContent]
+    ) { [path = path as String] in
+      await Self.awaitedCleanupChild(root: path, realModel: true)
+    }
+    let output = try #require(result).standardOutputContent
+    #expect(Self.childLines(output) == ["kev-quit-cleanup-complete"])
+  }
+
+  private static func awaitedCleanupChild(root: String, realModel: Bool) async {
+    // deadline-fallback: a hung child fails by name instead of running out the time limit
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60) { childFail("watchdog") }
+    guard let runtime = try? await makeRuntime(in: URL(filePath: root), realModel: realModel) else {
+      childFail("fixture")
+    }
+    if realModel { await answerOneQuestion(runtime) }
+    runtime.onTerminationCleanupForTests = {
+      FileHandle.standardOutput.write(Data("kev-quit-cleanup-complete\n".utf8))
+    }
+    runtime.releaseForTermination()
+    await runtime.terminationCleanupForTests?.value
+    exit(0)
   }
 
   /// The cleanup's own answer, each in a fresh process (MLX state is process-wide): it skips MLX
