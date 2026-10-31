@@ -36,6 +36,7 @@ struct MeetingLiveWordsIntegrationTests {
     let world: World
     let owner: MeetingLiveWords
     let clock = MeetingRecorderTests.Clock()
+    let releases = MeetingRecorderTests.ReleaseTimer()
     var microphones: [MeetingRecorderTests.FakeMicrophone] = []
     var calls: [MeetingRecorderTests.FakeCallSound] = []
     var recorders: [MeetingRecorder] = []
@@ -71,7 +72,7 @@ struct MeetingLiveWordsIntegrationTests {
         mic.openError = micOpenError
         microphones.append(mic)
         let clock = self.clock
-        let sources = MeetingRecorder.Sources(
+        var sources = MeetingRecorder.Sources(
           makeMicrophone: { mic },
           makeCallSound: { [self] handler, _, _ in
             let call = MeetingRecorderTests.FakeCallSound(handler: handler)
@@ -80,6 +81,9 @@ struct MeetingLiveWordsIntegrationTests {
           },
           hostTime: { clock.now.withLock { $0 } },
           reopenDelay: {})
+        // #4248: the hold releases against this fake clock only when a test fires it; Stop
+        // releases the rest.
+        sources.releaseScheduler = releases.scheduler
         let recorder = MeetingRecorder(
           configuration: configuration, sources: sources, onSegment: onSegment,
           onFailure: onFailure)
@@ -124,6 +128,16 @@ struct MeetingLiveWordsIntegrationTests {
         mic.onSamples?(chunk, 0.2)
         offset += chunk.count
       }
+    }
+
+    /// #4248: moves the clock past the microphone's silence hold and runs its due releases, so
+    /// the audio spoken so far reaches live words, as it would 3 s later in a meeting.
+    func releaseHeld() async {
+      let writer = recorders.last?.microphoneWriterForTesting
+      await writer?.queueBarrierForTesting()
+      clock.advance(seconds: MeetingRecorder.silenceHoldSeconds + 0.5)
+      releases.fire(upTo: clock.now.withLock { $0 })
+      await writer?.queueBarrierForTesting()
     }
 
     /// Offers known call audio as the tap would.
@@ -385,6 +399,7 @@ struct MeetingLiveWordsIntegrationTests {
     }
     let oldMic = try #require(world.appleEngines[0].sessions.first)
     rig.speak(Self.micPattern(1_600))
+    await rig.releaseHeld()
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     // Returns with the feed still held.
     await Self.bounded("Delete", gate: feed) { await rig.coordinator.delete(meetingID: first) }

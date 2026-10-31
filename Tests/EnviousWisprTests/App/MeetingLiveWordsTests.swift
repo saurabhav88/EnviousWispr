@@ -850,8 +850,11 @@ struct MeetingLiveWordsTests {
     #expect(owner.transcript?.lines.map(\.text) == ["Last words."])
   }
 
-  @Test("a held feed keeps the cleanup open, but the session's end starts at once")
-  func heldFeedKeepsCleanupOpen() async throws {
+  /// #4248: Stop seals the pump; the consumer feeds everything held, in order, before that
+  /// track's session ends. A held feed keeps the cleanup open and the end waiting, while the
+  /// other track ends on its own.
+  @Test("Stop drains held audio before the session ends; a held feed delays only its own track")
+  func heldFeedDrainsBeforeEnd() async throws {
     let world = World()
     let feed = Gate()
     world.engineGates = { $0 == 0 ? Gates(feed: feed) : Gates() }
@@ -860,17 +863,52 @@ struct MeetingLiveWordsTests {
     let observer = Self.record(owner)
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
-    let samples: [Float] = (0..<1_600).map(Float.init)
-    samples.withUnsafeBufferPointer { observer(.microphone, $0) }
+    let call = try #require(world.appleEngines[1].sessions.first)
+    let first: [Float] = (0..<1_600).map(Float.init)
+    first.withUnsafeBufferPointer { observer(.microphone, $0) }
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
+    // The tail arrives while the feed is held (the recorder's released 3 s), then Stop.
+    let tail: [Float] = (1_600..<4_000).map(Float.init)
+    tail.withUnsafeBufferPointer { observer(.microphone, $0) }
     owner.stop()
+    await PreviewWait.within("the other track ended", onExpiry: feed.open) {
+      await call.until { call.ends == 1 }
+    }
+    #expect(mic.ends == 0, "no end while its own feed is held")
+    #expect(owner.closingEngines == [.apple], "still closing while the feed is held")
+    feed.open()
+    await PreviewWait.within("the mic ended", onExpiry: feed.open) {
+      await mic.until { mic.ends == 1 }
+    }
+    #expect(mic.fed == first + tail, "every held sample, in order, before the end")
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(owner.closingEngines.isEmpty)
+    #expect(mic.fed == first + tail, "nothing fed after the end")
+  }
+
+  @Test("Delete discards held audio and ends at once")
+  func deleteDiscardsHeldAudio() async throws {
+    let world = World()
+    let feed = Gate()
+    world.engineGates = { $0 == 0 ? Gates(feed: feed) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let mic = try #require(world.appleEngines[0].sessions.first)
+    let first: [Float] = (0..<1_600).map(Float.init)
+    first.withUnsafeBufferPointer { observer(.microphone, $0) }
+    await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
+    let tail: [Float] = (1_600..<4_000).map(Float.init)
+    tail.withUnsafeBufferPointer { observer(.microphone, $0) }
+    let meetingID = try #require(owner.transcript?.meetingID)
+    owner.delete(meetingID: meetingID)
     await PreviewWait.within("the end started", onExpiry: feed.open) {
       await mic.until { mic.ends == 1 }
     }
-    #expect(owner.closingEngines == [.apple], "still closing while the feed is held")
     feed.open()
     #expect(await owner.waitForCleanups(seconds: 10))
-    #expect(owner.closingEngines.isEmpty)
+    #expect(mic.fed == first, "the queued tail was discarded, never fed")
   }
 
   @Test("a handle whose track already failed is ended as soon as its open returns")

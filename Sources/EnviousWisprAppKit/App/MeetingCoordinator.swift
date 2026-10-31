@@ -1286,13 +1286,16 @@ final class MeetingCoordinator {
     let session = takeSpeakerSession(meetingID)
     session?.closeAdmission()
     if let session { unsavedSpeakerSessions[meetingID] = session }
-    // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
-    // and closes admission. The lines stay until the transcript is ready.
-    deps.liveWords?.stop()
-    self.recorder?.liveSamples = nil
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
     let recorder = self.recorder
+    // #4248: the recorder stops first. Its microphone writer releases the held tail (the last
+    // 3 s, with muted stretches silenced) to live words while it closes the files; only then do
+    // live words seal their pumps and drain them. Stop never waits for recognition.
     let report = await recorder?.stop()
+    // #3973, #4097: then live words retire without waiting; their cleanup drains held audio and
+    // kept events and closes admission. The lines stay until the transcript is ready. A quit
+    // during the close already retired them (`quit()`), so this changes nothing then.
+    deps.liveWords?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
     guard !quitting else { return }
     // A final log that could not be saved stays owned here, for a quit to save.

@@ -139,6 +139,24 @@ struct MeetingRecorderTests {
     }
   }
 
+  /// The microphone hold's scheduled releases (#4248), run only when a test fires them, against
+  /// the rig's own clock.
+  final class ReleaseTimer: Sendable {
+    let pending = OSAllocatedUnfairLock<[(UInt64, @Sendable () -> Void)]>(initialState: [])
+    var scheduler: MeetingTrackWriter.ReleaseScheduler {
+      .manual { [self] due, run in pending.withLock { $0.append((due, run)) } }
+    }
+    /// Runs every release due by `now`.
+    func fire(upTo now: UInt64) {
+      let due = pending.withLock { list -> [@Sendable () -> Void] in
+        let ready = list.filter { $0.0 <= now }.map(\.1)
+        list.removeAll { $0.0 <= now }
+        return ready
+      }
+      due.forEach { $0() }
+    }
+  }
+
   final class Segments: Sendable {
     let list = OSAllocatedUnfairLock<[(MeetingTrackKind, MeetingSegmentInfo)]>(initialState: [])
     func of(_ track: MeetingTrackKind) -> [MeetingSegmentInfo] {
@@ -163,6 +181,7 @@ struct MeetingRecorderTests {
     let failureSignal: AsyncStream<MeetingTrackKind>
     let reopenGate: Gate
     let folder: URL
+    let releases: ReleaseTimer
 
     @MainActor func calls() -> [FakeCallSound] { callBox.value }
     @MainActor func failures() -> [MeetingTrackKind] { failureBox.value }
@@ -183,7 +202,8 @@ struct MeetingRecorderTests {
     let clock = Clock()
     let segments = Segments()
     let reopenGate = Gate()
-    let sources = MeetingRecorder.Sources(
+    let releases = ReleaseTimer()
+    var sources = MeetingRecorder.Sources(
       makeMicrophone: {
         defer { next.value += 1 }
         return microphones[min(next.value, microphones.count - 1)]
@@ -198,6 +218,7 @@ struct MeetingRecorderTests {
       },
       hostTime: { clock.now.withLock { $0 } },
       reopenDelay: { await reopenGate.pass() })
+    sources.releaseScheduler = releases.scheduler
     let recorder = MeetingRecorder(
       configuration: .init(
         meetingID: UUID(), folder: folder, captureCallSound: callSound,
@@ -212,7 +233,7 @@ struct MeetingRecorderTests {
     return Rig(
       recorder: recorder, microphones: microphones, callBox: callBox, clock: clock,
       segments: segments, failureBox: failureBox, failureSignal: failureSignal,
-      reopenGate: reopenGate, folder: folder)
+      reopenGate: reopenGate, folder: folder, releases: releases)
   }
 
   /// Delivers `seconds` of microphone audio as if it arrived now (after advancing the clock by
@@ -780,6 +801,8 @@ struct MeetingRecorderTests {
       "stack address \(seen.first ?? -1) on the first chunk, \(seen.last ?? -1) on the last")
   }
 
+  /// #4248: the microphone reaches the observer when its silence hold releases it, so audio
+  /// still held when the observer detaches is never delivered.
   @Test("detaching the observer stops deliveries while both tracks keep recording")
   func liveSamplesDetach() async throws {
     let r = try rig()
@@ -793,7 +816,8 @@ struct MeetingRecorderTests {
     speak(r.microphones[0], r.clock, second)
     play(r, Self.callPattern(4_000))
     await r.recorder.stop()
-    #expect(observed.of(.microphone) == first && observed.of(.callSound).isEmpty)
+    #expect(observed.of(.microphone).isEmpty, "still held when the observer detached")
+    #expect(observed.of(.callSound).isEmpty)
     #expect(Self.same(try saved(r, .microphone), first + second), "recording continued, contiguous")
     #expect(Self.same(try saved(r, .callSound), Self.callPattern(4_000)))
   }
@@ -921,6 +945,125 @@ struct MeetingRecorderTests {
     #expect(decoded.count > 8_000)
     #expect(decoded.contains { abs($0) > 0.000_001 }, "the built-in microphone gave only zero")
   }
+
+  // MARK: - Microphone silence hold (#4248)
+
+  /// Waits for every block the microphone writer has queued (the hold's releases included).
+  private func writerSettled(_ r: Rig) async {
+    await r.recorder.microphoneWriterForTesting?.queueBarrierForTesting()
+  }
+
+  /// Moves the rig's clock past the hold and runs the hold's due releases.
+  private func releaseHeld(_ r: Rig) async {
+    await writerSettled(r)
+    r.clock.advance(seconds: MeetingRecorder.silenceHoldSeconds + 0.5)
+    r.releases.fire(upTo: r.clock.now.withLock { $0 })
+    await writerSettled(r)
+  }
+
+  @Test("live words get the microphone only when the hold releases it, as the file does")
+  func microphoneReachesObserverOnRelease() async throws {
+    let r = try rig(callSound: false)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let spoken = Self.micPattern(16_000)
+    speak(r.microphones[0], r.clock, spoken)
+    await writerSettled(r)
+    #expect(observed.of(.microphone).isEmpty, "still held: nothing delivered yet")
+    #expect(r.recorder.microphoneReleasedHostTime == 0)
+    await releaseHeld(r)
+    #expect(observed.of(.microphone) == spoken, "released: delivered from the writer, in order")
+    #expect(r.recorder.microphoneReleasedHostTime > 0)
+    await r.recorder.stop()
+    #expect(Self.same(try saved(r, .microphone), spoken))
+  }
+
+  @Test("Stop delivers the held microphone tail to live words before deliveries end")
+  func stopDeliversHeldTail() async throws {
+    let r = try rig(callSound: false)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    _ = try await r.recorder.start()
+    let spoken = Self.micPattern(24_000)
+    speak(r.microphones[0], r.clock, spoken)
+    await r.recorder.stop()
+    #expect(observed.of(.microphone) == spoken, "the whole held tail, once, in order")
+    r.recorder.liveSamples = observed.observer
+    #expect(r.recorder.liveSamples == nil, "deliveries ended for good after the files closed")
+  }
+
+  @Test("silence intervals reach the file and live words; set before start, they still apply")
+  func silenceIntervalsApply() async throws {
+    let r = try rig(callSound: false)
+    let observed = Observed()
+    r.recorder.liveSamples = observed.observer
+    let anchor = r.recorder.anchor
+    let quarter = AudioConvertNanosToHostTime(250_000_000)
+    r.recorder.setSilencedIntervals([
+      MeetingSilenceInterval(start: anchor &+ quarter, end: anchor &+ 2 * quarter)
+    ])
+    _ = try await r.recorder.start()
+    let spoken = Self.micPattern(16_000)
+    speak(r.microphones[0], r.clock, spoken)
+    await r.recorder.stop()
+    var expected = spoken
+    for i in 4_000..<8_000 { expected[i] = 0 }
+    #expect(observed.of(.microphone) == expected)
+    #expect(Self.same(try saved(r, .microphone), expected))
+    #expect(r.recorder.microphoneHealth?.silencedFrames == 4_000)
+  }
+
+  @Test("the microphone meter reads 0 while muted, whatever the device reports")
+  func meterZeroWhileMuted() async throws {
+    let r = try rig(callSound: false)
+    _ = try await r.recorder.start()
+    speak(r.microphones[0], r.clock, Self.micPattern(1_600))
+    #expect(r.recorder.microphoneLevel == 0.2)
+    r.recorder.setMicrophoneMuted(true)
+    #expect(r.recorder.microphoneLevel == 0)
+    speak(r.microphones[0], r.clock, Self.micPattern(1_600))
+    #expect(r.recorder.microphoneLevel == 0, "a new buffer does not overwrite the muted state")
+    r.recorder.setMicrophoneMuted(false)
+    #expect(r.recorder.microphoneLevel == 0.2)
+    await r.recorder.stop()
+  }
+
+  /// A buffer the capture thread already admitted is never lost to a Stop racing it: every
+  /// offered sample is either recorded or counted as not admitted.
+  @Test("Stop racing the capture thread loses no admitted microphone sample")
+  func stopRacingCaptureLosesNothing() async throws {
+    let r = try rig(callSound: false)
+    _ = try await r.recorder.start()
+    let deliver = try #require(r.microphones[0].onSamples)
+    let offered = OSAllocatedUnfairLock(initialState: 0)
+    let running = OSAllocatedUnfairLock(initialState: true)
+    let started = BoundedWait.Signal()
+    let finished = BoundedWait.Signal()
+    let chunk = [Float](repeating: 0.3, count: 160)
+    let clock = r.clock
+    DispatchQueue.global(qos: .userInteractive).async {
+      var sent = 0
+      while running.withLock({ $0 }) {
+        // Arrival time moves on with the audio, as a real capture thread's does.
+        clock.advance(seconds: Double(chunk.count) / 16_000)
+        deliver(chunk, 0.2)
+        offered.withLock { $0 += chunk.count }
+        sent += 1
+        if sent == 50 { started.fire() }
+      }
+      finished.fire()
+    }
+    try await BoundedWait.until(started)
+    await r.recorder.stop()
+    running.withLock { $0 = false }
+    try await BoundedWait.until(finished)
+    let saved = try saved(r, .microphone).count
+    let notAdmitted = r.recorder.microphoneSourceHealth.framesNotAdmitted
+    #expect(saved + notAdmitted == offered.withLock { $0 })
+    #expect(r.recorder.microphoneHealth?.rejectedFrames == 0, "nothing admitted, then refused")
+    #expect(saved > 0)
+  }
 }
 
 /// #4121: when these fail, the meeting's terminal row misreports the call-sound capture's
@@ -1009,4 +1152,5 @@ struct MeetingRecorderCallSoundTelemetryTests {
       #expect(await rig.recorder.stop().callSoundSummary == nil, "off=\(off) supported=\(supported)")
     }
   }
+
 }

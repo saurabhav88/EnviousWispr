@@ -301,12 +301,14 @@ final class MeetingLiveWords {
   // MARK: - Exits
 
   /// Stop: applies the events already accepted, invalidates the recording and starts its
-  /// cleanup. Returns at once. What the sessions still deliver while they end (the Universal
-  /// engine's queued finals, each session's terminal) is applied by that cleanup while these
-  /// lines are still this meeting's (#4097); the cleanup then closes admission. The lines stay
-  /// until `transcriptReady`.
+  /// cleanup. Returns at once. Call it after the recorder stopped, so the microphone's held tail
+  /// is already in the pump (#4248): each track's pump is sealed and its consumer feeds every
+  /// sample it holds, in order, before that track's session ends; tracks drain independently.
+  /// What the sessions still deliver while they end (the Universal engine's queued finals, each
+  /// session's terminal) is applied by that cleanup while these lines are still this meeting's
+  /// (#4097); the cleanup then closes admission. The lines stay until `transcriptReady`.
   func stop() {
-    retireCurrent(clearOutput: false)
+    retireCurrent(clearOutput: false, drainHeldAudio: true)
   }
 
   /// Delete: the same, and the live words go now.
@@ -807,7 +809,10 @@ final class MeetingLiveWords {
   /// cleanup. Synchronous: never waits for preparation, feeds, ends or the native release.
   /// Delete closes admission here; kept output (Stop, Quit) leaves it open for the cleanup,
   /// which applies what the ending sessions deliver and then closes it (#4097).
-  private func retireCurrent(clearOutput: Bool) {
+  ///
+  /// `drainHeldAudio` (Stop only): a track with a session seals its pump instead of retiring it,
+  /// and its session ends only after the consumer fed everything held. Delete and Quit discard.
+  private func retireCurrent(clearOutput: Bool, drainHeldAudio: Bool = false) {
     guard let current = recording else {
       if clearOutput { transcript = nil }
       return
@@ -825,6 +830,18 @@ final class MeetingLiveWords {
     var sessions: [any LivePreviewEngineSession] = []
     for slot in current.tracks.values {
       slot.finished = true
+      if drainHeldAudio, let session = slot.session, let consumer = slot.pump.seal() {
+        // Admission closed now; the consumer feeds what is held, then this track's session
+        // ends. Its target stays set until then, so the drain reaches the session.
+        let target = slot.target
+        current.endings.append(
+          Task {
+            await consumer.value
+            target.set(nil, epoch: 0)
+            await session.end()
+          })
+        continue
+      }
       retirePump(slot, in: current)  // admission closed now; a held feed may still finish
       if let session = slot.session { sessions.append(session) }
       slot.session = nil

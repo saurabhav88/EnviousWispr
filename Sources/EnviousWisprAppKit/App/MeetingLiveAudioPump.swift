@@ -33,9 +33,14 @@ import os
 /// keeps its slot until its task physically exits, so a replacement cannot overlap it; a bank it
 /// was copying when stopped goes back to the front of the ring for the next consumer.
 ///
-/// **Retirement** closes admission and cancels the consumer synchronously and never waits for a
-/// `feed` that does not return; later producer calls are refused and counted. Storage is freed
-/// when the last holder (the recorder's observer, the consumer task) lets go.
+/// **Sealing** (Stop, #4248) closes admission only: the running consumer keeps feeding what is
+/// queued and the partial bank, in order, then exits on its own. **Retirement** (Delete, Quit,
+/// or a sealed pump's discard) closes admission and cancels the consumer synchronously and
+/// never waits for a `feed` that does not return; later producer calls are refused and counted.
+/// Storage is freed when the last holder (the recorder's observer, the consumer task) lets go.
+///
+/// The producer runs on the real-time capture thread for the call sound and on the microphone
+/// writer's queue for the microphone (`MeetingRecorder.liveSamples`).
 final class MeetingLiveAudioPump: @unchecked Sendable {
 
   /// 1.6 s at 16 kHz.
@@ -73,6 +78,8 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     /// The consumer's task, from its start until it physically exits (it clears this itself).
     var consumerTask: Task<Void, Never>?
     var open = true
+    /// False once sealed: no new audio; the consumer drains what is held, then exits.
+    var admitting = true
     var accounting = Accounting()
 
     mutating func popFree() -> Int {
@@ -161,7 +168,7 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     guard let source = samples.baseAddress, !samples.isEmpty else { return }
     let storage = self.storage
     let taken: Bool? = state.withLockIfAvailableUnchecked { s in
-      guard s.open else {
+      guard s.open, s.admitting else {
         s.accounting.refused += samples.count
         return true
       }
@@ -244,6 +251,9 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
             continue
           }
           guard isCurrent(generation) else { return }
+          // Sealed and nothing left to take (queued or partial), checked in one lock step after
+          // the seal: no audio admitted before the seal is left behind.
+          if isSealedAndEmpty { return }
           try? await Task.sleep(for: cadence)  // nothing to take yet
         }
       }
@@ -264,6 +274,17 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     return task
   }
 
+  /// Closes admission for good and lets the running consumer feed everything already held, in
+  /// order, before it exits. Returns that consumer's task (nil when none runs: nothing will be
+  /// fed). A later `retire` still discards and cancels. Repeatable.
+  @discardableResult
+  func seal() -> Task<Void, Never>? {
+    state.withLock { s -> Task<Void, Never>? in
+      s.admitting = false
+      return s.consumerTask
+    }
+  }
+
   /// Closes admission for good and stops the consumer without waiting for it. Repeatable: each
   /// call returns the consumer's task while it has not exited.
   @discardableResult
@@ -281,6 +302,12 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
 
   private func isCurrent(_ generation: Int) -> Bool {
     state.withLock { $0.open && $0.consumerGeneration == generation }
+  }
+
+  private var isSealedAndEmpty: Bool {
+    state.withLock { s in
+      !s.admitting && s.ringCount == 0 && s.counts[s.producer] == 0 && s.consumerBank == nil
+    }
   }
 
   #if DEBUG
