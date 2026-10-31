@@ -913,11 +913,14 @@ struct TranscribeCppWhisperBackendTests {
     let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
     let inputs = seen.get()
     #expect(inputs.count == 1, "one native call for one group")
-    #expect(inputs.first.map { Array($0[0..<40_000]) } == Array(Self.meetingRun[16_000..<56_000]), "the pause is kept as recorded")
+    #expect(
+      inputs.first.map { Array($0[0..<40_000]) } == Array(Self.meetingRun[16_000..<56_000]),
+      "the pause is kept as recorded")
     #expect(inputs.first.map { $0.count } == 40_000 + 8_000)
     #expect(result.meetingSpeechPreparation == .protectedSpeech)
     #expect(result.text == "one two")
-    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 2_000], [3_000, 3_500]])
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 2_000], [3_000, 3_500]])
     #expect(result.duration == 5)
   }
 
@@ -926,7 +929,9 @@ struct TranscribeCppWhisperBackendTests {
     (16_000..<32_000).contains($0) || (192_000..<208_000).contains($0) ? 0.3 : 0
   }
 
-  @Test("#4254: a silence of 8 s or more separates groups; each is decoded alone, results combine in order")
+  @Test(
+    "#4254: a silence of 8 s or more separates groups; each is decoded alone, results combine in order"
+  )
   func meetingTwoGroups() async throws {
     let driver = FakeWhisperDriver()
     let calls = LockedBox<[Int]>([])
@@ -935,20 +940,28 @@ struct TranscribeCppWhisperBackendTests {
       calls.set(calls.get() + [input.count])
       return TranscribeCppRunResult(
         text: n == 0 ? " hello there" : " bye now", detectedLanguage: language == nil ? "de" : nil,
-        segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: n == 0 ? " hello there" : " bye now")])
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 900, text: n == 0 ? " hello there" : " bye now")
+        ])
     }
     let engine = try await meetingEngine(driver) { _ in [16_000..<32_000, 192_000..<208_000] }
     let result = try await engine.transcribe(samples: Self.twoGroupRun, language: nil)
-    #expect(calls.get() == [16_000 + 8_000, 16_000 + 8_000], "two calls; the 10 s silence never decoded")
+    #expect(
+      calls.get() == [16_000 + 8_000, 16_000 + 8_000], "two calls; the 10 s silence never decoded")
     #expect(result.text == "hello there bye now")
-    #expect(result.segmentTimings?.map(\.range) == [0..<11, 12..<19], "ranges shifted past the inserted space")
-    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 1_900], [12_000, 12_900]])
+    #expect(
+      result.segmentTimings?.map(\.range) == [0..<11, 12..<19],
+      "ranges shifted past the inserted space")
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 1_900], [12_000, 12_900]])
     #expect(result.language == "de", "the first group's language")
     #expect(driver.lastLanguage == "de", "carried to the later group")
     #expect(result.duration == 20)
   }
 
-  @Test("#4254: when the first group detects no language, later calls stay automatic and none is reported")
+  @Test(
+    "#4254: when the first group detects no language, later calls stay automatic and none is reported"
+  )
   func meetingFirstGroupWithoutLanguage() async throws {
     let driver = FakeWhisperDriver()
     let languages = LockedBox<[String?]>([])
@@ -971,6 +984,47 @@ struct TranscribeCppWhisperBackendTests {
     #expect(result.language == nil, "no language invented")
     #expect(result.text == "word0 word1 word2")
   }
+
+  #if DEBUG
+    @Test("#4254: the detection registry holds concurrent tokens and clears each on every exit")
+    func detectionRegistryClears() async throws {
+      // Two detections at once: both visible while running.
+      let driver = FakeWhisperDriver()
+      let gate = AsyncGate(open: false)
+      defer { gate.open() }
+      // Appends under one lock: two detectors entering together must both be counted.
+      let seen = Recorder<[UInt32]>()
+      let engineA = try await meetingEngine(driver) { _ in
+        seen.append(MeetingSpeechDetectionActivity.snapshot().tokens)
+        await gate.wait()
+        return []
+      }
+      let first = Task { try await engineA.transcribe(samples: Self.meetingRun, language: "en") }
+      let second = Task { try await engineA.transcribe(samples: Self.meetingRun, language: "en") }
+      let deadline = ContinuousClock.now + .seconds(10)
+      while seen.values.count < 2, ContinuousClock.now < deadline { await Task.yield() }
+      try #require(seen.values.count == 2, "both detections started")
+      #expect(
+        MeetingSpeechDetectionActivity.snapshot().tokens.count >= 2,
+        "both running detections listed")
+      gate.open()
+      _ = try await first.value
+      _ = try await second.value
+      // Success, unavailable and cancellation each clear their token before returning.
+      struct Broken: Error {}
+      let detectors: [MeetingSpeechSpans] = [
+        { _ in [] },
+        { _ in throw Broken() },
+        { _ in throw CancellationError() },
+      ]
+      for detect in detectors {
+        let before = Set(MeetingSpeechDetectionActivity.snapshot().tokens)
+        let engine = try await meetingEngine(driver, detect: detect)
+        _ = try? await engine.transcribe(samples: Self.meetingRun, language: "en")
+        #expect(Set(MeetingSpeechDetectionActivity.snapshot().tokens) == before, "token cleared")
+      }
+    }
+  #endif
 
   @Test("#4254: a failure in a later group returns nothing and drains; no partial result")
   func meetingAtomicFailure() async throws {
@@ -1045,7 +1099,8 @@ struct TranscribeCppWhisperBackendTests {
     let engine = try await meetingEngine(driver) { _ in [0..<16_000, 72_000..<80_000] }
     let result = try await engine.transcribe(samples: run, language: "en")
     #expect(result.text == "hello bye")
-    #expect(result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 1_000], [4_500, 5_000]])
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 1_000], [4_500, 5_000]])
   }
 
   @Test("#4254: a detector that cannot run decodes the whole run, marked unavailable")

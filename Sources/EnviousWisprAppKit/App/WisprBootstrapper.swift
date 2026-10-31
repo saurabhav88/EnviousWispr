@@ -3095,7 +3095,18 @@ package final class WisprBootstrapper {
   /// #4086: dictionary saves already queued finish before the app quits. Nothing else
   /// asks to finish first today.
   package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
-    customWordsCoordinator.requestQuit(reply: reply)
+    #if DEBUG
+      // #4254 runtime checkpoint: the meeting speech detections running when Quit was asked.
+      // The write may not land before the process exits; a missing line is no evidence.
+      let (tokens, uptime) = MeetingSpeechDetectionActivity.snapshot()
+      let list = tokens.isEmpty ? "none" : tokens.map(String.init).joined(separator: ",")
+      Task {
+        await AppLogger.shared.log(
+          "whisper_meeting_vad_active request=quit id=none tokens=\(list) uptime_raw_ns=\(uptime)",
+          level: .info, category: "Debug")
+      }
+    #endif
+    return customWordsCoordinator.requestQuit(reply: reply)
   }
 
   package func applicationWillTerminate() {

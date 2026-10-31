@@ -28,21 +28,37 @@ extension TranscribeCppWhisperBackend {
     let start = ContinuousClock.now
     let elapsed = { Double((ContinuousClock.now - start) / .milliseconds(1)) / 1000 }
     try Task.checkCancellation()
-    // Pairs this decode's detection start with its outcome line (counts only).
+    // Pairs this decode's detection start with its outcome line (counts only). Clock readings
+    // are taken at the events themselves, never when the logger writes.
     let token = UInt32.random(in: 1...UInt32.max)
+    #if DEBUG
+      let startedNs = MeetingSpeechDetectionActivity.begin(token)
+    #else
+      let startedNs = meetingDetectionUptimeNanos()
+    #endif
     await AppLogger.shared.log(
-      "whisper_meeting_vad_start token=\(token) route=\(route) run_samples=\(samples.count)",
+      "whisper_meeting_vad_start token=\(token) route=\(route) run_samples=\(samples.count) uptime_raw_ns=\(startedNs)",
       level: .info, category: "TranscribeCppWhisper")
+    let detected: Result<[Range<Int>], any Error>
+    do {
+      detected = .success(try await detectSpeech(samples))
+    } catch {
+      detected = .failure(error)
+    }
+    // Detection is over on every path before anything else runs.
+    #if DEBUG
+      let endedNs = MeetingSpeechDetectionActivity.end(token)
+    #else
+      let endedNs = meetingDetectionUptimeNanos()
+    #endif
     let groups: [Range<Int>]
     let provenance: MeetingSpeechPreparation
-    do {
-      let spans = try await detectSpeech(samples)
+    switch detected {
+    case .success(let spans):
       groups = MeetingWhisperPreparation.groups(spans: spans, count: samples.count)
       provenance = .protectedSpeech
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch {
-      if Task.isCancelled { throw CancellationError() }
+    case .failure(let error):
+      if error is CancellationError || Task.isCancelled { throw CancellationError() }
       groups = [0..<samples.count]
       provenance = .detectionUnavailable
     }
@@ -51,7 +67,8 @@ extension TranscribeCppWhisperBackend {
     let speech = groups.reduce(0) { $0 + $1.count }
     await logVAD(
       groups.isEmpty ? "vad_skipped_all" : provenance == .protectedSpeech ? "vad_ok" : "vad_unavailable",
-      token: token, route: route, total: samples.count, speech: speech, groups: groups.count)
+      token: token, route: route, total: samples.count, speech: speech, groups: groups.count,
+      uptimeNs: endedNs)
     guard !groups.isEmpty else {
       return ASRResult(
         text: "", language: language, duration: Double(samples.count) / Double(sampleRate),
@@ -114,10 +131,11 @@ extension TranscribeCppWhisperBackend {
   /// One counts-only line per meeting decode: route, outcome, detector version, and sample
   /// counts. No audio and no text.
   static func logVAD(
-    _ outcome: String, token: UInt32, route: String, total: Int, speech: Int, groups: Int
+    _ outcome: String, token: UInt32, route: String, total: Int, speech: Int, groups: Int,
+    uptimeNs: UInt64
   ) async {
     await AppLogger.shared.log(
-      "whisper_meeting_vad outcome=\(outcome) token=\(token) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups)",
+      "whisper_meeting_vad outcome=\(outcome) token=\(token) route=\(route) detector=\(MeetingWhisperPreparation.detectorVersion) run_samples=\(total) group_samples=\(speech) groups=\(groups) uptime_raw_ns=\(uptimeNs)",
       level: .info, category: "TranscribeCppWhisper")
   }
 

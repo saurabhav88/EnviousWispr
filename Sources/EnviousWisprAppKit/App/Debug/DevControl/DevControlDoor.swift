@@ -1,5 +1,6 @@
 #if DEBUG
   import Darwin
+  import EnviousWisprASR
   import EnviousWisprCore
   import Foundation
   import Network
@@ -443,6 +444,7 @@
       let args = rawArgs as? [String: Any] ?? [:]
       let command = DevControlDispatcher.Command(rawValue: name)
       let label = command?.rawValue ?? "unknown"
+      if let line = Self.detectionWitness(command, args: args, id: id) { log(line) }
       switch await handler(command, args) {
       case .ok(let payload, let forced):
         return (["id": Self.idValue(id), "ok": true, "result": payload], label, forced)
@@ -455,6 +457,24 @@
         reply["error"] = error
         return (reply, label, false)
       }
+    }
+
+    /// #4254 runtime checkpoint: which meeting speech detections were running when a dictation
+    /// start, a meeting delete or an engine (`selectedBackend`) write was RECEIVED, read before
+    /// the command runs, with the client's request id so the line matches that exact request.
+    /// Ids, tokens and clock readings only; no argument values.
+    nonisolated static func detectionWitness(
+      _ command: DevControlDispatcher.Command?, args: [String: Any], id: String?
+    ) -> String? {
+      switch command {
+      case .dictationStart, .meetingDelete: break
+      case .settingsSet where (args["key"] as? String) == "selectedBackend": break
+      default: return nil
+      }
+      let (tokens, uptime) = MeetingSpeechDetectionActivity.snapshot()
+      let list = tokens.isEmpty ? "none" : tokens.map(String.init).joined(separator: ",")
+      let kind = command == .settingsSet ? "engine_switch" : command?.rawValue ?? "unknown"
+      return "whisper_meeting_vad_active request=\(kind) id=\(id ?? "none") tokens=\(list) uptime_raw_ns=\(uptime)"
     }
 
     nonisolated static func errorReply(id: String?, code: String, message: String) -> [String: Any]

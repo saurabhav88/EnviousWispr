@@ -1,6 +1,8 @@
+import Darwin
 import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
+import os
 
 /// Groups the detected speech of one meeting run for decoding (#4254 plan §17, r5.1).
 ///
@@ -38,6 +40,42 @@ enum MeetingWhisperPreparation {
 /// The detector a meeting decode uses: speech ranges (padded, merged) of the whole input.
 /// Throws `CancellationError` when cancelled and any other error when detection cannot run.
 package typealias MeetingSpeechSpans = @Sendable ([Float]) async throws -> [Range<Int>]
+
+/// `CLOCK_UPTIME_RAW` in nanoseconds: the one clock the meeting detection lines and the
+/// runtime checkpoint's witnesses use (the harness reads the same clock id).
+package func meetingDetectionUptimeNanos() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+
+#if DEBUG
+  /// #4254 runtime checkpoint (DEBUG only): the meeting speech detections running now, by
+  /// token. A set, so concurrent detections are all visible. Each change and each read takes
+  /// its `CLOCK_UPTIME_RAW` reading under the same lock; nothing logs or waits under it.
+  package enum MeetingSpeechDetectionActivity {
+    private static let active = OSAllocatedUnfairLock(initialState: Set<UInt32>())
+
+    /// Adds `token`; the clock reading at the change.
+    @discardableResult
+    package static func begin(_ token: UInt32) -> UInt64 {
+      active.withLock { tokens in
+        tokens.insert(token)
+        return meetingDetectionUptimeNanos()
+      }
+    }
+
+    /// Removes `token`; the clock reading at the change.
+    @discardableResult
+    package static func end(_ token: UInt32) -> UInt64 {
+      active.withLock { tokens in
+        tokens.remove(token)
+        return meetingDetectionUptimeNanos()
+      }
+    }
+
+    /// The active tokens, sorted, and the clock reading taken with them.
+    package static func snapshot() -> (tokens: [UInt32], uptimeNs: UInt64) {
+      active.withLock { tokens in (tokens.sorted(), meetingDetectionUptimeNanos()) }
+    }
+  }
+#endif
 
 extension MeetingWhisperPreparation {
   /// The app's pinned bundled model, a fresh detector per call (plan §16.8).
