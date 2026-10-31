@@ -37,9 +37,11 @@ package actor TranscribeCppPreviewRuntime {
 
   /// One loaded model, as closures over the driver's own handle type.
   struct LoadedModel: Sendable {
-    /// One preview-lane decode. A cancelled or preempted call returns only after the native
-    /// run physically ended.
-    let transcribe: @Sendable ([Float], String?) async throws -> TranscribeCppRunResult
+    /// One preview-lane decode of a window from a sample offset into it (#4254: a meeting
+    /// window's leading silence is trimmed; 0 everywhere else). Segment times are relative to
+    /// that offset. A cancelled or preempted call returns only after the native run
+    /// physically ended.
+    let transcribe: @Sendable ([Float], Int, String?) async throws -> TranscribeCppRunResult
     /// Aborts and drains any work on the model, then frees it.
     let unload: @Sendable () async -> Void
   }
@@ -87,8 +89,8 @@ package actor TranscribeCppPreviewRuntime {
       let handle = try await driver.load(modelPath: path, lane: .preview)
       residency.didLoad()
       return LoadedModel(
-        transcribe: { samples, language in
-          var input = samples
+        transcribe: { samples, from, language in
+          var input = Array(samples[min(from, samples.count)...])
           // The heart's look-ahead padding: without it abruptly-ending audio loses its last
           // words. Segments starting in it are dropped by the rolling session.
           input.append(
@@ -100,8 +102,9 @@ package actor TranscribeCppPreviewRuntime {
               onInferenceEntered: nil, onProgress: nil)
             // #3801: preview hypotheses pass the same silent-tail filter as heart decodes.
             // Nothing below throws, so the catch still sees only the native call's errors.
+            // #4254: loudness is read on the whole retained window, never the trimmed input.
             let tail = WhisperSilentTailFilter.filter(
-              run, statsSamples: samples, segmentOffsetSamples: 0, realEndSample: samples.count)
+              run, statsSamples: samples, segmentOffsetSamples: from, realEndSample: samples.count)
             await LiveTranscribeCppWhisperBackend.logSilentTail(tail.dropped, route: "preview")
             return tail.result
           } catch {
@@ -191,37 +194,45 @@ package actor TranscribeCppPreviewRuntime {
   /// of this session, after the window is cut and before native work starts; throwing refuses
   /// that decode, which the rolling loop treats like any refused decode: the audio stays, and
   /// the next cycle tries again. Both default to today's behaviour.
+  ///
+  /// #4254: `liveSpeechDetector`, passed only for a meeting transcript session, turns on that
+  /// session's speech detection (one fresh detector per run). Nil everywhere else.
   package func makeSession(
     language: String?,
     hypothesisRetentionLimit: Int,
     onHypothesis: @escaping @Sendable (String) -> Void,
     onAudioReleased: @escaping @Sendable (Int) -> Void,
     onTranscript: (@Sendable (TranscriptEvent) -> Void)? = nil,
-    admitDecode: @escaping @Sendable () async throws -> Void = {}
+    admitDecode: @escaping @Sendable () async throws -> Void = {},
+    liveSpeechDetector: (@Sendable () -> any LiveSpeechDetecting)? = nil
   ) async throws -> any WhisperIncrementalSession {
     let model = try await model()
     var publication = TranscribeCppRollingSession.Publication(
       retentionLimit: hypothesisRetentionLimit, onHypothesis: onHypothesis,
       onAudioReleased: onAudioReleased)
     publication.onTranscript = onTranscript
+    let decodeFrom: TranscribeCppRollingSession.DecodeFrom = { [self] samples, from in
+      // The session keeps the model's owner alive while it can decode.
+      try await admitDecode()
+      // A session cancelled while its admission waited never starts native work.
+      try Task.checkCancellation()
+      try await enterNativeDecode()
+      do {
+        let result = try await model.transcribe(samples, from, language)
+        await nativeDecodeReturned()
+        return result
+      } catch {
+        await nativeDecodeReturned()
+        throw error
+      }
+    }
     return TranscribeCppRollingSession(
-      decode: { [self] samples in
-        // The session keeps the model's owner alive while it can decode.
-        try await admitDecode()
-        // A session cancelled while its admission waited never starts native work.
-        try Task.checkCancellation()
-        try await enterNativeDecode()
-        do {
-          let result = try await model.transcribe(samples, language)
-          await nativeDecodeReturned()
-          return result
-        } catch {
-          await nativeDecodeReturned()
-          throw error
-        }
-      },
+      decode: { samples in try await decodeFrom(samples, 0) },
       cadence: cadence,
-      publication: publication)
+      publication: publication,
+      meetingSpeech: liveSpeechDetector.map {
+        TranscribeCppRollingSession.MeetingSpeech(makeDetector: $0, decodeFrom: decodeFrom)
+      })
   }
 
   /// Whether a model is currently held. Lets a caller assert residency rather than infer it.

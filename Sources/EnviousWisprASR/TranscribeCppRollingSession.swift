@@ -79,6 +79,16 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// padding, occupancy and the native-boundary observer; a cancelled call returns only after
   /// the aborted native run ended.
   typealias Decode = @Sendable ([Float]) async throws -> TranscribeCppRunResult
+  /// A meeting decode of `window` from `from` samples in (leading silence trimmed): segment
+  /// times are relative to that start; the owner filters against the whole `window`.
+  typealias DecodeFrom = @Sendable ([Float], Int) async throws -> TranscribeCppRunResult
+
+  /// Meeting transcript sessions only (#4254 plan §16.2, §16.6): live speech detection.
+  struct MeetingSpeech: Sendable {
+    /// A fresh detector for one run.
+    let makeDetector: @Sendable () -> any LiveSpeechDetecting
+    let decodeFrom: DecodeFrom
+  }
 
   /// Preview mode: what the display is handed after every heard decode.
   struct Publication: Sendable {
@@ -103,6 +113,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private let decode: Decode
   private let cadence: Duration
   private let publication: Publication?
+  private let meetingSpeech: MeetingSpeech?
+  /// This run's speech detection (meeting sessions only).
+  private var speechGate: MeetingLiveSpeechGate?
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
   /// The held-back words last handed to `Publication.onTranscript`.
@@ -174,10 +187,14 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   private var drainJoinWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
   private var audioSamplesProvider: (@Sendable () async -> (samples: [Float], count: Int))?
 
-  init(decode: @escaping Decode, cadence: Duration = .seconds(1), publication: Publication? = nil) {
+  init(
+    decode: @escaping Decode, cadence: Duration = .seconds(1), publication: Publication? = nil,
+    meetingSpeech: MeetingSpeech? = nil
+  ) {
     self.decode = decode
     self.cadence = cadence
     self.publication = publication
+    self.meetingSpeech = meetingSpeech
   }
 
   // MARK: Test observability (actor state, not decoder timing)
@@ -187,6 +204,9 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   var heldBackTextForTests: String { heldBack.map(\.unit.text).joined() }
   var decodeCountForTests: Int { decodeCount }
   var discardedUnstableAudioForTests: Bool { discardedUnstableAudio }
+  var processedSampleMarkForTests: Int { lastDecodeSampleCount }
+  var lastCommittedEndForTests: Float { lastCommittedEnd }
+  var speechDetectionDegradedForTests: Bool? { speechGate?.isDegraded }
 
   /// Returns once `count` loop cycles have finished applying (or accounting for) their decode.
   /// The decoder's own call signal fires at decode ENTRY, before the result is applied.
@@ -232,6 +252,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     cyclesCompleted = 0
     lastPublished = ""
     lastTranscriptInProgress = ""
+    speechGate = meetingSpeech.map { MeetingLiveSpeechGate(detector: $0.makeDetector()) }
     self.audioSamplesProvider = audioSamplesProvider
     // A previous take's native work may still be draining: the new loop decodes only after it
     // physically ended, so two runs never share the model.
@@ -383,19 +404,58 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       guard live, let provider = audioSamplesProvider else { break }
       let (samples, count) = await provider()
       guard live else { break }
+      // #4254: a meeting session's detector takes every captured sample once, whether or not
+      // this cycle decodes, before any of it can be released.
+      if let gate = speechGate {
+        do {
+          if try await gate.feed(samples, count: count) {
+            await AppLogger.shared.log(
+              "whisper_meeting_vad outcome=vad_unavailable route=live",
+              level: .info, category: "TranscribeCppWhisper")
+          }
+        } catch {
+          break
+        }
+        guard live else { break }
+      }
       guard count - lastDecodeSampleCount >= minNewSamplesToDecode else { continue }
 
       // §3.5 holds whatever the decodes return: empty and failed decodes never apply, so the
       // bound is enforced on the captured audio before the window is cut.
       retain(realAudioEnd: Float(count) / Self.sampleRate)
       let originSample = Self.originSample(bufferStart, count: count, samples: samples)
-      let origin = Float(originSample) / Self.sampleRate
+      var origin = Float(originSample) / Self.sampleRate
       let window = Self.audio(samples, count: count, from: originSample)
+      var trim: Int?
+      if let gate = speechGate {
+        await gate.prune(before: originSample)
+        let classified = await gate.classify(originSample..<count)
+        guard live else { break }
+        switch classified {
+        case .silent(let through):
+          // Confirmed silence: no native work and no agreement change; only the mark moves.
+          lastDecodeSampleCount = max(lastDecodeSampleCount, through)
+          completeCycle()
+          continue
+        case .pending:
+          completeCycle()
+          continue
+        case .speech(let from):
+          trim = from
+          origin += Float(from) / Self.sampleRate
+        case .raw:
+          break
+        }
+      }
       let started = ContinuousClock.now
       loopDecodeInFlight = true
       let native: TranscribeCppRunResult
       do {
-        native = try await decode(window)
+        if let trim, let decodeFrom = meetingSpeech?.decodeFrom {
+          native = try await decodeFrom(window, trim)
+        } else {
+          native = try await decode(window)
+        }
       } catch {
         guard live else { break }
         loopDecodeInFlight = false
@@ -537,6 +597,13 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
       appendTranscript(&scrolledOutText, entry.unit.text)
     }
     committedInBuffer.removeAll { $0.end <= retentionLine }
+    // #4254: a meeting session advancing through confirmed silence, with no word in dispute,
+    // discards nothing: the origin moves and no discontinuity is reported.
+    if speechGate != nil, heldBack.isEmpty, previousHypothesis.isEmpty {
+      bufferStart = retentionLine
+      releaseAudio()
+      return
+    }
     // No committed segment ended in the discarded span, so whatever was said there is not in
     // the committed text. Finalize hands the take to the batch decode rather than guess.
     // A held-back segment crossing the line has no word times, so none of its words can be

@@ -1026,6 +1026,40 @@ struct TranscribeCppWhisperBackendTests {
     }
   #endif
 
+  @Test("#4254: a meeting live session decodes from the speech and filters on the whole window")
+  func meetingLiveTrimThroughRuntime() async throws {
+    let driver = FakeWhisperDriver()
+    let inputs = LockedBox<[Int]>([])
+    // Window-relative: speech 5 s to 9 s, then silence. Decoder times are relative to the trim.
+    driver.runOutcome = { samples, _ in
+      inputs.set(inputs.get() + [samples.count])
+      return TranscribeCppRunResult(
+        text: "hello. Thank you.", detectedLanguage: "en",
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 3_500, text: " hello."),
+          // Over the silence after the speech, inside real audio: the tail filter's case.
+          TranscribeCppSegment(startMs: 9_000, endMs: 10_500, text: " Thank you."),
+        ])
+    }
+    let runtime = TranscribeCppPreviewRuntime(
+      driver: driver, modelPath: "small.gguf", isAdmitted: { true }, cadence: .milliseconds(1),
+      residency: .init())
+    let detector = MeetingLiveSpeechGateTests.FakeDetector(speech: [80_000..<144_000])
+    let session = try await runtime.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
+      onAudioReleased: { _ in }, onTranscript: { _ in }, liveSpeechDetector: { detector })
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    let audio = (0..<320_000).map { $0 >= 80_000 && $0 < 144_000 ? Float(sin(Double($0) * 0.05)) * 0.2 : 0 }
+    await rolling.start(audioSamplesProvider: { (audio, audio.count) })
+    await TranscribeCppRollingSessionTests.within("decode") { await rolling.cyclesCompleted(reach: 1) }
+    await rolling.cancel()
+    #expect(
+      inputs.get() == [320_000 - 80_000 + LiveTranscribeCppWhisperBackend.silencePaddingSamples],
+      "the native input starts at the speech; padding added once")
+    #expect(await rolling.heldBackTextForTests == "hello.", "the hallucination over silence is filtered")
+    await runtime.releaseAndDrain()
+  }
+
   @Test("#4254: a failure in a later group returns nothing and drains; no partial result")
   func meetingAtomicFailure() async throws {
     struct Broken: Error {}

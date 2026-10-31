@@ -1097,3 +1097,146 @@ private enum WordDiff {
     return out.reversed()
   }
 }
+
+// MARK: - #4254 meeting live words on the real models
+
+/// #4254 plan §16.2, §16.6 through the production meeting-enabled preview runtime: the
+/// approved whisper-small preview model and the pinned bundled Silero detector.
+///
+/// **What the user sees when this fails:** EnviousMeet's live words invent text over silence,
+/// lose the first words after a long pause, drop one side of a short pause, or lose soft speech
+/// that today's live words keep.
+extension TranscribeCppPreviewRealBoundaryTests {
+  /// Reveals `audio` 4 s per step; every step adds at least 1 s, so each completes one cycle.
+  final class SteppedAudio: @unchecked Sendable {
+    let audio: [Float]
+    private let lock = NSLock()
+    private var revealed = 0
+    init(_ audio: [Float]) { self.audio = audio }
+    var steps: Int { (audio.count + 63_999) / 64_000 }
+    func step(_ n: Int) { lock.withLock { revealed = min(audio.count, n * 64_000) } }
+    var provider: @Sendable () async -> (samples: [Float], count: Int) {
+      { [self] in
+        let count = lock.withLock { revealed }
+        return (Array(audio[0..<count]), count)
+      }
+    }
+  }
+
+  /// Every finalized delta plus the latest held-back words.
+  final class LiveText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finalized = ""
+    private var inProgress = ""
+    private(set) var discontinuities = 0
+    func append(_ event: TranscriptEvent) {
+      lock.withLock {
+        switch event {
+        case .update(let done, let held):
+          finalized += done
+          inProgress = held
+        case .discontinuity:
+          discontinuities += 1
+          inProgress = ""
+        }
+      }
+    }
+    var text: String { lock.withLock { finalized + inProgress } }
+  }
+
+  /// Runs `audio` through one live transcript session; returns its text and native inputs.
+  static func live(_ audio: [Float], gated: Bool) async throws -> (text: String, inputs: [Int]) {
+    let bundle = try MeetingVADFixture.modelBundle
+    let driver = CountingDriver()
+    let runtime = TranscribeCppPreviewRuntime(
+      driver: driver, modelPath: Self.smallPath, isAdmitted: { true },
+      cadence: .milliseconds(10), residency: .init())
+    let text = LiveText()
+    // A path, not the Bundle (not Sendable); the fixture bundle exists for the whole test.
+    let bundlePath = bundle.bundlePath
+    let detector: (@Sendable () -> any LiveSpeechDetecting)? =
+      gated
+      ? { @Sendable in MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) } : nil
+    let session = try await runtime.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
+      onAudioReleased: { _ in }, onTranscript: text.append,
+      liveSpeechDetector: detector)
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    let stepped = SteppedAudio(audio)
+    stepped.step(1)
+    await rolling.start(audioSamplesProvider: stepped.provider)
+    for n in 1...stepped.steps {
+      await TranscribeCppRollingSessionTests.within("cycle \(n)", seconds: 120) {
+        await rolling.cyclesCompleted(reach: n)
+      }
+      stepped.step(n + 1)
+    }
+    await rolling.cancel()
+    await runtime.releaseAndDrain()
+    return (text.text, driver.inputs.withLock { $0 })
+  }
+
+  @Test(
+    "meeting live words: 30 s of zeros never enters the decoder",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func meetingLiveSilenceSkipsNative() async throws {
+    let (text, inputs) = try await Self.live([Float](repeating: 0, count: 30 * 16_000), gated: true)
+    #expect(inputs.isEmpty, "no native call on confirmed silence: \(inputs)")
+    #expect(text.isEmpty)
+  }
+
+  @Test(
+    "meeting live words: speech, 60 s of silence, speech: both sides, nothing invented",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveLongGap() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let audio = clip + [Float](repeating: 0, count: 60 * 16_000) + other
+      + [Float](repeating: 0, count: 8 * 16_000)
+    let (text, inputs) = try await Self.live(audio, gated: true)
+    let baseline = try await Self.live(audio, gated: false)
+    print("meeting live long gap baseline (no detection): \(baseline.text) native calls \(baseline.inputs.count)")
+    let words = MeetingVADFixture.words(text)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    #expect(Array(words.prefix(3)) == Array(script.prefix(3)), "the first side: \(text)")
+    #expect(words.contains("dinner"), "the first speech after 60 s of silence: \(text)")
+    #expect(!words.contains("thank"), "nothing invented over the gap: \(text)")
+    #expect(inputs.count < (audio.count + 63_999) / 64_000, "silent cycles skipped the decoder: \(inputs)")
+  }
+
+  @Test(
+    "meeting live words: a 5 s pause inside one window keeps the speech on both sides",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveInteriorGap() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let audio = clip + [Float](repeating: 0, count: 5 * 16_000) + other
+      + [Float](repeating: 0, count: 8 * 16_000)
+    let (text, _) = try await Self.live(audio, gated: true)
+    let words = MeetingVADFixture.words(text)
+    #expect(words.contains(MeetingVADFixture.words(MeetingVADFixture.script)[2]), "before the pause: \(text)")
+    #expect(words.contains("dinner"), "after the pause: \(text)")
+  }
+
+  @Test(
+    "meeting live words: soft speech keeps the words today's live words keep",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveSoftSpeechPreserved() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let soft = clip.map { $0 * 0.1 } + [Float](repeating: 0, count: 8 * 16_000)
+    let gated = MeetingVADFixture.words(try await Self.live(soft, gated: true).text)
+    let ungated = MeetingVADFixture.words(try await Self.live(soft, gated: false).text)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    #expect(!ungated.isEmpty, "control: today's live words hear the soft clip")
+    #expect(gated == ungated, "same words with detection: \(gated) vs \(ungated)")
+    #expect(Array(gated.prefix(3)) == Array(script.prefix(3)), "the literal reference's opening: \(gated)")
+  }
+}
