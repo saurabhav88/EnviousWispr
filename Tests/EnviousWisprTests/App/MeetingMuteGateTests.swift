@@ -39,16 +39,22 @@ struct MeetingMuteGateTests {
     return gate
   }
 
+  private func copy(
+    _ reading: CallSelfMute, t: UInt64, e: UInt64, m: UInt64, _ generation: UInt64 = 1
+  ) -> CallMuteCopy {
+    CallMuteCopy(
+      reading: reading, surface: .teamsApp, copyStart: t, copyEnd: e, received: m,
+      completeness: .complete, nodes: 10, generation: generation)
+  }
+
   /// Runs a reading copied at `t`, received at `t + 0.1`, delivered to the queue at `d`.
   @discardableResult
   private func read(
     _ gate: MeetingMuteGate, _ reading: CallSelfMute, t: Double, d: Double,
     released: Double = 0, generation: UInt64 = 1
   ) -> [MeetingSilenceInterval]? {
-    gate.step(
-      .reading(
-        reading, copyStart: s(t), copyEnd: s(t + 0.05), received: s(t + 0.1),
-        generation: generation))(s(d), s(released))
+    gate.step(.reading(copy(reading, t: s(t), e: s(t + 0.05), m: s(t + 0.1), generation)))(
+      s(d), s(released))
   }
 
   @Test("a reading already stale when it reaches the queue installs no silence")
@@ -59,7 +65,7 @@ struct MeetingMuteGateTests {
     #expect(read(g, .muted, t: 10, d: 12) == nil)
     let trace = try #require(published.last?.trace)
     #expect(trace.outcome == .staleAtDelivery)
-    #expect(trace.received == s(10.1))
+    #expect(trace.copy.received == s(10.1))
     #expect(trace.delivered == s(12), "D is the queue's time, never M")
     #expect(published.last?.state == .checking)
   }
@@ -193,16 +199,15 @@ struct MeetingMuteGateTests {
     // A muted reading copied at 0 s reaches the queue at 2 s: stale, never applied.
     writer.suspendQueueForTesting()
     writer.applySilenceStep(
-      g.step(.reading(.muted, copyStart: anchor, copyEnd: anchor, received: anchor, generation: 1)))
+      g.step(.reading(copy(.muted, t: anchor, e: anchor, m: anchor))))
     time.withLock { $0 = at(2) }
     writer.resumeQueueForTesting()
     await writer.queueBarrierForTesting()
     // A fresh muted reading at 2 s, then nothing: by 5.5 s it has expired.
     writer.applySilenceStep(
-      g.step(.reading(.muted, copyStart: at(2), copyEnd: at(2), received: at(2), generation: 1)))
+      g.step(.reading(copy(.muted, t: at(2), e: at(2), m: at(2)))))
     writer.applySilenceStep(
-      g.step(
-        .reading(.muted, copyStart: at(2.5), copyEnd: at(2.5), received: at(2.5), generation: 1)))
+      g.step(.reading(copy(.muted, t: at(2.5), e: at(2.5), m: at(2.5)))))
     await writer.queueBarrierForTesting()
     writer.append([Float](repeating: 0.25, count: 32_000), hostTime: at(2))
     time.withLock { $0 = at(7.5) }

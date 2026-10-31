@@ -308,10 +308,11 @@ import os
     /// `rulesGate`, when given, holds the rules read until it yields.
     private func coordinator(
       _ harness: Harness, capture: Capture, sources: Sources = Sources(meetCall),
-      rulesGate: AsyncStream<Void>? = nil
+      rulesGate: AsyncStream<Void>? = nil, muteFollowing: @escaping @MainActor () -> Bool = { true }
     ) throws -> MeetingCoordinator {
       let rules = try Self.bundled()
       var deps = harness.dependencies()
+      deps.muteFollowingEnabled = muteFollowing
       deps.callSources = sources
       // Changes of call settle after one check, so a test need not wait seconds.
       deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(500))
@@ -323,6 +324,55 @@ import os
       deps.captureCallApp = { _, _ in capture.take() }
       deps.isAccessibilityTrusted = { true }
       return MeetingCoordinator(dependencies: deps)
+    }
+
+    // MARK: - Mute following (#4248)
+
+    @MainActor
+    final class Flag {
+      var on: Bool
+      init(_ on: Bool) { self.on = on }
+    }
+
+    @Test("a recording follows the call's mute button on the writer; Stop queues the end first")
+    func recordingFollowsMute() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let coordinator = try coordinator(harness, capture: capture)
+      _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let recorder = try #require(harness.recorders.first)
+      #expect(recorder.clock != nil, "the release clock is installed on the writer")
+      #expect(coordinator.muteState == .unbound)
+      // A bind, then at least one reading from a copy.
+      await eventually("bind and a reading sent") { recorder.steps.count >= 2 }
+      recorder.runSteps(now: mach_absolute_time())
+      // The synthetic Meet page shows no mute button: bound and checking, nothing silenced.
+      await eventually("snapshot landed") { coordinator.muteState == .checking }
+      let stepsBeforeStop = recorder.steps.count
+      await coordinator.stop()
+      #expect(recorder.steps.count > stepsBeforeStop, "Stop sent the end step")
+      #expect(recorder.events.last == "stop", "nothing is sent after the recorder stops")
+      #expect(recorder.mutedMeter.last == false)
+      #expect(coordinator.muteState == nil)
+    }
+
+    @Test("with mute following off nothing is bound; switching it on binds at once")
+    func muteFollowingSwitch() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let flag = Flag(false)
+      let coordinator = try coordinator(harness, capture: capture, muteFollowing: { flag.on })
+      _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let recorder = try #require(harness.recorders.first)
+      #expect(coordinator.muteState == .disabled)
+      await eventually("copies taken") { capture.calls.withLock { $0 } >= 1 }
+      #expect(recorder.steps.isEmpty, "no binding or reading while off")
+      flag.on = true
+      coordinator.muteFollowingChanged()
+      #expect(recorder.steps.count >= 2, "switched on, then bound, at once")
+      recorder.runSteps(now: mach_absolute_time())
+      await eventually("snapshot landed") { coordinator.muteState == .checking }
+      await coordinator.stop()
     }
 
     @Test("a recording started for a Meet call saves its evidence before the transcript is made")

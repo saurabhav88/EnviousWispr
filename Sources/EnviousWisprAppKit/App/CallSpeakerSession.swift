@@ -58,6 +58,8 @@ final class CallSpeakerSession {
     var muteFollowing: @MainActor () -> Bool = { false }
     var muteBinding: @MainActor (CallCaptureBinding?) -> Void = { _ in }
     var muteReading: @MainActor (CallMuteCopy) -> Void = { _ in }
+    /// Every check: time passed, so an expired mute reading closes even with no copy.
+    var muteTick: @MainActor () -> Void = {}
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -145,6 +147,7 @@ final class CallSpeakerSession {
     case .unavailable: health.unavailableSources += 1
     }
     rebind(answer)
+    if muteBound != nil { deps.muteTick() }
     defer { driveCapture() }
     guard rules != nil, health.capacityReason == nil else { return }
     let now = nowMs

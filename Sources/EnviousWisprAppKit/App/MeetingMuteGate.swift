@@ -19,10 +19,9 @@ import os
 /// gate keeps no reference to the writer, so the writer holding `clock` forms no cycle.
 final class MeetingMuteGate: Sendable {
   enum Input: Sendable, Equatable {
-    /// One reading copied at `copyStart` (T) and ending at `copyEnd` (E), received by the
-    /// MainActor at `received` (M). M is for the trace only; D comes from the writer.
-    case reading(
-      CallSelfMute, copyStart: UInt64, copyEnd: UInt64, received: UInt64, generation: UInt64)
+    /// One reading: its copy's T and E, and M, when the MainActor received it. M is for the
+    /// trace only; D comes from the writer.
+    case reading(CallMuteCopy)
     case bind(CallSpeakerSurface, generation: UInt64)
     case unbind
     case setEnabled(Bool, at: UInt64)
@@ -33,9 +32,7 @@ final class MeetingMuteGate: Sendable {
 
   /// One reading's decision, in host ticks, for the DEBUG timing trace.
   struct Trace: Sendable, Equatable {
-    let copyStart: UInt64
-    let copyEnd: UInt64
-    let received: UInt64
+    let copy: CallMuteCopy
     let delivered: UInt64
     let released: UInt64
     let outcome: MeetingMuteFollower.Outcome
@@ -110,12 +107,10 @@ final class MeetingMuteGate: Sendable {
       s.follower.advance(to: now)
       var trace: Trace?
       switch input {
-      case .reading(let reading, let t, let e, let m, let generation):
+      case .reading(let copy):
         let outcome = s.follower.record(
-          reading, copyStart: t, delivered: now, generation: generation)
-        trace = Trace(
-          copyStart: t, copyEnd: e, received: m, delivered: now, released: released,
-          outcome: outcome)
+          copy.reading, copyStart: copy.copyStart, delivered: now, generation: copy.generation)
+        trace = Trace(copy: copy, delivered: now, released: released, outcome: outcome)
       case .bind(let surface, let generation):
         s.follower.bind(surface: surface, generation: generation)
         s.generation = generation
