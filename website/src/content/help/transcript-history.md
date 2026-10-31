@@ -15,7 +15,7 @@ EnviousWispr saves everything it transcribes so you can find it again later. To 
 
 History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/).
 
-Each row says which kind it is. The **All**, **Dictations** and **Transcripts** buttons above the list show one kind or both. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on. Click a name to rename it. What the labels mean, and what **Both** and **Not fully polished** mean, is in [speaker labels in Transcribe a File](/help/transcribe-a-file-speaker-labels/).
+Each row says which kind it is. The four buttons above the list, **A** (All), **D** (Dictations), **T** (Transcripts) and **M** (Meetings), show one kind or all of them. Point at a button to see its full name. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on. Click a name to rename it. What the labels mean, and what **Both** and **Not fully polished** mean, is in [speaker labels in Transcribe a File](/help/transcribe-a-file-speaker-labels/).
 
 ### Find, copy or delete a past dictation
 
@@ -56,5 +56,5 @@ Your past dictations and transcripts are stored on your Mac, inside your user fo
 
 If the History page shows nothing, check these two things.
 
-- **Complete a dictation, or import a file.** Finish at least one, so there is something to display. If a filter is on, choose **All**.
+- **Complete a dictation, or import a file.** Finish at least one, so there is something to display. If a filter is on, choose **A** (All).
 - **Check the storage folder.** If items you know you recorded are missing, check whether `~/Library/Application Support/EnviousWispr` was moved or deleted. Every copy of the app on your Mac reads that same folder.

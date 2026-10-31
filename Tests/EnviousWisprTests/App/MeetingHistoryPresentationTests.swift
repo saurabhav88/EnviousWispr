@@ -100,7 +100,7 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.dictationCount == 1)
   }
 
-  @Test("a meeting with no History row yet is one Recordings item, kept when its row lands")
+  @Test("a meeting with no History row yet is one Meetings item, kept when its row lands")
   func meetingItemFromStartToRow() async throws {
     let rig = Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -174,7 +174,7 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.selectedItemID == .transcript(dictation.id))
   }
 
-  @Test("Show recordings lists Recordings with no search and selects the meeting")
+  @Test("Show recordings lists Meetings with no search and selects the meeting")
   func showRecordings() async throws {
     let rig = Rig()
     let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -184,7 +184,7 @@ struct MeetingHistoryPresentationTests {
     #expect(rig.coordinator.historyFilter == .recordings)
     #expect(rig.coordinator.searchQuery.isEmpty)
     #expect(rig.coordinator.selectedItemID == .meeting(record.id))
-    // An empty Recordings filter says how to record one, also on a fresh install (R34).
+    // An empty Meetings filter says how to record one, also on a fresh install (R34).
     rig.records = []
     #expect(rig.coordinator.emptyState == .noRecordings)
     rig.coordinator.historyFilter = .all
@@ -636,7 +636,7 @@ struct MeetingHistoryPresentationTests {
     #expect(MeetingWiring.historyInfo(coordinator, meetingID: meetingID)?.echoTurnIDs == ["mic-9"])
   }
 
-  @Test("Recordings says how many meetings a newer version saved, one sentence per count")
+  @Test("Meetings says how many meetings a newer version saved, one sentence per count")
   func newerFormatLine() {
     #expect(SidebarStatsHeader.newerFormatLine(0) == nil)
     #expect(
