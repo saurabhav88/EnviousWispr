@@ -8,7 +8,7 @@
   /// #4254 runtime checkpoint: when these fail, the checkpoint cannot tell whether a dictation
   /// start, a meeting delete or an engine switch reached the app while a meeting's speech
   /// detection ran, or the line leaks a setting's value.
-  @Suite("Dev control detection witness", .serialized, .tags(.productOutcome))
+  @Suite("Dev control detection witness", .serialized, .tags(.observabilityContract))
   struct DevControlDetectionWitnessTests {
     typealias Door = DevControlDoor
 

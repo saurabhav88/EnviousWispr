@@ -122,14 +122,52 @@ def dictation():
     receipt = reply["result"]["receipt"]
     take = receipt.get("takeID")
     text = wait_log(offset, lambda t: ready_ns(t, take) is not None and witness(t, "dictation.start", reply.get("id")) is not None, 20)
-    m.door("dictation", "stop", "--receipt", json.dumps(receipt))
-    m.door("dictation", "wait", "--receipt", json.dumps(receipt), timeout=120)
+    stop_status, stop_reply = m.door("dictation", "stop", "--receipt", json.dumps(receipt))
+    wait_status, wait_reply = m.door("dictation", "wait", "--receipt", json.dumps(receipt), timeout=120)
     ready = ready_ns(text, take)
     seen = witness(text, "dictation.start", reply.get("id"))
-    return {"id": reply.get("id"), "take": take, "offset": offset, "text": text,
+    # Terminal metadata only; never transcript text.
+    result = (wait_reply or {}).get("result") or {}
+    sample = {"id": reply.get("id"), "take": take, "offset": offset, "text": text,
             "readyMs": round((ready - before) / 1e6, 1) if ready else None,
-            "clockOk": seen is not None and before <= seen[1] <= after,
-            "witness": seen, "problem": None if ready else "no RECORDING_READY for the take"}
+            "clockOk": seen is not None and before <= seen[1] <= after, "witness": seen,
+            "stopOk": stop_status == 0 and bool((stop_reply or {}).get("ok")),
+            "terminal": result.get("ending") if result.get("status") == "terminal" else None}
+    sample["problem"] = take_problem(sample)
+    return sample
+
+
+# The probe says nothing, so a short or no-speech ending is the expected healthy ending; any
+# other ending (a dead microphone, an interruption, a failure) is not a healthy sample.
+HEALTHY_ENDINGS = {"completed", "discarded", "noSpeech"}
+
+
+def take_problem(take):
+    """None for a healthy readiness sample, else why it is not one."""
+    if take.get("readyMs") is None:
+        return "no RECORDING_READY for the take"
+    if take["readyMs"] < 0:
+        return f"negative readiness {take['readyMs']} ms"
+    if not take.get("clockOk"):
+        return "clock control failed: the witness time is outside the request"
+    if not take.get("stopOk"):
+        return "the stop request failed"
+    if take.get("terminal") is None:
+        return "no terminal for the take"
+    if take["terminal"] not in HEALTHY_ENDINGS:
+        return f"unhealthy ending {take['terminal']}"
+    return None
+
+
+def idle_reason(status):
+    """True when a meeting.status reply shows no meeting recording or processing; else why."""
+    if status["phase"]["name"] != "idle" or status.get("processing") or status.get("workInFlight"):
+        return f"phase={status['phase']['name']} processing={bool(status.get('processing'))} workInFlight={status.get('workInFlight')}"
+    return True
+
+
+def meeting_idle():
+    return idle_reason(m.door_ok("meeting", "status"))
 
 
 def switch(name):
@@ -181,12 +219,16 @@ def run(args):
             baseline = {}
             for engine in ("parakeet", "whisper"):
                 switch(engine)
+                idle_before = meeting_idle()
                 takes = [dictation() for _ in range(5)]
-                baseline[engine] = [t.get("readyMs") for t in takes]
-                c.check(f"baseline {engine}: 5 take-matched readiness readings",
-                        all(t.get("readyMs") is not None for t in takes), json.dumps(baseline[engine]))
-                c.check(f"baseline {engine}: clock control", all(t.get("clockOk") for t in takes))
-            detail["baselineReadyMs"] = baseline
+                idle_after = meeting_idle()
+                baseline[engine] = [{"readyMs": t.get("readyMs"), "terminal": t.get("terminal"),
+                                     "problem": t.get("problem")} for t in takes]
+                c.check(f"baseline {engine}: no meeting work before or after",
+                        idle_before is True and idle_after is True, f"{idle_before} / {idle_after}")
+                c.check(f"baseline {engine}: 5 healthy take-matched readiness samples",
+                        all(t.get("problem") is None for t in takes), json.dumps(baseline[engine]))
+            detail["baseline"] = baseline
             passes = detail.setdefault("passes", [])
 
             def judge(label, meeting_id, token, start, offset, request, request_id, extra):
@@ -214,10 +256,12 @@ def run(args):
                         c.cannot_tell(f"dictation-{engine}-{i}", "no detection start line")
                         continue
                     take = dictation()
-                    c.check(f"dictation-{engine}-{i} take-matched readiness read",
-                            take.get("readyMs") is not None, str(take.get("problem")))
+                    c.check(f"dictation-{engine}-{i} healthy take-matched readiness sample",
+                            take.get("problem") is None, str(take.get("problem")))
                     judge(f"dictation-{engine}-{i}", meeting_id, token, start, offset, "dictation.start",
-                          take.get("id"), {"readyMs": take.get("readyMs"), "clockOk": take.get("clockOk")})
+                          take.get("id"), {"readyMs": take.get("readyMs"), "clockOk": take.get("clockOk"),
+                                           "stopOk": take.get("stopOk"), "terminal": take.get("terminal"),
+                                           "problem": take.get("problem")})
             primary = meetings[0]
             switch("parakeet")
             for target in ("whisper", "parakeet"):
@@ -351,6 +395,21 @@ def self_test():
     f.check("x", False)
     cases.append(("a failed check is FAIL", f.status() == 1))
     cases.append(("the clock is CLOCK_UPTIME_RAW", now_ns() > 0))
+    good = {"readyMs": 40.0, "clockOk": True, "stopOk": True, "terminal": "noSpeech"}
+    cases.append(("a healthy sample has no problem", take_problem(good) is None))
+    cases.append(("a short ending is healthy", take_problem({**good, "terminal": "discarded"}) is None))
+    cases.append(("a failed clock control is not a sample", take_problem({**good, "clockOk": False}) is not None))
+    cases.append(("negative readiness is not a sample", take_problem({**good, "readyMs": -1.0}) is not None))
+    cases.append(("missing readiness is not a sample", take_problem({**good, "readyMs": None}) is not None))
+    cases.append(("a failed stop is not a sample", take_problem({**good, "stopOk": False}) is not None))
+    cases.append(("no terminal is not a sample", take_problem({**good, "terminal": None}) is not None))
+    cases.append(("a dead-microphone ending is not a sample", take_problem({**good, "terminal": "audioInterrupted"}) is not None))
+    cases.append(("a failed ending is not a sample", take_problem({**good, "terminal": "failed"}) is not None))
+    idle = {"phase": {"name": "idle"}, "processing": None, "workInFlight": False}
+    cases.append(("an idle status is idle", idle_reason(idle) is True))
+    cases.append(("a processing pass is not idle", idle_reason({**idle, "processing": {"meetingID": "x"}}) is not True))
+    cases.append(("a recording is not idle", idle_reason({**idle, "phase": {"name": "recording"}}) is not True))
+    cases.append(("work in flight is not idle", idle_reason({**idle, "workInFlight": True}) is not True))
     failures = [name for name, ok in cases if not ok]
     for name, ok in cases:
         print(("ok    " if ok else "FAIL  ") + name)
