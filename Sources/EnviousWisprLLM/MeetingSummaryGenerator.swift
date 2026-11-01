@@ -23,7 +23,8 @@ public enum MeetingSummary {
   /// 2 (#3999): a long part answer is shortened by the model, never clipped.
   /// 3 (#4012 D8): the final answer starts with a "Title:" line naming the meeting.
   /// 4 (#4286): the final and combine calls carry the meeting facts block; new instructions.
-  public static let promptVersion = 4
+  /// 5 (#4298): restores "never add" and says speaker labels are not linked to invitees.
+  public static let promptVersion = 5
 
   /// Whether the selected provider and model can write a summary, and why not (R44 capability
   /// matrix).
@@ -116,10 +117,12 @@ public enum MeetingSummary {
 
   /// The instructions every call carries.
   static let instructions = """
-    Write a short, plain summary in the transcript's language. Use the transcript and notes for \
-    statements, decisions and actions. Use supplied meeting facts only for meeting metadata and \
-    name spelling. An invitation does not establish attendance, speech, the identity of a \
-    speaker, or an action commitment.
+    Write a short, plain summary in the transcript's language. Use only what the transcript and \
+    the notes say; never add facts, names, decisions or action items that are not there. An \
+    action item belongs to the person who said they would do it; name an owner only when the \
+    transcript makes clear who it is. Speaker labels such as "Speaker 1" are not linked to the \
+    invited people, and "You" is the user. Use the meeting facts only to spell names and \
+    companies and to name the meeting; never report them as something that was said.
     """
 
   /// The final shape, asked for in the last call.
@@ -608,7 +611,7 @@ public enum MeetingSummary {
 
   private static func personText(_ person: MeetingParticipant) -> String {
     if person.isSelf {
-      return person.status == .declined ? "you (declined)" : "you"
+      return person.status == .declined ? "you, the user (declined)" : "you, the user"
     }
     let label = clip(person.name ?? person.email ?? "", 80)
     var marks: [String] = []

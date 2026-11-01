@@ -44,7 +44,7 @@ struct MeetingSummaryFactsBlockTests {
         Started: 2026-10-31 14:00, recorded 45 minutes
         Call app: Zoom
         Calendar event: Acme x Envious: renewal
-        Invited: Dana Lee (acme.com, organizer), Li Wu (acme.com, declined), you
+        Invited: Dana Lee (acme.com, organizer), Li Wu (acme.com, declined), you, the user
         """)
   }
 
