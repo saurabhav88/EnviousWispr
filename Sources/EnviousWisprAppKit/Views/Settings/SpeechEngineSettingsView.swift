@@ -27,9 +27,11 @@ struct SpeechEngineSettingsView: View {
   init(choicesExpanded: Bool = false) {
     _showEngineChoices = State(initialValue: choicesExpanded)
   }
-  /// A fresh read-only admission result, invalidated while re-checking.
-  @State private var fastAdmission: Bool? = nil
-  @State private var fastAdmissionRequest: UInt64 = 0
+  /// #4320: the read-only Fast model readiness check (request guards, invalidation),
+  /// shared with the EnviousMeet Models tab; this view owns its own instance.
+  @State private var fastReader = ParakeetAdmissionReader()
+  /// A fresh read-only admission result, nil while re-checking.
+  private var fastAdmission: Bool? { fastReader.admitted }
   #if DEBUG
   @Environment(\.fastAdmissionTestHooks) private var fastAdmissionTestHooks
   #endif
@@ -497,30 +499,27 @@ struct SpeechEngineSettingsView: View {
     #if DEBUG
     // Completion belongs to the SUBJECT, including every dropped reply. The
     // debug hook replaces only the disk read, never eligibility or request guards.
-    defer { fastAdmissionTestHooks?.onFinished(fastAdmission) }
-    #endif
-    // Like the pack reload owner: an older answer must not replace a later
-    // re-check, even if the delivery mirror went through the same state again.
-    fastAdmissionRequest &+= 1
-    let request = fastAdmissionRequest
-    fastAdmission = nil
-    guard let modelDelivery else { return }
-    let state = modelDelivery.parakeetState
-    let revision = modelDelivery.parakeetPresentationRevision
-    let admitted: Bool
-    #if DEBUG
-    if let hooks = fastAdmissionTestHooks {
-      admitted = await hooks.read()
-    } else {
-      admitted = await modelDelivery.currentParakeetAdmission()
-    }
+    let hooks = fastAdmissionTestHooks
+    let onFinished: ((Bool?) -> Void)? = hooks.map { hooks in { hooks.onFinished($0) } }
     #else
-    admitted = await modelDelivery.currentParakeetAdmission()
+    let onFinished: ((Bool?) -> Void)? = nil
     #endif
-    guard isParakeet, Task.isCancelled == false, request == fastAdmissionRequest,
-      state == modelDelivery.parakeetState,
-      revision == modelDelivery.parakeetPresentationRevision else { return }
-    fastAdmission = admitted
+    let modelDelivery = modelDelivery
+    await fastReader.recheck(
+      snapshot: {
+        modelDelivery.map {
+          FastAdmissionReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
+        }
+      },
+      read: {
+        guard let modelDelivery else { return false }
+        #if DEBUG
+        if let hooks { return await hooks.read() }
+        #endif
+        return await modelDelivery.currentParakeetAdmission()
+      },
+      eligible: { isParakeet },
+      onFinished: onFinished)
   }
 
   /// Everything that can need the user's attention about the model, kept on
@@ -579,10 +578,7 @@ struct SpeechEngineSettingsView: View {
         fastAdmissionTestHooks?.captureRecheck(requestFastRecheck)
         #endif
       }
-      .onDisappear {
-        fastAdmissionRequest &+= 1
-        fastAdmission = nil
-      }
+      .onDisappear { fastReader.invalidate() }
     }
 
     // ── Delivery row (#1348 Phase 2, D6 states 2/3/4/5/7/8/10/11): shows
