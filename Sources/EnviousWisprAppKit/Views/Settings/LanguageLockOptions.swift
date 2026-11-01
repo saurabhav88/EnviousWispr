@@ -280,4 +280,41 @@ enum LanguageLockOptions {
     if case .locked(let code) = mode, !isLockHonoured(code, by: backend) { return .auto }
     return mode
   }
+
+  /// Which code the Auto-detect toggle should lock to when it is switched OFF.
+  ///
+  /// Pure and `static` so it can be tested: this is the one place a lock is
+  /// created without the user choosing from the filtered picker, so it is the
+  /// one place the picker's restriction can be bypassed.
+  ///
+  /// #1678: every candidate must be honourable by the ACTIVE engine. Without
+  /// that, turning Auto off on the fast engine could restore a legacy
+  /// `whisperKitLanguage` such as Japanese — the user asks for a lock, the UI
+  /// shows a lock, and the decoder maps it straight back to auto-detect. That is
+  /// the same silent failure the picker restriction exists to prevent, arriving
+  /// through the toggle instead of the list (Codex review r1).
+  ///
+  /// #4320: shared by dictation's Auto-detect toggle (candidate: the migrated
+  /// `whisperKitLanguage`) and EnviousMeet's Transcript Language switch.
+  ///
+  /// - Parameter lockable: nil means "no restriction" (the multilingual
+  ///   engine), which preserves the pre-#1678 behaviour exactly.
+  static func defaultLockCode(
+    current: LanguageMode,
+    candidate: String,
+    lockable: Set<String>?
+  ) -> String {
+    if case .locked(let code) = current,
+      isLockHonoured(code, in: lockable)
+    {
+      return code
+    }
+    if LanguageTypes.isSupported(candidate),
+      isLockHonoured(candidate, in: lockable)
+    {
+      return candidate
+    }
+    // English is in every engine's set, so this fallback is always honourable.
+    return "en"
+  }
 }
