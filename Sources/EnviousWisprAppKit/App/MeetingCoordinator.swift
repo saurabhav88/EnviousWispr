@@ -373,7 +373,7 @@ final class MeetingCoordinator {
       CallSpeakerCapture.live(
         pid: target.pid, bounds: .standard,
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
-        keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) })
+        keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared

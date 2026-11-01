@@ -45,7 +45,6 @@ package enum CallSpeakerSurfaceChoice {
     source(for: surface) != .roster
   }
 
-  /// Whether a web page belongs to `family`'s meeting: the only pages a capture copies.
   /// What a copy of this app skips: Zoom's own app reads only its call (`CallAXCapturePolicy`);
   /// a browser, or any other app, is read whole.
   package static func capturePolicy(family: CallAppFamily, rule: CallAppCatalog.Rule)
@@ -55,8 +54,29 @@ package enum CallSpeakerSurfaceChoice {
     return family == .zoom ? .zoomApp : .standard
   }
 
+  /// Whether a web page belongs to `family`'s meeting.
   package static func isMeetingPage(_ url: String, family: CallAppFamily) -> Bool {
     CallMeetingURL.classify(url)?.family == family
+  }
+
+  /// The Teams app's own pages: it draws its meeting window and its home window as web pages
+  /// on these hosts (observed 2026-10-31: `https://teams.live.com/v2/`), never with a meeting
+  /// link, so the meeting-page filter dropped the window holding the microphone button (#4248).
+  static let teamsAppHosts: Set<String> = ["teams.live.com", "teams.microsoft.com"]
+
+  /// Which web pages a copy of this app reads inside: in a browser only `family`'s meeting
+  /// pages (other tabs stay unread); in the Teams app its own pages; in any other app only
+  /// meeting pages, as before.
+  package static func keepsPage(_ url: String, family: CallAppFamily, rule: CallAppCatalog.Rule)
+    -> Bool
+  {
+    switch rule {
+    case .callApp(.teams), .callWindow(.teams):
+      guard let host = URLComponents(string: url)?.host?.lowercased() else { return false }
+      return teamsAppHosts.contains(host)
+    case .callApp, .callWindow, .browser:
+      return isMeetingPage(url, family: family)
+    }
   }
 }
 

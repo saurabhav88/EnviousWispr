@@ -299,6 +299,55 @@ struct CallSpeakerCaptureTests {
     #expect(capture(tree).completeness == .unreadable)
   }
 
+  /// #4248 Teams timing run (2026-10-31): the Teams app draws its meeting window as a web page
+  /// at `https://teams.live.com/v2/`, which is no meeting link, so the meeting-page filter left
+  /// the microphone button uncopied and every mute reading was unknown.
+  @Test("the Teams app's own pages are read; browsers still read only meeting pages")
+  func teamsAppPages() {
+    let meet = "https://meet.google.com/abc-defg-hij"
+    let cases: [(String, CallAppFamily, CallAppCatalog.Rule, Bool)] = [
+      ("https://teams.live.com/v2/", .teams, .callApp(.teams), true),
+      ("https://teams.microsoft.com/v2/", .teams, .callWindow(.teams), true),
+      ("https://example.com/v2/", .teams, .callApp(.teams), false),
+      ("not a url", .teams, .callApp(.teams), false),
+      ("https://teams.live.com/v2/", .teams, .browser(.chrome), false),
+      ("https://mail.google.com/", .googleMeet, .browser(.chrome), false),
+      (meet, .googleMeet, .browser(.chrome), true),
+      ("https://teams.live.com/v2/", .zoom, .callApp(.zoom), false),
+    ]
+    for (url, family, rule, kept) in cases {
+      #expect(
+        CallSpeakerSurfaceChoice.keepsPage(url, family: family, rule: rule) == kept,
+        "\(url) \(family) \(rule)")
+    }
+  }
+
+  @Test("a Teams app copy through the production page rule reads the mute button")
+  func teamsAppMuteThroughCapture() {
+    // Window "Meeting with Sam" > web page teams.live.com/v2/ > the self tile and the button.
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2])
+    tree.texts[1] = [.title: "Meeting with Sam"]
+    tree.node(2, "AXWebArea", children: [3, 4])
+    tree.texts[2] = [.url: "https://teams.live.com/v2/"]
+    tree.node(3, "AXMenuItem")
+    tree.texts[3] = [.title: "Myself video, Saurabh Vaish, Muted"]
+    tree.node(4, "AXButton")
+    tree.texts[4] = [
+      .title: "Unmute mic", .description: "Unmute mic", .domIdentifier: "microphone-button",
+    ]
+    let rule = CallAppCatalog.Rule.callApp(.teams)
+    let copy = capture(
+      tree, policy: CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: rule),
+      keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: .teams, rule: rule) })
+    #expect(copy.completeness == .complete)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy) == .muted)
+    // The meeting-page filter alone (before #4248) never copies the page: unknown.
+    let filtered = capture(
+      tree, keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .teams) })
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered) == .unknown)
+  }
+
   // MARK: - Timeline
 
   @Test("a reading's meeting time is the middle of its reads after the anchor; before it, none")
