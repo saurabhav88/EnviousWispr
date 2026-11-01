@@ -1,4 +1,6 @@
+import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import EnviousWisprServices
 import SwiftUI
 
@@ -132,6 +134,7 @@ struct MeetingLiveWordsCard: View {
   private var status: some View {
     if model.selectedEngine != nil {
       VStack(alignment: .leading, spacing: 8) {
+        ProviderStatusChip(status: MeetingEngineStatusPresentation.live(model.status), isHeadline: true)
         HStack(spacing: 8) {
           Text(MeetingsCopy.liveWordsLanguageLabel)
             .font(.stRowHelper)
@@ -145,6 +148,7 @@ struct MeetingLiveWordsCard: View {
       .padding(.leading, 4)
     } else {
       VStack(alignment: .leading, spacing: 8) {
+        ProviderStatusChip(status: MeetingEngineStatusPresentation.live(model.status), isHeadline: true)
         statusLine
         action
       }
@@ -179,17 +183,15 @@ struct MeetingLiveWordsCard: View {
   }
 
   @ViewBuilder private var statusLine: some View {
+    // #4320: the chip above says Checking, Not set up and Ready; a line stays wherever it adds
+    // which language, what happened or what to do.
     switch model.status {
-    case .loading:
-      meetingStatusText(String(localized: MeetingsCopy.liveWordsChecking))
+    case .loading, .notSetUp(nil), .ready:
+      EmptyView()
     case .notSetUp(let suggestion?):
       meetingStatusText(
         MeetingsCopy.liveWordsSuggested(
           model.languageName(engine: suggestion.engine, code: suggestion.language)))
-    case .notSetUp(nil):
-      meetingStatusText(String(localized: MeetingsCopy.liveWordsNotSetUp))
-    case .ready:
-      meetingStatusText(EngineSummaryCopy.ready)
     case .notDownloaded(let engine, let language):
       meetingStatusText(
         MeetingsCopy.liveWordsNotDownloaded(model.languageName(engine: engine, code: language)))
@@ -264,6 +266,9 @@ struct MeetingLiveWordsCard: View {
       icon: MeetingLiveWordsEngineCards.icon(engine),
       map: .id(engine.meetingLiveWordsMapID),
       tagline: MeetingLiveWordsEngineCards.tagline(engine),
+      specs: MeetingLiveWordsEngineCards.specs(
+        engine,
+        appleLanguageCount: engine == .apple ? model.languages(for: .apple).count : 0),
       unavailability: selectable ? nil : String(localized: MeetingsCopy.liveWordsAppleNeedsMacOS),
       isSelectable: selectable,
       isSelected: model.selectedEngine == engine,
@@ -309,6 +314,94 @@ enum MeetingLiveWordsEngineCards {
     case .universal: String(localized: MeetingsCopy.liveWordsUniversalTagline)
     }
   }
+
+  /// #4320 (plan §3.4): the card's spec table, no transcribe times. Apple: the speech model,
+  /// Apple's per-language download, and how many locales this Mac's Apple meeting module supports
+  /// (`appleLanguageCount`, from `MeetingLiveWordsRowModel.languages(for: .apple)`). No Runs on row for Apple: which chip Apple's speech runs on is
+  /// not established in our code (`AppleTranscriberFactory` selects none). Universal: whisper-small
+  /// on the GPU (transcribe.cpp selects Metal), its delivery manifest's size and the catalogue's
+  /// languages (`MeetingLiveWordsChoice` offers `LanguageCatalog.all`).
+  static func specs(
+    _ engine: LivePreviewEngineChoice, appleLanguageCount: Int
+  ) -> [(label: String, value: String)] {
+    let presentation = EngineChoicePresentation.self
+    switch engine {
+    case .apple:
+      return [
+        (String(localized: presentation.modelLabel), "Apple Speech"),
+        (
+          String(localized: presentation.downloadSizeLabel),
+          String(localized: MeetingsCopy.liveSpecAppleDownload)
+        ),
+        (
+          String(localized: presentation.languagesLabel),
+          MeetingsCopy.liveSpecLanguages(appleLanguageCount)
+        ),
+      ]
+    case .universal:
+      return [
+        (String(localized: presentation.modelLabel), "Whisper Small"),
+        (
+          String(localized: presentation.downloadSizeLabel),
+          String(localized: presentation.downloadSize(bytes: presentation.whisperPreviewDownloadBytes))
+        ),
+        (
+          String(localized: presentation.languagesLabel),
+          MeetingsCopy.liveSpecLanguages(LanguageCatalog.all.count)
+        ),
+        (String(localized: presentation.runsOnLabel), String(localized: presentation.appleGPU)),
+      ]
+    }
+  }
+}
+
+/// #4320 (plan §3.2): the meeting engine status chips, one mapping per engine, exhaustive over
+/// each model's states. Labels are the ones dictation's pages already use: Live Preview's for the
+/// live engine (Ready, Checking, Needs a download, Download did not finish), AI Polish's neutral
+/// Unavailable, the Engine tab's for
+/// the transcript engines (Model ready, Checking model status...).
+enum MeetingEngineStatusPresentation {
+  static func live(_ status: MeetingLiveWordsRowModel.Status) -> ProviderStatus {
+    switch status {
+    case .ready:
+      ProviderStatus(label: EngineSummaryCopy.ready, tone: .ready)
+    case .loading:
+      ProviderStatus(label: String(localized: MeetingsCopy.liveWordsChecking), tone: .unavailable)
+    case .notSetUp:
+      ProviderStatus(label: String(localized: MeetingsCopy.liveStatusNotSetUp), tone: .needsSetup)
+    case .notDownloaded:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup)
+    case .downloading:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup)
+    case .failed:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error)
+    case .appleUnavailable:
+      // Not "needs macOS 26": this state also covers macOS 26 without Apple's meeting module.
+      ProviderStatus(
+        label: String(localized: "Unavailable", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
+    }
+  }
+
+  static func whisper(_ state: WhisperSetupState) -> ProviderStatus {
+    switch state {
+    case .ready:
+      ProviderStatus(label: EngineSummaryCopy.modelReady, tone: .ready)
+    case .checking:
+      ProviderStatus(label: EngineSummaryCopy.checking, tone: .unavailable)
+    case .notDownloaded, .paused:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup)
+    case .downloading:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup)
+    case .error:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error)
+    }
+  }
+
+  /// Parakeet: the Engine tab's mapping over a fresh admission read (nil while checking).
+  static func parakeet(admitted: Bool?) -> ProviderStatus {
+    EngineSummaryPresentation.fastModelStatus(admitted: admitted)
+  }
 }
 
 // MARK: - Transcript engine
@@ -323,6 +416,15 @@ struct MeetingTranscriptEngineCard: View {
   @Environment(\.settingsNavigate) private var navigate
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   @State private var choicesOpen = false
+  /// #4320: this card's own Parakeet readiness check (the Engine tab owns another instance).
+  @State private var parakeetReader = ParakeetAdmissionReader()
+
+  /// Re-read Parakeet readiness when the delivery state or its presentation revision changes,
+  /// as the Engine tab does (#3546).
+  private struct ParakeetReadKey: Equatable {
+    let state: DeliveryState
+    let revision: UInt64
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -357,6 +459,7 @@ struct MeetingTranscriptEngineCard: View {
   @ViewBuilder private var status: some View {
     let lines = statusLines
     VStack(alignment: .leading, spacing: 4) {
+      chip
       HStack(alignment: .top, spacing: 8) {
         VStack(alignment: .leading, spacing: 4) { lines }
         Spacer(minLength: 8)
@@ -375,6 +478,40 @@ struct MeetingTranscriptEngineCard: View {
       }
     }
     .padding(.leading, 4)
+  }
+
+  /// The selected transcript engine's status chip. Parakeet's comes from a fresh read-only
+  /// admission check, re-run when delivery moves and dropped when the card goes away or the
+  /// transcript engine is no longer Parakeet; meetings have no re-check button (plan §3.2).
+  @ViewBuilder private var chip: some View {
+    switch model.selectedEngine {
+    case .whisper:
+      ProviderStatusChip(status: MeetingEngineStatusPresentation.whisper(model.whisperState), isHeadline: true)
+    case .parakeet:
+      ProviderStatusChip(
+        status: MeetingEngineStatusPresentation.parakeet(admitted: parakeetReader.admitted),
+        isHeadline: true
+      )
+      .task(
+        id: modelDelivery.map {
+          ParakeetReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
+        }
+      ) { await recheckParakeet() }
+      .onDisappear { parakeetReader.invalidate() }
+    }
+  }
+
+  private func recheckParakeet() async {
+    let modelDelivery = modelDelivery
+    let model = model
+    await parakeetReader.recheck(
+      snapshot: {
+        modelDelivery.map {
+          ParakeetReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
+        }
+      },
+      read: { await modelDelivery?.currentParakeetAdmission() ?? false },
+      eligible: { model.selectedEngine == .parakeet })
   }
 
   @ViewBuilder private var statusLines: some View {

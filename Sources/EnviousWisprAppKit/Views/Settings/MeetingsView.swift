@@ -434,9 +434,20 @@ enum MeetingsCopy {
   static let liveWordsChecking = LocalizedStringResource(
     "Checking",
     comment: "EnviousMeet page, Live words: while the app reads which languages this Mac has.")
-  static let liveWordsNotSetUp = LocalizedStringResource(
-    "Not set up yet.",
-    comment: "EnviousMeet page, Live words: no engine and language are chosen.")
+  /// #4320: the status chip when no live engine and language are chosen.
+  static let liveStatusNotSetUp = LocalizedStringResource(
+    "Not set up",
+    comment: "EnviousMeet Models tab, live engine status chip: no engine and language are chosen yet.")
+  /// #4320: the Apple live engine card's Download size: Apple downloads each language itself.
+  static let liveSpecAppleDownload = LocalizedStringResource(
+    "Language download from Apple",
+    comment: "EnviousMeet Models tab, Apple live engine card, Download size row: each language is downloaded by macOS from Apple, so there is no single size.")
+  /// #4320: a live engine card's Languages row. The placeholder is a count of languages.
+  static func liveSpecLanguages(_ count: Int) -> String {
+    String(
+      localized: "\(count) languages",
+      comment: "EnviousMeet Models tab, live engine card, Languages row: how many languages the engine can show. The placeholder is a number.")
+  }
   static func liveWordsSuggested(_ language: String) -> String {
     String(
       localized: "Not set up yet. Download \(language) to start.",

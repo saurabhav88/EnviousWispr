@@ -83,17 +83,22 @@ enum EngineChoicePresentation {
   private static let fastModelName = ParakeetModel.ultra.displayName
   private static let allLanguagesModelName = "Whisper Large v3 Turbo"
 
-  private static let modelLabel = LocalizedStringResource(
+  static let modelLabel = LocalizedStringResource(
     "Model", comment: "Speech engine settings, engine card: a row label in the card's spec table.")
-  private static let languagesLabel = LocalizedStringResource(
+  static let languagesLabel = LocalizedStringResource(
     "Languages",
     comment: "Speech engine settings, engine card: a row label in the card's spec table.")
-  private static let runsOnLabel = LocalizedStringResource(
+  static let runsOnLabel = LocalizedStringResource(
     "Runs on", comment: "Speech engine settings, engine card: a row label in the card's spec table."
   )
-  private static let downloadSizeLabel = LocalizedStringResource(
+  static let downloadSizeLabel = LocalizedStringResource(
     "Download size",
     comment: "Speech engine settings, engine card: a row label in the card's spec table.")
+  /// The Runs on value for engines on the graphics processor (All Languages, and #4320
+  /// EnviousMeet's Universal live engine).
+  static let appleGPU = LocalizedStringResource(
+    "Apple GPU",
+    comment: "Speech engine settings, engine card: the chip it runs on, the graphics processor.")
   static let transcribeTimeLabel = LocalizedStringResource(
     "Transcribe time",
     comment: "Speech engine settings, engine card: a row label in the card's spec table.")
@@ -139,6 +144,10 @@ enum EngineChoicePresentation {
   /// `whisper-delivery-manifest.json`). A test pins each to its manifest.
   static let parakeetUltraDownloadBytes: Int64 = 632_314_500
   static let whisperDownloadBytes: Int64 = 886_381_760
+  /// #4320: the Universal preview engine (whisper-small), the `totalBytes` of
+  /// `whisper-preview-delivery-manifest.json`; shown on EnviousMeet's Universal live card. A test
+  /// pins it to the manifest.
+  static let whisperPreviewDownloadBytes: Int64 = 269_751_136
 
   /// The Fast card's download size follows the model the card names (#3546): v3 when the Mac
   /// presents v3, otherwise Ultra, the shipped model.
@@ -234,11 +243,7 @@ enum EngineChoicePresentation {
             comment: "Speech engine settings, engine card: how many languages it covers."))),
       Spec(
         label: runsOnLabel,
-        value: .localized(
-          LocalizedStringResource(
-            "Apple GPU",
-            comment:
-              "Speech engine settings, engine card: the chip it runs on, the graphics processor."))),
+        value: .localized(appleGPU)),
     ],
     times: TranscribeTimes(
       // Short and medium: medians of 24 and 18 dev takes. Long: median of three in-app takes of

@@ -1012,6 +1012,17 @@
         }
       }
     },
+    "%lld languages" : {
+      "comment" : "EnviousMeet Models tab, live engine card, Languages row: how many languages the engine can show. The placeholder is a number.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Sprachen"
+          }
+        }
+      }
+    },
     "%lld min" : {
       "comment" : "Transcribe a File: a length under an hour. %lld is minutes; min abbreviates minutes.",
       "localizations" : {
@@ -10971,6 +10982,17 @@
         }
       }
     },
+    "Language download from Apple" : {
+      "comment" : "EnviousMeet Models tab, Apple live engine card, Download size row: each language is downloaded by macOS from Apple, so there is no single size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachdownload von Apple"
+          }
+        }
+      }
+    },
     "Languages" : {
       "comment" : "Live Preview settings: packs header.\nSpeech engine settings, engine card: a row label in the card's spec table.\nTranscribe a File, Transcription step: a row label in an engine card's spec table.",
       "localizations" : {
@@ -13881,13 +13903,13 @@
         }
       }
     },
-    "Not set up yet." : {
-      "comment" : "EnviousMeet page, Live words: no engine and language are chosen.",
+    "Not set up" : {
+      "comment" : "EnviousMeet Models tab, live engine status chip: no engine and language are chosen yet.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Noch nicht eingerichtet."
+            "value" : "Nicht eingerichtet"
           }
         }
       }
