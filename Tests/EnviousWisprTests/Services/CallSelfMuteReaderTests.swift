@@ -141,20 +141,46 @@ struct CallSelfMuteReaderTests {
     #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: compact) == .unmuted)
   }
 
-  @Test("Teams: a button with no meeting shown, or outside the meeting's windows, is unknown")
+  @Test("Teams: the window holding the button is the meeting; other meetings or buttons are unknown")
   func teamsScope() {
-    // No window shows a meeting (no tile, talker or roster): there is no meeting to tie it to.
-    let noMeeting = CallAXWindow(
+    // Live shape (Teams timing run, 2026-10-31): a solo meeting with the camera off and the
+    // roster closed shows the button and no tile, talker or roster row.
+    let tileFree = CallAXWindow(
       title: "Meeting with Sam", root: CallAXNode(role: "AXWindow", children: [teamsButton("Unmute mic")]))
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [noMeeting])) == .unknown)
-    // A button in another window (chat, calendar) is not the meeting's, even beside one.
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree])) == .muted)
+    // The home window's meeting-link rows (live labels) are no second meeting.
+    let home = CallAXWindow(
+      title: "Meet",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(role: "AXRow", title: "Meeting links"),
+          CallAXNode(role: "AXRow", title: "Meeting link, Meeting with Sam, Created 13 hours ago"),
+        ]))
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree, home])) == .muted)
+    // The compact view alone holds the button: still the one meeting.
+    let compact = CallAXWindow(
+      title: "Meeting compact view | Meeting with Sam",
+      root: CallAXNode(role: "AXWindow", children: [teamsButton("Mute mic")]))
+    #expect(
+      CallSelfMuteReader.read(
+        surface: .teamsApp,
+        capture: capture(windows: [teamsWindow([], title: "Meeting with Sam"), compact])) == .unmuted)
+    // A button in another window (chat, calendar) is not the meeting's: alone it names no
+    // meeting shown, and beside the meeting's own button the two cannot be told apart.
     let chat = CallAXWindow(
       title: "Chat | Microsoft Teams", root: CallAXNode(role: "AXWindow", children: [teamsButton("Unmute mic")]))
-    let outside = capture(windows: [teamsWindow([]), chat])
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: outside) == .unknown)
-    // The meeting's own button decides; the other window's button is never searched.
-    let inside = capture(windows: [teamsWindow([teamsButton("Unmute mic")]), chat])
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: inside) == .muted)
+    let unknowns: [CallAXCapture] = [
+      capture(windows: [teamsWindow([]), chat]),
+      capture(windows: [teamsWindow([teamsButton("Unmute mic")]), chat]),
+      // A second meeting's tiles beside a tile-free meeting with the button.
+      capture(windows: [tileFree, teamsWindow([], title: "Meeting with Alex")]),
+      // The button in a window with no title cannot be matched to a meeting.
+      capture(windows: [CallAXWindow(title: nil, root: tileFree.root)]),
+    ]
+    for item in unknowns {
+      #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: item) == .unknown, "\(item)")
+    }
   }
 
   // MARK: - Google Meet

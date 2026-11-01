@@ -115,12 +115,23 @@ package enum CallSelfMuteReader {
       guard meetings.count == 1 else { return .unknown }
       roots = [meetings[0].root]
     case .teamsApp:
-      // `scope` also accepts a capture showing no meeting at all; a mute button needs one.
-      guard let titles = TeamsAppSpeakerReader.meetingTitles(windows: capture.windows),
-        titles.count == 1, let meeting = titles.first
+      // The meeting is the window holding the microphone button, not one showing a tile or
+      // roster: a solo meeting with the camera off and the roster closed shows neither (Teams
+      // timing run, 2026-10-31). The pre-join screen's control is a checkbox, never selected.
+      // Windows with the button must belong to one meeting (its compact view matched by title),
+      // and no window may show another meeting's tiles or roster.
+      let prefix = TeamsAppSpeakerReader.compactViewPrefix
+      var buttonTitles: Set<String> = []
+      for window in capture.windows where window.root.allNodes.contains(where: rule.selects) {
+        guard let title = window.title, !title.isEmpty else { return .unknown }
+        buttonTitles.insert(title.hasPrefix(prefix) ? String(title.dropFirst(prefix.count)) : title)
+      }
+      guard buttonTitles.count == 1, let meeting = buttonTitles.first,
+        let shown = TeamsAppSpeakerReader.meetingTitles(windows: capture.windows),
+        shown.isSubset(of: [meeting])
       else { return .unknown }
-      let compact = TeamsAppSpeakerReader.compactViewPrefix + meeting
-      roots = capture.windows.filter { $0.title == meeting || $0.title == compact }.map(\.root)
+      roots = capture.windows.filter { $0.title == meeting || $0.title == prefix + meeting }
+        .map(\.root)
     case .meet:
       let pages = capture.documents.filter {
         $0.url.map { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) } ?? false
