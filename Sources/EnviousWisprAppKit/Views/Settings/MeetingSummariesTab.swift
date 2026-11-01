@@ -25,7 +25,7 @@ enum MeetingSummaryEngineChoices {
   /// The line under a card's name: where it runs, or that it is not ready to pick yet.
   static func subtitle(for entry: PolishRailProvider) -> String {
     isSelectable(entry.provider)
-      ? entry.group.heading : String(localized: MeetingsCopy.summaryEngineComingSoon)
+      ? entry.group.heading : String(localized: MeetingsCopy.engineComingSoon)
   }
 }
 

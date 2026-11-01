@@ -2468,6 +2468,34 @@
    }
   },
   {
+   "id": "meetingLiveWords.change",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingLiveWords",
+   "target": "meetingLiveWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingLiveWords"
+  },
+  {
+   "id": "meetingLiveWords.keepCurrent",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingLiveWords",
+   "target": "meetingLiveWords",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingLiveWords"
+  },
+  {
    "id": "meetingLiveWords.apple",
    "kind": "choice",
    "destination": {
@@ -2514,6 +2542,34 @@
    }
   },
   {
+   "id": "meetingTranscriptEngine.change",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingTranscriptEngine",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingTranscriptEngine"
+  },
+  {
+   "id": "meetingTranscriptEngine.keepCurrent",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingTranscriptEngine",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingTranscriptEngine"
+  },
+  {
    "id": "meetingTranscriptEngine.parakeet",
    "kind": "choice",
    "destination": {
@@ -2529,6 +2585,20 @@
   },
   {
    "id": "meetingTranscriptEngine.whisper",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetingTranscriptEngine",
+   "target": "meetingTranscriptEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingTranscriptEngine.apple",
    "kind": "choice",
    "destination": {
     "page": "meetings",

@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "cs",
+    "title": "změnit",
+    "words": [],
+    "phrases": [
+      "otevřít výběr modulu pro živý přepis schůzky v EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "cs",
+    "title": "ponechat současný modul živého přepisu schůzky",
+    "words": [],
+    "phrases": [
+      "ponechat současný modul pro živý přepis schůzky v EnviousMeet",
+      "zavřít výběr modulu živého přepisu schůzky beze změny"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "cs",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "připravovaný modul Apple pro úplný přepis schůzek v EnviousMeet",
+      "Apple pro přepis po skončení schůzky zatím není dostupný"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "cs",
+    "title": "změnit",
+    "words": [],
+    "phrases": [
+      "otevřít výběr modulu pro přepis po skončení schůzky v EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "cs",
+    "title": "ponechat současný modul přepisu schůzek",
+    "words": [],
+    "phrases": [
+      "ponechat současný modul pro přepis po skončení schůzky v EnviousMeet",
+      "zavřít výběr modulu pro úplný přepis schůzky beze změny"
+    ]
+  }
+}

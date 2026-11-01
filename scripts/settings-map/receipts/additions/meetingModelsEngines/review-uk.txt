@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "uk",
+    "title": "змінити",
+    "words": [],
+    "phrases": [
+      "відкрити вибір рушія для тексту зустрічі наживо в EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "uk",
+    "title": "залишити поточний рушій для тексту зустрічі наживо",
+    "words": [],
+    "phrases": [
+      "залишити поточний рушій для тексту зустрічі наживо в EnviousMeet",
+      "закрити вибір рушія для тексту зустрічі наживо без змін"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "uk",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple для повної стенограми зустрічі в EnviousMeet",
+      "Apple для транскрибування зустрічей ще недоступний"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "uk",
+    "title": "змінити",
+    "words": [],
+    "phrases": [
+      "відкрити вибір рушія для повної стенограми зустрічі в EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "uk",
+    "title": "залишити поточний рушій транскрибування зустрічей",
+    "words": [],
+    "phrases": [
+      "залишити поточний рушій для повної стенограми зустрічі в EnviousMeet",
+      "закрити вибір рушія транскрибування зустрічей без змін"
+    ]
+  }
+}

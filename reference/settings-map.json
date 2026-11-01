@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 303,
-    "searchable" : 276,
-    "vocabularyBlocks" : 8832
+    "nodes" : 308,
+    "searchable" : 281,
+    "vocabularyBlocks" : 8992
   },
   "fingerprints" : {
-    "mapSHA256" : "a99867a7e047386e4020f539e9687dd8e9acd85aa858a42a3da38a7791b702b0",
-    "uiCatalogSHA256" : "44c5517e4a89510687c82c4a02a35cba87bbafa17ccb9bae6937a0ae37c251d8",
+    "mapSHA256" : "bfe2bdbc2205f108cafefdf4943b4019b3718f305b035882a1329ceee27497a9",
+    "uiCatalogSHA256" : "16f12130074aac1f9d5fd9b7f7d12ccf72af249f6bc13a1d2804aac884ae7945",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "4181b3027728579a8055b13b612c3de4c9e372c547db1e4641a3098e5f8b2328"
+    "vocabularySHA256" : "5f5b71261f99a98663c63ac857a18e374d863b370822f3f0d7923d1f598fc61f"
   },
   "interfaceLanguages" : [
     "en",
@@ -39376,6 +39376,659 @@
       "context" : [
         "window.settings",
         "page.meetings",
+        "meetings.tab.models",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.change",
+      "kind" : "action",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Ändern",
+        "en" : "Change",
+        "key" : "Change",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+          ],
+          "title" : "تغيير محرك النص المباشر للاجتماع",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "отвори моделите за текста на срещата в реално време в EnviousMeet"
+          ],
+          "title" : "смяна на модела за текста на срещата в реално време",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "otevřít výběr modulu pro živý přepis schůzky v EnviousMeet"
+          ],
+          "title" : "změnit",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+          ],
+          "title" : "skift motor til livetransskription af møder",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Engine für das Live-Transkript ändern"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "άνοιξε τις επιλογές μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+          ],
+          "title" : "αλλαγή",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "open the live words engine choices in EnviousMeet"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "abrir las opciones del motor de transcripción en directo de reuniones en EnviousMeet"
+          ],
+          "title" : "cambiar",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "ava koosoleku reaalajas teksti mootorite valik"
+          ],
+          "title" : "muuda",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "avaa kokouksen reaaliaikaisen litteroinnin moottorivaihtoehdot"
+          ],
+          "title" : "vaihda",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet"
+          ],
+          "title" : "modifier",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदलने वाला बटन दिखाएँ"
+          ],
+          "title" : "बदलें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "otvori odabir modela za prijepis sastanka uživo"
+          ],
+          "title" : "promijeni",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "motorválasztó megnyitása a megbeszélés élő átírásához az EnviousMeetben"
+          ],
+          "title" : "módosítás",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "aprire le schede dei motori per il testo mostrato in tempo reale durante le riunioni in EnviousMeet"
+          ],
+          "title" : "cambia motore di trascrizione in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしエンジンの選択肢を開く"
+          ],
+          "title" : "変更",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+          ],
+          "title" : "실시간 회의 텍스트 엔진 변경",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "atidaryti susitikimo transkripcijos realiuoju laiku variklio pasirinkimą"
+          ],
+          "title" : "keisti",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atvērt sapulces reāllaika teksta dziņu izvēli"
+          ],
+          "title" : "mainīt",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "iftaħ l-għażliet tal-magna għat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+          ],
+          "title" : "ibdel",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "enginekeuze voor live transcriptie in EnviousMeet openen"
+          ],
+          "title" : "wijzigen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "otwórz wybór silnika transkrypcji spotkania na żywo w EnviousMeet"
+          ],
+          "title" : "zmień",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "abrir as opções para trocar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+          ],
+          "title" : "alterar",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "arată opțiunile de motor pentru transcrierea în timp real a întâlnirii în EnviousMeet"
+          ],
+          "title" : "schimbă",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "открыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet"
+          ],
+          "title" : "изменить",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "otvoriť výber modelu pre živý prepis stretnutia v EnviousMeet"
+          ],
+          "title" : "zmeniť",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odpri izbiro pogona za prepis sestanka v živo"
+          ],
+          "title" : "spremeni",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "öppna motorvalen för transkribering i realtid i EnviousMeet"
+          ],
+          "title" : "ändra",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sırasında gösterilen canlı metnin motorunu değiştirmek için seçenekleri aç"
+          ],
+          "title" : "değiştir",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "відкрити вибір рушія для тексту зустрічі наживо в EnviousMeet"
+          ],
+          "title" : "змінити",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+          ],
+          "title" : "đổi công cụ chép lời trực tiếp cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "打开会议实时转写引擎选择列表"
+          ],
+          "title" : "更换会议实时转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.keepCurrent",
+      "kind" : "action",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aktuelle Live-Transkript-Engine beibehalten",
+        "en" : "Keep current live words engine",
+        "key" : "Keep current live words engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "engineChoicesExpanded",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إبقاء محرك النص المباشر للاجتماع كما هو",
+            "إغلاق خيارات محرك النص المباشر للاجتماع دون تغيير"
+          ],
+          "title" : "الإبقاء على محرك النص المباشر للاجتماع الحالي",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "остави същия модел за текста на срещата в реално време в EnviousMeet",
+            "затвори избора на модел за текста на срещата в реално време без промяна"
+          ],
+          "title" : "запази текущия модел за текста на срещата в реално време",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ponechat současný modul pro živý přepis schůzky v EnviousMeet",
+            "zavřít výběr modulu živého přepisu schůzky beze změny"
+          ],
+          "title" : "ponechat současný modul živého přepisu schůzky",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "luk motorvalget til livetransskription i EnviousMeet uden at ændre noget"
+          ],
+          "title" : "behold den nuværende motor til livetransskription af møder",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "bisherige Engine für das Live-Transkript behalten"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "κράτα την ίδια μηχανή για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet",
+            "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή ζωντανής απομαγνητοφώνησης της συνάντησης"
+          ],
+          "title" : "διατήρηση της τρέχουσας μηχανής ζωντανής απομαγνητοφώνησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep using the same engine for live meeting transcription"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cerrar las opciones sin cambiar el motor de transcripción en directo de reuniones en EnviousMeet"
+          ],
+          "title" : "mantener el motor actual de transcripción en directo",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "jäta koosoleku reaalajas teksti mootor samaks",
+            "sulge koosoleku reaalajas teksti mootorite valik muudatusteta"
+          ],
+          "title" : "säilita praegune reaalajas teksti mootor",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+          ],
+          "title" : "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "fermer le choix des moteurs sans changer la transcription en direct des réunions dans EnviousMeet"
+          ],
+          "title" : "conserver le moteur actuel de transcription en direct",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदले बिना विकल्प बंद करें"
+          ],
+          "title" : "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "zadrži isti model za prijepis sastanka uživo",
+            "zatvori odabir bez promjene modela za prijepis sastanka uživo"
+          ],
+          "title" : "zadrži trenutačni model za prijepis uživo",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon ugyanaz a motor a megbeszélés élő átírásához",
+            "az EnviousMeet élő átírási motorválasztójának bezárása módosítás nélkül"
+          ],
+          "title" : "a megbeszélés élő átírásához használt motor megtartása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiudere la scelta del motore per la trascrizione in tempo reale delle riunioni in EnviousMeet senza cambiarlo"
+          ],
+          "title" : "mantieni il motore attuale di trascrizione in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしエンジンを変えずに閉じる"
+          ],
+          "title" : "現在のリアルタイム文字起こしエンジンを使う",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 실시간 텍스트 엔진을 바꾸지 않고 닫기"
+          ],
+          "title" : "현재 실시간 회의 텍스트 엔진 유지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "uždaryti variklių pasirinkimą nekeičiant susitikimo transkripcijos realiuoju laiku variklio"
+          ],
+          "title" : "palikti dabartinį susitikimo transkripcijos realiuoju laiku variklį",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atstāt sapulces reāllaika teksta dzini nemainītu",
+            "aizvērt sapulces reāllaika teksta dziņu izvēli bez izmaiņām"
+          ],
+          "title" : "paturēt pašreizējo sapulces reāllaika teksta dzini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+          ],
+          "title" : "żomm il-magna attwali tat-traskrizzjoni diretta",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "huidige engine voor live transcriptie in EnviousMeet behouden",
+            "enginekeuze voor live transcriptie van vergaderingen sluiten zonder iets te wijzigen"
+          ],
+          "title" : "huidige engine voor live transcriptie behouden",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zamknij wybór silnika transkrypcji spotkania na żywo bez zmian"
+          ],
+          "title" : "zachowaj obecny silnik transkrypcji spotkań na żywo",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "fechar as opções sem mudar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+          ],
+          "title" : "manter o motor atual de transcrição em tempo real",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "închide opțiunile fără să schimbi motorul de transcriere în timp real a întâlnirii în EnviousMeet"
+          ],
+          "title" : "păstrează motorul actual de transcriere în timp real",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "закрыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet без изменений"
+          ],
+          "title" : "оставить текущий движок расшифровки встречи в реальном времени",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zavrieť výber modelu pre živý prepis stretnutia v EnviousMeet bez zmeny"
+          ],
+          "title" : "ponechať aktuálny model živého prepisu stretnutia",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "zapri izbiro pogona za prepis sestanka v živo brez sprememb"
+          ],
+          "title" : "ohrani trenutni pogon za prepis sestanka v živo",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+          ],
+          "title" : "behåll nuvarande motor för mötets transkribering i realtid",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantının canlı metin motorunu değiştirmeden seçenekleri kapat"
+          ],
+          "title" : "mevcut canlı transkripsiyon motorunu koru",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "залишити поточний рушій для тексту зустрічі наживо в EnviousMeet",
+            "закрити вибір рушія для тексту зустрічі наживо без змін"
+          ],
+          "title" : "залишити поточний рушій для тексту зустрічі наживо",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ nguyên công cụ chép lời trực tiếp cuộc họp trong EnviousMeet",
+            "đóng danh sách công cụ chép lời trực tiếp cuộc họp mà không thay đổi"
+          ],
+          "title" : "giữ công cụ chép lời trực tiếp cuộc họp hiện tại",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "关闭选择列表并保留当前会议实时转写引擎"
+          ],
+          "title" : "保留当前会议实时转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
         "meetings.tab.models"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
@@ -39728,6 +40381,659 @@
           "words" : [
             "会议转写引擎",
             "会议转写模型"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.change",
+      "kind" : "action",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Ändern",
+        "en" : "Change",
+        "key" : "Change",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "فتح خيارات محرك كتابة نص الاجتماع بعد انتهائه في EnviousMeet"
+          ],
+          "title" : "تغيير محرك تفريغ الاجتماعات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "отвори моделите за пълната транскрипция след срещата в EnviousMeet"
+          ],
+          "title" : "смяна на модела за пълната транскрипция след срещата",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "otevřít výběr modulu pro přepis po skončení schůzky v EnviousMeet"
+          ],
+          "title" : "změnit",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vis valgmulighederne for motor til den fulde transskription efter mødet i EnviousMeet"
+          ],
+          "title" : "skift motor til mødets fulde transskription",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Engine für das Transkript nach dem Meeting ändern"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "άνοιξε τις επιλογές μηχανής για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet"
+          ],
+          "title" : "αλλαγή",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "open the full meeting transcript engine choices in EnviousMeet"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "abrir las opciones del motor de transcripción completa de reuniones en EnviousMeet"
+          ],
+          "title" : "cambiar",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "ava koosoleku lõpliku transkriptsiooni mootorite valik"
+          ],
+          "title" : "muuda",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "avaa kokouksen lopullisen litteroinnin moottorivaihtoehdot"
+          ],
+          "title" : "vaihda",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet"
+          ],
+          "title" : "modifier",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदलने का बटन दिखाएँ"
+          ],
+          "title" : "बदलें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "otvori odabir modela za potpuni prijepis nakon sastanka"
+          ],
+          "title" : "promijeni",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "motorválasztó megnyitása a megbeszélés utáni átíráshoz az EnviousMeetben"
+          ],
+          "title" : "módosítás",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "aprire le schede dei motori per la trascrizione completa delle riunioni dopo la registrazione in EnviousMeet"
+          ],
+          "title" : "cambia motore di trascrizione delle riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こしエンジンの選択肢を開く"
+          ],
+          "title" : "変更",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 후 전체 녹취록을 작성할 엔진 선택 카드 열기"
+          ],
+          "title" : "회의 녹취록 엔진 변경",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "atidaryti variklio pasirinkimą susitikimui transkribuoti po įrašymo"
+          ],
+          "title" : "keisti",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atvērt pilna sapulces atšifrējuma dziņu izvēli"
+          ],
+          "title" : "mainīt",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "iftaħ l-għażliet tal-magna għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+          ],
+          "title" : "ibdel",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "enginekeuze voor volledige vergadertranscripten in EnviousMeet openen"
+          ],
+          "title" : "wijzigen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "otwórz wybór silnika pełnej transkrypcji po spotkaniu w EnviousMeet"
+          ],
+          "title" : "zmień",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "abrir as opções para trocar o motor da transcrição completa de reuniões no EnviousMeet"
+          ],
+          "title" : "alterar",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "arată opțiunile de motor pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+          ],
+          "title" : "schimbă",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "открыть выбор движка для полной расшифровки встречи после её завершения в EnviousMeet"
+          ],
+          "title" : "изменить",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "otvoriť výber modelu na úplný prepis stretnutia v EnviousMeet"
+          ],
+          "title" : "zmeniť",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odpri izbiro pogona za celotni prepis po sestanku"
+          ],
+          "title" : "spremeni",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "öppna motorvalen för transkribering efter mötet i EnviousMeet"
+          ],
+          "title" : "ändra",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmek için seçenekleri aç"
+          ],
+          "title" : "değiştir",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "відкрити вибір рушія для повної стенограми зустрічі в EnviousMeet"
+          ],
+          "title" : "змінити",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "mở danh sách công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet"
+          ],
+          "title" : "đổi công cụ tạo bản chép lời sau cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "打开会后完整会议转写的引擎选择列表"
+          ],
+          "title" : "更换会后转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.keepCurrent",
+      "kind" : "action",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aktuelle Transkript-Engine beibehalten",
+        "en" : "Keep current transcript engine",
+        "key" : "Keep current transcript engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "engineChoicesExpanded",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إبقاء محرك كتابة نص الاجتماع بعد انتهائه كما هو",
+            "إغلاق خيارات محرك تفريغ الاجتماعات دون تغيير"
+          ],
+          "title" : "الإبقاء على محرك تفريغ الاجتماعات الحالي",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "остави същия модел за пълната транскрипция след срещата в EnviousMeet",
+            "затвори избора на модел за пълната транскрипция след срещата без промяна"
+          ],
+          "title" : "запази текущия модел за пълната транскрипция след срещата",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ponechat současný modul pro přepis po skončení schůzky v EnviousMeet",
+            "zavřít výběr modulu pro úplný přepis schůzky beze změny"
+          ],
+          "title" : "ponechat současný modul přepisu schůzek",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "luk motorvalget til mødets fulde transskription i EnviousMeet uden at ændre noget"
+          ],
+          "title" : "behold den nuværende motor til mødets fulde transskription",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "bisherige Engine für das Transkript nach dem Meeting behalten"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "κράτα την ίδια μηχανή για την πλήρη απομαγνητοφώνηση συναντήσεων στο EnviousMeet",
+            "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή για την πλήρη απομαγνητοφώνηση της συνάντησης"
+          ],
+          "title" : "διατήρηση της τρέχουσας μηχανής απομαγνητοφώνησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep using the same engine for meeting transcripts"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cerrar las opciones sin cambiar el motor de transcripción completa de reuniones en EnviousMeet"
+          ],
+          "title" : "mantener el motor actual de transcripción de reuniones",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "jäta koosoleku lõpliku transkriptsiooni mootor samaks",
+            "sulge koosoleku lõpliku transkriptsiooni mootorite valik muudatusteta"
+          ],
+          "title" : "säilita praegune transkriptsioonimootor",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä edelleen samaa moottoria kokouksen lopulliseen litterointiin"
+          ],
+          "title" : "säilytä nykyinen litterointimoottori",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"
+          ],
+          "title" : "conserver le moteur de transcription actuel",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदले बिना विकल्प बंद करें"
+          ],
+          "title" : "मौजूदा ट्रांसक्रिप्ट इंजन रखें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "zadrži isti model za potpuni prijepis nakon sastanka",
+            "zatvori odabir bez promjene modela za potpuni prijepis sastanka"
+          ],
+          "title" : "zadrži trenutačni model za prijepis sastanka",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon ugyanaz a motor a megbeszélés utáni átíráshoz",
+            "a teljes megbeszélés átiratához tartozó motorválasztó bezárása módosítás nélkül"
+          ],
+          "title" : "a megbeszélés teljes átiratához használt motor megtartása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiudere la scelta del motore per la trascrizione completa delle riunioni in EnviousMeet senza cambiarlo"
+          ],
+          "title" : "mantieni il motore attuale di trascrizione delle riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こしエンジンを変えずに閉じる"
+          ],
+          "title" : "現在の全文文字起こしエンジンを使う",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록 엔진을 바꾸지 않고 닫기"
+          ],
+          "title" : "현재 회의 녹취록 엔진 유지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "uždaryti variklių pasirinkimą nekeičiant susitikimų transkripcijos variklio"
+          ],
+          "title" : "palikti dabartinį susitikimų transkripcijos variklį",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atstāt pilna sapulces atšifrējuma dzini nemainītu",
+            "aizvērt sapulces atšifrējuma dziņu izvēli bez izmaiņām"
+          ],
+          "title" : "paturēt pašreizējo sapulces atšifrējuma dzini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+          ],
+          "title" : "żomm il-magna attwali tat-traskrizzjoni tal-laqgħat",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "huidige engine voor volledige vergadertranscripten in EnviousMeet behouden",
+            "enginekeuze voor vergadertranscripten sluiten zonder iets te wijzigen"
+          ],
+          "title" : "huidige transcriptie-engine behouden",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zamknij wybór silnika pełnej transkrypcji po spotkaniu bez zmian"
+          ],
+          "title" : "zachowaj obecny silnik transkrypcji spotkań",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "fechar as opções sem mudar o motor da transcrição completa de reuniões no EnviousMeet"
+          ],
+          "title" : "manter o motor de transcrição atual",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "închide opțiunile fără să schimbi motorul pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+          ],
+          "title" : "păstrează motorul actual de transcriere a întâlnirilor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "закрыть выбор движка полной расшифровки встреч в EnviousMeet без изменений"
+          ],
+          "title" : "оставить текущий движок полной расшифровки встреч",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zavrieť výber modelu na úplný prepis stretnutia v EnviousMeet bez zmeny"
+          ],
+          "title" : "ponechať aktuálny model prepisu stretnutí",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "zapri izbiro pogona za celotni prepis sestanka brez sprememb"
+          ],
+          "title" : "ohrani trenutni pogon za celotni prepis sestanka",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "stäng motorvalen och behåll samma motor för transkribering efter mötet i EnviousMeet"
+          ],
+          "title" : "behåll nuvarande motor för mötestranskript",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmeden seçenekleri kapat"
+          ],
+          "title" : "mevcut toplantı dökümü motorunu koru",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "залишити поточний рушій для повної стенограми зустрічі в EnviousMeet",
+            "закрити вибір рушія транскрибування зустрічей без змін"
+          ],
+          "title" : "залишити поточний рушій транскрибування зустрічей",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ nguyên công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet",
+            "đóng danh sách công cụ tạo bản chép lời sau cuộc họp mà không thay đổi"
+          ],
+          "title" : "giữ công cụ tạo bản chép lời sau cuộc họp hiện tại",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "关闭选择列表并保留当前会后转写引擎"
+          ],
+          "title" : "保留当前会后转写引擎",
+          "words" : [
+
           ]
         }
       }
@@ -83374,6 +84680,336 @@
             "用Whisper转写会议"
           ],
           "title" : "Whisper Large v3 Turbo",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.apple",
+      "kind" : "choice",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Apple"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "محرك Apple لكتابة نص الاجتماع بعد انتهائه قريبًا في EnviousMeet",
+            "لماذا لا يمكن اختيار Apple لتفريغ الاجتماعات"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "Apple за пълната транскрипция след срещата в EnviousMeet — очаквайте скоро"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "připravovaný modul Apple pro úplný přepis schůzek v EnviousMeet",
+            "Apple pro přepis po skončení schůzky zatím není dostupný"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "Apple til mødets fulde transskription i EnviousMeet kommer snart"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wann kann ich Apple für das Transkript nutzen",
+            "Apple Spracherkennung für Meeting-Transkripte"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "Apple για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet",
+            "πότε θα είναι διαθέσιμη η μηχανή Apple για την πλήρη απομαγνητοφώνηση συναντήσεων"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "Apple engine for full meeting transcripts coming soon"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "Apple para la transcripción completa de reuniones en EnviousMeet (próximamente)"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "peagi tulev Apple'i mootor koosoleku lõpliku transkriptsiooni jaoks"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "Apple-moottori kokouksen lopulliseen litterointiin ei ole vielä saatavilla"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला Apple इंजन जो जल्द आ रहा है"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "Apple za potpuni prijepis sastanka uskoro dolazi",
+            "zašto još ne mogu odabrati Apple za prijepis nakon sastanka"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Apple motor az EnviousMeetben a megbeszélés utáni átíráshoz",
+            "hamarosan elérhető Apple motor a megbeszélések teljes átiratához"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "motore Apple in arrivo per la trascrizione completa delle riunioni in EnviousMeet",
+            "perché Apple non è ancora selezionabile per trascrivere le riunioni dopo la registrazione in EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こし用Appleエンジン（近日公開）"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록용 Apple 음성 인식 엔진 출시 예정"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "Apple variklis susitikimų transkripcijai po įrašymo",
+            "dar nepasiekiamas Apple variklis susitikimų transkripcijai"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "Apple dzinis pilnam sapulces atšifrējumam",
+            "kad būs pieejams Apple dzinis sapulču atšifrēšanai"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "Apple għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet għadha mhix disponibbli"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Apple voor volledige vergadertranscripten in EnviousMeet binnenkort beschikbaar"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "silnik Apple do pełnej transkrypcji po spotkaniu — wkrótce"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "ver a opção Apple para a transcrição completa de reuniões no EnviousMeet",
+            "quando o motor Apple estará disponível para transcrever reuniões no EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "motorul Apple pentru transcrierea completă a întâlnirilor în EnviousMeet, disponibil în curând"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "Apple для полной расшифровки встречи после её завершения в EnviousMeet — скоро"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "pripravovaný model Apple na úplný prepis stretnutí v EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "Apple za celotni prepis sestanka še ni na voljo"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "Apple för mötestranskript i EnviousMeet kommer snart"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm için yakında gelecek Apple motoru"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "Apple для повної стенограми зустрічі в EnviousMeet",
+            "Apple для транскрибування зустрічей ще недоступний"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "Apple để tạo bản chép lời sau cuộc họp trong EnviousMeet sắp ra mắt",
+            "công cụ Apple cho bản chép lời sau cuộc họp chưa chọn được"
+          ],
+          "title" : "Apple cho bản chép lời sau cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "即将推出的Apple会议转写引擎"
+          ],
+          "title" : "Apple会后转写引擎（即将推出）",
           "words" : [
 
           ]

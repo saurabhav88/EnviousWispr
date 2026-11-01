@@ -227,7 +227,7 @@ struct MeetingHistoryDetailView: View {
       if engines.count > 1 {
         Menu {
           ForEach(engines, id: \.self) { engine in
-            Button(MeetingTranscriptEngineRow.title(of: engine)) {
+            Button(MeetingTranscriptEngineRowTitles.title(of: engine)) {
               run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
             }
           }

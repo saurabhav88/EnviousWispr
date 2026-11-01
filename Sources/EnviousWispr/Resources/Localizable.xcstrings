@@ -4785,6 +4785,17 @@
         }
       }
     },
+    "Change live words engine" : {
+      "comment" : "EnviousMeet Models tab: VoiceOver name of the Change button for the live words engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript-Engine ändern"
+          }
+        }
+      }
+    },
     "Change preview engine" : {
       "comment" : "Live Preview settings: VoiceOver name of the Change button for the preview engine.",
       "localizations" : {
@@ -4814,6 +4825,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zusammenfassungs-Engine ändern"
+          }
+        }
+      }
+    },
+    "Change transcript engine" : {
+      "comment" : "EnviousMeet Models tab: VoiceOver name of the Change button for the transcript engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript-Engine ändern"
           }
         }
       }
@@ -5782,7 +5804,7 @@
       }
     },
     "Coming soon" : {
-      "comment" : "EnviousMeet Summaries tab: an engine that cannot write summaries yet and cannot be picked.",
+      "comment" : "EnviousMeet Summaries and Models tabs: an engine card that is not ready yet and cannot be picked.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10440,6 +10462,17 @@
         }
       }
     },
+    "Keep current live words engine" : {
+      "comment" : "EnviousMeet Models tab: closes the live words engine choices without changing the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Live-Transkript-Engine beibehalten"
+          }
+        }
+      }
+    },
     "Keep current preview engine" : {
       "comment" : "Live Preview settings: closes the preview engine choices without changing them.",
       "localizations" : {
@@ -10458,6 +10491,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktuelle Zusammenfassungs-Engine beibehalten"
+          }
+        }
+      }
+    },
+    "Keep current transcript engine" : {
+      "comment" : "EnviousMeet Models tab: closes the transcript engine choices without changing the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Transkript-Engine beibehalten"
           }
         }
       }
@@ -10862,6 +10906,7 @@
       }
     },
     "Language" : {
+      "comment" : "EnviousMeet Models tab, Live words card: the label before the live words language menu.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13682,6 +13727,17 @@
         }
       }
     },
+    "Not on this Mac. Needs macOS 26." : {
+      "comment" : "EnviousMeet Models tab, Live words: the Apple engine card when this Mac cannot run it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Mac nicht verfügbar. Benötigt macOS 26."
+          }
+        }
+      }
+    },
     "Not ready" : {
       "comment" : "Transcribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
@@ -15264,6 +15320,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle dies für alltägliche Diktate auf Englisch und in europäischen Sprachen."
+          }
+        }
+      }
+    },
+    "Pick this for meetings in English and European languages." : {
+      "comment" : "EnviousMeet Models tab, Transcript engine: when to pick Parakeet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle dies für Meetings auf Englisch und in europäischen Sprachen."
+          }
+        }
+      }
+    },
+    "Pick this for meetings in other languages or with tough audio." : {
+      "comment" : "EnviousMeet Models tab, Transcript engine: when to pick Whisper Large v3 Turbo.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle dies für Meetings in anderen Sprachen oder mit schwieriger Audioqualität."
           }
         }
       }
@@ -22632,6 +22710,17 @@
         }
       }
     },
+    "Uses Apple's speech recognition on this Mac." : {
+      "comment" : "EnviousMeet Models tab, Transcript engine: the Apple engine card's line. Apple is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet Apples Spracherkennung auf diesem Mac."
+          }
+        }
+      }
+    },
     "Uses Apple's speech recognition. No separate preview-model download; some languages may need an Apple language download. Needs macOS 26." : {
       "comment" : "Live Preview settings, preview engine: apple description.",
       "localizations" : {
@@ -22639,6 +22728,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verwendet Apples Spracherkennung. Für die Vorschau ist kein eigenes Modell nötig. Manche Sprachen müssen möglicherweise von Apple heruntergeladen werden. Benötigt macOS 26."
+          }
+        }
+      }
+    },
+    "Uses Apple's speech recognition. Some languages need an Apple language download. Needs macOS 26." : {
+      "comment" : "EnviousMeet Models tab, Live words: the Apple engine card's line. Apple is a product name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet Apples Spracherkennung. Für manche Sprachen müssen Sprachdaten von Apple heruntergeladen werden. Benötigt macOS 26."
           }
         }
       }
@@ -23605,6 +23705,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkribiert schon während der Aufnahme; die letzten Wörter können fehlen."
+          }
+        }
+      }
+    },
+    "Works on macOS 14 and later, in more languages. Needs a download before first use." : {
+      "comment" : "EnviousMeet Models tab, Live words: the Universal engine card's line. Universal is the engine's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert ab macOS 14 und unterstützt mehr Sprachen. Vor der ersten Nutzung ist ein Download nötig."
           }
         }
       }

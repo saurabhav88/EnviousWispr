@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""#4287 PR 2: one fresh isolated Codex session per language reviews the drafted search blocks for the
+five new EnviousMeet Models tab places together
+(accuracy, naturalness, collisions with each other and with their siblings). Adapted from the
+#3973 C3 driver.
+Usage: review-driver.py <worktree> <outdir> <id>=<draft.json> ..."""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+drafts = {}
+for arg in sys.argv[3:]:
+    pid, path = arg.split("=", 1)
+    drafts[pid] = {b["language"]: b for b in json.load(open(path, encoding="utf-8"))["blocks"]}
+
+PLACES = {
+    "meetingLiveWords.change": {
+        "title_en": "Change", "title_de": "Ändern",
+        "description_en": "(none) The Change button on the Live words card.",
+        "truth": "The Change button on the Live words card of the Models tab of the EnviousMeet (meeting recorder) page: opens the two engine cards (Apple, Universal) to pick a different engine for the words shown live while a meeting records. Not dictation's Live Preview engine, which stays separate.",
+    },
+    "meetingLiveWords.keepCurrent": {
+        "title_en": "Keep current live words engine", "title_de": "Aktuelle Live-Transkript-Engine beibehalten",
+        "description_en": "(none) Closes the live words engine cards without changing the engine.",
+        "truth": "The link under the open Live words engine cards on EnviousMeet's Models tab that closes them and keeps the live words engine as it is.",
+    },
+    "meetingTranscriptEngine.change": {
+        "title_en": "Change", "title_de": "Ändern",
+        "description_en": "(none) The Change button on the Transcript engine card.",
+        "truth": "The Change button on the Transcript engine card of the Models tab of the EnviousMeet page: opens the engine cards (Parakeet, Whisper Large v3 Turbo, and Apple shown as Coming soon) to pick the speech engine that writes the full meeting transcript after a meeting. Not dictation's speech engine, which stays separate.",
+    },
+    "meetingTranscriptEngine.keepCurrent": {
+        "title_en": "Keep current transcript engine", "title_de": "Aktuelle Transkript-Engine beibehalten",
+        "description_en": "(none) Closes the transcript engine cards without changing the engine.",
+        "truth": "The link under the open Transcript engine cards on EnviousMeet's Models tab that closes them and keeps the transcript engine as it is.",
+    },
+    "meetingTranscriptEngine.apple": {
+        "title_en": "Apple", "title_de": "Apple",
+        "description_en": "(none) A choice among the Transcript engine cards.",
+        "truth": "The Apple card among the Transcript engine cards on EnviousMeet's Models tab: Apple's speech recognition for writing meeting transcripts. It says Coming soon and cannot be picked yet. It is NOT the Apple engine for live words or for dictation's Live Preview.",
+    },
+}
+SIBLINGS = ["meetingLiveWords", "meetingLiveWords.apple", "meetingLiveWords.universal",
+            "meetingTranscriptEngine", "meetingTranscriptEngine.parakeet",
+            "meetingTranscriptEngine.whisper", "meetingSummaryEngine.change",
+            "meetingSummaryEngine.keepCurrent", "previewEngine.change",
+            "previewEngine.keepCurrent", "previewEngine.apple", "transcriptionEngine.change"]
+
+vocab = json.load(
+    open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+missing = [s for s in SIBLINGS if s not in by_id]
+assert not missing, f"unknown sibling ids: {missing}"
+
+BRIEF = """You are reviewing draft search vocabulary blocks for FIVE new places in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The places (English titles and descriptions are the source of truth):
+{places}
+
+For each place's draft block in "{lang}":
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: a block must not fit another of the five places, or an existing sibling place, equally well. Each must clearly say it is about EnviousMeet's live words or meeting transcript engine, so it never competes with dictation's Live Preview or Engine places or with the Summaries engine card. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For a title: how an app in that language would label this place. Keep product names (EnviousMeet, EnviousWispr, Apple, Universal, Parakeet, Whisper, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft blocks (place id -> block):
+{drafts}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, mapping each of the five place ids to its corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). Return a block unchanged if it is already right. After the JSON add nothing.
+"""
+
+
+def describe() -> str:
+    lines = []
+    for pid, p in PLACES.items():
+        lines.append(
+            f"- {pid}: English title {p['title_en']}; German title {p['title_de']}; English "
+            f"description: {p['description_en']}; what it really is: {p['truth']}")
+    return "\n".join(lines)
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang, places=describe(),
+        drafts=json.dumps({pid: d[lang] for pid, d in drafts.items()}, ensure_ascii=False, indent=1),
+        siblings=json.dumps(
+            {i: by_id[i][lang] for i in SIBLINGS if lang in by_id[i]}, ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false",
+         "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral",
+         "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(
+            f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = sorted(next(iter(drafts.values())).keys())
+assert all(sorted(d.keys()) == langs for d in drafts.values()), "drafts cover different languages"
+# A rerun of languages whose session stalled: EW_LANGS="de fr ...", fewer at a time.
+if os.environ.get("EW_LANGS"):
+    langs = [l for l in langs if l in os.environ["EW_LANGS"].split()]
+with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(os.environ.get("EW_WORKERS", "6"))) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

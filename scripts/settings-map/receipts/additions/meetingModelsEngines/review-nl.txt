@@ -1,0 +1,44 @@
+{
+  "meetingLiveWords.change": {
+    "language": "nl",
+    "title": "wijzigen",
+    "words": [],
+    "phrases": [
+      "enginekeuze voor live transcriptie in EnviousMeet openen"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "nl",
+    "title": "huidige engine voor live transcriptie behouden",
+    "words": [],
+    "phrases": [
+      "huidige engine voor live transcriptie in EnviousMeet behouden",
+      "enginekeuze voor live transcriptie van vergaderingen sluiten zonder iets te wijzigen"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "nl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple voor volledige vergadertranscripten in EnviousMeet binnenkort beschikbaar"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "nl",
+    "title": "wijzigen",
+    "words": [],
+    "phrases": [
+      "enginekeuze voor volledige vergadertranscripten in EnviousMeet openen"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "nl",
+    "title": "huidige transcriptie-engine behouden",
+    "words": [],
+    "phrases": [
+      "huidige engine voor volledige vergadertranscripten in EnviousMeet behouden",
+      "enginekeuze voor vergadertranscripten sluiten zonder iets te wijzigen"
+    ]
+  }
+}

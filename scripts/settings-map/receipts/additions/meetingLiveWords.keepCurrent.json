@@ -1,0 +1,238 @@
+{
+ "id": "meetingLiveWords.keepCurrent",
+ "blocks": {
+  "ar": {
+   "title": "الإبقاء على محرك النص المباشر للاجتماع الحالي",
+   "words": [],
+   "phrases": [
+    "إبقاء محرك النص المباشر للاجتماع كما هو",
+    "إغلاق خيارات محرك النص المباشر للاجتماع دون تغيير"
+   ]
+  },
+  "bg": {
+   "title": "запази текущия модел за текста на срещата в реално време",
+   "words": [],
+   "phrases": [
+    "остави същия модел за текста на срещата в реално време в EnviousMeet",
+    "затвори избора на модел за текста на срещата в реално време без промяна"
+   ]
+  },
+  "cs": {
+   "title": "ponechat současný modul živého přepisu schůzky",
+   "words": [],
+   "phrases": [
+    "ponechat současný modul pro živý přepis schůzky v EnviousMeet",
+    "zavřít výběr modulu živého přepisu schůzky beze změny"
+   ]
+  },
+  "da": {
+   "title": "behold den nuværende motor til livetransskription af møder",
+   "words": [],
+   "phrases": [
+    "luk motorvalget til livetransskription i EnviousMeet uden at ændre noget"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "bisherige Engine für das Live-Transkript behalten"
+   ]
+  },
+  "el": {
+   "title": "διατήρηση της τρέχουσας μηχανής ζωντανής απομαγνητοφώνησης",
+   "words": [],
+   "phrases": [
+    "κράτα την ίδια μηχανή για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet",
+    "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή ζωντανής απομαγνητοφώνησης της συνάντησης"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "keep using the same engine for live meeting transcription"
+   ]
+  },
+  "es": {
+   "title": "mantener el motor actual de transcripción en directo",
+   "words": [],
+   "phrases": [
+    "cerrar las opciones sin cambiar el motor de transcripción en directo de reuniones en EnviousMeet"
+   ]
+  },
+  "et": {
+   "title": "säilita praegune reaalajas teksti mootor",
+   "words": [],
+   "phrases": [
+    "jäta koosoleku reaalajas teksti mootor samaks",
+    "sulge koosoleku reaalajas teksti mootorite valik muudatusteta"
+   ]
+  },
+  "fi": {
+   "title": "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+   "words": [],
+   "phrases": [
+    "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+   ]
+  },
+  "fr": {
+   "title": "conserver le moteur actuel de transcription en direct",
+   "words": [],
+   "phrases": [
+    "fermer le choix des moteurs sans changer la transcription en direct des réunions dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदले बिना विकल्प बंद करें"
+   ]
+  },
+  "hr": {
+   "title": "zadrži trenutačni model za prijepis uživo",
+   "words": [],
+   "phrases": [
+    "zadrži isti model za prijepis sastanka uživo",
+    "zatvori odabir bez promjene modela za prijepis sastanka uživo"
+   ]
+  },
+  "hu": {
+   "title": "a megbeszélés élő átírásához használt motor megtartása",
+   "words": [],
+   "phrases": [
+    "maradjon ugyanaz a motor a megbeszélés élő átírásához",
+    "az EnviousMeet élő átírási motorválasztójának bezárása módosítás nélkül"
+   ]
+  },
+  "it": {
+   "title": "mantieni il motore attuale di trascrizione in tempo reale",
+   "words": [],
+   "phrases": [
+    "chiudere la scelta del motore per la trascrizione in tempo reale delle riunioni in EnviousMeet senza cambiarlo"
+   ]
+  },
+  "ja": {
+   "title": "現在のリアルタイム文字起こしエンジンを使う",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしエンジンを変えずに閉じる"
+   ]
+  },
+  "ko": {
+   "title": "현재 실시간 회의 텍스트 엔진 유지",
+   "words": [],
+   "phrases": [
+    "회의 실시간 텍스트 엔진을 바꾸지 않고 닫기"
+   ]
+  },
+  "lt": {
+   "title": "palikti dabartinį susitikimo transkripcijos realiuoju laiku variklį",
+   "words": [],
+   "phrases": [
+    "uždaryti variklių pasirinkimą nekeičiant susitikimo transkripcijos realiuoju laiku variklio"
+   ]
+  },
+  "lv": {
+   "title": "paturēt pašreizējo sapulces reāllaika teksta dzini",
+   "words": [],
+   "phrases": [
+    "atstāt sapulces reāllaika teksta dzini nemainītu",
+    "aizvērt sapulces reāllaika teksta dziņu izvēli bez izmaiņām"
+   ]
+  },
+  "mt": {
+   "title": "żomm il-magna attwali tat-traskrizzjoni diretta",
+   "words": [],
+   "phrases": [
+    "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+   ]
+  },
+  "nl": {
+   "title": "huidige engine voor live transcriptie behouden",
+   "words": [],
+   "phrases": [
+    "huidige engine voor live transcriptie in EnviousMeet behouden",
+    "enginekeuze voor live transcriptie van vergaderingen sluiten zonder iets te wijzigen"
+   ]
+  },
+  "pl": {
+   "title": "zachowaj obecny silnik transkrypcji spotkań na żywo",
+   "words": [],
+   "phrases": [
+    "zamknij wybór silnika transkrypcji spotkania na żywo bez zmian"
+   ]
+  },
+  "pt": {
+   "title": "manter o motor atual de transcrição em tempo real",
+   "words": [],
+   "phrases": [
+    "fechar as opções sem mudar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "păstrează motorul actual de transcriere în timp real",
+   "words": [],
+   "phrases": [
+    "închide opțiunile fără să schimbi motorul de transcriere în timp real a întâlnirii în EnviousMeet"
+   ]
+  },
+  "ru": {
+   "title": "оставить текущий движок расшифровки встречи в реальном времени",
+   "words": [],
+   "phrases": [
+    "закрыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet без изменений"
+   ]
+  },
+  "sk": {
+   "title": "ponechať aktuálny model živého prepisu stretnutia",
+   "words": [],
+   "phrases": [
+    "zavrieť výber modelu pre živý prepis stretnutia v EnviousMeet bez zmeny"
+   ]
+  },
+  "sl": {
+   "title": "ohrani trenutni pogon za prepis sestanka v živo",
+   "words": [],
+   "phrases": [
+    "zapri izbiro pogona za prepis sestanka v živo brez sprememb"
+   ]
+  },
+  "sv": {
+   "title": "behåll nuvarande motor för mötets transkribering i realtid",
+   "words": [],
+   "phrases": [
+    "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "mevcut canlı transkripsiyon motorunu koru",
+   "words": [],
+   "phrases": [
+    "EnviousMeet'te toplantının canlı metin motorunu değiştirmeden seçenekleri kapat"
+   ]
+  },
+  "uk": {
+   "title": "залишити поточний рушій для тексту зустрічі наживо",
+   "words": [],
+   "phrases": [
+    "залишити поточний рушій для тексту зустрічі наживо в EnviousMeet",
+    "закрити вибір рушія для тексту зустрічі наживо без змін"
+   ]
+  },
+  "vi": {
+   "title": "giữ công cụ chép lời trực tiếp cuộc họp hiện tại",
+   "words": [],
+   "phrases": [
+    "giữ nguyên công cụ chép lời trực tiếp cuộc họp trong EnviousMeet",
+    "đóng danh sách công cụ chép lời trực tiếp cuộc họp mà không thay đổi"
+   ]
+  },
+  "zh": {
+   "title": "保留当前会议实时转写引擎",
+   "words": [],
+   "phrases": [
+    "关闭选择列表并保留当前会议实时转写引擎"
+   ]
+  }
+ }
+}

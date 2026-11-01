@@ -1,0 +1,239 @@
+{
+ "id": "meetingTranscriptEngine.apple",
+ "blocks": {
+  "ar": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "محرك Apple لكتابة نص الاجتماع بعد انتهائه قريبًا في EnviousMeet",
+    "لماذا لا يمكن اختيار Apple لتفريغ الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple за пълната транскрипция след срещата в EnviousMeet — очаквайте скоро"
+   ]
+  },
+  "cs": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "připravovaný modul Apple pro úplný přepis schůzek v EnviousMeet",
+    "Apple pro přepis po skončení schůzky zatím není dostupný"
+   ]
+  },
+  "da": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple til mødets fulde transskription i EnviousMeet kommer snart"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "wann kann ich Apple für das Transkript nutzen",
+    "Apple Spracherkennung für Meeting-Transkripte"
+   ]
+  },
+  "el": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet",
+    "πότε θα είναι διαθέσιμη η μηχανή Apple για την πλήρη απομαγνητοφώνηση συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "Apple engine for full meeting transcripts coming soon"
+   ]
+  },
+  "es": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple para la transcripción completa de reuniones en EnviousMeet (próximamente)"
+   ]
+  },
+  "et": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "peagi tulev Apple'i mootor koosoleku lõpliku transkriptsiooni jaoks"
+   ]
+  },
+  "fi": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple-moottori kokouksen lopulliseen litterointiin ei ole vielä saatavilla"
+   ]
+  },
+  "fr": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला Apple इंजन जो जल्द आ रहा है"
+   ]
+  },
+  "hr": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple za potpuni prijepis sastanka uskoro dolazi",
+    "zašto još ne mogu odabrati Apple za prijepis nakon sastanka"
+   ]
+  },
+  "hu": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple motor az EnviousMeetben a megbeszélés utáni átíráshoz",
+    "hamarosan elérhető Apple motor a megbeszélések teljes átiratához"
+   ]
+  },
+  "it": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "motore Apple in arrivo per la trascrizione completa delle riunioni in EnviousMeet",
+    "perché Apple non è ancora selezionabile per trascrivere le riunioni dopo la registrazione in EnviousMeet"
+   ]
+  },
+  "ja": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "会議の全文文字起こし用Appleエンジン（近日公開）"
+   ]
+  },
+  "ko": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "회의 녹취록용 Apple 음성 인식 엔진 출시 예정"
+   ]
+  },
+  "lt": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple variklis susitikimų transkripcijai po įrašymo",
+    "dar nepasiekiamas Apple variklis susitikimų transkripcijai"
+   ]
+  },
+  "lv": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple dzinis pilnam sapulces atšifrējumam",
+    "kad būs pieejams Apple dzinis sapulču atšifrēšanai"
+   ]
+  },
+  "mt": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet għadha mhix disponibbli"
+   ]
+  },
+  "nl": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple voor volledige vergadertranscripten in EnviousMeet binnenkort beschikbaar"
+   ]
+  },
+  "pl": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "silnik Apple do pełnej transkrypcji po spotkaniu — wkrótce"
+   ]
+  },
+  "pt": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "ver a opção Apple para a transcrição completa de reuniões no EnviousMeet",
+    "quando o motor Apple estará disponível para transcrever reuniões no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "motorul Apple pentru transcrierea completă a întâlnirilor în EnviousMeet, disponibil în curând"
+   ]
+  },
+  "ru": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple для полной расшифровки встречи после её завершения в EnviousMeet — скоро"
+   ]
+  },
+  "sk": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "pripravovaný model Apple na úplný prepis stretnutí v EnviousMeet"
+   ]
+  },
+  "sl": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple za celotni prepis sestanka še ni na voljo"
+   ]
+  },
+  "sv": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple för mötestranskript i EnviousMeet kommer snart"
+   ]
+  },
+  "tr": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "EnviousMeet'te toplantı sonrası döküm için yakında gelecek Apple motoru"
+   ]
+  },
+  "uk": {
+   "title": "Apple",
+   "words": [],
+   "phrases": [
+    "Apple для повної стенограми зустрічі в EnviousMeet",
+    "Apple для транскрибування зустрічей ще недоступний"
+   ]
+  },
+  "vi": {
+   "title": "Apple cho bản chép lời sau cuộc họp",
+   "words": [],
+   "phrases": [
+    "Apple để tạo bản chép lời sau cuộc họp trong EnviousMeet sắp ra mắt",
+    "công cụ Apple cho bản chép lời sau cuộc họp chưa chọn được"
+   ]
+  },
+  "zh": {
+   "title": "Apple会后转写引擎（即将推出）",
+   "words": [],
+   "phrases": [
+    "即将推出的Apple会议转写引擎"
+   ]
+  }
+ }
+}

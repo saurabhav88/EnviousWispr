@@ -1,0 +1,49 @@
+Review German Settings-search vocabulary for EnviousWispr, a macOS dictation app with a meeting recorder, EnviousMeet. Each block helps the Settings search box find one place: "words" (short terms) and "phrases" (everyday searches a German user might type). The interface supplies the German title. Use du-form, no dashes of any kind. Established terms: "Live-Transkript" (words shown live while a meeting records), "Transkript-Engine", "Meeting".
+
+The five places, all on EnviousMeet's Models tab:
+- meetingLiveWords.change: the Change button on the Live words card; opens the Apple and Universal engine cards for the live words.
+- meetingLiveWords.keepCurrent: closes those cards and keeps the live words engine.
+- meetingTranscriptEngine.change: the Change button on the Transcript engine card; opens the Parakeet, Whisper and Apple (Coming soon) cards for the engine that writes the full transcript after a meeting.
+- meetingTranscriptEngine.keepCurrent: closes those cards and keeps the transcript engine.
+- meetingTranscriptEngine.apple: the Apple transcript engine card, shown as Coming soon, cannot be picked yet.
+
+Blocks:
+{
+ "meetingLiveWords.change": {
+  "language": "de",
+  "words": [],
+  "phrases": [
+   "Engine-Auswahl für das Live-Transkript im Meeting öffnen"
+  ]
+ },
+ "meetingLiveWords.keepCurrent": {
+  "language": "de",
+  "words": [],
+  "phrases": [
+   "behalte die bisherige Engine für das Live-Transkript im Meeting"
+  ]
+ },
+ "meetingTranscriptEngine.apple": {
+  "language": "de",
+  "words": [],
+  "phrases": [
+   "Apple für Meeting-Transkripte demnächst verfügbar"
+  ]
+ },
+ "meetingTranscriptEngine.change": {
+  "language": "de",
+  "words": [],
+  "phrases": [
+   "Engine-Auswahl für das vollständige Transkript nach dem Meeting öffnen"
+  ]
+ },
+ "meetingTranscriptEngine.keepCurrent": {
+  "language": "de",
+  "words": [],
+  "phrases": [
+   "behalte die bisherige Engine für Meeting-Transkripte"
+  ]
+ }
+}
+
+For each id give "id: OK" or "id: <corrected block as JSON>" with one sentence why. Judge naturalness (would a German user type this), accuracy, and that the five do not compete with each other. Answer only the five lines.

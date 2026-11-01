@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "sl",
+    "title": "spremeni",
+    "words": [],
+    "phrases": [
+      "odpri izbiro pogona za prepis sestanka v živo"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "sl",
+    "title": "ohrani trenutni pogon za prepis sestanka v živo",
+    "words": [],
+    "phrases": [
+      "zapri izbiro pogona za prepis sestanka v živo brez sprememb"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "sl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple za celotni prepis sestanka še ni na voljo"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "sl",
+    "title": "spremeni",
+    "words": [],
+    "phrases": [
+      "odpri izbiro pogona za celotni prepis po sestanku"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "sl",
+    "title": "ohrani trenutni pogon za celotni prepis sestanka",
+    "words": [],
+    "phrases": [
+      "zapri izbiro pogona za celotni prepis sestanka brez sprememb"
+    ]
+  }
+}

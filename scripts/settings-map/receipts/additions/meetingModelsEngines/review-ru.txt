@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "ru",
+    "title": "изменить",
+    "words": [],
+    "phrases": [
+      "открыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "ru",
+    "title": "оставить текущий движок расшифровки встречи в реальном времени",
+    "words": [],
+    "phrases": [
+      "закрыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet без изменений"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "ru",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple для полной расшифровки встречи после её завершения в EnviousMeet — скоро"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "ru",
+    "title": "изменить",
+    "words": [],
+    "phrases": [
+      "открыть выбор движка для полной расшифровки встречи после её завершения в EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "ru",
+    "title": "оставить текущий движок полной расшифровки встреч",
+    "words": [],
+    "phrases": [
+      "закрыть выбор движка полной расшифровки встреч в EnviousMeet без изменений"
+    ]
+  }
+}

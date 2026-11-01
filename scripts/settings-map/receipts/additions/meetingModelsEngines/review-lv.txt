@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "lv",
+    "title": "mainīt",
+    "words": [],
+    "phrases": [
+      "atvērt sapulces reāllaika teksta dziņu izvēli"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "lv",
+    "title": "paturēt pašreizējo sapulces reāllaika teksta dzini",
+    "words": [],
+    "phrases": [
+      "atstāt sapulces reāllaika teksta dzini nemainītu",
+      "aizvērt sapulces reāllaika teksta dziņu izvēli bez izmaiņām"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "lv",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple dzinis pilnam sapulces atšifrējumam",
+      "kad būs pieejams Apple dzinis sapulču atšifrēšanai"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "lv",
+    "title": "mainīt",
+    "words": [],
+    "phrases": [
+      "atvērt pilna sapulces atšifrējuma dziņu izvēli"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "lv",
+    "title": "paturēt pašreizējo sapulces atšifrējuma dzini",
+    "words": [],
+    "phrases": [
+      "atstāt pilna sapulces atšifrējuma dzini nemainītu",
+      "aizvērt sapulces atšifrējuma dziņu izvēli bez izmaiņām"
+    ]
+  }
+}

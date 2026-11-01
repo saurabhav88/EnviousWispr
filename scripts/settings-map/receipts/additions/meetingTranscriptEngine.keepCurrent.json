@@ -1,0 +1,238 @@
+{
+ "id": "meetingTranscriptEngine.keepCurrent",
+ "blocks": {
+  "ar": {
+   "title": "الإبقاء على محرك تفريغ الاجتماعات الحالي",
+   "words": [],
+   "phrases": [
+    "إبقاء محرك كتابة نص الاجتماع بعد انتهائه كما هو",
+    "إغلاق خيارات محرك تفريغ الاجتماعات دون تغيير"
+   ]
+  },
+  "bg": {
+   "title": "запази текущия модел за пълната транскрипция след срещата",
+   "words": [],
+   "phrases": [
+    "остави същия модел за пълната транскрипция след срещата в EnviousMeet",
+    "затвори избора на модел за пълната транскрипция след срещата без промяна"
+   ]
+  },
+  "cs": {
+   "title": "ponechat současný modul přepisu schůzek",
+   "words": [],
+   "phrases": [
+    "ponechat současný modul pro přepis po skončení schůzky v EnviousMeet",
+    "zavřít výběr modulu pro úplný přepis schůzky beze změny"
+   ]
+  },
+  "da": {
+   "title": "behold den nuværende motor til mødets fulde transskription",
+   "words": [],
+   "phrases": [
+    "luk motorvalget til mødets fulde transskription i EnviousMeet uden at ændre noget"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "bisherige Engine für das Transkript nach dem Meeting behalten"
+   ]
+  },
+  "el": {
+   "title": "διατήρηση της τρέχουσας μηχανής απομαγνητοφώνησης",
+   "words": [],
+   "phrases": [
+    "κράτα την ίδια μηχανή για την πλήρη απομαγνητοφώνηση συναντήσεων στο EnviousMeet",
+    "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή για την πλήρη απομαγνητοφώνηση της συνάντησης"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "keep using the same engine for meeting transcripts"
+   ]
+  },
+  "es": {
+   "title": "mantener el motor actual de transcripción de reuniones",
+   "words": [],
+   "phrases": [
+    "cerrar las opciones sin cambiar el motor de transcripción completa de reuniones en EnviousMeet"
+   ]
+  },
+  "et": {
+   "title": "säilita praegune transkriptsioonimootor",
+   "words": [],
+   "phrases": [
+    "jäta koosoleku lõpliku transkriptsiooni mootor samaks",
+    "sulge koosoleku lõpliku transkriptsiooni mootorite valik muudatusteta"
+   ]
+  },
+  "fi": {
+   "title": "säilytä nykyinen litterointimoottori",
+   "words": [],
+   "phrases": [
+    "käytä edelleen samaa moottoria kokouksen lopulliseen litterointiin"
+   ]
+  },
+  "fr": {
+   "title": "conserver le moteur de transcription actuel",
+   "words": [],
+   "phrases": [
+    "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "मौजूदा ट्रांसक्रिप्ट इंजन रखें",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदले बिना विकल्प बंद करें"
+   ]
+  },
+  "hr": {
+   "title": "zadrži trenutačni model za prijepis sastanka",
+   "words": [],
+   "phrases": [
+    "zadrži isti model za potpuni prijepis nakon sastanka",
+    "zatvori odabir bez promjene modela za potpuni prijepis sastanka"
+   ]
+  },
+  "hu": {
+   "title": "a megbeszélés teljes átiratához használt motor megtartása",
+   "words": [],
+   "phrases": [
+    "maradjon ugyanaz a motor a megbeszélés utáni átíráshoz",
+    "a teljes megbeszélés átiratához tartozó motorválasztó bezárása módosítás nélkül"
+   ]
+  },
+  "it": {
+   "title": "mantieni il motore attuale di trascrizione delle riunioni",
+   "words": [],
+   "phrases": [
+    "chiudere la scelta del motore per la trascrizione completa delle riunioni in EnviousMeet senza cambiarlo"
+   ]
+  },
+  "ja": {
+   "title": "現在の全文文字起こしエンジンを使う",
+   "words": [],
+   "phrases": [
+    "会議の全文文字起こしエンジンを変えずに閉じる"
+   ]
+  },
+  "ko": {
+   "title": "현재 회의 녹취록 엔진 유지",
+   "words": [],
+   "phrases": [
+    "회의 녹취록 엔진을 바꾸지 않고 닫기"
+   ]
+  },
+  "lt": {
+   "title": "palikti dabartinį susitikimų transkripcijos variklį",
+   "words": [],
+   "phrases": [
+    "uždaryti variklių pasirinkimą nekeičiant susitikimų transkripcijos variklio"
+   ]
+  },
+  "lv": {
+   "title": "paturēt pašreizējo sapulces atšifrējuma dzini",
+   "words": [],
+   "phrases": [
+    "atstāt pilna sapulces atšifrējuma dzini nemainītu",
+    "aizvērt sapulces atšifrējuma dziņu izvēli bez izmaiņām"
+   ]
+  },
+  "mt": {
+   "title": "żomm il-magna attwali tat-traskrizzjoni tal-laqgħat",
+   "words": [],
+   "phrases": [
+    "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+   ]
+  },
+  "nl": {
+   "title": "huidige transcriptie-engine behouden",
+   "words": [],
+   "phrases": [
+    "huidige engine voor volledige vergadertranscripten in EnviousMeet behouden",
+    "enginekeuze voor vergadertranscripten sluiten zonder iets te wijzigen"
+   ]
+  },
+  "pl": {
+   "title": "zachowaj obecny silnik transkrypcji spotkań",
+   "words": [],
+   "phrases": [
+    "zamknij wybór silnika pełnej transkrypcji po spotkaniu bez zmian"
+   ]
+  },
+  "pt": {
+   "title": "manter o motor de transcrição atual",
+   "words": [],
+   "phrases": [
+    "fechar as opções sem mudar o motor da transcrição completa de reuniões no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "păstrează motorul actual de transcriere a întâlnirilor",
+   "words": [],
+   "phrases": [
+    "închide opțiunile fără să schimbi motorul pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+   ]
+  },
+  "ru": {
+   "title": "оставить текущий движок полной расшифровки встреч",
+   "words": [],
+   "phrases": [
+    "закрыть выбор движка полной расшифровки встреч в EnviousMeet без изменений"
+   ]
+  },
+  "sk": {
+   "title": "ponechať aktuálny model prepisu stretnutí",
+   "words": [],
+   "phrases": [
+    "zavrieť výber modelu na úplný prepis stretnutia v EnviousMeet bez zmeny"
+   ]
+  },
+  "sl": {
+   "title": "ohrani trenutni pogon za celotni prepis sestanka",
+   "words": [],
+   "phrases": [
+    "zapri izbiro pogona za celotni prepis sestanka brez sprememb"
+   ]
+  },
+  "sv": {
+   "title": "behåll nuvarande motor för mötestranskript",
+   "words": [],
+   "phrases": [
+    "stäng motorvalen och behåll samma motor för transkribering efter mötet i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "mevcut toplantı dökümü motorunu koru",
+   "words": [],
+   "phrases": [
+    "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmeden seçenekleri kapat"
+   ]
+  },
+  "uk": {
+   "title": "залишити поточний рушій транскрибування зустрічей",
+   "words": [],
+   "phrases": [
+    "залишити поточний рушій для повної стенограми зустрічі в EnviousMeet",
+    "закрити вибір рушія транскрибування зустрічей без змін"
+   ]
+  },
+  "vi": {
+   "title": "giữ công cụ tạo bản chép lời sau cuộc họp hiện tại",
+   "words": [],
+   "phrases": [
+    "giữ nguyên công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet",
+    "đóng danh sách công cụ tạo bản chép lời sau cuộc họp mà không thay đổi"
+   ]
+  },
+  "zh": {
+   "title": "保留当前会后转写引擎",
+   "words": [],
+   "phrases": [
+    "关闭选择列表并保留当前会后转写引擎"
+   ]
+  }
+ }
+}

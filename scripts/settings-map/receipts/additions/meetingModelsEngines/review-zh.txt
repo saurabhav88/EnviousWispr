@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "zh",
+    "title": "更换会议实时转写引擎",
+    "words": [],
+    "phrases": [
+      "打开会议实时转写引擎选择列表"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "zh",
+    "title": "保留当前会议实时转写引擎",
+    "words": [],
+    "phrases": [
+      "关闭选择列表并保留当前会议实时转写引擎"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "zh",
+    "title": "Apple会后转写引擎（即将推出）",
+    "words": [],
+    "phrases": [
+      "即将推出的Apple会议转写引擎"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "zh",
+    "title": "更换会后转写引擎",
+    "words": [],
+    "phrases": [
+      "打开会后完整会议转写的引擎选择列表"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "zh",
+    "title": "保留当前会后转写引擎",
+    "words": [],
+    "phrases": [
+      "关闭选择列表并保留当前会后转写引擎"
+    ]
+  }
+}

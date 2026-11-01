@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "pl",
+    "title": "zmień",
+    "words": [],
+    "phrases": [
+      "otwórz wybór silnika transkrypcji spotkania na żywo w EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "pl",
+    "title": "zachowaj obecny silnik transkrypcji spotkań na żywo",
+    "words": [],
+    "phrases": [
+      "zamknij wybór silnika transkrypcji spotkania na żywo bez zmian"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "pl",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "silnik Apple do pełnej transkrypcji po spotkaniu — wkrótce"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "pl",
+    "title": "zmień",
+    "words": [],
+    "phrases": [
+      "otwórz wybór silnika pełnej transkrypcji po spotkaniu w EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "pl",
+    "title": "zachowaj obecny silnik transkrypcji spotkań",
+    "words": [],
+    "phrases": [
+      "zamknij wybór silnika pełnej transkrypcji po spotkaniu bez zmian"
+    ]
+  }
+}

@@ -131,19 +131,9 @@ struct MeetingsView: View {
     }
   }
 
-  /// #3973 PR B: the speech model choices (founder 2026-10-27): live words and the transcript's
-  /// language in one section (#4105). Summaries moved to their own tab (#4287).
-  private var modelsTab: some View {
-    SettingsContentView {
-      VStack(alignment: .leading, spacing: 16) {
-        BrandedSection {
-          BrandedRow { MeetingLiveWordsRow() }
-          BrandedRow { MeetingTranscriptEngineRow() }
-          BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
-        }
-      }
-    }
-  }
+  /// #3973 PR B: the speech model choices (founder 2026-10-27). #4287 PR 2: engine cards like
+  /// dictation's Live Preview and Engine tabs; summaries have their own tab.
+  private var modelsTab: some View { MeetingModelsTab() }
 
   private var callAppsTab: some View {
     SettingsContentView {
@@ -362,9 +352,43 @@ enum MeetingsCopy {
   static let keepCurrentSummaryEngine = LocalizedStringResource(
     "Keep current summary engine",
     comment: "EnviousMeet Summaries tab: closes the engine choices without changing the engine.")
-  static let summaryEngineComingSoon = LocalizedStringResource(
+  // #4287 PR 2: the Models tab's engine cards.
+  static let changeLiveWordsEngine = LocalizedStringResource(
+    "Change live words engine",
+    comment: "EnviousMeet Models tab: VoiceOver name of the Change button for the live words engine.")
+  static let keepCurrentLiveWordsEngine = LocalizedStringResource(
+    "Keep current live words engine",
+    comment: "EnviousMeet Models tab: closes the live words engine choices without changing the engine.")
+  static let changeTranscriptEngine = LocalizedStringResource(
+    "Change transcript engine",
+    comment: "EnviousMeet Models tab: VoiceOver name of the Change button for the transcript engine.")
+  static let keepCurrentTranscriptEngine = LocalizedStringResource(
+    "Keep current transcript engine",
+    comment: "EnviousMeet Models tab: closes the transcript engine choices without changing the engine.")
+  static let liveWordsLanguageLabel = LocalizedStringResource(
+    "Language",
+    comment: "EnviousMeet Models tab, Live words card: the label before the live words language menu.")
+  static let liveWordsAppleTagline = LocalizedStringResource(
+    "Uses Apple's speech recognition. Some languages need an Apple language download. Needs macOS 26.",
+    comment: "EnviousMeet Models tab, Live words: the Apple engine card's line. Apple is a product name.")
+  static let liveWordsUniversalTagline = LocalizedStringResource(
+    "Works on macOS 14 and later, in more languages. Needs a download before first use.",
+    comment: "EnviousMeet Models tab, Live words: the Universal engine card's line. Universal is the engine's name.")
+  static let liveWordsAppleNeedsMacOS = LocalizedStringResource(
+    "Not on this Mac. Needs macOS 26.",
+    comment: "EnviousMeet Models tab, Live words: the Apple engine card when this Mac cannot run it.")
+  static let transcriptParakeetTagline = LocalizedStringResource(
+    "Pick this for meetings in English and European languages.",
+    comment: "EnviousMeet Models tab, Transcript engine: when to pick Parakeet.")
+  static let transcriptWhisperTagline = LocalizedStringResource(
+    "Pick this for meetings in other languages or with tough audio.",
+    comment: "EnviousMeet Models tab, Transcript engine: when to pick Whisper Large v3 Turbo.")
+  static let transcriptAppleTagline = LocalizedStringResource(
+    "Uses Apple's speech recognition on this Mac.",
+    comment: "EnviousMeet Models tab, Transcript engine: the Apple engine card's line. Apple is a product name.")
+  static let engineComingSoon = LocalizedStringResource(
     "Coming soon",
-    comment: "EnviousMeet Summaries tab: an engine that cannot write summaries yet and cannot be picked.")
+    comment: "EnviousMeet Summaries and Models tabs: an engine card that is not ready yet and cannot be picked.")
   static let summaryEngineCantSummarize = LocalizedStringResource(
     "Can't write summaries",
     comment: "EnviousMeet Summaries tab: status of a chosen engine or model that cannot write summaries.")

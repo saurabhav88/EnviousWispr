@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "ro",
+    "title": "schimbă",
+    "words": [],
+    "phrases": [
+      "arată opțiunile de motor pentru transcrierea în timp real a întâlnirii în EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "ro",
+    "title": "păstrează motorul actual de transcriere în timp real",
+    "words": [],
+    "phrases": [
+      "închide opțiunile fără să schimbi motorul de transcriere în timp real a întâlnirii în EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "ro",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "motorul Apple pentru transcrierea completă a întâlnirilor în EnviousMeet, disponibil în curând"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "ro",
+    "title": "schimbă",
+    "words": [],
+    "phrases": [
+      "arată opțiunile de motor pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "ro",
+    "title": "păstrează motorul actual de transcriere a întâlnirilor",
+    "words": [],
+    "phrases": [
+      "închide opțiunile fără să schimbi motorul pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+    ]
+  }
+}

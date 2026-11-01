@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "sv",
+    "title": "ändra",
+    "words": [],
+    "phrases": [
+      "öppna motorvalen för transkribering i realtid i EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "sv",
+    "title": "behåll nuvarande motor för mötets transkribering i realtid",
+    "words": [],
+    "phrases": [
+      "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "sv",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple för mötestranskript i EnviousMeet kommer snart"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "sv",
+    "title": "ändra",
+    "words": [],
+    "phrases": [
+      "öppna motorvalen för transkribering efter mötet i EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "sv",
+    "title": "behåll nuvarande motor för mötestranskript",
+    "words": [],
+    "phrases": [
+      "stäng motorvalen och behåll samma motor för transkribering efter mötet i EnviousMeet"
+    ]
+  }
+}
