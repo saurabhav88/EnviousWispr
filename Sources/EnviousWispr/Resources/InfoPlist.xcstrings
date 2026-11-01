@@ -44,13 +44,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr reads your calendar events to name your meetings after the event at that time. It never changes your calendar, and your events stay on your Mac."
+            "value" : "EnviousWispr reads the calendar event at the time a meeting starts to name the meeting and note who was invited. It never changes your calendar. What it saves stays with the meeting on your Mac."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousWispr liest deine Kalendertermine, um deine Meetings nach dem Termin zu dieser Zeit zu benennen. Es ändert deinen Kalender nie, und deine Termine bleiben auf deinem Mac."
+            "value" : "EnviousWispr liest den Kalendertermin zur Startzeit eines Meetings, um das Meeting zu benennen und festzuhalten, wer eingeladen war. Es ändert deinen Kalender nie. Was es speichert, bleibt beim Meeting auf deinem Mac."
           }
         }
       }

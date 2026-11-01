@@ -718,4 +718,194 @@ struct MeetingDocumentsOwnerTests {
         meetingID: other.id, rowID: row.id, documents: coordinator.documents,
         transcripts: rig.coordinator) == .notesUnreadable)
   }
+
+  // MARK: - Meeting facts (#4286)
+
+  /// An owner over the harness store, with its own log and an optional parked read result.
+  static func factsOwner(
+    _ harness: Harness, logs: LogBox = LogBox(), readGate: DebounceGate? = nil
+  ) -> MeetingDocumentsOwner {
+    MeetingDocumentsOwner(
+      writer: MeetingFileWriter(store: harness.store, writeRecord: { try $0.save($1) }),
+      dependencies: .init(
+        debounce: {}, log: { logs.lines.append($0) },
+        afterDocumentsRead: { await readGate?.wait() }))
+  }
+
+  @MainActor
+  final class LogBox {
+    var lines: [String] = []
+  }
+
+  static func invitee(_ name: String?, _ email: String?, status: AttendeeFact.Status = .accepted)
+    -> MeetingFact
+  {
+    AttendeeFact(
+      name: name, email: email, role: .required, status: status, isSelf: false,
+      isOrganizer: false
+    ).fact(source: MeetingFact.eventKitSource, capturedAt: Date(timeIntervalSinceReferenceDate: 1))
+  }
+
+  static func readyMeeting(_ harness: Harness) throws -> MeetingRecord {
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    record.state = .ready
+    try harness.store.create(record)
+    return record
+  }
+
+  @Test("saved facts load with the documents; absent or unreadable facts never fail them")
+  func factsLoadWithDocuments() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let withFacts = try Self.readyMeeting(harness)
+    try harness.store.appendFacts([Self.invitee("Ana", "ana@acme.com")], meeting: withFacts.id)
+    _ = try harness.store.saveNotes("agenda", revision: 1, meeting: withFacts.id)
+    #expect(documents.context(withFacts.id) == nil, "reading never starts a load")
+    try #require(await documents.load(withFacts.id))
+    #expect(documents.context(withFacts.id)?.attendees.map(\.name) == ["Ana"])
+    #expect(documents.notes(withFacts.id) == "agenda")
+
+    let absent = try Self.readyMeeting(harness)
+    try #require(await documents.load(absent.id))
+    #expect(documents.context(absent.id) == nil)
+
+    let damaged = try Self.readyMeeting(harness)
+    let damagedBytes = Data("{nope".utf8)
+    try damagedBytes.write(to: harness.store.contextURL(for: damaged.id))
+    try #require(await documents.load(damaged.id))
+    #expect(documents.context(damaged.id) == nil)
+    #expect(try Data(contentsOf: harness.store.contextURL(for: damaged.id)) == damagedBytes)
+    #expect(documents.context(withFacts.id)?.attendees.count == 1, "other meetings unaffected")
+  }
+
+  @Test("facts save before any read, keep unknown facts, and leave notes unread and untouched")
+  func recordBeforeLoad() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let record = try Self.readyMeeting(harness)
+    let existing = """
+      {"formatVersion": 1, "facts": [{"kind": "futureThing", "source": "x", "capturedAt": 0, "value": {"k": [1]}}]}
+      """
+    try Data(existing.utf8).write(to: harness.store.contextURL(for: record.id))
+
+    #expect(await documents.recordFacts(record.id, [Self.invitee("Dana Lee", "dana@acme.com")]))
+    let context = try #require(documents.context(record.id))
+    #expect(context.facts.map(\.kind) == ["futureThing", "attendee"])
+    #expect(documents.loadState(record.id) == .notLoaded, "unread notes are not marked read")
+    #expect(documents.notes(record.id) == "")
+    #expect(documents.manifest(record.id) == MeetingDocumentsManifest())
+    #expect(documents.hasPendingWork == false)
+    #expect(documents.invitedSearchTerms(record.id) == ["Dana Lee", "dana@acme.com", "acme.com"])
+  }
+
+  @Test("search terms are names, emails and domains; declined people stay; one email is one person")
+  func searchTerms() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let record = try Self.readyMeeting(harness)
+    #expect(
+      await documents.recordFacts(
+        record.id,
+        [
+          Self.invitee("Dana Lee", "Dana@Acme.com"),
+          Self.invitee("Kim", nil),
+          Self.invitee("Bo", "bo@other.org", status: .declined),
+          Self.invitee(nil, "dana@acme.com"),
+        ]))
+    #expect(
+      documents.invitedSearchTerms(record.id)
+        == ["Dana Lee", "dana@acme.com", "acme.com", "Kim", "Bo", "bo@other.org", "other.org"])
+    let other = try Self.readyMeeting(harness)
+    #expect(documents.invitedSearchTerms(other.id) == [])
+  }
+
+  @Test("a failed save returns false, publishes nothing, and logs only the error type")
+  func failedSave() async throws {
+    let harness = try Harness()
+    let logs = LogBox()
+    let documents = Self.factsOwner(harness, logs: logs)
+    let record = try Self.readyMeeting(harness)
+    try Data("{nope".utf8).write(to: harness.store.contextURL(for: record.id))
+    #expect(await documents.recordFacts(record.id, [Self.invitee("Dana Lee", "dana@acme.com")]) == false)
+    #expect(documents.context(record.id) == nil)
+    #expect(documents.invitedSearchTerms(record.id) == [])
+    #expect(documents.hasPendingWork == false)
+    #expect(logs.lines.contains { $0.hasPrefix("meeting facts save failed error=") })
+    #expect(logs.lines.contains { $0.contains("Dana") || $0.contains("acme") } == false)
+  }
+
+  @Test("a deleted meeting refuses facts before any file work, and a deletion marker refuses too")
+  func refusals() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let forgotten = try Self.readyMeeting(harness)
+    documents.forget(forgotten.id)
+    let hold = Self.holdFileQueue()
+    // Answered while the file queue is held: nothing was submitted to it.
+    #expect(await documents.recordFacts(forgotten.id, [Self.invitee("Ana", nil)]) == false)
+    hold.signal()
+    #expect(documents.entries[forgotten.id] == nil)
+    #expect(documents.invitedSearchTerms(forgotten.id) == [])
+    #expect(FileManager.default.fileExists(atPath: harness.store.contextURL(for: forgotten.id).path) == false)
+
+    var marked = try Self.readyMeeting(harness)
+    marked.deletionRequested = true
+    try harness.store.save(marked)
+    #expect(await documents.recordFacts(marked.id, [Self.invitee("Ana", nil)]) == false)
+    #expect(FileManager.default.fileExists(atPath: harness.store.contextURL(for: marked.id).path) == false)
+    #expect(documents.hasPendingWork == false)
+  }
+
+  @Test("a save admitted before a deletion is counted while held and publishes nothing after it")
+  func saveThenForget() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let record = try Self.readyMeeting(harness)
+    let hold = Self.holdFileQueue()
+    let save = Task { await documents.recordFacts(record.id, [Self.invitee("Ana", "ana@acme.com")]) }
+    await MeetingCoordinatorTests.eventually("save admitted", drainFiles: false) {
+      documents.hasPendingWork
+    }
+    documents.forget(record.id)
+    hold.signal()
+    #expect(await save.value == false)
+    #expect(documents.entries[record.id] == nil)
+    #expect(documents.invitedSearchTerms(record.id) == [])
+    #expect(documents.hasPendingWork == false)
+  }
+
+  @Test("a read held past a deletion publishes no facts")
+  func readThenForget() async throws {
+    let harness = try Harness()
+    let documents = Self.factsOwner(harness)
+    let record = try Self.readyMeeting(harness)
+    try harness.store.appendFacts([Self.invitee("Ana", nil)], meeting: record.id)
+    let hold = Self.holdFileQueue()
+    let load = Task { await documents.load(record.id) }
+    await MeetingCoordinatorTests.eventually("read admitted", drainFiles: false) {
+      documents.loadState(record.id) == .loading
+    }
+    documents.forget(record.id)
+    hold.signal()
+    _ = await load.value
+    #expect(documents.entries[record.id] == nil)
+    #expect(documents.context(record.id) == nil)
+  }
+
+  @Test("a read that started before a fact save never erases the saved facts")
+  func olderReadKeepsSavedFacts() async throws {
+    let harness = try Harness()
+    let gate = DebounceGate()
+    defer { gate.open() }
+    let documents = Self.factsOwner(harness, readGate: gate)
+    let record = try Self.readyMeeting(harness)
+    // The read finds no facts on disk, then parks before applying its result.
+    let load = Task { await documents.load(record.id) }
+    await MeetingCoordinatorTests.eventually("read parked") { gate.waiting == 1 }
+    #expect(await documents.recordFacts(record.id, [Self.invitee("Ana", "ana@acme.com")]))
+    gate.open()
+    #expect(await load.value)
+    #expect(documents.context(record.id)?.attendees.map(\.name) == ["Ana"])
+    #expect(documents.invitedSearchTerms(record.id) == ["Ana", "ana@acme.com", "acme.com"])
+  }
 }

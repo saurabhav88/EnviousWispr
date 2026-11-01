@@ -33,6 +33,9 @@ final class MeetingDocumentsOwner {
     var afterGeneratedWrite: @MainActor () async -> Void = {}
     /// Nothing in the app; tests park an edit-save result before it updates the draft.
     var afterEditWrite: @MainActor () async -> Void = {}
+    /// Nothing in the app; tests park a documents read's result before it is applied, so a
+    /// fact save can finish in between (#4286).
+    var afterDocumentsRead: @MainActor () async -> Void = {}
   }
 
   enum LoadState: Equatable {
@@ -62,6 +65,8 @@ final class MeetingDocumentsOwner {
     var notesSaveFailed = false
     /// A summary-edit save failed; stays true until the current draft is fully saved (#4075 G3).
     var summarySaveFailed = false
+    /// The meeting's saved facts (#4286), as last read or written; nil when none were read.
+    var context: MeetingContext?
   }
 
   /// What `ensureNotesDurable` found.
@@ -105,6 +110,25 @@ final class MeetingDocumentsOwner {
   func summary(_ meetingID: UUID) -> String? { entries[meetingID]?.summary }
   func manifest(_ meetingID: UUID) -> MeetingDocumentsManifest? { entries[meetingID]?.manifest }
   func loadState(_ meetingID: UUID) -> LoadState { entries[meetingID]?.load ?? .notLoaded }
+
+  /// The meeting's saved facts as this session holds them (#4286); nil when none were read yet,
+  /// the file is absent or unreadable, or the meeting was deleted. Never starts a read.
+  func context(_ meetingID: UUID) -> MeetingContext? {
+    guard !forgotten.contains(meetingID) else { return nil }
+    return entries[meetingID]?.context
+  }
+
+  /// What History search matches a meeting's invited people by (#4286): each invited person's
+  /// name, email and email domain, in invite order, from the held facts only. Empty before the
+  /// facts are read and for a deleted meeting.
+  func invitedSearchTerms(_ meetingID: UUID) -> [String] {
+    guard let context = context(meetingID) else { return [] }
+    var terms: [String] = []
+    for person in MeetingParticipants.resolve(attendees: context.attendees) {
+      terms.append(contentsOf: [person.name, person.email, person.emailDomain].compactMap { $0 })
+    }
+    return terms
+  }
 
   /// Whether the notes box may take typing: only once the saved notes are read and shown, so
   /// nobody types into an apparently empty box over notes not yet on screen (Codex C8 r1).
@@ -166,10 +190,30 @@ final class MeetingDocumentsOwner {
   }
 
   private func readFromDisk(_ meetingID: UUID, generation gen: Int) async {
-    let result = await perform(meetingID, counted: false) {
-      try $0.loadDocuments(meeting: meetingID)
+    // #4286: the facts are read in the same file operation; an absent or unreadable
+    // `context.json` reads as no facts and never fails the documents.
+    let read = await perform(meetingID, counted: false) {
+      store -> (Result<MeetingStore.LoadedDocuments, any Error>, MeetingContext?) in
+      let context: MeetingContext?
+      if case .loaded(let loaded) = store.loadContext(meeting: meetingID) {
+        context = loaded
+      } else {
+        context = nil
+      }
+      return (Result { try store.loadDocuments(meeting: meetingID) }, context)
     }
+    await deps.afterDocumentsRead()
     guard generation(meetingID) == gen, var entry = entries[meetingID] else { return }
+    let result: Result<MeetingStore.LoadedDocuments, any Error>
+    switch read {
+    case .failure(let error):
+      result = .failure(error)
+    case .success(let (documents, context)):
+      result = documents
+      // A fact save that finished while this read was on its way already holds the newest
+      // saved facts (it rereads the file after appending): never replace them with this read.
+      if entry.context == nil { entry.context = context }
+    }
     switch result {
     case .failure(let error):
       deps.log("meeting documents unreadable error=\(type(of: error))")
@@ -529,6 +573,35 @@ final class MeetingDocumentsOwner {
     guard temporaryFences[meetingID] == token else { return }
     temporaryFences[meetingID] = nil
     forgotten.remove(meetingID)
+  }
+
+  // MARK: - Facts
+
+  /// Saves `facts` after the meeting's existing ones (#4286), through the meeting file queue,
+  /// and holds the saved file's facts. True only when this save succeeded and the meeting was
+  /// not deleted meanwhile. A deleted meeting is refused before any file work; a save that
+  /// finishes after a deletion publishes nothing. Needs no earlier documents read.
+  @discardableResult
+  func recordFacts(_ meetingID: UUID, _ facts: [MeetingFact]) async -> Bool {
+    guard !forgotten.contains(meetingID) else { return false }
+    let gen = generation(meetingID)
+    let result = await perform(meetingID) { store -> MeetingContext? in
+      try store.appendFacts(facts, meeting: meetingID)
+      if case .loaded(let saved) = store.loadContext(meeting: meetingID) { return saved }
+      return nil
+    }
+    guard generation(meetingID) == gen, !forgotten.contains(meetingID) else { return false }
+    switch result {
+    case .failure(let error):
+      deps.log("meeting facts save failed error=\(type(of: error))")
+      return false
+    case .success(nil):
+      deps.log("meeting facts reread failed")
+      return false
+    case .success(let saved?):
+      entries[meetingID, default: Entry()].context = saved
+      return true
+    }
   }
 
   /// The meeting was deleted: its drafts and pending work go with it, and nothing on its way

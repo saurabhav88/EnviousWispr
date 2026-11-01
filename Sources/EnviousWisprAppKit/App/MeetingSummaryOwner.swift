@@ -45,6 +45,9 @@ final class MeetingSummaryOwner {
     /// #4148: true only for known, ready inputs with no visible transcript text. False when
     /// the meeting is not ready, gone, or its facts cannot be read.
     var hasNoWords: @MainActor (UUID) -> Bool
+    /// #4286: what the summary is told about the meeting (its record's start, recorded length
+    /// and call app, and its saved calendar facts). Nil when the meeting is not known.
+    var promptFacts: @MainActor (UUID) -> MeetingPromptFacts? = { _ in nil }
     /// True when a local model call may start: dictation idle, no meeting engine unit running,
     /// no final pass due.
     var isLocalTurn: @MainActor () -> Bool
@@ -58,14 +61,14 @@ final class MeetingSummaryOwner {
     /// The summary writer; the real one in the app, a fake in tests.
     var write:
       @MainActor (
-        _ transcript: String, _ notes: String, _ window: MeetingSummary.Window,
-        _ timeoutSeconds: Double, _ admit: @escaping MeetingSummary.Admit,
-        _ complete: @escaping MeetingSummary.Complete
+        _ transcript: String, _ notes: String, _ facts: String,
+        _ window: MeetingSummary.Window, _ timeoutSeconds: Double,
+        _ admit: @escaping MeetingSummary.Admit, _ complete: @escaping MeetingSummary.Complete
       ) async throws -> MeetingSummary.Written = {
-        transcript, notes, window, timeout, admit, complete in
+        transcript, notes, facts, window, timeout, admit, complete in
         try await MeetingSummary.write(
-          transcript: transcript, notes: notes, window: window, callTimeoutSeconds: timeout,
-          admit: admit, complete: complete)
+          transcript: transcript, notes: notes, facts: facts, window: window,
+          callTimeoutSeconds: timeout, admit: admit, complete: complete)
       }
     /// Time limits for one model call. Policies until R51's measurements: a local model writes
     /// 1,500 tokens in about a minute on an M-series Mac, a hosted reasoning model in under two.
@@ -242,6 +245,9 @@ final class MeetingSummaryOwner {
   private struct Inputs: Equatable {
     let transcript: VisibleTranscript
     let notes: String
+    /// #4286: the rendered facts block ("" when none), frozen for the attempt: the exact text
+    /// the summary is told and `summaryInputs.contextSHA256` records.
+    let factsBlock: String
     let summaryInputs: SummaryInputs
   }
 
@@ -449,7 +455,7 @@ final class MeetingSummaryOwner {
     let answer: MeetingSummary.Written
     do {
       answer = try await deps.write(
-        inputs.transcript.text, inputs.notes, prepared.window,
+        inputs.transcript.text, inputs.notes, inputs.factsBlock, prepared.window,
         local ? deps.localCallTimeoutSeconds : deps.hostedCallTimeoutSeconds, admit, complete)
     } catch let failure as MeetingSummary.Failure {
       if local { lane.endSummaryCall() }
@@ -532,8 +538,12 @@ final class MeetingSummaryOwner {
     }
     let notes = documents.notes(meetingID)
     let hashes = fingerprint(meetingID, transcript)
+    // #4286: the facts block exactly as the summary is told it, so a changed fact makes the
+    // summary out of date.
+    let factsBlock = deps.promptFacts(meetingID).map { MeetingSummary.factsBlock($0) } ?? ""
+    let factsHash = factsBlock.isEmpty ? nil : MeetingDocumentHash.sha256(factsBlock)
     return Inputs(
-      transcript: transcript, notes: notes,
+      transcript: transcript, notes: notes, factsBlock: factsBlock,
       summaryInputs: SummaryInputs(
         transcriptSHA256: hashes.textSHA,
         notesRevision: documents.manifest(meetingID)?.notes?.revision ?? 0,
@@ -542,7 +552,7 @@ final class MeetingSummaryOwner {
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model),
-        transcriptAttemptID: transcript.transcriptAttemptID))
+        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash))
   }
 
   /// #4148: true when the meeting is ready and has no visible transcript text, so the Summary

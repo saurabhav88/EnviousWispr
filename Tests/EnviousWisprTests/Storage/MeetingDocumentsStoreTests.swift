@@ -238,6 +238,8 @@ struct MeetingDocumentsStoreTests {
     #expect(loaded.manifest.summary?.inputs?.providerID == "appleIntelligence")
     #expect(loaded.manifest.summary?.writtenInParts == nil)
     #expect(loaded.repaired == false)
+    // #4286: a manifest from before the facts fingerprint decodes with none.
+    #expect(loaded.manifest.summary?.inputs?.contextSHA256 == nil)
   }
 
   @Test("the pre-change summary shape ignores an added parts key")
@@ -266,5 +268,21 @@ struct MeetingDocumentsStoreTests {
         as? [String: Any])
     let summary = try #require(rewritten["summary"] as? [String: Any])
     #expect(summary["writtenInParts"] == nil)
+  }
+
+  @Test("#4286: the facts fingerprint saves and loads with the summary's inputs")
+  func contextFingerprintRoundTrip() throws {
+    let (store, record) = try makeMeeting()
+    let inputs = SummaryInputs(
+      transcriptSHA256: "t", notesRevision: 0, speakerNamesSHA256: "s", promptVersion: 4,
+      providerID: "openAI", configurationSHA256: "c", contextSHA256: "f")
+    _ = try store.saveGeneratedSummary(
+      "Generated", inputs: inputs, writtenInParts: false, approvedUserEdit: nil,
+      meeting: record.id)
+    let raw = try JSONSerialization.jsonObject(
+      with: Data(contentsOf: store.documentsURL(for: record.id))) as? [String: Any]
+    let stored = ((raw?["summary"] as? [String: Any])?["inputs"] as? [String: Any])?["contextSHA256"]
+    #expect(stored as? String == "f")
+    #expect(try store.loadDocuments(meeting: record.id).manifest.summary?.inputs == inputs)
   }
 }

@@ -229,9 +229,9 @@ enum MeetingWiring {
           await otherAudioHold.meetingRecordingWillStart()
         },
         freeDiskBytes: { ModelDeliveryController.volumeAvailableBytes(store.root) },
-        meetingTitleAtStart: { [settings = inputs.settings] startedAt in
+        meetingCalendarAtStart: { [settings = inputs.settings] startedAt in
           guard settings.meetingUseCalendarForNames else { return nil }
-          return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
+          return await MeetingCalendarLookup.lookup(at: startedAt, bound: .seconds(1))
         },
         detectedStartWanted: inputs.detectedStartWanted,
         saveTranscript: {
@@ -282,6 +282,9 @@ enum MeetingWiring {
     }
     inputs.transcriptCoordinator.meetingNotes = { [weak coordinator] meetingID in
       coordinator?.documents.notes(meetingID)
+    }
+    inputs.transcriptCoordinator.meetingInvited = { [weak coordinator] meetingID in
+      coordinator?.documents.invitedSearchTerms(meetingID) ?? []
     }
     coordinator.onMeetingsPublished = {
       [weak transcriptCoordinator = inputs.transcriptCoordinator] in
@@ -338,6 +341,14 @@ enum MeetingWiring {
           else { return false }
           return transcriptCoordinator.summaryHasNoWords(
             of: row, info: historyInfo(coordinator, meetingID: meetingID))
+        },
+        promptFacts: { [weak coordinator] meetingID in
+          // #4286: the durable record's start, recorded length and call app, and the facts the
+          // documents owner holds; never the current settings or an AI title.
+          guard let coordinator, let record = coordinator.record(id: meetingID) else { return nil }
+          return MeetingPromptFacts(
+            startedAt: record.createdAt, recordedDurationMs: record.recordedDurationMs,
+            callApp: record.callApp, context: coordinator.documents.context(meetingID))
         },
         isLocalTurn: { [weak coordinator] in
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)

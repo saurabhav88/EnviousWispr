@@ -22,7 +22,8 @@ public enum MeetingSummary {
   /// inputs, so an older summary shows as out of date.
   /// 2 (#3999): a long part answer is shortened by the model, never clipped.
   /// 3 (#4012 D8): the final answer starts with a "Title:" line naming the meeting.
-  public static let promptVersion = 3
+  /// 4 (#4286): the final and combine calls carry the meeting facts block; new instructions.
+  public static let promptVersion = 4
 
   /// Whether the selected provider and model can write a summary, and why not (R44 capability
   /// matrix).
@@ -115,9 +116,10 @@ public enum MeetingSummary {
 
   /// The instructions every call carries.
   static let instructions = """
-    You write summaries of meetings from their transcripts. Use only what the transcript and \
-    the notes say; never add facts, names or decisions that are not there. Write in the \
-    language of the transcript. Keep it short and plain.
+    Write a short, plain summary in the transcript's language. Use the transcript and notes for \
+    statements, decisions and actions. Use supplied meeting facts only for meeting metadata and \
+    name spelling. An invitation does not establish attendance, speech, the identity of a \
+    speaker, or an action commitment.
     """
 
   /// The final shape, asked for in the last call.
@@ -256,13 +258,26 @@ public enum MeetingSummary {
   /// Tokens of transcript, notes or part answers one call may carry in `window`, beside the
   /// counted instructions, final shape, framing and margin. Refused, never enlarged, when too
   /// small.
-  static func inputBudget(_ window: Window, _ counting: Counting) throws -> Int {
+  /// #4286: the facts block, when there is one, is reserved here too, so every call that
+  /// carries it (single, final, combine) and every cap and count derived from the budget leaves
+  /// room for it.
+  static func inputBudget(_ window: Window, _ counting: Counting, facts: String = "") throws
+    -> Int
+  {
     let budget =
       window.contextTokens - window.outputReserveTokens - tokens(instructions, counting)
       - tokens(finalShape, counting) - framingTokens - safetyMarginTokens
+      - factsTokens(facts, counting)
     guard budget >= minimumInputTokens else { throw Failure.windowTooSmall }
     return budget
   }
+
+  /// The facts block's cost in a call: its text and the blank line that separates it.
+  static func factsTokens(_ facts: String, _ counting: Counting) -> Int {
+    facts.isEmpty ? 0 : tokens(facts, counting) + factsFramingTokens
+  }
+
+  static let factsFramingTokens = 4
 
   /// The most tokens kept from one part answer: a quarter of the budget, so every combine call
   /// holds at least three answers and each round of combining shrinks the list.
@@ -330,9 +345,9 @@ public enum MeetingSummary {
   }
 
   static func plan(
-    transcript: String, notes: String, window: Window, counting: Counting
+    transcript: String, notes: String, facts: String = "", window: Window, counting: Counting
   ) throws -> Plan {
-    let budget = try inputBudget(window, counting)
+    let budget = try inputBudget(window, counting, facts: facts)
     let notesTokens = tokens(notes, counting)
     if tokens(transcript, counting) + notesTokens <= budget {
       return Plan(
@@ -421,24 +436,30 @@ public enum MeetingSummary {
   /// case needs more than `maxCalls`.
   /// Returns the text and whether the successful plan used parts. If an overflow causes
   /// a byte-count re-plan, the returned flag describes that re-plan.
+  /// `facts` (#4286) is the rendered facts block (`factsBlock`), or "" for none: the exact text
+  /// the summary's inputs record, used unchanged in every call that carries it, through retries,
+  /// shortening and a byte-count re-plan. It is reserved in every budget; a window too small for
+  /// it and the minimum input fails as `windowTooSmall`, never by dropping it.
   public static func write(
-    transcript: String, notes: String, window: Window, callTimeoutSeconds: Double,
-    admit: Admit, complete: @escaping Complete
+    transcript: String, notes: String, facts: String, window: Window,
+    callTimeoutSeconds: Double, admit: Admit, complete: @escaping Complete
   ) async throws -> Written {
     let attempts = AttemptCounter()
+    let block = facts
     func run(_ counting: Counting) async throws -> Written {
       try await write(
-        plan(transcript: transcript, notes: notes, window: window, counting: counting),
-        transcript: transcript, timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit,
-        complete: complete)
+        plan(
+          transcript: transcript, notes: notes, facts: block, window: window, counting: counting),
+        transcript: transcript, facts: block, timeoutSeconds: callTimeoutSeconds,
+        attempts: attempts, admit: admit, complete: complete)
     }
     do { return try await run(.estimate) } catch is ContextExceeded {}
     do { return try await run(.bytes) } catch is ContextExceeded { throw Failure.tooLong }
   }
 
   private static func write(
-    _ plan: Plan, transcript: String, timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit,
-    complete: @escaping Complete
+    _ plan: Plan, transcript: String, facts: String, timeoutSeconds: Double,
+    attempts: AttemptCounter, admit: Admit, complete: @escaping Complete
   ) async throws -> Written {
     let counting = plan.counting
     func ask(_ prompt: String) async throws -> String {
@@ -449,7 +470,7 @@ public enum MeetingSummary {
     guard let pieces = plan.pieces else {
       // The whole transcript, which `plan` has just measured against the budget.
       let text = try await ask(
-        finalPrompt(notes: plan.inlineNotes, body: "Transcript:\n\(transcript)"))
+        finalPrompt(notes: plan.inlineNotes, facts: facts, body: "Transcript:\n\(transcript)"))
       return Written(text: text, inParts: false)
     }
     let cap = partialCap(plan.budget)
@@ -509,19 +530,20 @@ public enum MeetingSummary {
       var combined: [String] = []
       for group in groups {
         let answer = try await ask(
-          """
-          Below are the key points of consecutive parts of a meeting, in order. Combine them \
-          into one list of short bullets, at most \(words) words; drop repeats.
+          factsPrefix(facts)
+            + """
+            Below are the key points of consecutive parts of a meeting, in order. Combine them \
+            into one list of short bullets, at most \(words) words; drop repeats.
 
-          \(joined(group))
-          """)
+            \(joined(group))
+            """)
         combined.append(try await fitted(answer))
       }
       answers = combined
     }
     let text = try await ask(
       finalPrompt(
-        notes: plan.inlineNotes,
+        notes: plan.inlineNotes, facts: facts,
         body: """
           Below are the key points of each part of the meeting, in order. Join them into one \
           summary; drop repeats.
@@ -531,9 +553,82 @@ public enum MeetingSummary {
     return Written(text: text, inParts: true)
   }
 
-  private static func finalPrompt(notes: String, body: String) -> String {
+  private static func finalPrompt(notes: String, facts: String, body: String) -> String {
+    let factsSection = facts.isEmpty ? "" : "\n\n\(facts)"
     let notesBlock = notes.isEmpty ? "" : "\n\nThe user's own notes:\n\(notes)"
-    return "\(finalShape)\(notesBlock)\n\n\(body)"
+    return "\(finalShape)\(factsSection)\(notesBlock)\n\n\(body)"
+  }
+
+  private static func factsPrefix(_ facts: String) -> String {
+    facts.isEmpty ? "" : "\(facts)\n\n"
+  }
+
+  // MARK: - Meeting facts (#4286)
+
+  /// The longest facts block, in characters, whatever the window.
+  public static let factsMaxCharacters = 1_200
+  /// The most invited people listed by name; the rest are counted.
+  public static let factsMaxPeople = 25
+
+  /// The facts block the summary is told, framed so the model reads it as metadata. Lines for
+  /// unknown facts are left out. At most `factsMaxPeople` people are named and the block is at
+  /// most `factsMaxCharacters` characters: people are dropped from the end and counted ("and N
+  /// more") until it fits. Times are the Mac's local time (`timeZone`), 24-hour ISO form.
+  public static func factsBlock(_ facts: MeetingPromptFacts, timeZone: TimeZone = .current)
+    -> String
+  {
+    var head = ["Meeting facts (from the user's calendar and the app, not from the conversation):"]
+    var started = "Started: \(isoMinute(facts.startedAt, timeZone))"
+    if facts.recordedDurationMs > 0 {
+      let minutes = max(1, (facts.recordedDurationMs + 30_000) / 60_000)
+      started += ", recorded \(minutes) minute\(minutes == 1 ? "" : "s")"
+    }
+    head.append(started)
+    if let app = facts.callAppName { head.append("Call app: \(app)") }
+    if let title = facts.calendarTitle {
+      head.append("Calendar event: \(clip(title, 200))")
+    }
+    let people = facts.participants.map(personText)
+    func render(named count: Int) -> String {
+      guard !people.isEmpty else { return head.joined(separator: "\n") }
+      var listed = Array(people.prefix(count))
+      let more = people.count - listed.count
+      if more > 0 { listed.append(count == 0 ? "\(more) people" : "and \(more) more") }
+      return (head + ["Invited: " + listed.joined(separator: ", ")]).joined(separator: "\n")
+    }
+    var named = min(people.count, factsMaxPeople)
+    while true {
+      let block = render(named: named)
+      // The header is at most about 330 characters (title clipped at 200), so a block naming
+      // nobody always fits.
+      if block.count <= factsMaxCharacters || named == 0 { return block }
+      named -= 1
+    }
+  }
+
+  private static func personText(_ person: MeetingParticipant) -> String {
+    if person.isSelf {
+      return person.status == .declined ? "you (declined)" : "you"
+    }
+    let label = clip(person.name ?? person.email ?? "", 80)
+    var marks: [String] = []
+    if person.name != nil, let domain = person.emailDomain { marks.append(domain) }
+    if person.isOrganizer { marks.append("organizer") }
+    if person.status == .declined { marks.append("declined") }
+    return marks.isEmpty ? label : "\(label) (\(marks.joined(separator: ", ")))"
+  }
+
+  private static func clip(_ text: String, _ limit: Int) -> String {
+    text.count <= limit ? text : String(text.prefix(limit - 1)) + "…"
+  }
+
+  private static func isoMinute(_ date: Date, _ timeZone: TimeZone) -> String {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+    return String(
+      format: "%04d-%02d-%02d %02d:%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0,
+      parts.hour ?? 0, parts.minute ?? 0)
   }
 
   /// Attempts made by one summary, retries and the re-plan included. Touched only by the

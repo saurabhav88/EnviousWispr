@@ -78,10 +78,15 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
   /// a generated summary out of date even when its words come out identical. Nil for a summary
   /// written from a transcript made before attempts (or before this field).
   public var transcriptAttemptID: UUID?
+  /// #4286: SHA-256 of the meeting facts block the summary was told (window-independent), so a
+  /// changed fact makes a generated summary out of date. Nil when no facts were known, and in a
+  /// manifest written before this field.
+  public var contextSHA256: String?
 
   public init(
     transcriptSHA256: String, notesRevision: Int, speakerNamesSHA256: String, promptVersion: Int,
-    providerID: String, configurationSHA256: String, transcriptAttemptID: UUID? = nil
+    providerID: String, configurationSHA256: String, transcriptAttemptID: UUID? = nil,
+    contextSHA256: String? = nil
   ) {
     self.transcriptSHA256 = transcriptSHA256
     self.notesRevision = notesRevision
@@ -90,6 +95,7 @@ public struct SummaryInputs: Sendable, Equatable, Codable {
     self.providerID = providerID
     self.configurationSHA256 = configurationSHA256
     self.transcriptAttemptID = transcriptAttemptID
+    self.contextSHA256 = contextSHA256
   }
 }
 

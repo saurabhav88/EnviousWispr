@@ -423,6 +423,38 @@ struct MeetingWiringTests {
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
   }
 
+  @Test("#4286: after a relaunch, an invited-only search matches once the launch read lands")
+  func relaunchInvitedSearch() async throws {
+    let rig = try Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.store.create(record)
+    record.state = .ready
+    try rig.store.save(record)
+    try rig.store.appendFacts(
+      [
+        AttendeeFact(
+          name: "Dana Lee", email: "dana@acme.com", role: .required, status: .accepted,
+          isSelf: false, isOrganizer: true
+        ).fact(source: MeetingFact.eventKitSource, capturedAt: record.createdAt)
+      ], meeting: record.id)
+    let row = Transcript(
+      id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
+    try await rig.transcripts.saveAndShowDurably(row)
+    rig.transcripts.searchQuery = "acme.com"
+    #expect(rig.transcripts.filteredTranscripts.isEmpty, "nothing listed before the launch")
+
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    let coordinator = MeetingWiring.make(rig.inputs)
+    coordinator.launch()
+    #expect(
+      rig.transcripts.filteredTranscripts.isEmpty, "no invited match while the launch read waits")
+    hold.signal()
+    await MeetingCoordinatorTests.eventually("invited-only match after the launch read") {
+      rig.transcripts.filteredTranscripts.map(\.id) == [row.id]
+    }
+    #expect(coordinator.documents.invitedSearchTerms(record.id).contains("acme.com"))
+  }
+
   @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")
   func historyMeetingDeleteFailureIsShown() async throws {
     let rig = try Rig()

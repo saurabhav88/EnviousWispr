@@ -33,7 +33,7 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>EnviousWispr records the sound your Mac plays, such as the other people on a call, only while you record a meeting. The recording stays on your Mac.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>EnviousWispr reads your calendar events to name your meetings after the event at that time. It never changes your calendar, and your events stay on your Mac.</string>
+	<string>EnviousWispr reads the calendar event at the time a meeting starts to name the meeting and note who was invited. It never changes your calendar. What it saves stays with the meeting on your Mac.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>EnviousWispr reads the names in your contacts so dictation can spell the people you know correctly. Your address book is never uploaded.</string>
 	<key>NSHighResolutionCapable</key>
