@@ -47,8 +47,11 @@ public enum MeetingSummary {
   /// runs elsewhere). Unknown counts as LOCAL here, the opposite of Transcribe a File's privacy
   /// default, because the mistakes differ: treating a hosted model as local only makes the
   /// summary wait for dictation, while treating a local model as hosted would run it beside
-  /// dictation. EG-1 and S1-mini are refused under any provider, including a tagged Ollama
-  /// reference, by the same identity helpers the connector routes on.
+  /// dictation. S1-mini is refused under any provider, and EG-1 through Ollama (a tagged Ollama
+  /// reference), by the same identity helpers the connector routes on. Native EG-1 writes
+  /// summaries on the bundled server (#4319), which the app lends to one summary attempt at a
+  /// time (`EGOneSummaryEngine`); `MeetingSummaryProviders.prepare` cannot reach that server and
+  /// still refuses it.
   public static func capability(
     _ provider: LLMProvider, model: String, ollamaModelIsRemote: Bool?
   ) -> Capability {
@@ -59,8 +62,8 @@ public enum MeetingSummary {
         return .notForSummaries
       }
       return .supported(ollamaModelIsRemote == true ? .hosted : .local)
-    case .appleIntelligence: return .supported(.local)
-    case .egOne, .s1Mini: return .notForSummaries
+    case .appleIntelligence, .egOne: return .supported(.local)
+    case .s1Mini: return .notForSummaries
     case .none: return .noProvider
     }
   }
@@ -401,8 +404,15 @@ public enum MeetingSummary {
 
   /// SHA-256 of what decides a summary besides its inputs: provider, model, output cap and
   /// prompt version (never a key), so a model change makes an older summary out of date.
-  public static func configurationFingerprint(provider: LLMProvider, model: String) -> String {
-    let canonical = "\(provider.rawValue)|\(model)|\(outputTokens)|\(promptVersion)"
+  /// `artifactRevision` (#4319): the weights' revision for an engine whose model name is fixed
+  /// while its weights change (EG-1 sends the literal `eg-1` for every release), so new weights
+  /// make an older summary out of date. Nil leaves the fingerprint exactly as before, so every
+  /// other provider's saved summaries keep their identity.
+  public static func configurationFingerprint(
+    provider: LLMProvider, model: String, artifactRevision: String? = nil
+  ) -> String {
+    var canonical = "\(provider.rawValue)|\(model)|\(outputTokens)|\(promptVersion)"
+    if let artifactRevision { canonical += "|\(artifactRevision)" }
     return SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
   }
 

@@ -1115,10 +1115,16 @@ struct SettingsMapRenderingTests {
       uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
     var wantExempt = expected.exempt
     // The fixture was recorded on a Mac with more than 8 GB. On an 8 GB Mac (the support floor,
-    // and the hosted CI runners) EG-1's card adds its low-memory note, one more status line
-    // (LocalEngineStatusCard, `showsLowMemoryNote`).
-    if label.hasPrefix("aiPolish.egOne"), ProcessInfo.processInfo.physicalMemory <= 8 << 30 {
-      wantExempt["statusLine", default: 0] += 1
+    // and the hosted CI runners) EG-1's card adds its low-memory note (LocalEngineStatusCard,
+    // `showsLowMemoryNote`): one more status line on AI Polish, and on the Summaries tab one more
+    // `meetingSummarySetup` row, because that scope claims every registration under the summary
+    // setup section (#4319).
+    if ProcessInfo.processInfo.physicalMemory <= (8 << 30) {
+      if label.hasPrefix("aiPolish.egOne") {
+        wantExempt["statusLine", default: 0] += 1
+      } else if label == "meetings.summaries.egOne" {
+        wantExempt["meetingSummarySetup", default: 0] += 1
+      }
     }
     #expect(exempt == wantExempt, "\(label): exemptions \(exempt)")
   }

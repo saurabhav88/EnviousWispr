@@ -1006,7 +1006,9 @@
   ]
  },
  "meetings.summaries.egOne": {
-  "exempt": {},
+  "exempt": {
+   "meetingSummarySetup": 3
+  },
   "mapped": [
    "meetingSummaryEngine",
    "meetingSummaryEngine.change",

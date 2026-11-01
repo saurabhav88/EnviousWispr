@@ -26,13 +26,14 @@ struct MeetingSummariesTabTests {
         == [.egOne, .appleIntelligence, .ollama, .openAI, .gemini, .claude])
   }
 
-  @Test("EG-1 is Coming soon and cannot be picked until it can write summaries")
-  func egOneComingSoon() throws {
-    #expect(!MeetingSummaryEngineChoices.isSelectable(.egOne))
+  @Test("EG-1 can be picked for summaries and shows where it runs, not Coming soon (#4319)")
+  func egOneSelectable() throws {
+    #expect(MeetingSummaryEngineChoices.isSelectable(.egOne))
     let egOne = try #require(PolishRailCatalog.entry(for: .egOne))
+    #expect(MeetingSummaryEngineChoices.subtitle(for: egOne) == egOne.group.heading)
     #expect(
       MeetingSummaryEngineChoices.subtitle(for: egOne)
-        == String(localized: MeetingsCopy.engineComingSoon))
+        != String(localized: MeetingsCopy.engineComingSoon))
     for provider in [LLMProvider.appleIntelligence, .ollama, .openAI, .gemini, .claude] {
       #expect(MeetingSummaryEngineChoices.isSelectable(provider), "\(provider)")
     }
@@ -80,8 +81,9 @@ struct MeetingSummariesCardStatusTests {
   @Test("an engine or model that cannot summarize says so")
   func cannotSummarize() {
     let label = String(localized: MeetingsCopy.summaryEngineCantSummarize)
+    // #4319: native EG-1 summarizes; EG-1 picked through Ollama still cannot.
     let f = facts(provider: .egOne, keySaved: nil, validation: .idle)
-    #expect(MeetingSummariesTab.cardStatus(provider: .egOne, model: "eg-1", facts: f)?.label == label)
+    #expect(MeetingSummariesTab.cardStatus(provider: .egOne, model: "eg-1", facts: f)?.label != label)
     #expect(
       MeetingSummariesTab.cardStatus(provider: .ollama, model: "eg-1:latest", facts: f)?.label
         == label)

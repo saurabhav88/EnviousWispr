@@ -208,7 +208,10 @@ struct MeetingSummaryOwnerTests {
     rig.world.enabled = true
     rig.world.provider = .none
     #expect(rig.owner.decide() == .noProvider)
+    // #4319: native EG-1 summarizes now; S1-mini and EG-1 through Ollama do not.
     rig.world.provider = .egOne
+    #expect(rig.owner.decide() == .scheduled)
+    rig.world.provider = .s1Mini
     #expect(rig.owner.decide() == .unsupported)
     rig.world.provider = .ollama
     rig.world.model = "eg-1:q4"
@@ -1403,6 +1406,8 @@ struct MeetingSummaryOwnerTests {
     rig.world.provider = .none
     #expect(rig.owner.configurationProblem() == .noProvider)
     rig.world.provider = .egOne
+    #expect(rig.owner.configurationProblem() == nil)
+    rig.world.provider = .s1Mini
     #expect(rig.owner.configurationProblem() == .notForSummaries)
     rig.world.provider = .ollama
     rig.world.model = "eg-1:q4"

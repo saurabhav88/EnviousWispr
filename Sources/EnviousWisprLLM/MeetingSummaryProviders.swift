@@ -11,8 +11,10 @@ import Foundation
 /// (`MeetingSummary` owns them), the same thinking resolution polish uses, and an output cap
 /// equal to the reserve the plan keeps. Apple Intelligence gets a session of its own with the
 /// summary's instructions, because its connector builds the dictation recipe and ignores custom
-/// instructions. EG-1 and S1-mini are cleanup models and have no summary call, under their own
-/// providers or through Ollama.
+/// instructions. S1-mini is a cleanup model and has no summary call, under its own provider or
+/// through Ollama. Native EG-1 writes summaries (#4319), but on the bundled server the app lends
+/// to the attempt, which this enum cannot reach: the AppKit wiring prepares EG-1 itself
+/// (`EGOneSummaryEngine`) and `prepare` refuses it here as a defensive default.
 ///
 /// An answer cut short is never accepted: the hosted connectors reject a length stop
 /// themselves, Ollama's is refused here (`LLMResult.stoppedEarly`), and Apple Intelligence runs
@@ -24,6 +26,20 @@ public enum MeetingSummaryProviders {
     public let execution: MeetingSummary.Execution
     public let window: MeetingSummary.Window
     public let complete: MeetingSummary.Complete
+    /// #4319: runs once when the attempt that prepared this ends, however it ends, so an engine
+    /// lent to the attempt is given back. A no-op for every provider that borrows nothing.
+    public let finish: @Sendable () async -> Void
+
+    public init(
+      execution: MeetingSummary.Execution, window: MeetingSummary.Window,
+      complete: @escaping MeetingSummary.Complete,
+      finish: @escaping @Sendable () async -> Void = {}
+    ) {
+      self.execution = execution
+      self.window = window
+      self.complete = complete
+      self.finish = finish
+    }
   }
 
   /// Why no summary can be written now.
@@ -176,6 +192,9 @@ public enum MeetingSummaryProviders {
           complete: { instructions, prompt in
             try await apple(instructions: instructions, prompt: prompt)
           }))
+    // EG-1 is prepared by the AppKit wiring, which can lend it the bundled server (#4319);
+    // reaching here means a caller skipped that route, so it is refused rather than run against
+    // a server nobody reserved.
     case .egOne, .s1Mini, .none:
       return .failure(.notForSummaries)
     }

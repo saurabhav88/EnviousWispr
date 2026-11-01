@@ -7,7 +7,9 @@ import Foundation
 ///
 /// The one rule for "the same local engine": Apple Intelligence with Apple Intelligence, EG-1
 /// with EG-1, and Ollama with Ollama when both run on this Mac (any two models: one Ollama
-/// server, shared memory). A hosted Ollama model is not local. The summary side only ever
+/// server, shared memory). A hosted Ollama model is not local. #4319: an EG-1 summary also
+/// clashes with S1-mini dictation, because both bundled models share one server process and the
+/// summary holds it; the busy engine named is then the summary's, EG-1. The summary side only ever
 /// reports a local call (`MeetingSummaryOwner` records the running call only for local
 /// execution), so its locality is already settled when it reaches here.
 public enum SummaryEngineClash {
@@ -16,11 +18,14 @@ public enum SummaryEngineClash {
   ///   - dictation: the polish request's provider (the step's entry snapshot).
   ///   - dictationOllamaRemote: for Ollama, whether this request's model is hosted, from the
   ///     readiness probe of this attempt; nil for every other provider.
-  ///   - runningLocalSummary: the provider of the summary call running on a local engine now.
+  ///   - runningLocalSummary: the provider of the summary call running on a local engine now
+  ///     (for EG-1, held from the attempt's reservation to its release, #4319).
   public static func busyEngine(
     dictation: LLMProvider, dictationOllamaRemote: Bool?, runningLocalSummary: LLMProvider?
   ) -> LLMProvider? {
-    guard let summary = runningLocalSummary, summary == dictation else { return nil }
+    guard let summary = runningLocalSummary else { return nil }
+    if summary == .egOne, dictation == .s1Mini { return .egOne }
+    guard summary == dictation else { return nil }
     switch dictation {
     case .appleIntelligence, .egOne:
       return dictation
@@ -36,6 +41,8 @@ public enum SummaryEngineClash {
 /// Thrown by the live polish step when `SummaryEngineClash` finds the engine busy with a
 /// summary. `TextProcessingRunner` turns it into a skip with a notice, never a failure.
 public struct SummaryEngineBusy: Error, Equatable, Sendable {
+  /// The engine writing the summary. Usually the dictation's own provider; for S1-mini dictation
+  /// during an EG-1 summary it is EG-1, the model holding the shared server (#4319).
   public let provider: LLMProvider
 
   public init(provider: LLMProvider) {
