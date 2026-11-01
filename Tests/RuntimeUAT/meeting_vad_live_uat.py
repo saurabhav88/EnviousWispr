@@ -42,6 +42,7 @@ import wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import meeting_uat as m  # noqa: E402
+import meeting_vad_checkpoint_uat as cp  # noqa: E402  (rotation-safe app.log reader)
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 FIXTURES = os.path.join(ROOT, "Tests", "Fixtures", "meeting-voices")
@@ -105,16 +106,6 @@ def build_audio(work):
     return path, reference, len(samples) / RATE
 
 
-def log_size():
-    return os.path.getsize(LOG) if os.path.exists(LOG) else 0
-
-
-def log_since(offset):
-    with open(LOG, "rb") as f:
-        f.seek(offset)
-        return f.read().decode("utf-8", "replace")
-
-
 def door_dictation(c, players, work, sentence):
     """One dictation while the meeting records, driven through the door (no key is held, so a
     key pressed on this Mac cannot cancel it), heard alone: playback has ended. Checks the
@@ -129,8 +120,8 @@ def door_dictation(c, players, work, sentence):
     status, reply = m.door("dictation", "stop", "--receipt", receipt)
     if status != 0 and (reply.get("error") or {}).get("code") != "notRecording":
         raise m.Setup(f"dictation stop refused: {reply}")
-    _, reply = m.door("dictation", "wait", "--receipt", receipt, "--timeout", "90", timeout=120)
-    ending, text = dictation_outcome(reply, started.get("take"))
+    status, reply = m.door("dictation", "wait", "--receipt", receipt, "--timeout", "90", timeout=120)
+    ending, text = dictation_outcome(status, reply, started.get("take"))
     heard = [w for w in words(sentence) if w in words(text)]
     c.check("a dictation completes while the meeting records", ending == "completed",
             json.dumps({"ending": ending, "take": started.get("take")}))
@@ -138,18 +129,31 @@ def door_dictation(c, players, work, sentence):
             f"{len(heard)}/{len(words(sentence))} words")
 
 
-def dictation_outcome(reply, take):
-    """(ending, saved row as text) of a `dictation wait` reply for exactly `take`; (None, "")
-    when the reply is for another take or holds no terminal."""
+def dictation_outcome(status, reply, take):
+    """(ending, saved text) of a `dictation wait` CLI reply for exactly `take`: the wait
+    succeeded (exit 0, `ok` true), the terminal is final and names that take, and the text is
+    the saved row's own `text`. Otherwise (None, "")."""
+    if status != 0 or not isinstance(reply, dict) or reply.get("ok") is not True:
+        return None, ""
     result = reply.get("result") or {}
     terminal = result.get("terminal") or {}
-    if (terminal.get("receipt") or {}).get("take") != take:
+    if terminal.get("status") != "terminal" or (terminal.get("receipt") or {}).get("take") != take:
         return None, ""
-    return terminal.get("ending"), json.dumps(result.get("row") or {})
+    row = result.get("row") or {}
+    return terminal.get("ending"), row.get("text") if isinstance(row.get("text"), str) else ""
 
 
 # `TurnAssembler.bothSpeakersID`: a sentence the speaker step heard on both voices.
 BOTH = "both"
+
+
+def word_verdict(c, name, missing, extra):
+    """PASS when nothing is missing or invented; otherwise COULD NOT TELL with the words, so a
+    difference blocks an overall PASS until it is adjudicated (it is never reported only)."""
+    if missing or extra:
+        c.cannot_tell(name, json.dumps({"missing": missing, "extra": extra}))
+    else:
+        c.check(name, True)
 
 
 def track_text(meeting, prefix):
@@ -178,12 +182,31 @@ def self_test():
         if not cond:
             failures.append(name)
 
-    done = {"ok": True, "result": {"terminal": {"ending": "completed", "receipt": {"take": "T1"}},
-                                    "row": {"text": "Please add the date."}}}
-    expect("terminal ending read for the take", dictation_outcome(done, "T1")[0] == "completed")
-    expect("the row text is read", "please" in words(dictation_outcome(done, "T1")[1]))
-    expect("another take's terminal is refused", dictation_outcome(done, "T2") == (None, ""))
-    expect("no terminal reads as none", dictation_outcome({"ok": True, "result": {}}, "T1") == (None, ""))
+    done = {"ok": True, "result": {"terminal": {"ending": "completed", "status": "terminal",
+                                                 "receipt": {"take": "T1"}},
+                                    "row": {"text": "Please add the date.", "backend": "parakeet"}}}
+    expect("terminal ending read for the take", dictation_outcome(0, done, "T1")[0] == "completed")
+    expect("only the row's own text is scored", dictation_outcome(0, done, "T1")[1] == "Please add the date.")
+    expect("another take's terminal is refused", dictation_outcome(0, done, "T2") == (None, ""))
+    expect("a failed wait is refused", dictation_outcome(1, done, "T1") == (None, ""))
+    expect("ok false is refused", dictation_outcome(0, {**done, "ok": False}, "T1") == (None, ""))
+    pending = {"ok": True, "result": {"terminal": {**done["result"]["terminal"], "status": "pending"}}}
+    expect("a pending terminal is refused", dictation_outcome(0, pending, "T1") == (None, ""))
+    report = {"run": 1, "epoch": 1, "degraded": False, "classified": 10, "silentCycles": 1,
+              "completedDecodes": 1}
+    grown = {**report, "classified": 20}
+    reads = [{"tracks": {"callSound": r}} for r in (None, report, grown)]
+    expect("startup nulls pass", detection_verdict(reads, "callSound")[0] == "pass")
+    gap = [{"tracks": {"callSound": r}} for r in (report, None, grown)]
+    expect("a null after the first report is unknown", detection_verdict(gap, "callSound")[0] == "unknown")
+    worse = [{"tracks": {"callSound": r}} for r in (report, {**grown, "degraded": True})]
+    expect("degraded fails", detection_verdict(worse, "callSound")[0] == "fail")
+    checks = m.Checks()
+    word_verdict(checks, "w", [], ["thank"])
+    expect("an invented word blocks PASS", checks.status() == m.EXIT_UNSURE)
+    clean = m.Checks()
+    word_verdict(clean, "w", [], [])
+    expect("matching words pass", clean.status() == m.EXIT_PASS)
     meeting = {"transcript": {"turns": [
         {"id": "a", "speakerId": "sys:S1", "text": "One."},
         {"id": "b", "speakerId": "mic:you", "text": "Echo."},
@@ -193,16 +216,21 @@ def self_test():
     expect("call track: own and both turns, hidden ones left out", track_text(meeting, "sys:") == "One. Yes.")
     expect("mic track: own and both turns", track_text(meeting, "mic:") == "Echo. Yes.")
     expect("edits find a missing word in order", edits(["a", "c"], ["a", "b", "c"]) == (["b"], []))
-    print(f"self-test: {7 - len(failures)} passed, {len(failures)} failed")
+    total = 15
+    print(f"self-test: {total - len(failures)} passed, {len(failures)} failed")
     return 1 if failures else 0
 
 
 def detection_verdict(samples, track):
-    """(ok, detail) for one track's detection reports over the run."""
+    """(verdict, detail) for one track's detection reports over the run: "pass", "fail", or
+    "unknown" when a read after the first report came back null (a gap: unknown, never
+    evidence). Nulls before the first report are the session starting."""
     reports = [s["tracks"].get(track) for s in samples]
     known = [r for r in reports if r]
     if not known:
-        return False, f"no report for {track} in {len(samples)} reads"
+        return "fail", f"no report for {track} in {len(samples)} reads"
+    first_at = next(i for i, r in enumerate(reports) if r)
+    gaps = sum(1 for r in reports[first_at:] if not r)
     identity = {(r["run"], r["epoch"]) for r in known}
     first, last = known[0], known[-1]
     problems = []
@@ -216,8 +244,10 @@ def detection_verdict(samples, track):
         problems.append("no silent cycle")
     if last["completedDecodes"] <= 0:
         problems.append("no completed decode")
-    detail = {"reads": len(samples), "known": len(known), "first": first, "last": last}
-    return not problems, json.dumps({"problems": problems, **detail})
+    detail = {"reads": len(samples), "known": len(known), "startup": first_at, "gaps": gaps,
+              "first": first, "last": last}
+    verdict = "fail" if problems else ("unknown" if gaps else "pass")
+    return verdict, json.dumps({"problems": problems, **detail})
 
 
 def run(run_dir, made, c):
@@ -230,7 +260,7 @@ def run(run_dir, made, c):
     m.door_ok("settings", "set", "meetingTranscriptEngine", json.dumps("whisper"))
     m.door_ok("settings", "set", "meetingTurnsOffDictation", "false")
     try:
-        offset = log_size()
+        offset = cp.log_size()
         with audio_rig.AudioRig(), m.Players() as players:
             meeting_id = m.start_meeting(call_sound=True, live_engine="universal")
             started = time.monotonic()
@@ -253,14 +283,18 @@ def run(run_dir, made, c):
                     f"afplay exit {player.poll()} after {time.monotonic() - started:.0f} s of {seconds:.0f} s")
             live_call = " ".join(l.get("text") or "" for l in m.live_lines() if l.get("track") == "callSound")
             for track in ("microphone", "callSound"):
-                ok, detail = detection_verdict(reads, track)
-                c.check(f"{track}: live speech detection ran on the pinned model the whole time", ok, detail)
+                verdict, detail = detection_verdict(reads, track)
+                name = f"{track}: live speech detection ran on the pinned model through every read"
+                if verdict == "unknown":
+                    c.cannot_tell(name, detail)
+                else:
+                    c.check(name, verdict == "pass", detail)
             door_dictation(c, players, work, m.DICTATIONS[0])
             players.stop_all()
             ready = m.stop_and_wait_ready(meeting_id)
         c.check("the transcript is ready after Stop", bool(ready) and ready["meeting"]["state"] == "ready",
                 (ready or {}).get("meeting", {}).get("state", "timed out"))
-        log = log_since(offset)
+        log = cp.log_since(offset)
         unavailable = len(re.findall(r"whisper_meeting_vad outcome=vad_unavailable", log))
         detected = len(re.findall(r"whisper_meeting_vad outcome=(?:vad_ok|vad_skipped_all) ", log))
         c.check("no detection fell back to the undetected route", unavailable == 0, f"{unavailable} lines")
@@ -275,10 +309,14 @@ def run(run_dir, made, c):
             for path in m.audio_files(meeting_id):
                 subprocess.run(["cp", path, keep], check=True)
             saved_call = track_text(saved, "sys:")
-            missing, extra = edits(words(saved_call), reference)
+            # The call-sound tap also hears the dictation's spoken sentence after the playback.
+            missing, extra = edits(words(saved_call), reference + words(m.DICTATIONS[0]))
             c.check("the saved call track keeps every script word", not missing,
                     json.dumps({"missing": missing, "extra": extra}))
+            word_verdict(c, "the saved call track invents no words", [], extra)
             live_missing, live_extra = edits(words(live_call), reference)
+            word_verdict(c, "the live call words match the script (missing or invented words need adjudication)",
+                         live_missing, live_extra)
             c.rows.append({"liveCallVsScript": {"missing": live_missing, "extra": live_extra},
                            "savedCallVsScript": {"missing": missing, "extra": extra}})
             print(f"  live call vs script: missing {live_missing} extra {live_extra}")
