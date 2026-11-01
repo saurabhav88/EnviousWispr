@@ -224,8 +224,13 @@ final class MeetingMicrophoneSilence {
         silence(
           frames, held.hostTime, frozen, from: max(held.hostTime, held.liveBefore), to: cut)
         silence(frames, held.hostTime, pending, from: cut, to: chunkEnd)
-        if chunkEnd > cut {
-          let decided = pending.compactMap { Self.clip($0, from: cut, to: chunkEnd) }
+        // Freezes from the previous C, not from this chunk's start: capture stamps chunks by
+        // arrival, so a few ticks can separate one chunk's end from the next one's start. Freezing
+        // that gap too keeps a long mute one frozen decision; split at every gap, a mute filled
+        // the frozen storage within one late-arrival second and left late audio live (#4248).
+        let freezeFrom = min(cut, released)
+        if chunkEnd > freezeFrom {
+          let decided = pending.compactMap { Self.clip($0, from: freezeFrom, to: chunkEnd) }
           Self.merge(decided, into: &frozen, capacity: intervalCapacity) { intervalOverflows += 1 }
         }
         released = max(released, chunkEnd)

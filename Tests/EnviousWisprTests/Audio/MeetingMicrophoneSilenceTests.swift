@@ -515,6 +515,38 @@ struct MeetingMicrophoneSilenceTests {
     #expect(r.writer.currentHealth.silenceLateFrames == 8_000)
   }
 
+  @Test("a long mute over chunks with arrival-time gaps stays one frozen decision for late audio")
+  func frozenMuteSpansArrivalGaps() {
+    // #4248 Zoom timing run (2026-10-31): capture stamps 10 ms chunks by arrival time, so a
+    // chunk can start a few ticks after the previous one ends. The frozen decisions split at
+    // every gap, filled their 64 places within one late-arrival second and left the rest out
+    // (interval_overflows=225), so late audio in a long mute would have been kept live.
+    let silence = MeetingMicrophoneSilence(
+      holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 1_000)
+    let base: UInt64 = 10_000_000_000
+    silence.setIntervals([MeetingSilenceInterval(start: base, end: .max)])
+    let chunk = [Float](repeating: 1, count: 160)
+    let step = MeetingMicrophoneSilence.ticks(forSamples: 160) &+ 5
+    for i in 0..<300 {
+      let at = base &+ UInt64(i) &* step
+      chunk.withUnsafeBufferPointer {
+        silence.accept($0, hostTime: at, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+      }
+      // Released one chunk at a time, as the hold comes due.
+      silence.releaseDue(now: at &+ silence.holdTicks, emit: { _, _ in })
+    }
+    silence.releaseAll(emit: { _, _ in })
+    #expect(silence.intervalOverflows == 0, "the frozen mute never fills its storage")
+    // Late audio stamped 100 ms behind C, inside the long mute, is silenced.
+    var late = [Float](repeating: 1, count: 160)
+    let lateAt = silence.released &- MeetingMicrophoneSilence.ticks(nanos: 100_000_000)
+    late.withUnsafeBufferPointer {
+      silence.accept($0, hostTime: lateAt, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+    }
+    silence.releaseAll(emit: { frames, _ in late = Array(frames) })
+    #expect(late.allSatisfy { $0 == 0 }, "late audio inside the frozen mute is silenced")
+  }
+
   @Test("a sample straddling the late cutoff counts as late, by the silencing boundary rule")
   func lateBoundaryRule() {
     let silence = MeetingMicrophoneSilence(
