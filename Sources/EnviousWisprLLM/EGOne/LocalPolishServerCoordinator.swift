@@ -735,6 +735,84 @@ public final class LocalPolishRuntimeSet {
     }
   }
 
+  // MARK: - #4319: one EnviousMeet summary attempt's hold on the bundled server
+
+  /// The attempt's own token. Only the hold it names can be ended with it, so a stale,
+  /// repeated or late release never touches a later attempt.
+  public struct SummaryHold: Sendable, Equatable {
+    fileprivate let id: UUID
+    public let provider: LLMProvider
+  }
+
+  public enum SummaryHoldOutcome: Sendable, Equatable {
+    case held(SummaryHold)
+    /// A file import holds the server (or another summary does); nothing is held. Wait for a
+    /// local turn and ask again.
+    case retryLater
+    /// The asking task was cancelled while earlier requests drained; nothing is held.
+    case cancelled
+  }
+
+  private var summaryHold:
+    (id: UUID, runtime: EGOneRuntime, reservation: LocalPolishSummaryReservation?)?
+
+  /// The bundled model a summary attempt holds (or is draining the server for), or nil. The
+  /// settings pin, the dictation clash and the health-probe busy check read this; the
+  /// coordinator's reservation is what actually excludes other requests.
+  public private(set) var summaryHeldProvider: LLMProvider?
+  /// Moves when an attempt starts holding the server, so a health probe measured across that
+  /// moment is discarded (`EGOneRuntime.activateAndProbe` compares it before and after).
+  public private(set) var summaryAdmissionEpoch = 0
+
+  /// Starts this attempt's hold: the projection is published at once, so dictation sees the
+  /// engine busy while earlier requests drain; it is withdrawn if nothing is held.
+  public func beginSummaryHold(_ provider: LLMProvider) async -> SummaryHoldOutcome {
+    guard summaryHold == nil, let runtime = runtime(for: provider) else { return .retryLater }
+    let id = UUID()
+    summaryHold = (id, runtime, nil)
+    summaryHeldProvider = provider
+    summaryAdmissionEpoch &+= 1
+    let outcome = await runtime.reserveServerForSummary()
+    guard summaryHold?.id == id else {
+      // Ended while waiting (cannot happen through this API, but never strand a reservation).
+      if case .granted(let reservation) = outcome {
+        await runtime.releaseServerReservation(reservation)
+      }
+      return .cancelled
+    }
+    switch outcome {
+    case .granted(let reservation):
+      summaryHold = (id, runtime, reservation)
+      return .held(SummaryHold(id: id, provider: provider))
+    case .retryLater:
+      summaryHold = nil
+      summaryHeldProvider = nil
+      return .retryLater
+    case .cancelled:
+      summaryHold = nil
+      summaryHeldProvider = nil
+      return .cancelled
+    }
+  }
+
+  /// The coordinator reservation behind `hold`, for loading its model; nil for a stale token.
+  public func reservation(for hold: SummaryHold) -> LocalPolishSummaryReservation? {
+    guard summaryHold?.id == hold.id else { return nil }
+    return summaryHold?.reservation
+  }
+
+  /// Ends `hold`: the projection goes first (in this main-actor turn), then the server is
+  /// released. Never waits for the summary chain or for dictation's engine; restoring the
+  /// selected engine is the caller's next step. A stale or repeated call does nothing.
+  public func endSummaryHold(_ hold: SummaryHold) async {
+    guard let current = summaryHold, current.id == hold.id else { return }
+    summaryHold = nil
+    summaryHeldProvider = nil
+    if let reservation = current.reservation {
+      await current.runtime.releaseServerReservation(reservation)
+    }
+  }
+
   /// #3105: the file import's whole-run hold on its bundled server. Each part
   /// also holds one through its own inference; this one covers the gaps
   /// between parts, so a provider switch or adapter change made mid-import

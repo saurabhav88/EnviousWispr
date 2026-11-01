@@ -51,6 +51,9 @@ enum MeetingWiring {
     let log: @MainActor (String) -> Void
     /// The AI Polish keys, for meeting summaries (#3972 R44).
     let keychain: KeychainManager
+    /// #4319: the bundled polisher a file import holds (`FileImportCoordinator`
+    /// `.pinnedLocalPolishProvider`), or nil; an EG-1 summary waits while it is set.
+    var importPinnedLocalProvider: @MainActor () -> LLMProvider? = { nil }
     /// The `meeting.ended` emitter (`TelemetryService.trackMeetingEnded` in production).
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
@@ -353,8 +356,13 @@ enum MeetingWiring {
             startedAt: record.createdAt, recordedDurationMs: record.recordedDurationMs,
             callApp: record.callApp, context: coordinator.documents.context(meetingID))
         },
-        isLocalTurn: { [weak coordinator] in
+        isLocalTurn: { [weak coordinator, importPin = inputs.importPinnedLocalProvider] provider in
+          // #4319: an EG-1 summary borrows the bundled server, so it also waits while a file
+          // import holds one (from the import's preparation to its cancellation drain); the
+          // import's pin is observable, so its release wakes the wait. Other engines are
+          // unchanged.
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)
+            && (provider != .egOne || importPin() == nil)
         },
         wakes: inputs.dictationWakes,
         emitFinished: inputs.emitSummaryFinished,

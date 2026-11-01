@@ -162,7 +162,7 @@ struct MeetingSummaryOwnerTests {
           },
           hasNoWords: { _ in world.visible && world.noWords },
           promptFacts: { _ in world.facts },
-          isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
+          isLocalTurn: { _ in world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
@@ -1566,7 +1566,7 @@ struct MeetingSummaryOwnerTests {
             .init(text: world.transcript, speakerNames: world.speakerNames)
           },
           hasNoWords: { _ in false },
-          isLocalTurn: { true },
+          isLocalTurn: { _ in true },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },

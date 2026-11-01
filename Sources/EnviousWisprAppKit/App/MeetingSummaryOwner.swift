@@ -50,7 +50,9 @@ final class MeetingSummaryOwner {
     var promptFacts: @MainActor (UUID) -> MeetingPromptFacts? = { _ in nil }
     /// True when a local model call may start: dictation idle, no meeting engine unit running,
     /// no final pass due.
-    var isLocalTurn: @MainActor () -> Bool
+    /// #4319: per provider, because an EG-1 summary also waits while a file import holds a
+    /// bundled server (it would otherwise borrow the server the import is using).
+    var isLocalTurn: @MainActor (LLMProvider) -> Bool
     /// Pokes for inputs of `isLocalTurn` that Observation cannot see.
     var wakes: MeetingWakeSignal?
     var emitFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void
@@ -169,6 +171,9 @@ final class MeetingSummaryOwner {
   /// physically ends. A dictation polishing with the same local engine skips polish meanwhile
   /// (`SummaryEngineClash`). Hosted calls are never recorded here.
   var runningLocalSummaryProvider: LLMProvider? { runningLocalCall?.provider }
+
+  /// Test seam (#4319): the wired local-turn predicate for `provider`.
+  func isLocalTurnForTesting(_ provider: LLMProvider) -> Bool { deps.isLocalTurn(provider) }
 
   /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
   /// does not hold it (it is owed on disk and resumes).
@@ -576,9 +581,10 @@ final class MeetingSummaryOwner {
   ) async throws {
     activity[meetingID] = .waiting
     while true {
-      await MeetingWorkAdmission.waitUntil(deps.isLocalTurn, wakes: deps.wakes)
+      let provider = selection.provider
+      await MeetingWorkAdmission.waitUntil({ [deps] in deps.isLocalTurn(provider) }, wakes: deps.wakes)
       try Task.checkCancellation()
-      if deps.isLocalTurn(), !lane.summaryCallRunning {
+      if deps.isLocalTurn(provider), !lane.summaryCallRunning {
         lane.beginSummaryCall()
         // #4287: the attempt's own captured selection; only local calls are admitted here.
         runningLocalCall = RunningLocalCall(
