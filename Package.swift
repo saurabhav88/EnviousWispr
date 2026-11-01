@@ -88,7 +88,7 @@ let package = Package(
     // EXACTLY: the metadata copy in EnviousWisprPostProcessing/Resources must be the bytes this
     // version ships (LanguagePhoneMetadataTests pins the hash). The library's own bundled loader
     // is never used; LanguagePhoneMetadata hands it that copy.
-    .package(url: "https://github.com/PhoneNumberKit/PhoneNumberKit.git", exact: "5.0.11"),
+    .package(url: "https://github.com/PhoneNumberKit/PhoneNumberKit.git", exact: "5.0.13"),
   ],
   targets: [
     .target(
