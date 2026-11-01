@@ -72,7 +72,9 @@ final class CallSpeakerObserver {
   /// still blocked from a recording that ended keeps a new recording from starting another.
   /// A test makes its own.
   final class Lane: Sendable {
-    /// Trial: test whether scheduling contributes to loaded capture delays (#4248).
+    /// User-initiated: under the same CPU load, Teams mute copies stayed inside the hold at this
+    /// priority but not at utility (#4248 load comparison, 2026-11-01). Which side was descheduled
+    /// (this lane or the call app) is not established.
     let queue = DispatchQueue(
       label: "com.enviouswispr.call-speaker-capture", qos: .userInitiated)
     let busy = OSAllocatedUnfairLock(initialState: false)
