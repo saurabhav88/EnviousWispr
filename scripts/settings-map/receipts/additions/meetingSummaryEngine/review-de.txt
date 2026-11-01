@@ -1,0 +1,84 @@
+{
+  "meetings.tab.summaries": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Einstellungen für Zusammenfassungen in EnviousMeet",
+      "Tab für Meeting-Zusammenfassungen öffnen"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "de",
+    "words": [
+      "Zusammenfassungsmodell"
+    ],
+    "phrases": [
+      "welche KI schreibt meine Meeting-Zusammenfassungen",
+      "Einstellungen der KI für meine Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "nutze Apple Intelligence für deine Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "KI für deine Meeting-Zusammenfassungen ändern"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "nutze Claude für meine Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "EG-1 für Meeting-Zusammenfassungen kommt bald"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "nutze Google Gemini für meine Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "behalte die gleiche KI für meine Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "nutze Ollama für Meeting-Zusammenfassungen"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "OpenAI für deine Meeting-Zusammenfassungen nutzen"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Meeting-Zusammenfassungen nach jedem Meeting automatisch erstellen",
+      "erstelle nach dem Meeting automatisch eine Zusammenfassung"
+    ]
+  }
+}

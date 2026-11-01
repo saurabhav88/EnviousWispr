@@ -1,0 +1,356 @@
+{
+ "id": "meetingSummaryEngine",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "محرك تلخيص الاجتماعات",
+   "words": [
+    "نموذج التلخيص"
+   ],
+   "phrases": [
+    "الذكاء الاصطناعي الذي يكتب ملخصات اجتماعاتي",
+    "تغيير نموذج تلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "механизъм за обобщаване",
+   "words": [
+    "модел за обобщения"
+   ],
+   "phrases": [
+    "кой изкуствен интелект обобщава срещите ми",
+    "смяна на модела за обобщения на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "nástroj pro shrnutí",
+   "words": [
+    "model pro shrnutí"
+   ],
+   "phrases": [
+    "jaká AI píše shrnutí schůzek",
+    "změnit model pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "motor til opsummering",
+   "words": [
+    "opsummeringsmodel"
+   ],
+   "phrases": [
+    "hvilken AI opsummerer mine møder",
+    "skift model til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Zusammenfassungsmodell"
+   ],
+   "phrases": [
+    "welche KI schreibt meine Meeting-Zusammenfassungen",
+    "KI für meine Meeting-Zusammenfassungen ändern"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "μηχανή σύνοψης",
+   "words": [
+    "μοντέλο σύνοψης"
+   ],
+   "phrases": [
+    "ποια AI γράφει τις συνόψεις των συναντήσεών μου",
+    "αλλαγή μοντέλου για συνόψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "summarizer",
+    "summarization model"
+   ],
+   "phrases": [
+    "which AI writes my meeting summaries",
+    "change the model for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "motor de resúmenes",
+   "words": [
+    "modelo de resumen"
+   ],
+   "phrases": [
+    "qué IA escribe los resúmenes de mis reuniones",
+    "cambiar el modelo para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kokkuvõtete mootor",
+   "words": [
+    "kokkuvõttemudel"
+   ],
+   "phrases": [
+    "milline AI teeb mu koosolekutest kokkuvõtteid",
+    "muuda koosolekute kokkuvõtete mudelit"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "yhteenvetomoottori",
+   "words": [
+    "yhteenvetomalli"
+   ],
+   "phrases": [
+    "mikä tekoäly tekee kokousten yhteenvedot",
+    "vaihda kokousyhteenvetojen mallia"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "moteur de synthèse",
+   "words": [
+    "modèle de résumé"
+   ],
+   "phrases": [
+    "quelle IA rédige mes résumés de réunion",
+    "changer le modèle pour les résumés de réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सारांश इंजन",
+   "words": [
+    "सारांश मॉडल"
+   ],
+   "phrases": [
+    "मेरी मीटिंग का सारांश कौन सा AI लिखता है",
+    "मीटिंग का सारांश बनाने वाला मॉडल बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "sustav za sažimanje",
+   "words": [
+    "model za sažetke"
+   ],
+   "phrases": [
+    "koji AI piše sažetke mojih sastanaka",
+    "promijeni model za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "összefoglaló motor",
+   "words": [
+    "összegző modell"
+   ],
+   "phrases": [
+    "melyik AI írja a megbeszéléseim összefoglalóit",
+    "megbeszélések összefoglalásához használt modell cseréje"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "motore di riepilogo",
+   "words": [
+    "modello di sintesi"
+   ],
+   "phrases": [
+    "quale IA scrive i riepiloghi delle mie riunioni",
+    "cambiare modello per i riassunti delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "要約エンジン",
+   "words": [
+    "要約モデル"
+   ],
+   "phrases": [
+    "会議を要約するAIを選ぶ",
+    "会議の要約に使うモデルを変更"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "요약 엔진",
+   "words": [
+    "요약 모델"
+   ],
+   "phrases": [
+    "회의를 요약하는 AI 선택",
+    "회의 요약에 쓰는 모델 바꾸기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "santraukų variklis",
+   "words": [
+    "santraukų modelis"
+   ],
+   "phrases": [
+    "kuris DI rašo mano susitikimų santraukas",
+    "pakeisti susitikimų santraukų modelį"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "kopsavilkumu dzinis",
+   "words": [
+    "kopsavilkumu modelis"
+   ],
+   "phrases": [
+    "kurš AI veido manu sapulču kopsavilkumus",
+    "mainīt sapulču kopsavilkumu modeli"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "magna tas-sommarji",
+   "words": [
+    "mudell għas-sommarji"
+   ],
+   "phrases": [
+    "liema AI tikteb is-sommarji tal-laqgħat tiegħi",
+    "ibdel il-mudell għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "samenvattingsengine",
+   "words": [
+    "samenvattingsmodel"
+   ],
+   "phrases": [
+    "welke AI schrijft mijn vergadersamenvattingen",
+    "model voor vergadersamenvattingen wijzigen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "silnik podsumowań",
+   "words": [
+    "model podsumowujący"
+   ],
+   "phrases": [
+    "która AI pisze podsumowania moich spotkań",
+    "zmień model do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "motor de resumos",
+   "words": [
+    "modelo de resumo"
+   ],
+   "phrases": [
+    "qual IA escreve os resumos das minhas reuniões",
+    "mudar o modelo para resumir reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "motor de rezumare",
+   "words": [
+    "model pentru rezumate"
+   ],
+   "phrases": [
+    "ce AI scrie rezumatele întâlnirilor mele",
+    "schimbă modelul pentru rezumatele întâlnirilor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "движок сводок",
+   "words": [
+    "модель для итогов"
+   ],
+   "phrases": [
+    "какой ИИ пишет итоги моих встреч",
+    "сменить модель для сводок встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "nástroj na súhrny",
+   "words": [
+    "model na sumarizáciu"
+   ],
+   "phrases": [
+    "ktorá AI píše súhrny mojich stretnutí",
+    "zmeniť model na súhrny stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "pogon za povzetke",
+   "words": [
+    "model za povzemanje"
+   ],
+   "phrases": [
+    "katera umetna inteligenca piše povzetke mojih sestankov",
+    "zamenjaj model za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "sammanfattningsmotor",
+   "words": [
+    "sammanfattningsmodell"
+   ],
+   "phrases": [
+    "vilken AI skriver mina mötessammanfattningar",
+    "byt modell för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "özetleme motoru",
+   "words": [
+    "özetleme modeli"
+   ],
+   "phrases": [
+    "toplantı özetlerimi hangi yapay zeka yazıyor",
+    "toplantı özetleri için modeli değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "рушій підсумовування",
+   "words": [
+    "модель для підсумків"
+   ],
+   "phrases": [
+    "який ШІ пише підсумки моїх зустрічей",
+    "змінити модель для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "bộ máy tóm tắt",
+   "words": [
+    "mô hình tóm tắt"
+   ],
+   "phrases": [
+    "AI nào viết tóm tắt cuộc họp của tôi",
+    "đổi mô hình dùng để tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "摘要引擎",
+   "words": [
+    "总结模型"
+   ],
+   "phrases": [
+    "哪个AI写会议摘要",
+    "更换会议总结用的模型"
+   ]
+  }
+ ]
+}

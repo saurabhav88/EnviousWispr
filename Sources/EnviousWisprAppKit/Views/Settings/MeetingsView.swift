@@ -78,6 +78,7 @@ struct MeetingsView: View {
     switch selection {
     case .general: generalTab
     case .models: modelsTab
+    case .summaries: MeetingSummariesTab()
     case .callApps: callAppsTab
     case .permissions: permissionsTab
     }
@@ -89,7 +90,6 @@ struct MeetingsView: View {
         BrandedSection {
           BrandedRow { MeetingCallDetectionRow() }
           BrandedRow { MeetingCallSoundRow() }
-          BrandedRow { MeetingWriteSummaryRow() }
           BrandedRow { MeetingTurnsOffDictationRow() }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
         }
@@ -131,8 +131,8 @@ struct MeetingsView: View {
     }
   }
 
-  /// #3973 PR B: every model choice on one tab (founder 2026-10-27): live words and the
-  /// transcript's language in one section (#4105), and who writes summaries.
+  /// #3973 PR B: the speech model choices (founder 2026-10-27): live words and the transcript's
+  /// language in one section (#4105). Summaries moved to their own tab (#4287).
   private var modelsTab: some View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: 16) {
@@ -140,9 +140,6 @@ struct MeetingsView: View {
           BrandedRow { MeetingLiveWordsRow() }
           BrandedRow { MeetingTranscriptEngineRow() }
           BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
-        }
-        BrandedSection {
-          BrandedRow(showDivider: false) { summaryWriterRow }
         }
       }
     }
@@ -196,64 +193,6 @@ extension MeetingsView {
     }
   }
 
-  /// Who writes the summaries (R34), from the AI Polish provider and model, with the AI Polish
-  /// settings link when none can. A status line, not a setting: search does not land on it.
-  fileprivate var summaryWriterRow: some View {
-    let status = Self.summaryWriter(settings.llmProvider, model: settings.effectiveLLMModel)
-    return SettingsRow(
-      notInSettingsMap: .statusLine, icon: "sparkles",
-      title: LocalizedStringResource(
-        "Summaries", comment: "EnviousMeet page: the row that says who writes meeting summaries."),
-      short: Self.summaryWriterLine(status),
-      help: LocalizedStringResource(
-        "Summaries use the AI Polish provider and model chosen in AI Polish settings.",
-        comment: "EnviousMeet page: help for the row that says who writes meeting summaries.")
-    ) {
-      if case .problem = status {
-        Button {
-          navigation.request(.aiPolish)
-        } label: {
-          Text(
-            "Open AI Polish settings",
-            comment: "Link button that opens the AI Polish settings page.")
-        }
-        .buttonStyle(.link)
-        .accessibilityIdentifier("meetings.settings.openAIPolish")
-      }
-    }
-  }
-
-  enum SummaryWriter: Equatable {
-    /// This provider can write summaries (whether it is ready is known only when one is written).
-    case provider(LLMProvider)
-    /// No summary can be written: no provider, or a cleanup model.
-    case problem(MeetingSummaryOwner.Problem)
-  }
-
-  static func summaryWriter(_ provider: LLMProvider, model: String) -> SummaryWriter {
-    switch MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil) {
-    case .noProvider: return .problem(.noProvider)
-    case .notForSummaries: return .problem(.notForSummaries)
-    case .supported: return .provider(provider)
-    }
-  }
-
-  static func summaryWriterLine(_ status: SummaryWriter) -> LocalizedStringResource {
-    switch status {
-    case .provider(let provider):
-      return LocalizedStringResource(
-        "Written by \(provider.displayName).",
-        comment: "EnviousMeet page: the AI Polish provider that writes meeting summaries, e.g. Ollama.")
-    case .problem(.noProvider):
-      return LocalizedStringResource(
-        "No AI Polish provider is chosen, so no summary is written.",
-        comment: "EnviousMeet page: no AI Polish provider is selected, so meetings get no summary.")
-    case .problem:
-      return LocalizedStringResource(
-        "The selected AI Polish model can't write summaries.",
-        comment: "EnviousMeet page: the selected cleanup model (EG-1, S1-mini) cannot summarize.")
-    }
-  }
 
   static func microphoneStatusLine(_ status: AVAuthorizationStatus) -> LocalizedStringResource {
     switch status {
@@ -399,11 +338,36 @@ enum MeetingsCopy {
     "Write a summary when a meeting ends",
     comment: "EnviousMeet page: switch that writes a summary of each meeting automatically.")
   static let writeSummaryShort = LocalizedStringResource(
-    "Your AI Polish provider writes a summary of each meeting.",
+    "The summary engine on this tab writes a summary of each meeting.",
     comment: "EnviousMeet page: the short line under Write a summary when a meeting ends.")
   static let writeSummaryHelp = LocalizedStringResource(
-    "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
+    "The summary is written from the transcript and your notes by the summary engine on this tab. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
+  // #4287: the Summaries tab's engine card.
+  static let summaryEngineTitle = LocalizedStringResource(
+    "Summary engine",
+    comment: "EnviousMeet Summaries tab: the card that picks the AI engine that writes meeting summaries.")
+  static let summaryEngineShort = LocalizedStringResource(
+    "The AI that writes your meeting summaries. Separate from AI Polish for dictation.",
+    comment: "EnviousMeet Summaries tab: the line under Summary engine.")
+  static let summaryEngineNone = LocalizedStringResource(
+    "No summary engine chosen",
+    comment: "EnviousMeet Summaries tab: no engine is picked, so no summary is written.")
+  static let summaryEngineNoneShort = LocalizedStringResource(
+    "Pick an engine to write meeting summaries.",
+    comment: "EnviousMeet Summaries tab: the line under No summary engine chosen.")
+  static let changeSummaryEngine = LocalizedStringResource(
+    "Change summary engine",
+    comment: "EnviousMeet Summaries tab: VoiceOver name of the Change button for the summary engine.")
+  static let keepCurrentSummaryEngine = LocalizedStringResource(
+    "Keep current summary engine",
+    comment: "EnviousMeet Summaries tab: closes the engine choices without changing the engine.")
+  static let summaryEngineComingSoon = LocalizedStringResource(
+    "Coming soon",
+    comment: "EnviousMeet Summaries tab: an engine that cannot write summaries yet and cannot be picked.")
+  static let summaryEngineCantSummarize = LocalizedStringResource(
+    "Can't write summaries",
+    comment: "EnviousMeet Summaries tab: status of a chosen engine or model that cannot write summaries.")
   static let turnsOffDictationTitle = LocalizedStringResource(
     "Turn off dictation during meetings",
     comment: "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.")

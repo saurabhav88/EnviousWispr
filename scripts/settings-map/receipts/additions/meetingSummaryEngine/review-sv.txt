@@ -1,0 +1,95 @@
+{
+  "meetings.tab.summaries": {
+    "language": "sv",
+    "title": "sammanfattningar",
+    "words": [],
+    "phrases": [
+      "fliken sammanfattningar i EnviousMeet",
+      "inställningar för sammanfattningar i EnviousMeet"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "sv",
+    "title": "sammanfattningsmotor",
+    "words": [
+      "sammanfattningsmodell"
+    ],
+    "phrases": [
+      "vilken ai skriver mina mötessammanfattningar",
+      "inställningar för motorn som skriver mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "sv",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "använd Apple Intelligence för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "sv",
+    "title": "ändra",
+    "words": [],
+    "phrases": [
+      "byt ai för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "sv",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "använd Claude för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "sv",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 för mötessammanfattningar kommer snart"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "sv",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "använd Gemini för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "sv",
+    "title": "behåll nuvarande sammanfattningsmotor",
+    "words": [],
+    "phrases": [
+      "fortsätt använda samma ai för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "sv",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "använd Ollama för mötessammanfattningar"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "sv",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "använd OpenAI för mötessammanfattningar"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "sv",
+    "title": "skapa en sammanfattning när mötet slutar",
+    "words": [],
+    "phrases": [
+      "sammanfatta mötet automatiskt",
+      "slå på automatisk sammanfattning när mötet slutar"
+    ]
+  }
+}

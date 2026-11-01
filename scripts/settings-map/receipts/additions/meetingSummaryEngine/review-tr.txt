@@ -1,0 +1,97 @@
+{
+  "meetings.tab.summaries": {
+    "language": "tr",
+    "title": "özetler",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri sekmesi",
+      "EnviousMeet özet ayarları"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "tr",
+    "title": "özetleme motoru",
+    "words": [
+      "toplantı özetleme motoru"
+    ],
+    "phrases": [
+      "toplantı özetlerimi hangi yapay zekâ yazıyor",
+      "toplantı özetleme motorunun ayarları"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "tr",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için Apple Intelligence kullan"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "tr",
+    "title": "değiştir",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için yapay zekâyı değiştir"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "tr",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için Claude kullan"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "tr",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için EG-1 ne zaman gelecek",
+      "toplantı özetleri için EG-1 neden seçilemiyor"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "tr",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için Google Gemini kullan"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "tr",
+    "title": "mevcut özetleme motorunu koru",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için aynı yapay zekâyı kullanmaya devam et",
+      "özetleme motorunu değiştirmeden seçimi kapat"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "tr",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için Ollama kullan"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "tr",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için OpenAI kullan"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "tr",
+    "title": "toplantı bittiğinde özet oluştur",
+    "words": [],
+    "phrases": [
+      "toplantı bitince otomatik özet oluştur",
+      "toplantı sonunda otomatik özetlemeyi kapat"
+    ]
+  }
+}

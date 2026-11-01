@@ -1,0 +1,98 @@
+{
+  "meetings.tab.summaries": {
+    "language": "lv",
+    "title": "kopsavilkumi",
+    "words": [],
+    "phrases": [
+      "EnviousMeet kopsavilkumu cilne",
+      "sapulču kopsavilkumu iestatījumi"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "lv",
+    "title": "kopsavilkumu dzinis",
+    "words": [
+      "kopsavilkumu modelis"
+    ],
+    "phrases": [
+      "kurš AI veido manu sapulču kopsavilkumus",
+      "sapulču kopsavilkumu dziņa iestatījumi"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "lv",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "izmantot Apple Intelligence sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "lv",
+    "title": "mainīt",
+    "words": [],
+    "phrases": [
+      "izvēlēties citu dzini sapulču kopsavilkumiem",
+      "atvērt sapulču kopsavilkumu dziņu izvēli"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "lv",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "izmantot Claude sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "lv",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "kad būs pieejams EG-1 sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "lv",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "izmantot Google Gemini sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "lv",
+    "title": "paturēt pašreizējo kopsavilkumu dzini",
+    "words": [],
+    "phrases": [
+      "atstāt sapulču kopsavilkumu dzini nemainītu",
+      "aizvērt kopsavilkumu dziņu izvēli bez izmaiņām"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "lv",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "izmantot Ollama sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "lv",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "izmantot OpenAI sapulču kopsavilkumiem"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "lv",
+    "title": "izveidot kopsavilkumu pēc sapulces beigām",
+    "words": [],
+    "phrases": [
+      "automātiski izveidot kopsavilkumu pēc katras sapulces",
+      "ieslēgt sapulču kopsavilkumu automātisku veidošanu",
+      "izslēgt sapulču kopsavilkumu automātisku veidošanu"
+    ]
+  }
+}

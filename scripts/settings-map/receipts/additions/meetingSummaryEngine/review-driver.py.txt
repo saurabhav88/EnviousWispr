@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""#4287: one fresh isolated Codex session per language reviews the drafted search blocks for the
+ten new EnviousMeet Summaries tab places and the moved meetingWriteSummary switch together
+(accuracy, naturalness, collisions with each other and with their siblings). Adapted from the
+#3973 C3 driver.
+Usage: review-driver.py <worktree> <outdir> <id>=<draft.json> ..."""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+drafts = {}
+for arg in sys.argv[3:]:
+    pid, path = arg.split("=", 1)
+    drafts[pid] = {b["language"]: b for b in json.load(open(path, encoding="utf-8"))["blocks"]}
+
+def choice(name, de_name, extra):
+    return {
+        "title_en": name, "title_de": de_name,
+        "description_en": "(none) A choice among the Summary engine cards.",
+        "truth": (
+            f"The {name} card on the Summaries tab of the EnviousMeet (meeting recorder) page: "
+            f"meeting summaries written by {name}. {extra} It is NOT the AI Polish (dictation "
+            "cleanup) provider choice of the same name, which stays separate."),
+    }
+
+
+PLACES = {
+    "meetingSummaryEngine": {
+        "title_en": "Summary engine", "title_de": "Zusammenfassungs-Engine",
+        "description_en": "The AI that writes your meeting summaries. Separate from AI Polish for dictation.",
+        "truth": (
+            "A card on the Summaries tab of the EnviousMeet (meeting recorder) page. It shows the AI "
+            "engine that writes meeting summaries and, behind Change, six engine cards: Apple "
+            "Intelligence, EG-1 (shown as Coming soon, not pickable yet), Ollama, OpenAI, Google "
+            "Gemini and Claude. Under it are that engine's setup controls (model, API key, Ollama). "
+            "It is chosen separately from AI Polish, which cleans up dictation; changing one never "
+            "changes the other. It does not turn summaries on or off (a separate switch does)."),
+    },
+    "meetingSummaryEngine.change": {
+        "title_en": "Change", "title_de": "Ändern",
+        "description_en": "(none) The Change button on the Summary engine card.",
+        "truth": "The Change button on the Summary engine card: opens the six engine cards to pick a different engine for meeting summaries.",
+    },
+    "meetingSummaryEngine.keepCurrent": {
+        "title_en": "Keep current summary engine", "title_de": "Aktuelle Zusammenfassungs-Engine beibehalten",
+        "description_en": "(none) Closes the engine cards without changing the engine.",
+        "truth": "The link under the open engine cards that closes them and keeps the summary engine as it is.",
+    },
+    "meetingSummaryEngine.appleIntelligence": choice("Apple Intelligence", "Apple Intelligence", "Runs on this Mac."),
+    "meetingSummaryEngine.egOne": choice("EG-1", "EG-1", "EnviousWispr's own model on this Mac; shown as Coming soon and cannot be picked yet."),
+    "meetingSummaryEngine.ollama": choice("Ollama", "Ollama", "Uses a model you run in Ollama, on this Mac or hosted."),
+    "meetingSummaryEngine.openAI": choice("OpenAI", "OpenAI", "Cloud, with your own OpenAI API key."),
+    "meetingSummaryEngine.gemini": choice("Google Gemini", "Google Gemini", "Cloud, with your own Google API key."),
+    "meetingSummaryEngine.claude": choice("Claude", "Claude", "Cloud, with your own Anthropic API key."),
+    "meetings.tab.summaries": {
+        "title_en": "Summaries", "title_de": "Zusammenfassungen",
+        "description_en": "(none) A tab of the EnviousMeet page.",
+        "truth": "The Summaries tab of the EnviousMeet page: the switch that writes a summary when a meeting ends, and the summary engine card with its setup.",
+    },
+    "meetingWriteSummary": {
+        "title_en": "Write a summary when a meeting ends", "title_de": "Zusammenfassung erstellen, wenn ein Meeting endet",
+        "description_en": "The summary engine on this tab writes a summary of each meeting.",
+        "truth": (
+            "A switch, now on the Summaries tab of the EnviousMeet page (it moved there from the "
+            "General tab): writes a summary automatically when each meeting ends, using the summary "
+            "engine chosen on that tab (no longer the AI Polish provider). Off does not stop one "
+            "already started; a summary can still be written by hand from History. The current "
+            "blocks were reviewed before the move; correct anything that now says AI Polish writes "
+            "the summary or that it is on the General tab."),
+    },
+}
+SIBLINGS = ["aiPolishProvider", "aiPolishProvider.appleIntelligence", "aiPolishProvider.egOne",
+            "aiPolishProvider.ollama", "aiPolishProvider.openAI", "aiPolishProvider.gemini",
+            "aiPolishProvider.claude", "enableAIPolish", "meetingTranscriptEngine",
+            "meetings.tab.models", "meetings.tab.general", "previewEngine.change",
+            "previewEngine.keepCurrent"]
+
+vocab = json.load(
+    open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+missing = [s for s in SIBLINGS if s not in by_id]
+assert not missing, f"unknown sibling ids: {missing}"
+
+BRIEF = """You are reviewing draft search vocabulary blocks for ELEVEN places (ten new, one moved) in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The places (English titles and descriptions are the source of truth):
+{places}
+
+For each place's draft block in "{lang}":
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: a block must not fit another of the eleven places, or an existing sibling place, equally well. The six engine cards must clearly name their engine AND that they are for meeting summaries, so they never compete with the AI Polish provider choices of the same names. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For a title: how an app in that language would label this place. Keep product names (EnviousMeet, EnviousWispr, Apple Intelligence, EG-1, Ollama, OpenAI, Google Gemini, Claude, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft blocks (place id -> block):
+{drafts}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, mapping each of the eleven place ids to its corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). Return a block unchanged if it is already right. After the JSON add nothing.
+"""
+
+
+def describe() -> str:
+    lines = []
+    for pid, p in PLACES.items():
+        lines.append(
+            f"- {pid}: English title {p['title_en']}; German title {p['title_de']}; English "
+            f"description: {p['description_en']}; what it really is: {p['truth']}")
+    return "\n".join(lines)
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang, places=describe(),
+        drafts=json.dumps({pid: d[lang] for pid, d in drafts.items()}, ensure_ascii=False, indent=1),
+        siblings=json.dumps(
+            {i: by_id[i][lang] for i in SIBLINGS if lang in by_id[i]}, ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false",
+         "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral",
+         "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(
+            f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = sorted(next(iter(drafts.values())).keys())
+assert all(sorted(d.keys()) == langs for d in drafts.values()), "drafts cover different languages"
+# A rerun of languages whose session stalled: EW_LANGS="de fr ...", fewer at a time.
+if os.environ.get("EW_LANGS"):
+    langs = [l for l in langs if l in os.environ["EW_LANGS"].split()]
+with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(os.environ.get("EW_WORKERS", "6"))) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

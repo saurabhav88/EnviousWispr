@@ -1,0 +1,259 @@
+{
+ "id": "meetingSummaryEngine.keepCurrent",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الإبقاء على محرك التلخيص الحالي",
+   "words": [],
+   "phrases": [
+    "استخدم نفس الذكاء الاصطناعي لتلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на текущия модул за обобщаване",
+   "words": [],
+   "phrases": [
+    "остави същия изкуствен интелект за обобщенията на срещите"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "ponechat současný nástroj pro shrnutí",
+   "words": [],
+   "phrases": [
+    "nechat stejnou ai pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "behold den nuværende opsummeringsmotor",
+   "words": [],
+   "phrases": [
+    "brug fortsat samme ai til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "behalte die gleiche KI für meine Meeting-Zusammenfassungen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διατήρηση της τρέχουσας μηχανής σύνοψης",
+   "words": [],
+   "phrases": [
+    "κράτα την ίδια τεχνητή νοημοσύνη για τις περιλήψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "keep using the same ai for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "mantener el motor de resúmenes actual",
+   "words": [],
+   "phrases": [
+    "seguir usando la misma ia para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "säilita praegune kokkuvõttemootor",
+   "words": [],
+   "phrases": [
+    "kasuta koosolekute kokkuvõteteks edasi sama tehisaru"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "säilytä nykyinen yhteenvetomoottori",
+   "words": [],
+   "phrases": [
+    "käytä edelleen samaa tekoälyä kokousten yhteenvetoihin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver le moteur de résumé actuel",
+   "words": [],
+   "phrases": [
+    "garder la même ia pour les résumés de réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "मौजूदा सारांश इंजन बनाए रखें",
+   "words": [],
+   "phrases": [
+    "मीटिंग के सारांश के लिए वही एआई इस्तेमाल करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "zadrži trenutačni mehanizam za sažimanje",
+   "words": [],
+   "phrases": [
+    "nastavi koristiti istu umjetnu inteligenciju za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "jelenlegi összefoglaló motor megtartása",
+   "words": [],
+   "phrases": [
+    "maradjon ugyanaz az ai a megbeszélések összefoglalásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "mantieni il motore di riepilogo attuale",
+   "words": [],
+   "phrases": [
+    "continua a usare la stessa ia per i riepiloghi delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "現在の要約エンジンを維持",
+   "words": [],
+   "phrases": [
+    "会議の要約に今と同じaiを使い続ける"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "현재 요약 엔진 유지",
+   "words": [],
+   "phrases": [
+    "회의 요약에 지금 쓰는 ai 계속 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "palikti dabartinį santraukų variklį",
+   "words": [],
+   "phrases": [
+    "susitikimų santraukoms toliau naudoti tą patį dirbtinį intelektą"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "paturēt pašreizējo kopsavilkumu dzini",
+   "words": [],
+   "phrases": [
+    "sapulču kopsavilkumiem turpināt izmantot to pašu mākslīgo intelektu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "żomm il-magna tas-sommarji attwali",
+   "words": [],
+   "phrases": [
+    "kompli uża l-istess intelliġenza artifiċjali għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "huidige samenvattingsengine behouden",
+   "words": [],
+   "phrases": [
+    "dezelfde ai blijven gebruiken voor vergadersamenvattingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zachowaj obecny silnik podsumowań",
+   "words": [],
+   "phrases": [
+    "dalej używaj tej samej ai do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "manter o motor de resumos atual",
+   "words": [],
+   "phrases": [
+    "continuar a usar a mesma ia para resumir reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "păstrează motorul de rezumare actual",
+   "words": [],
+   "phrases": [
+    "folosește în continuare aceeași inteligență artificială pentru rezumatele întâlnirilor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сохранить текущий движок сводок",
+   "words": [],
+   "phrases": [
+    "оставить тот же ии для итогов встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "ponechať súčasný nástroj na súhrny",
+   "words": [],
+   "phrases": [
+    "ďalej používať rovnakú ai na súhrny stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ohrani trenutni pogon za povzetke",
+   "words": [],
+   "phrases": [
+    "še naprej uporabljaj isto umetno inteligenco za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behåll nuvarande sammanfattningsmotor",
+   "words": [],
+   "phrases": [
+    "fortsätt använda samma ai för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "mevcut özetleme motorunu koru",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için aynı yapay zekayı kullanmaya devam et"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "залишити поточний рушій підсумків",
+   "words": [],
+   "phrases": [
+    "і далі використовувати той самий ші для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "giữ công cụ tóm tắt hiện tại",
+   "words": [],
+   "phrases": [
+    "tiếp tục dùng cùng ai để tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保留当前摘要引擎",
+   "words": [],
+   "phrases": [
+    "继续用现在的ai生成会议摘要"
+   ]
+  }
+ ]
+}

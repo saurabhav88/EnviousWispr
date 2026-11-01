@@ -4,82 +4,67 @@
   "ar": {
    "title": "إنشاء ملخص عند انتهاء الاجتماع",
    "words": [
-    "تلخيص",
-    "موجز"
+    "التلخيص التلقائي للاجتماعات"
    ],
    "phrases": [
-    "لخص الاجتماع بعد انتهائه",
-    "ملخص الاجتماع بالذكاء الاصطناعي"
+    "إنشاء ملخص تلقائيًا عند انتهاء كل اجتماع",
+    "تفعيل تلخيص الاجتماعات تلقائيًا",
+    "إيقاف التلخيص التلقائي للاجتماعات"
    ]
   },
   "bg": {
-   "title": "създаване на обобщение след края на срещата",
+   "title": "автоматично обобщаване след края на срещата",
    "words": [
-    "резюме"
+    "автоматично обобщаване"
    ],
    "phrases": [
-    "обобщи срещата, когато приключи",
-    "резюме на срещата с изкуствен интелект"
+    "създавай обобщение автоматично, когато срещата приключи",
+    "изключи автоматичните обобщения след срещи"
    ]
   },
   "cs": {
    "title": "vytvořit shrnutí po skončení schůzky",
-   "words": [
-    "souhrn",
-    "rekapitulace"
-   ],
+   "words": [],
    "phrases": [
-    "shrnout schůzku po jejím skončení",
-    "shrnutí schůzky pomocí AI"
+    "automaticky shrnout schůzku po jejím skončení",
+    "zapnout automatické shrnutí schůzek",
+    "vypnout automatické shrnutí schůzek"
    ]
   },
   "da": {
    "title": "lav et resumé, når mødet slutter",
-   "words": [
-    "opsummering"
-   ],
+   "words": [],
    "phrases": [
-    "opsummer mødet bagefter",
-    "automatisk resumé af mødet"
+    "lav automatisk et resumé, når mødet slutter",
+    "slå automatiske mødeopsummeringer til"
    ]
   },
   "de": {
-   "words": [
-    "Meetingzusammenfassung",
-    "Besprechungszusammenfassung",
-    "Kurzfassung"
-   ],
+   "words": [],
    "phrases": [
-    "fass mein Meeting zusammen",
-    "erstelle nach dem Meeting automatisch eine Zusammenfassung"
+    "nach jedem Meeting automatisch eine Zusammenfassung erstellen",
+    "automatische Meetingzusammenfassung nach Meetingende einschalten"
    ]
   },
   "el": {
    "title": "δημιουργία σύνοψης όταν τελειώνει η συνάντηση",
-   "words": [
-    "περίληψη"
-   ],
+   "words": [],
    "phrases": [
-    "σύνοψη μετά το τέλος της συνάντησης",
-    "περίληψη συνάντησης με τεχνητή νοημοσύνη"
+    "αυτόματη δημιουργία περίληψης όταν τελειώνει κάθε συνάντηση",
+    "ενεργοποίηση αυτόματων περιλήψεων συναντήσεων",
+    "απενεργοποίηση αυτόματων περιλήψεων συναντήσεων"
    ]
   },
   "en": {
-   "words": [
-    "recap",
-    "summarize",
-    "summarise"
-   ],
+   "words": [],
    "phrases": [
     "automatically summarize meetings",
-    "AI meeting recap"
+    "write a summary when a meeting ends"
    ]
   },
   "es": {
    "title": "crear un resumen al terminar la reunión",
-   "words": [
-    "síntesis"
-   ],
+   "words": [],
    "phrases": [
     "resumir la reunión al acabar",
     "resumen automático de reuniones"
@@ -87,31 +72,23 @@
   },
   "et": {
    "title": "loo koosoleku lõpus kokkuvõte",
-   "words": [
-    "ülevaade"
-   ],
+   "words": [],
    "phrases": [
-    "tee pärast koosolekut kokkuvõte",
-    "automaatne koosoleku kokkuvõte"
+    "tee pärast koosolekut automaatselt kokkuvõte",
+    "lülita koosolekute automaatsed kokkuvõtted sisse või välja"
    ]
   },
   "fi": {
    "title": "luo yhteenveto kokouksen päätyttyä",
-   "words": [
-    "tiivistelmä",
-    "kooste"
-   ],
+   "words": [],
    "phrases": [
-    "tee kokouksesta yhteenveto",
-    "automaattinen kokouksen tiivistelmä"
+    "tee yhteenveto automaattisesti kokouksen päätyttyä",
+    "ota automaattiset kokousyhteenvedot käyttöön"
    ]
   },
   "fr": {
    "title": "créer un résumé à la fin de la réunion",
-   "words": [
-    "synthèse",
-    "récapitulatif"
-   ],
+   "words": [],
    "phrases": [
     "résumer la réunion une fois terminée",
     "résumé automatique des réunions"
@@ -119,10 +96,7 @@
   },
   "hi": {
    "title": "मीटिंग खत्म होने पर सारांश बनाएँ",
-   "words": [
-    "सारांश",
-    "संक्षेप"
-   ],
+   "words": [],
    "phrases": [
     "मीटिंग के बाद अपने आप सारांश बनाना",
     "मीटिंग का सारांश अपने आप बनाना बंद करें"
@@ -131,18 +105,16 @@
   "hr": {
    "title": "izradi sažetak nakon završetka sastanka",
    "words": [
-    "rezime"
+    "automatski sažetak sastanka"
    ],
    "phrases": [
     "sažmi sastanak kad završi",
-    "automatski sažetak sastanka"
+    "uključi automatsku izradu sažetaka sastanaka"
    ]
   },
   "hu": {
    "title": "összefoglaló készítése a megbeszélés végén",
-   "words": [
-    "összegzés"
-   ],
+   "words": [],
    "phrases": [
     "megbeszélés automatikus összefoglalása",
     "készíts összefoglalót a megbeszélés után"
@@ -150,10 +122,7 @@
   },
   "it": {
    "title": "crea un riepilogo al termine della riunione",
-   "words": [
-    "riassunto",
-    "sintesi"
-   ],
+   "words": [],
    "phrases": [
     "riassumi la riunione quando finisce",
     "riepilogo automatico delle riunioni"
@@ -162,19 +131,17 @@
   "ja": {
    "title": "会議終了時に要約を作成",
    "words": [
-    "まとめ",
-    "サマリー"
+    "会議の自動要約"
    ],
    "phrases": [
     "会議が終わったら自動でまとめる",
-    "AIで会議を要約"
+    "会議終了時の自動要約をオフにする"
    ]
   },
   "ko": {
    "title": "회의가 끝나면 요약 작성",
    "words": [
-    "회의 요약",
-    "자동 요약"
+    "회의 자동 요약"
    ],
    "phrases": [
     "회의 끝나고 자동으로 요약하기",
@@ -183,9 +150,7 @@
   },
   "lt": {
    "title": "kurti santrauką pasibaigus susitikimui",
-   "words": [
-    "apibendrinimas"
-   ],
+   "words": [],
    "phrases": [
     "apibendrinti susitikimą jam pasibaigus",
     "automatinė susitikimo santrauka"
@@ -193,49 +158,43 @@
   },
   "lv": {
    "title": "izveidot kopsavilkumu pēc sapulces beigām",
-   "words": [
-    "rezumējums"
-   ],
+   "words": [],
    "phrases": [
-    "automātiski apkopot sapulcē pārrunāto",
-    "sapulces kopsavilkums ar mākslīgo intelektu"
+    "automātiski izveidot kopsavilkumu pēc katras sapulces",
+    "ieslēgt sapulču kopsavilkumu automātisku veidošanu",
+    "izslēgt sapulču kopsavilkumu automātisku veidošanu"
    ]
   },
   "mt": {
    "title": "oħloq sommarju meta tintemm il-laqgħa",
    "words": [
-    "ġabra fil-qosor"
+    "sommarju awtomatiku"
    ],
    "phrases": [
-    "agħmel sommarju wara l-laqgħa",
-    "sommarju awtomatiku tal-laqgħa"
+    "agħmel sommarju awtomatikament meta tintemm il-laqgħa",
+    "attiva s-sommarji awtomatiċi tal-laqgħat"
    ]
   },
   "nl": {
    "title": "maak een samenvatting als de vergadering eindigt",
-   "words": [
-    "vergaderoverzicht"
-   ],
+   "words": [],
    "phrases": [
     "vergadering automatisch samenvatten",
-    "samenvatting na afloop van de vergadering"
+    "automatisch een samenvatting maken na afloop van elke vergadering",
+    "automatische vergadersamenvattingen aanzetten"
    ]
   },
   "pl": {
    "title": "utwórz podsumowanie po zakończeniu spotkania",
-   "words": [
-    "streszczenie"
-   ],
+   "words": [],
    "phrases": [
-    "podsumuj spotkanie po jego zakończeniu",
-    "automatyczne streszczenie spotkania"
+    "automatycznie podsumuj każde spotkanie po jego zakończeniu",
+    "włącz automatyczne podsumowania spotkań"
    ]
   },
   "pt": {
    "title": "criar um resumo ao terminar a reunião",
-   "words": [
-    "síntese"
-   ],
+   "words": [],
    "phrases": [
     "resumir a reunião quando acabar",
     "resumo automático de reuniões"
@@ -243,10 +202,7 @@
   },
   "ro": {
    "title": "creează un rezumat la încheierea întâlnirii",
-   "words": [
-    "sinteză",
-    "sumar"
-   ],
+   "words": [],
    "phrases": [
     "rezumă întâlnirea când se termină",
     "rezumat automat al ședinței"
@@ -255,29 +211,26 @@
   "ru": {
    "title": "создавать сводку после завершения встречи",
    "words": [
-    "резюме",
-    "итоги"
+    "автосводка встреч"
    ],
    "phrases": [
-    "подвести итоги встречи автоматически",
-    "краткое содержание встречи с помощью ИИ"
+    "автоматически создавать сводку после каждой встречи",
+    "отключить автоматические сводки встреч"
    ]
   },
   "sk": {
    "title": "vytvoriť zhrnutie po skončení stretnutia",
-   "words": [
-    "súhrn",
-    "rekapitulácia"
-   ],
+   "words": [],
    "phrases": [
-    "zhrnúť stretnutie po jeho skončení",
-    "automatický súhrn stretnutia"
+    "automaticky vytvoriť zhrnutie po skončení stretnutia",
+    "zapnúť automatické zhrnutia stretnutí",
+    "vypnúť automatické zhrnutia stretnutí"
    ]
   },
   "sl": {
    "title": "ustvari povzetek ob koncu sestanka",
    "words": [
-    "povzetek sestanka"
+    "samodejni povzetki sestankov"
    ],
    "phrases": [
     "povzemi sestanek, ko se konča",
@@ -286,54 +239,48 @@
   },
   "sv": {
    "title": "skapa en sammanfattning när mötet slutar",
-   "words": [
-    "summering"
-   ],
+   "words": [],
    "phrases": [
     "sammanfatta mötet automatiskt",
-    "sammanfattning efter mötet"
+    "slå på automatisk sammanfattning när mötet slutar"
    ]
   },
   "tr": {
    "title": "toplantı bittiğinde özet oluştur",
-   "words": [
-    "toplantı özeti"
-   ],
+   "words": [],
    "phrases": [
     "toplantı bitince otomatik özet oluştur",
-    "yapay zekâyla toplantı özeti"
+    "toplantı sonunda otomatik özetlemeyi kapat"
    ]
   },
   "uk": {
    "title": "створювати підсумок після завершення зустрічі",
    "words": [
-    "резюме",
-    "узагальнення"
+    "автопідсумок зустрічі"
    ],
    "phrases": [
-    "автоматично підбити підсумки зустрічі",
-    "стислий виклад зустрічі за допомогою ШІ"
+    "автоматично створювати підсумок після завершення зустрічі",
+    "вимкнути автоматичне створення підсумків зустрічей"
    ]
   },
   "vi": {
    "title": "tạo bản tóm tắt khi cuộc họp kết thúc",
-   "words": [
-    "tổng kết"
-   ],
+   "words": [],
    "phrases": [
     "tự động tóm tắt sau cuộc họp",
-    "tóm tắt cuộc họp bằng AI"
+    "bật tạo bản tóm tắt khi cuộc họp kết thúc",
+    "tắt tự động tóm tắt cuộc họp"
    ]
   },
   "zh": {
    "title": "会议结束时生成摘要",
    "words": [
-    "总结",
-    "小结"
+    "自动会议摘要",
+    "会后自动总结"
    ],
    "phrases": [
     "开完会自动总结",
-    "用AI总结会议内容"
+    "关闭会议结束后自动生成摘要"
    ]
   }
  }

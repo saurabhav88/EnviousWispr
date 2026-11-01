@@ -1,0 +1,313 @@
+{
+ "id": "meetingSummaryEngine",
+ "blocks": {
+  "ar": {
+   "title": "محرك تلخيص الاجتماعات",
+   "words": [
+    "محرك ملخصات الاجتماعات"
+   ],
+   "phrases": [
+    "الذكاء الاصطناعي الذي يكتب ملخصات اجتماعاتي",
+    "إعدادات محرك تلخيص الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "модул за обобщаване",
+   "words": [
+    "модул за обобщения"
+   ],
+   "phrases": [
+    "кой изкуствен интелект обобщава срещите ми",
+    "настройки на модула за обобщаване на срещи"
+   ]
+  },
+  "cs": {
+   "title": "nástroj pro shrnutí",
+   "words": [
+    "model pro shrnutí schůzek"
+   ],
+   "phrases": [
+    "jaká AI píše shrnutí schůzek",
+    "nastavení modelu pro shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "opsummeringsmotor",
+   "words": [],
+   "phrases": [
+    "hvilken AI opsummerer mine møder",
+    "se den aktuelle motor til mødeopsummeringer"
+   ]
+  },
+  "de": {
+   "words": [
+    "Zusammenfassungsmodell"
+   ],
+   "phrases": [
+    "welche KI erstellt deine Meetingzusammenfassungen",
+    "Engine für Meetingzusammenfassungen einstellen"
+   ]
+  },
+  "el": {
+   "title": "μηχανή σύνοψης",
+   "words": [
+    "μοντέλο σύνοψης"
+   ],
+   "phrases": [
+    "ποια τεχνητή νοημοσύνη γράφει τις περιλήψεις των συναντήσεών μου",
+    "ρυθμίσεις της μηχανής για περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "which AI writes my meeting summaries",
+    "meeting summary engine setup"
+   ]
+  },
+  "es": {
+   "title": "motor de resúmenes",
+   "words": [
+    "modelo de resumen"
+   ],
+   "phrases": [
+    "qué IA escribe los resúmenes de mis reuniones",
+    "configurar el motor de resúmenes de reuniones"
+   ]
+  },
+  "et": {
+   "title": "kokkuvõtete mootor",
+   "words": [
+    "kokkuvõttemudel"
+   ],
+   "phrases": [
+    "milline AI teeb mu koosolekutest kokkuvõtteid",
+    "koosolekute kokkuvõttemootori seadistamine"
+   ]
+  },
+  "fi": {
+   "title": "yhteenvetomoottori",
+   "words": [
+    "kokousyhteenvetomalli"
+   ],
+   "phrases": [
+    "mikä tekoäly tekee kokousten yhteenvedot",
+    "kokousten yhteenvetomoottorin asetukset"
+   ]
+  },
+  "fr": {
+   "title": "moteur de résumé",
+   "words": [
+    "moteur de résumé des réunions"
+   ],
+   "phrases": [
+    "quelle ia rédige mes résumés de réunion",
+    "configurer le moteur de résumé des réunions"
+   ]
+  },
+  "hi": {
+   "title": "सारांश इंजन",
+   "words": [
+    "मीटिंग सारांश मॉडल"
+   ],
+   "phrases": [
+    "मेरी मीटिंग का सारांश कौन सा AI लिखता है"
+   ]
+  },
+  "hr": {
+   "title": "sustav za sažimanje",
+   "words": [
+    "model za sažetke sastanaka"
+   ],
+   "phrases": [
+    "koji AI piše sažetke mojih sastanaka",
+    "postavke modela za sažetke sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "összefoglaló motor",
+   "words": [],
+   "phrases": [
+    "melyik modell írja a megbeszéléseim összefoglalóit",
+    "megbeszélések összefoglaló motorjának beállításai"
+   ]
+  },
+  "it": {
+   "title": "motore di riepilogo",
+   "words": [],
+   "phrases": [
+    "quale ia scrive i riepiloghi delle mie riunioni",
+    "impostazioni del motore di riepilogo delle riunioni"
+   ]
+  },
+  "ja": {
+   "title": "要約エンジン",
+   "words": [
+    "会議要約エンジン"
+   ],
+   "phrases": [
+    "会議の要約に使っているエンジンを確認",
+    "会議の要約エンジンの設定"
+   ]
+  },
+  "ko": {
+   "title": "요약 엔진",
+   "words": [
+    "회의 요약 엔진"
+   ],
+   "phrases": [
+    "현재 회의 요약 엔진 확인",
+    "회의 요약 엔진 설정"
+   ]
+  },
+  "lt": {
+   "title": "santraukų variklis",
+   "words": [
+    "susitikimų santraukų modelis"
+   ],
+   "phrases": [
+    "kuris DI rašo mano susitikimų santraukas",
+    "susitikimų santraukų variklio nustatymai"
+   ]
+  },
+  "lv": {
+   "title": "kopsavilkumu dzinis",
+   "words": [
+    "kopsavilkumu modelis"
+   ],
+   "phrases": [
+    "kurš AI veido manu sapulču kopsavilkumus",
+    "sapulču kopsavilkumu dziņa iestatījumi"
+   ]
+  },
+  "mt": {
+   "title": "magna tas-sommarji",
+   "words": [
+    "magna tas-sommarji tal-laqgħat"
+   ],
+   "phrases": [
+    "liema AI tikteb is-sommarji tal-laqgħat tiegħi",
+    "settings tal-magna tas-sommarji tal-laqgħat"
+   ]
+  },
+  "nl": {
+   "title": "samenvattingsengine",
+   "words": [
+    "samenvattingsmodel"
+   ],
+   "phrases": [
+    "welke AI schrijft mijn vergadersamenvattingen",
+    "instellingen van de engine voor vergadersamenvattingen"
+   ]
+  },
+  "pl": {
+   "title": "silnik podsumowań",
+   "words": [
+    "model do podsumowań spotkań"
+   ],
+   "phrases": [
+    "jaki silnik tworzy podsumowania moich spotkań"
+   ]
+  },
+  "pt": {
+   "title": "motor de resumos",
+   "words": [
+    "motor de resumos de reuniões"
+   ],
+   "phrases": [
+    "qual inteligência artificial escreve os resumos das minhas reuniões",
+    "configurar o motor de resumos de reuniões"
+   ]
+  },
+  "ro": {
+   "title": "motor de rezumare",
+   "words": [
+    "model pentru rezumatele întâlnirilor"
+   ],
+   "phrases": [
+    "ce AI scrie rezumatele întâlnirilor mele",
+    "ce motor este folosit pentru rezumatele întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "движок сводок",
+   "words": [
+    "модель для сводок встреч"
+   ],
+   "phrases": [
+    "какая модель пишет сводки моих встреч",
+    "настройки движка сводок встреч"
+   ]
+  },
+  "sk": {
+   "title": "nástroj na zhrnutia",
+   "words": [
+    "model na zhrnutia stretnutí"
+   ],
+   "phrases": [
+    "ktorá AI píše zhrnutia mojich stretnutí",
+    "nastavenia nástroja na zhrnutia stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "pogon za povzetke",
+   "words": [
+    "model za povzetke sestankov"
+   ],
+   "phrases": [
+    "katera umetna inteligenca piše povzetke mojih sestankov",
+    "nastavitve pogona za povzetke sestankov"
+   ]
+  },
+  "sv": {
+   "title": "sammanfattningsmotor",
+   "words": [
+    "sammanfattningsmodell"
+   ],
+   "phrases": [
+    "vilken ai skriver mina mötessammanfattningar",
+    "inställningar för motorn som skriver mötessammanfattningar"
+   ]
+  },
+  "tr": {
+   "title": "özetleme motoru",
+   "words": [
+    "toplantı özetleme motoru"
+   ],
+   "phrases": [
+    "toplantı özetlerimi hangi yapay zekâ yazıyor",
+    "toplantı özetleme motorunun ayarları"
+   ]
+  },
+  "uk": {
+   "title": "рушій підсумовування",
+   "words": [
+    "модель для підсумків зустрічей"
+   ],
+   "phrases": [
+    "яка модель пише підсумки моїх зустрічей",
+    "налаштувати рушій підсумовування зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "công cụ tóm tắt cuộc họp",
+   "words": [
+    "mô hình tóm tắt cuộc họp"
+   ],
+   "phrases": [
+    "công cụ nào viết tóm tắt cuộc họp của tôi",
+    "cài đặt công cụ tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "会议摘要引擎",
+   "words": [
+    "会议摘要模型"
+   ],
+   "phrases": [
+    "哪个AI写会议摘要",
+    "查看当前的会议摘要引擎"
+   ]
+  }
+ }
+}

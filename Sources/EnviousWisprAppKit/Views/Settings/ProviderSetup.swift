@@ -745,6 +745,9 @@ struct ProviderSetupSection: View {
       // Transcribe a File shows this same card as a wizard step, which the Settings Map leaves
       // out (plan §5); there every control inside it counts as wizard content (#3482).
       .settingsMapExemptScope(.transcribeFileWizard, when: surface == .fileImport)
+      // #4287 (founder decision A): on the Summaries tab these are AI Polish's controls,
+      // searched on the AI Polish page; the tab's own engine card is the search target.
+      .settingsMapExemptScope(.meetingSummarySetup, when: surface == .meetingSummary)
       .sheet(
         isPresented: Binding(
           get: { model.modelsSheetOpen },

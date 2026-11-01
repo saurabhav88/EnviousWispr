@@ -1,0 +1,227 @@
+{
+ "id": "meetingSummaryEngine.appleIntelligence",
+ "blocks": {
+  "ar": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "استخدام Apple Intelligence لتلخيص الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "използвай Apple Intelligence за обобщения на срещи"
+   ]
+  },
+  "cs": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "používat Apple Intelligence pro shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "brug Apple Intelligence til mødereferater"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Apple Intelligence für Meetingzusammenfassungen auswählen"
+   ]
+  },
+  "el": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "χρήση Apple Intelligence για περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "use Apple Intelligence for meeting summaries"
+   ]
+  },
+  "es": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "usar Apple Intelligence para resumir reuniones"
+   ]
+  },
+  "et": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "kasuta koosolekute kokkuvõteteks Apple Intelligence'i"
+   ]
+  },
+  "fi": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "käytä Apple Intelligenceä kokousten yhteenvetoihin"
+   ]
+  },
+  "fr": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "utiliser Apple Intelligence pour résumer les réunions"
+   ]
+  },
+  "hi": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए Apple Intelligence इस्तेमाल करें"
+   ]
+  },
+  "hr": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "koristi Apple Intelligence za sažetke sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "megbeszélések összefoglalása Apple Intelligence segítségével"
+   ]
+  },
+  "it": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "usare Apple Intelligence per riassumere le riunioni"
+   ]
+  },
+  "ja": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "Apple Intelligenceで会議を要約"
+   ]
+  },
+  "ko": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "Apple Intelligence로 회의 요약하기"
+   ]
+  },
+  "lt": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "naudoti Apple Intelligence susitikimų santraukoms"
+   ]
+  },
+  "lv": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "izmantot Apple Intelligence sapulču kopsavilkumiem"
+   ]
+  },
+  "mt": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "uża Apple Intelligence biex tiġbor il-laqgħat fil-qosor"
+   ]
+  },
+  "nl": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "Apple Intelligence gebruiken voor samenvattingen van vergaderingen"
+   ]
+  },
+  "pl": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "używaj Apple Intelligence do podsumowań spotkań"
+   ]
+  },
+  "pt": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "usar Apple Intelligence para resumir reuniões"
+   ]
+  },
+  "ro": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "folosește Apple Intelligence pentru rezumatele întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "использовать Apple Intelligence для итогов встреч"
+   ]
+  },
+  "sk": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "používať Apple Intelligence na súhrny stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "uporabi Apple Intelligence za povzetke sestankov"
+   ]
+  },
+  "sv": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "använd Apple Intelligence för mötessammanfattningar"
+   ]
+  },
+  "tr": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için Apple Intelligence kullan"
+   ]
+  },
+  "uk": {
+   "title": "Apple Intelligence",
+   "words": [],
+   "phrases": [
+    "використовувати Apple Intelligence для підсумків зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "Apple Intelligence cho tóm tắt cuộc họp",
+   "words": [],
+   "phrases": [
+    "dùng Apple Intelligence để tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "Apple Intelligence会议摘要",
+   "words": [],
+   "phrases": [
+    "用Apple Intelligence总结会议"
+   ]
+  }
+ }
+}

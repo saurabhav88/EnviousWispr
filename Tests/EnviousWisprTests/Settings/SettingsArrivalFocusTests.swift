@@ -354,11 +354,21 @@ struct SettingsArrivalFocusTests {
     (
       "meetings.general",
       [
-        .meetingCallDetection, .meetingCaptureCallSound, .meetingWriteSummary,
+        .meetingCallDetection, .meetingCaptureCallSound,
         .meetingTurnsOffDictation, .meetingUseCalendarForNames, .meetingsTabGeneral,
-        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
+        .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
+    ),
+    // #4287: the automatic-summary switch and the summary engine card live on the Summaries tab.
+    (
+      "meetings.summaries",
+      [
+        .meetingWriteSummary, .meetingsTabGeneral, .meetingsTabModels,
+        .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
+      ],
+      // With no engine chosen the card opens on its choices, so it has no Change button.
+      [.meetingSummaryEngine]
     ),
     // #4105: both menus of each row are pickers. #3973 PR B: they live on the Models tab.
     // #3973 C3: the Transcript engine menu is a picker too.
@@ -366,7 +376,7 @@ struct SettingsArrivalFocusTests {
       "meetings.models",
       [
         .meetingLiveWords, .meetingTranscriptEngine, .meetingTranscriptLanguage, .meetingsTabGeneral,
-        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
+        .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
     ),
@@ -375,8 +385,8 @@ struct SettingsArrivalFocusTests {
     (
       "meetings.callApps",
       [
-        .meetingCallApps, .meetingsTabGeneral, .meetingsTabModels, .meetingsTabCallApps,
-        .meetingsTabPermissions,
+        .meetingCallApps, .meetingsTabGeneral, .meetingsTabModels, .meetingsTabSummaries,
+        .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
     ),

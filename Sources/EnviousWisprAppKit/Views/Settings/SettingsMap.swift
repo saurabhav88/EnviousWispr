@@ -662,8 +662,29 @@ enum SettingsMap {
       id: .meetingWriteSummary, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.writeSummaryTitle),
       description: .resource(MeetingsCopy.writeSummaryShort),
-      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
+      parent: .meetingsTabSummaries, destination: .meetings(.summaries), dictionaryTab: nil,
       visibility: .always, target: .meetingWriteSummary, fallbacks: []),
+    // #4287: the engine that writes summaries, chosen on the Summaries tab independently of
+    // AI Polish. Its choices come from `MeetingSummaryEngineChoices`; the AI Polish setup card
+    // under it is exempt (`meetingSummarySetup`).
+    SettingsMapNode(
+      id: .meetingSummaryEngine, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.summaryEngineTitle),
+      description: .resource(MeetingsCopy.summaryEngineShort),
+      parent: .meetingsTabSummaries, destination: .meetings(.summaries), dictionaryTab: nil,
+      visibility: .always, target: .meetingSummaryEngine, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingSummaryEngineChange, structure: .item, item: .action,
+      title: .resource(SettingsItemCopy.Shared.change),
+      description: nil,
+      parent: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
+      visibility: .always, target: .meetingSummaryEngine, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingSummaryEngineKeepCurrent, structure: .item, item: .action,
+      title: .resource(MeetingsCopy.keepCurrentSummaryEngine),
+      description: nil,
+      parent: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
+      visibility: .engineChoicesExpanded, target: .meetingSummaryEngine, fallbacks: []),
     // #4069: "Turn off dictation during meetings", always on the General tab.
     SettingsMapNode(
       id: .meetingTurnsOffDictation, structure: .item, item: .setting,
@@ -1196,6 +1217,12 @@ enum SettingsMap {
       parent: .pageMeetings, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, target: .meetingsTabModels, fallbacks: []),
     SettingsMapNode(
+      id: .meetingsTabSummaries, structure: .tab, item: .feature,
+      title: .resource(MeetingsTab.summaries.label),
+      description: nil,
+      parent: .pageMeetings, destination: .meetings(.summaries), dictionaryTab: nil,
+      visibility: .always, target: .meetingsTabSummaries, fallbacks: []),
+    SettingsMapNode(
       id: .meetingsTabCallApps, structure: .tab, item: .feature,
       title: .resource(MeetingsTab.callApps.label),
       description: nil,
@@ -1376,6 +1403,10 @@ enum SettingsMap {
       of: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
       MeetingEngineChoice.allCases.map { ($0.transcriptEngineMapID, $0.transcriptEngineTitle, nil) })
+    + choices(
+      of: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
+      visibility: .always, fallbacks: [],
+      MeetingSummaryEngineChoices.providers.map { ($0.meetingSummaryMapID, .verbatim($0.name), nil) })
     + choices(
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

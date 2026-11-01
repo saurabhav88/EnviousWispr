@@ -128,6 +128,10 @@ struct SettingsMapNode: Sendable {
 enum SettingsMapExemption: String, Sendable, CaseIterable {
   /// Transcribe a File: only the page and its fixed step bar are indexed; wizard controls are not.
   case transcribeFileWizard
+  /// #4287 (founder 2026-10-31, decision A): the AI Polish setup card shown on the EnviousMeet
+  /// Summaries tab. Its controls are AI Polish's own, searched there; on the Summaries tab only
+  /// the tab, the summary engine card and its choices are indexed.
+  case meetingSummarySetup
   /// Vocabulary pack list and detail (plan §5).
   case vocabularyPackContent
   /// Learning setup actions such as model download and contacts import (plan §5).

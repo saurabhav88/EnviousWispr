@@ -1,0 +1,97 @@
+{
+  "meetings.tab.summaries": {
+    "language": "el",
+    "title": "περιλήψεις",
+    "words": [],
+    "phrases": [
+      "καρτέλα περιλήψεων του EnviousMeet",
+      "πού είναι οι ρυθμίσεις για τις περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "el",
+    "title": "μηχανή σύνοψης",
+    "words": [
+      "μοντέλο σύνοψης"
+    ],
+    "phrases": [
+      "ποια τεχνητή νοημοσύνη γράφει τις περιλήψεις των συναντήσεών μου",
+      "ρυθμίσεις της μηχανής για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "el",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "χρήση Apple Intelligence για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "el",
+    "title": "αλλαγή",
+    "words": [],
+    "phrases": [
+      "αλλαγή AI για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "el",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "χρήση του Claude για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "el",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 για περιλήψεις συναντήσεων προσεχώς",
+      "γιατί δεν μπορώ να επιλέξω EG-1 για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "el",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "χρήση Google Gemini για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "el",
+    "title": "διατήρηση της τρέχουσας μηχανής σύνοψης",
+    "words": [],
+    "phrases": [
+      "κράτα την ίδια τεχνητή νοημοσύνη για τις περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "el",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "χρήση Ollama για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "el",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "χρήση OpenAI για περιλήψεις συναντήσεων"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "el",
+    "title": "δημιουργία σύνοψης όταν τελειώνει η συνάντηση",
+    "words": [],
+    "phrases": [
+      "αυτόματη δημιουργία περίληψης όταν τελειώνει κάθε συνάντηση",
+      "ενεργοποίηση αυτόματων περιλήψεων συναντήσεων",
+      "απενεργοποίηση αυτόματων περιλήψεων συναντήσεων"
+    ]
+  }
+}
