@@ -160,7 +160,7 @@ def test_toolchain_problems_fail_closed_on_missing_and_wrong_keys():
 
 
 def test_upstream_tokenizer_is_pinned_in_the_runner_only():
-    runner = (ROOT / "scripts/eval/alias_runner/Package.swift").read_text()
+    runner = (ROOT / "scripts/eval/Package.swift").read_text()  # the one eval package (#4293)
     assert 'url: "https://github.com/huggingface/swift-transformers", exact: "1.3.4"' in runner
     assert '.product(name: "Tokenizers", package: "swift-transformers")' in runner
     root = (ROOT / "Package.swift").read_text()

@@ -664,35 +664,53 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
 
 class EvalCompileContract(unittest.TestCase):
     """The real compile-eval-packages.sh against a recorded `swift` and pin seeder:
-    three Release compiles, serially, each in its own package path, tracked pins."""
+    ONE pinned Release compile of the scripts/eval package (#4293), then a bin-path
+    query, and a refusal when any runner binary is missing."""
 
-    def test_three_serial_pinned_release_compiles(self):
+    def _run(self, root, bin_dir, calls, built):
+        swift = bin_dir / 'swift'
+        swift.write_text('#!/usr/bin/env bash\necho "$*" >> "$SWIFT_CALLS"\n'
+                         'case "$*" in *--show-bin-path*) echo "warning: noise"; echo "$FAKE_BIN";; esac\n')
+        swift.chmod(0o755)
+        fake_bin = root / 'fakebin'
+        fake_bin.mkdir(exist_ok=True)
+        for exe in built:
+            p = fake_bin / exe
+            p.write_text('#!/bin/sh\n')
+            p.chmod(0o755)
+        return subprocess.run(['bash', 'scripts/ci/compile-eval-packages.sh'], cwd=root, text=True,
+                              env=dict(os.environ, PATH=f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
+                                       SWIFT_CALLS=str(calls), FAKE_BIN=str(fake_bin)),
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+
+    def _fixture(self, tmp):
+        root = Path(tmp)
+        (root / 'scripts/ci').mkdir(parents=True)
+        shutil.copyfile(RUNNER.parent / 'ci/compile-eval-packages.sh', root / 'scripts/ci/compile-eval-packages.sh')
+        (root / 'scripts/ci/seed-eval-package-pins.py').write_text(
+            'import sys\nopen(sys.argv[-1] + "/.seeded", "w").write("x")\n')
+        (root / 'Package.resolved').write_text('{}')
+        (root / 'scripts/eval').mkdir(parents=True)
+        bin_dir = root / 'bin'
+        bin_dir.mkdir()
+        return root, bin_dir, root / 'swift-calls'
+
+    def test_one_pinned_release_compile_then_every_binary_checked(self):
         with tempfile.TemporaryDirectory(prefix='ew-eval-contract-') as tmp:
-            root = Path(tmp)
-            (root / 'scripts/ci').mkdir(parents=True)
-            shutil.copyfile(RUNNER.parent / 'ci/compile-eval-packages.sh', root / 'scripts/ci/compile-eval-packages.sh')
-            (root / 'scripts/ci/seed-eval-package-pins.py').write_text(
-                'import sys\nopen(sys.argv[-1] + ".seeded", "w").write("x")\n')
-            (root / 'Package.resolved').write_text('{}')
-            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
-                (root / 'scripts/eval' / pkg).mkdir(parents=True)
-            bin_dir = root / 'bin'
-            bin_dir.mkdir()
-            swift = bin_dir / 'swift'
-            swift.write_text('#!/usr/bin/env bash\necho "$*" >> "$SWIFT_CALLS"\n')
-            swift.chmod(0o755)
-            calls = root / 'swift-calls'
-            r = subprocess.run(['bash', 'scripts/ci/compile-eval-packages.sh'], cwd=root, text=True,
-                               env=dict(os.environ, PATH=f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
-                                        SWIFT_CALLS=str(calls)),
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+            root, bin_dir, calls = self._fixture(tmp)
+            r = self._run(root, bin_dir, calls, ('AppleIntelligenceRunner', 'AliasRunner', 'PromptRender'))
             self.assertEqual(r.returncode, 0, r.stdout)
-            rows = calls.read_text().splitlines()
-            self.assertEqual(rows, [f'build -c release --package-path scripts/eval/{p} --only-use-versions-from-resolved-file'
-                                    for p in ('apple_runner', 'alias_runner', 'prompt_render')])
-            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
-                self.assertTrue((root / f'scripts/eval/{pkg}.seeded').exists())
+            self.assertEqual(calls.read_text().splitlines(), [
+                'build -c release --package-path scripts/eval --only-use-versions-from-resolved-file',
+                'build -c release --package-path scripts/eval --show-bin-path'])
+            self.assertTrue((root / 'scripts/eval/.seeded').exists())
 
+    def test_a_missing_runner_binary_fails_the_step(self):
+        with tempfile.TemporaryDirectory(prefix='ew-eval-contract-') as tmp:
+            root, bin_dir, calls = self._fixture(tmp)
+            r = self._run(root, bin_dir, calls, ('AppleIntelligenceRunner', 'PromptRender'))
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('AliasRunner was not built', r.stdout)
 
 
 class BuildEntrypointHookContract(unittest.TestCase):

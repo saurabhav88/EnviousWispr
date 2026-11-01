@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Print every repo path whose change can break the standalone eval packages (#3505).
+"""Print every repo path whose change can break the eval runner package (#3505).
 
-compile-eval-packages.sh builds scripts/eval/{apple_runner,alias_runner,prompt_render},
-which path-depend on products of the root package. This derives their real inputs instead
-of listing them by hand, so a new dependency can never be missed:
+compile-eval-packages.sh builds scripts/eval/Package.swift (one package for the three
+runners since #4293), which path-depends on products of the root package. This derives its
+real inputs instead of listing them by hand, so a new dependency can never be missed:
 
-  1. each eval package's own directory;
+  1. the package manifest, its runner-only pins, and each target's source directory;
   2. every root target reachable from the root products those packages use (read with
      `swift package dump-package`, closed transitively over target dependencies), as the
      target's source directory;
@@ -21,8 +21,10 @@ import os
 import subprocess
 import sys
 
-EVAL_PACKAGES = ["scripts/eval/apple_runner", "scripts/eval/alias_runner", "scripts/eval/prompt_render"]
+EVAL_PACKAGE = "scripts/eval"
 ALWAYS = [
+    "scripts/eval/Package.swift",
+    "scripts/eval/Package.runner-only-pins.json",
     "Package.swift",
     "Package.resolved",
     "scripts/ci/compile-eval-packages.sh",
@@ -52,7 +54,7 @@ def main():
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
     try:
         manifest = dump(root)
-        evals = {p: dump(os.path.join(root, p)) for p in EVAL_PACKAGES}
+        evals = {EVAL_PACKAGE: dump(os.path.join(root, EVAL_PACKAGE))}
     except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as error:
         print(f"eval-package-inputs: cannot read a manifest: {error}", file=sys.stderr)
         return 2
@@ -87,7 +89,13 @@ def main():
         print("eval-package-inputs: found no root targets; refusing an empty input set", file=sys.stderr)
         return 2
 
-    paths = set(ALWAYS) | {p + "/" for p in EVAL_PACKAGES}
+    paths = set(ALWAYS)
+    for package_path, package in evals.items():
+        for target in package["targets"]:
+            if not target.get("path"):
+                print(f"eval-package-inputs: eval target {target['name']} has no explicit path", file=sys.stderr)
+                return 2
+            paths.add(f"{package_path}/{target['path'].rstrip('/')}/")
     for name in closure:
         target = targets[name]
         base = "Tests" if target.get("type") == "test" else "Sources"

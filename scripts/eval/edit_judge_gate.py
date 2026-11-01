@@ -82,7 +82,9 @@ EXAMS = {
 MIN_ROWS_PER_KIND = 20
 TARGET_ROWS_PER_KIND = 100
 RUNS_DIR = ROOT / "benchmark-results/eval/edit-judge/runs"
-RUNNER_BIN = ROOT / "scripts/eval/alias_runner/.build/release/AliasRunner"
+# The runner is a product of the scripts/eval package; eval_bin.py owns where
+# its binary lives (#4293).
+import eval_bin  # noqa: E402
 
 # --- Contract (plan §3a, locked 2026-09-18; frozen partitions added the same day) ---
 
@@ -830,12 +832,11 @@ def manifest_path_mode(manifest: Optional[Path]) -> str:
 
 
 def run_runner(corpus_path: Path, judge: str, out_path: Path, model_manifest: Optional[Path] = None) -> int:
-    if not RUNNER_BIN.exists():
-        infra_error(
-            f"AliasRunner binary missing at {RUNNER_BIN}. "
-            "Build it with: cd scripts/eval/alias_runner && swift build -c release"
-        )
-    args = [str(RUNNER_BIN), "judge", "--corpus", str(corpus_path), "--judge", judge, "--out", str(out_path), "--path", manifest_path_mode(model_manifest)]
+    try:
+        runner_bin = eval_bin.runner_bin("AliasRunner")
+    except eval_bin.RunnerMissing as e:
+        infra_error(f"AliasRunner binary missing. {e}")
+    args = [str(runner_bin), "judge", "--corpus", str(corpus_path), "--judge", judge, "--out", str(out_path), "--path", manifest_path_mode(model_manifest)]
     if judge.startswith("xenc-"):
         # A trained classifier runs from its bound export manifest; the runner
         # derives the execution identity from what that manifest points at.

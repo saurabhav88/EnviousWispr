@@ -6,18 +6,19 @@ Local Swift CLI that drives the shipped `AppleIntelligenceConnector` over a JSON
 
 ## Build
 
+Its sources are a target of the one eval package, `scripts/eval/Package.swift` (#4293), so all three runners share one build of the app's code:
+
 ```bash
-cd scripts/eval/apple_runner
-swift build -c release
+swift build -c release --package-path scripts/eval --product AppleIntelligenceRunner
 ```
 
-The built binary ends up at `scripts/eval/apple_runner/.build/release/AppleIntelligenceRunner`.
+The binary's location comes from SwiftPM: `python3 scripts/eval/eval_bin.py AppleIntelligenceRunner` prints it (the gates use the same resolver).
 
 ## Use
 
 ```bash
-./.build/release/AppleIntelligenceRunner \
-  --corpus ../corpus/ci_corpus.jsonl \
+"$(python3 scripts/eval/eval_bin.py AppleIntelligenceRunner)" \
+  --corpus scripts/eval/corpus/ci_corpus.jsonl \
   --out /tmp/afm-candidates.jsonl
 ```
 
@@ -31,7 +32,7 @@ Options:
 The connector reads three bench seams from the process environment: `EW_AFM_PROMPT_FILE` (instructions), `EW_AFM_EXAMPLES_FILE` (example turns, JSONL; empty file = no turns) and `EW_AFM_TRAILER_FILE` (correction trailer; empty file = none). A direct run inherits whatever your shell exports, so to measure the shipped recipe clear them first:
 
 ```bash
-( unset EW_AFM_PROMPT_FILE EW_AFM_EXAMPLES_FILE EW_AFM_TRAILER_FILE; ./.build/release/AppleIntelligenceRunner --corpus ... --out ... )
+( unset EW_AFM_PROMPT_FILE EW_AFM_EXAMPLES_FILE EW_AFM_TRAILER_FILE; "$(python3 scripts/eval/eval_bin.py AppleIntelligenceRunner)" --corpus ... --out ... )
 ```
 
 `acceptance_gate.py` does this for every arm (`_afm_arm_env`).
