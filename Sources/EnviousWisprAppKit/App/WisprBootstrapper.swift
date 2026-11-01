@@ -2650,6 +2650,14 @@ package final class WisprBootstrapper {
     meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
       settingsSync?.retryDeferredOllamaEviction(settings: settings)
     }
+    // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
+    // the same local engine. File import, re-polish and recovery build their own steps and
+    // keep the default (never skip).
+    for polishStep in [kernelDriver.llmPolish, whisperKernelDriver.llmPolish] {
+      polishStep.runningLocalSummary = { [weak summaries = meetingCoordinator.summaries] in
+        summaries?.runningLocalSummaryProvider
+      }
+    }
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(

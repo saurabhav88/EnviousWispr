@@ -164,6 +164,11 @@ final class MeetingSummaryOwner {
     guard let call = runningLocalCall, call.provider == .ollama else { return nil }
     return call.model
   }
+  /// #4287 PR 3: the provider of the summary call the lane admitted on a local engine, from the
+  /// attempt's own captured selection (never the live setting), from admission until the call
+  /// physically ends. A dictation polishing with the same local engine skips polish meanwhile
+  /// (`SummaryEngineClash`). Hosted calls are never recorded here.
+  var runningLocalSummaryProvider: LLMProvider? { runningLocalCall?.provider }
 
   /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
   /// does not hold it (it is owed on disk and resumes).
