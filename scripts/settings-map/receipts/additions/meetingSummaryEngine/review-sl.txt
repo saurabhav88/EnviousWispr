@@ -1,0 +1,98 @@
+{
+  "meetings.tab.summaries": {
+    "language": "sl",
+    "title": "povzetki",
+    "words": [],
+    "phrases": [
+      "nastavitve povzetkov v EnviousMeet",
+      "zavihek s povzetki sestankov"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "sl",
+    "title": "pogon za povzetke",
+    "words": [
+      "model za povzetke sestankov"
+    ],
+    "phrases": [
+      "katera umetna inteligenca piše povzetke mojih sestankov",
+      "nastavitve pogona za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "sl",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "uporabi Apple Intelligence za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "sl",
+    "title": "spremeni",
+    "words": [],
+    "phrases": [
+      "zamenjaj AI za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "sl",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "uporabi Claude za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "sl",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 za povzetke sestankov bo kmalu na voljo",
+      "zakaj EG-1 za povzetke sestankov še ni na voljo"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "sl",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "uporabi Google Gemini za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "sl",
+    "title": "ohrani trenutni pogon za povzetke",
+    "words": [],
+    "phrases": [
+      "še naprej uporabljaj isto umetno inteligenco za povzetke sestankov"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "sl",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "za povzetke sestankov uporabi model iz programa Ollama"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "sl",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "uporabi OpenAI za povzetke sestankov"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "sl",
+    "title": "ustvari povzetek ob koncu sestanka",
+    "words": [
+      "samodejni povzetki sestankov"
+    ],
+    "phrases": [
+      "povzemi sestanek, ko se konča",
+      "samodejni povzetek sestanka"
+    ]
+  }
+}

@@ -403,6 +403,26 @@ struct MeetingWiringTests {
     var count = 0
   }
 
+  /// #4287: the production summary owner reads the Summaries tab's engine, not dictation's.
+  @Test("the wired summary owner uses the summary engine, never dictation's")
+  func summariesUseTheirOwnEngine() throws {
+    let rig = try Rig()
+    let settings = rig.inputs.settings
+    let coordinator = MeetingWiring.make(rig.inputs)
+    let summaries = try #require(coordinator.summaries)
+
+    settings.llmProvider = .egOne
+    settings.meetingSummaryLLMProvider = .claude
+    #expect(summaries.configurationProblem() == nil, "dictation's EG-1 must not block summaries")
+
+    settings.llmProvider = .claude
+    settings.meetingSummaryLLMProvider = .s1Mini
+    #expect(summaries.configurationProblem() == .notForSummaries)
+
+    settings.meetingSummaryLLMProvider = LLMProvider.none
+    #expect(summaries.configurationProblem() == .noProvider)
+  }
+
   @Test("History's delete of a meeting row goes through EnviousMeet and removes its folder")
   func historyDeleteRoutesThroughMeetings() async throws {
     let rig = try Rig()

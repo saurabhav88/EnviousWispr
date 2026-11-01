@@ -1,0 +1,99 @@
+{
+  "meetings.tab.summaries": {
+    "language": "hr",
+    "title": "sažeci",
+    "words": [],
+    "phrases": [
+      "postavke sažetaka sastanaka u EnviousMeet",
+      "kartica sažeci u EnviousMeet"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "hr",
+    "title": "sustav za sažimanje",
+    "words": [
+      "model za sažetke sastanaka"
+    ],
+    "phrases": [
+      "koji AI piše sažetke mojih sastanaka",
+      "postavke modela za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "hr",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "koristi Apple Intelligence za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "hr",
+    "title": "promijeni",
+    "words": [],
+    "phrases": [
+      "promijeni AI za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "hr",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "koristi Claude za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "hr",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 za sažetke sastanaka uskoro",
+      "zašto EG-1 još nije dostupan za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "hr",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "koristi Google Gemini za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "hr",
+    "title": "zadrži trenutačni sustav za sažimanje",
+    "words": [],
+    "phrases": [
+      "zadrži isti AI za sažetke sastanaka",
+      "zatvori odabir bez promjene modela za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "hr",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "koristi Ollama za sažetke sastanaka"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "hr",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "koristi OpenAI za sažetke sastanaka"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "hr",
+    "title": "izradi sažetak nakon završetka sastanka",
+    "words": [
+      "automatski sažetak sastanka"
+    ],
+    "phrases": [
+      "sažmi sastanak kad završi",
+      "uključi automatsku izradu sažetaka sastanaka"
+    ]
+  }
+}

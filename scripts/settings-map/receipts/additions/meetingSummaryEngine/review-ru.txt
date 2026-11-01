@@ -1,0 +1,100 @@
+{
+  "meetings.tab.summaries": {
+    "language": "ru",
+    "title": "сводки",
+    "words": [],
+    "phrases": [
+      "вкладка сводок в EnviousMeet",
+      "где настройки сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "ru",
+    "title": "движок сводок",
+    "words": [
+      "модель для сводок встреч"
+    ],
+    "phrases": [
+      "какая модель пишет сводки моих встреч",
+      "настройки движка сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "ru",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "использовать Apple Intelligence для итогов встреч"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "ru",
+    "title": "изменить",
+    "words": [],
+    "phrases": [
+      "сменить движок сводок встреч",
+      "открыть выбор модели для сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "ru",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "использовать Claude для сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "ru",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "когда появится EG-1 для сводок встреч",
+      "почему нельзя выбрать EG-1 для сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "ru",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "использовать Google Gemini для итогов встреч"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "ru",
+    "title": "оставить текущий движок сводок",
+    "words": [],
+    "phrases": [
+      "не менять движок сводок встреч",
+      "закрыть выбор модели для сводок встреч без изменений"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "ru",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "использовать Ollama для сводок встреч"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "ru",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "использовать OpenAI для итогов встреч"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "ru",
+    "title": "создавать сводку после завершения встречи",
+    "words": [
+      "автосводка встреч"
+    ],
+    "phrases": [
+      "автоматически создавать сводку после каждой встречи",
+      "отключить автоматические сводки встреч"
+    ]
+  }
+}

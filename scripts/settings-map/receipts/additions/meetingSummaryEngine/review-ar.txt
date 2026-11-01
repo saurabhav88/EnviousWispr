@@ -1,0 +1,101 @@
+{
+  "meetings.tab.summaries": {
+    "language": "ar",
+    "title": "الملخصات",
+    "words": [],
+    "phrases": [
+      "إعدادات ملخصات الاجتماعات في EnviousMeet",
+      "تبويب ملخصات الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "ar",
+    "title": "محرك تلخيص الاجتماعات",
+    "words": [
+      "محرك ملخصات الاجتماعات"
+    ],
+    "phrases": [
+      "الذكاء الاصطناعي الذي يكتب ملخصات اجتماعاتي",
+      "إعدادات محرك تلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "ar",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "استخدام Apple Intelligence لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "ar",
+    "title": "تغيير محرك تلخيص الاجتماعات",
+    "words": [],
+    "phrases": [
+      "اختيار محرك آخر لتلخيص الاجتماعات",
+      "عرض خيارات محرك تلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "ar",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "استخدام Claude لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "ar",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 لتلخيص الاجتماعات قريبًا",
+      "متى يتوفر EG-1 لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "ar",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "استخدام Google Gemini لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "ar",
+    "title": "الإبقاء على محرك تلخيص الاجتماعات الحالي",
+    "words": [],
+    "phrases": [
+      "إبقاء محرك تلخيص الاجتماعات كما هو",
+      "إغلاق خيارات محرك تلخيص الاجتماعات دون تغيير"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "ar",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "استخدام Ollama لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "ar",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "استخدام OpenAI لتلخيص الاجتماعات"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "ar",
+    "title": "إنشاء ملخص عند انتهاء الاجتماع",
+    "words": [
+      "التلخيص التلقائي للاجتماعات"
+    ],
+    "phrases": [
+      "إنشاء ملخص تلقائيًا عند انتهاء كل اجتماع",
+      "تفعيل تلخيص الاجتماعات تلقائيًا",
+      "إيقاف التلخيص التلقائي للاجتماعات"
+    ]
+  }
+}

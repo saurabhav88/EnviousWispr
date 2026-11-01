@@ -472,6 +472,91 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.lane.summaryActive == false)
   }
 
+  /// #4287: dictation's Ollama eviction must not unload the model a summary call is using.
+  @Test("a running local Ollama call pins its own model until the call physically ends")
+  func runningOllamaCallPinsItsModel() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.provider = .ollama
+    rig.world.model = "mistral"
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == nil, "waiting for a turn pins nothing")
+
+    rig.world.localTurn = true
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral")
+    rig.world.model = "llama3"
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral", "the attempt's own model, not the setting")
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == nil)
+  }
+
+  @Test("a local Ollama call's end asks for the deferred eviction once; a local Apple call does not")
+  func releaseRetriesDeferredEviction() async throws {
+    for (provider, expected) in [(LLMProvider.ollama, 1), (.appleIntelligence, 0)] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      var releases = 0
+      rig.owner.onOllamaModelReleased = { releases += 1 }
+      rig.world.provider = provider
+      rig.world.model = "mistral"
+      rig.world.execution = .local
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(releases == 0, "nothing is released while the call runs")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(releases == expected, "\(provider)")
+    }
+  }
+
+  @Test("hosted Ollama and local non-Ollama calls pin no Ollama model")
+  func onlyLocalOllamaPins() async throws {
+    for (provider, execution) in [
+      (LLMProvider.ollama, MeetingSummary.Execution.hosted), (.appleIntelligence, .local),
+    ] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.provider = provider
+      rig.world.model = "mistral"
+      rig.world.execution = execution
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(rig.owner.summaryPinnedOllamaModel == nil, "\(provider) \(execution)")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+    }
+  }
+
+  @Test("a deleted meeting's call keeps its pin until the call ends, then releases it")
+  func cancelledCallReleasesPinAtItsEnd() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.provider = .ollama
+    rig.world.model = "mistral"
+    rig.world.execution = .local
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    rig.documents.forget(id)
+    let deletion = Task { await rig.owner.cancelAndWait(id) }
+    // `cancelAndWait` clears the activity and cancels the attempt in one main-actor step.
+    await Self.eventually("cancelling") { rig.owner.activity[id] == nil }
+    #expect(rig.world.callsWaiting == 1, "the cancelled call is still physically running")
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral", "the call still runs")
+    rig.world.releaseCall()
+    await deletion.value
+    await Self.eventually("released") { rig.owner.summaryPinnedOllamaModel == nil }
+  }
+
   @Test("local summaries run one after another")
   func localOneAtATime() async throws {
     let rig = try Rig()
@@ -1176,7 +1261,7 @@ struct MeetingSummaryOwnerTests {
         == "Paused while a meeting summary is written")
   }
 
-  @Test("every summary problem has its own message, and the provider ones open AI Polish")
+  @Test("every summary problem has its own message, and the engine ones open Summaries settings")
   func problemCopy() {
     let problems: [MeetingSummaryOwner.Problem] = [
       .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
@@ -1186,7 +1271,7 @@ struct MeetingSummaryOwnerTests {
     #expect(Set(messages).count == problems.count)
     #expect(messages.allSatisfy { !$0.isEmpty })
     #expect(
-      problems.filter(MeetingSummaryView.opensAIPolish)
+      problems.filter(MeetingSummaryView.opensSummarySettings)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
   }
 

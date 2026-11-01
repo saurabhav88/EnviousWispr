@@ -1,0 +1,259 @@
+{
+ "id": "meetingSummaryEngine.claude",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "استخدام Claude لتلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "използвай Claude за обобщения на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "používat Claude pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "brug Claude til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nutze Claude für meine Meeting-Zusammenfassungen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "χρήση του Claude για περιλήψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use Claude for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "usar Claude para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "kasuta Claude'i koosolekute kokkuvõtete jaoks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "käytä Claudea kokousten yhteenvetoihin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "utiliser Claude pour résumer les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए Claude इस्तेमाल करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "koristi Claude za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "Claude használata a megbeszélések összefoglalásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "usare Claude per riassumere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "会議の要約にClaudeを使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "회의 요약에 Claude 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "naudoti Claude susitikimų santraukoms"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "izmantot Claude sapulču kopsavilkumiem"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "uża Claude għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "Claude gebruiken voor samenvattingen van vergaderingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "używaj Claude do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "usar Claude para resumir reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "folosește Claude pentru rezumatele ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "использовать Claude для сводок встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "používať Claude na zhrnutia stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "uporabi Claude za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "använd Claude för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için Claude kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "використовувати Claude для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "dùng Claude để tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "Claude",
+   "words": [],
+   "phrases": [
+    "用Claude生成会议摘要"
+   ]
+  }
+ ]
+}

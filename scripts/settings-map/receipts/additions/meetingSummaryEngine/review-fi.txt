@@ -1,0 +1,95 @@
+{
+  "meetings.tab.summaries": {
+    "language": "fi",
+    "title": "yhteenvedot",
+    "words": [],
+    "phrases": [
+      "avaa EnviousMeetin yhteenvedot-välilehti",
+      "kokousten yhteenvetojen asetukset"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "fi",
+    "title": "yhteenvetomoottori",
+    "words": [
+      "kokousyhteenvetomalli"
+    ],
+    "phrases": [
+      "mikä tekoäly tekee kokousten yhteenvedot",
+      "kokousten yhteenvetomoottorin asetukset"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "fi",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "käytä Apple Intelligenceä kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "fi",
+    "title": "vaihda",
+    "words": [],
+    "phrases": [
+      "vaihda kokousten yhteenvedot tekevä tekoäly"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "fi",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "käytä Claudea kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "fi",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 kokousten yhteenvetoihin tulossa pian"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "fi",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "käytä Geminiä kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "fi",
+    "title": "säilytä nykyinen yhteenvetomoottori",
+    "words": [],
+    "phrases": [
+      "käytä edelleen samaa tekoälyä kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "fi",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "käytä Ollamaa kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "fi",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "käytä OpenAI:ta kokousten yhteenvetoihin"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "fi",
+    "title": "luo yhteenveto kokouksen päätyttyä",
+    "words": [],
+    "phrases": [
+      "tee yhteenveto automaattisesti kokouksen päätyttyä",
+      "ota automaattiset kokousyhteenvedot käyttöön"
+    ]
+  }
+}

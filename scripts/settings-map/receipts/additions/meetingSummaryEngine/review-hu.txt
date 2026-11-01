@@ -1,0 +1,93 @@
+{
+  "meetings.tab.summaries": {
+    "language": "hu",
+    "title": "összefoglalók",
+    "words": [],
+    "phrases": [
+      "EnviousMeet összefoglalók lapja"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "hu",
+    "title": "összefoglaló motor",
+    "words": [],
+    "phrases": [
+      "melyik modell írja a megbeszéléseim összefoglalóit",
+      "megbeszélések összefoglaló motorjának beállításai"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "hu",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "megbeszélések összefoglalása Apple Intelligence segítségével"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "hu",
+    "title": "módosítás",
+    "words": [],
+    "phrases": [
+      "másik modell választása a megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "hu",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "Claude használata a megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "hu",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 a megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "hu",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "Google Gemini használata megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "hu",
+    "title": "jelenlegi összefoglaló motor megtartása",
+    "words": [],
+    "phrases": [
+      "maradjon a jelenlegi motor a megbeszélések összefoglalásához",
+      "összefoglaló motor választásának bezárása módosítás nélkül"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "hu",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "Ollama használata megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "hu",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "OpenAI használata megbeszélések összefoglalásához"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "hu",
+    "title": "összefoglaló készítése a megbeszélés végén",
+    "words": [],
+    "phrases": [
+      "megbeszélés automatikus összefoglalása",
+      "készíts összefoglalót a megbeszélés után"
+    ]
+  }
+}

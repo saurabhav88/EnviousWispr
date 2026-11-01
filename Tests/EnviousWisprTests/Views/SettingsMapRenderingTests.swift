@@ -231,7 +231,12 @@ struct SettingsMapRenderingTests {
     ] + AppSettingsTab.allCases.map { "appSettings.\($0.rawValue)" } + [
       "appSettings.permissions.denied", "appSettings.privacy.restartNeeded",
       "appSettings.appearance.languageChange", "transcribeFile",
-    ] + MeetingsTab.allCases.map { "meetings.\($0.rawValue)" }
+    ] + MeetingsTab.allCases.map { "meetings.\($0.rawValue)" } + [
+      // #4287: the Summaries tab with an engine chosen (collapsed card, setup card shown).
+      "meetings.summaries.openAI",
+      // #4287: EG-1 while it is Coming soon shows no setup card (its controls are dictation's).
+      "meetings.summaries.egOne",
+    ]
 
   static func render(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
@@ -803,17 +808,21 @@ struct SettingsMapRenderingTests {
   static func meetings(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
     let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
-    let (home, environment) = try meetingsEnvironment()
+    let (home, environment) = try meetingsEnvironment(
+      summaryProvider: parts.count > 2 ? parts[2] : nil)
     let list = try await registrations(environment(AnyView(MeetingsView(selection: .constant(tab)))))
     return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
   }
 
   /// What the EnviousMeet page needs around it, with no meetings and its setup finished
   /// (`.meetingSetUp`, #4017); `appleAvailable` is the Live words row's Apple engine (#4105).
-  static func meetingsEnvironment(appleAvailable: Bool = true) throws
-    -> (Home, (AnyView) -> AnyView)
+  static func meetingsEnvironment(appleAvailable: Bool = true, summaryProvider: String? = nil)
+    throws -> (Home, (AnyView) -> AnyView)
   {
-    let home = try Home(seed: { $0.set(true, forKey: "meetingOnboardingComplete") })
+    let home = try Home(seed: {
+      $0.set(true, forKey: "meetingOnboardingComplete")
+      if let summaryProvider { $0.set(summaryProvider, forKey: "meetingSummaryLLMProvider") }
+    })
     let harness = try MeetingCoordinatorTests.Harness()
     let flow = MeetingStartFlow(
       dependencies: .init(

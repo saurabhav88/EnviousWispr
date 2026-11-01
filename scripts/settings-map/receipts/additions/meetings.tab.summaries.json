@@ -1,0 +1,260 @@
+{
+ "id": "meetings.tab.summaries",
+ "blocks": {
+  "ar": {
+   "title": "الملخصات",
+   "words": [],
+   "phrases": [
+    "إعدادات ملخصات الاجتماعات في EnviousMeet",
+    "تبويب ملخصات الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "обобщения",
+   "words": [],
+   "phrases": [
+    "настройки за обобщения на срещи",
+    "раздел за обобщения в EnviousMeet"
+   ]
+  },
+  "cs": {
+   "title": "shrnutí",
+   "words": [],
+   "phrases": [
+    "karta shrnutí v EnviousMeet",
+    "nastavení shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "opsummeringer",
+   "words": [],
+   "phrases": [
+    "fanen med opsummeringer i EnviousMeet",
+    "indstillinger for mødeopsummeringer"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Tab Zusammenfassungen in EnviousMeet öffnen",
+    "zu den Einstellungen für Meetingzusammenfassungen wechseln"
+   ]
+  },
+  "el": {
+   "title": "περιλήψεις",
+   "words": [],
+   "phrases": [
+    "καρτέλα περιλήψεων του EnviousMeet",
+    "πού είναι οι ρυθμίσεις για τις περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "meeting summary settings",
+    "EnviousMeet summaries tab"
+   ]
+  },
+  "es": {
+   "title": "resúmenes",
+   "words": [],
+   "phrases": [
+    "pestaña de resúmenes de EnviousMeet",
+    "dónde están los ajustes de resúmenes de reuniones"
+   ]
+  },
+  "et": {
+   "title": "kokkuvõtted",
+   "words": [],
+   "phrases": [
+    "EnviousMeet kokkuvõtete vahekaart",
+    "kus on koosolekute kokkuvõtete seaded"
+   ]
+  },
+  "fi": {
+   "title": "yhteenvedot",
+   "words": [],
+   "phrases": [
+    "avaa EnviousMeetin yhteenvedot-välilehti",
+    "kokousten yhteenvetojen asetukset"
+   ]
+  },
+  "fr": {
+   "title": "résumés",
+   "words": [],
+   "phrases": [
+    "ouvrir l’onglet résumés d’EnviousMeet",
+    "où sont les réglages des résumés de réunion"
+   ]
+  },
+  "hi": {
+   "title": "सारांश",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में सारांश की सेटिंग्स",
+    "मीटिंग के सारांश वाला टैब कहाँ है"
+   ]
+  },
+  "hr": {
+   "title": "sažeci",
+   "words": [],
+   "phrases": [
+    "postavke sažetaka sastanaka u EnviousMeet",
+    "kartica sažeci u EnviousMeet"
+   ]
+  },
+  "hu": {
+   "title": "összefoglalók",
+   "words": [],
+   "phrases": [
+    "EnviousMeet összefoglalók lapja"
+   ]
+  },
+  "it": {
+   "title": "riepiloghi",
+   "words": [],
+   "phrases": [
+    "impostazioni dei riepiloghi di EnviousMeet",
+    "scheda dei riepiloghi delle riunioni"
+   ]
+  },
+  "ja": {
+   "title": "要約",
+   "words": [],
+   "phrases": [
+    "EnviousMeetの要約タブを開く",
+    "会議の要約設定のページ"
+   ]
+  },
+  "ko": {
+   "title": "요약",
+   "words": [],
+   "phrases": [
+    "EnviousMeet 요약 탭",
+    "회의 요약 설정 페이지"
+   ]
+  },
+  "lt": {
+   "title": "santraukos",
+   "words": [],
+   "phrases": [
+    "EnviousMeet santraukų skirtukas",
+    "susitikimų santraukų nustatymai"
+   ]
+  },
+  "lv": {
+   "title": "kopsavilkumi",
+   "words": [],
+   "phrases": [
+    "EnviousMeet kopsavilkumu cilne",
+    "sapulču kopsavilkumu iestatījumi"
+   ]
+  },
+  "mt": {
+   "title": "sommarji",
+   "words": [],
+   "phrases": [
+    "settings tas-sommarji f’EnviousMeet",
+    "iftaħ it-tab tas-sommarji"
+   ]
+  },
+  "nl": {
+   "title": "samenvattingen",
+   "words": [],
+   "phrases": [
+    "instellingen voor vergadersamenvattingen in EnviousMeet",
+    "tabblad voor vergadersamenvattingen"
+   ]
+  },
+  "pl": {
+   "title": "podsumowania",
+   "words": [],
+   "phrases": [
+    "karta podsumowań w EnviousMeet",
+    "gdzie są ustawienia podsumowań spotkań"
+   ]
+  },
+  "pt": {
+   "title": "resumos",
+   "words": [],
+   "phrases": [
+    "aba de resumos do EnviousMeet",
+    "configurações dos resumos de reuniões"
+   ]
+  },
+  "ro": {
+   "title": "rezumate",
+   "words": [],
+   "phrases": [
+    "fila rezumate din EnviousMeet",
+    "setările pentru rezumatele întâlnirilor din EnviousMeet"
+   ]
+  },
+  "ru": {
+   "title": "сводки",
+   "words": [],
+   "phrases": [
+    "вкладка сводок в EnviousMeet",
+    "где настройки сводок встреч"
+   ]
+  },
+  "sk": {
+   "title": "zhrnutia",
+   "words": [],
+   "phrases": [
+    "karta zhrnutí v EnviousMeet",
+    "nastavenia zhrnutí stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "povzetki",
+   "words": [],
+   "phrases": [
+    "nastavitve povzetkov v EnviousMeet",
+    "zavihek s povzetki sestankov"
+   ]
+  },
+  "sv": {
+   "title": "sammanfattningar",
+   "words": [],
+   "phrases": [
+    "fliken sammanfattningar i EnviousMeet",
+    "inställningar för sammanfattningar i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "özetler",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri sekmesi",
+    "EnviousMeet özet ayarları"
+   ]
+  },
+  "uk": {
+   "title": "підсумки",
+   "words": [],
+   "phrases": [
+    "вкладка підсумків EnviousMeet",
+    "налаштування підсумків зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "tóm tắt",
+   "words": [],
+   "phrases": [
+    "cài đặt tóm tắt trong EnviousMeet",
+    "tab tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "摘要",
+   "words": [
+    "会议摘要设置"
+   ],
+   "phrases": [
+    "EnviousMeet的摘要选项卡",
+    "会议摘要设置在哪"
+   ]
+  }
+ }
+}

@@ -1,0 +1,99 @@
+{
+  "meetings.tab.summaries": {
+    "language": "ja",
+    "title": "要約",
+    "words": [],
+    "phrases": [
+      "EnviousMeetの要約タブを開く",
+      "会議の要約設定のページ"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "ja",
+    "title": "要約エンジン",
+    "words": [
+      "会議要約エンジン"
+    ],
+    "phrases": [
+      "会議の要約に使っているエンジンを確認",
+      "会議の要約エンジンの設定"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "ja",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "Apple Intelligenceで会議を要約"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "ja",
+    "title": "変更",
+    "words": [],
+    "phrases": [
+      "会議の要約に使うaiを変更",
+      "会議の要約エンジンの選択肢を開く"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "ja",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "会議の要約にClaudeを使う"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "ja",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "会議要約用のEG-1の提供予定を確認"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "ja",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "会議の要約にGoogle Geminiを使う"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "ja",
+    "title": "現在の要約エンジンを使う",
+    "words": [],
+    "phrases": [
+      "会議の要約エンジンを変えずに閉じる",
+      "会議の要約エンジンを今のままにする"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "ja",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "会議の要約にOllamaを使う"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "ja",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "会議の要約にOpenAIを使う"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "ja",
+    "title": "会議終了時に要約を作成",
+    "words": [
+      "会議の自動要約"
+    ],
+    "phrases": [
+      "会議が終わったら自動でまとめる",
+      "会議終了時の自動要約をオフにする"
+    ]
+  }
+}

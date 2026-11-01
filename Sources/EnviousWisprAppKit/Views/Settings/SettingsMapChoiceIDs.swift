@@ -91,6 +91,24 @@ extension PolishRailProvider {
   }
 }
 
+extension PolishRailProvider {
+  /// #4287: the provider's entry among the Summaries tab's engine choices. S1-mini is not a
+  /// summary engine (founder 2026-10-31), and the switched-off state is not a choice.
+  var meetingSummaryMapID: SettingsMapID {
+    switch provider {
+    case .appleIntelligence: return .meetingSummaryEngineAppleIntelligence
+    case .egOne: return .meetingSummaryEngineEgOne
+    case .ollama: return .meetingSummaryEngineOllama
+    case .openAI: return .meetingSummaryEngineOpenAI
+    case .gemini: return .meetingSummaryEngineGemini
+    case .claude: return .meetingSummaryEngineClaude
+    case .s1Mini, .none:
+      SettingsMap.wiringFault("S1-mini and the off state are not summary engine choices")
+      return .meetingSummaryEngine
+    }
+  }
+}
+
 enum SettingsMapChoiceIDs {
   /// The start-word editor's language options (`SpokenPunctuationStartWordEditor.languages`).
   /// Nil, and a wiring fault, for a language the map does not name yet (the map tests fail on it).

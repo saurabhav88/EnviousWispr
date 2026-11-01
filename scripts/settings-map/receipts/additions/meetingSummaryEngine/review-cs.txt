@@ -1,0 +1,97 @@
+{
+  "meetings.tab.summaries": {
+    "language": "cs",
+    "title": "shrnutí",
+    "words": [],
+    "phrases": [
+      "karta shrnutí v EnviousMeet",
+      "nastavení shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "cs",
+    "title": "nástroj pro shrnutí",
+    "words": [
+      "model pro shrnutí schůzek"
+    ],
+    "phrases": [
+      "jaká AI píše shrnutí schůzek",
+      "nastavení modelu pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "cs",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "používat Apple Intelligence pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "cs",
+    "title": "změnit",
+    "words": [],
+    "phrases": [
+      "změnit AI pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "cs",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "používat Claude pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "cs",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "kdy bude EG-1 dostupný pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "cs",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "používat Gemini pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "cs",
+    "title": "ponechat současný nástroj pro shrnutí",
+    "words": [],
+    "phrases": [
+      "ponechat současný model pro shrnutí schůzek",
+      "zavřít výběr modelu pro shrnutí schůzek beze změny"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "cs",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "používat Ollama pro shrnutí schůzek"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "cs",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "použít OpenAI pro shrnutí schůzek"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "cs",
+    "title": "vytvořit shrnutí po skončení schůzky",
+    "words": [],
+    "phrases": [
+      "automaticky shrnout schůzku po jejím skončení",
+      "zapnout automatické shrnutí schůzek",
+      "vypnout automatické shrnutí schůzek"
+    ]
+  }
+}

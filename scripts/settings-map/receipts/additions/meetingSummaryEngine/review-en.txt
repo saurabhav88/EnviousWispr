@@ -1,0 +1,82 @@
+{
+  "meetings.tab.summaries": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "meeting summary settings",
+      "EnviousMeet summaries tab"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "which AI writes my meeting summaries",
+      "meeting summary engine setup"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Apple Intelligence for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "change AI for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Claude for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "EG-1 for meeting summaries coming soon"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Google Gemini for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "keep using the same AI for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use Ollama for meeting summaries"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "use OpenAI for meeting summaries"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "automatically summarize meetings",
+      "write a summary when a meeting ends"
+    ]
+  }
+}

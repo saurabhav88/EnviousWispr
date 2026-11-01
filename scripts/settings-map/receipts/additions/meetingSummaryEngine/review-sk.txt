@@ -1,0 +1,99 @@
+{
+  "meetings.tab.summaries": {
+    "language": "sk",
+    "title": "zhrnutia",
+    "words": [],
+    "phrases": [
+      "karta zhrnutí v EnviousMeet",
+      "nastavenia zhrnutí stretnutí"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "sk",
+    "title": "nástroj na zhrnutia",
+    "words": [
+      "model na zhrnutia stretnutí"
+    ],
+    "phrases": [
+      "ktorá AI píše zhrnutia mojich stretnutí",
+      "nastavenia nástroja na zhrnutia stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "sk",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "používať Apple Intelligence na súhrny stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "sk",
+    "title": "zmeniť",
+    "words": [],
+    "phrases": [
+      "zmeniť AI na súhrny stretnutí",
+      "otvoriť výber nástroja na zhrnutia stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "sk",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "používať Claude na zhrnutia stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "sk",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "kedy bude EG-1 dostupný na zhrnutia stretnutí",
+      "EG-1 na zhrnutia stretnutí už čoskoro"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "sk",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "používať Google Gemini na zhrnutia stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "sk",
+    "title": "ponechať súčasný nástroj na zhrnutia",
+    "words": [],
+    "phrases": [
+      "ponechať súčasnú AI na zhrnutia stretnutí",
+      "zavrieť výber nástroja na zhrnutia stretnutí bez zmeny"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "sk",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "používať Ollama na zhrnutia stretnutí"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "sk",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "použiť OpenAI na zhrnutia stretnutí"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "sk",
+    "title": "vytvoriť zhrnutie po skončení stretnutia",
+    "words": [],
+    "phrases": [
+      "automaticky vytvoriť zhrnutie po skončení stretnutia",
+      "zapnúť automatické zhrnutia stretnutí",
+      "vypnúť automatické zhrnutia stretnutí"
+    ]
+  }
+}

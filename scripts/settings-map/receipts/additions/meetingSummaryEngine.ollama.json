@@ -1,0 +1,227 @@
+{
+ "id": "meetingSummaryEngine.ollama",
+ "blocks": {
+  "ar": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "استخدام Ollama لتلخيص الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "Ollama за обобщения на срещи"
+   ]
+  },
+  "cs": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "používat Ollama pro shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "brug Ollama til mødereferater"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Ollama für Meetingzusammenfassungen auswählen"
+   ]
+  },
+  "el": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "χρήση Ollama για περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "use Ollama for meeting summaries"
+   ]
+  },
+  "es": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "usar Ollama para resumir reuniones"
+   ]
+  },
+  "et": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "tee koosolekute kokkuvõtteid Ollama abil"
+   ]
+  },
+  "fi": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "käytä Ollamaa kokousten yhteenvetoihin"
+   ]
+  },
+  "fr": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "utiliser Ollama pour résumer les réunions"
+   ]
+  },
+  "hi": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए Ollama चुनें"
+   ]
+  },
+  "hr": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "koristi Ollama za sažetke sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "Ollama használata megbeszélések összefoglalásához"
+   ]
+  },
+  "it": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "usare Ollama per riassumere le riunioni"
+   ]
+  },
+  "ja": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "会議の要約にOllamaを使う"
+   ]
+  },
+  "ko": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "회의 요약에 Ollama 사용"
+   ]
+  },
+  "lt": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "naudoti Ollama susitikimų santraukoms"
+   ]
+  },
+  "lv": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "izmantot Ollama sapulču kopsavilkumiem"
+   ]
+  },
+  "mt": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "uża Ollama għas-sommarji tal-laqgħat"
+   ]
+  },
+  "nl": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "Ollama gebruiken voor samenvattingen van vergaderingen"
+   ]
+  },
+  "pl": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "używaj Ollama do podsumowań spotkań"
+   ]
+  },
+  "pt": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "usar Ollama para resumir reuniões"
+   ]
+  },
+  "ro": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "folosește Ollama pentru rezumatele întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "использовать Ollama для сводок встреч"
+   ]
+  },
+  "sk": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "používať Ollama na zhrnutia stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "za povzetke sestankov uporabi model iz programa Ollama"
+   ]
+  },
+  "sv": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "använd Ollama för mötessammanfattningar"
+   ]
+  },
+  "tr": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için Ollama kullan"
+   ]
+  },
+  "uk": {
+   "title": "Ollama",
+   "words": [],
+   "phrases": [
+    "використовувати Ollama для підсумків зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "Ollama cho tóm tắt cuộc họp",
+   "words": [],
+   "phrases": [
+    "dùng Ollama để tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "Ollama会议摘要",
+   "words": [],
+   "phrases": [
+    "用Ollama总结会议"
+   ]
+  }
+ }
+}

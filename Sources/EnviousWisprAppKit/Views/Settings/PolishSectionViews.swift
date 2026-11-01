@@ -108,17 +108,21 @@ struct PolishRow<Detail: View, Trailing: View>: View {
 
   /// A mapped row: the title and the line under it come from its Settings Map node. A node
   /// whose line is composed from state (`.runtime`) takes it as `runtimeSubtitle`.
+  /// `surfaceSubtitle` replaces the node's line where the same control serves another surface
+  /// whose line differs (#4287: the Summaries tab's key row says what a SUMMARY sends).
   init(
     map: SettingsMapRef, icon: String, iconTint: Color = .stAccent, showsSpinner: Bool = false,
-    runtimeSubtitle: String? = nil, @ViewBuilder detail: @escaping () -> Detail,
+    runtimeSubtitle: String? = nil, surfaceSubtitle: String? = nil,
+    @ViewBuilder detail: @escaping () -> Detail,
     @ViewBuilder trailing: @escaping () -> Trailing, adaptsTrailing: Bool = false
   ) {
-    let subtitle: String?
+    var subtitle: String?
     switch SettingsMap.node(map.id).description {
     case .resource?: subtitle = map.shortLine
     case .runtime?: subtitle = runtimeSubtitle
     case nil: subtitle = nil
     }
+    if let surfaceSubtitle { subtitle = surfaceSubtitle }
     if runtimeSubtitle != nil { map.requireRuntimeShortLine() }
     self.init(
       registration: .mapped(map.id), icon: icon, iconTint: iconTint, showsSpinner: showsSpinner,

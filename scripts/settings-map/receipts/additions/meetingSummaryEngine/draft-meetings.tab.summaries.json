@@ -1,0 +1,381 @@
+{
+ "id": "meetings.tab.summaries",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الملخصات",
+   "words": [
+    "خلاصة",
+    "موجز"
+   ],
+   "phrases": [
+    "ملخصات الاجتماعات",
+    "أين أجد ملخص الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "обобщения",
+   "words": [
+    "резюме",
+    "накратко"
+   ],
+   "phrases": [
+    "обобщения на срещите",
+    "къде е резюмето на срещата"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "shrnutí",
+   "words": [
+    "souhrn",
+    "přehled"
+   ],
+   "phrases": [
+    "shrnutí schůzek",
+    "kde najdu souhrn schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "opsummeringer",
+   "words": [
+    "resumé",
+    "sammendrag"
+   ],
+   "phrases": [
+    "opsummeringer af møder",
+    "hvor finder jeg mødets resumé"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Kurzfassung",
+    "Überblick",
+    "Resümee"
+   ],
+   "phrases": [
+    "Zusammenfassungen meiner Besprechungen",
+    "wo finde ich die Zusammenfassung vom Meeting"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "περιλήψεις",
+   "words": [
+    "σύνοψη",
+    "ανακεφαλαίωση"
+   ],
+   "phrases": [
+    "περιλήψεις συναντήσεων",
+    "πού βρίσκω τη σύνοψη της συνάντησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "recaps",
+    "overviews"
+   ],
+   "phrases": [
+    "meeting summaries",
+    "where is my meeting recap"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "resúmenes",
+   "words": [
+    "síntesis",
+    "recapitulación"
+   ],
+   "phrases": [
+    "resúmenes de reuniones",
+    "dónde veo el resumen de la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kokkuvõtted",
+   "words": [
+    "ülevaade"
+   ],
+   "phrases": [
+    "koosolekute kokkuvõtted",
+    "kust leian koosoleku kokkuvõtte"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "yhteenvedot",
+   "words": [
+    "tiivistelmä",
+    "kooste"
+   ],
+   "phrases": [
+    "kokousten yhteenvedot",
+    "mistä löydän kokouksen tiivistelmän"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "résumés",
+   "words": [
+    "synthèse",
+    "récapitulatif"
+   ],
+   "phrases": [
+    "résumés des réunions",
+    "où trouver le résumé de la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "सारांश",
+   "words": [
+    "सार",
+    "संक्षेप"
+   ],
+   "phrases": [
+    "मीटिंग का सारांश",
+    "बैठक का सारांश कहाँ है"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "sažeci",
+   "words": [
+    "sažetak",
+    "pregled"
+   ],
+   "phrases": [
+    "sažeci sastanaka",
+    "gdje je sažetak sastanka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "összefoglalók",
+   "words": [
+    "összegzés",
+    "kivonat"
+   ],
+   "phrases": [
+    "megbeszélések összefoglalói",
+    "hol találom a megbeszélés összefoglalóját"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "riepiloghi",
+   "words": [
+    "riassunti",
+    "sintesi"
+   ],
+   "phrases": [
+    "riepiloghi delle riunioni",
+    "dove trovo il riassunto della riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "要約",
+   "words": [
+    "まとめ",
+    "サマリー"
+   ],
+   "phrases": [
+    "会議の要約",
+    "会議のまとめはどこ"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "요약",
+   "words": [
+    "정리",
+    "요약본"
+   ],
+   "phrases": [
+    "회의 요약",
+    "회의 요약 어디서 봐"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "santraukos",
+   "words": [
+    "apibendrinimas",
+    "apžvalga"
+   ],
+   "phrases": [
+    "susitikimų santraukos",
+    "kur rasti susitikimo santrauką"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "kopsavilkumi",
+   "words": [
+    "apkopojums"
+   ],
+   "phrases": [
+    "sapulču kopsavilkumi",
+    "kur atrast sapulces kopsavilkumu"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "sommarji",
+   "words": [
+    "ġabra fil-qosor"
+   ],
+   "phrases": [
+    "sommarji tal-laqgħat",
+    "fejn insib is-sommarju tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "samenvattingen",
+   "words": [
+    "overzicht"
+   ],
+   "phrases": [
+    "samenvattingen van vergaderingen",
+    "waar vind ik de samenvatting van de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "podsumowania",
+   "words": [
+    "streszczenie",
+    "skrót"
+   ],
+   "phrases": [
+    "podsumowania spotkań",
+    "gdzie znajdę podsumowanie spotkania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "resumos",
+   "words": [
+    "síntese"
+   ],
+   "phrases": [
+    "resumos de reuniões",
+    "onde encontro o resumo da reunião"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "rezumate",
+   "words": [
+    "sinteză",
+    "sumar"
+   ],
+   "phrases": [
+    "rezumatele ședințelor",
+    "unde găsesc rezumatul întâlnirii"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сводки",
+   "words": [
+    "итоги",
+    "резюме",
+    "краткое содержание"
+   ],
+   "phrases": [
+    "итоги встреч",
+    "где найти сводку встречи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "zhrnutia",
+   "words": [
+    "súhrn",
+    "prehľad"
+   ],
+   "phrases": [
+    "zhrnutia stretnutí",
+    "kde nájdem zhrnutie stretnutia"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "povzetki",
+   "words": [
+    "pregled"
+   ],
+   "phrases": [
+    "povzetki sestankov",
+    "kje najdem povzetek sestanka"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "sammanfattningar",
+   "words": [
+    "sammandrag",
+    "resumé"
+   ],
+   "phrases": [
+    "sammanfattningar av möten",
+    "var hittar jag mötets sammanfattning"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "özetler",
+   "words": [
+    "özet"
+   ],
+   "phrases": [
+    "toplantı özetleri",
+    "toplantının özeti nerede"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "підсумки",
+   "words": [
+    "резюме",
+    "стислий виклад"
+   ],
+   "phrases": [
+    "підсумки зустрічей",
+    "де знайти підсумок зустрічі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "tóm tắt",
+   "words": [
+    "tổng kết"
+   ],
+   "phrases": [
+    "tóm tắt cuộc họp",
+    "xem tóm tắt cuộc họp ở đâu"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "摘要",
+   "words": [
+    "总结",
+    "概要"
+   ],
+   "phrases": [
+    "会议摘要",
+    "在哪看会议总结"
+   ]
+  }
+ ]
+}

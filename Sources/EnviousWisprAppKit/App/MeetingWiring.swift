@@ -312,7 +312,8 @@ enum MeetingWiring {
     return MeetingSummaryOwner(
       dependencies: .init(
         isEnabled: { settings.meetingWriteSummary },
-        selection: { (settings.llmProvider, settings.effectiveLLMModel) },
+        // #4287: the summary engine chosen on the Summaries tab, never dictation's.
+        selection: { settings.meetingSummarySelection },
         prepare: { provider, model in
           await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)
         },

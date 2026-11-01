@@ -1,0 +1,99 @@
+{
+  "meetings.tab.summaries": {
+    "language": "ko",
+    "title": "요약",
+    "words": [],
+    "phrases": [
+      "EnviousMeet 요약 탭",
+      "회의 요약 설정 페이지"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "ko",
+    "title": "요약 엔진",
+    "words": [
+      "회의 요약 엔진"
+    ],
+    "phrases": [
+      "현재 회의 요약 엔진 확인",
+      "회의 요약 엔진 설정"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "ko",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "Apple Intelligence로 회의 요약하기"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "ko",
+    "title": "요약 엔진 변경",
+    "words": [],
+    "phrases": [
+      "회의 요약 엔진 바꾸기",
+      "다른 회의 요약 엔진 고르기"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "ko",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "회의 요약에 Claude 사용"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "ko",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "회의 요약용 EG-1 출시 예정"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "ko",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "회의 요약에 Google Gemini 사용"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "ko",
+    "title": "현재 요약 엔진 유지",
+    "words": [],
+    "phrases": [
+      "지금 쓰는 회의 요약 엔진 유지하기",
+      "회의 요약 엔진을 바꾸지 않고 닫기"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "ko",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "회의 요약에 Ollama 사용"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "ko",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "회의 요약에 OpenAI 사용"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "ko",
+    "title": "회의가 끝나면 요약 작성",
+    "words": [
+      "회의 자동 요약"
+    ],
+    "phrases": [
+      "회의 끝나고 자동으로 요약하기",
+      "회의 요약 자동으로 만들기"
+    ]
+  }
+}

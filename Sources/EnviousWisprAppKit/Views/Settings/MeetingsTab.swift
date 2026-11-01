@@ -4,6 +4,8 @@ import SwiftUI
 enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
   case general
   case models
+  /// #4287: the summary engine, chosen independently of dictation's AI Polish.
+  case summaries
   case callApps
   case permissions
 
@@ -14,6 +16,7 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
     switch self {
     case .general: .meetingsTabGeneral
     case .models: .meetingsTabModels
+    case .summaries: .meetingsTabSummaries
     case .callApps: .meetingsTabCallApps
     case .permissions: .meetingsTabPermissions
     }
@@ -26,7 +29,11 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
     case .models:
       LocalizedStringResource(
         "Models",
-        comment: "EnviousMeet settings: tab name for the speech engines, languages and summary model.")
+        comment: "EnviousMeet settings: tab name for the speech engines and languages.")
+    case .summaries:
+      LocalizedStringResource(
+        "Summaries",
+        comment: "EnviousMeet settings: tab name for the engine that writes meeting summaries.")
     case .callApps:
       LocalizedStringResource(
         "Call Apps", comment: "EnviousMeet settings: tab name for the per-app call switches.")
@@ -41,6 +48,7 @@ enum MeetingsTab: String, CaseIterable, Hashable, Identifiable {
     switch self {
     case .general: "gearshape"
     case .models: "cpu"
+    case .summaries: "sparkles"
     case .callApps: "phone.badge.waveform"
     case .permissions: "hand.raised"
     }

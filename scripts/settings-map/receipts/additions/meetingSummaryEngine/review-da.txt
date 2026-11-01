@@ -1,0 +1,94 @@
+{
+  "meetings.tab.summaries": {
+    "language": "da",
+    "title": "opsummeringer",
+    "words": [],
+    "phrases": [
+      "fanen med opsummeringer i EnviousMeet",
+      "indstillinger for mødeopsummeringer"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "da",
+    "title": "opsummeringsmotor",
+    "words": [],
+    "phrases": [
+      "hvilken AI opsummerer mine møder",
+      "se den aktuelle motor til mødeopsummeringer"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "da",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "brug Apple Intelligence til mødereferater"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "da",
+    "title": "skift opsummeringsmotor",
+    "words": [],
+    "phrases": [
+      "skift AI til mødereferater",
+      "vis valgmulighederne for motor til mødeopsummeringer"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "da",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "brug Claude til mødereferater"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "da",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 til mødeopsummeringer kommer snart"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "da",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "brug Google Gemini til mødereferater"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "da",
+    "title": "behold den nuværende opsummeringsmotor",
+    "words": [],
+    "phrases": [
+      "brug fortsat samme ai til mødereferater"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "da",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "brug Ollama til mødereferater"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "da",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "brug OpenAI til mødereferater"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "da",
+    "title": "lav et resumé, når mødet slutter",
+    "words": [],
+    "phrases": [
+      "lav automatisk et resumé, når mødet slutter",
+      "slå automatiske mødeopsummeringer til"
+    ]
+  }
+}

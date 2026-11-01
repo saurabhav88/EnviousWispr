@@ -1,0 +1,95 @@
+{
+  "meetings.tab.summaries": {
+    "language": "fr",
+    "title": "résumés",
+    "words": [],
+    "phrases": [
+      "ouvrir l’onglet résumés d’EnviousMeet",
+      "où sont les réglages des résumés de réunion"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "fr",
+    "title": "moteur de résumé",
+    "words": [
+      "moteur de résumé des réunions"
+    ],
+    "phrases": [
+      "quelle ia rédige mes résumés de réunion",
+      "configurer le moteur de résumé des réunions"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "fr",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "utiliser Apple Intelligence pour résumer les réunions"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "fr",
+    "title": "modifier",
+    "words": [],
+    "phrases": [
+      "changer l’ia pour les résumés de réunion"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "fr",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "utiliser Claude pour résumer les réunions"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "fr",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 pour les résumés de réunion bientôt disponible"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "fr",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "utiliser Google Gemini pour résumer les réunions"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "fr",
+    "title": "conserver le moteur de résumé actuel",
+    "words": [],
+    "phrases": [
+      "garder la même ia pour les résumés de réunion"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "fr",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "utiliser Ollama pour résumer les réunions"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "fr",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "utiliser OpenAI pour résumer les réunions"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "fr",
+    "title": "créer un résumé à la fin de la réunion",
+    "words": [],
+    "phrases": [
+      "résumer la réunion une fois terminée",
+      "résumé automatique des réunions"
+    ]
+  }
+}

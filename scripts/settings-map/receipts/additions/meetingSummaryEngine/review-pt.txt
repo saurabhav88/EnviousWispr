@@ -1,0 +1,97 @@
+{
+  "meetings.tab.summaries": {
+    "language": "pt",
+    "title": "resumos",
+    "words": [],
+    "phrases": [
+      "aba de resumos do EnviousMeet",
+      "configurações dos resumos de reuniões"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "pt",
+    "title": "motor de resumos",
+    "words": [
+      "motor de resumos de reuniões"
+    ],
+    "phrases": [
+      "qual inteligência artificial escreve os resumos das minhas reuniões",
+      "configurar o motor de resumos de reuniões"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "pt",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "usar Apple Intelligence para resumir reuniões"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "pt",
+    "title": "alterar",
+    "words": [],
+    "phrases": [
+      "abrir as opções para trocar o motor de resumos de reuniões"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "pt",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "usar Claude para resumir reuniões"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "pt",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 para resumos de reuniões",
+      "EG-1 para resumir reuniões em breve"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "pt",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "usar Google Gemini para resumir reuniões"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "pt",
+    "title": "manter o motor de resumos atual",
+    "words": [],
+    "phrases": [
+      "continuar com o mesmo motor de resumos de reuniões",
+      "fechar as opções sem trocar o motor de resumos"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "pt",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "usar Ollama para resumir reuniões"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "pt",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "usar OpenAI para resumir reuniões"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "pt",
+    "title": "criar um resumo ao terminar a reunião",
+    "words": [],
+    "phrases": [
+      "resumir a reunião quando acabar",
+      "resumo automático de reuniões"
+    ]
+  }
+}

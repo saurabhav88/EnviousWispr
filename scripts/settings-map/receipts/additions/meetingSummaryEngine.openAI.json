@@ -1,0 +1,227 @@
+{
+ "id": "meetingSummaryEngine.openAI",
+ "blocks": {
+  "ar": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "استخدام OpenAI لتلخيص الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "използване на OpenAI за обобщения на срещи"
+   ]
+  },
+  "cs": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "použít OpenAI pro shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "brug OpenAI til mødereferater"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "OpenAI für Meetingzusammenfassungen auswählen"
+   ]
+  },
+  "el": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "χρήση OpenAI για περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "use OpenAI for meeting summaries"
+   ]
+  },
+  "es": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "usar OpenAI para resumir reuniones"
+   ]
+  },
+  "et": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "kasuta koosolekute kokkuvõteteks OpenAI-d"
+   ]
+  },
+  "fi": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "käytä OpenAI:ta kokousten yhteenvetoihin"
+   ]
+  },
+  "fr": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "utiliser OpenAI pour résumer les réunions"
+   ]
+  },
+  "hi": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए OpenAI चुनें"
+   ]
+  },
+  "hr": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "koristi OpenAI za sažetke sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "OpenAI használata megbeszélések összefoglalásához"
+   ]
+  },
+  "it": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "usare OpenAI per riassumere le riunioni"
+   ]
+  },
+  "ja": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "会議の要約にOpenAIを使う"
+   ]
+  },
+  "ko": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "회의 요약에 OpenAI 사용"
+   ]
+  },
+  "lt": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "naudoti OpenAI susitikimų santraukoms"
+   ]
+  },
+  "lv": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "izmantot OpenAI sapulču kopsavilkumiem"
+   ]
+  },
+  "mt": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "uża OpenAI għas-sommarji tal-laqgħat"
+   ]
+  },
+  "nl": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "OpenAI gebruiken voor samenvattingen van vergaderingen"
+   ]
+  },
+  "pl": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "użyj OpenAI do podsumowań spotkań"
+   ]
+  },
+  "pt": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "usar OpenAI para resumir reuniões"
+   ]
+  },
+  "ro": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "folosește OpenAI pentru rezumatele ședințelor"
+   ]
+  },
+  "ru": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "использовать OpenAI для итогов встреч"
+   ]
+  },
+  "sk": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "použiť OpenAI na zhrnutia stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "uporabi OpenAI za povzetke sestankov"
+   ]
+  },
+  "sv": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "använd OpenAI för mötessammanfattningar"
+   ]
+  },
+  "tr": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için OpenAI kullan"
+   ]
+  },
+  "uk": {
+   "title": "OpenAI",
+   "words": [],
+   "phrases": [
+    "використовувати OpenAI для підсумків зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "OpenAI cho tóm tắt cuộc họp",
+   "words": [],
+   "phrases": [
+    "dùng OpenAI để tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "OpenAI会议摘要",
+   "words": [],
+   "phrases": [
+    "用OpenAI总结会议"
+   ]
+  }
+ }
+}

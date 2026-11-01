@@ -2288,18 +2288,148 @@
    "kind": "setting",
    "destination": {
     "page": "meetings",
-    "tab": "general"
+    "tab": "summaries"
    },
    "disposition": "mapped",
-   "parent": "meetings.tab.general",
+   "parent": "meetings.tab.summaries",
    "target": "meetingWriteSummary",
    "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": null,
    "description": {
     "kind": "static",
-    "english": "Your AI Polish provider writes a summary of each meeting."
+    "english": "The summary engine on this tab writes a summary of each meeting."
    }
+  },
+  {
+   "id": "meetingSummaryEngine",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.summaries",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The AI that writes your meeting summaries. Separate from AI Polish for dictation."
+   }
+  },
+  {
+   "id": "meetingSummaryEngine.change",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingSummaryEngine"
+  },
+  {
+   "id": "meetingSummaryEngine.keepCurrent",
+   "kind": "action",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": "meetingSummaryEngine"
+  },
+  {
+   "id": "meetingSummaryEngine.appleIntelligence",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingSummaryEngine.egOne",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingSummaryEngine.ollama",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingSummaryEngine.openAI",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingSummaryEngine.gemini",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
+  },
+  {
+   "id": "meetingSummaryEngine.claude",
+   "kind": "choice",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "meetingSummaryEngine",
+   "target": "meetingSummaryEngine",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null
   },
   {
    "id": "meetingTurnsOffDictation",
@@ -4779,6 +4909,19 @@
    "disposition": "mapped",
    "parent": "page.meetings",
    "target": "meetings.tab.models",
+   "fallbacks": [],
+   "dynamicTitle": false
+  },
+  {
+   "id": "meetings.tab.summaries",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "summaries"
+   },
+   "disposition": "mapped",
+   "parent": "page.meetings",
+   "target": "meetings.tab.summaries",
    "fallbacks": [],
    "dynamicTitle": false
   },

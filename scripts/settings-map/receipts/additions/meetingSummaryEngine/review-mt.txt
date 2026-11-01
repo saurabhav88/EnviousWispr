@@ -1,0 +1,98 @@
+{
+  "meetings.tab.summaries": {
+    "language": "mt",
+    "title": "sommarji",
+    "words": [],
+    "phrases": [
+      "settings tas-sommarji f’EnviousMeet",
+      "iftaħ it-tab tas-sommarji"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "mt",
+    "title": "magna tas-sommarji",
+    "words": [
+      "magna tas-sommarji tal-laqgħat"
+    ],
+    "phrases": [
+      "liema AI tikteb is-sommarji tal-laqgħat tiegħi",
+      "settings tal-magna tas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "mt",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "uża Apple Intelligence biex tiġbor il-laqgħat fil-qosor"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "mt",
+    "title": "ibdel",
+    "words": [],
+    "phrases": [
+      "ibdel l-AI għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "mt",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "uża Claude għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "mt",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 għas-sommarji tal-laqgħat",
+      "EG-1 għas-sommarji tal-laqgħat dalwaqt disponibbli"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "mt",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "uża Google Gemini għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "mt",
+    "title": "żomm il-magna tas-sommarji attwali",
+    "words": [],
+    "phrases": [
+      "kompli uża l-istess intelliġenza artifiċjali għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "mt",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "uża Ollama għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "mt",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "uża OpenAI għas-sommarji tal-laqgħat"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "mt",
+    "title": "oħloq sommarju meta tintemm il-laqgħa",
+    "words": [
+      "sommarju awtomatiku"
+    ],
+    "phrases": [
+      "agħmel sommarju awtomatikament meta tintemm il-laqgħa",
+      "attiva s-sommarji awtomatiċi tal-laqgħat"
+    ]
+  }
+}
