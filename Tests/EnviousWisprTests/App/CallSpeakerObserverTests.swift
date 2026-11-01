@@ -407,6 +407,41 @@ import os
       #expect(recorder.mutedMeter.last == false)
     }
 
+    @Test("a muted line names the call its snapshot was decided for; an older call's cannot overwrite it")
+    func muteLineNamesItsOwnCall() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let sources = Sources(Self.meetCall)
+      let coordinator = try coordinator(harness, capture: capture, sources: sources)
+      _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let recorder = try #require(harness.recorders.first)
+      // The session binds Meet first, at start, then a Meet reading follows; nothing has run on
+      // the writer yet.
+      await eventually("Meet bound and read") { coordinator.muteReadingsSentForTesting >= 1 }
+      #expect(coordinator.muteCallAppsForTesting == [1: .googleMeet])
+      let meetSteps = recorder.steps.count
+      sources.answer = .unique(
+        .init(family: .teams, target: CallSpeakerTarget(pid: 3, rule: .callApp(.teams))))
+      await eventually("Teams bound") { coordinator.muteCallAppsForTesting[2] == .teams }
+      let count = recorder.steps.count
+      // The Teams binding's steps run first.
+      recorder.runSteps(at: Array(meetSteps..<count), now: mach_absolute_time())
+      await eventually("Teams snapshot accepted") { coordinator.muteState == .checking }
+      #expect(coordinator.muteCallApp == .teams)
+      #expect(
+        MeetingsPresentation.muteLine(.muted, callApp: coordinator.muteCallApp)
+          == "You're muted in Microsoft Teams. Your voice is left out of the notes.")
+      // Then the older Meet steps; their reading always publishes a snapshot, for the Meet call.
+      let delivered = coordinator.muteSnapshotsDeliveredForTesting
+      recorder.runSteps(at: Array(0..<meetSteps), now: mach_absolute_time())
+      await eventually("Meet snapshot delivered") {
+        coordinator.muteSnapshotsDeliveredForTesting > delivered
+      }
+      #expect(coordinator.muteCallApp == .teams, "the older Meet snapshot was refused")
+      #expect(coordinator.muteState == .checking)
+      await coordinator.stop()
+    }
+
     @Test("mute reading starts before the rules arrive; naming attaches to the same capture")
     func muteBeforeRules() async throws {
       let harness = try Harness()

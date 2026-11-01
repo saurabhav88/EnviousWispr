@@ -116,6 +116,11 @@ struct MeetingCoordinatorTests {
     /// Runs every step not run yet at (`now`, `released`), as the writer queue would; returns
     /// the last intervals any of them installed.
     @ObservationIgnored private var stepsRun = 0
+    /// Runs the steps at `indices` in the order given, outside `runSteps`' bookkeeping, so a
+    /// test can deliver an older step after newer ones.
+    func runSteps(at indices: [Int], now: UInt64, released: UInt64 = 0) {
+      for index in indices { _ = steps[index](now, released) }
+    }
     @discardableResult
     func runSteps(now: UInt64, released: UInt64 = 0) -> [MeetingSilenceInterval]? {
       var last: [MeetingSilenceInterval]?

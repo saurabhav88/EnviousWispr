@@ -560,6 +560,16 @@ final class MeetingCoordinator {
   private(set) var muteMissed = MeetingMuteFollower.Missed()
   /// #4248: the call app of the binding `muteState` describes, for the live card's muted line.
   private(set) var muteCallApp: CallAppFamily?
+  #if DEBUG
+    /// The call app recorded for each binding generation of the current recording.
+    var muteCallAppsForTesting: [UInt64: CallAppFamily] { muteFollow?.callApps ?? [:] }
+    /// Mute readings the current recording handed to its writer.
+    var muteReadingsSentForTesting: Int {
+      muteFollow.flatMap { muteCaptureCounts[$0.meetingID]?.delivered } ?? 0
+    }
+    /// Every snapshot that reached the MainActor, accepted by the fence or not.
+    private(set) var muteSnapshotsDeliveredForTesting = 0
+  #endif
 
   private struct MuteFollow {
     let meetingID: UUID
@@ -2702,6 +2712,9 @@ final class MeetingCoordinator {
   /// from the current call, reaches the live card and the meter.
   private func muteSnapshot(_ snapshot: MeetingMuteGate.Snapshot) {
     traceMute(snapshot)
+    #if DEBUG
+      muteSnapshotsDeliveredForTesting += 1
+    #endif
     if snapshot.ended { muteCaptureCounts[snapshot.recording] = nil }
     guard var follow = muteFollow, follow.fence.accept(snapshot) else { return }
     muteFollow = follow
