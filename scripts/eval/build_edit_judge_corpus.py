@@ -50,8 +50,25 @@ PACKS_DIR = ROOT / "Sources/EnviousWisprPostProcessing/Resources/Packs"
 POLISH_CORPUS = ROOT / "scripts/eval/corpus/speechpath_1861.jsonl"
 FROZEN_MANIFEST = ROOT / "scripts/eval/corpus/edit-judge-frozen-manifest.json"
 DEV_TEMPLATES = ROOT / "scripts/eval/corpus/edit-judge-dev-templates.json"
-DEFAULT_OUT = ROOT / "artifacts/issue-996-edit-judge/candidates"
-DEFAULT_DEV_OUT = ROOT / "artifacts/issue-996-edit-judge/dev"
+# The edit-judge working tree moved out of the checkout into the agent artifact
+# library on 2026-10-31 (#4292, #4295). Defaults resolve its CURRENT home through
+# the artifact CLI; there is no checkout fallback, because writing here again
+# would recreate agent output inside the root Swift package that Xcode walks.
+EDIT_JUDGE_TREE = "artifacts/issue-996-edit-judge"
+ARTIFACT_CLI = Path.home() / ".claude/bin/artifact"
+
+
+def edit_judge_dir(sub: str) -> Path:
+    """<edit-judge tree>/<sub>, wherever the tree lives now (checkout copy first)."""
+    import subprocess
+    if not ARTIFACT_CLI.exists():
+        raise SystemExit(f"ERROR: {ARTIFACT_CLI} is missing, so the edit-judge tree cannot be located. "
+                         "Install the agent artifact CLI (~/.claude/knowledge/dev/agent-artifacts.md) or pass --out/--dev-out.")
+    r = subprocess.run([str(ARTIFACT_CLI), "path", EDIT_JUDGE_TREE, "--checkout", str(ROOT)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"ERROR: cannot locate {EDIT_JUDGE_TREE}: {r.stderr.strip()} (pass --out/--dev-out)")
+    return Path(r.stdout.strip()) / sub
 
 PACK_STRATUM = {"brands": "brand", "names": "person", "tech": "domain", "legal": "domain", "medical": "domain"}
 REVIEW_STATUS = "template-reviewed"
@@ -431,10 +448,10 @@ def main() -> int:
     p.add_argument("--packs", type=Path, default=PACKS_DIR)
     p.add_argument("--polish", type=Path, default=POLISH_CORPUS)
     p.add_argument("--frozen-manifest", type=Path, default=FROZEN_MANIFEST)
-    p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--out", type=Path, default=None, help="default: <edit-judge tree>/candidates")
     p.add_argument("--dev", action="store_true", help="build labelled development data from the template tables")
     p.add_argument("--templates", type=Path, default=DEV_TEMPLATES)
-    p.add_argument("--dev-out", type=Path, default=DEFAULT_DEV_OUT)
+    p.add_argument("--dev-out", type=Path, default=None, help="default: <edit-judge tree>/dev")
     p.add_argument("--seed", default="chunk-2c", help="--dev: family split seed")
     p.add_argument("--authored", type=Path, action="append", help="--dev: a JSONL of model-authored, gate-validated, frozen-screened rows to add as a labelled source (repeatable)")
     p.add_argument("--calibration-fresh", action="store_true", help="build the calibration-only set from the templates' calibration_only tables")
@@ -442,6 +459,14 @@ def main() -> int:
     p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")
     p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8", "calibration_only_v9"], help="--calibration-fresh: which calibration-only tables")
     args = p.parse_args()
+    # Resolve only the default the chosen mode writes to, so an explicit --out or
+    # --dev-out (or calibration mode) never needs the artifact CLI.
+    if not args.calibration_fresh:
+        if args.dev:
+            if args.dev_out is None:
+                args.dev_out = edit_judge_dir("dev")
+        elif args.out is None:
+            args.out = edit_judge_dir("candidates")
 
     required = (args.packs, args.frozen_manifest) + ((args.templates,) if (args.dev or args.calibration_fresh) else (args.polish,))
     for path in required:

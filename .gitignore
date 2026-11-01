@@ -326,12 +326,18 @@ scripts/eval/corpus/*
 !scripts/eval/corpus/sealed_v1_input_hashes.txt
 !scripts/eval/baselines/
 !scripts/eval/baselines/*.json
+# #4293: the three Swift runners are ONE package (scripts/eval/Package.swift),
+# so the app's code compiles once for all of them. Its build folder and
+# lockfile stay ignored (the lockfile is seeded from the app's tracked pins).
+!scripts/eval/Package.swift
+!scripts/eval/Package.runner-only-pins.json
+!scripts/eval/eval_bin.py
+scripts/eval/.build/
+scripts/eval/Package.resolved
 !scripts/eval/apple_runner/
 !scripts/eval/apple_runner/**
 !scripts/eval/tests/
 !scripts/eval/tests/**
-scripts/eval/apple_runner/.build/
-scripts/eval/apple_runner/Package.resolved
 # Corpus-fidelity + judging harness (#1272, 2026-08-01) — PUBLIC tracked files.
 # These are tracked deliberately: the one-off generator behind the #1199 cloud
 # numbers was gitignored, got deleted, and cost a session rediscovering that
@@ -403,19 +409,13 @@ scripts/eval/parakeet_runner/Package.resolved
 # `render_bench_prompts.sh` builds this to render each model's REAL production
 # prompt, so without it the benchmark cannot be reproduced at the step that
 # decides WHICH prompt each model was given — the input the whole comparison
-# rests on. Like apple_runner and alias_runner it is a standalone SwiftPM
-# package path-depending on the app, so it is compiled by the same CI guard
-# (#1836); its `Package.resolved` stays ignored, seeded on each run from the
-# app's tracked pins exactly as those two are.
+# rests on. Its sources are a target of the one eval package
+# (scripts/eval/Package.swift, #4293), compiled by the same guard (#1836).
 !scripts/eval/prompt_render/
 !scripts/eval/prompt_render/**
-scripts/eval/prompt_render/.build/
-scripts/eval/prompt_render/Package.resolved
 # Alias suggestion eval harness (#637) — PUBLIC tracked files
 !scripts/eval/alias_runner/
 !scripts/eval/alias_runner/**
-scripts/eval/alias_runner/.build/
-scripts/eval/alias_runner/Package.resolved
 # Its runner-only dependency (#996 chunk 2b-ii, swift-transformers) is pinned in
 # the TRACKED Package.runner-only-pins.json; compile-eval-packages.sh merges it
 # after the app's pins (scripts/ci/seed-eval-package-pins.py).
@@ -483,3 +483,9 @@ routine-session-logs-*/
 # Last match wins, so this stays at the end of the file.
 **/__pycache__/
 **/*.pyc
+
+# #4293: build output the old per-runner eval packages left behind in existing
+# checkouts. Last in the file so the `!scripts/eval/<runner>/**` negations above
+# cannot re-include it.
+scripts/eval/*/.build/
+scripts/eval/*/Package.resolved

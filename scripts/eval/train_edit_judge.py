@@ -29,9 +29,10 @@ Outputs, under `<artifacts>/runs/<run id>/`:
   metrics.json         per-epoch dev metrics, calibration sweep, locked results
 
 Toolchain: the pinned probe venv (`edit-judge-requirements.txt`).
-Run from the worktree:
-  <main>/artifacts/issue-996-edit-judge/.venv/bin/python scripts/eval/train_edit_judge.py \\
-      --artifacts <main>/artifacts/issue-996-edit-judge --candidate xenc-xlmr-base
+Run from the worktree (the tree lives in the agent artifact library since
+2026-10-31; `T=$(~/.claude/bin/artifact path artifacts/issue-996-edit-judge)` prints it):
+  "$T/.venv/bin/python" scripts/eval/train_edit_judge.py \\
+      --artifacts "$T" --candidate xenc-xlmr-base
 Add `--smoke` for the pipeline smoke (a few steps on a few rows; never a result).
 
 Training on a machine without the Swift runner (the CUDA rig, 2026-09-20): the two
@@ -725,15 +726,23 @@ def main() -> int:
     if args.parity_only and args.parity_receipt:
         print("INFRA-ERROR: --parity-only and --parity-receipt are exclusive", file=sys.stderr)
         return 2
-    if not args.parity_receipt and not probe.RUNNER_BIN.exists():
-        print(f"INFRA-ERROR: runner missing at {probe.RUNNER_BIN}", file=sys.stderr)
-        return 2
+    if not args.parity_receipt:
+        try:
+            probe.resolve_runner()  # the scripts/eval package's AliasRunner (#4293)
+        except probe.eval_bin.RunnerMissing as e:
+            print(f"INFRA-ERROR: runner missing. {e}", file=sys.stderr)
+            return 2
     receipt: Optional[dict] = None
     if args.parity_receipt:
         try:
             receipt = json.loads(args.parity_receipt.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             print(f"INFRA-ERROR: parity receipt unreadable: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(receipt, dict):
+            # A non-object receipt would fall through to the live-parity branch with
+            # no resolved runner (Codex review of #4303).
+            print("INFRA-ERROR: parity receipt must be a JSON object", file=sys.stderr)
             return 2
 
     dev_dir = args.dev_dir or (args.artifacts / "dev")

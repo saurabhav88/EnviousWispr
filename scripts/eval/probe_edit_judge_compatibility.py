@@ -19,15 +19,16 @@ with the SHIPPED stack, not a Python approximation:
 
 Nothing here is an accuracy result, a winner or a frozen-report run; the
 frozen rows are never read. Everything the probe downloads or exports lives
-under the gitignored main-checkout tree `artifacts/issue-996-edit-judge/`.
+under the edit-judge tree `artifacts/issue-996-edit-judge/` (in the agent artifact
+library since 2026-10-31: `~/.claude/bin/artifact path artifacts/issue-996-edit-judge`).
 
-Run from the worktree, with the runner built (`swift build -c release` in
-`scripts/eval/alias_runner`) and the probe venv created
+Run from the worktree, with the runner built (`swift build -c release --package-path
+scripts/eval --product AliasRunner`) and the probe venv created
 (`artifacts/issue-996-edit-judge/.venv`, torch + transformers 4.50.0 +
 coremltools 9.0):
 
-  <main>/artifacts/issue-996-edit-judge/.venv/bin/python \\
-      scripts/eval/probe_edit_judge_compatibility.py --artifacts <main>/artifacts/issue-996-edit-judge
+  "$T/.venv/bin/python" \\
+      scripts/eval/probe_edit_judge_compatibility.py --artifacts "$T"   # T as above
 
 Pure helpers (`mirror_pair_encoding`, `compare_ids`, `placement_verdict`) are
 tested in `scripts/eval/tests/test_probe_edit_judge_compatibility.py`.
@@ -48,7 +49,19 @@ from typing import Optional
 from uuid import uuid4
 
 ROOT = Path(__file__).parent.parent.parent.resolve()
-RUNNER_BIN = ROOT / "scripts/eval/alias_runner/.build/release/AliasRunner"
+# The runner is a product of the scripts/eval package; eval_bin.py owns where its
+# binary lives (#4293). Every entrypoint (this probe, train_edit_judge.py) calls
+# resolve_runner() before using RUNNER_BIN.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import eval_bin  # noqa: E402
+RUNNER_BIN: Optional[Path] = None
+
+
+def resolve_runner() -> Path:
+    """Locate the built AliasRunner and remember it in RUNNER_BIN; raises eval_bin.RunnerMissing."""
+    global RUNNER_BIN
+    RUNNER_BIN = eval_bin.runner_bin("AliasRunner")
+    return RUNNER_BIN
 
 # Toolchain the probe's numbers are valid for. Anything else is refused
 # before conversion, never silently accepted (the shipped converter pins the
@@ -629,13 +642,15 @@ def probe_candidate(name: str, spec: dict, artifacts: Path, run_root: Path, n_in
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--artifacts", type=Path, required=True, help="main-checkout artifacts/issue-996-edit-judge")
+    p.add_argument("--artifacts", type=Path, required=True, help="the edit-judge tree: ~/.claude/bin/artifact path artifacts/issue-996-edit-judge")
     p.add_argument("--candidates", nargs="+", default=list(CANDIDATES), choices=list(CANDIDATES))
     p.add_argument("--inputs", type=int, default=8, help="synthetic inputs per placement check")
     p.add_argument("--skip-conversion", action="store_true", help="tokenizer half only; the report says so")
     args = p.parse_args()
-    if not RUNNER_BIN.exists():
-        print(f"INFRA-ERROR: runner missing at {RUNNER_BIN}; build with swift build -c release", file=sys.stderr)
+    try:
+        resolve_runner()
+    except eval_bin.RunnerMissing as e:
+        print(f"INFRA-ERROR: runner missing. {e}", file=sys.stderr)
         return 2
     import torch
     import transformers
