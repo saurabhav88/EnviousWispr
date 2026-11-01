@@ -36,7 +36,8 @@ enum MuteSilenceP4 {
     text.lowercased().split { !($0.isLetter || $0 == "'") }.map(String.init)
   }
 
-  static let vocabulary = Set(sentences.flatMap(words))
+  /// The literal script's words in spoken order: the oracle for every route.
+  static let script = sentences.flatMap(words)
 
   static let chunk = 1_600
 
@@ -138,10 +139,18 @@ enum MuteSilenceP4 {
     return all
   }
 
-  /// Words in `output` that neither the speech nor the unmodified control produced.
-  static func invented(_ output: [String], control: [String]) -> [String] {
-    let known = vocabulary.union(control)
-    return output.filter { !known.contains($0) }
+  /// The P4 verdict for one route, against the literal script, never against engine output:
+  /// exact zeros give no words; the laid-out speech gives every script word in order exactly
+  /// once, so the protected speech on both sides of each zero span is checked; the control is
+  /// the script minus `controlShortfall` final words, a limitation recorded per route.
+  static func judge(
+    route: String, control: String, layout: String, silent: String, controlShortfall: Int = 0
+  ) {
+    #expect(words(silent) == [], "\(route): exact zeros give no words")
+    #expect(words(layout) == script, "\(route): every script word around the zero spans, in order")
+    #expect(
+      words(control) == Array(script.dropLast(controlShortfall)),
+      "\(route): the unmodified speech gives the script")
   }
 
   static func receipt(_ route: String, _ label: String, _ text: String, extra: String = "") {
@@ -219,7 +228,7 @@ struct MeetingMuteSilenceRealBoundaryTests {
 
   /// Control, layout and all-zero cases on one engine, with the P4 verdict.
   private func runCases(
-    route: String, engine: any LivePreviewEngine, requireDetection: Bool
+    route: String, engine: any LivePreviewEngine, requireDetection: Bool, controlShortfall: Int = 0
   ) async throws {
     let speech = try MuteSilenceP4.speech()
     let layout = MuteSilenceP4.layout(speech)
@@ -254,14 +263,9 @@ struct MeetingMuteSilenceRealBoundaryTests {
       route, "layout", spliced, extra: "zero_spans=\(spans) feed=\(MuteSilenceP4.chunk)")
     MuteSilenceP4.receipt(route, "all_zero", silent)
 
-    let controlWords = MuteSilenceP4.words(control)
-    #expect(controlWords.count >= 20, "the unmodified speech is transcribed")
-    #expect(MuteSilenceP4.words(silent).isEmpty, "exact zeros produce no words")
-    let splicedWords = MuteSilenceP4.words(spliced)
-    #expect(splicedWords.count >= 20, "speech around the zero spans is kept")
-    #expect(
-      MuteSilenceP4.invented(splicedWords, control: controlWords).isEmpty,
-      "no word outside the speech and the control")
+    MuteSilenceP4.judge(
+      route: route, control: control, layout: spliced, silent: silent,
+      controlShortfall: controlShortfall)
   }
 
   @Test(
@@ -294,7 +298,12 @@ struct MeetingMuteSilenceRealBoundaryTests {
       liveSpeechDetector: { MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) })
     try await recognizer.prepare()
     do {
-      try await runCases(route: "universal-live", engine: recognizer, requireDetection: true)
+      // Control limitation (receipt p4-repair2.log, 2026-10-31): the control ends with the
+      // speech, and the session ends before the last 21 words ("the west coast ... staffing
+      // plan") commit. The layout's 2 s of trailing zeros let them commit, so the layout still
+      // checks every word on both sides of each span.
+      try await runCases(
+        route: "universal-live", engine: recognizer, requireDetection: true, controlShortfall: 21)
     } catch {
       await runtime.releaseAndDrain()
       throw error

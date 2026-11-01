@@ -237,9 +237,11 @@ struct MeetingProcessingRealBoundaryTests {
     #expect(await engine.isLoaded == false, "the engine is freed when the pass ends")
     let decodes = counts.decodes
     #expect(decodes >= 1)
+    // Two voices, all speech: detection ran and kept speech on every decode.
     #expect(
-      !counts.preparations.isEmpty && counts.preparations.allSatisfy(PinnedVADModel.detectionRan),
-      "speech detection ran on every decode: \(counts.preparations)")
+      counts.preparations
+        == [MeetingSpeechPreparation?](repeating: .protectedSpeech, count: decodes),
+      "speech detection ran on every decode")
 
     let resumed = try await job().run(
       tracks: [.callSound: audio], language: "en", checkpoint: access, onStage: { _ in },
@@ -253,8 +255,10 @@ struct MeetingProcessingRealBoundaryTests {
   /// Control, layout and all-zero cases (`MuteSilenceP4`) through one final engine: exact-zero
   /// audio produces no words, the speech around zero spans is kept, nothing outside the speech or
   /// the control appears, and no timed turn sits wholly inside a zero span.
+  /// `run` receives the speech preparation a Whisper pass must report for that case.
   private func p4FinalCases(
-    route: String, run: (MeetingTrackAudio) async throws -> MeetingComposition
+    route: String,
+    run: (MeetingTrackAudio, MeetingSpeechPreparation) async throws -> MeetingComposition
   ) async throws {
     let speech = try MuteSilenceP4.speech()
     let layout = MuteSilenceP4.layout(speech)
@@ -276,9 +280,9 @@ struct MeetingProcessingRealBoundaryTests {
       #expect(laidOut[span].allSatisfy { $0 == 0 })
     }
 
-    let control = try await run(controlAudio)
-    let spliced = try await run(layoutAudio)
-    let silent = try await run(zeroAudio)
+    let control = try await run(controlAudio, .protectedSpeech)
+    let spliced = try await run(layoutAudio, .protectedSpeech)
+    let silent = try await run(zeroAudio, .confirmedSilence)
     let spans = layout.zeroSpans.map { "\($0.lowerBound)..<\($0.upperBound)" }.joined(separator: ",")
     MuteSilenceP4.receipt(route, "control", control.text)
     MuteSilenceP4.receipt(
@@ -286,12 +290,8 @@ struct MeetingProcessingRealBoundaryTests {
       extra: "zero_spans=\(spans) turns=\(spliced.turns.map { "\($0.startMs ?? -1)-\($0.endMs ?? -1)" })")
     MuteSilenceP4.receipt(route, "all_zero", silent.text)
 
-    let controlWords = MuteSilenceP4.words(control.text)
-    #expect(controlWords.count >= 20, "the unmodified speech is transcribed")
-    #expect(MuteSilenceP4.words(silent.text).isEmpty, "exact zeros produce no words")
-    let splicedWords = MuteSilenceP4.words(spliced.text)
-    #expect(splicedWords.count >= 20, "speech around the zero spans is kept")
-    #expect(MuteSilenceP4.invented(splicedWords, control: controlWords).isEmpty)
+    MuteSilenceP4.judge(
+      route: route, control: control.text, layout: spliced.text, silent: silent.text)
     // A turn wholly inside a zero span (100 ms in from each edge) is a word made from silence.
     for turn in spliced.turns {
       guard let start = turn.startMs, let end = turn.endMs else { continue }
@@ -304,9 +304,11 @@ struct MeetingProcessingRealBoundaryTests {
   }
 
   /// One real Whisper meeting pass (the #3705 evaluation model) over `audio`.
-  private func whisperComposition(_ audio: MeetingTrackAudio, speakerBundle: Bundle) async throws
-    -> MeetingComposition
-  {
+  /// `preparation`: what the pass's one decode (one contiguous run, whole-run pieces) must
+  /// report, proving detection ran rather than fell back.
+  private func whisperComposition(
+    _ audio: MeetingTrackAudio, speakerBundle: Bundle, preparation: MeetingSpeechPreparation
+  ) async throws -> MeetingComposition {
     let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
     // #4254: the pinned detector, as the app bundle supplies it; the test process has none.
     let engine = LiveMeetingWhisperEngine(
@@ -347,9 +349,7 @@ struct MeetingProcessingRealBoundaryTests {
         requestedEngine: .whisper, languageIntent: "en", requestedEffectiveLanguage: "en"))
     #expect(await engine.isLoaded == false)
     let prepared = preparations.withLock { $0 }
-    #expect(
-      !prepared.isEmpty && prepared.allSatisfy(PinnedVADModel.detectionRan),
-      "speech detection ran on every decode: \(prepared)")
+    #expect(prepared == [preparation], "speech detection ran on the decode")
     return result.composition
   }
 
@@ -358,7 +358,7 @@ struct MeetingProcessingRealBoundaryTests {
     .enabled(if: MeetingProcessingRealBoundaryTests.ultraIsInstalled),
     .tags(.realBoundary), .timeLimit(.minutes(6)), .realBoundaryRun)
   func p4Parakeet() async throws {
-    try await p4FinalCases(route: "parakeet-final") { audio in
+    try await p4FinalCases(route: "parakeet-final") { audio, _ in
       let (job, _) = try realJob()
       return try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
         .composition
@@ -371,8 +371,9 @@ struct MeetingProcessingRealBoundaryTests {
     .tags(.realBoundary), .timeLimit(.minutes(8)), .realBoundaryRun)
   func p4Whisper() async throws {
     let speakerBundle = try Self.speakerModelBundle()
-    try await p4FinalCases(route: "whisper-final") { audio in
-      try await self.whisperComposition(audio, speakerBundle: speakerBundle)
+    try await p4FinalCases(route: "whisper-final") { audio, preparation in
+      try await self.whisperComposition(
+        audio, speakerBundle: speakerBundle, preparation: preparation)
     }
   }
 
@@ -712,10 +713,5 @@ extension PinnedVADModel {
     return { samples in
       try await MeetingSpeechDetector.spans(in: samples, modelBundle: Bundle(path: path) ?? .main)
     }
-  }
-
-  /// Whether a Whisper decode really ran speech detection (a fallback is not detection).
-  static func detectionRan(_ preparation: MeetingSpeechPreparation?) -> Bool {
-    preparation == .protectedSpeech || preparation == .confirmedSilence
   }
 }
