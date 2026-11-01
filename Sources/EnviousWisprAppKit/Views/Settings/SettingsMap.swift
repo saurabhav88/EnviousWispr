@@ -692,6 +692,13 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.turnsOffDictationShort),
       parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingTurnsOffDictation, fallbacks: []),
+    // #4248: "Leave my voice out when I'm muted", always on the General tab.
+    SettingsMapNode(
+      id: .meetingFollowsCallMute, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.followsCallMuteTitle),
+      description: .resource(MeetingsCopy.followsCallMuteShort),
+      parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
+      visibility: .always, target: .meetingFollowsCallMute, fallbacks: []),
     // #4105: live words' engine and language, and the transcript's language, on the Models
     // tab (#3973 PR B). The engines are the Live words card's choices (#4287 PR 2). Its Download (and Try Again, Cancel)
     // is an action of the row, not a place of its own: a search for downloading live words

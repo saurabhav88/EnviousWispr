@@ -1,0 +1,365 @@
+{
+ "id": "meetingFollowsCallMute",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "استبعاد صوتي عندما أكون مكتومًا",
+   "words": [
+    "كتم الميكروفون"
+   ],
+   "phrases": [
+    "لا تضمّن صوتي عندما أكتم الميكروفون",
+    "تجاهل الميكروفون عندما أكون مكتومًا في Zoom"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "изключвай гласа ми, когато съм със заглушен микрофон",
+   "words": [
+    "без звук"
+   ],
+   "phrases": [
+    "не включвай гласа ми, когато микрофонът ми е заглушен",
+    "следвай заглушаването в Zoom"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "vynechat můj hlas, když mám ztlumený mikrofon",
+   "words": [
+    "ztlumení"
+   ],
+   "phrases": [
+    "nezahrnovat můj hlas při ztlumení",
+    "řídit se ztlumením v Zoom"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "udelad min stemme, når min mikrofon er slået fra",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "tag ikke min stemme med, når jeg er på mute",
+    "følg mikrofonens status i Teams"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Stummschaltung",
+    "Mikrofon",
+    "Mute"
+   ],
+   "phrases": [
+    "lass meine Stimme weg, wenn ich in Zoom stumm bin",
+    "übernimm die Stummschaltung aus Teams"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "παράλειψη της φωνής μου όταν έχω το μικρόφωνο σε σίγαση",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "να μη συμπεριλαμβάνεται η φωνή μου όταν είμαι σε σίγαση",
+    "ακολούθησε τη σίγαση στο Zoom"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "mute",
+    "muted microphone"
+   ],
+   "phrases": [
+    "skip my mic when muted in Zoom",
+    "follow the mute status in Teams"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "excluir mi voz cuando tenga el micrófono silenciado",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "no incluir mi voz cuando estoy en silencio en Zoom",
+    "respetar el silencio del micrófono en Teams"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "jäta mu hääl välja, kui mikrofon on vaigistatud",
+   "words": [
+    "vaigistus"
+   ],
+   "phrases": [
+    "ära kaasa mu häält, kui mikrofon on vaigistatud",
+    "järgi Zoomi vaigistust"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "jätä ääneni pois, kun mikrofoni on mykistetty",
+   "words": [
+    "mykistys"
+   ],
+   "phrases": [
+    "älä ota ääntäni mukaan kun mikrofoni on mykistetty",
+    "noudata Teamsin mykistystä"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "exclure ma voix quand mon micro est coupé",
+   "words": [
+    "sourdine",
+    "mute"
+   ],
+   "phrases": [
+    "ne pas inclure ma voix quand je suis en sourdine",
+    "suivre la coupure du micro dans Teams"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "माइक म्यूट होने पर मेरी आवाज़ शामिल न करें",
+   "words": [
+    "माइक्रोफ़ोन"
+   ],
+   "phrases": [
+    "Zoom में म्यूट होने पर मेरी आवाज़ छोड़ दें",
+    "Teams में माइक म्यूट हो तो मेरी आवाज़ शामिल न करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "izostavi moj glas kada mi je mikrofon utišan",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "ne uključuj moj glas kad mi je mikrofon utišan",
+    "prati utišavanje u Zoomu"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "a hangom kihagyása, ha a mikrofonom le van némítva",
+   "words": [
+    "némítás"
+   ],
+   "phrases": [
+    "ne vedd bele a hangom, ha le vagyok némítva",
+    "kövesd a némítást a Teamsben"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "escludi la mia voce quando il microfono è disattivato",
+   "words": [
+    "muto",
+    "mute"
+   ],
+   "phrases": [
+    "non includere la mia voce quando sono in muto",
+    "segui lo stato del microfono su Teams"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "ミュート中は自分の声を含めない",
+   "words": [
+    "マイクのミュート"
+   ],
+   "phrases": [
+    "Zoomでミュート中は自分の声を除外",
+    "Teamsのミュート状態に合わせる"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "음소거 중에는 내 목소리 제외",
+   "words": [
+    "마이크 음소거"
+   ],
+   "phrases": [
+    "Zoom에서 음소거하면 내 목소리 빼기",
+    "Teams 음소거 상태에 맞추기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "neįtraukti mano balso, kai mikrofonas nutildytas",
+   "words": [
+    "nutildymas"
+   ],
+   "phrases": [
+    "praleisti mano balsą, kai mikrofonas nutildytas",
+    "paisyti mikrofono nutildymo per Zoom"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "neiekļaut manu balsi, kad mikrofons ir izslēgts",
+   "words": [
+    "mikrofona izslēgšana"
+   ],
+   "phrases": [
+    "izlaist manu balsi, kad mikrofons ir izslēgts",
+    "sekot mikrofona stāvoklim Zoom zvanā"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "tinkludix leħni meta l-mikrofonu tiegħi jkun imsikket",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "tinkludix leħni meta nkun fuq mute",
+    "segwi l-mute ta’ Teams"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "mijn stem weglaten als mijn microfoon gedempt is",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "mijn stem niet meenemen als ik op mute sta",
+    "dempen in Teams volgen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "pomijaj mój głos, gdy mam wyciszony mikrofon",
+   "words": [
+    "wyciszenie"
+   ],
+   "phrases": [
+    "nie uwzględniaj mojego głosu, gdy mam wyciszony mikrofon",
+    "stosuj wyciszenie z Teams"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "excluir a minha voz quando o microfone estiver silenciado",
+   "words": [
+    "mudo",
+    "mute"
+   ],
+   "phrases": [
+    "não incluir minha voz quando estou no mudo",
+    "seguir o estado do microfone no Teams"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "exclude vocea mea când microfonul este dezactivat",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "nu include vocea mea când am microfonul oprit",
+    "respectă dezactivarea microfonului din Teams"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "не включать мой голос, когда микрофон выключен",
+   "words": [
+    "мут",
+    "отключение микрофона"
+   ],
+   "phrases": [
+    "пропускать мой голос, когда я на мьюте",
+    "учитывать выключение микрофона в Zoom"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "vynechať môj hlas, keď mám stlmený mikrofón",
+   "words": [
+    "stlmenie"
+   ],
+   "phrases": [
+    "nezahŕňať môj hlas pri stlmení mikrofónu",
+    "riadiť sa stlmením v aplikácii Teams"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "izpusti moj glas, ko je moj mikrofon utišan",
+   "words": [
+    "mute"
+   ],
+   "phrases": [
+    "ne vključuj mojega glasu, ko imam utišan mikrofon",
+    "upoštevaj utišanje v aplikaciji Teams"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "utelämna min röst när min mikrofon är avstängd",
+   "words": [
+    "mute",
+    "tystad"
+   ],
+   "phrases": [
+    "ta inte med min röst när jag är på mute",
+    "följ mikrofonens status i Teams"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "mikrofonum sessizdeyken sesimi dahil etme",
+   "words": [
+    "mikrofonu susturma"
+   ],
+   "phrases": [
+    "Zoom'da sessizdeyken sesimi dışarıda bırak",
+    "Teams'deki mikrofon durumunu takip et"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "не включати мій голос, коли мікрофон вимкнено",
+   "words": [
+    "мут",
+    "вимкнення мікрофона"
+   ],
+   "phrases": [
+    "пропускати мій голос, коли я на м’юті",
+    "враховувати вимкнення мікрофона в Zoom"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "bỏ qua giọng của tôi khi tôi tắt mic",
+   "words": [
+    "micro",
+    "mute"
+   ],
+   "phrases": [
+    "không đưa giọng tôi vào khi tắt mic trên Zoom",
+    "làm theo trạng thái tắt mic của Teams"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "静音时不包含我的声音",
+   "words": [
+    "麦克风静音"
+   ],
+   "phrases": [
+    "Zoom静音时排除我的声音",
+    "跟随Teams的麦克风静音状态"
+   ]
+  }
+ ]
+}

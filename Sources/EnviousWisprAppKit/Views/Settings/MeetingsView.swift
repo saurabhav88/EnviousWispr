@@ -91,6 +91,7 @@ struct MeetingsView: View {
           BrandedRow { MeetingCallDetectionRow() }
           BrandedRow { MeetingCallSoundRow() }
           BrandedRow { MeetingTurnsOffDictationRow() }
+          BrandedRow { MeetingFollowsCallMuteRow() }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
         }
         VStack(alignment: .leading, spacing: 8) {
@@ -267,7 +268,7 @@ extension MeetingsView {
           "Not allowed. EnviousMeet can't notice calls until you allow it.",
           comment: "EnviousMeet page: without Accessibility, calls are not noticed."),
       help: LocalizedStringResource(
-        "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission.",
+        "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It also sees when you're muted in those calls. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission.",
         comment: "EnviousMeet page: help for the Accessibility permission row.")
     ) {
       if !permissions.accessibilityGranted {
@@ -401,6 +402,16 @@ enum MeetingsCopy {
   static let turnsOffDictationHelp = LocalizedStringResource(
     "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally.",
     comment: "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).")
+  // #4248: follow the call app's mute button.
+  static let followsCallMuteTitle = LocalizedStringResource(
+    "Leave my voice out when I'm muted",
+    comment: "EnviousMeet page: switch that leaves the user's microphone out of the meeting while the call app shows them muted.")
+  static let followsCallMuteShort = LocalizedStringResource(
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls.",
+    comment: "EnviousMeet page: the short line under Leave my voice out when I'm muted.")
+  static let followsCallMuteHelp = LocalizedStringResource(
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls. Brief audio around mute changes may be kept or omitted. While EnviousMeet checks your mute state, or cannot read it, your voice is recorded as usual.",
+    comment: "EnviousMeet page: help for Leave my voice out when I'm muted (#4248 plan section 3.4).")
   // #4105: Live words and Transcript language.
   static let liveWordsTitle = LocalizedStringResource(
     "Live words",

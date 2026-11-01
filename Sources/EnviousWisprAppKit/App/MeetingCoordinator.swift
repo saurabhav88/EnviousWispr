@@ -22,6 +22,12 @@ protocol MeetingRecording: AnyObject {
   var liveSamples: MeetingRecorder.LiveSamplesObserver? { get set }
   /// #4013 chunk 13A: the host time the meeting's timeline starts at (`MeetingRecorder.anchor`).
   var anchor: UInt64 { get }
+  /// #4248: mute decisions, run on the microphone writer's queue (`MeetingRecorder`).
+  func applySilenceStep(_ step: @escaping MeetingSilenceStep)
+  func setSilenceClock(_ step: MeetingSilenceStep?)
+  func setMicrophoneMuted(_ muted: Bool)
+  /// #4248: the microphone writer's counters, for the silenced share (`MeetingRecorder`).
+  var microphoneHealth: MeetingTrackWriter.Health? { get }
 }
 
 extension MeetingRecorder: MeetingRecording {}
@@ -368,12 +374,18 @@ final class MeetingCoordinator {
     var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture = {
       target, family in
       CallSpeakerCapture.live(
-        pid: target.pid, bounds: .standard,
+        pid: target.pid,
+        bounds: CallSpeakerSurfaceChoice.captureBounds(family: family, rule: target.rule),
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
-        keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: family) })
+        keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared
+    /// #4248: whether "Leave my voice out when I'm muted" is on (`meetingFollowsCallMute`); the
+    /// settings change route calls `muteFollowingChanged()` when it changes.
+    var muteFollowingEnabled: @MainActor () -> Bool = { true }
+    /// #4248: the host clock mute changes are stamped with.
+    var hostTime: @Sendable () -> UInt64 = { mach_absolute_time() }
     /// #4013 13B: the speaker session's timing (tests shorten it).
     var speakerSessionTiming: (tick: Duration, settle: Duration, observerTick: Duration) = (
       .milliseconds(500), .seconds(2), .milliseconds(500)
@@ -543,6 +555,47 @@ final class MeetingCoordinator {
 
   /// #4013 chunk 13A: the recording's speaker observer and the meeting it belongs to.
   private var speakerSession: (meetingID: UUID, session: CallSpeakerSession)?
+  /// #4248: the recording's mute follower and the newest state it published.
+  private var muteFollow: MuteFollow?
+  /// #4248: what the live card shows about the call's mute button; nil while not recording.
+  private(set) var muteState: MeetingMuteFollower.State?
+  /// #4248: audio the hold had already released when a mute change that would alter it arrived.
+  private(set) var muteMissed = MeetingMuteFollower.Missed()
+  /// #4248: the call app of the binding `muteState` describes, for the live card's muted line.
+  private(set) var muteCallApp: CallAppFamily?
+  #if DEBUG
+    /// The call app recorded for each binding generation of the current recording.
+    var muteCallAppsForTesting: [UInt64: CallAppFamily] { muteFollow?.callApps ?? [:] }
+    /// Mute readings the current recording handed to its writer.
+    var muteReadingsSentForTesting: Int {
+      muteFollow.flatMap { muteCaptureCounts[$0.meetingID]?.delivered } ?? 0
+    }
+    /// Every snapshot that reached the MainActor, accepted by the fence or not.
+    private(set) var muteSnapshotsDeliveredForTesting = 0
+  #endif
+
+  private struct MuteFollow {
+    let meetingID: UUID
+    let gate: MeetingMuteGate
+    var fence: MeetingMuteGate.SnapshotFence
+    /// Each binding generation's call app, so a snapshot names the call it was decided for.
+    var callApps: [UInt64: CallAppFamily] = [:]
+  }
+  /// #4248: a follower whose recording is stopping, kept until its writer closed so the
+  /// `meeting.ended` counts include the `.end` step; the switch is read when following ends.
+  private var stoppingMuteFollows: [UUID: (gate: MeetingMuteGate, enabledAtStop: Bool)] = [:]
+  /// #4248 timing receipt: each recording's chances to read the mute button, kept until its
+  /// gate reports the `.end` decision (after the follower itself was released).
+  private var muteCaptureCounts: [UUID: MuteCaptureCounts] = [:]
+
+  struct MuteCaptureCounts: Equatable {
+    var started = 0
+    var dictationSkip = 0
+    var noPermission = 0
+    var busySkip = 0
+    var staleDrop = 0
+    var delivered = 0
+  }
   /// Sessions whose final log is not on disk yet: a Stop is saving it, or that save failed.
   /// A quit saves them within its deadline; deleting the meeting drops its own.
   private var unsavedSpeakerSessions: [UUID: CallSpeakerSession] = [:]
@@ -578,7 +631,7 @@ final class MeetingCoordinator {
         audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
-        speakerNaming: speakerNaming)
+        speakerNaming: speakerNaming, muteFollow: facts.muteFollow)
     }
   }
 
@@ -587,6 +640,8 @@ final class MeetingCoordinator {
     var diskStopped: Bool?
     /// #4121: the recorder's call-sound summary, frozen at stop; nil when none.
     var callSound: CallSoundSummary?
+    /// #4248: the recording's mute following, frozen at stop; nil when none.
+    var muteFollow: MuteFollowSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
   }
@@ -1099,6 +1154,7 @@ final class MeetingCoordinator {
     deps.log("meeting recording started bound=\(boundMicrophoneUID ?? "unknown")")
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
+    startMuteFollow(meetingID: meetingID, recorder: recorder)
     // #4286: the matched event's facts are saved only now that the Start has committed, and not
     // awaited, so Start gains no wait. Best effort: a Stop does not cancel it (the meeting is
     // kept), a deletion is refused by the documents owner and the store, and a failure only
@@ -1295,13 +1351,22 @@ final class MeetingCoordinator {
     let session = takeSpeakerSession(meetingID)
     session?.closeAdmission()
     if let session { unsavedSpeakerSessions[meetingID] = session }
-    // #3973, #4097: Stop retires live words without waiting; their cleanup drains kept events
-    // and closes admission. The lines stay until the transcript is ready.
-    deps.liveWords?.stop()
-    self.recorder?.liveSamples = nil
+    // #4248: the follower's final stretch is queued on the microphone writer before its close,
+    // so the held tail is released against it.
+    endMuteFollow(meetingID)
     // Stays reachable until the files are closed, so a quit meanwhile takes it over.
     let recorder = self.recorder
+    // #4248: the recorder stops first. Its microphone writer releases the held tail (the last
+    // 3 s, with muted stretches silenced) to live words while it closes the files; only then do
+    // live words seal their pumps and drain them. Stop never waits for recognition.
     let report = await recorder?.stop()
+    // Tests' fake recorders have no writer; the receipt reads the production recorder only.
+    traceMuteWriter((recorder as? MeetingRecorder)?.microphoneHealth)
+    adoptMuteSummary(for: meetingID, health: recorder?.microphoneHealth)
+    // #3973, #4097: then live words retire without waiting; their cleanup drains held audio and
+    // kept events and closes admission. The lines stay until the transcript is ready. A quit
+    // during the close already retired them (`quit()`), so this changes nothing then.
+    deps.liveWords?.stop()
     // A quit during the close owns the outcome (interrupted, its own deadline).
     guard !quitting else { return }
     // A final log that could not be saved stays owned here, for a quit to save.
@@ -1357,6 +1422,23 @@ final class MeetingCoordinator {
   private func adoptCallSoundSummary(_ report: MeetingRecorder.StopReport?, for meetingID: UUID) {
     guard let summary = report?.callSoundSummary else { return }
     openAttempts[meetingID]?.callSound = summary
+  }
+
+  /// #4248: freezes the stopped recording's mute following on its open attempt, read after the
+  /// writer closed (a quit whose close timed out reads what had run). Converts queue host ticks
+  /// with the live timebase and silenced frames at the meeting rate.
+  private func adoptMuteSummary(for meetingID: UUID, health: MeetingTrackWriter.Health?) {
+    guard let stopping = stoppingMuteFollows.removeValue(forKey: meetingID) else { return }
+    let totals = stopping.gate.totals
+    let base = CallSpeakerTimeline.liveTimebase
+    func seconds(_ ticks: UInt64) -> Double {
+      Double(ticks) * Double(base.numer) / Double(base.denom) / 1_000_000_000
+    }
+    openAttempts[meetingID]?.muteFollow = MuteFollowSummary(
+      enabledAtStop: stopping.enabledAtStop, eligibleSeconds: seconds(totals.eligibleTicks),
+      unknownSeconds: seconds(totals.unknownTicks),
+      silencedSeconds: Double(health?.silencedFrames ?? 0) / MeetingAudioFormat.sampleRate,
+      reads: totals.readings)
   }
 
   private static func anyCloseTimedOut(_ report: MeetingRecorder.StopReport) -> Bool {
@@ -2090,6 +2172,7 @@ final class MeetingCoordinator {
     // recording goes on.
     takeSpeakerSession(meetingID)?.cancel()
     unsavedSpeakerSessions.removeValue(forKey: meetingID)?.cancel()
+    endMuteFollow(meetingID)
     // The notes this session knows, read before they are forgotten (R54 `has_notes`).
     let hadNotes = !documents.notes(meetingID).isEmpty
     // Marked: no draft may be written any more (the store also refuses).
@@ -2276,6 +2359,8 @@ final class MeetingCoordinator {
     for entry in speakerSessions { entry.session.closeAdmission() }
     speakerSession = nil
     unsavedSpeakerSessions = [:]
+    // #4248: queued ahead of the microphone writer's close below.
+    if let meetingID = muteFollow?.meetingID { endMuteFollow(meetingID) }
     // #4013 chunk 12B: ready attempts still waiting on their History publication send their
     // row now, with no naming facts (the publication's result is not known). A late
     // publication finds nothing to settle.
@@ -2301,6 +2386,7 @@ final class MeetingCoordinator {
     self.recorder = nil
     let report = recorder.stopForQuit(deadline: deadline)
     adoptCallSoundSummary(report, for: meetingID)
+    adoptMuteSummary(for: meetingID, health: recorder.microphoneHealth)
     finishSegmentSaves(meetingID, into: &record)
     apply(report, to: &record)
     if Self.anyCloseTimedOut(report) { closeOwned.insert(meetingID) }
@@ -2528,17 +2614,38 @@ final class MeetingCoordinator {
   }
 
   /// #4013 13B: starts the recording's one speaker session, whatever started the recording,
-  /// with the talker rules frozen now and the recorder's anchor. No call sources or no rules:
-  /// no session.
+  /// with the talker rules frozen when they are read and the recorder's anchor. No call
+  /// sources: no session. #4248: while mute following is on the session starts at once and
+  /// reads the mute button; naming attaches to it when the rules arrive (no rules: naming
+  /// stays off). With following off, the session waits for the rules as before.
   private func startSpeakerSession(meetingID: UUID, recorder: MeetingRecording) async {
-    guard let sources = deps.callSources, let rules = await deps.talkerRules() else { return }
+    guard deps.callSources != nil else { return }
+    if deps.muteFollowingEnabled() {
+      makeSpeakerSession(meetingID: meetingID, recorder: recorder, rules: nil)
+    }
+    let rules = await deps.talkerRules()
     // Read again after the await: a Stop or another start meanwhile wins.
-    guard case .recording(let current, _) = phase, current == meetingID, !quitting,
+    guard case .recording(let current, _) = phase, current == meetingID, !quitting else { return }
+    if let entry = speakerSession, entry.meetingID == meetingID {
+      if let rules { entry.session.attachNaming(rules: rules.selected, bundled: rules.bundled) }
+      return
+    }
+    guard let rules else { return }
+    makeSpeakerSession(meetingID: meetingID, recorder: recorder, rules: rules)
+  }
+
+  /// Creates and starts the session, unless this recording already has one.
+  private func makeSpeakerSession(
+    meetingID: UUID, recorder: MeetingRecording,
+    rules: (selected: TalkerRulesSnapshot, bundled: TalkerRules)?
+  ) {
+    guard let sources = deps.callSources,
+      case .recording(let current, _) = phase, current == meetingID, !quitting,
       speakerSession == nil
     else { return }
     let timing = deps.speakerSessionTiming
     let session = CallSpeakerSession(
-      anchor: recorder.anchor, rules: rules.selected, bundled: rules.bundled,
+      anchor: recorder.anchor, rules: rules?.selected, bundled: rules?.bundled,
       dependencies: .init(
         sources: sources, capture: deps.captureCallApp, isTrusted: deps.isAccessibilityTrusted,
         isDictationIdle: { [weak self] in self?.deps.isDictationIdle() ?? false },
@@ -2547,11 +2654,174 @@ final class MeetingCoordinator {
           try await self.writer.run { try $0.saveCallSpeakers(log, meeting: meetingID) }
         },
         log: { [weak self] line in self?.deps.log(line) }, lane: deps.speakerCaptureLane,
-        tick: timing.tick, settle: timing.settle, observerTick: timing.observerTick))
+        hostTime: deps.hostTime, tick: timing.tick, settle: timing.settle,
+        observerTick: timing.observerTick,
+        muteFollowing: { [weak self] in self?.deps.muteFollowingEnabled() ?? false },
+        muteBinding: { [weak self] binding in self?.muteBind(binding, meetingID: meetingID) },
+        muteReading: { [weak self] copy in self?.muteRead(copy, meetingID: meetingID) },
+        muteEvent: { [weak self] event in self?.muteCaptureEvent(event, meetingID: meetingID) },
+        muteTick: { [weak self] in self?.muteSend(.advance, meetingID: meetingID) }))
     speakerSession = (meetingID, session)
     deps.log("meeting speaker session started")
     session.start()
   }
+
+  // MARK: - Mute following (#4248 plan §18)
+
+  /// The recording's follower: its decisions run on the microphone writer's queue, before
+  /// every release (`setSilenceClock`) and for every input (`applySilenceStep`).
+  private func startMuteFollow(meetingID: UUID, recorder: MeetingRecording) {
+    let gate = MeetingMuteGate(
+      recording: meetingID,
+      follower: MeetingMuteFollower(enabled: deps.muteFollowingEnabled()),
+      publish: { [weak self] snapshot in
+        Task { @MainActor [weak self] in self?.muteSnapshot(snapshot) }
+      })
+    recorder.setSilenceClock(gate.clock)
+    muteFollow = MuteFollow(
+      meetingID: meetingID, gate: gate, fence: .init(recording: meetingID))
+    muteState = deps.muteFollowingEnabled() ? .unbound : .disabled
+    muteMissed = .init()
+    muteCallApp = nil
+    muteCaptureCounts[meetingID] = MuteCaptureCounts()
+    #if DEBUG
+      if Self.muteTimingTrace {
+        let base = CallSpeakerTimeline.liveTimebase
+        deps.log("MEET_MUTE_TIMING_SCHEMA numer=\(base.numer) denom=\(base.denom)")
+      }
+    #endif
+  }
+
+  private func muteSend(_ input: MeetingMuteGate.Input, meetingID: UUID) {
+    guard let follow = muteFollow, follow.meetingID == meetingID, let recorder else { return }
+    recorder.applySilenceStep(follow.gate.step(input))
+  }
+
+  private func muteBind(_ binding: CallCaptureBinding?, meetingID: UUID) {
+    if let binding, muteFollow?.meetingID == meetingID {
+      muteFollow?.callApps[binding.generation] = binding.source.family
+    }
+    muteSend(
+      binding.map { .bind($0.surface, generation: $0.generation) } ?? .unbind,
+      meetingID: meetingID)
+  }
+
+  private func muteRead(_ copy: CallMuteCopy, meetingID: UUID) {
+    muteCaptureCounts[meetingID]?.delivered += 1
+    muteSend(.reading(copy), meetingID: meetingID)
+  }
+
+  private func muteCaptureEvent(_ event: CallMuteCaptureEvent, meetingID: UUID) {
+    guard muteCaptureCounts[meetingID] != nil else { return }
+    switch event {
+    case .started: muteCaptureCounts[meetingID]?.started += 1
+    case .dictationSkip: muteCaptureCounts[meetingID]?.dictationSkip += 1
+    case .noPermission: muteCaptureCounts[meetingID]?.noPermission += 1
+    case .busySkip: muteCaptureCounts[meetingID]?.busySkip += 1
+    case .staleDrop: muteCaptureCounts[meetingID]?.staleDrop += 1
+    }
+  }
+
+  /// "Leave my voice out when I'm muted" was switched (`WisprBootstrapper`'s settings route).
+  func muteFollowingChanged() {
+    let on = deps.muteFollowingEnabled()
+    guard let follow = muteFollow else { return }
+    muteSend(.setEnabled(on, at: deps.hostTime()), meetingID: follow.meetingID)
+    if let entry = speakerSession, entry.meetingID == follow.meetingID {
+      entry.session.muteFollowingChanged()
+    } else if on, let recorder {
+      // No session ran without rules while following was off; one starts now, and naming
+      // attaches if the rules arrive.
+      let meetingID = follow.meetingID
+      makeSpeakerSession(meetingID: meetingID, recorder: recorder, rules: nil)
+      Task { [weak self] in
+        guard let rules = await self?.deps.talkerRules(),
+          let entry = self?.speakerSession, entry.meetingID == meetingID
+        else { return }
+        entry.session.attachNaming(rules: rules.selected, bundled: rules.bundled)
+      }
+    }
+  }
+
+  /// Every snapshot reaches the timing trace exactly once; only this recording's newest one,
+  /// from the current call, reaches the live card and the meter.
+  private func muteSnapshot(_ snapshot: MeetingMuteGate.Snapshot) {
+    traceMute(snapshot)
+    #if DEBUG
+      muteSnapshotsDeliveredForTesting += 1
+    #endif
+    if snapshot.ended { muteCaptureCounts[snapshot.recording] = nil }
+    guard var follow = muteFollow, follow.fence.accept(snapshot) else { return }
+    muteFollow = follow
+    muteState = snapshot.state
+    muteMissed = snapshot.missed
+    muteCallApp = snapshot.generation.flatMap { follow.callApps[$0] }
+    recorder?.setMicrophoneMuted(snapshot.state == .muted)
+  }
+
+  #if DEBUG
+    /// Whole microseconds of `duration`, for the timing receipt.
+    static func micros(_ duration: Duration) -> Int64 {
+      duration.components.seconds * 1_000_000 + duration.components.attoseconds / 1_000_000_000_000
+    }
+  #endif
+
+  /// DEBUG timing receipt: one row per decided reading, and the summary from the `.end`
+  /// decision itself, after every queued reading ran.
+  private func traceMute(_ snapshot: MeetingMuteGate.Snapshot) {
+    #if DEBUG
+      guard Self.muteTimingTrace else { return }
+      if let trace = snapshot.trace {
+        let c = trace.copy
+        deps.log(
+          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) msgs=\(c.cost.messages) msg_us=\(Self.micros(c.cost.messageTime)) kinds=\(CallAXCopyCost.Kind.allCases.map { "\($0.rawValue):\(c.cost.byKind[$0]?.messages ?? 0):\(Self.micros(c.cost.byKind[$0]?.time ?? .zero))" }.joined(separator: ",")) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks):\($0.messages):\(Self.micros($0.messageTime))" }.joined(separator: ","))"
+        )
+      }
+      if snapshot.ended {
+        let t = snapshot.totals
+        let k = muteCaptureCounts[snapshot.recording] ?? MuteCaptureCounts()
+        deps.log(
+          "MEET_MUTE_TIMING_SKIPS started=\(k.started) delivered=\(k.delivered) busy=\(k.busySkip) dictation=\(k.dictationSkip) no_permission=\(k.noPermission) stale_drop=\(k.staleDrop) decided=\(t.readings) applied=\(t.applied) stale_at_delivery=\(t.staleAtDelivery) ignored=\(t.ignored) inactive=\(t.inactive) missed_events=\(snapshot.missed.events) kept_ticks=\(snapshot.missed.keptTicks) silenced_ticks=\(snapshot.missed.silencedTicks)"
+        )
+      }
+    #endif
+  }
+
+  /// DEBUG timing receipt: the microphone writer's final silence counts, read after its close,
+  /// so audio judged late or intervals left out by a full hold are part of the receipt.
+  private func traceMuteWriter(_ health: MeetingTrackWriter.Health?) {
+    #if DEBUG
+      guard Self.muteTimingTrace, let health else { return }
+      deps.log(
+        "MEET_MUTE_TIMING_WRITER silenced_frames=\(health.silencedFrames) late_frames=\(health.silenceLateFrames) interval_overflows=\(health.silenceIntervalOverflows) dropped_frames=\(health.droppedFrames) failed=\(health.failed ? 1 : 0)"
+      )
+    #endif
+  }
+
+  /// Closes the open stretch at its last muted reading, queued on the microphone writer ahead
+  /// of anything the caller does next (its close). The `.end` decision still reports to the
+  /// timing trace; the live card stops following now.
+  private func endMuteFollow(_ meetingID: UUID) {
+    guard let follow = muteFollow, follow.meetingID == meetingID else { return }
+    stoppingMuteFollows[meetingID] = (follow.gate, deps.muteFollowingEnabled())
+    if let recorder {
+      recorder.applySilenceStep(follow.gate.step(.end))
+      recorder.setMicrophoneMuted(false)
+    } else {
+      // No writer to run the end step: no summary will come.
+      muteCaptureCounts[meetingID] = nil
+    }
+    muteFollow = nil
+    muteState = nil
+    muteCallApp = nil
+  }
+
+  #if DEBUG
+    /// The DEBUG mute timing trace (`EW_MEET_MUTE_TIMING=1`). Host ticks only; no names,
+    /// titles, addresses or Accessibility text.
+    private static let muteTimingTrace =
+      ProcessInfo.processInfo.environment["EW_MEET_MUTE_TIMING"] == "1"
+  #endif
 
   /// The meeting's speaker session, removed from the coordinator; nil when it has none.
   private func takeSpeakerSession(_ meetingID: UUID) -> CallSpeakerSession? {

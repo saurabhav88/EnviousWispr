@@ -37,6 +37,7 @@ public final class SettingsManager {
     case meetingWriteSummary
     /// #4069: "Turn off dictation during meetings".
     case meetingTurnsOffDictation
+    case meetingFollowsCallMute
     /// #4017: the user finished EnviousMeet's setup; EnviousMeet is locked until then.
     case meetingOnboardingComplete
     /// #4017: "Name meetings from my calendar".
@@ -158,7 +159,7 @@ public final class SettingsManager {
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "meetingSummaryLLMProvider", "meetingSummaryLLMModel", "meetingSummaryOllamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
-    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
+    "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -714,6 +715,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(meetingTurnsOffDictation, forKey: "meetingTurnsOffDictation")
       onChange?(.meetingTurnsOffDictation)
+    }
+  }
+
+  /// #4248: while a supported call app shows the user muted, EnviousMeet leaves their microphone
+  /// out of the meeting recording. Read when following starts and whenever it changes.
+  public var meetingFollowsCallMute: Bool {
+    didSet {
+      defaults.set(meetingFollowsCallMute, forKey: "meetingFollowsCallMute")
+      onChange?(.meetingFollowsCallMute)
     }
   }
 
@@ -1736,6 +1746,9 @@ public final class SettingsManager {
     meetingTurnsOffDictation =
       defaults.object(forKey: "meetingTurnsOffDictation") as? Bool
       ?? SettingsDefaultValues.meetingTurnsOffDictation
+    meetingFollowsCallMute =
+      defaults.object(forKey: "meetingFollowsCallMute") as? Bool
+      ?? SettingsDefaultValues.meetingFollowsCallMute
     meetingOnboardingComplete =
       defaults.object(forKey: "meetingOnboardingComplete") as? Bool
       ?? SettingsDefaultValues.meetingOnboardingComplete

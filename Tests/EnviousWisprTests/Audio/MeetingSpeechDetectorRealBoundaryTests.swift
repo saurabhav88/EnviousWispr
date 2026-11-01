@@ -383,4 +383,16 @@ enum PinnedVADModel {
       "Sources/EnviousWispr/Resources/VAD/\(BundledVADModelLoader.pinnedModelName).mlmodelc")
   }
   static var isCheckedIn: Bool { FileManager.default.fileExists(atPath: url.path) }
+
+  /// A folder that links the pinned model under its production name, so the production loader
+  /// (`Bundle(path:)`) finds it; the test process's own main bundle has no model.
+  static func bundlePath() throws -> String {
+    let root = TestTemporaryDirectory.url
+      .appendingPathComponent("PinnedVAD-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: root.appendingPathComponent("\(BundledVADModelLoader.pinnedModelName).mlmodelc"),
+      withDestinationURL: url)
+    return root.path
+  }
 }

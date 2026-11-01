@@ -43,6 +43,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.meetingWriteSummary == true)
     // #4069: dictation keeps working during meetings unless the user turns this on.
     #expect(settings.meetingTurnsOffDictation == false)
+    // #4248: the user's voice is left out while muted in the call app, unless they turn this off.
+    #expect(settings.meetingFollowsCallMute == true)
     // #4017: EnviousMeet starts locked, calendar names off.
     #expect(settings.meetingOnboardingComplete == false)
     #expect(settings.meetingUseCalendarForNames == false)
@@ -131,6 +133,26 @@ struct SettingsDefaultsRoutingTests {
     #expect(SettingsManager(defaults: suite).meetingTurnsOffDictation == false)
     #expect(
       SettingsManager.unifiedDefaultsKeys.filter { $0 == "meetingTurnsOffDictation" }.count == 1)
+  }
+
+  @Test("#4248: Leave my voice out when I'm muted is ON on a fresh install without seeding, persists OFF across a reload, notifies once, and is unified")
+  func meetingFollowsCallMuteDefaultsOnAndPersists() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.meetingFollowsCallMute == true)
+    #expect(suite.object(forKey: "meetingFollowsCallMute") == nil, "the default is not seeded")
+
+    var seen: [SettingsManager.SettingKey] = []
+    settings.onChange = { seen.append($0) }
+    settings.meetingFollowsCallMute = false
+
+    #expect(seen == [.meetingFollowsCallMute])
+    #expect(suite.object(forKey: "meetingFollowsCallMute") as? Bool == false)
+    #expect(SettingsManager(defaults: suite).meetingFollowsCallMute == false, "a stored off survives reload")
+    settings.meetingFollowsCallMute = true
+    #expect(SettingsManager(defaults: suite).meetingFollowsCallMute == true)
+    #expect(
+      SettingsManager.unifiedDefaultsKeys.filter { $0 == "meetingFollowsCallMute" }.count == 1)
   }
 
   @Test("#3737: Casual mode is OFF on a fresh install, persists ON, notifies once, and is unified")

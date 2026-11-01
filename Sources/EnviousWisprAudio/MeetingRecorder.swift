@@ -55,8 +55,11 @@ public final class MeetingRecorder {
   public typealias SegmentHandler = @Sendable (MeetingTrackKind, MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @MainActor (MeetingTrackKind, Error) -> Void
   /// See `liveSamples`.
-  public typealias LiveSamplesObserver = @Sendable (MeetingTrackKind, UnsafeBufferPointer<Float>)
-    -> Void
+  /// A chunk, its track and its original metadata (#4248: the capture host time of its first
+  /// sample, a drop before it, and a producer run break), as the file gets them.
+  public typealias LiveSamplesObserver = @Sendable (
+    MeetingTrackKind, UnsafeBufferPointer<Float>, MeetingReleasedChunk
+  ) -> Void
 
   public struct Configuration: Sendable {
     public let meetingID: UUID
@@ -126,6 +129,9 @@ public final class MeetingRecorder {
     var hostTime: @Sendable () -> UInt64
     /// The pause before reopening a lost microphone.
     var reopenDelay: @Sendable () async -> Void
+    /// When the microphone writer's silence hold releases due audio (#4248). Its clock is
+    /// `hostTime`, so a test's clock and the hold agree.
+    var releaseScheduler: MeetingTrackWriter.ReleaseScheduler = .live
 
     static var live: Sources {
       Sources(
@@ -175,6 +181,10 @@ public final class MeetingRecorder {
   /// was running). Later and overlapping stops reuse it.
   private var frozenCallSoundSummary: CallSoundSummary??
   private let micLevelBox = OSAllocatedUnfairLock<Float>(initialState: 0)
+  /// The live mute state (#4248): while true the microphone meter reads 0.
+  private let micMutedBox = OSAllocatedUnfairLock(initialState: false)
+  /// The microphone writer's release clock step, kept so a writer made later (start) gets it.
+  private var silenceClock: MeetingSilenceStep?
   private let micHealthBox = OSAllocatedUnfairLock(initialState: MicrophoneHealth())
   /// Whether the current microphone's samples are recorded; false while `beginDelivery` runs.
   private let micAdmission = OSAllocatedUnfairLock<Int?>(initialState: nil)
@@ -188,16 +198,27 @@ public final class MeetingRecorder {
   /// one more reabstraction thunk each time, so after about 5,500 call-sound chunks one call of it
   /// overflowed the tap thread's stack (SIGBUS on its guard page).
   /// `MeetingRecorderTests.liveSamplesDepthStaysFlat` pins the depth.
+  ///
+  /// The microphone's deliveries come from its writer's release (#4248), so they continue after
+  /// capture stops until the held tail is out; the call sound's stop with its capture.
   private final class LiveObserverBox: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var observer: LiveSamplesObserver?
     private var closed = false
+    private var callSoundClosed = false
 
-    /// The observer now (capture threads; never waits beyond the unfair lock).
+    /// The observer now (writer queue for the microphone; never waits beyond the unfair lock).
     func current() -> LiveSamplesObserver? {
       lock.lock()
       defer { lock.unlock() }
       return observer
+    }
+
+    /// The observer for a call-sound chunk (tap thread): nil once call-sound capture stopped.
+    func currentForCallSound() -> LiveSamplesObserver? {
+      lock.lock()
+      defer { lock.unlock() }
+      return callSoundClosed ? nil : observer
     }
 
     func set(_ newValue: LiveSamplesObserver?) {
@@ -206,11 +227,19 @@ public final class MeetingRecorder {
       if !closed { observer = newValue }
     }
 
+    /// Call-sound capture stopped: no more call-sound deliveries.
+    func closeCallSound() {
+      lock.lock()
+      defer { lock.unlock() }
+      callSoundClosed = true
+    }
+
     func close() {
       lock.lock()
       defer { lock.unlock() }
       observer = nil
       closed = true
+      callSoundClosed = true
     }
   }
 
@@ -224,21 +253,22 @@ public final class MeetingRecorder {
   /// The device the microphone actually bound, as the source reported it.
   public private(set) var boundMicrophoneUID: String?
 
-  /// Hands each recorded chunk to a live consumer (#3973, EnviousMeet's live words), on the
-  /// capture thread, right AFTER the writer took it: the microphone's admitted samples and the
-  /// call sound's. Never pre-roll or a stale microphone's audio (the same admission the writer
-  /// gets). A delivery does not prove the samples reached the file; the writer stays first and
-  /// nothing here changes what it records.
+  /// Hands each recorded chunk to a live consumer (#3973, EnviousMeet's live words).
+  ///
+  /// Microphone (#4248): on the microphone writer's queue, as its silence hold releases each
+  /// chunk, so live words see exactly the filtered audio the file gets (3 s after capture, with
+  /// muted stretches as zeros). Call sound: on the tap's thread, right after its writer took the
+  /// chunk. Never pre-roll or a stale microphone's audio (the same admission the writer gets).
   ///
   /// The pointer is borrowed for the duration of the call only. The observer copies what it
   /// keeps into storage it already owns and returns: no waiting, locking that can block, task
-  /// creation, dispatch, allocation that grows or recognition work, since it runs on the
-  /// real-time capture path.
+  /// creation, dispatch, allocation that grows or recognition work.
   ///
   /// Set it before `start()` to see the first samples; it survives a microphone reopen. Nil
-  /// detaches: later chunks are not delivered, but a call already running on a capture thread
-  /// may still finish (there is no join), so the consumer closes its own admission first. Stop,
-  /// Quit and a failed start end deliveries for good; setting it afterwards has no effect.
+  /// detaches: later chunks are not delivered, but a call already running may still finish
+  /// (there is no join), so the consumer closes its own admission first. Stop and Quit deliver
+  /// the microphone's held tail, then end deliveries for good; a failed start ends them at once.
+  /// Setting it afterwards has no effect.
   public var liveSamples: LiveSamplesObserver? {
     get { liveBox.current() }
     set { liveBox.set(newValue) }
@@ -282,7 +312,34 @@ public final class MeetingRecorder {
   /// Host time the meeting's timeline is measured from.
   public var anchor: UInt64 { anchorHostTime }
 
-  public var microphoneLevel: Float { micLevelBox.withLock { $0 } }
+  /// The microphone meter; 0 while the live state is muted (#4248).
+  public var microphoneLevel: Float {
+    micMutedBox.withLock { $0 } ? 0 : micLevelBox.withLock { $0 }
+  }
+
+  // MARK: - Mute following (#4248)
+
+  /// Runs one mute decision step on the microphone writer's queue
+  /// (`MeetingTrackWriter.applySilenceStep`). Before the writer exists there is nothing to
+  /// decide, and the step is not run.
+  public func applySilenceStep(_ step: @escaping MeetingSilenceStep) {
+    micWriter?.applySilenceStep(step)
+  }
+
+  /// The step run before every microphone release (`MeetingTrackWriter.setSilenceClock`). Kept
+  /// for the recording, so a clock set before `start` applies to its writer.
+  public func setSilenceClock(_ step: MeetingSilenceStep?) {
+    silenceClock = step
+    micWriter?.setSilenceClock(step)
+  }
+
+  /// The end host time of microphone audio released for good (the plan's C); 0 before any.
+  public var microphoneReleasedHostTime: UInt64 { micWriter?.releasedHostTime ?? 0 }
+
+  /// The live mute state for the meter: true reads 0, false restores the device level.
+  public func setMicrophoneMuted(_ muted: Bool) {
+    micMutedBox.withLock { $0 = muted }
+  }
   public var callSoundLevel: Float { callSound?.currentLevel ?? 0 }
   public var microphoneHealth: MeetingTrackWriter.Health? { micWriter?.currentHealth }
   public var callSoundHealth: MeetingTrackWriter.Health? { callWriter?.currentHealth }
@@ -321,7 +378,11 @@ public final class MeetingRecorder {
         { samples, hostTime, startsNewRun in
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
           // Borrowed for this call only; read under the lock, invoked outside it.
-          if let observe = live.current() { observe(.callSound, samples) }
+          if let observe = live.currentForCallSound() {
+            observe(
+              .callSound, samples,
+              MeetingReleasedChunk(hostTime: hostTime, afterDrop: false, sourceBreak: startsNewRun))
+          }
         },
         { [weak self] reason in
           Task { @MainActor in
@@ -406,25 +467,30 @@ public final class MeetingRecorder {
     let admission = micAdmission
     let health = micHealthBox
     let hostTime = sources.hostTime
-    let live = liveBox
     // Read and cleared by the first admitted buffer only (audio thread; no allocation).
     let pendingRunBreak = OSAllocatedUnfairLock(initialState: startsNewRun)
     source.onSamples = { samples, audioLevel in
       guard !samples.isEmpty else { return }
-      guard admission.withLock({ $0 }) == openGeneration else {
-        health.withLock { $0.framesNotAdmitted += samples.count }
-        return
-      }
       let duration = Double(samples.count) / MeetingAudioFormat.sampleRate
       let firstSampleHost = hostTime() &- MeetingRecorder.hostTicks(forSeconds: duration)
-      let runBreak = pendingRunBreak.withLock { pending -> Bool in
-        defer { pending = false }
-        return pending
+      // #4248: the admission check and the hand-over are one lock step, so a stop or reopen
+      // that closes admission either comes first (refused, counted) or waits for this append:
+      // an admitted buffer is never lost between the two. The append only copies into storage
+      // the writer reserved at init. Live words get the microphone from the writer's release.
+      let admitted = admission.withLockUnchecked { current -> Bool in
+        guard current == openGeneration else { return false }
+        let runBreak = pendingRunBreak.withLock { pending -> Bool in
+          defer { pending = false }
+          return pending
+        }
+        samples.withUnsafeBufferPointer {
+          writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
+        }
+        return true
       }
-      samples.withUnsafeBufferPointer {
-        writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
-        // After the writer, inside the borrow: the live consumer copies and returns.
-        if let observe = live.current() { observe(.microphone, $0) }
+      guard admitted else {
+        health.withLock { $0.framesNotAdmitted += samples.count }
+        return
       }
       level.withLock { $0 = audioLevel }
     }
@@ -513,11 +579,14 @@ public final class MeetingRecorder {
   public func stop() async -> StopReport {
     if let stopReport { return stopReport }
     stopCapture()
+    // The microphone writer releases its held tail through `liveSamples` while it finishes;
+    // deliveries end for good after both files closed.
     async let mic = micWriter?.finish()
     async let call = callWriter?.finish()
     let report = StopReport(
       microphone: await mic, callSound: await call,
       callSoundSummary: frozenCallSoundSummary ?? nil)
+    closeLiveSamples()
     stopReport = report
     lifecycle = .stopped
     return report
@@ -533,6 +602,7 @@ public final class MeetingRecorder {
     let report = StopReport(
       microphone: micWriter?.close(until: deadline), callSound: callWriter?.close(until: deadline),
       callSoundSummary: frozenCallSoundSummary ?? nil)
+    closeLiveSamples()
     stopReport = report
     lifecycle = .stopped
     return report
@@ -545,7 +615,7 @@ public final class MeetingRecorder {
     reopenTask?.cancel()
     reopenTask = nil
     admissionOff()
-    closeLiveSamples()
+    liveBox.closeCallSound()
     microphone?.onSamples = nil
     microphone?.onInterrupted = nil
     microphone?.onStalled = nil
@@ -573,19 +643,39 @@ public final class MeetingRecorder {
 
   private func makeWriter(_ track: MeetingTrackKind) -> MeetingTrackWriter {
     let onSegment = self.onSegment
-    return MeetingTrackWriter(
+    // Microphone only: the filtered, released audio goes to live words on the writer's queue.
+    let released = track == .microphone ? Self.microphoneRelease(to: liveBox) : nil
+    let writer = MeetingTrackWriter(
       configuration: MeetingTrackWriter.Configuration(
         meetingID: config.meetingID, track: track, folder: config.folder,
         anchorHostTime: anchorHostTime,
         // Microphone: arrival time is approximate (R27). Call sound: the pipeline marks each
         // run break itself (`startsNewRun`), so the writer never infers one; 250 ms only
         // catches a jump the pipeline could not see.
-        gapThresholdMs: track == .microphone ? 1_500 : 250),
+        gapThresholdMs: track == .microphone ? 1_500 : 250,
+        // #4248: the microphone is held so a late mute reading can still decide it.
+        silenceHoldSeconds: track == .microphone ? Self.silenceHoldSeconds : nil),
       onSegmentFinalized: { info in onSegment(track, info) },
       onFailure: { [weak self] error in
         Task { @MainActor in self?.trackFailed(track, error) }
-      })
+      },
+      onReleased: released, now: sources.hostTime, scheduler: sources.releaseScheduler)
+    if track == .microphone { writer.setSilenceClock(silenceClock) }
+    return writer
   }
+
+  /// Hands each released microphone chunk to the live observer (writer queue, borrowed buffer).
+  private nonisolated static func microphoneRelease(to live: LiveObserverBox)
+    -> MeetingTrackWriter.ReleasedHandler
+  {
+    { frames, info in
+      if let observe = live.current() { observe(.microphone, frames, info) }
+    }
+  }
+
+  /// The microphone silence hold (#4248 plan §3.0, H): provisional until the integrated timing
+  /// measurement sizes it.
+  nonisolated static let silenceHoldSeconds = 3.0
 
   public enum CallSoundError: Error, Equatable {
     case captureStopped(String)

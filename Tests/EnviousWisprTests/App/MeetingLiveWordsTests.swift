@@ -152,6 +152,8 @@ struct MeetingLiveWordsTests {
     var feed = Gate(open: true)
     /// Opens after the first one (an Apple restart's replacement).
     var reopen = Gate(open: true)
+    /// Ends of sessions after the first (a restart's replacement); nil uses `end`.
+    var replacementEnd: Gate? = nil
   }
 
   final class FakeEngine: LivePreviewEngine, @unchecked Sendable {
@@ -160,6 +162,7 @@ struct MeetingLiveWordsTests {
     let endGate: Gate
     let feedGate: Gate
     let reopenGate: Gate
+    let replacementEndGate: Gate?
     var failPrepare = false
     var failOpen = false
     /// Opens after the first one fail (an Apple restart's replacement).
@@ -176,6 +179,7 @@ struct MeetingLiveWordsTests {
       self.endGate = gates.end
       self.feedGate = gates.feed
       self.reopenGate = gates.reopen
+      self.replacementEndGate = gates.replacementEnd
     }
     var sessions: [FakeSession] { lock.withLock { _sessions } }
     /// Each open's event callback, recorded as the open begins (before it can return).
@@ -201,7 +205,9 @@ struct MeetingLiveWordsTests {
       }
       await (first ? openGate : reopenGate).pass()
       if failOpen || (!first && failReopen) { throw Refused() }
-      let session = FakeSession(onEvent: onEvent, endGate: endGate, feedGate: feedGate)
+      let session = FakeSession(
+        onEvent: onEvent, endGate: first ? endGate : (replacementEndGate ?? endGate),
+        feedGate: feedGate)
       lock.withLock { _sessions.append(session) }
       await opened.pass()
       return session
@@ -571,7 +577,7 @@ struct MeetingLiveWordsTests {
     let id = UUID()
     let observer = owner.prepareCapture(meetingID: id)
     let early: [Float] = (0..<1_600).map(Float.init)
-    early.withUnsafeBufferPointer { observer(.microphone, $0) }
+    early.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty, "nothing resolved yet")
     owner.captureStarted(
       meetingID: id, captured: [.microphone, .callSound], vocabulary: Self.vocabulary,
@@ -746,7 +752,7 @@ struct MeetingLiveWordsTests {
     let late = try #require(world.appleEngines.first?.sessions.first)
     #expect(late.ends == 1, "ended once by the old recording's cleanup")
     let samples: [Float] = [1, 2, 3]
-    samples.withUnsafeBufferPointer { observer(.microphone, $0) }
+    samples.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     #expect(late.fed.isEmpty, "never fed: it was never the recording's session")
     owner.stop()
   }
@@ -850,8 +856,11 @@ struct MeetingLiveWordsTests {
     #expect(owner.transcript?.lines.map(\.text) == ["Last words."])
   }
 
-  @Test("a held feed keeps the cleanup open, but the session's end starts at once")
-  func heldFeedKeepsCleanupOpen() async throws {
+  /// #4248: Stop seals the pump; the consumer feeds everything held, in order, before that
+  /// track's session ends. A held feed keeps the cleanup open and the end waiting, while the
+  /// other track ends on its own.
+  @Test("Stop drains held audio before the session ends; a held feed delays only its own track")
+  func heldFeedDrainsBeforeEnd() async throws {
     let world = World()
     let feed = Gate()
     world.engineGates = { $0 == 0 ? Gates(feed: feed) : Gates() }
@@ -860,17 +869,52 @@ struct MeetingLiveWordsTests {
     let observer = Self.record(owner)
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
-    let samples: [Float] = (0..<1_600).map(Float.init)
-    samples.withUnsafeBufferPointer { observer(.microphone, $0) }
+    let call = try #require(world.appleEngines[1].sessions.first)
+    let first: [Float] = (0..<1_600).map(Float.init)
+    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
+    // The tail arrives while the feed is held (the recorder's released 3 s), then Stop.
+    let tail: [Float] = (1_600..<4_000).map(Float.init)
+    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
     owner.stop()
+    await PreviewWait.within("the other track ended", onExpiry: feed.open) {
+      await call.until { call.ends == 1 }
+    }
+    #expect(mic.ends == 0, "no end while its own feed is held")
+    #expect(owner.closingEngines == [.apple], "still closing while the feed is held")
+    feed.open()
+    await PreviewWait.within("the mic ended", onExpiry: feed.open) {
+      await mic.until { mic.ends == 1 }
+    }
+    #expect(mic.fed == first + tail, "every held sample, in order, before the end")
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(owner.closingEngines.isEmpty)
+    #expect(mic.fed == first + tail, "nothing fed after the end")
+  }
+
+  @Test("Delete discards held audio and ends at once")
+  func deleteDiscardsHeldAudio() async throws {
+    let world = World()
+    let feed = Gate()
+    world.engineGates = { $0 == 0 ? Gates(feed: feed) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    await Self.until("running", owner) { Self.bothRunning($0) }
+    let mic = try #require(world.appleEngines[0].sessions.first)
+    let first: [Float] = (0..<1_600).map(Float.init)
+    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
+    let tail: [Float] = (1_600..<4_000).map(Float.init)
+    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    let meetingID = try #require(owner.transcript?.meetingID)
+    owner.delete(meetingID: meetingID)
     await PreviewWait.within("the end started", onExpiry: feed.open) {
       await mic.until { mic.ends == 1 }
     }
-    #expect(owner.closingEngines == [.apple], "still closing while the feed is held")
     feed.open()
     #expect(await owner.waitForCleanups(seconds: 10))
-    #expect(owner.closingEngines.isEmpty)
+    #expect(mic.fed == first, "the queued tail was discarded, never fed")
   }
 
   @Test("a handle whose track already failed is ended as soon as its open returns")
@@ -963,7 +1007,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     let second = [Float](repeating: 0.1, count: 16_000)
-    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0) } }
+    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0, .test) } }
     await Self.until("the dropped flag", owner, release: feed.open) {
       $0.transcript?.tracks[.microphone]?.droppedAudio == true
     }
@@ -1051,7 +1095,7 @@ struct MeetingLiveWordsTests {
   private static func speak(
     _ observer: MeetingRecorder.LiveSamplesObserver, _ track: MeetingTrackKind, _ samples: [Float]
   ) {
-    samples.withUnsafeBufferPointer { observer(track, $0) }
+    samples.withUnsafeBufferPointer { observer(track, $0, .test) }
   }
 
   @Test("no restart before the audio threshold, and voiced audio postpones it to the first quiet window")
@@ -1153,9 +1197,11 @@ struct MeetingLiveWordsTests {
   }
 
   @Test(
-    "Stop, Delete or Quit during a restart's end or its replacement open installs nothing and ends late handles once",
+    "Stop during a restart drains the held tail into the replacement; Delete or Quit installs nothing and ends late handles once",
     arguments: Exit.allCases)
   func exitDuringRestart(_ exit: Exit) async throws {
+    // #4248: a tail held in the pump at the exit, distinct from anything spoken before.
+    let tail: [Float] = (0..<3_200).map { 0.5 + Float($0) / 100_000 }
     // The old session is still ending.
     do {
       let world = World()
@@ -1170,11 +1216,19 @@ struct MeetingLiveWordsTests {
       let old = try #require(engine.sessions.first)
       Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
       await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
+      Self.speak(observer, .microphone, tail)
       try Self.exit(owner, exit)
       end.open()
       #expect(await owner.waitForCleanups(seconds: 10))
-      #expect(engine.openEvents.count == 1, "no replacement after the exit")
       #expect(old.ends == 1)
+      if exit == .stop {
+        #expect(engine.openEvents.count == 2, "the replacement opens for the drain")
+        let replacement = try #require(engine.sessions.last)
+        #expect(replacement.fed.suffix(tail.count) == ArraySlice(tail), "the held tail, in order")
+        #expect(replacement.ends == 1, "ended once, after the drain")
+      } else {
+        #expect(engine.openEvents.count == 1, "no replacement after the exit")
+      }
     }
     // The replacement open is held.
     do {
@@ -1191,13 +1245,18 @@ struct MeetingLiveWordsTests {
       await PreviewWait.within("the replacement open", onExpiry: reopen.open) {
         await reopen.reached(1)
       }
+      Self.speak(observer, .microphone, tail)
       try Self.exit(owner, exit)
       reopen.open()
       await PreviewWait.within("the late handle") { await engine.opened.reached(2) }
       let late = engine.sessions[1]
       #expect(await owner.waitForCleanups(seconds: 10))
       #expect(late.ends == 1, "ended once")
-      #expect(late.fed.isEmpty, "never fed")
+      if exit == .stop {
+        #expect(late.fed.suffix(tail.count) == ArraySlice(tail), "the held tail, in order")
+      } else {
+        #expect(late.fed.isEmpty, "never fed")
+      }
       #expect(engine.sessions[0].ends == 1)
     }
   }
@@ -1251,6 +1310,54 @@ struct MeetingLiveWordsTests {
     }
     #expect(Self.status(owner, .microphone) == .running)
     owner.stop()
+  }
+
+  /// #4248: Stop during that held end still keeps the old session's final words, then the
+  /// replacement's words for the drained tail, each once and in order.
+  @Test("Stop during a restart keeps the old session's finals and then the drained tail's words")
+  func finalsDuringHeldEndThenStop() async throws {
+    let world = World()
+    world.restartAfterSamples = 1_600
+    let end = Gate()
+    let replacementEnd = Gate()
+    world.engineGates = { $0 == 0 ? Gates(end: end, replacementEnd: replacementEnd) : Gates() }
+    world.apple = .ready(world.appleCandidate())
+    let owner = Self.owner(world)
+    let observer = Self.record(owner)
+    let release: @Sendable () -> Void = {
+      end.open()
+      replacementEnd.open()
+    }
+    await Self.until("running", owner, release: release) { Self.bothRunning($0) }
+    let engine = world.appleEngines[0]
+    let old = try #require(engine.sessions.first)
+    Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
+    await PreviewWait.within("the old end", onExpiry: release) { await old.until { old.ends == 1 } }
+    // 1. The tail is queued while the old end is held. 2. Stop. 3. The old final arrives
+    // after Stop, while its end is still held. This checks lifecycle order and that both
+    // sessions' words are kept once; it does not force which of the two continuations
+    // (cleanup's join of the old end, or the restart's epoch advance) runs first, so it does
+    // not tell the repaired order apart (a negative control passed without the repair).
+    Self.speak(observer, .microphone, (0..<3_200).map { 0.5 + Float($0) / 100_000 })
+    owner.stop()
+    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))
+    end.open()
+    // The replacement opens and is fed the tail; its end is held until its final is emitted.
+    await PreviewWait.within("the replacement", onExpiry: release) { await engine.opened.reached(2) }
+    let replacement = try #require(engine.sessions.last)
+    await PreviewWait.within("the replacement's end", onExpiry: release) {
+      await replacement.until { replacement.ends == 1 }
+    }
+    replacement.emit(.update(finalized: " Tail words.", inProgress: ""))
+    replacementEnd.open()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    let joined = (owner.transcript?.lines ?? []).filter { $0.track == .microphone }
+      .map(\.text).joined(separator: " ")
+    #expect(joined.components(separatedBy: "Flushed at the end.").count == 2, "once: \(joined)")
+    #expect(joined.components(separatedBy: "Tail words.").count == 2, "once: \(joined)")
+    let flushed = try #require(joined.range(of: "Flushed at the end."))
+    let tail = try #require(joined.range(of: "Tail words."))
+    #expect(flushed.lowerBound < tail.lowerBound, "in order")
   }
 
   /// The per-session sample sequences `RestartFeeder` sends for `chunks`, restarting into a new
@@ -1578,4 +1685,9 @@ struct MeetingLiveWordsTests {
       #expect(await owner.waitForCleanups(seconds: 10))
     }
   }
+}
+
+extension MeetingReleasedChunk {
+  /// Metadata for a chunk a test offers directly (live words do not read it).
+  static let test = MeetingReleasedChunk(hostTime: 0, afterDrop: false, sourceBreak: false)
 }

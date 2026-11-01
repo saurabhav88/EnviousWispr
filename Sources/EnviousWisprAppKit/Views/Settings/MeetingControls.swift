@@ -91,6 +91,14 @@ struct MeetingLivePanel: View {
         .accessibilityIdentifier("meetings.stop")
       }
       meters
+      // #4248: static text in reading order, right under the "You" meter it explains.
+      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp) {
+        Text(line)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("meetings.muteLine")
+      }
       if let line = MeetingsPresentation.callSoundLine(meetings.callSoundStatus) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(line)
@@ -282,6 +290,25 @@ struct MeetingWriteSummaryRow: View {
         .toggleStyle(BrandedToggleStyle())
         .fixedSize()
         .accessibilityLabel(Text(MeetingsCopy.writeSummaryTitle))
+    }
+  }
+}
+
+/// "Leave my voice out when I'm muted" (#4248): applies to a recording in progress at once.
+struct MeetingFollowsCallMuteRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
+    @Bindable var settings = settings
+    SettingsRow(
+      map: .id(.meetingFollowsCallMute), icon: "mic.slash.circle",
+      help: MeetingsCopy.followsCallMuteHelp
+    ) {
+      Toggle("", isOn: $settings.meetingFollowsCallMute)
+        .labelsHidden()
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
+        .accessibilityLabel(Text(MeetingsCopy.followsCallMuteTitle))
     }
   }
 }

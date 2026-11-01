@@ -5113,6 +5113,17 @@
         }
       }
     },
+    "Checking your mute button. Your voice is being recorded." : {
+      "comment" : "EnviousMeet, while recording: the mute button has not been read yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Stummschaltung wird geprüft. Deine Stimme wird aufgenommen."
+          }
+        }
+      }
+    },
     "Chimes" : {
       "comment" : "Dictation Settings: tab name for the start and stop sounds.",
       "localizations" : {
@@ -7984,6 +7995,17 @@
         }
       }
     },
+    "EnviousMeet can't see your mute button, so your voice is being recorded." : {
+      "comment" : "EnviousMeet, while recording: the mute button can no longer be read.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet kann deine Stummschalttaste nicht erkennen, daher wird deine Stimme aufgenommen."
+          }
+        }
+      }
+    },
     "EnviousMeet checks for calls on your Mac and never sends this anywhere." : {
       "comment" : "EnviousMeet Call Apps tab: the privacy line under the list of call apps.",
       "localizations" : {
@@ -8050,13 +8072,13 @@
         }
       }
     },
-    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
+    "EnviousMeet uses Accessibility to see whether a call window or meeting page is open when an app starts using your microphone. In Zoom, Teams and Meet calls, it also reads who is talking, so a meeting can show people's names instead of numbered speakers when it can tell them apart. It also sees when you're muted in those calls. It reads this on your Mac and never sends it to Envious Labs. Allow it before a call starts. Pasting your dictation uses the same permission." : {
       "comment" : "EnviousMeet page: help for the Accessibility permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams und Meet liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
+            "value" : "EnviousMeet nutzt die Bedienungshilfen, um zu prüfen, ob ein Anruffenster oder eine Meeting-Seite geöffnet ist, sobald eine App beginnt, dein Mikrofon zu nutzen. In Anrufen über Zoom, Teams und Meet liest es außerdem, wer gerade spricht, damit ein Meeting Namen statt nummerierter Sprecher anzeigen kann, wenn es die Personen auseinanderhalten kann. Es erkennt in diesen Anrufen auch, wann du stummgeschaltet bist. Diese Informationen liest es auf deinem Mac aus und sendet sie nie an Envious Labs. Erlaube den Zugriff vor Beginn eines Anrufs. Das Einfügen deines Diktats nutzt dieselbe Berechtigung."
           }
         }
       }
@@ -8921,6 +8943,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Folgt macOS"
+          }
+        }
+      }
+    },
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls." : {
+      "comment" : "EnviousMeet page: the short line under Leave my voice out when I'm muted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet."
+          }
+        }
+      }
+    },
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls. Brief audio around mute changes may be kept or omitted. While EnviousMeet checks your mute state, or cannot read it, your voice is recorded as usual." : {
+      "comment" : "EnviousMeet page: help for Leave my voice out when I'm muted (#4248 plan section 3.4).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. Kurze Audioabschnitte bei Änderungen der Stummschaltung können in der Aufnahme bleiben oder fehlen. Während EnviousMeet prüft, ob du stummgeschaltet bist, oder dies nicht erkennen kann, wird deine Stimme wie gewohnt aufgenommen."
           }
         }
       }
@@ -11099,6 +11143,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trotzdem verlassen"
+          }
+        }
+      }
+    },
+    "Leave my voice out when I'm muted" : {
+      "comment" : "EnviousMeet page: switch that leaves the user's microphone out of the meeting while the call app shows them muted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Stimme weglassen, wenn ich stummgeschaltet bin"
           }
         }
       }
@@ -24121,6 +24176,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alles bereit!"
+          }
+        }
+      }
+    },
+    "You're muted in %@. Your voice is left out of the notes." : {
+      "comment" : "EnviousMeet, while recording: the call app shows the user muted. The placeholder is the app's product name, for example Zoom or Google Meet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist in %@ stummgeschaltet. Was du sagst, erscheint nicht in den Notizen."
+          }
+        }
+      }
+    },
+    "You're muted in the call. Your voice is left out of the notes." : {
+      "comment" : "EnviousMeet, while recording: the call shows the user muted, app unknown.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist im Anruf stummgeschaltet. Was du sagst, erscheint nicht in den Notizen."
           }
         }
       }

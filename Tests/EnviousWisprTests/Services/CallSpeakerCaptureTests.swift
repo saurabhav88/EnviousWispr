@@ -1,3 +1,4 @@
+import ApplicationServices
 import Darwin
 import EnviousWisprCore
 import Foundation
@@ -32,25 +33,42 @@ struct CallSpeakerCaptureTests {
     var failing: Set<String> = []
     /// Every `id.attribute` the walk asked for.
     var queried: Set<String> = []
+    /// Every batched message, in order: the element and the attributes asked together.
+    var batches: [(Int, [String])] = []
     var ticks = 0
     var tickPerRead: Duration = .zero
     let start = ContinuousClock.now
 
+    /// One attribute's answer; asking costs a tick per message, not per attribute.
+    private func answer(_ id: Int, _ attribute: CallAXAttribute) -> CallAXRead<Int> {
+      queried.insert("\(id).\(attribute.rawValue)")
+      if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
+      switch attribute {
+      case .role: return roles[id].map { .text($0) } ?? .missing
+      case .children: return .elements(children[id] ?? [])
+      case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
+      case .domClassList: return classes[id].map { .texts($0) } ?? .missing
+      case .size: return .missing
+      default: return texts[id]?[attribute].map { .text($0) } ?? .missing
+      }
+    }
+
+    /// One message to the app: the clock advances once, however many attributes it asks.
+    private func message(_ id: Int) {
+      ticks += 1
+      if slow.contains(id) { extra += slowRead }
+    }
+
     func access() -> CallAXTreeAccess<Int> {
       CallAXTreeAccess<Int>(
         read: { [self] id, attribute in
-          ticks += 1
-          if slow.contains(id) { extra += slowRead }
-          queried.insert("\(id).\(attribute.rawValue)")
-          if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
-          switch attribute {
-          case .role: return roles[id].map { .text($0) } ?? .missing
-          case .children: return .elements(children[id] ?? [])
-          case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
-          case .domClassList: return classes[id].map { .texts($0) } ?? .missing
-          case .size: return .missing
-          default: return texts[id]?[attribute].map { .text($0) } ?? .missing
-          }
+          message(id)
+          return answer(id, attribute)
+        },
+        readMany: { [self] id, attributes in
+          message(id)
+          batches.append((id, attributes.map(\.rawValue)))
+          return attributes.map { answer(id, $0) }
         },
         hash: { [self] in hashes[$0] ?? $0 }, same: { $0 == $1 },
         now: { [self] in start.advanced(by: tickPerRead * ticks + extra) })
@@ -105,7 +123,10 @@ struct CallSpeakerCaptureTests {
     tree.texts[110] = [.identifier: "addAccount:"]
     tree.node(111, "AXMenu", children: [112, 113])
     tree.node(112, "AXMenuItem")
-    tree.texts[112] = [.identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)", .markChar: "\u{2713}"]
+    tree.texts[112] = [
+      .identifier: "menuItemDidClicked:", .title: "Other Name(o@example.com)",
+      .markChar: "\u{2713}",
+    ]
     tree.node(113, "AXMenuItem")
     tree.texts[113] = [.identifier: "signOutAllAccounts:"]
     return tree
@@ -199,7 +220,7 @@ struct CallSpeakerCaptureTests {
   func slowLastLeaf() {
     let tree = Tree()
     tree.node(1, "AXWindow")
-    // Each read advances the clock 50 ms: the one element's eight reads end past 100 ms.
+    // Each message advances the clock 50 ms: the one element's messages end past 100 ms.
     tree.tickPerRead = .milliseconds(50)
     #expect(
       capture(tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
@@ -215,7 +236,7 @@ struct CallSpeakerCaptureTests {
     let copy = capture(
       tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
     #expect(copy.completeness == .truncated)
-    // Ten reads fit the budget; the read that finds it spent is not sent.
+    // Ten messages fit the budget; the message that finds it spent is not sent.
     #expect(tree.ticks <= 10)
   }
 
@@ -260,6 +281,200 @@ struct CallSpeakerCaptureTests {
     let mail = copy.windows.first?.root.children.last
     #expect(mail?.role == "AXWebArea")
     #expect(mail?.children.isEmpty == true, "the other page's content is not copied")
+  }
+
+  /// #4248: the Teams app's microphone button is found by its DOM id, so the copy must carry it.
+  @Test("a button's DOM id is copied; other roles and the Zoom app never read it")
+  func domIdentifier() {
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 3, 4])
+    tree.node(2, "AXButton")
+    tree.texts[2] = [.domIdentifier: "microphone-button"]
+    tree.node(3, "AXButton")
+    tree.node(4, "AXGroup")
+    tree.texts[4] = [.domIdentifier: "roster"]
+    let copy = capture(tree)
+    #expect(copy.completeness == .complete)
+    let kids = copy.windows.first?.root.children ?? []
+    #expect(kids.map(\.domIdentifier) == ["microphone-button", nil, nil])
+    #expect(tree.queried.contains("2.AXDOMIdentifier"))
+    #expect(tree.queried.contains("3.AXDOMIdentifier"), "a missing id is asked and stays missing")
+    #expect(tree.queried.contains("4.AXDOMIdentifier") == false)
+    #expect(tree.queried.contains("1.AXDOMIdentifier") == false)
+
+    // The Zoom app is native: it is never asked.
+    let zoom = Tree()
+    zoom.node(1, "AXWindow", children: [2])
+    zoom.node(2, "AXButton")
+    zoom.texts[2] = [.domIdentifier: "microphone-button", .identifier: "audio"]
+    let zoomCopy = capture(zoom, policy: .zoomApp)
+    #expect(zoomCopy.windows.first?.root.children.first?.domIdentifier == nil)
+    #expect(zoom.queried.contains("2.AXDOMIdentifier") == false)
+
+    // A failed read makes the copy unreadable, like any other attribute.
+    tree.queried = []
+    tree.failing = ["2.AXDOMIdentifier"]
+    #expect(capture(tree).completeness == .unreadable)
+  }
+
+  /// #4248 Teams timing run (2026-10-31): the Teams app draws its meeting window as a web page
+  /// at `https://teams.live.com/v2/`, which is no meeting link, so the meeting-page filter left
+  /// the microphone button uncopied and every mute reading was unknown.
+  @Test("the Teams app's own pages are read; browsers still read only meeting pages")
+  func teamsAppPages() {
+    let meet = "https://meet.google.com/abc-defg-hij"
+    let cases: [(String, CallAppFamily, CallAppCatalog.Rule, Bool)] = [
+      ("https://teams.live.com/v2/", .teams, .callApp(.teams), true),
+      ("https://teams.microsoft.com/v2/", .teams, .callWindow(.teams), true),
+      ("https://example.com/v2/", .teams, .callApp(.teams), false),
+      ("not a url", .teams, .callApp(.teams), false),
+      ("https://teams.live.com/v2/", .teams, .browser(.chrome), false),
+      ("https://mail.google.com/", .googleMeet, .browser(.chrome), false),
+      (meet, .googleMeet, .browser(.chrome), true),
+      ("https://teams.live.com/v2/", .zoom, .callApp(.zoom), false),
+    ]
+    for (url, family, rule, kept) in cases {
+      #expect(
+        CallSpeakerSurfaceChoice.keepsPage(url, family: family, rule: rule) == kept,
+        "\(url) \(family) \(rule)")
+    }
+  }
+
+  /// #4248 chunk A: each element is copied in at most three batched messages, and nothing the
+  /// policy keeps unread is ever asked (a DOM id off buttons or in Zoom, a filtered page's or a
+  /// pruned control's children).
+  @Test("each element is read in role-ordered batches; prohibited attributes are never asked")
+  func batchedReads() {
+    let common = ["AXRole", "AXTitle", "AXDescription", "AXValue", "AXIdentifier", "AXDOMClassList", "AXSize"]
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 3, 5])
+    tree.node(2, "AXButton")
+    tree.node(3, "AXWebArea", children: [4])
+    tree.texts[3] = [.url: "https://mail.google.com/"]
+    tree.node(4, "AXStaticText")
+    tree.node(5, "AXWebArea", children: [6])
+    tree.texts[5] = [.url: "https://meet.google.com/abc-defg-hij"]
+    tree.node(6, "AXStaticText")
+    let copy = capture(tree) { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .googleMeet) }
+    // The timing receipt's cost counts every message the fake answered and every copied element.
+    #expect(copy.cost.messages == tree.ticks)
+    #expect(copy.cost.windows.map(\.nodes) == [copy.nodesVisited])
+    #expect(copy.cost.windows.map(\.messages) == [copy.cost.messages], "one window holds every message")
+    // Five elements: five role batches, five role-dependent batches, one kept page's children
+    // and the window title read singly.
+    #expect(copy.cost.byKind[.common]?.messages == 5)
+    #expect(copy.cost.byKind[.dependent]?.messages == 5)
+    #expect(copy.cost.byKind[.single]?.messages == 2)
+    let asked = tree.batches.map { "\($0.0):\($0.1.joined(separator: ","))" }
+    #expect(asked == [
+      "1:" + common.joined(separator: ","), "1:AXChildren",
+      "2:" + common.joined(separator: ","), "2:AXDOMIdentifier,AXChildren",
+      "3:" + common.joined(separator: ","), "3:AXURL",
+      "5:" + common.joined(separator: ","), "5:AXURL",
+      "6:" + common.joined(separator: ","), "6:AXChildren",
+    ])
+    #expect(tree.queried.contains("3.AXChildren") == false, "a filtered page's children are never asked")
+    #expect(tree.queried.contains("5.AXChildren"), "a kept page's children are read after its address")
+    #expect(tree.queried.contains("4.AXRole") == false)
+
+    // Zoom: no DOM id anywhere; a toolbar button's children are never asked.
+    let zoom = Tree()
+    zoom.node(1, "AXWindow", children: [2])
+    zoom.node(2, "AXButton", children: [3])
+    zoom.texts[2] = [.identifier: "leave"]
+    zoom.node(3, "AXStaticText")
+    _ = capture(zoom, policy: .zoomApp)
+    #expect(zoom.batches.contains { $0.1.contains("AXDOMIdentifier") } == false)
+    #expect(zoom.queried.contains("2.AXChildren") == false)
+    #expect(zoom.queried.contains("3.AXRole") == false)
+  }
+
+  @Test("a batch answer of the wrong length counts as every attribute failing")
+  func batchWrongLength() {
+    let tree = Tree()
+    tree.node(1, "AXWindow")
+    let base = tree.access()
+    let short = CallAXTreeAccess<Int>(
+      read: base.read, readMany: { id, attributes in attributes.dropLast().map { base.read(id, $0) } },
+      hash: base.hash, same: base.same, now: base.now)
+    var host: UInt64 = 0
+    let copy = CallSpeakerCapture.capture(
+      windows: [1], access: short, bounds: .standard, keepPage: { _ in true },
+      hostTime: { host += 1; return host })
+    #expect(copy.completeness == .unreadable)
+    #expect(copy.failedReads == 7)
+  }
+
+  @Test("the live batch decoder keeps each attribute's own answer, by position")
+  func liveBatchDecoder() throws {
+    func axError(_ error: AXError) throws -> AnyObject {
+      var e = error
+      return try #require(AXValueCreate(.axError, &e))
+    }
+    var size = CGSize(width: 40, height: 20)
+    let sizeValue = try #require(AXValueCreate(.cgSize, &size))
+    let attributes: [CallAXAttribute] = [.role, .title, .description, .value, .size, .domClassList]
+    let decoded = CallSpeakerCapture.decodeBatch(
+      attributes, status: .success,
+      values: ["AXButton" as NSString, NSNull(), try axError(.noValue), try axError(.cannotComplete), sizeValue,
+               ["a", "b"] as NSArray])
+    #expect(decoded.map(describe) == ["text AXButton", "missing", "missing", "failed", "size 40x20", "texts a,b"])
+    #expect(
+      CallSpeakerCapture.decodeBatch(attributes, status: .cannotComplete, values: nil).map(describe)
+        == Array(repeating: "failed", count: attributes.count))
+    #expect(
+      CallSpeakerCapture.decodeBatch(attributes, status: .success, values: ["AXButton" as NSString])
+        .map(describe) == Array(repeating: "failed", count: attributes.count))
+    #expect(
+      CallSpeakerCapture.decodeBatch([.title], status: .success, values: [try axError(.attributeUnsupported)])
+        .map(describe) == ["missing"])
+  }
+
+  private func describe(_ read: CallAXRead<AXUIElement>) -> String {
+    switch read {
+    case .text(let t): "text \(t)"
+    case .texts(let list): "texts \(list.joined(separator: ","))"
+    case .size(let w, let h): "size \(Int(w))x\(Int(h))"
+    case .elements(let list): "elements \(list.count)"
+    case .missing: "missing"
+    case .failed: "failed"
+    }
+  }
+
+  @Test("only the Teams app's copies get the slower-answering bound")
+  func teamsAppBounds() {
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callApp(.teams)) == .teamsApp)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callWindow(.teams)) == .teamsApp)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .browser(.chrome)) == .standard)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .zoom, rule: .callApp(.zoom)) == .standard)
+    #expect(CallAXBounds.teamsApp.budget == .milliseconds(1_000))
+    #expect(CallAXBounds.teamsApp.maxNodes == CallAXBounds.standard.maxNodes)
+  }
+
+  @Test("a Teams app copy through the production page rule reads the mute button")
+  func teamsAppMuteThroughCapture() {
+    // Window "Meeting with Sam" > web page teams.live.com/v2/ > the self tile and the button.
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2])
+    tree.texts[1] = [.title: "Meeting with Sam"]
+    tree.node(2, "AXWebArea", children: [3, 4])
+    tree.texts[2] = [.url: "https://teams.live.com/v2/"]
+    tree.node(3, "AXMenuItem")
+    tree.texts[3] = [.title: "Myself video, Saurabh Vaish, Muted"]
+    tree.node(4, "AXButton")
+    tree.texts[4] = [
+      .title: "Unmute mic", .description: "Unmute mic", .domIdentifier: "microphone-button",
+    ]
+    let rule = CallAppCatalog.Rule.callApp(.teams)
+    let copy = capture(
+      tree, policy: CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: rule),
+      keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: .teams, rule: rule) })
+    #expect(copy.completeness == .complete)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy) == .muted)
+    // The meeting-page filter alone (before #4248) never copies the page: unknown.
+    let filtered = capture(
+      tree, keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .teams) })
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered) == .unknown)
   }
 
   // MARK: - Timeline
@@ -873,10 +1088,16 @@ struct CallSpeakerCaptureTests {
   @Test("the same two people listed the other way round continue the same stretch")
   func pairStretchIgnoresOrder() {
     var log = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
-    log.add(pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good, observationMs: 1_000)
-    log.add(pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good, observationMs: 1_500)
+    log.add(
+      pair(["Alex Rivera", user], marked: [], account: [user]), context: Self.good,
+      observationMs: 1_000)
+    log.add(
+      pair([user, "Alex Rivera"], marked: [], account: [user]), context: Self.good,
+      observationMs: 1_500)
     // A different spelling of one name is a different stretch.
-    log.add(pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good, observationMs: 2_000)
+    log.add(
+      pair([user, "Alex rivera"], marked: [], account: [user]), context: Self.good,
+      observationMs: 2_000)
     let pairs = log.log.segments[0].pairs ?? []
     #expect(pairs.map(\.firstMs) == [1_000, 2_000])
     #expect(pairs.map(\.lastMs) == [1_500, 2_000])
@@ -903,7 +1124,8 @@ struct CallSpeakerCaptureTests {
           nil, context: CallCaptureContext(completeness: .truncated, scope: .resolved),
           observationMs: 1_200)
       }.count == 2)
-    #expect(run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
+    #expect(
+      run { $0.add(self.pair(count: 3), context: Self.good, observationMs: 1_200) }.count == 2)
     #expect(
       run { $0.add(self.pair(marked: []), context: Self.good, observationMs: 1_200) }.count == 3,
       "different marks are a different stretch")

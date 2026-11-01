@@ -169,7 +169,7 @@ struct MeetingLiveWordsHarness {
         for (track, samples) in [(MeetingTrackKind.microphone, mic), (.callSound, call)]
         where lo < samples.count {
           samples[lo..<min(samples.count, lo + chunk)].withUnsafeBufferPointer {
-            observer(track, $0)
+            observer(track, $0, .test)
           }
         }
         i += 1

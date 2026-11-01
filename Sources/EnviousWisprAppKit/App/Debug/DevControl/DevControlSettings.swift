@@ -52,7 +52,7 @@
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -86,7 +86,7 @@
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
         .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
-        .meetingOnboardingComplete,
+        .meetingFollowsCallMute, .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
         .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
         .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy,
@@ -143,6 +143,7 @@
       case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
       case .meetingWriteSummary: return settings.meetingWriteSummary
       case .meetingTurnsOffDictation: return settings.meetingTurnsOffDictation
+      case .meetingFollowsCallMute: return settings.meetingFollowsCallMute
       case .meetingOnboardingComplete: return settings.meetingOnboardingComplete
       case .meetingUseCalendarForNames: return settings.meetingUseCalendarForNames
       case .meetingCallDetection: return settings.meetingCallDetection
@@ -301,6 +302,8 @@
         return set(Codec.bool(value)) { settings.meetingWriteSummary = $0 }
       case .meetingTurnsOffDictation:
         return set(Codec.bool(value)) { settings.meetingTurnsOffDictation = $0 }
+      case .meetingFollowsCallMute:
+        return set(Codec.bool(value)) { settings.meetingFollowsCallMute = $0 }
       case .meetingOnboardingComplete:
         return set(Codec.bool(value)) { settings.meetingOnboardingComplete = $0 }
       case .meetingUseCalendarForNames:
@@ -591,8 +594,8 @@
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
         .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
-        .meetingWriteSummary, .meetingTurnsOffDictation, .meetingOnboardingComplete,
-        .meetingUseCalendarForNames,
+        .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute,
+        .meetingOnboardingComplete, .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
         .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled,
         .vadAutoStop, .vadSensitivity,

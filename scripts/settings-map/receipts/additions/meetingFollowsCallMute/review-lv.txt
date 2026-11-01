@@ -1,0 +1,9 @@
+{
+  "language": "lv",
+  "title": "neierakstīt manu balsi, kad zvanā ir izslēgts mans mikrofons",
+  "words": [],
+  "phrases": [
+    "neierakstīt manu balsi, kad Zoom ir izslēgts mans mikrofons",
+    "neiekļaut manu balsi sapulces ierakstā, kamēr mans mikrofons zvanā ir izslēgts"
+  ]
+}

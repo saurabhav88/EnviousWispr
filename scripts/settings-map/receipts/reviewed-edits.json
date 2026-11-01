@@ -16947,6 +16947,321 @@
    },
    "review": "additions/meetingTranscriptEngine.apple.json",
    "reviewSHA256": "940ce70c241c62ed0c3404f147b3ad76789151386de3b53fff3e2b70e4c3a50b"
+  },
+  "meetingFollowsCallMute": {
+   "blocks": {
+    "ar": {
+     "title": "استبعاد صوتي من التسجيل عند كتم الميكروفون",
+     "words": [],
+     "phrases": [
+      "لا تسجل صوتي عندما أكتم الميكروفون في Zoom",
+      "استبعاد صوتي من تسجيل الاجتماع عندما أكتم صوتي في المكالمة"
+     ]
+    },
+    "bg": {
+     "title": "не записвай гласа ми, когато микрофонът ми е заглушен",
+     "words": [],
+     "phrases": [
+      "без моя глас в записа на срещата, когато микрофонът ми е заглушен",
+      "не записвай гласа ми, когато микрофонът ми е заглушен в Zoom, Teams или Google Meet"
+     ]
+    },
+    "cs": {
+     "title": "vynechat můj hlas při ztlumení v hovoru",
+     "words": [
+      "ztlumení"
+     ],
+     "phrases": [
+      "nenahrávat můj hlas, když mám v hovoru ztlumený mikrofon",
+      "vynechat můj hlas z nahrávky při ztlumení v Zoomu"
+     ]
+    },
+    "da": {
+     "title": "udelad min stemme, når mikrofonen er slået fra i opkaldet",
+     "words": [
+      "mute"
+     ],
+     "phrases": [
+      "tag ikke min stemme med i optagelsen, når jeg er på mute",
+      "udelad min mikrofon fra optagelsen, når jeg er på mute i Teams"
+     ]
+    },
+    "de": {
+     "words": [
+      "Stummschaltung",
+      "stummgeschaltet",
+      "Mikrofon",
+      "Stimme"
+     ],
+     "phrases": [
+      "meine Stimme nicht aufnehmen, wenn ich stumm bin",
+      "Stimme bei Stummschaltung weglassen",
+      "Stummschaltung in Google Meet"
+     ]
+    },
+    "el": {
+     "title": "να μην καταγράφεται η φωνή μου όταν είμαι σε σίγαση",
+     "words": [],
+     "phrases": [
+      "να μη γράφεται η φωνή μου όταν είμαι σε σίγαση στο Zoom",
+      "να μην καταγράφεται το μικρόφωνό μου όταν είμαι σε σίγαση στην κλήση"
+     ]
+    },
+    "en": {
+     "words": [],
+     "phrases": [
+      "leave my voice out of the meeting recording when I'm muted",
+      "record my mic even when I'm muted in a meeting"
+     ]
+    },
+    "es": {
+     "title": "excluir mi voz cuando esté silenciado",
+     "words": [],
+     "phrases": [
+      "no grabar mi voz cuando estoy silenciado en Zoom",
+      "excluir mi voz de la grabación cuando silencio el micrófono en Teams",
+      "no incluir mi voz en la grabación cuando estoy silenciado en Google Meet"
+     ]
+    },
+    "et": {
+     "title": "jäta mu hääl välja, kui olen kõnes vaigistatud",
+     "words": [
+      "vaigistus"
+     ],
+     "phrases": [
+      "ära salvesta mu häält, kui olen kõnes vaigistatud",
+      "järgi koosoleku salvestamisel Zoomi vaigistusnuppu"
+     ]
+    },
+    "fi": {
+     "title": "jätä ääneni pois tallenteesta, kun olen mykistettynä",
+     "words": [
+      "mykistys"
+     ],
+     "phrases": [
+      "älä tallenna ääntäni kun olen mykistettynä",
+      "noudata Teamsin mykistystä tallennuksessa"
+     ]
+    },
+    "fr": {
+     "title": "exclure ma voix quand je suis en sourdine",
+     "words": [
+      "sourdine",
+      "mute"
+     ],
+     "phrases": [
+      "ne pas enregistrer ma voix quand je suis en sourdine dans l’appel",
+      "exclure mon micro de l’enregistrement quand il est coupé dans Teams"
+     ]
+    },
+    "hi": {
+     "title": "म्यूट होने पर मेरी आवाज़ रिकॉर्ड न करें",
+     "words": [
+      "म्यूट"
+     ],
+     "phrases": [
+      "Zoom में म्यूट होने पर मेरी आवाज़ रिकॉर्ड न करें",
+      "Teams में म्यूट होने पर मेरी आवाज़ रिकॉर्ड न करें",
+      "Google Meet में म्यूट होने पर मेरी आवाज़ रिकॉर्ड न करें"
+     ]
+    },
+    "hr": {
+     "title": "izostavi moj glas kad sam utišan u pozivu",
+     "words": [
+      "mute"
+     ],
+     "phrases": [
+      "ne snimaj moj glas dok sam utišan u pozivu",
+      "izostavi moj glas iz snimke kad utišam mikrofon u Zoomu"
+     ]
+    },
+    "hu": {
+     "title": "a hangom kihagyása, ha le vagyok némítva",
+     "words": [
+      "némítás"
+     ],
+     "phrases": [
+      "ne kerüljön a hangom a felvételbe, ha le vagyok némítva",
+      "ne rögzítse a hangomat, ha le vagyok némítva a Teamsben"
+     ]
+    },
+    "it": {
+     "title": "escludi la mia voce quando sono in muto",
+     "words": [
+      "muto",
+      "mute"
+     ],
+     "phrases": [
+      "non registrare la mia voce quando sono in muto su Zoom",
+      "escludi la mia voce dalla registrazione quando disattivo il microfono su Teams"
+     ]
+    },
+    "ja": {
+     "title": "ミュート中は自分の声を録音しない",
+     "words": [],
+     "phrases": [
+      "Zoomでミュート中は自分の声を録音に入れない",
+      "Teamsでミュート中の自分の声を録音から除外したい",
+      "Google Meetでミュート中は自分の声を録音しない"
+     ]
+    },
+    "ko": {
+     "title": "음소거 중 내 목소리를 녹음에서 제외",
+     "words": [],
+     "phrases": [
+      "회의에서 음소거하면 내 목소리 녹음하지 않기",
+      "음소거 중 내 주변 소리를 회의 녹음에서 빼기"
+     ]
+    },
+    "lt": {
+     "title": "neįrašyti mano balso, kai esu nutildytas",
+     "words": [],
+     "phrases": [
+      "neįtraukti mano balso į susitikimo įrašą, kai esu nutildytas",
+      "neįrašyti mano balso, kai mikrofonas nutildytas per Zoom"
+     ]
+    },
+    "lv": {
+     "title": "neierakstīt manu balsi, kad zvanā ir izslēgts mans mikrofons",
+     "words": [],
+     "phrases": [
+      "neierakstīt manu balsi, kad Zoom ir izslēgts mans mikrofons",
+      "neiekļaut manu balsi sapulces ierakstā, kamēr mans mikrofons zvanā ir izslēgts"
+     ]
+    },
+    "mt": {
+     "title": "tinkludix leħni meta nkun fuq mute",
+     "words": [
+      "mute"
+     ],
+     "phrases": [
+      "tirrekordjax leħni meta nkun fuq mute",
+      "tinkludix leħni fir-reġistrazzjoni meta nkun fuq mute f’Teams"
+     ]
+    },
+    "nl": {
+     "title": "mijn stem weglaten als ik op mute sta",
+     "words": [
+      "mute"
+     ],
+     "phrases": [
+      "mijn stem niet opnemen als ik op mute sta",
+      "mijn stem uit de vergaderopname weglaten als ik gedempt ben in Zoom, Teams of Google Meet"
+     ]
+    },
+    "pl": {
+     "title": "pomijaj mój głos, gdy mam wyciszony mikrofon",
+     "words": [
+      "wyciszenie"
+     ],
+     "phrases": [
+      "nie nagrywaj mojego głosu, gdy mam wyciszony mikrofon w rozmowie",
+      "pomijaj mój głos w nagraniu, gdy wyciszam mikrofon w Teams"
+     ]
+    },
+    "pt": {
+     "title": "não gravar a minha voz quando estou no mudo",
+     "words": [
+      "mudo",
+      "mute"
+     ],
+     "phrases": [
+      "não incluir minha voz na gravação da reunião quando estou no mudo",
+      "não gravar meu microfone quando estou silenciado no Zoom, Teams ou Google Meet"
+     ]
+    },
+    "ro": {
+     "title": "nu-mi înregistra vocea când am microfonul oprit în apel",
+     "words": [
+      "mute"
+     ],
+     "phrases": [
+      "nu-mi înregistra vocea când sunt pe mute în Zoom",
+      "exclude vocea mea din înregistrare când am microfonul oprit în Teams",
+      "nu-mi înregistra vocea când am microfonul oprit în Google Meet"
+     ]
+    },
+    "ru": {
+     "title": "не записывать мой голос, когда микрофон в звонке выключен",
+     "words": [
+      "мьют"
+     ],
+     "phrases": [
+      "не записывать мой голос, когда я на мьюте в Zoom",
+      "не записывать меня, когда микрофон в звонке выключен"
+     ]
+    },
+    "sk": {
+     "title": "vynechať môj hlas, keď mám stlmený mikrofón",
+     "words": [
+      "stlmenie"
+     ],
+     "phrases": [
+      "nenahrávať môj hlas, keď mám v hovore stlmený mikrofón",
+      "vynechať môj hlas pri stlmení v aplikácii Teams"
+     ]
+    },
+    "sl": {
+     "title": "izpusti moj glas, ko sem v klicu utišan",
+     "words": [
+      "utišanje v klicu"
+     ],
+     "phrases": [
+      "ne snemaj mojega glasu, ko sem v klicu utišan",
+      "izpusti moj glas iz posnetka, ko imam v aplikaciji Teams utišan mikrofon"
+     ]
+    },
+    "sv": {
+     "title": "utelämna min röst när jag är tystad",
+     "words": [
+      "mute",
+      "tystad"
+     ],
+     "phrases": [
+      "spela inte in min röst när jag är tystad i mötet",
+      "ta inte med min röst när jag är på mute i Teams"
+     ]
+    },
+    "tr": {
+     "title": "sessizdeyken sesimi kayda dahil etme",
+     "words": [],
+     "phrases": [
+      "Zoom'da sessizdeyken sesimi kaydetme",
+      "mikrofonum kapalıyken sesim toplantı kaydına girmesin",
+      "Teams veya Google Meet'te sessizdeyken sesimi kaydetme"
+     ]
+    },
+    "uk": {
+     "title": "не записувати мій голос, коли мікрофон у дзвінку вимкнено",
+     "words": [],
+     "phrases": [
+      "не записувати мій голос, коли я на м’юті",
+      "не записувати мене, коли мікрофон у Zoom вимкнено"
+     ]
+    },
+    "vi": {
+     "title": "không ghi âm giọng tôi khi tôi tắt mic",
+     "words": [
+      "tắt mic",
+      "mute"
+     ],
+     "phrases": [
+      "không ghi giọng tôi vào bản ghi khi tắt mic trên Zoom",
+      "bỏ giọng tôi khỏi bản ghi khi tắt mic trên Teams hoặc Google Meet"
+     ]
+    },
+    "zh": {
+     "title": "静音时不录制我的声音",
+     "words": [],
+     "phrases": [
+      "会议中静音时不录我的声音",
+      "Zoom 静音时不把自己的声音录进去",
+      "Teams 或 Google Meet 静音时不录我的声音"
+     ]
+    }
+   },
+   "review": "additions/meetingFollowsCallMute.json",
+   "reviewSHA256": "79235760e2a31a06ec47f0bb764e4ae8c1b9fa158e62ed2f84f66365df40c3cc"
   }
  }
 }

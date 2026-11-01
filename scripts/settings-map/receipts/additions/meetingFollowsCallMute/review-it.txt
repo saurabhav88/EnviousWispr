@@ -1,0 +1,12 @@
+{
+  "language": "it",
+  "title": "escludi la mia voce quando sono in muto",
+  "words": [
+    "muto",
+    "mute"
+  ],
+  "phrases": [
+    "non registrare la mia voce quando sono in muto su Zoom",
+    "escludi la mia voce dalla registrazione quando disattivo il microfono su Teams"
+  ]
+}

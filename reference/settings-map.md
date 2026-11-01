@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-308 nodes, 281 searchable, 8992 vocabulary blocks.
+309 nodes, 282 searchable, 9024 vocabulary blocks.
 
-Fingerprints: mapSHA256 `bfe2bdbc2205f108cafefdf4943b4019b3718f305b035882a1329ceee27497a9`, uiCatalogSHA256 `31a4142004e017b0e05000c0510e43768bfbed4b9a42c4326bded1136bc68246`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `5f5b71261f99a98663c63ac857a18e374d863b370822f3f0d7923d1f598fc61f`
+Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e`, uiCatalogSHA256 `5b0a3ffcc00f60585515789d3e241a5e29fdfa5b18f7c2851b921d1a3b098db3`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3`
 
 ## Structure
 
@@ -285,6 +285,7 @@ Fingerprints: mapSHA256 `bfe2bdbc2205f108cafefdf4943b4019b3718f305b035882a1329ce
     - [General / Allgemein](#node-meetings-tab-general) `meetings.tab.general` (feature)
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
       - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
+      - [Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin](#node-meetingFollowsCallMute) `meetingFollowsCallMute` (setting)
       - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
       - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Models / Modelle](#node-meetings-tab-models) `meetings.tab.models` (feature)
@@ -2637,6 +2638,28 @@ Fingerprints: mapSHA256 `bfe2bdbc2205f108cafefdf4943b4019b3718f305b035882a1329ce
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: disable dictation while recording a meeting; dictation key does nothing during meeting recording |
 | Search (de) | words: Meetingaufnahme, Besprechung<br>phrases: während einer Meetingaufnahme kein Diktat starten; schalte Diktieren im Meeting aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingFollowsCallMute"></a>
+
+### Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin (`meetingFollowsCallMute`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Leave my voice out when I'm muted` |
+| Description | Follows the mute button in supported Zoom, Teams and Google Meet calls. / Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. |
+| Description source | catalog key `Follows the mute button in supported Zoom, Teams and Google Meet calls.` |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingFollowsCallMute`](#node-meetingFollowsCallMute) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: leave my voice out of the meeting recording when I'm muted; record my mic even when I'm muted in a meeting |
+| Search (de) | words: Stummschaltung, stummgeschaltet, Mikrofon, Stimme<br>phrases: meine Stimme nicht aufnehmen, wenn ich stumm bin; Stimme bei Stummschaltung weglassen; Stummschaltung in Google Meet |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords"></a>

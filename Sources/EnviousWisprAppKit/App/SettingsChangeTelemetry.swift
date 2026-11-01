@@ -169,6 +169,7 @@ enum SettingsProjection {
     case .meetingWriteSummary: return []
     // #4069: no settings delta and no adoption measure by decision (plan §8).
     case .meetingTurnsOffDictation: return []
+    case .meetingFollowsCallMute: return []
     // #4017 R8: `meeting.setup` reports how setup ended; a settings delta would repeat it.
     case .meetingOnboardingComplete: return []
     // #4017: no settings delta yet; the calendar permission answer rides on `meeting.setup`.

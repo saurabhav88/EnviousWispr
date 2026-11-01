@@ -181,6 +181,11 @@ final class MeetingLiveWords {
     let target = SessionTarget()
     /// Off or stopped: nothing more opens or runs on this track in this recording.
     var finished = false
+    /// An Apple restart is between ending the old session and installing the replacement.
+    var restarting = false
+    /// Stop came during that restart (#4248): the restart still opens the replacement, outside
+    /// the recording, so the sealed pump's held audio reaches it before it ends.
+    var drainAfterStop = false
     init(pump: MeetingLiveAudioPump) { self.pump = pump }
   }
 
@@ -237,8 +242,12 @@ final class MeetingLiveWords {
       tracks: [.microphone: .init(status: .starting), .callSound: .init(status: .starting)])
     let micPump = mic.pump
     let callPump = call.pump
-    // Capture thread: the pump copies and returns; nothing else runs here.
-    return { track, samples in
+    // Capture thread (call sound) or the microphone writer's queue: the pump copies and
+    // returns; nothing else runs here. The chunk metadata (#4248) is not used: a session is fed
+    // samples only (`LivePreviewEngineSession.feed`), and display times come from the meeting
+    // clock (`LiveWordsAssembler`), so live words had no use for capture times or run breaks
+    // before the hold either.
+    return { track, samples, _ in
       switch track {
       case .microphone: micPump.admit(samples)
       case .callSound: callPump.admit(samples)
@@ -301,12 +310,14 @@ final class MeetingLiveWords {
   // MARK: - Exits
 
   /// Stop: applies the events already accepted, invalidates the recording and starts its
-  /// cleanup. Returns at once. What the sessions still deliver while they end (the Universal
-  /// engine's queued finals, each session's terminal) is applied by that cleanup while these
-  /// lines are still this meeting's (#4097); the cleanup then closes admission. The lines stay
-  /// until `transcriptReady`.
+  /// cleanup. Returns at once. Call it after the recorder stopped, so the microphone's held tail
+  /// is already in the pump (#4248): each track's pump is sealed and its consumer feeds every
+  /// sample it holds, in order, before that track's session ends; tracks drain independently.
+  /// What the sessions still deliver while they end (the Universal engine's queued finals, each
+  /// session's terminal) is applied by that cleanup while these lines are still this meeting's
+  /// (#4097); the cleanup then closes admission. The lines stay until `transcriptReady`.
   func stop() {
-    retireCurrent(clearOutput: false)
+    retireCurrent(clearOutput: false, drainHeldAudio: true)
   }
 
   /// Delete: the same, and the live words go now.
@@ -672,9 +683,32 @@ final class MeetingLiveWords {
       let bridge = current.bridge
     else { return }
     slot.session = nil  // nothing more is fed to the old session
+    slot.restarting = true
+    defer { slot.restarting = false }
     let ending = Task { await old.end() }
     current.endings.append(ending)
     let ended = await withDeadline(seconds: deps.restartEndDeadline) { await ending.value }
+    // #4248: a Stop during the restart sealed this track's pump and waits for this consumer; the
+    // held audio still needs a session. The replacement opens outside the recording and is
+    // handed to the Stop's drain through the track's target, which ends it after the drain.
+    if slot.drainAfterStop, slot.epoch == epoch {
+      guard ended != nil else { return }  // the old end timed out: no second analyzer
+      // The old session's finals are accepted by now: apply them before the epoch moves on,
+      // and only while these lines are still this meeting's.
+      let finalEntries = bridge.take()
+      if transcript?.meetingID == current.meetingID {
+        apply(finalEntries, to: current)
+      }
+      slot.epoch += 1
+      let next = slot.epoch
+      bridge.openEpoch(next, for: track)
+      guard
+        let session = try? await engine.openTranscriptSession(
+          vocabulary: vocabulary, onEvent: { event in bridge.post(event, track: track, epoch: next) })
+      else { return }
+      slot.target.set(session, epoch: next)
+      return
+    }
     guard isCurrent(gen), recording?.tracks[track] === slot, slot.epoch == epoch, !slot.finished
     else { return }
     guard ended != nil else {
@@ -705,6 +739,12 @@ final class MeetingLiveWords {
     }
     guard isCurrent(gen), recording?.tracks[track] === slot, slot.epoch == next, !slot.finished
     else {
+      // #4248: a Stop during this open drains the held audio into the replacement, which the
+      // Stop's drain then ends.
+      if slot.drainAfterStop {
+        slot.target.set(session, epoch: next)
+        return
+      }
       // Stopped meanwhile: this consumer is joined by the recording's cleanup, so ending the
       // late handle here is owned until it returns.
       await session.end()
@@ -807,7 +847,10 @@ final class MeetingLiveWords {
   /// cleanup. Synchronous: never waits for preparation, feeds, ends or the native release.
   /// Delete closes admission here; kept output (Stop, Quit) leaves it open for the cleanup,
   /// which applies what the ending sessions deliver and then closes it (#4097).
-  private func retireCurrent(clearOutput: Bool) {
+  ///
+  /// `drainHeldAudio` (Stop only): a track with a session seals its pump instead of retiring it,
+  /// and its session ends only after the consumer fed everything held. Delete and Quit discard.
+  private func retireCurrent(clearOutput: Bool, drainHeldAudio: Bool = false) {
     guard let current = recording else {
       if clearOutput { transcript = nil }
       return
@@ -825,6 +868,24 @@ final class MeetingLiveWords {
     var sessions: [any LivePreviewEngineSession] = []
     for slot in current.tracks.values {
       slot.finished = true
+      if drainHeldAudio, slot.session != nil || slot.restarting,
+        let consumer = slot.pump.seal()
+      {
+        // Admission closed now; the consumer feeds what is held, then the track's current
+        // session ends: the one running now, or the replacement a restart in progress installs
+        // in the target (`restartTrack`, #4248). The target stays set until then, so the drain
+        // reaches the session.
+        if slot.session == nil { slot.drainAfterStop = true }
+        let target = slot.target
+        current.endings.append(
+          Task {
+            await consumer.value
+            let last = target.current?.session
+            target.set(nil, epoch: 0)
+            await last?.end()
+          })
+        continue
+      }
       retirePump(slot, in: current)  // admission closed now; a held feed may still finish
       if let session = slot.session { sessions.append(session) }
       slot.session = nil

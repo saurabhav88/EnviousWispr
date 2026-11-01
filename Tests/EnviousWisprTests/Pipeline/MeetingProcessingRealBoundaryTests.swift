@@ -164,7 +164,7 @@ struct MeetingProcessingRealBoundaryTests {
   /// the pass rebuilds the same transcript without decoding again.
   @Test(
     "#3973 C3: a two-voice recording becomes sentence-timed turns through the real Whisper pass, and resumes from its checkpoint",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
     .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun)
   func twoVoiceRecordingOnWhisper() async throws {
     let fixture = WhisperProductionWiringRealBoundaryTests.repoRoot
@@ -173,9 +173,14 @@ struct MeetingProcessingRealBoundaryTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let audio = try segments(from: fixture, into: dir)
     let speakerBundle = try Self.speakerModelBundle()
-    let engine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
+    // #4254: the pinned detector, as the app bundle supplies it; the test process has none.
+    let engine = LiveMeetingWhisperEngine(
+      driver: LiveWhisperExecutorDriver(), detectSpeech: try PinnedVADModel.finalDetector())
     let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
-    final class Counts { var decodes = 0 }
+    final class Counts {
+      var decodes = 0
+      var preparations: [MeetingSpeechPreparation?] = []
+    }
     let counts = Counts()
     func job() -> MeetingTranscriptionJob {
       var configuration = MeetingTranscriptionJob.Configuration()
@@ -187,7 +192,9 @@ struct MeetingProcessingRealBoundaryTests {
           loadEngine: { try await engine.load(modelPath: modelPath) },
           transcribe: { samples, language in
             counts.decodes += 1
-            return try await engine.transcribe(samples: samples, language: language)
+            let decoded = try await engine.transcribe(samples: samples, language: language)
+            counts.preparations.append(decoded.meetingSpeechPreparation)
+            return decoded
           },
           unloadEngine: { await engine.unload() },
           analyzeSpeakers: { audio in
@@ -230,12 +237,144 @@ struct MeetingProcessingRealBoundaryTests {
     #expect(await engine.isLoaded == false, "the engine is freed when the pass ends")
     let decodes = counts.decodes
     #expect(decodes >= 1)
+    // Two voices, all speech: detection ran and kept speech on every decode.
+    #expect(
+      counts.preparations
+        == [MeetingSpeechPreparation?](repeating: .protectedSpeech, count: decodes),
+      "speech detection ran on every decode")
 
     let resumed = try await job().run(
       tracks: [.callSound: audio], language: "en", checkpoint: access, onStage: { _ in },
       attempt: attempt)
     #expect(counts.decodes == decodes, "every piece came from the checkpoint")
     #expect(resumed.composition == result.composition)
+  }
+
+  // MARK: - #4248 P4: exact zeros from the mute hold on the final engines
+
+  /// Control, layout and all-zero cases (`MuteSilenceP4`) through one final engine: exact-zero
+  /// audio produces no words, the speech around zero spans is kept, nothing outside the speech or
+  /// the control appears, and no timed turn sits wholly inside a zero span.
+  /// `run` receives the speech preparation a Whisper pass must report for that case.
+  private func p4FinalCases(
+    route: String,
+    run: (MeetingTrackAudio, MeetingSpeechPreparation) async throws -> MeetingComposition
+  ) async throws {
+    let speech = try MuteSilenceP4.speech()
+    let layout = MuteSilenceP4.layout(speech)
+    let dir = try folder("p4-\(route)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    func sub(_ name: String) throws -> URL {
+      let url = dir.appendingPathComponent(name, isDirectory: true)
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      return url
+    }
+    let controlAudio = try await MuteSilenceP4.throughGate(speech, silenceAll: false, into: sub("control"))
+    let layoutAudio = try await MuteSilenceP4.throughGate(
+      layout.samples, silenceAll: false, into: sub("layout"))
+    let zeroAudio = try await MuteSilenceP4.throughGate(speech, silenceAll: true, into: sub("zero"))
+    #expect(try MuteSilenceP4.decoded(zeroAudio).allSatisfy { $0 == 0 }, "the hold wrote exact zeros")
+    let laidOut = try MuteSilenceP4.decoded(layoutAudio)
+    #expect(laidOut.count == layout.samples.count)
+    for span in layout.zeroSpans where span.upperBound <= laidOut.count {
+      #expect(laidOut[span].allSatisfy { $0 == 0 })
+    }
+
+    let control = try await run(controlAudio, .protectedSpeech)
+    let spliced = try await run(layoutAudio, .protectedSpeech)
+    let silent = try await run(zeroAudio, .confirmedSilence)
+    let spans = layout.zeroSpans.map { "\($0.lowerBound)..<\($0.upperBound)" }.joined(separator: ",")
+    MuteSilenceP4.receipt(route, "control", control.text)
+    MuteSilenceP4.receipt(
+      route, "layout", spliced.text,
+      extra: "zero_spans=\(spans) turns=\(spliced.turns.map { "\($0.startMs ?? -1)-\($0.endMs ?? -1)" })")
+    MuteSilenceP4.receipt(route, "all_zero", silent.text)
+
+    MuteSilenceP4.judge(
+      route: route, control: control.text, layout: spliced.text, silent: silent.text)
+    // A turn wholly inside a zero span (100 ms in from each edge) is a word made from silence.
+    for turn in spliced.turns {
+      guard let start = turn.startMs, let end = turn.endMs else { continue }
+      for span in layout.zeroSpans {
+        let lo = span.lowerBound / 16 + 100
+        let hi = span.upperBound / 16 - 100
+        #expect(!(start >= lo && end <= hi), "turn \(start)-\(end) ms inside zero span \(lo)-\(hi)")
+      }
+    }
+  }
+
+  /// One real Whisper meeting pass (the #3705 evaluation model) over `audio`.
+  /// `preparation`: what the pass's one decode (one contiguous run, whole-run pieces) must
+  /// report, proving detection ran rather than fell back.
+  private func whisperComposition(
+    _ audio: MeetingTrackAudio, speakerBundle: Bundle, preparation: MeetingSpeechPreparation
+  ) async throws -> MeetingComposition {
+    let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
+    // #4254: the pinned detector, as the app bundle supplies it; the test process has none.
+    let engine = LiveMeetingWhisperEngine(
+      driver: LiveWhisperExecutorDriver(), detectSpeech: try PinnedVADModel.finalDetector())
+    let preparations = OSAllocatedUnfairLock<[MeetingSpeechPreparation?]>(initialState: [])
+    var configuration = MeetingTranscriptionJob.Configuration()
+    configuration.cutsPieces = false
+    let job = MeetingTranscriptionJob(
+      dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
+        endModelUse: {},
+        loadEngine: { try await engine.load(modelPath: modelPath) },
+        transcribe: { samples, language in
+          let decoded = try await engine.transcribe(samples: samples, language: language)
+          preparations.withLock { $0.append(decoded.meetingSpeechPreparation) }
+          return decoded
+        },
+        unloadEngine: { await engine.unload() },
+        analyzeSpeakers: { audio in
+          await MeetingSpeakerAnalyzer.analyze(
+            audio,
+            makeWork: { track in
+              Task<[SpeakerSegment], Error> {
+                let models = try BundledSpeakerModelLoader.load(in: speakerBundle)
+                let analyzer = OfflineSpeakerAnalyzer()
+                analyzer.initialize(models: models)
+                return try await analyzer.analyze(meetingTrack: track) { _, _ in }
+              }
+            })
+        },
+        engineIdentity: { "whisper-large-v3-turbo-gguf:eval" },
+        resolution: MeetingEngineResolution(engine: .whisper, effectiveLanguage: "en")),
+      configuration: configuration)
+    let result = try await job.run(
+      tracks: [.microphone: audio], language: "en",
+      checkpoint: .init(meetingID: UUID(), load: { nil }, save: { _ in }), onStage: { _ in },
+      attempt: MeetingAttemptConfiguration(
+        requestedEngine: .whisper, languageIntent: "en", requestedEffectiveLanguage: "en"))
+    #expect(await engine.isLoaded == false)
+    let prepared = preparations.withLock { $0 }
+    #expect(prepared == [preparation], "speech detection ran on the decode")
+    return result.composition
+  }
+
+  @Test(
+    "#4248 P4: the real Parakeet meeting pass makes no words from the mute hold's zeros",
+    .enabled(if: MeetingProcessingRealBoundaryTests.ultraIsInstalled),
+    .tags(.realBoundary), .timeLimit(.minutes(6)), .realBoundaryRun)
+  func p4Parakeet() async throws {
+    try await p4FinalCases(route: "parakeet-final") { audio, _ in
+      let (job, _) = try realJob()
+      return try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
+        .composition
+    }
+  }
+
+  @Test(
+    "#4248 P4: the real Whisper meeting pass makes no words from the mute hold's zeros",
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
+    .tags(.realBoundary), .timeLimit(.minutes(8)), .realBoundaryRun)
+  func p4Whisper() async throws {
+    let speakerBundle = try Self.speakerModelBundle()
+    try await p4FinalCases(route: "whisper-final") { audio, preparation in
+      try await self.whisperComposition(
+        audio, speakerBundle: speakerBundle, preparation: preparation)
+    }
   }
 
   /// Footprint of this process (what the system counts against memory), in MB.
@@ -482,13 +621,7 @@ extension MeetingProcessingRealBoundaryTests {
     try #require(cases.count == MeetingVoiceCase.expectedCount, "every §16.5 case is in the manifest")
 
     // The pinned detector through its production loader, from a bundle linking the asset.
-    let vadRoot = TestTemporaryDirectory.url
-      .appendingPathComponent("MeetingVoices-VAD-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: vadRoot, withIntermediateDirectories: true)
-    try FileManager.default.createSymbolicLink(
-      at: vadRoot.appendingPathComponent("\(BundledVADModelLoader.pinnedModelName).mlmodelc"),
-      withDestinationURL: PinnedVADModel.url)
-    let vadPath = vadRoot.path
+    let vadPath = try PinnedVADModel.bundlePath()
     let detections = OSAllocatedUnfairLock(initialState: 0)
 
     /// The pass's text and each decode's speech preparation.
@@ -570,5 +703,15 @@ extension MeetingProcessingRealBoundaryTests {
       }
     }
     #expect(lost.isEmpty, "words detection lost that the undetected decode kept: \(lost)")
+  }
+}
+
+extension PinnedVADModel {
+  /// The final pass's speech detector on the pinned model, through the production loader.
+  static func finalDetector() throws -> MeetingSpeechSpans {
+    let path = try bundlePath()
+    return { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: Bundle(path: path) ?? .main)
+    }
   }
 }

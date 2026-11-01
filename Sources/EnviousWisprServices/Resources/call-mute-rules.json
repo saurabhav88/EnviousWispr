@@ -1,0 +1,28 @@
+{
+  "revision": 1,
+  "surfaces": {
+    "zoom_app": {
+      "role": "AXButton",
+      "identifier": "audio",
+      "labels": {
+        "Unmute my audio": "muted",
+        "Mute my audio": "unmuted"
+      }
+    },
+    "teams_app": {
+      "role": "AXButton",
+      "domIdentifier": "microphone-button",
+      "labels": {
+        "Unmute mic": "muted",
+        "Mute mic": "unmuted"
+      }
+    },
+    "meet": {
+      "role": "AXButton",
+      "labels": {
+        "Turn on microphone": "muted",
+        "Turn off microphone": "unmuted"
+      }
+    }
+  }
+}

@@ -5,13 +5,15 @@ import EnviousWisprCore
 import Foundation
 
 /// The Accessibility attributes a speaker capture copies (#4013 chunk 13A). Exactly what the
-/// native and rules readers consume (`CallAXNode`), plus a window's title and a page's address.
+/// native, rules and self-mute (#4248) readers consume (`CallAXNode`), plus a window's title and
+/// a page's address.
 package enum CallAXAttribute: String, Sendable, CaseIterable {
   case role = "AXRole"
   case title = "AXTitle"
   case description = "AXDescription"
   case value = "AXValue"
   case identifier = "AXIdentifier"
+  case domIdentifier = "AXDOMIdentifier"
   case domClassList = "AXDOMClassList"
   case size = "AXSize"
   case children = "AXChildren"
@@ -37,16 +39,22 @@ package enum CallAXRead<Element> {
 /// different elements with equal hashes are both copied.
 package struct CallAXTreeAccess<Element> {
   package var read: (Element, CallAXAttribute) -> CallAXRead<Element>
+  /// Several attributes of one element in one message, answered in the order asked (#4248):
+  /// the live access batches them, which a slow app answers far faster than one message per
+  /// attribute. Without one, each attribute is read alone.
+  package var readMany: (Element, [CallAXAttribute]) -> [CallAXRead<Element>]
   package var hash: (Element) -> Int
   package var same: (Element, Element) -> Bool
   package var now: () -> ContinuousClock.Instant
 
   package init(
     read: @escaping (Element, CallAXAttribute) -> CallAXRead<Element>,
+    readMany: ((Element, [CallAXAttribute]) -> [CallAXRead<Element>])? = nil,
     hash: @escaping (Element) -> Int, same: @escaping (Element, Element) -> Bool,
     now: @escaping () -> ContinuousClock.Instant
   ) {
     self.read = read
+    self.readMany = readMany ?? { element, attributes in attributes.map { read(element, $0) } }
     self.hash = hash
     self.same = same
     self.now = now
@@ -67,6 +75,12 @@ package struct CallAXBounds: Sendable, Equatable {
 
   package static let standard = CallAXBounds(
     maxNodes: 6_000, maxDepth: 64, budget: .milliseconds(400))
+
+  /// The Teams app answers Accessibility slowly: in the #4248 Teams run a whole copy of about
+  /// 260 nodes took 118 to 399 ms and three in four copies hit the 400 ms bound (2026-10-31).
+  /// A characterization value under measurement, not yet a sized bound.
+  package static let teamsApp = CallAXBounds(
+    maxNodes: 6_000, maxDepth: 64, budget: .milliseconds(1_000))
 }
 
 /// What a capture skips in one provider's tree (#4013 13B runtime receipt). The live Zoom app
@@ -103,6 +117,12 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
     return Self.zoomToolbarIdentifiers.contains(identifier)
   }
 
+  /// Whether an element's DOM id is read: buttons only, where the Teams app's microphone button
+  /// carries it (#4248), and never in the Zoom app, a native app that has none.
+  func readsDOMIdentifier(role: String) -> Bool {
+    self != .zoomApp && role == "AXButton"
+  }
+
   func isEvidence(role: String) -> Bool {
     self == .zoomApp && Self.zoomEvidenceRoles.contains(role)
   }
@@ -110,6 +130,32 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
 
 /// An immutable copy of one app's windows, and of the meeting pages inside them, with what the
 /// copy can say about itself. A page that is not the meeting is never copied beyond its own node.
+/// Where one copy's time went (#4248 timing receipt): numeric aggregates only, never content.
+package struct CallAXCopyCost: Sendable, Equatable {
+  package struct Window: Sendable, Equatable {
+    package let nodes: Int
+    package let ticks: UInt64
+    package var messages = 0
+    package var messageTime: Duration = .zero
+  }
+  /// Which message: the role batch, the role-dependent batch, or a single read.
+  package enum Kind: String, Sendable, CaseIterable {
+    case common, dependent, single
+  }
+  package struct Total: Sendable, Equatable {
+    package var messages = 0
+    package var time: Duration = .zero
+  }
+  /// Each copied window's elements, host ticks and messages, in copy order.
+  package var windows: [Window] = []
+  /// Messages sent to the app and the time spent inside them, overall and by kind.
+  package var messages = 0
+  package var messageTime: Duration = .zero
+  package var byKind: [Kind: Total] = [:]
+
+  package init() {}
+}
+
 package struct CallAXCapture: Sendable, Equatable {
   package let windows: [CallAXWindow]
   package let documents: [CallAXDocument]
@@ -127,14 +173,17 @@ package struct CallAXCapture: Sendable, Equatable {
   /// after the windows, on the same queue, within its own small budget; `nil` when not read,
   /// not wholly readable or out of time. Never pressed.
   package let accountTitles: [String]?
+  package let cost: CallAXCopyCost
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
     readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
-    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil
+    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil,
+    cost: CallAXCopyCost = .init()
   ) {
     self.accountTitles = accountTitles
+    self.cost = cost
     self.nodesVisited = nodesVisited
     self.failedReads = failedReads
     self.prunedControls = prunedControls
@@ -165,7 +214,18 @@ package enum CallSpeakerCapture {
       access: access, bounds: bounds, deadline: deadline, policy: policy, keepPage: keepPage)
     var copied: [CallAXWindow] = []
     var skippedWindows = 0
+    var windowCosts: [CallAXCopyCost.Window] = []
     for window in windows {
+      let windowStart = hostTime()
+      let nodesBefore = walk.count
+      let messagesBefore = walk.messages
+      let timeBefore = walk.messageTime
+      defer {
+        windowCosts.append(
+          .init(
+            nodes: walk.count - nodesBefore, ticks: hostTime() &- windowStart,
+            messages: walk.messages - messagesBefore, messageTime: walk.messageTime - timeBefore))
+      }
       if policy != .standard {
         // Only a window positively known not to be the call is skipped; a failed read keeps it.
         let identifier = walk.text(window, .identifier)
@@ -209,7 +269,15 @@ package enum CallSpeakerCapture {
       windows: copied, documents: walk.documents, completeness: completeness,
       readStartHostTime: started, readEndHostTime: ended, nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
-      skippedWindows: skippedWindows, accountTitles: accountTitles)
+      skippedWindows: skippedWindows, accountTitles: accountTitles,
+      cost: {
+        var cost = CallAXCopyCost()
+        cost.windows = windowCosts
+        cost.messages = walk.messages
+        cost.messageTime = walk.messageTime
+        cost.byKind = walk.byKind
+        return cost
+      }())
   }
 
   private struct Walk<Element> {
@@ -225,6 +293,17 @@ package enum CallSpeakerCapture {
     var failedReads = 0
     var prunedControls = 0
     var documents: [CallAXDocument] = []
+    var messages = 0
+    var messageTime: Duration = .zero
+    var byKind: [CallAXCopyCost.Kind: CallAXCopyCost.Total] = [:]
+
+    mutating func note(_ kind: CallAXCopyCost.Kind, since sent: ContinuousClock.Instant) {
+      let spent = access.now() - sent
+      messages += 1
+      messageTime += spent
+      byKind[kind, default: .init()].messages += 1
+      byKind[kind, default: .init()].time += spent
+    }
 
     init(
       access: CallAXTreeAccess<Element>, bounds: CallAXBounds, deadline: ContinuousClock.Instant,
@@ -244,9 +323,41 @@ package enum CallSpeakerCapture {
         truncated = true
         return nil
       }
+      let sent = access.now()
       let result = access.read(element, attribute)
+      note(.single, since: sent)
       if case .failed = result { failedReads += 1 }
       return result
+    }
+
+    /// Several attributes in one message, or nil without asking once the budget is spent. An
+    /// answer of the wrong length counts as every attribute failing.
+    mutating func readMany(_ element: Element, _ attributes: [CallAXAttribute])
+      -> [CallAXRead<Element>]?
+    {
+      guard access.now() < deadline else {
+        truncated = true
+        return nil
+      }
+      let sent = access.now()
+      var results = access.readMany(element, attributes)
+      note(attributes.first == .role ? .common : .dependent, since: sent)
+      if results.count != attributes.count {
+        results = attributes.map { _ in .failed }
+      }
+      for case .failed in results { failedReads += 1 }
+      return results
+    }
+
+    /// A text attribute from a batch: a failed read makes the copy unreadable.
+    mutating func text(_ read: CallAXRead<Element>?) -> String? {
+      switch read {
+      case .text(let text)?: return text
+      case .failed?:
+        unreadable = true
+        return nil
+      default: return nil
+      }
     }
 
     /// Whether `element` was copied already; records it when not.
@@ -275,44 +386,63 @@ package enum CallSpeakerCapture {
       }
       guard !seen(element) else { return nil }
       count += 1
-      guard let roleRead = read(element, .role) else { return nil }
-      guard case .text(let role) = roleRead else {
+      // Message 1: the role and every attribute read whatever the role is.
+      let common: [CallAXAttribute] = [
+        .role, .title, .description, .value, .identifier, .domClassList, .size,
+      ]
+      guard let first = readMany(element, common) else { return nil }
+      guard case .text(let role) = first[0] else {
         unreadable = true
         return nil
       }
-      let title = text(element, .title)
-      let description = text(element, .description)
-      let value = text(element, .value)
-      let identifier = text(element, .identifier)
+      let title = text(first[1])
+      let description = text(first[2])
+      let value = text(first[3])
+      let identifier = text(first[4])
       var classes: [String] = []
-      switch read(element, .domClassList) {
-      case .texts(let list)?: classes = list
-      case .text(let one)?: classes = [one]
-      case .failed?: unreadable = true
+      switch first[5] {
+      case .texts(let list): classes = list
+      case .text(let one): classes = [one]
+      case .failed: unreadable = true
       default: break
       }
       var width: Double?
       var height: Double?
-      switch read(element, .size) {
-      case .size(let w, let h)?:
+      switch first[6] {
+      case .size(let w, let h):
         width = w
         height = h
-      case .failed?: unreadable = true
+      case .failed: unreadable = true
       default: break
       }
-      var url: String?
-      var keptPage = true
-      if role == "AXWebArea" {
-        url = text(element, .url)
-        keptPage = url.map(keepPage) ?? false
-      }
-      var children: [CallAXNode] = []
+      // Message 2: what the role allows. A DOM id is asked only where the policy reads it; a
+      // page's children wait for its address (message 3); pruned children are never asked.
+      let isPage = role == "AXWebArea"
       let pruned = policy.prunesChildren(
         role: role, identifier: identifier, insideEvidence: insideEvidence)
       if pruned { prunedControls += 1 }
+      var second: [CallAXAttribute] = []
+      if policy.readsDOMIdentifier(role: role) { second.append(.domIdentifier) }
+      if isPage { second.append(.url) }
+      if !isPage, !pruned { second.append(.children) }
+      let answers = second.isEmpty ? [] : readMany(element, second)
+      func answer(_ attribute: CallAXAttribute) -> CallAXRead<Element>? {
+        second.firstIndex(of: attribute).flatMap { index in answers.map { $0[index] } }
+      }
+      let domIdentifier = text(answer(.domIdentifier))
+      var url: String?
+      var keptPage = true
+      var childrenRead = answer(.children)
+      if isPage {
+        url = text(answer(.url))
+        keptPage = url.map(keepPage) ?? false
+        // Message 3: a kept page's children, after its address decided.
+        childrenRead = keptPage && !pruned && answers != nil ? read(element, .children) : nil
+      }
+      var children: [CallAXNode] = []
       if keptPage, !pruned {
         let inside = insideEvidence || policy.isEvidence(role: role)
-        switch read(element, .children) {
+        switch childrenRead {
         case .elements(let list)?:
           for child in list {
             if let copy = node(child, depth: depth + 1, insideEvidence: inside) {
@@ -326,8 +456,8 @@ package enum CallSpeakerCapture {
       }
       let copy = CallAXNode(
         role: role, title: title, description: description, value: value,
-        identifier: identifier, domClassList: classes, width: width, height: height,
-        children: children)
+        identifier: identifier, domIdentifier: domIdentifier, domClassList: classes, width: width,
+        height: height, children: children)
       if role == "AXWebArea", keptPage, let url {
         documents.append(CallAXDocument(url: url, root: copy))
       }
@@ -344,6 +474,7 @@ package enum CallSpeakerCapture {
   package static var liveAccess: CallAXTreeAccess<AXUIElement> {
     CallAXTreeAccess<AXUIElement>(
       read: { element, attribute in liveRead(element, attribute) },
+      readMany: { element, attributes in liveReadMany(element, attributes) },
       hash: { Int(CFHash($0)) }, same: { CFEqual($0, $1) }, now: { ContinuousClock.now })
   }
 
@@ -360,6 +491,50 @@ package enum CallSpeakerCapture {
     default: return .failed
     }
     guard let value else { return .missing }
+    return liveDecode(attribute, value)
+  }
+
+  /// Several attributes of one element in one message (`AXUIElementCopyMultipleAttributeValues`,
+  /// options 0, so one attribute's error does not stop the others). Same answers as reading
+  /// each alone: an attribute the element lacks is missing, any other error failed.
+  static func liveReadMany(_ element: AXUIElement, _ attributes: [CallAXAttribute])
+    -> [CallAXRead<AXUIElement>]
+  {
+    guard AXUIElementSetMessagingTimeout(element, messagingTimeout) == .success else {
+      return attributes.map { _ in .failed }
+    }
+    var values: CFArray?
+    let status = AXUIElementCopyMultipleAttributeValues(
+      element, attributes.map { $0.rawValue } as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0),
+      &values)
+    return decodeBatch(attributes, status: status, values: values as [AnyObject]?)
+  }
+
+  /// One batch answer, position by position. A failed call, or an answer of the wrong length,
+  /// fails every attribute; an `AXValue` error entry is that attribute's own error; `CFNull` is
+  /// missing.
+  static func decodeBatch(_ attributes: [CallAXAttribute], status: AXError, values: [AnyObject]?)
+    -> [CallAXRead<AXUIElement>]
+  {
+    guard status == .success, let values, values.count == attributes.count else {
+      return attributes.map { _ in .failed }
+    }
+    return zip(attributes, values).map { attribute, value in
+      if value is NSNull { return .missing }
+      if CFGetTypeID(value) == AXValueGetTypeID(), AXValueGetType(value as! AXValue) == .axError {
+        var error = AXError.success
+        guard AXValueGetValue(value as! AXValue, .axError, &error) else { return .failed }
+        switch error {
+        case .noValue, .attributeUnsupported: return .missing
+        default: return .failed
+        }
+      }
+      return liveDecode(attribute, value)
+    }
+  }
+
+  /// A successfully read value as the capture keeps it; an unexpected type is missing.
+  static func liveDecode(_ attribute: CallAXAttribute, _ value: CFTypeRef) -> CallAXRead<AXUIElement> {
     switch attribute {
     case .children, .windows:
       guard let list = value as? [AXUIElement] else { return .missing }

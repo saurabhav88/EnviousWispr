@@ -1,0 +1,1 @@
+{"language":"et","title":"jäta mu hääl välja, kui olen kõnes vaigistatud","words":["vaigistus"],"phrases":["ära salvesta mu häält, kui olen kõnes vaigistatud","järgi koosoleku salvestamisel Zoomi vaigistusnuppu"]}

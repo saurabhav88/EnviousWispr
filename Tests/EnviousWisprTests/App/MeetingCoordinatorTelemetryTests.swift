@@ -257,6 +257,40 @@ struct MeetingCoordinatorTelemetryTests {
     #expect(harness.ended.map(\.callReportsOmitted) == [0, 0])
   }
 
+  @Test("#4248: the recording's mute summary reaches meeting.ended at stop; a Retry keeps it; recovery has none")
+  func muteSummaryAdoptedRetriedAndNotInvented() async throws {
+    let harness = try Harness()
+    harness.receiptError.withLock { $0 = CocoaError(.fileWriteOutOfSpace) }
+    await harness.coordinator.start(from: .menu)
+    let recorder = try #require(harness.recorders.last)
+    let meetingID = recorder.configuration.meetingID
+    var health = MeetingTrackWriter.Health()
+    health.silencedFrames = Int(MeetingAudioFormat.sampleRate) * 3
+    recorder.microphoneHealth = health
+    await harness.coordinator.stop()
+    await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
+    harness.receiptError.withLock { $0 = nil }
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("retry ended") {
+      harness.ended.count == 2 && harness.coordinator.processing == nil
+    }
+    let summaries = harness.ended.map(\.muteFollow)
+    #expect(summaries[0] == summaries[1], "the Retry inherits the recording's summary")
+    let summary = try #require(summaries[0])
+    #expect(summary.enabledAtStop)
+    #expect(summary.silencedSeconds == 3)
+    // The stand-in recorder ran no steps: nothing was bound, so neither share is known.
+    #expect(summary.eligibleSeconds == 0 && summary.silencedShare == nil)
+
+    await harness.coordinator.start(from: .history)
+    harness.coordinator.prepareForTermination()
+    let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
+    relaunched.launch()
+    await eventually("recovered ended") { harness.ended.count == 3 }
+    #expect(harness.ended.last?.outcome == .interruptedReady)
+    #expect(harness.ended.last?.muteFollow == nil, "never invented after a relaunch")
+  }
+
   @Test("#4121: a quit keeps no row of its own; the attempt recovered after the relaunch has no call-sound facts")
   func callSoundSummaryNotInventedAfterRecovery() async throws {
     let harness = try Harness()

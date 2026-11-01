@@ -176,13 +176,18 @@
    "id": "meetingTranscriptEngine.apple",
    "review": "additions/meetingTranscriptEngine.apple.json",
    "reviewSHA256": "940ce70c241c62ed0c3404f147b3ad76789151386de3b53fff3e2b70e4c3a50b"
+  },
+  {
+   "id": "meetingFollowsCallMute",
+   "review": "additions/meetingFollowsCallMute.json",
+   "reviewSHA256": "79235760e2a31a06ec47f0bb764e4ae8c1b9fa158e62ed2f84f66365df40c3cc"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "5f5b71261f99a98663c63ac857a18e374d863b370822f3f0d7923d1f598fc61f",
-  "bytes": 1787300
+  "sha256": "e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3",
+  "bytes": 1795824
  },
  "sources": [
   {
@@ -466,7 +471,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "5fd6d222364b6a3832f3eb5eb38d01be0f51861f90604aaf5bfe87599e24965f",
+   "contentSHA256": "2e9089156d27aff171a6d82ff48de25da53e9bcfdf1a574103bbd5d2a64212a2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1289,13 +1294,46 @@
       "sha256": "a1c3c392084cbb5e9d73798b04e07bb0cd66ce909e7070337aa9dd5f582efe84"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ar.txt",
+      "sha256": "df85be248c69f512a20aa0bf34e7710d2e77cf6fbac5bfd750aac5d92b131053"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "3eb259cd9b6a0a443205020a95b55ad27bd1a1dd207a31398598cd37c94b3094",
+   "contentSHA256": "84d854f84452b0a91a868284ab98c9594739d1fde65d53c95de15a6aee8b27ea",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2109,13 +2147,46 @@
       "sha256": "30ec624d218675deacd265b913146c9e7f90fe3133a28cb89756e9fac63cf1a1"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-bg.txt",
+      "sha256": "c57a2bbb6df1ed410b9ed7bc1c789ed4e9e4cb7ba77c29980bc3bd521a7db894"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "0e4d80e89b1521045bfd00de8569ecd887eab0caf8437f162831121eb3bf48f6",
+   "contentSHA256": "8cec0efc5ed6fa3a3bf2187064924820c67dd8ad02cdff071bb9253c1050e436",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2929,13 +3000,46 @@
       "sha256": "0ac6575a272e23d107b90461360739b4876554187d5d08116545afced78f80d0"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-cs.txt",
+      "sha256": "58cbefb02e8b2b66c033cf1ff73c95600a9afd68112afbcbf17f802df614b0ff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "47d27cdd8dc39eb9b77664ca78e7dde34df656f15ab8b6acfb46d96a0a786e50",
+   "contentSHA256": "7f521270997029cfb4a40feb7e46725ad887ced6e29a462112b61a21cb021ae2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3749,13 +3853,46 @@
       "sha256": "66d07750730a53a3ee37d49d01a455698b06581528a86c3682097563bc28dbab"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-da.txt",
+      "sha256": "f13f6282c3d0d44e5a128620488f13a6fdf1c92fd034b684c979f323824b5de3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "be3ec673f16d9bfd2d50c3f193f95ad9d2e31b55c49fbcf0d84a226f92eff68b",
+   "contentSHA256": "113942612bbcec9e88e1d59b20f4e174eafdaabcc7a89cb8ba6b1e4c1cbcf6c0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4735,13 +4872,46 @@
       "path": "additions/meetingModelsEngines/council-de.json",
       "sha256": "f5e4e94b94ca0119a8f2b7b0b65ec940552f012e1172228128e3ebc9d81b3dd9"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-de.txt",
+      "sha256": "341e0b98b3847862a377b9eb4bb246ee929bc193adb74354ff3343479e9f47c1"
+     },
+     "disposition": "round 1, GPT gpt-6-sol on Azure: kept words Stummschaltung, Mikrofon, Stimme and the phrase Stimme bei Stummschaltung weglassen; dropped Zoom, Teams and Aufnahme (they fit the call-app and call-sound places equally). Round 2, GPT and Gemini (founder approved the Gemini spend 2026-11-01): both called the long phrases unnatural and GPT called the Google Meet phrase misleading; adopted GPT's block (words Stummschaltung, stummgeschaltet, Mikrofon, Stimme; three short phrases). The same rounds reviewed the German title, short line and help text in the interface catalog (additions/meetingFollowsCallMute/council-de-digest.md)",
+     "council": {
+      "digest": {
+       "path": "additions/meetingFollowsCallMute/council-de-digest.md",
+       "sha256": "d2a5f26b906a882c9f6c9d2292fcecd9686121912c54440cd362119c9d4b16f7"
+      },
+      "prompts": [
+       "additions/meetingFollowsCallMute/council-de-prompt.txt",
+       "additions/meetingFollowsCallMute/council-de-prompt-2.txt"
+      ],
+      "runs": [
+       "run-1793524080-8e3d68a1",
+       "run-1793538525-cd287be7"
+      ]
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "d5a4bd7d1cd9eca82717fc1dc8396918d901bf072a2d29476d293c1f8d62c5ec",
+   "contentSHA256": "0f1955fee550ad40a749e398a63b70880b81a70c35661b9bdbaef8a714299e0c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5564,13 +5734,46 @@
       "sha256": "afdf0379781055e47b29154e52b80f87cfe685c71bc785d636c244e2a5fefb1a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-el.txt",
+      "sha256": "d9f3441f884e0fe228c5e35f24e54f4474ec4140b9b5a6cbc7ad86483c9ad000"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "03c67fdb042fba5d8caaa57677af428dac1e7837fd5d5fae60d83035f9569734",
+   "contentSHA256": "1695fe52afddce755a7428391e9c45de6cd4c791bc14937c420794cdadca5af4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6399,13 +6602,32 @@
       "sha256": "582ae7019315dd51cabcb16041fea93d41dfa709702caca4b18af7968a24a4b0"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-en.txt",
+      "sha256": "085ee88a8d43af57311062f5c5244cb97a8da82ff57a74e02dbd2b6ce4f5edf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "ad6556a97494aee2b390d4d102841a3cb2d575696ae785cbb3647eb7acf3989a",
+   "contentSHA256": "1e8468fbc97fa149b9ac0c1254a8f9297df468b0bc5e6cd24323e27f7a340f3d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7228,13 +7450,46 @@
       "sha256": "032c7703fcd19ab6ab6f6496e75b4be4c114d48b8b1c0f8a7fb2311f874843f8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-es.txt",
+      "sha256": "7604506b8fb008e89d3d4758b94c1f2a82db6c802f1bc7a4bb9e8af0e2942f8d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "b967b243e5512ae0fa31e2b1f3144af7e524eb0a964fbf751a670edbbb229bd3",
+   "contentSHA256": "397a3a9bb8ffbada05c48ac359b3f7689376e89f4d47ed4658c68eb1d8fe2983",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8048,13 +8303,46 @@
       "sha256": "700995ab8e89b8a1be1775ccb67aed66326ff69356fc74efa688149db58e3d63"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-et.txt",
+      "sha256": "d561269f31666ff6c20fca5d6173727e8c4e8c194f33607cab2fefef5c0888c8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "a9b20d32dc522aca1d48124b8162981605fafc343029bcbaca0f7f1fae2a1717",
+   "contentSHA256": "9344158e73f55bb76347e6d63945ba941572317dc1b516311dd91a5292a19faa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8868,13 +9156,46 @@
       "sha256": "339403a80a74f7d520d57c4694af1a85adede79a08b9e5bbcf6ce9c4ab04002b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-fi.txt",
+      "sha256": "526556124b9b556bbb2dbb8ab880e49218f37992342e7a2ba9da17c6085902d9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "1891058c5bd5c33331232e42817b0c67a7cb018de9eef08256d3ed792812af04",
+   "contentSHA256": "2364f426ea7e666876c070ebdec9688d17a2b4fef634070e6553e48ba3ed064d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9688,13 +10009,46 @@
       "sha256": "a9888ca6d9fc2592b1c44271d8e04ad5256e064666099971163ebcd037e03426"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-fr.txt",
+      "sha256": "610a49dca5286e3e1d7dce21763465ea0f904afca48f5d9da9f7b33a3f2d283b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "82197c4052c8315ef3669b839cadf6050627efb4647875f5f528bfa454230b37",
+   "contentSHA256": "05e164f838798bc1529941fbbeab24442767f20312b6744d06a54a25853c5562",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10508,13 +10862,46 @@
       "sha256": "c68c30451fe048116f6d258f0cd573d227ea226bcce4d977983441fb3212c388"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hi.txt",
+      "sha256": "27e6e9331977e65ef7bc7c165298776405dbb52d99e523ff54b981b892c55d69"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "84cd47c04190490650f5d2e7653e69396508f6970e40108d3279043d40eb2d2d",
+   "contentSHA256": "3df2d7c0143dd10c01359cc74dcc679a42aa0e23649007641b80f82c90c2be13",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11328,13 +11715,46 @@
       "sha256": "263e8278eb5f4b05b10403aeebf1aa47543d4393e8f2ab742b81520cf75492f8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hr.txt",
+      "sha256": "a1903e786a7576007cdec0943b19a4db46430d03900b70a94840e9781fcfc964"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "9807521711eeb775a735d7fdb7ddb768b27513a392c38e1aaaab708aa32e838d",
+   "contentSHA256": "ff4e2cb79e1d25513b84fd8ba8dc433b51604382c85e31450d8ec323d69ce96e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12148,13 +12568,46 @@
       "sha256": "2eb9f884bf95f12bd4a331f764156113ff3295a65824c31bc8195edb14e74a65"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hu.txt",
+      "sha256": "eea3f7baf9f6df76c719d96062124b0ee26e0e7708fa046e339e43a356eadc04"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "c9317050352c3d8e76b7d172808090f156bcc5c4b2f3a931754c5ad4ff8b8722",
+   "contentSHA256": "0f04720d96d48c06efdef02d5b3a2c9f6d566fce33fec678331cf557be053242",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12977,13 +13430,46 @@
       "sha256": "82d05482b9aa9fbd876575543c920ced1d1f4177de82a24f87fcf115fd1fb644"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-it.txt",
+      "sha256": "a108712b77284b7ccee2b0e913f8941e83dfe80276b221e54d4498ef91ef86d7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "0219addfad969c5d8dbc12d9ddeeb21cac7cf489afba3145c19b9883c6816d5c",
+   "contentSHA256": "5604fad75c1a87dde4da78064284179344656a4701b9d1aa0b90da583764d960",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13797,13 +14283,46 @@
       "sha256": "1afd8aa0b16710a7dec62ad57a39e1b5c48e47463ef8cbcb1a37037ee2bc2418"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ja.txt",
+      "sha256": "81f181ca543707407a7dee3672c0a28e80e48887e9405e98d04b038a3e848e21"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "ee0f55dfbc149b7aed4623d5f6b7011d13ca1776d65b987a448227262b014aa0",
+   "contentSHA256": "540c75f7b3cdb98fd99822dcd593db647219ea84e227e676fd272feb7ed72268",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14617,13 +15136,46 @@
       "sha256": "823859a6752824febb47c9650b762a92fb5e01fa3878541501c87e8f4c168283"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ko.txt",
+      "sha256": "3bcdb30a01d8152bf631f5ebb1da8c6c98f6452bfc183de7b5c5e535ef144638"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "6778f22e2b233f661f638f6353b6a96ee5a70f8a293df2b173a6d2ebac0379b2",
+   "contentSHA256": "9465ad94d803adf73dc40df0ac56574326bbf06bdac20d6b25b5091a9582786a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15446,13 +15998,46 @@
       "sha256": "250e201c18d8e6965c66b8075b97d1d3751177110857cfba0449e677efefe3e2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-lt.txt",
+      "sha256": "0e535a63f50bc495fd1ecca7233b224f1d5dcb182d9366ff9c4aaa44c99c2f24"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "dd1f359e5560e6f88bc091d060214e112a1a73eedcfcdd0951833147c53d6ad1",
+   "contentSHA256": "3e485ab8040f6fd870e83e7f61c3f8ad7191049a7ff0d7fafc6886206ebf303b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16266,13 +16851,46 @@
       "sha256": "8ecb291edf1aeb0534ce9def0b2dc36b99ce3e7f1157851bdda5e9de4422023a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-lv.txt",
+      "sha256": "fd87a7f9fbadccb636615f77364dfe4ef6eb85e67c3908ad8b2b5d6f9e678b60"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "eb4f0d87d3e3d80c3553941661589e0a63dbfa573e7bdddc45bd7caf9f89cf60",
+   "contentSHA256": "9283acd270a22910f60ff727ef01cccc1c4998b5adbf8b76e239469de23ea511",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17095,13 +17713,46 @@
       "sha256": "1128fad5b527ec6081a05452207dabe33c70fd7344bda005cee481793b69d5ca"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-mt.txt",
+      "sha256": "9812df8c6e70d9d2112d8a71d2654f0424f3bbea86a1cf3e15bf654a1e8160a8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "99138542c2186ea0ea6d8cd9754403cadacda8a904bcea3f7447c77c31b8bb9e",
+   "contentSHA256": "5224cff0dc381e8ba40f0000fd38d221e0a2c76f397455962bae224f333b1882",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17915,13 +18566,46 @@
       "sha256": "3695997e1569d8b84abe655846475b21472f2156f52619e9e9ab10b9a406036f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-nl.txt",
+      "sha256": "27b3e8da5f84e8a2dee62ec99f559ae077d6d53267df5b720bebbed10aab6cc2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "37ee20a6d8278e7461fb941b54f8cc87f9ceb3fee7c37aebe529fccd7faa95b7",
+   "contentSHA256": "bfe1f08f4e6484827f9b07560c33bd7656ee0fc27440adac9a1bdeb11402d6d7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18735,13 +19419,46 @@
       "sha256": "03506de0e00550041e251ff41cd33b0ebd7558542ca9972b89808c595ecc954f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-pl.txt",
+      "sha256": "92e5a9785d688fe7b2c11da051006c012166f4c900d8c31bac59034f2d1040e0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "d9d68d4184f0153dcb0719d72ef0520d99830141780741f88ab42c5893d1282b",
+   "contentSHA256": "e32cfb5c67d13d295016920c1993e78d10099b2e4e8092730071b4903da24dd7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19563,13 +20280,46 @@
       "sha256": "0546dd162eccbc3f26c12586946529130e9dfbfac1236b551006ebd5130e4d79"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-pt.txt",
+      "sha256": "bba7e8ec785d83fd442c04977803697ce9cbc3b4c6ac664bff942081ae7c4239"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "6e7d1fdd04e7916ba6093e8db821c8df128a0754af95d54ad25739365d74a16c",
+   "contentSHA256": "ed8cb10d8b0b0a72e3721b0e4db982fe88f3a205cea59cb0c7d43e806620fe61",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20383,13 +21133,46 @@
       "sha256": "c55fbb996d0882d4f63b83916de65a2ea45034224cd948c125a62d0c3f866503"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ro.txt",
+      "sha256": "ffd1ec5a5627dc4a3ba4874d8e55ad6392f3b41720235419029fc6493c9f17a3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "84c57c5a210fb4dc6d8f2de66d9ed34a73fd9377e44d06fedcf0c942d8ddaadc",
+   "contentSHA256": "78c81f3827a254472df520a9533d3c01d1e0d6b0dddea3e9e6b697b97c842ce6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21203,13 +21986,46 @@
       "sha256": "24ef299797f8f40ff2a9d6558c042bf4b2e92cc3f2c93caf67c8b2e295d89850"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ru.txt",
+      "sha256": "84fd15376218b3d795b5418fa449511421b47100b245b93462bd3333472f0c51"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "3029f0210316552618a21acb20d3fe2962937112aaf0485ae7964c91c77523d1",
+   "contentSHA256": "804aa7406bbe9f450f400255a0b3b9bf684f853a1d42355699960125abeb53b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22023,13 +22839,46 @@
       "sha256": "2201b920d726c3479a3ccd0bfbe0d4e68e739f1c5ef8801cbafd0d9d0f6c187e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sk.txt",
+      "sha256": "22556d3c9710ed0ea580a1b9ef3ae75017994350bac0566666db521b7e43778c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "1c35f6f452fbe5c10ad6085f9f6d572cee1783e8f9a729a824d6b6d2daffa7be",
+   "contentSHA256": "4bcff6934a97943d5b847a3af7a4fa4bb612d12ec2381883ab10dc2dfb31080b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22852,13 +23701,46 @@
       "sha256": "5acb8aa22ede1cac497a1f8d340261f3b1dc67867db1f83efe59b02f16b49104"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sl.txt",
+      "sha256": "50125d3da1261d076decb42345ba715d939b833fd1e8b40c39c975c2689eac91"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "9c8cfb908b3dece32a98371c703a0935ac70b302b1a54ce77dad9116ae7e8ca3",
+   "contentSHA256": "711eda5565295bfff7c13355f80e7fa13fef1d01f01b2628e35ae773dd1bc361",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23672,13 +24554,46 @@
       "sha256": "ff3f35edae2dba47cad772cc245f12c117535c942486a422558f324e44ef659b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sv.txt",
+      "sha256": "4940a3a867b766899340eeda8ce77b752c9e5bda4b3ae035f0370a4b7238992a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "86b9a2a7b961cc11eec171adedae4a7b9f3a94de4b2aba8b7297400578621d68",
+   "contentSHA256": "c28201edff631aea187a46d0c3ed0a9aa6bc64cc338fd8453cc12e71e66c2386",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24492,13 +25407,46 @@
       "sha256": "83f75f19fd87d028290e74e9de4b654d92321a4a672ec48915274493e5be3858"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-tr.txt",
+      "sha256": "f00dcf2eddb4fb53d93fec07dd565321655262173650416586cf5519dda8780d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "cec21be7369bfd72644942215f974b7340f22ddb09fb4c7cc0a3f394d456421e",
+   "contentSHA256": "7a761e5f8637e0bb10e4f2dfa83c1aaa2ee144115f29ae2cbdfaf42f7fea4bad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25321,13 +26269,46 @@
       "sha256": "a0766e4db652a4751805548ce4aa66e305487059ab0bf4b163e781fdb2a2a41e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-uk.txt",
+      "sha256": "12430cccdd989f7b0c43bac87d883465aa3748d2252f5278522e6ae6c31478df"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "removed the phrase that asked to record the voice while muted (contradicts the setting)"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "69731784374d2e9efc44d7a40bf2cdb64e2ab68d4739be89f7644afc0411e53f",
+   "contentSHA256": "8a8b97c0d00d975cc3388d3f01fe3e204b11c50f3d3c18cc69cc3f51ec901c7c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26141,13 +27122,46 @@
       "sha256": "e049be1aa31228478f92693ea5ebaa58c21027683e947d4e5a7879396738c3d4"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-vi.txt",
+      "sha256": "4cf3635922c35fc82841eca38a4947bb5c293b7ce38a8a34eb3e5f5559ee6580"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "9f81228ce8f07bff25e753cf1970f485a535da9d030adf9e0a93efeb7fbeb2fc",
+   "contentSHA256": "0d3db30bf247bfef8764fcd652b9a11f7a41e580c4cd3af10c3659449f3a034f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26961,6 +27975,39 @@
       "sha256": "5b194b64503d3f3fe93790621bffab2a73e81fcecac890ed57fe82b240785980"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.apple.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-zh.txt",
+      "sha256": "680d474df1c90318e3091cde7eec8c0bc0ff6d765bc988055bd29b31c098f645"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)",
+     "rereview": {
+      "reason": "English short line changed to \"Follows the mute button in supported Zoom, Teams and Google Meet calls.\" (chunk 6 review)",
+      "method": "Codex, one fresh isolated session, all 30 languages other than English and German, checked against the new English",
+      "date": "2026-11-01",
+      "prompt": {
+       "path": "additions/meetingFollowsCallMute/rereview-prompt.txt",
+       "sha256": "ed58a5c76c45a642865e87e8ffe9f15f7375f943cd2695ebdd7b95bf372b9c63"
+      },
+      "output": {
+       "path": "additions/meetingFollowsCallMute/rereview.txt",
+       "sha256": "16e59ab3415c2cdc85ef4d36550f7662063ed1e7d5b8207b0b8de71f35ab0fa6"
+      },
+      "disposition": "OK, unchanged"
+     }
     }
    ],
    "phraseExemptions": []
@@ -27247,7 +28294,8 @@
   "yourWords.export": "d28e07ce3afffe4cb87d63ae1280d03854e7c90d3da8c047b593b356f77121ef",
   "yourWords.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
   "yourWords.massEdit": "a3f4fe070d5e6fc8cf78e3122bc299db26a3c139c8b7b0ad6aff1bbae9d5ce03",
-  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0"
+  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0",
+  "meetingFollowsCallMute": "24803fad4615bc95fe0b2e6620b4b8ff3cef6781e6f31751b57d0cd17b166e96"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

@@ -33,9 +33,20 @@ import os
 /// that callback, so a file can exist without its record (recovery adds it) but a record never
 /// names a file that is not complete. Any failed step is reported once through `onFailure`,
 /// stops the writer and leaves the file for recovery.
+///
+/// **Microphone silence hold (#4248).** A writer configured with `silenceHoldSeconds` passes every
+/// drained chunk through `MeetingMicrophoneSilence` on its queue before writing it: audio waits
+/// for the hold, samples inside `setSilencedIntervals` are zeroed, and the chunk is written and
+/// handed to `onReleased` with its original metadata. Release is scheduled queue work, never a
+/// wait. `finish`, `close(until:)` and `waitUntilWritten` release everything held first. Other
+/// writers (call sound) write each chunk at once, as before.
 public final class MeetingTrackWriter: @unchecked Sendable {
   public typealias SegmentHandler = @Sendable (MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @Sendable (Error) -> Void
+  /// Receives each chunk as written (after the hold and silence, if any), on the writer's queue.
+  /// The buffer is valid only during the call.
+  public typealias ReleasedHandler = @Sendable (UnsafeBufferPointer<Float>, MeetingReleasedChunk)
+    -> Void
 
   public struct Configuration: Sendable {
     public let meetingID: UUID
@@ -52,13 +63,17 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     public let bufferCapacity: Int
     /// Appends the handoff can hold between drains before new audio is counted as dropped.
     public let maxPendingChunks: Int
+    /// The microphone silence hold in seconds (#4248); nil writes each chunk at once. Ignored
+    /// for any track but the microphone.
+    public let silenceHoldSeconds: Double?
 
     public init(
       meetingID: UUID, track: MeetingTrackKind, folder: URL, anchorHostTime: UInt64,
       segmentSeconds: Double = MeetingAudioFormat.segmentSeconds, gapThresholdMs: Int = 1_500,
       bufferCapacity: Int = Int(MeetingAudioFormat.sampleRate * 20),
-      maxPendingChunks: Int = 8_192
+      maxPendingChunks: Int = 8_192, silenceHoldSeconds: Double? = nil
     ) {
+      self.silenceHoldSeconds = silenceHoldSeconds
       self.meetingID = meetingID
       self.track = track
       self.folder = folder
@@ -107,6 +122,14 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     public var preAnchorFrames = 0
     /// Audio handed over after a close or a failure.
     public var rejectedFrames = 0
+    /// Microphone frames written as silence (#4248).
+    public var silencedFrames = 0
+    /// Silence intervals left out because the hold's interval storage was full; their audio was
+    /// written as recorded.
+    public var silenceIntervalOverflows = 0
+    /// Microphone frames that arrived stamped more than the hold's late-arrival bound before
+    /// released audio; judged as live (#4248 arrival contract).
+    public var silenceLateFrames = 0
     public var failed = false
   }
 
@@ -147,6 +170,11 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   private let onFailure: FailureHandler
   private let framesPerSegment: Int
   private let gapThresholdSamples: Int
+  private let onReleased: ReleasedHandler?
+  private let now: @Sendable () -> UInt64
+  private let scheduler: ReleaseScheduler
+  /// C for the follower: the end host time of microphone audio released for good.
+  private let released = OSAllocatedUnfairLock(initialState: UInt64(0))
 
   // Queue-confined state.
   private var scratchSamples: [Float] = []
@@ -160,15 +188,52 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// The timeline sample after the last frame written; nil before the first write.
   private var cursorSample: Int?
   private var failed = false
+  private let silence: MeetingMicrophoneSilence?
+  /// The host time the one pending scheduled release is for; nil when none is pending.
+  private var releaseScheduledAt: UInt64?
+  /// Set by the close: a scheduled release that fires later does nothing.
+  private var silenceClosed = false
+  /// Run before every release decision (`setSilenceClock`).
+  private var silenceClock: MeetingSilenceStep?
   #if DEBUG
     private var phaseHook: (@Sendable (Phase) -> Void)?
   #endif
 
-  public init(
+  public convenience init(
     configuration: Configuration, onSegmentFinalized: @escaping SegmentHandler,
-    onFailure: @escaping FailureHandler
+    onFailure: @escaping FailureHandler, onReleased: ReleasedHandler? = nil
+  ) {
+    self.init(
+      configuration: configuration, onSegmentFinalized: onSegmentFinalized, onFailure: onFailure,
+      onReleased: onReleased, now: { mach_absolute_time() }, scheduler: .live)
+  }
+
+  /// When a held chunk's release runs. `live` is the writer queue at the due host time;
+  /// `manual` hands the due time and the release to a test, which runs it when its clock says.
+  package enum ReleaseScheduler: Sendable {
+    case live
+    case manual(@Sendable (UInt64, @escaping @Sendable () -> Void) -> Void)
+  }
+
+  /// `now` and `scheduler`: the host clock the hold releases by, and how a release is timed;
+  /// tests pass their own.
+  package init(
+    configuration: Configuration, onSegmentFinalized: @escaping SegmentHandler,
+    onFailure: @escaping FailureHandler, onReleased: ReleasedHandler?,
+    now: @escaping @Sendable () -> UInt64, scheduler: ReleaseScheduler
   ) {
     self.config = configuration
+    self.onReleased = onReleased
+    self.now = now
+    self.scheduler = scheduler
+    // Only the microphone is ever silenced; call sound is written as captured.
+    self.silence = (configuration.track == .microphone ? configuration.silenceHoldSeconds : nil)
+      .map { hold in
+      MeetingMicrophoneSilence(
+        holdSeconds: hold,
+        sampleCapacity: Int((hold + 2) * MeetingAudioFormat.sampleRate),
+        chunkCapacity: configuration.maxPendingChunks)
+    }
     self.queue = DispatchQueue(
       label: "com.enviouswispr.meeting.writer.\(configuration.track.fileStem)", qos: .utility)
     var initial = Pending(samples: [], chunks: [])
@@ -182,9 +247,48 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     self.framesPerSegment = max(
       16, Int(configuration.segmentSeconds * MeetingAudioFormat.sampleRate))
     self.gapThresholdSamples = configuration.gapThresholdMs * Self.samplesPerMs
+    // Weak: the hold belongs to this writer.
+    silence?.beforeRelease = { [weak self] in
+      guard let self, let clock = self.silenceClock else { return }
+      self.runSilenceStep(clock)
+    }
   }
 
   public var currentHealth: Health { health.withLock { $0 } }
+
+  /// The end host time of microphone audio the silence hold has released for good (the plan's
+  /// C): an interval update can no longer change audio before it. 0 before the first release.
+  public var releasedHostTime: UInt64 { released.withLock { $0 } }
+
+  /// Runs `step` on the writer's queue, in call order with appends, drains and the close. The
+  /// queue's clock is read first (the plan's D), then C, and the intervals `step` returns apply
+  /// in the same queue operation, before any later release. A writer without a hold, or one
+  /// already closed, ignores it.
+  public func applySilenceStep(_ step: @escaping MeetingSilenceStep) {
+    guard silence != nil else { return }
+    queue.async { [self] in runSilenceStep(step) }
+  }
+
+  /// Sets the step run before every release decision, forced releases included (nil removes
+  /// it), so expiry is judged at the queue's own time. The writer keeps `step`; it must not keep
+  /// the writer.
+  public func setSilenceClock(_ step: MeetingSilenceStep?) {
+    guard silence != nil else { return }
+    queue.async { [self] in silenceClock = step }
+  }
+
+  /// Fixed intervals for audio not yet released (tests).
+  func setSilencedIntervals(_ intervals: [MeetingSilenceInterval]) {
+    applySilenceStep { _, _ in intervals }
+  }
+
+  private func runSilenceStep(_ step: MeetingSilenceStep) {
+    let delivered = now()
+    guard let silence, !silenceClosed else { return }
+    guard let intervals = step(delivered, silence.released) else { return }
+    silence.setIntervals(intervals)
+    recordSilenceHealth()
+  }
 
   // MARK: - Producer side (any thread)
 
@@ -249,11 +353,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   /// Returns once every sample appended so far has been written to the open segment, WITHOUT
   /// finalizing it: the on-disk state a crash at this moment would leave. Queue order is the
-  /// signal (this block runs after every drain scheduled before it).
+  /// signal (this block runs after every drain scheduled before it). Held microphone audio is
+  /// released first, with the silence intervals known now.
   package func waitUntilWritten() async {
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       queue.async { [self] in
         drain()
+        releaseAllHeld()
         continuation.resume()
       }
     }
@@ -294,6 +400,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   private func closeOnQueue() -> CloseOutcome {
     drain()
+    releaseAllHeld()
+    silenceClosed = true
     guard !failed else {
       // A failed writer still closes its open file, so the header is as complete as the
       // failure allows; the file keeps its `.partial` name for recovery.
@@ -331,20 +439,97 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       for (i, chunk) in scratchChunks.enumerated() {
         let end = i + 1 < scratchChunks.count ? scratchChunks[i + 1].offset : all.count
         guard end > chunk.offset else { continue }
-        var frames = UnsafeBufferPointer(rebasing: all[chunk.offset..<end])
-        var arrival = Self.samples(from: config.anchorHostTime, to: chunk.hostTime)
-        if arrival < 0 {
-          let trim = min(frames.count, -arrival)
-          frames = UnsafeBufferPointer(rebasing: frames[trim...])
-          arrival += trim
-          health.withLock { $0.preAnchorFrames += trim }
+        let frames = UnsafeBufferPointer(rebasing: all[chunk.offset..<end])
+        let info = MeetingReleasedChunk(
+          hostTime: chunk.hostTime, afterDrop: chunk.afterDrop, sourceBreak: chunk.sourceBreak)
+        if let silence {
+          // The hold copies the chunk; nothing keeps a pointer into the handoff buffer.
+          silence.accept(
+            frames, hostTime: info.hostTime, afterDrop: info.afterDrop,
+            sourceBreak: info.sourceBreak, emit: emitHeld)
+        } else {
+          writeReleased(frames, info)
         }
-        guard !frames.isEmpty else { continue }
-        write(
-          frames, arrival: arrival, afterDrop: chunk.afterDrop, sourceBreak: chunk.sourceBreak)
         if failed { return }
       }
     }
+    releaseDueHeld()
+  }
+
+  // MARK: - Silence hold (#4248)
+
+  /// One released chunk. C is published first, so anything that sees this chunk downstream
+  /// also sees a watermark that covers it.
+  private func emitHeld(_ frames: UnsafeBufferPointer<Float>, _ info: MeetingReleasedChunk) {
+    if let silence {
+      let end = silence.released
+      released.withLock { $0 = max($0, end) }
+    }
+    guard !failed else { return }
+    writeReleased(frames, info)
+  }
+
+  /// Releases what is due now and schedules the next release; a no-op without a hold.
+  private func releaseDueHeld() {
+    guard let silence, !silenceClosed else { return }
+    silence.releaseDue(now: now(), emit: emitHeld)
+    recordSilenceHealth()
+    scheduleRelease()
+  }
+
+  /// Releases everything held (Stop, close, `waitUntilWritten`).
+  private func releaseAllHeld() {
+    guard let silence, !silenceClosed else { return }
+    silence.releaseAll(emit: emitHeld)
+    recordSilenceHealth()
+  }
+
+  /// One pending release at a time, for the oldest held chunk's due time. The block holds the
+  /// writer weakly and does nothing once the writer closed.
+  private func scheduleRelease() {
+    guard let silence, !silenceClosed, let due = silence.nextDue else { return }
+    if let pending = releaseScheduledAt, pending <= due { return }
+    releaseScheduledAt = due
+    let fire: @Sendable () -> Void = { [weak self] in
+      guard let self, self.releaseScheduledAt == due else { return }
+      self.releaseScheduledAt = nil
+      self.releaseDueHeld()
+    }
+    switch scheduler {
+    case .live:
+      let deadline = DispatchTime(uptimeNanoseconds: AudioConvertHostTimeToNanos(due))
+      queue.asyncAfter(deadline: deadline, execute: fire)
+    case .manual(let hand):
+      hand(due) { [weak self] in self?.queue.async(execute: fire) }
+    }
+  }
+
+  private func recordSilenceHealth() {
+    guard let silence else { return }
+    let (end, silenced, overflows, late) = (
+      silence.released, silence.silencedFrames, silence.intervalOverflows, silence.lateFrames
+    )
+    released.withLock { $0 = max($0, end) }
+    health.withLock {
+      $0.silencedFrames = silenced
+      $0.silenceIntervalOverflows = overflows
+      $0.silenceLateFrames = late
+    }
+  }
+
+  /// Hands a chunk to `onReleased`, trims audio from before the anchor and writes the rest.
+  private func writeReleased(_ chunk: UnsafeBufferPointer<Float>, _ info: MeetingReleasedChunk) {
+    onReleased?(chunk, info)
+    var frames = chunk
+    var arrival = Self.samples(from: config.anchorHostTime, to: info.hostTime)
+    if arrival < 0 {
+      let trim = min(frames.count, -arrival)
+      frames = UnsafeBufferPointer(rebasing: frames[trim...])
+      arrival += trim
+      health.withLock { $0.preAnchorFrames += trim }
+    }
+    guard !frames.isEmpty else { return }
+    write(frames, arrival: arrival, afterDrop: info.afterDrop, sourceBreak: info.sourceBreak)
   }
 
   private func write(
@@ -542,6 +727,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     /// Runs `hook` on the writer's queue at each finalization phase. Set before the first append.
     package func setPhaseHookForTesting(_ hook: (@Sendable (Phase) -> Void)?) {
       queue.sync { phaseHook = hook }
+    }
+
+    /// Returns once every block queued before it ran, without draining or releasing anything.
+    package func queueBarrierForTesting() async {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        queue.async { continuation.resume() }
+      }
     }
 
     /// Holds every queued drain and close until `resumeQueueForTesting`.

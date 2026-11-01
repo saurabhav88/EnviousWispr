@@ -1,0 +1,11 @@
+{
+  "language": "pl",
+  "title": "pomijaj mój głos, gdy mam wyciszony mikrofon",
+  "words": [
+    "wyciszenie"
+  ],
+  "phrases": [
+    "nie nagrywaj mojego głosu, gdy mam wyciszony mikrofon w rozmowie",
+    "pomijaj mój głos w nagraniu, gdy wyciszam mikrofon w Teams"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "language": "sl",
+  "title": "izpusti moj glas, ko sem v klicu utišan",
+  "words": [
+    "utišanje v klicu"
+  ],
+  "phrases": [
+    "ne snemaj mojega glasu, ko sem v klicu utišan",
+    "izpusti moj glas iz posnetka, ko imam v aplikaciji Teams utišan mikrofon"
+  ]
+}

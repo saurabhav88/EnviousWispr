@@ -73,6 +73,7 @@ struct MeetingCoordinatorTests {
 
     func stop() async -> MeetingRecorder.StopReport {
       stopCalls += 1
+      events.append("stop")
       releaseStart()
       await stopGate?.wait()
       return report
@@ -99,6 +100,38 @@ struct MeetingCoordinatorTests {
     @ObservationIgnored var liveSamples: MeetingRecorder.LiveSamplesObserver?
     /// #4013 chunk 13A: the host time the stand-in's timeline starts at.
     var anchor: UInt64 = mach_absolute_time()
+
+    /// #4248: the mute steps sent, in order, run only when a test asks; `events` interleaves
+    /// them with `stop` so order can be checked.
+    @ObservationIgnored private(set) var steps: [MeetingSilenceStep] = []
+    @ObservationIgnored private(set) var clock: MeetingSilenceStep?
+    @ObservationIgnored private(set) var events: [String] = []
+    @ObservationIgnored private(set) var mutedMeter: [Bool] = []
+    func applySilenceStep(_ step: @escaping MeetingSilenceStep) {
+      steps.append(step)
+      events.append("step")
+    }
+    func setSilenceClock(_ step: MeetingSilenceStep?) { clock = step }
+    func setMicrophoneMuted(_ muted: Bool) { mutedMeter.append(muted) }
+    /// #4248: the writer counters a test sets for the silenced share.
+    @ObservationIgnored var microphoneHealth: MeetingTrackWriter.Health?
+    /// Runs every step not run yet at (`now`, `released`), as the writer queue would; returns
+    /// the last intervals any of them installed.
+    @ObservationIgnored private var stepsRun = 0
+    /// Runs the steps at `indices` in the order given, outside `runSteps`' bookkeeping, so a
+    /// test can deliver an older step after newer ones.
+    func runSteps(at indices: [Int], now: UInt64, released: UInt64 = 0) {
+      for index in indices { _ = steps[index](now, released) }
+    }
+    @discardableResult
+    func runSteps(now: UInt64, released: UInt64 = 0) -> [MeetingSilenceInterval]? {
+      var last: [MeetingSilenceInterval]?
+      while stepsRun < steps.count {
+        if let intervals = steps[stepsRun](now, released) { last = intervals }
+        stepsRun += 1
+      }
+      return last
+    }
   }
 
   @MainActor

@@ -1,0 +1,1 @@
+{"language":"pt","title":"não gravar a minha voz quando estou no mudo","words":["mudo","mute"],"phrases":["não incluir minha voz na gravação da reunião quando estou no mudo","não gravar meu microfone quando estou silenciado no Zoom, Teams ou Google Meet"]}

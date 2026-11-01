@@ -426,6 +426,8 @@ final class PipelineSettingsSync {
       break
     case .meetingTurnsOffDictation:
       break  // #4069: read by `RecordingStarter` at each dictation start press; nothing to push.
+    case .meetingFollowsCallMute:
+      break  // #4248: EnviousMeet is told directly (`WisprBootstrapper`'s settings change route).
     case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
       .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:

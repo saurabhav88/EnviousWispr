@@ -1,0 +1,1 @@
+{"language":"nl","title":"mijn stem weglaten als ik op mute sta","words":["mute"],"phrases":["mijn stem niet opnemen als ik op mute sta","mijn stem uit de vergaderopname weglaten als ik gedempt ben in Zoom, Teams of Google Meet"]}

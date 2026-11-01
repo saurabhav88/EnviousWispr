@@ -947,6 +947,7 @@
   "mapped": [
    "meetingCallDetection",
    "meetingCaptureCallSound",
+   "meetingFollowsCallMute",
    "meetingTurnsOffDictation",
    "meetingUseCalendarForNames",
    "meetings.tab.callApps",

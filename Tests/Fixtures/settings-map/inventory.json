@@ -2450,6 +2450,24 @@
    }
   },
   {
+   "id": "meetingFollowsCallMute",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.general",
+   "target": "meetingFollowsCallMute",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Follows the mute button in supported Zoom, Teams and Google Meet calls."
+   }
+  },
+  {
    "id": "meetingLiveWords",
    "kind": "setting",
    "destination": {

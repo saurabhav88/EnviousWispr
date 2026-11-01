@@ -54,6 +54,9 @@
   "mac-ctl-meeting-turns-off-dictation": [
    "meetingTurnsOffDictation"
   ],
+  "mac-ctl-meeting-follows-call-mute": [
+   "meetingFollowsCallMute"
+  ],
   "mac-ctl-meeting-live-words": [
    "meetingLiveWords",
    "meetingLiveWords.apple",
@@ -786,6 +789,11 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Turn off dictation during meetings"
+  },
+  "mac-ctl-meeting-follows-call-mute": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Leave my voice out when I'm muted"
   },
   "mac-ctl-meeting-live-words": {
    "kind": "control",

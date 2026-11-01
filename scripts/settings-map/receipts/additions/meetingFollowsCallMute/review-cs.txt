@@ -1,0 +1,11 @@
+{
+  "language": "cs",
+  "title": "vynechat můj hlas při ztlumení v hovoru",
+  "words": [
+    "ztlumení"
+  ],
+  "phrases": [
+    "nenahrávat můj hlas, když mám v hovoru ztlumený mikrofon",
+    "vynechat můj hlas z nahrávky při ztlumení v Zoomu"
+  ]
+}

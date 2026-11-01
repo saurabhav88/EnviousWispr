@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""#4248 (adapted from #4069): one fresh isolated Codex session per language reviews the drafted search block for one
+EnviousMeet place (accuracy, naturalness, collisions with its sibling places). Adapted from the
+#3972 meetingWriteSummary driver. Usage: review-driver.py <worktree> <id> <draft.json> <outdir>"""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+ID = sys.argv[2]
+draft = json.load(open(sys.argv[3], encoding="utf-8"))
+out = pathlib.Path(sys.argv[4])
+out.mkdir(parents=True, exist_ok=True)
+
+PLACES = {
+    "meetingFollowsCallMute": {
+        "title_en": "Leave my voice out when I'm muted",
+        "title_de": "Meine Stimme weglassen, wenn ich stummgeschaltet bin",
+        "description_en": (
+            "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the "
+            "meeting."),
+        "truth": (
+            "A switch on the General tab of the EnviousMeet (meeting recorder) page, on by "
+            "default. While EnviousMeet records a meeting in the Zoom or Teams app or Google Meet "
+            "in a browser, it reads the user's own mute button in that call app; while the button "
+            "shows the user muted, the user's microphone is replaced with silence in the recording, "
+            "so their room talk stays out of the transcript and summary. Other people in the call "
+            "are still recorded. A few seconds around a mute change may be kept or left out; while "
+            "EnviousMeet is still checking the mute button or cannot read it, the user's voice is "
+            "recorded as usual. Turning it off records the user's microphone while muted, as "
+            "before. It does NOT mute the user in the call, does NOT mute the Mac's microphone or "
+            "dictation, does NOT stop or pause the recording, does NOT change call sound, call "
+            "detection or the dictation key, and works only in those three call apps."),
+        "siblings": ["meetingTurnsOffDictation", "meetingCaptureCallSound", "meetingCallDetection",
+                     "mediaDuringDictation"],
+    },
+}
+place = PLACES[ID]
+vocab = json.load(
+    open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+blocks = {b["language"]: b for b in draft["blocks"]}
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The place (English title and description are the source of truth):
+- English title: {title_en}
+- German title: {title_de}
+- English description: {description_en}
+- What it really is: {truth}
+
+Review the draft block for language "{lang}" below:
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: the block must not fit the sibling places equally well. The siblings' current blocks in this language are listed below (a sibling missing from the list is new or has no block in this language).
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label this place. Keep product names (EnviousMeet, EnviousWispr, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft block:
+{draft}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, with the corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). If the draft is already right, return it unchanged. After the JSON add nothing.
+"""
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang, title_en=place["title_en"], title_de=place["title_de"],
+        description_en=place["description_en"], truth=place["truth"],
+        draft=json.dumps(blocks[lang], ensure_ascii=False, indent=1),
+        siblings=json.dumps(
+            {i: by_id[i][lang] for i in place["siblings"] if lang in by_id.get(i, {})},
+            ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false",
+         "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral",
+         "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(
+            f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = [b["language"] for b in draft["blocks"]]
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

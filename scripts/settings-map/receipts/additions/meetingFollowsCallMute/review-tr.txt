@@ -1,0 +1,1 @@
+{"language":"tr","title":"sessizdeyken sesimi kayda dahil etme","words":[],"phrases":["Zoom'da sessizdeyken sesimi kaydetme","mikrofonum kapalıyken sesim toplantı kaydına girmesin","Teams veya Google Meet'te sessizdeyken sesimi kaydetme"]}

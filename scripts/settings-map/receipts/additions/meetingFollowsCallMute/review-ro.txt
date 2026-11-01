@@ -1,0 +1,1 @@
+{"language":"ro","title":"nu-mi înregistra vocea când am microfonul oprit în apel","words":["mute"],"phrases":["nu-mi înregistra vocea când sunt pe mute în Zoom","exclude vocea mea din înregistrare când am microfonul oprit în Teams","nu-mi înregistra vocea când am microfonul oprit în Google Meet"]}

@@ -431,4 +431,54 @@ struct MeetingLiveWordsPumpTests {
     #expect(second.all.flatMap { $0 } == Self.ramp(1_600..<4_800))
     pump.retire()
   }
+
+  // MARK: - Seal and drain (#4248)
+
+  @Test("a sealed pump feeds every held sample in order, queued and partial, then its consumer exits")
+  func sealDrainsHeldAudio() async {
+    let pump = MeetingLiveAudioPump(cadence: .milliseconds(1))
+    let fed = Fed(hold: true)
+    defer { fed.open() }
+    #expect(pump.startConsumer(feed: fed.feed))
+    Self.admit(pump, Self.ramp(0..<1_600))
+    await PreviewWait.within("the first feed", onExpiry: fed.open) {
+      await fed.until { $0.count == 1 }
+    }
+    // While that feed is held: two full banks and a partial bank are queued, then Stop seals.
+    let held = 1_600 + 2 * Self.bank + 1_000
+    Self.admit(pump, Self.ramp(1_600..<held))
+    let consumer = pump.seal()
+    #expect(consumer != nil)
+    Self.admit(pump, Self.ramp(0..<500))
+    #expect(pump.accounting.refused == 500, "a sealed pump admits nothing new")
+    fed.open()
+    await PreviewWait.within("the drain", onExpiry: fed.open) { await consumer?.value }
+    #expect(fed.all.flatMap { $0 } == Self.ramp(0..<held), "every held sample, once, in order")
+    #expect(pump.accounting.delivered == held)
+    #expect(pump.accounting.dropped == 500)
+  }
+
+  @Test("a sealed pump with no consumer returns no drain, and retire still discards")
+  func sealWithoutConsumerAndDiscard() async {
+    let idle = MeetingLiveAudioPump(cadence: .milliseconds(1))
+    Self.admit(idle, Self.ramp(0..<1_600))
+    #expect(idle.seal() == nil, "nothing will feed the held audio")
+    idle.retire()
+
+    let pump = MeetingLiveAudioPump(cadence: .milliseconds(1))
+    let fed = Fed(hold: true)
+    defer { fed.open() }
+    #expect(pump.startConsumer(feed: fed.feed))
+    Self.admit(pump, Self.ramp(0..<1_600))
+    await PreviewWait.within("the first feed", onExpiry: fed.open) {
+      await fed.until { $0.count == 1 }
+    }
+    Self.admit(pump, Self.ramp(1_600..<4_800))
+    _ = pump.seal()
+    // Delete after Stop: discard wins.
+    let consumer = pump.retire()
+    fed.open()
+    await PreviewWait.within("the consumer's end", onExpiry: fed.open) { await consumer?.value }
+    #expect(fed.all == [Self.ramp(0..<1_600)], "nothing queued was fed after the discard")
+  }
 }

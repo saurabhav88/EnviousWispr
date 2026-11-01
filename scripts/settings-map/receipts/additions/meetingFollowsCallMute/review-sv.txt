@@ -1,0 +1,1 @@
+{"language":"sv","title":"utelämna min röst när jag är tystad","words":["mute","tystad"],"phrases":["spela inte in min röst när jag är tystad i mötet","ta inte med min röst när jag är på mute i Teams"]}
