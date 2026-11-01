@@ -164,7 +164,7 @@ struct MeetingProcessingRealBoundaryTests {
   /// the pass rebuilds the same transcript without decoding again.
   @Test(
     "#3973 C3: a two-voice recording becomes sentence-timed turns through the real Whisper pass, and resumes from its checkpoint",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
     .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun)
   func twoVoiceRecordingOnWhisper() async throws {
     let fixture = WhisperProductionWiringRealBoundaryTests.repoRoot
@@ -173,9 +173,14 @@ struct MeetingProcessingRealBoundaryTests {
     defer { try? FileManager.default.removeItem(at: dir) }
     let audio = try segments(from: fixture, into: dir)
     let speakerBundle = try Self.speakerModelBundle()
-    let engine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
+    // #4254: the pinned detector, as the app bundle supplies it; the test process has none.
+    let engine = LiveMeetingWhisperEngine(
+      driver: LiveWhisperExecutorDriver(), detectSpeech: try PinnedVADModel.finalDetector())
     let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
-    final class Counts { var decodes = 0 }
+    final class Counts {
+      var decodes = 0
+      var preparations: [MeetingSpeechPreparation?] = []
+    }
     let counts = Counts()
     func job() -> MeetingTranscriptionJob {
       var configuration = MeetingTranscriptionJob.Configuration()
@@ -187,7 +192,9 @@ struct MeetingProcessingRealBoundaryTests {
           loadEngine: { try await engine.load(modelPath: modelPath) },
           transcribe: { samples, language in
             counts.decodes += 1
-            return try await engine.transcribe(samples: samples, language: language)
+            let decoded = try await engine.transcribe(samples: samples, language: language)
+            counts.preparations.append(decoded.meetingSpeechPreparation)
+            return decoded
           },
           unloadEngine: { await engine.unload() },
           analyzeSpeakers: { audio in
@@ -230,6 +237,9 @@ struct MeetingProcessingRealBoundaryTests {
     #expect(await engine.isLoaded == false, "the engine is freed when the pass ends")
     let decodes = counts.decodes
     #expect(decodes >= 1)
+    #expect(
+      !counts.preparations.isEmpty && counts.preparations.allSatisfy(PinnedVADModel.detectionRan),
+      "speech detection ran on every decode: \(counts.preparations)")
 
     let resumed = try await job().run(
       tracks: [.callSound: audio], language: "en", checkpoint: access, onStage: { _ in },
@@ -646,13 +656,7 @@ extension MeetingProcessingRealBoundaryTests {
     try #require(cases.count == MeetingVoiceCase.expectedCount, "every §16.5 case is in the manifest")
 
     // The pinned detector through its production loader, from a bundle linking the asset.
-    let vadRoot = TestTemporaryDirectory.url
-      .appendingPathComponent("MeetingVoices-VAD-\(UUID().uuidString)")
-    try FileManager.default.createDirectory(at: vadRoot, withIntermediateDirectories: true)
-    try FileManager.default.createSymbolicLink(
-      at: vadRoot.appendingPathComponent("\(BundledVADModelLoader.pinnedModelName).mlmodelc"),
-      withDestinationURL: PinnedVADModel.url)
-    let vadPath = vadRoot.path
+    let vadPath = try PinnedVADModel.bundlePath()
     let detections = OSAllocatedUnfairLock(initialState: 0)
 
     /// The pass's text and each decode's speech preparation.
@@ -734,5 +738,20 @@ extension MeetingProcessingRealBoundaryTests {
       }
     }
     #expect(lost.isEmpty, "words detection lost that the undetected decode kept: \(lost)")
+  }
+}
+
+extension PinnedVADModel {
+  /// The final pass's speech detector on the pinned model, through the production loader.
+  static func finalDetector() throws -> MeetingSpeechSpans {
+    let path = try bundlePath()
+    return { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: Bundle(path: path) ?? .main)
+    }
+  }
+
+  /// Whether a Whisper decode really ran speech detection (a fallback is not detection).
+  static func detectionRan(_ preparation: MeetingSpeechPreparation?) -> Bool {
+    preparation == .protectedSpeech || preparation == .confirmedSilence
   }
 }
