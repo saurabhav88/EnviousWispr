@@ -196,6 +196,22 @@ def main() -> None:
     if reference_threshold != DISCARD_THRESHOLD:
         print(f"reference threshold (explicit): {reference_threshold}")
 
+    # Check the probe data before the imports: the pinned interpreter lives
+    # inside it, so an absent probe folder is the more useful message.
+    probe = args.probe_dir.resolve()
+    checkpoint = probe / CHECKPOINT_REL
+    helpers = probe / HELPERS_REL
+    for required in (probe, checkpoint, helpers):
+        if not required.exists():
+            die(
+                f"missing {required}: the #832 probe data is not in this checkout "
+                "(it is gitignored and not kept anywhere); regenerate it, then pass "
+                "--probe-dir <its folder>"
+            )
+    for required in (args.candidate, args.reference):
+        if not required.exists():
+            die(f"missing {required}")
+
     try:
         import coremltools as ct
         import numpy as np
@@ -203,13 +219,6 @@ def main() -> None:
         from transformers import AutoTokenizer
     except ImportError as exc:
         die(f"{exc}. Use the pinned interpreter: {PROBE_DIR_NAME}/.venv-ml/bin/python")
-
-    probe = args.probe_dir.resolve()
-    checkpoint = probe / CHECKPOINT_REL
-    helpers = probe / HELPERS_REL
-    for required in (probe, checkpoint, helpers, args.candidate, args.reference):
-        if not required.exists():
-            die(f"missing {required}")
 
     # A model compared with ITSELF records zero flips no matter what it does, so
     # a self-comparison is a guaranteed pass that proves nothing. This is easy to
