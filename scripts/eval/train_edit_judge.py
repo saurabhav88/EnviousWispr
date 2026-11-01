@@ -739,6 +739,11 @@ def main() -> int:
         except (OSError, ValueError) as exc:
             print(f"INFRA-ERROR: parity receipt unreadable: {exc}", file=sys.stderr)
             return 2
+        if not isinstance(receipt, dict):
+            # A non-object receipt would fall through to the live-parity branch with
+            # no resolved runner (Codex review of #4303).
+            print("INFRA-ERROR: parity receipt must be a JSON object", file=sys.stderr)
+            return 2
 
     dev_dir = args.dev_dir or (args.artifacts / "dev")
     split_manifest = json.loads((dev_dir / "split-manifest.json").read_text(encoding="utf-8"))
