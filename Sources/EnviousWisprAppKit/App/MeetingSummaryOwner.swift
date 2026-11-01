@@ -139,6 +139,10 @@ final class MeetingSummaryOwner {
     var started = false
   }
   private var runningLocalCall: RunningLocalCall?
+  /// #4287: told when a running local Ollama call releases its model, so an Ollama eviction
+  /// deferred for that pin is retried (`PipelineSettingsSync.retryDeferredOllamaEviction`).
+  /// Set by the composition root; nil in tests that do not care.
+  var onOllamaModelReleased: (@MainActor () -> Void)?
   private var terminating = false
 
   init(dependencies: Dependencies, documents: MeetingDocumentsOwner, lane: MeetingLocalModelLane) {
@@ -541,7 +545,10 @@ final class MeetingSummaryOwner {
     if local {
       lane.endSummaryCall()
       // The physical call ended: its protection ends with it, and only its own.
-      if runningLocalCall?.attempt == attempt { runningLocalCall = nil }
+      if let call = runningLocalCall, call.attempt == attempt {
+        runningLocalCall = nil
+        if call.provider == .ollama { onOllamaModelReleased?() }
+      }
     }
     busy.remove(attempt)
   }

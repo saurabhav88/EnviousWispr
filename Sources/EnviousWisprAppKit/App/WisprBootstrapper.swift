@@ -2645,6 +2645,11 @@ package final class WisprBootstrapper {
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
     meetingSummariesForEviction = meetingCoordinator.summaries
+    // #4287: an eviction deferred while a summary call used its Ollama model runs once the
+    // call releases it, as dictation and file import retry theirs on completion.
+    meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
+      settingsSync?.retryDeferredOllamaEviction(settings: settings)
+    }
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(

@@ -1226,6 +1226,23 @@
       #expect(settings.meetingSummaryLLMModel == "local-dev:1b")
     }
 
+    @Test("an ordinary summary provider write takes only what the Summaries tab offers")
+    func summaryProviderWriteRespectsTheTab() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.meetingSummaryLLMProvider = .openAI
+      func write(_ json: String) throws -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .meetingSummaryLLMProvider, value: try Self.wire(json), force: false,
+          context: Self.context(catalog: .init(provider: .openAI, models: [])), to: settings)
+      }
+      for refused in ["\"s1Mini\"", "\"egOne\"", "\"none\""] {
+        #expect(try write(refused).code == "checkFailed", "\(refused)")
+      }
+      #expect(settings.meetingSummaryLLMProvider == .openAI, "a refusal writes nothing")
+      #expect(try write("\"claude\"") == .written(forced: false))
+      #expect(settings.meetingSummaryLLMProvider == .claude)
+    }
+
     @Test("channel.set takes an input a connected multi-input device has, and only that device's")
     func channelSet() {
       let (_, _, settings) = Self.fixture()

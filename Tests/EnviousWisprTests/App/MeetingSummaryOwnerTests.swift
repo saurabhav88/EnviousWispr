@@ -497,6 +497,26 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.owner.summaryPinnedOllamaModel == nil)
   }
 
+  @Test("a local Ollama call's end asks for the deferred eviction once; a local Apple call does not")
+  func releaseRetriesDeferredEviction() async throws {
+    for (provider, expected) in [(LLMProvider.ollama, 1), (.appleIntelligence, 0)] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      var releases = 0
+      rig.owner.onOllamaModelReleased = { releases += 1 }
+      rig.world.provider = provider
+      rig.world.model = "mistral"
+      rig.world.execution = .local
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(releases == 0, "nothing is released while the call runs")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(releases == expected, "\(provider)")
+    }
+  }
+
   @Test("hosted Ollama and local non-Ollama calls pin no Ollama model")
   func onlyLocalOllamaPins() async throws {
     for (provider, execution) in [

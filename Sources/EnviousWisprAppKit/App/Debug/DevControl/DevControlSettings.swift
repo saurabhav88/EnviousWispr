@@ -647,6 +647,13 @@
         guard let provider = Codec.raw(value, LLMProvider.self) else {
           return .refused(code: "badValue", message: "wrong type or unknown value")
         }
+        // The Summaries tab offers no S1-mini card, keeps EG-1 disabled until it can summarize,
+        // and has no "none" card; an ordinary write is what that screen can do.
+        guard MeetingSummaryEngineChoices.isSelectable(provider) else {
+          return .refused(
+            code: "checkFailed",
+            message: "the Summaries tab cannot pick that engine; use force to stage it")
+        }
         PolishSettings.setProvider(provider, on: .meetingSummary, in: settings)
         return .written(forced: false)
       case .summaryModel:
