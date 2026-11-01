@@ -160,6 +160,8 @@ EnviousWispr.app/
 scripts/*
 !scripts/build-release-dmg.sh
 !scripts/build-dev-app.sh
+# #4293: the build half of build-dev-app.sh, and the build-only route.
+!scripts/build-dev-only.sh
 # #3729: the release operator commands (start, prepare, self-test).
 !scripts/release.sh
 !scripts/check-contacts-data-flow.sh
@@ -190,6 +192,9 @@ scripts/lib/*
 !scripts/lib/spm-seed-test.sh
 !scripts/lib/remove-tree.py
 !scripts/lib/remove-tree-test.py
+# #4293: one build at a time in a checkout's .derivedData (tests share the dev app's folder).
+!scripts/lib/build-folder-lock.py
+!scripts/lib/build-folder-lock-test.py
 !scripts/lib/log-dir.sh
 !scripts/lib/log-dir-test.sh
 !scripts/lib/lane-verdict.sh

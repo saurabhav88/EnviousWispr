@@ -333,7 +333,10 @@ def main():
         # receipt, whose claim is the compile's extraction only. Nothing is quit or launched.
         repo = make_repo(root / "entry")
         shutil.copy(SCRIPTS / "build-dev-app.sh", repo / "scripts/build-dev-app.sh")
+        # #4293: its build half and the real per-checkout build lock.
+        shutil.copy(SCRIPTS / "build-dev-only.sh", repo / "scripts/build-dev-only.sh")
         lib = repo / "scripts/lib"
+        shutil.copy(SCRIPTS / "lib/build-folder-lock.py", lib / "build-folder-lock.py")
         (lib / "ensure-generated.sh").write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / "launch-check.sh").write_text('ew_wait_for_launch() { echo launch-check >> "$TRACE"; return 1; }\n')
         (lib / "spm-seed.sh").write_text('ew_seed_on_exit() { :; }\new_seed_consume() { :; }\n'

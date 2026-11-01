@@ -751,7 +751,7 @@ CATSTUB
     receipt_helper invalidate --root "$repo" || return 1
     start="$(receipt_helper capture --root "$repo")" || return 1
     receipt_helper publish --root "$repo" --start "$start" --field configuration=Debug \
-      --field scheme=EnviousWispr \
+      --field xcode_configuration=Dev --field scheme=EnviousWispr \
       --field "bundles=EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests" \
       --field executed_tests=5 --field debug_verdict=PASS --field eval_verdict=PASS \
       --field result_bundle=/selftest.xcresult > /dev/null
