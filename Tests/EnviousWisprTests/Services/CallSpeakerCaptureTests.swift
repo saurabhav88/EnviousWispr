@@ -397,17 +397,17 @@ struct CallSpeakerCaptureTests {
   }
 
   @Test("the live batch decoder keeps each attribute's own answer, by position")
-  func liveBatchDecoder() {
-    func axError(_ error: AXError) -> AnyObject {
+  func liveBatchDecoder() throws {
+    func axError(_ error: AXError) throws -> AnyObject {
       var e = error
-      return AXValueCreate(.axError, &e)!
+      return try #require(AXValueCreate(.axError, &e))
     }
     var size = CGSize(width: 40, height: 20)
-    let sizeValue = AXValueCreate(.cgSize, &size)!
+    let sizeValue = try #require(AXValueCreate(.cgSize, &size))
     let attributes: [CallAXAttribute] = [.role, .title, .description, .value, .size, .domClassList]
     let decoded = CallSpeakerCapture.decodeBatch(
       attributes, status: .success,
-      values: ["AXButton" as NSString, NSNull(), axError(.noValue), axError(.cannotComplete), sizeValue,
+      values: ["AXButton" as NSString, NSNull(), try axError(.noValue), try axError(.cannotComplete), sizeValue,
                ["a", "b"] as NSArray])
     #expect(decoded.map(describe) == ["text AXButton", "missing", "missing", "failed", "size 40x20", "texts a,b"])
     #expect(
@@ -417,7 +417,7 @@ struct CallSpeakerCaptureTests {
       CallSpeakerCapture.decodeBatch(attributes, status: .success, values: ["AXButton" as NSString])
         .map(describe) == Array(repeating: "failed", count: attributes.count))
     #expect(
-      CallSpeakerCapture.decodeBatch([.title], status: .success, values: [axError(.attributeUnsupported)])
+      CallSpeakerCapture.decodeBatch([.title], status: .success, values: [try axError(.attributeUnsupported)])
         .map(describe) == ["missing"])
   }
 
