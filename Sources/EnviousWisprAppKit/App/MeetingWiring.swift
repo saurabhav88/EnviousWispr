@@ -229,9 +229,9 @@ enum MeetingWiring {
           await otherAudioHold.meetingRecordingWillStart()
         },
         freeDiskBytes: { ModelDeliveryController.volumeAvailableBytes(store.root) },
-        meetingTitleAtStart: { [settings = inputs.settings] startedAt in
+        meetingCalendarAtStart: { [settings = inputs.settings] startedAt in
           guard settings.meetingUseCalendarForNames else { return nil }
-          return await MeetingCalendarTitle.lookup(at: startedAt, bound: .seconds(1))
+          return await MeetingCalendarLookup.lookup(at: startedAt, bound: .seconds(1))
         },
         detectedStartWanted: inputs.detectedStartWanted,
         saveTranscript: {

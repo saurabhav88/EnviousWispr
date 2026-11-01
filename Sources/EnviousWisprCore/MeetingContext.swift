@@ -215,3 +215,18 @@ extension MeetingFact {
       isOrganizer: object["isOrganizer"]?.boolValue ?? false)
   }
 }
+
+/// The facts a meeting saves from the calendar event it matched at its start (#4286): one
+/// `calendarEvent` fact and one `attendee` fact per invited person, in the calendar's order, all
+/// stamped with the same source and capture time. Who those people are is derived later
+/// (`MeetingParticipants`), never merged here.
+public enum MeetingCalendarFacts {
+  public static func facts(from snapshot: CalendarEventSnapshot, at capturedAt: Date)
+    -> [MeetingFact]
+  {
+    let source = MeetingFact.eventKitSource
+    let event = CalendarEventFact(title: snapshot.title, start: snapshot.start, end: snapshot.end)
+    return [event.fact(source: source, capturedAt: capturedAt)]
+      + snapshot.attendees.map { $0.fact(source: source, capturedAt: capturedAt) }
+  }
+}
