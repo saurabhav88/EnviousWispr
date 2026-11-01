@@ -2702,6 +2702,13 @@ final class MeetingCoordinator {
     recorder?.setMicrophoneMuted(snapshot.state == .muted)
   }
 
+  #if DEBUG
+    /// Whole microseconds of `duration`, for the timing receipt.
+    static func micros(_ duration: Duration) -> Int64 {
+      duration.components.seconds * 1_000_000 + duration.components.attoseconds / 1_000_000_000_000
+    }
+  #endif
+
   /// DEBUG timing receipt: one row per decided reading, and the summary from the `.end`
   /// decision itself, after every queued reading ran.
   private func traceMute(_ snapshot: MeetingMuteGate.Snapshot) {
@@ -2710,7 +2717,7 @@ final class MeetingCoordinator {
       if let trace = snapshot.trace {
         let c = trace.copy
         deps.log(
-          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) msgs=\(c.cost.messages) msg_us=\(c.cost.messageTime.components.seconds * 1_000_000 + c.cost.messageTime.components.attoseconds / 1_000_000_000_000) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks)" }.joined(separator: ","))"
+          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) msgs=\(c.cost.messages) msg_us=\(Self.micros(c.cost.messageTime)) kinds=\(CallAXCopyCost.Kind.allCases.map { "\($0.rawValue):\(c.cost.byKind[$0]?.messages ?? 0):\(Self.micros(c.cost.byKind[$0]?.time ?? .zero))" }.joined(separator: ",")) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks):\($0.messages):\(Self.micros($0.messageTime))" }.joined(separator: ","))"
         )
       }
       if snapshot.ended {

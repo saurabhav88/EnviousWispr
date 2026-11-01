@@ -135,12 +135,23 @@ package struct CallAXCopyCost: Sendable, Equatable {
   package struct Window: Sendable, Equatable {
     package let nodes: Int
     package let ticks: UInt64
+    package var messages = 0
+    package var messageTime: Duration = .zero
   }
-  /// Each copied window's elements and host ticks, in copy order.
+  /// Which message: the role batch, the role-dependent batch, or a single read.
+  package enum Kind: String, Sendable, CaseIterable {
+    case common, dependent, single
+  }
+  package struct Total: Sendable, Equatable {
+    package var messages = 0
+    package var time: Duration = .zero
+  }
+  /// Each copied window's elements, host ticks and messages, in copy order.
   package var windows: [Window] = []
-  /// Messages sent to the app and the time spent inside them.
+  /// Messages sent to the app and the time spent inside them, overall and by kind.
   package var messages = 0
   package var messageTime: Duration = .zero
+  package var byKind: [Kind: Total] = [:]
 
   package init() {}
 }
@@ -207,9 +218,13 @@ package enum CallSpeakerCapture {
     for window in windows {
       let windowStart = hostTime()
       let nodesBefore = walk.count
+      let messagesBefore = walk.messages
+      let timeBefore = walk.messageTime
       defer {
         windowCosts.append(
-          .init(nodes: walk.count - nodesBefore, ticks: hostTime() &- windowStart))
+          .init(
+            nodes: walk.count - nodesBefore, ticks: hostTime() &- windowStart,
+            messages: walk.messages - messagesBefore, messageTime: walk.messageTime - timeBefore))
       }
       if policy != .standard {
         // Only a window positively known not to be the call is skipped; a failed read keeps it.
@@ -260,6 +275,7 @@ package enum CallSpeakerCapture {
         cost.windows = windowCosts
         cost.messages = walk.messages
         cost.messageTime = walk.messageTime
+        cost.byKind = walk.byKind
         return cost
       }())
   }
@@ -279,6 +295,15 @@ package enum CallSpeakerCapture {
     var documents: [CallAXDocument] = []
     var messages = 0
     var messageTime: Duration = .zero
+    var byKind: [CallAXCopyCost.Kind: CallAXCopyCost.Total] = [:]
+
+    mutating func note(_ kind: CallAXCopyCost.Kind, since sent: ContinuousClock.Instant) {
+      let spent = access.now() - sent
+      messages += 1
+      messageTime += spent
+      byKind[kind, default: .init()].messages += 1
+      byKind[kind, default: .init()].time += spent
+    }
 
     init(
       access: CallAXTreeAccess<Element>, bounds: CallAXBounds, deadline: ContinuousClock.Instant,
@@ -300,8 +325,7 @@ package enum CallSpeakerCapture {
       }
       let sent = access.now()
       let result = access.read(element, attribute)
-      messages += 1
-      messageTime += access.now() - sent
+      note(.single, since: sent)
       if case .failed = result { failedReads += 1 }
       return result
     }
@@ -317,8 +341,7 @@ package enum CallSpeakerCapture {
       }
       let sent = access.now()
       var results = access.readMany(element, attributes)
-      messages += 1
-      messageTime += access.now() - sent
+      note(attributes.first == .role ? .common : .dependent, since: sent)
       if results.count != attributes.count {
         results = attributes.map { _ in .failed }
       }

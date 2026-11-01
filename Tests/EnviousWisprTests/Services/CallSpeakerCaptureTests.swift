@@ -359,6 +359,12 @@ struct CallSpeakerCaptureTests {
     // The timing receipt's cost counts every message the fake answered and every copied element.
     #expect(copy.cost.messages == tree.ticks)
     #expect(copy.cost.windows.map(\.nodes) == [copy.nodesVisited])
+    #expect(copy.cost.windows.map(\.messages) == [copy.cost.messages], "one window holds every message")
+    // Five elements: five role batches, five role-dependent batches, one kept page's children
+    // and the window title read singly.
+    #expect(copy.cost.byKind[.common]?.messages == 5)
+    #expect(copy.cost.byKind[.dependent]?.messages == 5)
+    #expect(copy.cost.byKind[.single]?.messages == 2)
     let asked = tree.batches.map { "\($0.0):\($0.1.joined(separator: ","))" }
     #expect(asked == [
       "1:" + common.joined(separator: ","), "1:AXChildren",
