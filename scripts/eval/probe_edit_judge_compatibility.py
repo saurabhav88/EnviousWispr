@@ -50,10 +50,18 @@ from uuid import uuid4
 
 ROOT = Path(__file__).parent.parent.parent.resolve()
 # The runner is a product of the scripts/eval package; eval_bin.py owns where its
-# binary lives (#4293). Resolved once in main() before any probe runs.
+# binary lives (#4293). Every entrypoint (this probe, train_edit_judge.py) calls
+# resolve_runner() before using RUNNER_BIN.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import eval_bin  # noqa: E402
 RUNNER_BIN: Optional[Path] = None
+
+
+def resolve_runner() -> Path:
+    """Locate the built AliasRunner and remember it in RUNNER_BIN; raises eval_bin.RunnerMissing."""
+    global RUNNER_BIN
+    RUNNER_BIN = eval_bin.runner_bin("AliasRunner")
+    return RUNNER_BIN
 
 # Toolchain the probe's numbers are valid for. Anything else is refused
 # before conversion, never silently accepted (the shipped converter pins the
@@ -639,9 +647,8 @@ def main() -> int:
     p.add_argument("--inputs", type=int, default=8, help="synthetic inputs per placement check")
     p.add_argument("--skip-conversion", action="store_true", help="tokenizer half only; the report says so")
     args = p.parse_args()
-    global RUNNER_BIN
     try:
-        RUNNER_BIN = eval_bin.runner_bin("AliasRunner")
+        resolve_runner()
     except eval_bin.RunnerMissing as e:
         print(f"INFRA-ERROR: runner missing. {e}", file=sys.stderr)
         return 2

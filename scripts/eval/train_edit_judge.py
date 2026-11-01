@@ -726,9 +726,12 @@ def main() -> int:
     if args.parity_only and args.parity_receipt:
         print("INFRA-ERROR: --parity-only and --parity-receipt are exclusive", file=sys.stderr)
         return 2
-    if not args.parity_receipt and not probe.RUNNER_BIN.exists():
-        print(f"INFRA-ERROR: runner missing at {probe.RUNNER_BIN}", file=sys.stderr)
-        return 2
+    if not args.parity_receipt:
+        try:
+            probe.resolve_runner()  # the scripts/eval package's AliasRunner (#4293)
+        except probe.eval_bin.RunnerMissing as e:
+            print(f"INFRA-ERROR: runner missing. {e}", file=sys.stderr)
+            return 2
     receipt: Optional[dict] = None
     if args.parity_receipt:
         try:
