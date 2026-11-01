@@ -295,7 +295,7 @@ struct EGOneAdapterLifecycleTests {
     init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
     func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
-      await coordinator.acquireLease(for: .egOne)
+      await coordinator.acquireLease(for: .egOne, purpose: .inference)
     }
     func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
       await coordinator.releaseLease(lease)
@@ -1247,5 +1247,102 @@ struct EGOneRecordingRecoveryTests {
     recorder.record(.stopped)
     let none = await recorder.first(from: 0, deadline: .milliseconds(200)) { _ in false }
     #expect(none == nil)
+  }
+}
+
+// MARK: - #4319: a summary's reservation waits for a health probe already running
+
+/// A probe connector that parks until the test lets it answer, and says when it has started.
+private actor ParkedProbe {
+  private var started: CheckedContinuation<Void, Never>?
+  private var hasStarted = false
+  private var release: CheckedContinuation<Void, Never>?
+  private var released = false
+
+  func enter() async {
+    hasStarted = true
+    started?.resume()
+    started = nil
+    guard !released else { return }
+    await withCheckedContinuation { release = $0 }
+  }
+
+  /// True once the probe has started, false at the deadline.
+  func waitUntilStarted() async -> Bool {
+    guard !hasStarted else { return true }
+    await withCheckedContinuation { continuation in
+      started = continuation
+      Task {
+        // deadline-fallback: give up so the test fails by name instead of hanging
+        try? await Task.sleep(for: .seconds(20))
+        await self.expireStartWait()
+      }
+    }
+    return hasStarted
+  }
+
+  private func expireStartWait() {
+    started?.resume()
+    started = nil
+  }
+
+  func letAnswer() {
+    released = true
+    release?.resume()
+    release = nil
+  }
+}
+
+private struct ParkedProbePolisher: TranscriptPolisher {
+  let gate: ParkedProbe
+  func polish(
+    text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    await gate.enter()
+    return LLMResult(polishedText: "Move the meeting to Friday.")
+  }
+  func polish(
+    envelope: PromptEnvelope, config: LLMProviderConfig, onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    await gate.enter()
+    return LLMResult(polishedText: "Move the meeting to Friday.")
+  }
+}
+
+extension EGOneAdapterLifecycleTests {
+  @Test("a summary's reservation waits for a health probe that is already running (#4319)")
+  func reservationDrainsAdmittedProbe() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    let gate = ParkedProbe()
+    let spec = EGOneServerManager.ProbeSpec(
+      provider: .egOne, modelID: "eg-1", makeConnector: { _ in ParkedProbePolisher(gate: gate) })
+    let probing = Task {
+      await coordinator.probeHealth(.egOne, promptFamily: .egOneEnvelope, spec: spec)
+    }
+    defer { probing.cancel() }
+    guard await gate.waitUntilStarted() else {
+      await gate.letAnswer()
+      Issue.record("the health probe never reached the server")
+      await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+      return
+    }
+    let reserving = Task { await coordinator.reserveForSummary(.egOne) }
+    let waiting = await coordinator.awaitDrainWaitForTesting()
+    #expect(waiting, "the reservation waits for the running probe")
+    #expect(await coordinator.isReservedForSummary(), "admission closed while the probe runs")
+    await gate.letAnswer()
+    _ = await probing.value
+    guard case .granted(let reservation) = await reserving.value else {
+      Issue.record("the reservation was not granted after the probe finished")
+      return
+    }
+    await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 }

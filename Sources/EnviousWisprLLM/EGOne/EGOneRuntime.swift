@@ -799,8 +799,11 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // #3988: the server this probe will measure, so its verdict can never
       // be pinned on a replacement that came up while it ran.
       guard let probed = await self.server.endpoint(for: self.provider) else { return }
-      let result = await self.server.probeHealth(
-        self.provider, promptFamily: family, spec: self.probeSpec)
+      // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
+      guard
+        let result = await self.server.probeHealth(
+          self.provider, promptFamily: family, spec: self.probeSpec)
+      else { return }
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
       // **The verdict is DISCARDED rather than the slot reserved**, deliberately.
@@ -1120,8 +1123,52 @@ public final class EGOneRuntime: EGOneLeaseProviding {
         ? lastSampledOutsideStop?.memoryPressure : nil)
   }
 
+  /// A hold for requests: a learned-word check (#3105). Polish takes its own through
+  /// `beginPolishAttempt`.
   public func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
-    await server.acquireLease(for: provider)
+    await server.acquireLease(for: provider, purpose: .inference)
+  }
+
+  /// #4319: a file import's whole-run hold. It sends nothing itself, so a summary never drains
+  /// it; it waits for the import to end instead.
+  public func acquireLocalServerResidency() async -> LocalPolishLeaseAdmission {
+    await server.acquireLease(for: provider, purpose: .residency)
+  }
+
+  // MARK: - #4319: lending the server to an EnviousMeet summary
+
+  /// Closes the shared server to every other request and waits for admitted ones to finish.
+  public func reserveServerForSummary() async -> LocalPolishReservationOutcome {
+    await server.reserveForSummary(provider)
+  }
+
+  public func releaseServerReservation(_ reservation: LocalPolishSummaryReservation) async {
+    await server.releaseSummaryReservation(reservation)
+    retryPendingRemoval()
+  }
+
+  /// Loads this runtime's model for the summary holding `reservation`, evicting the other
+  /// bundled model if it is resident, and returns the endpoint, or nil when the model is not
+  /// installed, blocked, or did not come up. Independent of the dictation selection and its
+  /// activation generation: a provider switch during the summary is deferred by the
+  /// reservation, not raced here. No health probe (the reservation would refuse it) and no
+  /// repair pass: a failed start fails this summary, which the user can write again.
+  public func activateForSummary(
+    _ reservation: LocalPolishSummaryReservation
+  ) async -> EGOneEndpoint? {
+    guard reservation.provider == provider, let manifest, let delivery,
+      let serverBinaryURL, activationBlockers.isEmpty
+    else { return nil }
+    let intent = server.claimIntent()
+    guard await delivery.adoptIfPresent() else { return nil }
+    await registerProcessFailureObserver()
+    let configuration = await makeServerConfiguration(
+      serverBinaryURL: serverBinaryURL, modelURL: delivery.installedArtifactURL,
+      contextTokens: manifest.contextTokens)
+    await server.transition(
+      to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+      intent: intent, reservation: reservation)
+    return await server.endpoint(for: provider)
   }
 
   public func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {

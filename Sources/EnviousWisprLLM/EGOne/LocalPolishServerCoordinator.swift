@@ -52,11 +52,43 @@ public struct LocalPolishTarget: Sendable {
 public struct LocalPolishServerLease: Sendable {
   fileprivate let id: UUID
   fileprivate let provider: LLMProvider
+  fileprivate let purpose: LocalPolishLeasePurpose
 
-  fileprivate init(provider: LLMProvider) {
+  fileprivate init(provider: LLMProvider, purpose: LocalPolishLeasePurpose) {
     id = UUID()
     self.provider = provider
+    self.purpose = purpose
   }
+}
+
+/// What a lease holds the server for (#4319). Both kinds defer a process change; only inference
+/// sends requests, so only inference is drained before an EnviousMeet summary takes the server.
+public enum LocalPolishLeasePurpose: Sendable, Equatable {
+  /// Requests in flight: a polish attempt (live, recovery or import part) or a learned-word
+  /// check.
+  case inference
+  /// A whole file import's hold across its parts. It sends nothing itself, and its owner may
+  /// be waiting on part inference a summary would refuse, so a summary never drains it: it
+  /// waits for the import instead.
+  case residency
+}
+
+/// An EnviousMeet summary's exclusive hold on the bundled server (#4319): taken once every
+/// admitted request has finished, released by the token alone. While it exists no new
+/// inference, probe, import hold or process change from anyone else is admitted.
+public struct LocalPolishSummaryReservation: Sendable, Equatable {
+  fileprivate let id: UUID
+  public let provider: LLMProvider
+}
+
+/// The answer to a summary's reservation request (#4319).
+public enum LocalPolishReservationOutcome: Sendable, Equatable {
+  case granted(LocalPolishSummaryReservation)
+  /// A file import holds the server, or another summary does: nothing was reserved; wait for
+  /// a local turn and ask again.
+  case retryLater
+  /// The asking task was cancelled while earlier requests drained; nothing is reserved.
+  case cancelled
 }
 
 public enum LocalPolishLeaseAdmission: Sendable {
@@ -111,7 +143,12 @@ public actor LocalPolishServerCoordinator {
   private var resident: LLMProvider?
   private var residentTarget: LocalPolishTarget?
   private var deferredRequest: (request: LocalPolishIntent, intent: Int)?
-  private var leases: [UUID: LLMProvider] = [:]
+  private var leases: [UUID: (provider: LLMProvider, purpose: LocalPolishLeasePurpose)] = [:]
+  /// #4319: the summary holding the server, if any, and the waits for its drain.
+  private var summaryReservation: LocalPolishSummaryReservation?
+  private var probesInFlight = 0
+  private var drainWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+  private var drainWaitWatchersForTesting: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
   private var changing = false
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   /// #3105: per engine, because each local engine boots its own checker adapter
@@ -180,22 +217,100 @@ public actor LocalPolishServerCoordinator {
   /// Admission and the eviction decision share this actor's non-suspending
   /// turn. A take either gets a hold before a transition decides to stop, or
   /// sees changing before it freezes its local-polish choice.
-  public func acquireLease(for provider: LLMProvider) -> LocalPolishLeaseAdmission {
-    guard !changing, resident == provider else { return .changing }
-    let lease = LocalPolishServerLease(provider: provider)
-    leases[lease.id] = provider
+  /// #4319: no default purpose, so an import's whole-run hold can never be counted as
+  /// inference by omission. While a summary holds the server every admission is refused, and
+  /// each caller takes its existing changing fallback (polish unchanged, word check skipped,
+  /// import cleanup refused).
+  public func acquireLease(
+    for provider: LLMProvider, purpose: LocalPolishLeasePurpose
+  ) -> LocalPolishLeaseAdmission {
+    guard !changing, resident == provider, summaryReservation == nil else { return .changing }
+    let lease = LocalPolishServerLease(provider: provider, purpose: purpose)
+    leases[lease.id] = (provider, purpose)
     return .granted(lease)
   }
 
   public func releaseLease(_ lease: LocalPolishServerLease) async {
-    guard leases.removeValue(forKey: lease.id) == lease.provider else { return }
+    guard leases.removeValue(forKey: lease.id)?.provider == lease.provider else { return }
     wakeRemovalWaiters()
     if leases.isEmpty { await retryDeferredReconfiguration() }
   }
 
   public func hasLease(for provider: LLMProvider) -> Bool {
-    leases.values.contains(provider)
+    leases.values.contains { $0.provider == provider }
   }
+
+  // MARK: - #4319: an EnviousMeet summary's exclusive hold
+
+  /// Requests that must finish before a summary may use the server.
+  private var inferenceInFlight: Int {
+    leases.values.filter { $0.purpose == .inference }.count + probesInFlight
+  }
+
+  /// Closes admission at once, in this actor turn, then waits for admitted requests and any
+  /// process change to finish. An import holding the server wins: nothing is reserved and the
+  /// caller waits for a local turn (the import's own pin, read by the caller, covers its
+  /// preparation before this hold exists). Cancelled while waiting: the reservation is
+  /// removed and admission reopens.
+  public func reserveForSummary(_ provider: LLMProvider) async -> LocalPolishReservationOutcome {
+    guard Task.isCancelled == false else { return .cancelled }
+    guard summaryReservation == nil,
+      !leases.values.contains(where: { $0.purpose == .residency })
+    else { return .retryLater }
+    let reservation = LocalPolishSummaryReservation(id: UUID(), provider: provider)
+    summaryReservation = reservation
+    while changing || inferenceInFlight > 0 {
+      let wait = UUID()
+      await withTaskCancellationHandler {
+        await withCheckedContinuation { continuation in
+          if Task.isCancelled {
+            continuation.resume()
+          } else {
+            drainWaiters[wait] = continuation
+            let watchers = drainWaitWatchersForTesting
+            drainWaitWatchersForTesting = []
+            watchers.forEach { $0.continuation.resume() }
+          }
+        }
+      } onCancel: {
+        Task { await self.cancelDrainWait(wait) }
+      }
+      if Task.isCancelled {
+        await releaseSummaryReservation(reservation)
+        return .cancelled
+      }
+    }
+    if Task.isCancelled {
+      await releaseSummaryReservation(reservation)
+      return .cancelled
+    }
+    return .granted(reservation)
+  }
+
+  /// A cancelled drain wait ends now. A wait not yet stored needs nothing: storing checks the
+  /// task's cancellation in the same actor turn.
+  private func cancelDrainWait(_ wait: UUID) {
+    drainWaiters.removeValue(forKey: wait)?.resume()
+  }
+
+  private func wakeDrainWaitersIfIdle() {
+    guard !changing, inferenceInFlight == 0 else { return }
+    let waiters = drainWaiters
+    drainWaiters = [:]
+    waiters.values.forEach { $0.resume() }
+  }
+
+  /// Releases only the reservation it names; a stale or repeated release changes nothing.
+  /// Then admission reopens and a process change deferred behind it runs.
+  public func releaseSummaryReservation(_ reservation: LocalPolishSummaryReservation) async {
+    guard summaryReservation == reservation else { return }
+    summaryReservation = nil
+    wakeRemovalWaiters()
+    if leases.isEmpty { await retryDeferredReconfiguration() }
+  }
+
+  /// Whether a summary holds the server now.
+  public func isReservedForSummary() -> Bool { summaryReservation != nil }
 
   /// Reserve the server for Remove Model, including the artifact deletion that
   /// follows the stop. New takes see changing before they freeze. A live hold
@@ -211,12 +326,18 @@ public actor LocalPolishServerCoordinator {
   ) async -> Bool {
     honouredIntent = max(honouredIntent, intent)
     while true {
-      while changing || leases.values.contains(provider) {
+      while changing || leases.values.contains(where: { $0.provider == provider })
+        || summaryReservation != nil
+      {
         await withCheckedContinuation { removalWaiters.append($0) }
       }
       guard await stillWanted() else { return false }
       // Asking suspended this actor; claim only if nothing moved meanwhile.
-      if !changing && !leases.values.contains(provider) { break }
+      if !changing && !leases.values.contains(where: { $0.provider == provider })
+        && summaryReservation == nil
+      {
+        break
+      }
     }
     changing = true
     if resident == provider {
@@ -241,6 +362,8 @@ public actor LocalPolishServerCoordinator {
     let waiters = removalWaiters
     removalWaiters = []
     waiters.forEach { $0.resume() }
+    // #4319: every place a transition or a hold ends is also where a summary's drain may end.
+    wakeDrainWaitersIfIdle()
   }
 
   /// Drive the server to `target`, or to nothing when `target` is nil.
@@ -253,11 +376,29 @@ public actor LocalPolishServerCoordinator {
   /// Re-stating the resident model stays idempotent, which is required:
   /// launch, provider switch and settings-open all arrive here and must not
   /// restart a working server.
-  public func transition(to request: LocalPolishIntent, intent: Int) async {
+  /// #4319: `reservation` is passed only by the summary that holds the server, to load its
+  /// model after the drain. Anyone else's request that would change the process, or start a
+  /// different model, while a summary holds the server is deferred like one behind a lease,
+  /// and runs when the summary releases it.
+  public func transition(
+    to request: LocalPolishIntent, intent: Int,
+    reservation: LocalPolishSummaryReservation? = nil
+  ) async {
+    // #4319: a token that no longer holds the server (released, or never granted) changes
+    // nothing. The holder's own load is not a selection: it is not refused for being older
+    // than a newer settings request, never moves the selection's stamp, and never replaces
+    // or clears the selection deferred behind it, which must run at release.
+    if let reservation {
+      guard summaryReservation == reservation else { return }
+    }
+    let ownsReservation = reservation != nil
     // A stamp older than one already honoured describes a world the user has
     // moved on from. Obeying it is exactly the defect this replaced.
-    guard intent >= honouredIntent else { return }
+    guard ownsReservation || intent >= honouredIntent else { return }
     if changing {
+      // The holder only loads after its drain saw no change in progress; a change starting
+      // since then is refused here rather than overwriting the deferred selection.
+      guard !ownsReservation else { return }
       honouredIntent = intent
       deferredRequest = (request, intent)
       return
@@ -284,14 +425,22 @@ public actor LocalPolishServerCoordinator {
           != target?.configuration.learnedWordAdapterURL
         || (residentAdapterFellBack && target?.retriesAdapterFallback == true
           && target?.configuration.learnedWordAdapterURL != nil))
-    if changesProcess, !leases.isEmpty {
+    let heldByAnotherSummary = summaryReservation != nil && !ownsReservation
+    // Anyone but the holder starting any process during the summary, even the same model
+    // from nothing, would race the holder's load.
+    let startsUnownedProcess =
+      heldByAnotherSummary && target != nil
+      && (resident == nil || target?.provider != summaryReservation?.provider)
+    if (changesProcess && (!leases.isEmpty || heldByAnotherSummary)) || startsUnownedProcess {
       honouredIntent = intent
       deferredRequest = (request, intent)
       return
     }
-    guard intent >= honouredIntent else { return }
-    honouredIntent = intent
-    deferredRequest = nil
+    if !ownsReservation {
+      guard intent >= honouredIntent else { return }
+      honouredIntent = intent
+      deferredRequest = nil
+    }
     // A same-model restatement needs no process change; marking it
     // changing would skip the polish of a take that lands during the
     // idempotent start.
@@ -312,7 +461,7 @@ public actor LocalPolishServerCoordinator {
       residentAdapterFellBack = false
     }
 
-    if intent < honouredIntent {
+    if !ownsReservation, intent < honouredIntent {
       changing = false
       wakeRemovalWaiters()
       await retryDeferredReconfiguration()
@@ -369,12 +518,20 @@ public actor LocalPolishServerCoordinator {
   /// Health for `provider`. Returns red when a DIFFERENT model is resident,
   /// rather than the manager's state — which would describe the other model's
   /// process and read green about the wrong thing.
+  /// #4319: nil when an EnviousMeet summary holds the server: the probe is an inference
+  /// request and does not run, and there is no verdict to publish. An admitted probe counts as
+  /// inference, so a summary's drain waits for it. The startup readiness check (`GET /health`
+  /// inside the manager's start) is not a probe and is never held back.
   public func probeHealth(
     _ provider: LLMProvider, promptFamily: PromptFamily,
     spec: EGOneServerManager.ProbeSpec
-  ) async -> EGOneHealth {
+  ) async -> EGOneHealth? {
+    guard summaryReservation == nil else { return nil }
     guard resident == provider else { return .red(reason: "not_running") }
+    probesInFlight += 1
     let result = await manager.probeHealth(promptFamily: promptFamily, spec: spec)
+    probesInFlight -= 1
+    wakeDrainWaitersIfIdle()
     // A probe takes real time. If the user switched during it, this verdict
     // describes a process the asking model no longer owns, and reporting it
     // would put another model's health on this model's row.
@@ -408,7 +565,7 @@ public actor LocalPolishServerCoordinator {
     for provider: LLMProvider, takeID: String?
   ) async -> (admission: LocalPolishLeaseAdmission, availability: EGOneServerManager.Availability) {
     let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
-    let admission = acquireLease(for: provider)
+    let admission = acquireLease(for: provider, purpose: .inference)
     guard case .granted = admission else { return (admission, availability) }
     // Endpoint and stop evidence are read again together: an outside stop can
     // still end the held server, and its skip must carry that stop. The same
@@ -514,6 +671,30 @@ public actor LocalPolishServerCoordinator {
     manager.terminateImmediately()
   }
 
+  /// Test seam (#4319): true once a summary's reservation is waiting for earlier requests to
+  /// drain, so a test can act inside that window; false at the deadline, so a broken setup
+  /// fails by name instead of hanging.
+  func awaitDrainWaitForTesting() async -> Bool {
+    guard drainWaiters.isEmpty else { return true }
+    let watch = UUID()
+    await withCheckedContinuation { continuation in
+      drainWaitWatchersForTesting.append((watch, continuation))
+      Task {
+        // deadline-fallback: give up so the test fails by name instead of hanging
+        try? await Task.sleep(for: .seconds(20))
+        await self.expireDrainWatchForTesting(watch)
+      }
+    }
+    return !drainWaiters.isEmpty
+  }
+
+  private func expireDrainWatchForTesting(_ watch: UUID) {
+    guard let index = drainWaitWatchersForTesting.firstIndex(where: { $0.id == watch }) else {
+      return
+    }
+    drainWaitWatchersForTesting.remove(at: index).continuation.resume()
+  }
+
   /// Test seam. Reading the resident identity is how a test proves the SWAP
   /// happened rather than proving the coordinator merely returned.
   var residentModelForTesting: LLMProvider? { resident }
@@ -566,7 +747,7 @@ public final class LocalPolishRuntimeSet {
   public func holdForImport(_ provider: LLMProvider) async -> Bool {
     await releaseImportHold()?.value
     guard let runtime = runtime(for: provider) else { return false }
-    switch await runtime.acquireLocalServerLease() {
+    switch await runtime.acquireLocalServerResidency() {
     case .granted(let lease):
       importHold = (runtime, lease)
       return true
