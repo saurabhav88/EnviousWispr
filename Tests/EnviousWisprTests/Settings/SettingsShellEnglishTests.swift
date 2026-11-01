@@ -27,7 +27,7 @@ struct SettingsShellEnglishTests {
     // Dictionary's moved to its Enable row's "?" (`dictionaryHeading`).
     #expect(SettingsGroup.allCases.map(\.rawValue) == ["RECORD", "PROCESS", "SYSTEM"])
     #expect(SettingsGroup.allCases.map(\.heading) == SettingsGroup.allCases.map(\.rawValue))
-    #expect(SettingsGroup.record.sections == [.meetings, .dictation, .keybinds, .transcribeFile])
+    #expect(SettingsGroup.record.sections == [.dictation, .keybinds, .transcribeFile, .meetings])
     #expect(SettingsGroup.process.sections == [.aiPolish, .dictionary, .snippets])
     #if DEBUG
       #expect(SettingsGroup.system.sections == [.appSettings, .diagnostics])

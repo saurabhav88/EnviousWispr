@@ -42,11 +42,12 @@ extension EnvironmentValues {
 /// The final sidebar pages. History is ungrouped; Diagnostics is development only.
 enum SettingsPage: String, CaseIterable, Identifiable {
   case history
-  /// #3972: EnviousMeet. Declared before Dictation Settings: it is first in RECORD.
-  case meetings
   case dictation
   case keybinds
   case transcribeFile
+  /// #3972: EnviousMeet. #4320 (founder 2026-11-01): declared after Transcribe a File, so it is
+  /// last in RECORD, below the dictation pages.
+  case meetings
   case aiPolish
   case dictionary
   case snippets
