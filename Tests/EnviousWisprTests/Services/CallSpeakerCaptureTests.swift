@@ -1,3 +1,4 @@
+import ApplicationServices
 import Darwin
 import EnviousWisprCore
 import Foundation
@@ -32,25 +33,42 @@ struct CallSpeakerCaptureTests {
     var failing: Set<String> = []
     /// Every `id.attribute` the walk asked for.
     var queried: Set<String> = []
+    /// Every batched message, in order: the element and the attributes asked together.
+    var batches: [(Int, [String])] = []
     var ticks = 0
     var tickPerRead: Duration = .zero
     let start = ContinuousClock.now
 
+    /// One attribute's answer; asking costs a tick per message, not per attribute.
+    private func answer(_ id: Int, _ attribute: CallAXAttribute) -> CallAXRead<Int> {
+      queried.insert("\(id).\(attribute.rawValue)")
+      if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
+      switch attribute {
+      case .role: return roles[id].map { .text($0) } ?? .missing
+      case .children: return .elements(children[id] ?? [])
+      case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
+      case .domClassList: return classes[id].map { .texts($0) } ?? .missing
+      case .size: return .missing
+      default: return texts[id]?[attribute].map { .text($0) } ?? .missing
+      }
+    }
+
+    /// One message to the app: the clock advances once, however many attributes it asks.
+    private func message(_ id: Int) {
+      ticks += 1
+      if slow.contains(id) { extra += slowRead }
+    }
+
     func access() -> CallAXTreeAccess<Int> {
       CallAXTreeAccess<Int>(
         read: { [self] id, attribute in
-          ticks += 1
-          if slow.contains(id) { extra += slowRead }
-          queried.insert("\(id).\(attribute.rawValue)")
-          if failing.contains("\(id).\(attribute.rawValue)") { return .failed }
-          switch attribute {
-          case .role: return roles[id].map { .text($0) } ?? .missing
-          case .children: return .elements(children[id] ?? [])
-          case .menuBar: return menuBars[id].map { .elements([$0]) } ?? .missing
-          case .domClassList: return classes[id].map { .texts($0) } ?? .missing
-          case .size: return .missing
-          default: return texts[id]?[attribute].map { .text($0) } ?? .missing
-          }
+          message(id)
+          return answer(id, attribute)
+        },
+        readMany: { [self] id, attributes in
+          message(id)
+          batches.append((id, attributes.map(\.rawValue)))
+          return attributes.map { answer(id, $0) }
         },
         hash: { [self] in hashes[$0] ?? $0 }, same: { $0 == $1 },
         now: { [self] in start.advanced(by: tickPerRead * ticks + extra) })
@@ -202,7 +220,7 @@ struct CallSpeakerCaptureTests {
   func slowLastLeaf() {
     let tree = Tree()
     tree.node(1, "AXWindow")
-    // Each read advances the clock 50 ms: the one element's eight reads end past 100 ms.
+    // Each message advances the clock 50 ms: the one element's messages end past 100 ms.
     tree.tickPerRead = .milliseconds(50)
     #expect(
       capture(tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
@@ -218,7 +236,7 @@ struct CallSpeakerCaptureTests {
     let copy = capture(
       tree, bounds: CallAXBounds(maxNodes: 1_000, maxDepth: 64, budget: .milliseconds(100)))
     #expect(copy.completeness == .truncated)
-    // Ten reads fit the budget; the read that finds it spent is not sent.
+    // Ten messages fit the budget; the message that finds it spent is not sent.
     #expect(tree.ticks <= 10)
   }
 
@@ -319,6 +337,98 @@ struct CallSpeakerCaptureTests {
       #expect(
         CallSpeakerSurfaceChoice.keepsPage(url, family: family, rule: rule) == kept,
         "\(url) \(family) \(rule)")
+    }
+  }
+
+  /// #4248 chunk A: each element is copied in at most three batched messages, and nothing the
+  /// policy keeps unread is ever asked (a DOM id off buttons or in Zoom, a filtered page's or a
+  /// pruned control's children).
+  @Test("each element is read in role-ordered batches; prohibited attributes are never asked")
+  func batchedReads() {
+    let common = ["AXRole", "AXTitle", "AXDescription", "AXValue", "AXIdentifier", "AXDOMClassList", "AXSize"]
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 3, 5])
+    tree.node(2, "AXButton")
+    tree.node(3, "AXWebArea", children: [4])
+    tree.texts[3] = [.url: "https://mail.google.com/"]
+    tree.node(4, "AXStaticText")
+    tree.node(5, "AXWebArea", children: [6])
+    tree.texts[5] = [.url: "https://meet.google.com/abc-defg-hij"]
+    tree.node(6, "AXStaticText")
+    _ = capture(tree) { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .googleMeet) }
+    let asked = tree.batches.map { "\($0.0):\($0.1.joined(separator: ","))" }
+    #expect(asked == [
+      "1:" + common.joined(separator: ","), "1:AXChildren",
+      "2:" + common.joined(separator: ","), "2:AXDOMIdentifier,AXChildren",
+      "3:" + common.joined(separator: ","), "3:AXURL",
+      "5:" + common.joined(separator: ","), "5:AXURL",
+      "6:" + common.joined(separator: ","), "6:AXChildren",
+    ])
+    #expect(tree.queried.contains("3.AXChildren") == false, "a filtered page's children are never asked")
+    #expect(tree.queried.contains("5.AXChildren"), "a kept page's children are read after its address")
+    #expect(tree.queried.contains("4.AXRole") == false)
+
+    // Zoom: no DOM id anywhere; a toolbar button's children are never asked.
+    let zoom = Tree()
+    zoom.node(1, "AXWindow", children: [2])
+    zoom.node(2, "AXButton", children: [3])
+    zoom.texts[2] = [.identifier: "leave"]
+    zoom.node(3, "AXStaticText")
+    _ = capture(zoom, policy: .zoomApp)
+    #expect(zoom.batches.contains { $0.1.contains("AXDOMIdentifier") } == false)
+    #expect(zoom.queried.contains("2.AXChildren") == false)
+    #expect(zoom.queried.contains("3.AXRole") == false)
+  }
+
+  @Test("a batch answer of the wrong length counts as every attribute failing")
+  func batchWrongLength() {
+    let tree = Tree()
+    tree.node(1, "AXWindow")
+    let base = tree.access()
+    let short = CallAXTreeAccess<Int>(
+      read: base.read, readMany: { id, attributes in attributes.dropLast().map { base.read(id, $0) } },
+      hash: base.hash, same: base.same, now: base.now)
+    var host: UInt64 = 0
+    let copy = CallSpeakerCapture.capture(
+      windows: [1], access: short, bounds: .standard, keepPage: { _ in true },
+      hostTime: { host += 1; return host })
+    #expect(copy.completeness == .unreadable)
+    #expect(copy.failedReads == 7)
+  }
+
+  @Test("the live batch decoder keeps each attribute's own answer, by position")
+  func liveBatchDecoder() {
+    func axError(_ error: AXError) -> AnyObject {
+      var e = error
+      return AXValueCreate(.axError, &e)!
+    }
+    var size = CGSize(width: 40, height: 20)
+    let sizeValue = AXValueCreate(.cgSize, &size)!
+    let attributes: [CallAXAttribute] = [.role, .title, .description, .value, .size, .domClassList]
+    let decoded = CallSpeakerCapture.decodeBatch(
+      attributes, status: .success,
+      values: ["AXButton" as NSString, NSNull(), axError(.noValue), axError(.cannotComplete), sizeValue,
+               ["a", "b"] as NSArray])
+    #expect(decoded.map(describe) == ["text AXButton", "missing", "missing", "failed", "size 40x20", "texts a,b"])
+    #expect(
+      CallSpeakerCapture.decodeBatch(attributes, status: .cannotComplete, values: nil).map(describe)
+        == Array(repeating: "failed", count: attributes.count))
+    #expect(
+      CallSpeakerCapture.decodeBatch(attributes, status: .success, values: ["AXButton" as NSString])
+        .map(describe) == Array(repeating: "failed", count: attributes.count))
+    #expect(
+      CallSpeakerCapture.decodeBatch([.title], status: .success, values: [axError(.attributeUnsupported)])
+        .map(describe) == ["missing"])
+  }
+
+  private func describe(_ read: CallAXRead<AXUIElement>) -> String {
+    switch read {
+    case .text(let t): "text \(t)"
+    case .texts(let list): "texts \(list.joined(separator: ","))"
+    case .size(let w, let h): "size \(Int(w))x\(Int(h))"
+    case .elements(let list): "elements \(list.count)"
+    case .missing: "missing"
+    case .failed: "failed"
     }
   }
 

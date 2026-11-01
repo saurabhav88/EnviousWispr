@@ -39,16 +39,22 @@ package enum CallAXRead<Element> {
 /// different elements with equal hashes are both copied.
 package struct CallAXTreeAccess<Element> {
   package var read: (Element, CallAXAttribute) -> CallAXRead<Element>
+  /// Several attributes of one element in one message, answered in the order asked (#4248):
+  /// the live access batches them, which a slow app answers far faster than one message per
+  /// attribute. Without one, each attribute is read alone.
+  package var readMany: (Element, [CallAXAttribute]) -> [CallAXRead<Element>]
   package var hash: (Element) -> Int
   package var same: (Element, Element) -> Bool
   package var now: () -> ContinuousClock.Instant
 
   package init(
     read: @escaping (Element, CallAXAttribute) -> CallAXRead<Element>,
+    readMany: ((Element, [CallAXAttribute]) -> [CallAXRead<Element>])? = nil,
     hash: @escaping (Element) -> Int, same: @escaping (Element, Element) -> Bool,
     now: @escaping () -> ContinuousClock.Instant
   ) {
     self.read = read
+    self.readMany = readMany ?? { element, attributes in attributes.map { read(element, $0) } }
     self.hash = hash
     self.same = same
     self.now = now
@@ -263,6 +269,34 @@ package enum CallSpeakerCapture {
       return result
     }
 
+    /// Several attributes in one message, or nil without asking once the budget is spent. An
+    /// answer of the wrong length counts as every attribute failing.
+    mutating func readMany(_ element: Element, _ attributes: [CallAXAttribute])
+      -> [CallAXRead<Element>]?
+    {
+      guard access.now() < deadline else {
+        truncated = true
+        return nil
+      }
+      var results = access.readMany(element, attributes)
+      if results.count != attributes.count {
+        results = attributes.map { _ in .failed }
+      }
+      for case .failed in results { failedReads += 1 }
+      return results
+    }
+
+    /// A text attribute from a batch: a failed read makes the copy unreadable.
+    mutating func text(_ read: CallAXRead<Element>?) -> String? {
+      switch read {
+      case .text(let text)?: return text
+      case .failed?:
+        unreadable = true
+        return nil
+      default: return nil
+      }
+    }
+
     /// Whether `element` was copied already; records it when not.
     mutating func seen(_ element: Element) -> Bool {
       let key = access.hash(element)
@@ -289,46 +323,63 @@ package enum CallSpeakerCapture {
       }
       guard !seen(element) else { return nil }
       count += 1
-      guard let roleRead = read(element, .role) else { return nil }
-      guard case .text(let role) = roleRead else {
+      // Message 1: the role and every attribute read whatever the role is.
+      let common: [CallAXAttribute] = [
+        .role, .title, .description, .value, .identifier, .domClassList, .size,
+      ]
+      guard let first = readMany(element, common) else { return nil }
+      guard case .text(let role) = first[0] else {
         unreadable = true
         return nil
       }
-      let title = text(element, .title)
-      let description = text(element, .description)
-      let value = text(element, .value)
-      let identifier = text(element, .identifier)
-      let domIdentifier =
-        policy.readsDOMIdentifier(role: role) ? text(element, .domIdentifier) : nil
+      let title = text(first[1])
+      let description = text(first[2])
+      let value = text(first[3])
+      let identifier = text(first[4])
       var classes: [String] = []
-      switch read(element, .domClassList) {
-      case .texts(let list)?: classes = list
-      case .text(let one)?: classes = [one]
-      case .failed?: unreadable = true
+      switch first[5] {
+      case .texts(let list): classes = list
+      case .text(let one): classes = [one]
+      case .failed: unreadable = true
       default: break
       }
       var width: Double?
       var height: Double?
-      switch read(element, .size) {
-      case .size(let w, let h)?:
+      switch first[6] {
+      case .size(let w, let h):
         width = w
         height = h
-      case .failed?: unreadable = true
+      case .failed: unreadable = true
       default: break
       }
-      var url: String?
-      var keptPage = true
-      if role == "AXWebArea" {
-        url = text(element, .url)
-        keptPage = url.map(keepPage) ?? false
-      }
-      var children: [CallAXNode] = []
+      // Message 2: what the role allows. A DOM id is asked only where the policy reads it; a
+      // page's children wait for its address (message 3); pruned children are never asked.
+      let isPage = role == "AXWebArea"
       let pruned = policy.prunesChildren(
         role: role, identifier: identifier, insideEvidence: insideEvidence)
       if pruned { prunedControls += 1 }
+      var second: [CallAXAttribute] = []
+      if policy.readsDOMIdentifier(role: role) { second.append(.domIdentifier) }
+      if isPage { second.append(.url) }
+      if !isPage, !pruned { second.append(.children) }
+      let answers = second.isEmpty ? [] : readMany(element, second)
+      func answer(_ attribute: CallAXAttribute) -> CallAXRead<Element>? {
+        second.firstIndex(of: attribute).flatMap { index in answers.map { $0[index] } }
+      }
+      let domIdentifier = text(answer(.domIdentifier))
+      var url: String?
+      var keptPage = true
+      var childrenRead = answer(.children)
+      if isPage {
+        url = text(answer(.url))
+        keptPage = url.map(keepPage) ?? false
+        // Message 3: a kept page's children, after its address decided.
+        childrenRead = keptPage && !pruned && answers != nil ? read(element, .children) : nil
+      }
+      var children: [CallAXNode] = []
       if keptPage, !pruned {
         let inside = insideEvidence || policy.isEvidence(role: role)
-        switch read(element, .children) {
+        switch childrenRead {
         case .elements(let list)?:
           for child in list {
             if let copy = node(child, depth: depth + 1, insideEvidence: inside) {
@@ -360,6 +411,7 @@ package enum CallSpeakerCapture {
   package static var liveAccess: CallAXTreeAccess<AXUIElement> {
     CallAXTreeAccess<AXUIElement>(
       read: { element, attribute in liveRead(element, attribute) },
+      readMany: { element, attributes in liveReadMany(element, attributes) },
       hash: { Int(CFHash($0)) }, same: { CFEqual($0, $1) }, now: { ContinuousClock.now })
   }
 
@@ -376,6 +428,50 @@ package enum CallSpeakerCapture {
     default: return .failed
     }
     guard let value else { return .missing }
+    return liveDecode(attribute, value)
+  }
+
+  /// Several attributes of one element in one message (`AXUIElementCopyMultipleAttributeValues`,
+  /// options 0, so one attribute's error does not stop the others). Same answers as reading
+  /// each alone: an attribute the element lacks is missing, any other error failed.
+  static func liveReadMany(_ element: AXUIElement, _ attributes: [CallAXAttribute])
+    -> [CallAXRead<AXUIElement>]
+  {
+    guard AXUIElementSetMessagingTimeout(element, messagingTimeout) == .success else {
+      return attributes.map { _ in .failed }
+    }
+    var values: CFArray?
+    let status = AXUIElementCopyMultipleAttributeValues(
+      element, attributes.map { $0.rawValue } as CFArray, AXCopyMultipleAttributeOptions(rawValue: 0),
+      &values)
+    return decodeBatch(attributes, status: status, values: values as [AnyObject]?)
+  }
+
+  /// One batch answer, position by position. A failed call, or an answer of the wrong length,
+  /// fails every attribute; an `AXValue` error entry is that attribute's own error; `CFNull` is
+  /// missing.
+  static func decodeBatch(_ attributes: [CallAXAttribute], status: AXError, values: [AnyObject]?)
+    -> [CallAXRead<AXUIElement>]
+  {
+    guard status == .success, let values, values.count == attributes.count else {
+      return attributes.map { _ in .failed }
+    }
+    return zip(attributes, values).map { attribute, value in
+      if value is NSNull { return .missing }
+      if CFGetTypeID(value) == AXValueGetTypeID(), AXValueGetType(value as! AXValue) == .axError {
+        var error = AXError.success
+        guard AXValueGetValue(value as! AXValue, .axError, &error) else { return .failed }
+        switch error {
+        case .noValue, .attributeUnsupported: return .missing
+        default: return .failed
+        }
+      }
+      return liveDecode(attribute, value)
+    }
+  }
+
+  /// A successfully read value as the capture keeps it; an unexpected type is missing.
+  static func liveDecode(_ attribute: CallAXAttribute, _ value: CFTypeRef) -> CallAXRead<AXUIElement> {
     switch attribute {
     case .children, .windows:
       guard let list = value as? [AXUIElement] else { return .missing }
