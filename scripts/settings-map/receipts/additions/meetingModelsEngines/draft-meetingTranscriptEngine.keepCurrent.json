@@ -1,0 +1,259 @@
+{
+ "id": "meetingTranscriptEngine.keepCurrent",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الإبقاء على محرك التفريغ النصي الحالي",
+   "words": [],
+   "phrases": [
+    "لا تغيّر المحرك الذي يكتب نص الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на текущия енджин за транскрипция",
+   "words": [],
+   "phrases": [
+    "остави същия енджин за транскрипция на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "ponechat aktuální přepisovací engine",
+   "words": [],
+   "phrases": [
+    "neměnit engine pro přepis schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "behold den nuværende transskriptionsmotor",
+   "words": [],
+   "phrases": [
+    "brug stadig samme motor til at transskribere møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "behalte die bisherige Engine für Meeting-Transkripte"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διατήρηση της τρέχουσας μηχανής απομαγνητοφώνησης",
+   "words": [],
+   "phrases": [
+    "κράτα την ίδια μηχανή για την απομαγνητοφώνηση συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "keep using the same engine for meeting transcripts"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "mantener el motor de transcripción actual",
+   "words": [],
+   "phrases": [
+    "seguir usando el mismo motor para transcribir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "säilita praegune transkriptsioonimootor",
+   "words": [],
+   "phrases": [
+    "jäta koosolekute transkribeerimiseks sama mootor"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "säilytä nykyinen litterointimoottori",
+   "words": [],
+   "phrases": [
+    "käytä edelleen samaa moottoria kokousten litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver le moteur de transcription actuel",
+   "words": [],
+   "phrases": [
+    "garder le même moteur pour transcrire les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "मौजूदा ट्रांसक्रिप्शन इंजन बनाए रखें",
+   "words": [],
+   "phrases": [
+    "मीटिंग को टेक्स्ट में बदलने वाला इंजन वही रखें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "zadrži trenutačni mehanizam za transkripciju",
+   "words": [],
+   "phrases": [
+    "ostavi isti mehanizam za transkripciju sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "jelenlegi átírási motor megtartása",
+   "words": [],
+   "phrases": [
+    "maradjon ugyanaz a motor a megbeszélések átírásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "mantieni il motore di trascrizione attuale",
+   "words": [],
+   "phrases": [
+    "continua a usare lo stesso motore per trascrivere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "現在の文字起こしエンジンを維持",
+   "words": [],
+   "phrases": [
+    "会議の文字起こしエンジンを変えない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "현재 전사 엔진 유지",
+   "words": [],
+   "phrases": [
+    "회의를 텍스트로 바꾸는 엔진 그대로 쓰기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "palikti dabartinį transkribavimo variklį",
+   "words": [],
+   "phrases": [
+    "nekeisti susitikimų transkribavimo variklio"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "paturēt pašreizējo transkripcijas dzini",
+   "words": [],
+   "phrases": [
+    "nemainīt sapulču transkripcijas dzini"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "żomm il-magna tat-traskrizzjoni attwali",
+   "words": [],
+   "phrases": [
+    "kompli uża l-istess magna biex tittraskrivi l-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "huidige transcriptie-engine behouden",
+   "words": [],
+   "phrases": [
+    "dezelfde engine blijven gebruiken voor het uitschrijven van vergaderingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zachowaj obecny silnik transkrypcji",
+   "words": [],
+   "phrases": [
+    "nie zmieniaj silnika do transkrypcji spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "manter o motor de transcrição atual",
+   "words": [],
+   "phrases": [
+    "continuar a usar o mesmo motor para transcrever reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "păstrează motorul de transcriere actual",
+   "words": [],
+   "phrases": [
+    "folosește în continuare același motor pentru transcrierea întâlnirilor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сохранить текущий движок транскрибации",
+   "words": [],
+   "phrases": [
+    "не менять движок для расшифровки встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "ponechať aktuálny prepisovací engine",
+   "words": [],
+   "phrases": [
+    "nemeniť engine na prepis stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ohrani trenutni pogon za prepisovanje",
+   "words": [],
+   "phrases": [
+    "še naprej uporabljaj isti pogon za prepisovanje sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behåll nuvarande transkriptionsmotor",
+   "words": [],
+   "phrases": [
+    "fortsätt använda samma motor för att transkribera möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "mevcut deşifre motorunu koru",
+   "words": [],
+   "phrases": [
+    "toplantıları yazıya dökmek için aynı motoru kullanmaya devam et"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "залишити поточний рушій транскрибування",
+   "words": [],
+   "phrases": [
+    "не змінювати рушій для розшифрування зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "giữ nguyên công cụ chép lời hiện tại",
+   "words": [],
+   "phrases": [
+    "tiếp tục dùng công cụ cũ để chép lời cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保留当前转写引擎",
+   "words": [],
+   "phrases": [
+    "会议转文字继续用原来的引擎"
+   ]
+  }
+ ]
+}

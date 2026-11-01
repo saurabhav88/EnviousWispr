@@ -1,0 +1,227 @@
+{
+ "id": "meetingLiveWords.change",
+ "blocks": {
+  "ar": {
+   "title": "تغيير محرك النص المباشر للاجتماع",
+   "words": [],
+   "phrases": [
+    "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+   ]
+  },
+  "bg": {
+   "title": "смяна на модела за текста на срещата в реално време",
+   "words": [],
+   "phrases": [
+    "отвори моделите за текста на срещата в реално време в EnviousMeet"
+   ]
+  },
+  "cs": {
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "otevřít výběr modulu pro živý přepis schůzky v EnviousMeet"
+   ]
+  },
+  "da": {
+   "title": "skift motor til livetransskription af møder",
+   "words": [],
+   "phrases": [
+    "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Engine für das Live-Transkript ändern"
+   ]
+  },
+  "el": {
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "άνοιξε τις επιλογές μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "open the live words engine choices in EnviousMeet"
+   ]
+  },
+  "es": {
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "abrir las opciones del motor de transcripción en directo de reuniones en EnviousMeet"
+   ]
+  },
+  "et": {
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "ava koosoleku reaalajas teksti mootorite valik"
+   ]
+  },
+  "fi": {
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "avaa kokouksen reaaliaikaisen litteroinnin moottorivaihtoehdot"
+   ]
+  },
+  "fr": {
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदलने वाला बटन दिखाएँ"
+   ]
+  },
+  "hr": {
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "otvori odabir modela za prijepis sastanka uživo"
+   ]
+  },
+  "hu": {
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "motorválasztó megnyitása a megbeszélés élő átírásához az EnviousMeetben"
+   ]
+  },
+  "it": {
+   "title": "cambia motore di trascrizione in tempo reale",
+   "words": [],
+   "phrases": [
+    "aprire le schede dei motori per il testo mostrato in tempo reale durante le riunioni in EnviousMeet"
+   ]
+  },
+  "ja": {
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしエンジンの選択肢を開く"
+   ]
+  },
+  "ko": {
+   "title": "실시간 회의 텍스트 엔진 변경",
+   "words": [],
+   "phrases": [
+    "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+   ]
+  },
+  "lt": {
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "atidaryti susitikimo transkripcijos realiuoju laiku variklio pasirinkimą"
+   ]
+  },
+  "lv": {
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "atvērt sapulces reāllaika teksta dziņu izvēli"
+   ]
+  },
+  "mt": {
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "iftaħ l-għażliet tal-magna għat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+   ]
+  },
+  "nl": {
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "enginekeuze voor live transcriptie in EnviousMeet openen"
+   ]
+  },
+  "pl": {
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "otwórz wybór silnika transkrypcji spotkania na żywo w EnviousMeet"
+   ]
+  },
+  "pt": {
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "abrir as opções para trocar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "schimbă",
+   "words": [],
+   "phrases": [
+    "arată opțiunile de motor pentru transcrierea în timp real a întâlnirii în EnviousMeet"
+   ]
+  },
+  "ru": {
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "открыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet"
+   ]
+  },
+  "sk": {
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "otvoriť výber modelu pre živý prepis stretnutia v EnviousMeet"
+   ]
+  },
+  "sl": {
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "odpri izbiro pogona za prepis sestanka v živo"
+   ]
+  },
+  "sv": {
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "öppna motorvalen för transkribering i realtid i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "EnviousMeet'te toplantı sırasında gösterilen canlı metnin motorunu değiştirmek için seçenekleri aç"
+   ]
+  },
+  "uk": {
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "відкрити вибір рушія для тексту зустрічі наживо в EnviousMeet"
+   ]
+  },
+  "vi": {
+   "title": "đổi công cụ chép lời trực tiếp cuộc họp",
+   "words": [],
+   "phrases": [
+    "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+   ]
+  },
+  "zh": {
+   "title": "更换会议实时转写引擎",
+   "words": [],
+   "phrases": [
+    "打开会议实时转写引擎选择列表"
+   ]
+  }
+ }
+}

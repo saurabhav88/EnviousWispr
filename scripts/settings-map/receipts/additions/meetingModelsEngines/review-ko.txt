@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "ko",
+    "title": "실시간 회의 텍스트 엔진 변경",
+    "words": [],
+    "phrases": [
+      "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "ko",
+    "title": "현재 실시간 회의 텍스트 엔진 유지",
+    "words": [],
+    "phrases": [
+      "회의 실시간 텍스트 엔진을 바꾸지 않고 닫기"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "ko",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "회의 녹취록용 Apple 음성 인식 엔진 출시 예정"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "ko",
+    "title": "회의 녹취록 엔진 변경",
+    "words": [],
+    "phrases": [
+      "회의 후 전체 녹취록을 작성할 엔진 선택 카드 열기"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "ko",
+    "title": "현재 회의 녹취록 엔진 유지",
+    "words": [],
+    "phrases": [
+      "회의 녹취록 엔진을 바꾸지 않고 닫기"
+    ]
+  }
+}

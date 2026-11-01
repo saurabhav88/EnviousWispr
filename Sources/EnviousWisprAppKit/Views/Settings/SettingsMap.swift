@@ -693,7 +693,7 @@ enum SettingsMap {
       parent: .meetingsTabGeneral, destination: .meetings(.general), dictionaryTab: nil,
       visibility: .always, target: .meetingTurnsOffDictation, fallbacks: []),
     // #4105: live words' engine and language, and the transcript's language, on the Models
-    // tab (#3973 PR B). The engines are the Live words row's choices. Its Download (and Try Again, Cancel)
+    // tab (#3973 PR B). The engines are the Live words card's choices (#4287 PR 2). Its Download (and Try Again, Cancel)
     // is an action of the row, not a place of its own: a search for downloading live words
     // arrives at the row, which says whether a download is needed and refuses one during a
     // meeting (plan R1.10).
@@ -703,14 +703,39 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.liveWordsShort),
       parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, target: .meetingLiveWords, fallbacks: []),
-    // #3973 C3: the engine that writes the meeting transcript; its choices are the menu's.
-    // Download, Resume and Cancel are actions of the row, like Live words'.
+    SettingsMapNode(
+      id: .meetingLiveWordsChange, structure: .item, item: .action,
+      title: .resource(SettingsItemCopy.Shared.change),
+      description: nil,
+      parent: .meetingLiveWords, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingLiveWords, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingLiveWordsKeepCurrent, structure: .item, item: .action,
+      title: .resource(MeetingsCopy.keepCurrentLiveWordsEngine),
+      description: nil,
+      parent: .meetingLiveWords, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .engineChoicesExpanded, target: .meetingLiveWords, fallbacks: []),
+    // #3973 C3: the engine that writes the meeting transcript; its choices are the cards'
+    // (#4287 PR 2), Apple's Coming soon card included. Download, Resume and Cancel are actions
+    // of the card's status, like Live words'.
     SettingsMapNode(
       id: .meetingTranscriptEngine, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.transcriptEngineTitle),
       description: .resource(MeetingsCopy.transcriptEngineShort),
       parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, target: .meetingTranscriptEngine, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingTranscriptEngineChange, structure: .item, item: .action,
+      title: .resource(SettingsItemCopy.Shared.change),
+      description: nil,
+      parent: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingTranscriptEngine, fallbacks: []),
+    SettingsMapNode(
+      id: .meetingTranscriptEngineKeepCurrent, structure: .item, item: .action,
+      title: .resource(MeetingsCopy.keepCurrentTranscriptEngine),
+      description: nil,
+      parent: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .engineChoicesExpanded, target: .meetingTranscriptEngine, fallbacks: []),
     SettingsMapNode(
       id: .meetingTranscriptLanguage, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.transcriptLanguageTitle),
@@ -1402,7 +1427,7 @@ enum SettingsMap {
     + choices(
       of: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
-      MeetingEngineChoice.allCases.map { ($0.transcriptEngineMapID, $0.transcriptEngineTitle, nil) })
+      MeetingTranscriptEngineCards.order.map { ($0.mapID, $0.mapTitle, nil) })
     + choices(
       of: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "sk",
+    "title": "zmeniť",
+    "words": [],
+    "phrases": [
+      "otvoriť výber modelu pre živý prepis stretnutia v EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "sk",
+    "title": "ponechať aktuálny model živého prepisu stretnutia",
+    "words": [],
+    "phrases": [
+      "zavrieť výber modelu pre živý prepis stretnutia v EnviousMeet bez zmeny"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "sk",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "pripravovaný model Apple na úplný prepis stretnutí v EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "sk",
+    "title": "zmeniť",
+    "words": [],
+    "phrases": [
+      "otvoriť výber modelu na úplný prepis stretnutia v EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "sk",
+    "title": "ponechať aktuálny model prepisu stretnutí",
+    "words": [],
+    "phrases": [
+      "zavrieť výber modelu na úplný prepis stretnutia v EnviousMeet bez zmeny"
+    ]
+  }
+}

@@ -1839,6 +1839,10 @@ struct EngineCard<Footer: View>: View {
   var times: EngineCardTimes? = nil
   /// Why this engine cannot run right now, or nil when it can.
   var unavailability: String? = nil
+  /// #4287: false draws the card dimmed and refuses selection by pointer, keyboard and
+  /// VoiceOver (EnviousMeet's Coming soon and not-downloaded engines). Defaulted on, so every
+  /// other card is unchanged.
+  var isSelectable: Bool = true
   let isSelected: Bool
   let onSelect: () -> Void
   /// The action area: a Download/Cancel/Resume/Remove button, a progress bar,
@@ -1957,8 +1961,10 @@ struct EngineCard<Footer: View>: View {
         // otherwise.
         .settingsHoverRow(cornerRadius: SettingsLayout.sectionRadius)
         .contentShape(Rectangle())
+        .opacity(isSelectable ? 1 : 0.55)
       }
       .buttonStyle(.plain)
+      .disabled(!isSelectable)
       .settingsArrivalFocusControl()
       .accessibilityElement(children: .combine)
       .accessibilityLabel(title)

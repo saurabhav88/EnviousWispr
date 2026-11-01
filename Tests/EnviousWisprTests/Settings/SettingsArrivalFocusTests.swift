@@ -370,15 +370,17 @@ struct SettingsArrivalFocusTests {
       // With no engine chosen the card opens on its choices, so it has no Change button.
       [.meetingSummaryEngine]
     ),
-    // #4105: both menus of each row are pickers. #3973 PR B: they live on the Models tab.
-    // #3973 C3: the Transcript engine menu is a picker too.
+    // #4287 PR 2: the Models tab's engine cards. With no live words engine chosen its card opens
+    // on its choices, so it has no Change button; the Transcript engine card has one. The
+    // Transcript language menu is a picker.
     (
       "meetings.models",
       [
-        .meetingLiveWords, .meetingTranscriptEngine, .meetingTranscriptLanguage, .meetingsTabGeneral,
+        .meetingLiveWordsApple, .meetingLiveWordsUniversal, .meetingTranscriptEngine,
+        .meetingTranscriptEngineChange, .meetingTranscriptLanguage, .meetingsTabGeneral,
         .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
-      []
+      [.meetingLiveWords]
     ),
     // #4284: the call-app switches sit under the row's title, outside the row; a search for
     // "Notice calls in" must still land on a switch, not only on the heading.

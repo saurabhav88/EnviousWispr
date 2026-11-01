@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "vi",
+    "title": "đổi công cụ chép lời trực tiếp cuộc họp",
+    "words": [],
+    "phrases": [
+      "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "vi",
+    "title": "giữ công cụ chép lời trực tiếp cuộc họp hiện tại",
+    "words": [],
+    "phrases": [
+      "giữ nguyên công cụ chép lời trực tiếp cuộc họp trong EnviousMeet",
+      "đóng danh sách công cụ chép lời trực tiếp cuộc họp mà không thay đổi"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "vi",
+    "title": "Apple cho bản chép lời sau cuộc họp",
+    "words": [],
+    "phrases": [
+      "Apple để tạo bản chép lời sau cuộc họp trong EnviousMeet sắp ra mắt",
+      "công cụ Apple cho bản chép lời sau cuộc họp chưa chọn được"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "vi",
+    "title": "đổi công cụ tạo bản chép lời sau cuộc họp",
+    "words": [],
+    "phrases": [
+      "mở danh sách công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "vi",
+    "title": "giữ công cụ tạo bản chép lời sau cuộc họp hiện tại",
+    "words": [],
+    "phrases": [
+      "giữ nguyên công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet",
+      "đóng danh sách công cụ tạo bản chép lời sau cuộc họp mà không thay đổi"
+    ]
+  }
+}

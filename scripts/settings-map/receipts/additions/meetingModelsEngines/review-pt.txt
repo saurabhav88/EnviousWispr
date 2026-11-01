@@ -1,0 +1,43 @@
+{
+  "meetingLiveWords.change": {
+    "language": "pt",
+    "title": "alterar",
+    "words": [],
+    "phrases": [
+      "abrir as opções para trocar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "pt",
+    "title": "manter o motor atual de transcrição em tempo real",
+    "words": [],
+    "phrases": [
+      "fechar as opções sem mudar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "pt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "ver a opção Apple para a transcrição completa de reuniões no EnviousMeet",
+      "quando o motor Apple estará disponível para transcrever reuniões no EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "pt",
+    "title": "alterar",
+    "words": [],
+    "phrases": [
+      "abrir as opções para trocar o motor da transcrição completa de reuniões no EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "pt",
+    "title": "manter o motor de transcrição atual",
+    "words": [],
+    "phrases": [
+      "fechar as opções sem mudar o motor da transcrição completa de reuniões no EnviousMeet"
+    ]
+  }
+}

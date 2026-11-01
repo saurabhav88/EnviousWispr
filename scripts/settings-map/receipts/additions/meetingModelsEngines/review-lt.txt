@@ -1,0 +1,43 @@
+{
+  "meetingLiveWords.change": {
+    "language": "lt",
+    "title": "keisti",
+    "words": [],
+    "phrases": [
+      "atidaryti susitikimo transkripcijos realiuoju laiku variklio pasirinkimą"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "lt",
+    "title": "palikti dabartinį susitikimo transkripcijos realiuoju laiku variklį",
+    "words": [],
+    "phrases": [
+      "uždaryti variklių pasirinkimą nekeičiant susitikimo transkripcijos realiuoju laiku variklio"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "lt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple variklis susitikimų transkripcijai po įrašymo",
+      "dar nepasiekiamas Apple variklis susitikimų transkripcijai"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "lt",
+    "title": "keisti",
+    "words": [],
+    "phrases": [
+      "atidaryti variklio pasirinkimą susitikimui transkribuoti po įrašymo"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "lt",
+    "title": "palikti dabartinį susitikimų transkripcijos variklį",
+    "words": [],
+    "phrases": [
+      "uždaryti variklių pasirinkimą nekeičiant susitikimų transkripcijos variklio"
+    ]
+  }
+}

@@ -126,7 +126,7 @@ enum SettingsMapChoiceIDs {
   }
 }
 
-// #4105: the Live words row's engine menu, in the order the menu lists them.
+// #4105: the Live words card's engines, in the order the cards show them (#4287 PR 2).
 extension LivePreviewEngineChoice {
   var meetingLiveWordsMapID: SettingsMapID {
     switch self {
@@ -143,7 +143,8 @@ extension LivePreviewEngineChoice {
   }
 }
 
-// #3973 C3: the Transcript engine row's menu, in the order the menu lists them.
+// #3973 C3: the Transcript engine card's engines (#4287 PR 2: Apple's Coming soon card is
+// `MeetingTranscriptEngineCards.Item.appleComingSoon`).
 extension MeetingEngineChoice {
   var transcriptEngineMapID: SettingsMapID {
     switch self {
@@ -156,6 +157,17 @@ extension MeetingEngineChoice {
     switch self {
     case .parakeet: .resource(MeetingsCopy.engineParakeet)
     case .whisper: .resource(MeetingsCopy.engineWhisper)
+    }
+  }
+}
+
+// #4287 PR 2: a Transcript engine card's name in the Settings Map: the engines' own titles, and
+// Apple by its product name.
+extension MeetingTranscriptEngineCards.Item {
+  var mapTitle: SettingsMapTitle {
+    switch self {
+    case .engine(let engine): engine.transcriptEngineTitle
+    case .appleComingSoon: .verbatim(LivePreviewEngineCopy.appleTitle)
     }
   }
 }

@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "hr",
+    "title": "promijeni",
+    "words": [],
+    "phrases": [
+      "otvori odabir modela za prijepis sastanka uživo"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "hr",
+    "title": "zadrži trenutačni model za prijepis uživo",
+    "words": [],
+    "phrases": [
+      "zadrži isti model za prijepis sastanka uživo",
+      "zatvori odabir bez promjene modela za prijepis sastanka uživo"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "hr",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple za potpuni prijepis sastanka uskoro dolazi",
+      "zašto još ne mogu odabrati Apple za prijepis nakon sastanka"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "hr",
+    "title": "promijeni",
+    "words": [],
+    "phrases": [
+      "otvori odabir modela za potpuni prijepis nakon sastanka"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "hr",
+    "title": "zadrži trenutačni model za prijepis sastanka",
+    "words": [],
+    "phrases": [
+      "zadrži isti model za potpuni prijepis nakon sastanka",
+      "zatvori odabir bez promjene modela za potpuni prijepis sastanka"
+    ]
+  }
+}

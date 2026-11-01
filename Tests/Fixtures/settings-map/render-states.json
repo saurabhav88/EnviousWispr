@@ -960,7 +960,11 @@
   "exempt": {},
   "mapped": [
    "meetingLiveWords",
+   "meetingLiveWords.apple",
+   "meetingLiveWords.keepCurrent",
+   "meetingLiveWords.universal",
    "meetingTranscriptEngine",
+   "meetingTranscriptEngine.change",
    "meetingTranscriptLanguage",
    "meetings.tab.callApps",
    "meetings.tab.general",

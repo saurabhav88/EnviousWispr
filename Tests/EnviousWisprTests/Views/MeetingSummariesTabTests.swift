@@ -32,7 +32,7 @@ struct MeetingSummariesTabTests {
     let egOne = try #require(PolishRailCatalog.entry(for: .egOne))
     #expect(
       MeetingSummaryEngineChoices.subtitle(for: egOne)
-        == String(localized: MeetingsCopy.summaryEngineComingSoon))
+        == String(localized: MeetingsCopy.engineComingSoon))
     for provider in [LLMProvider.appleIntelligence, .ollama, .openAI, .gemini, .claude] {
       #expect(MeetingSummaryEngineChoices.isSelectable(provider), "\(provider)")
     }

@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "hi",
+    "title": "बदलें",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदलने वाला बटन दिखाएँ"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "hi",
+    "title": "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदले बिना विकल्प बंद करें"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "hi",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला Apple इंजन जो जल्द आ रहा है"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "hi",
+    "title": "बदलें",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदलने का बटन दिखाएँ"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "hi",
+    "title": "मौजूदा ट्रांसक्रिप्ट इंजन रखें",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदले बिना विकल्प बंद करें"
+    ]
+  }
+}

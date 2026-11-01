@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "ja",
+    "title": "変更",
+    "words": [],
+    "phrases": [
+      "会議のリアルタイム文字起こしエンジンの選択肢を開く"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "ja",
+    "title": "現在のリアルタイム文字起こしエンジンを使う",
+    "words": [],
+    "phrases": [
+      "会議のリアルタイム文字起こしエンジンを変えずに閉じる"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "ja",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "会議の全文文字起こし用Appleエンジン（近日公開）"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "ja",
+    "title": "変更",
+    "words": [],
+    "phrases": [
+      "会議の全文文字起こしエンジンの選択肢を開く"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "ja",
+    "title": "現在の全文文字起こしエンジンを使う",
+    "words": [],
+    "phrases": [
+      "会議の全文文字起こしエンジンを変えずに閉じる"
+    ]
+  }
+}

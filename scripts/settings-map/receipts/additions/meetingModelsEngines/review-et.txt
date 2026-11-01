@@ -1,0 +1,44 @@
+{
+  "meetingLiveWords.change": {
+    "language": "et",
+    "title": "muuda",
+    "words": [],
+    "phrases": [
+      "ava koosoleku reaalajas teksti mootorite valik"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "et",
+    "title": "säilita praegune reaalajas teksti mootor",
+    "words": [],
+    "phrases": [
+      "jäta koosoleku reaalajas teksti mootor samaks",
+      "sulge koosoleku reaalajas teksti mootorite valik muudatusteta"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "et",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "peagi tulev Apple'i mootor koosoleku lõpliku transkriptsiooni jaoks"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "et",
+    "title": "muuda",
+    "words": [],
+    "phrases": [
+      "ava koosoleku lõpliku transkriptsiooni mootorite valik"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "et",
+    "title": "säilita praegune transkriptsioonimootor",
+    "words": [],
+    "phrases": [
+      "jäta koosoleku lõpliku transkriptsiooni mootor samaks",
+      "sulge koosoleku lõpliku transkriptsiooni mootorite valik muudatusteta"
+    ]
+  }
+}

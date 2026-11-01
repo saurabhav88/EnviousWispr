@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "fr",
+    "title": "modifier",
+    "words": [],
+    "phrases": [
+      "afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "fr",
+    "title": "conserver le moteur actuel de transcription en direct",
+    "words": [],
+    "phrases": [
+      "fermer le choix des moteurs sans changer la transcription en direct des réunions dans EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "fr",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "fr",
+    "title": "modifier",
+    "words": [],
+    "phrases": [
+      "afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "fr",
+    "title": "conserver le moteur de transcription actuel",
+    "words": [],
+    "phrases": [
+      "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"
+    ]
+  }
+}

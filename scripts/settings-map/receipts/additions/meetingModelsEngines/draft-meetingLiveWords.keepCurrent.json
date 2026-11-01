@@ -1,0 +1,259 @@
+{
+ "id": "meetingLiveWords.keepCurrent",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "الإبقاء على محرك التفريغ النصي المباشر الحالي",
+   "words": [],
+   "phrases": [
+    "خلي محرك كتابة الاجتماع المباشرة زي ما هو"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "запазване на текущия енджин за транскрипция на живо",
+   "words": [],
+   "phrases": [
+    "остави същия енджин за транскрипцията на срещата в реално време"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "ponechat současný modul živého přepisu",
+   "words": [],
+   "phrases": [
+    "nechat stejný modul pro přepis schůzky v reálném čase"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "behold den nuværende motor til livetransskription",
+   "words": [],
+   "phrases": [
+    "brug fortsat samme motor til mødets løbende transskription"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "behalte die bisherige Engine für das Live-Transkript im Meeting"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "διατήρηση της τρέχουσας μηχανής ζωντανής απομαγνητοφώνησης",
+   "words": [],
+   "phrases": [
+    "κράτα την ίδια μηχανή για τη ζωντανή απομαγνητοφώνηση της συνάντησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "keep using the same engine for live meeting transcription"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "mantener el motor actual de transcripción en directo",
+   "words": [],
+   "phrases": [
+    "seguir usando el mismo motor para transcribir la reunión en directo"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "säilita praegune reaalajas transkribeerimise mootor",
+   "words": [],
+   "phrases": [
+    "jäta koosoleku reaalajas transkribeerimise mootor samaks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+   "words": [],
+   "phrases": [
+    "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "conserver le moteur actuel de transcription en direct",
+   "words": [],
+   "phrases": [
+    "garder le même moteur pour transcrire la réunion en direct"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+   "words": [],
+   "phrases": [
+    "मीटिंग की लाइव ट्रांसक्रिप्शन के लिए वही इंजन रहने दें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "zadrži trenutačni mehanizam transkripcije uživo",
+   "words": [],
+   "phrases": [
+    "ostavi isti mehanizam za transkripciju sastanka uživo"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "az élő átírás jelenlegi motorjának megtartása",
+   "words": [],
+   "phrases": [
+    "maradjon ugyanaz a motor a megbeszélés élő átírásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "mantieni il motore attuale di trascrizione in tempo reale",
+   "words": [],
+   "phrases": [
+    "continua a usare lo stesso motore per trascrivere la riunione in tempo reale"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "現在のリアルタイム文字起こしエンジンを維持",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしは今のエンジンを使い続ける"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "현재 실시간 전사 엔진 유지",
+   "words": [],
+   "phrases": [
+    "회의 실시간 받아쓰기 엔진을 그대로 쓰기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "palikti dabartinį tiesioginio transkribavimo variklį",
+   "words": [],
+   "phrases": [
+    "toliau naudoti tą patį variklį susitikimui transkribuoti realiuoju laiku"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "paturēt pašreizējo reāllaika transkripcijas dzini",
+   "words": [],
+   "phrases": [
+    "atstāt to pašu dzini sapulces transkripcijai reāllaikā"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "żomm il-magna attwali tat-traskrizzjoni diretta",
+   "words": [],
+   "phrases": [
+    "kompli uża l-istess magna għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "huidige engine voor live transcriptie behouden",
+   "words": [],
+   "phrases": [
+    "dezelfde engine blijven gebruiken voor live transcriptie van de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zachowaj obecny silnik transkrypcji na żywo",
+   "words": [],
+   "phrases": [
+    "zostaw ten sam silnik do transkrypcji spotkania na żywo"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "manter o motor atual de transcrição em tempo real",
+   "words": [],
+   "phrases": [
+    "continuar a usar o mesmo motor para transcrever a reunião em tempo real"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "păstrează motorul actual de transcriere în timp real",
+   "words": [],
+   "phrases": [
+    "folosește în continuare același motor pentru transcrierea întâlnirii în timp real"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сохранить текущий движок расшифровки в реальном времени",
+   "words": [],
+   "phrases": [
+    "оставить тот же движок для расшифровки встречи в реальном времени"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "ponechať aktuálny modul živého prepisu",
+   "words": [],
+   "phrases": [
+    "nechať rovnaký modul na prepis stretnutia v reálnom čase"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "ohrani trenutni pogon za prepis v živo",
+   "words": [],
+   "phrases": [
+    "še naprej uporabljaj isti pogon za prepis sestanka v živo"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "behåll nuvarande motor för livetranskribering",
+   "words": [],
+   "phrases": [
+    "fortsätt använda samma motor för att transkribera mötet i realtid"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "mevcut canlı transkripsiyon motorunu koru",
+   "words": [],
+   "phrases": [
+    "toplantıyı anlık yazıya dökmek için aynı motoru kullanmaya devam et"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "залишити поточний рушій транскрибування в реальному часі",
+   "words": [],
+   "phrases": [
+    "залишити той самий рушій для розшифровки зустрічі в реальному часі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "giữ công cụ chép lời trực tiếp hiện tại",
+   "words": [],
+   "phrases": [
+    "tiếp tục dùng công cụ hiện tại để chép lời cuộc họp theo thời gian thực"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "保留当前实时转写引擎",
+   "words": [],
+   "phrases": [
+    "会议实时转文字继续用现在的引擎"
+   ]
+  }
+ ]
+}

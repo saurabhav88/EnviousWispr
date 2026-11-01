@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "hu",
+    "title": "módosítás",
+    "words": [],
+    "phrases": [
+      "motorválasztó megnyitása a megbeszélés élő átírásához az EnviousMeetben"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "hu",
+    "title": "a megbeszélés élő átírásához használt motor megtartása",
+    "words": [],
+    "phrases": [
+      "maradjon ugyanaz a motor a megbeszélés élő átírásához",
+      "az EnviousMeet élő átírási motorválasztójának bezárása módosítás nélkül"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "hu",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple motor az EnviousMeetben a megbeszélés utáni átíráshoz",
+      "hamarosan elérhető Apple motor a megbeszélések teljes átiratához"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "hu",
+    "title": "módosítás",
+    "words": [],
+    "phrases": [
+      "motorválasztó megnyitása a megbeszélés utáni átíráshoz az EnviousMeetben"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "hu",
+    "title": "a megbeszélés teljes átiratához használt motor megtartása",
+    "words": [],
+    "phrases": [
+      "maradjon ugyanaz a motor a megbeszélés utáni átíráshoz",
+      "a teljes megbeszélés átiratához tartozó motorválasztó bezárása módosítás nélkül"
+    ]
+  }
+}
