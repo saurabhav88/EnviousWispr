@@ -204,6 +204,33 @@ enum MeetingsPresentation {
     }
   }
 
+  /// #4248 G3/G4: the live card's line about the call's mute button. Nothing while the switch
+  /// is off, no supported call is bound, or the call shows the user unmuted.
+  static func muteLine(_ state: MeetingMuteFollower.State?, callApp: CallAppFamily?) -> String? {
+    switch state {
+    case .muted?:
+      guard let callApp else {
+        return String(
+          localized: "You're muted in the call. Your voice is left out of the notes.",
+          comment: "EnviousMeet, while recording: the call shows the user muted, app unknown.")
+      }
+      return String(
+        localized: "You're muted in \(callApp.displayName). Your voice is left out of the notes.",
+        comment:
+          "EnviousMeet, while recording: the call app shows the user muted. The placeholder is the app's product name, for example Zoom or Google Meet.")
+    case .checking?:
+      return String(
+        localized: "Checking your mute button. Your voice is being recorded.",
+        comment: "EnviousMeet, while recording: the mute button has not been read yet.")
+    case .cannotSee?:
+      return String(
+        localized: "EnviousMeet can't see your mute button, so your voice is being recorded.",
+        comment: "EnviousMeet, while recording: the mute button can no longer be read.")
+    case .unmuted?, .unbound?, .disabled?, nil:
+      return nil
+    }
+  }
+
   /// Whether the recorder panel offers the call-sound settings fix next to its status line.
   static func offersCallSoundFix(_ status: MeetingTrackStatus?) -> Bool {
     status == .failed || status == .denied

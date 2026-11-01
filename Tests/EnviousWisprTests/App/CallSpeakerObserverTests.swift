@@ -349,12 +349,14 @@ import os
       recorder.runSteps(now: mach_absolute_time())
       // The synthetic Meet page shows no mute button: bound and checking, nothing silenced.
       await eventually("snapshot landed") { coordinator.muteState == .checking }
+      #expect(coordinator.muteCallApp == .googleMeet, "the muted line names the bound call")
       let stepsBeforeStop = recorder.steps.count
       await coordinator.stop()
       #expect(recorder.steps.count > stepsBeforeStop, "Stop sent the end step")
       #expect(recorder.events.last == "stop", "nothing is sent after the recorder stops")
       #expect(recorder.mutedMeter.last == false)
       #expect(coordinator.muteState == nil)
+      #expect(coordinator.muteCallApp == nil)
     }
 
     @Test("with mute following off nothing is bound; switching it on binds at once")
@@ -393,6 +395,8 @@ import os
       #expect(recorder.steps.count >= beforeOff + 2, "switched off and unbound, at once")
       recorder.runSteps(now: mach_absolute_time())
       await eventually("disabled") { coordinator.muteState == .disabled }
+      #expect(
+        MeetingsPresentation.muteLine(coordinator.muteState, callApp: coordinator.muteCallApp) == nil)
       flag.on = true
       let beforeOn = recorder.steps.count
       coordinator.muteFollowingChanged()

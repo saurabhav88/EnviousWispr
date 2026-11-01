@@ -6,7 +6,7 @@
   },
   "fingerprints" : {
     "mapSHA256" : "7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33cd5d285c7",
-    "uiCatalogSHA256" : "91f6511c31b00764c28c7dbe7fbbd76b75f19908ff3f2aa8abca437cb0144fd5",
+    "uiCatalogSHA256" : "10670d4823970932a29c0162bd8135a1f4ab6d6d2370d174f8a3c95f7a74c507",
     "vocabularyCanonicalization" : "length-prefixed-v1",
     "vocabularySHA256" : "08af4bb5d3fc5dba8e0a499b32e3b445ff19b751c7da7f877b4f367bceb7f122"
   },

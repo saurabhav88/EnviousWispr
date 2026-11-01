@@ -94,6 +94,27 @@ struct MeetingsPresentationTests {
     #expect(P.meterFraction(.infinity) == 0)
   }
 
+  @Test("the mute line says muted, checking or cannot-see, and nothing otherwise (#4248)")
+  func muteLines() {
+    #expect(
+      P.muteLine(.muted, callApp: .zoom) == "You're muted in Zoom. Your voice is left out of the notes.")
+    #expect(
+      P.muteLine(.muted, callApp: .googleMeet)
+        == "You're muted in Google Meet. Your voice is left out of the notes.")
+    #expect(
+      P.muteLine(.muted, callApp: nil)
+        == "You're muted in the call. Your voice is left out of the notes.")
+    #expect(
+      P.muteLine(.checking, callApp: .teams)
+        == "Checking your mute button. Your voice is being recorded.")
+    #expect(
+      P.muteLine(.cannotSee, callApp: .teams)
+        == "EnviousMeet can't see your mute button, so your voice is being recorded.")
+    for state: MeetingMuteFollower.State? in [.unmuted, .unbound, .disabled, nil] {
+      #expect(P.muteLine(state, callApp: .zoom) == nil, "\(String(describing: state))")
+    }
+  }
+
   @Test("a call-sound capture that failed is reported as failed, with the settings fix")
   func callSoundLines() {
     #expect(P.callSoundLine(nil) == nil)

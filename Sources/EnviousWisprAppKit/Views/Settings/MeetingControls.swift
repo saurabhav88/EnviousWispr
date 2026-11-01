@@ -91,6 +91,14 @@ struct MeetingLivePanel: View {
         .accessibilityIdentifier("meetings.stop")
       }
       meters
+      // #4248: static text in reading order, right under the "You" meter it explains.
+      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp) {
+        Text(line)
+          .font(.stHelper)
+          .foregroundStyle(.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier("meetings.muteLine")
+      }
       if let line = MeetingsPresentation.callSoundLine(meetings.callSoundStatus) {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
           Text(line)

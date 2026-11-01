@@ -558,11 +558,15 @@ final class MeetingCoordinator {
   private(set) var muteState: MeetingMuteFollower.State?
   /// #4248: audio the hold had already released when a mute change that would alter it arrived.
   private(set) var muteMissed = MeetingMuteFollower.Missed()
+  /// #4248: the call app of the binding `muteState` describes, for the live card's muted line.
+  private(set) var muteCallApp: CallAppFamily?
 
   private struct MuteFollow {
     let meetingID: UUID
     let gate: MeetingMuteGate
     var fence: MeetingMuteGate.SnapshotFence
+    /// Each binding generation's call app, so a snapshot names the call it was decided for.
+    var callApps: [UInt64: CallAppFamily] = [:]
   }
   /// #4248 timing receipt: each recording's chances to read the mute button, kept until its
   /// gate reports the `.end` decision (after the follower itself was released).
@@ -2633,6 +2637,7 @@ final class MeetingCoordinator {
       meetingID: meetingID, gate: gate, fence: .init(recording: meetingID))
     muteState = deps.muteFollowingEnabled() ? .unbound : .disabled
     muteMissed = .init()
+    muteCallApp = nil
     muteCaptureCounts[meetingID] = MuteCaptureCounts()
     #if DEBUG
       if Self.muteTimingTrace {
@@ -2648,6 +2653,9 @@ final class MeetingCoordinator {
   }
 
   private func muteBind(_ binding: CallCaptureBinding?, meetingID: UUID) {
+    if let binding, muteFollow?.meetingID == meetingID {
+      muteFollow?.callApps[binding.generation] = binding.source.family
+    }
     muteSend(
       binding.map { .bind($0.surface, generation: $0.generation) } ?? .unbind,
       meetingID: meetingID)
@@ -2699,6 +2707,7 @@ final class MeetingCoordinator {
     muteFollow = follow
     muteState = snapshot.state
     muteMissed = snapshot.missed
+    muteCallApp = snapshot.generation.flatMap { follow.callApps[$0] }
     recorder?.setMicrophoneMuted(snapshot.state == .muted)
   }
 
@@ -2755,6 +2764,7 @@ final class MeetingCoordinator {
     }
     muteFollow = nil
     muteState = nil
+    muteCallApp = nil
   }
 
   #if DEBUG
