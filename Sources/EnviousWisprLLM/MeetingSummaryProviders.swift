@@ -29,17 +29,30 @@ public enum MeetingSummaryProviders {
     /// #4319: runs once when the attempt that prepared this ends, however it ends, so an engine
     /// lent to the attempt is given back. A no-op for every provider that borrows nothing.
     public let finish: @Sendable () async -> Void
+    /// #4319: runs after each local lane admission, before the call. EG-1 takes the shared
+    /// server here on the first call; nil for every provider that borrows nothing.
+    public let borrow: (@Sendable () async throws -> BorrowOutcome)?
 
     public init(
       execution: MeetingSummary.Execution, window: MeetingSummary.Window,
       complete: @escaping MeetingSummary.Complete,
-      finish: @escaping @Sendable () async -> Void = {}
+      finish: @escaping @Sendable () async -> Void = {},
+      borrow: (@Sendable () async throws -> BorrowOutcome)? = nil
     ) {
       self.execution = execution
       self.window = window
       self.complete = complete
       self.finish = finish
+      self.borrow = borrow
     }
+  }
+
+  /// What borrowing the engine for a call found (#4319).
+  public enum BorrowOutcome: Sendable, Equatable {
+    /// The engine is this attempt's; make the call.
+    case ready
+    /// Something else holds it (a file import): give the lane back and wait for a local turn.
+    case retryLater
   }
 
   /// Why no summary can be written now.

@@ -1346,3 +1346,53 @@ extension EGOneAdapterLifecycleTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 }
+
+extension EGOneAdapterLifecycleTests {
+  @MainActor
+  @Test("activateForSummary loads EG-1 for the summary's reservation and hands back its endpoint (#4319)")
+  func activateForSummaryLoadsOwnedServer() async throws {
+    let fixture = try Fixture()
+    let suite = "eg1-summary-activation-\(UUID().uuidString)"
+    let store = try #require(TestDefaults.suite(suite))
+    defer {
+      store.removePersistentDomain(forName: suite)
+      fixture.cleanup()
+    }
+    let install = fixture.root.appendingPathComponent("base-install", isDirectory: true)
+    let metadata = fixture.root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
+      install: install, metadata: metadata)
+    try Data(count: 1000).write(to: install.appendingPathComponent("eg-1-00001-of-00002.gguf"))
+    try Data(count: 2000).write(to: install.appendingPathComponent("eg-1-00002-of-00002.gguf"))
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
+    let delivery = EGOneDeliveryAdapter(
+      controller: controller, registration: registration, version: nil, defaults: store)
+    let manifest = EGOneManifest(
+      modelName: LLMProvider.egOneModelName, version: "v2-sharded",
+      contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
+      downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
+    let coordinator = LocalPolishServerCoordinator()
+    let runtime = EGOneRuntime(
+      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      defaults: store, coordinator: coordinator)
+
+    guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
+      Issue.record("an idle server refused the summary's reservation")
+      return
+    }
+    let endpoint = await runtime.activateForSummary(reservation)
+    #expect(endpoint != nil, "the summary's load came up")
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    #expect(await runtime.activeEndpoint() == endpoint, "the endpoint is the server it owns")
+    // Anyone else's admission is still refused while the summary holds it.
+    guard case .changing = await runtime.acquireLocalServerLease() else {
+      Issue.record("a word check was admitted during the summary")
+      return
+    }
+    await runtime.releaseServerReservation(reservation)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+    #expect(await coordinator.residentModelForTesting == nil)
+  }
+}

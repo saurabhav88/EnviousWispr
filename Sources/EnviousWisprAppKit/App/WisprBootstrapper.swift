@@ -2622,6 +2622,13 @@ package final class WisprBootstrapper {
     meetingInputs.importPinnedLocalProvider = {
       fileImportCoordinatorForGates?.pinnedLocalPolishProvider
     }
+    // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
+    // through the same forced reconcile a file import uses.
+    meetingInputs.egOneSummaryEngine = EGOneSummaryEngine(
+      runtimes: localPolishRuntimes, manifest: { egOneManifest },
+      restoreSelection: { [weak settingsSync, settings] in
+        settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
+      })
     let refreshTalkerRules: @Sendable () -> Void = {
       Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
     }
