@@ -685,4 +685,40 @@ struct MeetingHistoryPresentationTests {
     rig.records = [record]
     #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, notes included")
   }
+
+  @Test("#4286: a finished meeting is found by an invited name, email or domain absent from its words")
+  func searchByInvited() async throws {
+    let rig = Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    let row = MeetingHistoryPresentationTests.meetingRow(
+      id: record.transcriptID, meetingID: record.id)
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    try await rig.coordinator.saveAndShowDurably(row)
+    record.state = .ready
+    rig.records = [record]
+    // What the documents owner derives: Dana (declined) with an email, Kim with a name only.
+    rig.coordinator.meetingInvited = {
+      $0 == record.id ? ["Dana Lee", "dana@acme.com", "acme.com", "Kim"] : []
+    }
+    for query in ["dana lee", "DANA@ACME.COM", "acme.com", "kim"] {
+      rig.coordinator.searchQuery = query
+      #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)], "query: \(query)")
+    }
+    rig.coordinator.searchQuery = "globex"
+    #expect(rig.coordinator.listedItems.isEmpty, "a term nobody was invited by")
+
+    rig.coordinator.searchQuery = "acme"
+    rig.infos[record.id] = nil
+    #expect(rig.coordinator.listedItems.isEmpty, "no facts may be shown, so no invited match")
+    let unrelatedGeneration = UUID()
+    try #require(unrelatedGeneration != row.meetingTranscriptGeneration)
+    rig.infos[record.id] = MeetingHistoryInfo(
+      generation: unrelatedGeneration, echoTurnIDs: [], title: nil)
+    #expect(rig.coordinator.listedItems.isEmpty, "facts belong to another generation")
+    rig.infos[record.id] = MeetingHistoryInfo(echoTurnIDs: [], title: nil)
+    #expect(rig.coordinator.listedItems.map(\.id) == [.meeting(record.id)], "valid facts again")
+    record.state = .failed
+    rig.records = [record]
+    #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, invited people included")
+  }
 }

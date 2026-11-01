@@ -62,6 +62,9 @@ final class TranscriptCoordinator {
   /// #3972 R38: a meeting's notes as EnviousMeet holds them (`MeetingDocumentsOwner`,
   /// observable there), searched with its finished transcript. Nil searches no notes.
   @ObservationIgnored var meetingNotes: (@MainActor (UUID) -> String?)?
+  /// #4286: a meeting's invited people as search terms (each name, email and email domain), as
+  /// EnviousMeet holds them (`MeetingDocumentsOwner`, observable there). Nil searches none.
+  @ObservationIgnored var meetingInvited: (@MainActor (UUID) -> [String])?
 
   /// Which kind of History row is listed (#2807). View state: never persisted, so a relaunch
   /// starts at All.
@@ -261,6 +264,8 @@ final class TranscriptCoordinator {
     let meetingID: UUID
     let info: MeetingHistoryInfo?
     let notes: String?
+    /// #4286: the meeting's invited search terms.
+    let invited: [String]
   }
 
   private func listKey(at now: Date) -> ListKey {
@@ -272,7 +277,9 @@ final class TranscriptCoordinator {
       searchQuery.isEmpty
       ? nil
       : meetingRowIDs.map {
-        SearchFact(meetingID: $0, info: meetingInfo?($0), notes: meetingNotes?($0))
+        SearchFact(
+          meetingID: $0, info: meetingInfo?($0), notes: meetingNotes?($0),
+          invited: meetingInvited?($0) ?? [])
       }
     return ListKey(
       revision: transcriptsRevision, pulse: expiryPulse, filter: historyFilter, query: searchQuery,
@@ -379,8 +386,8 @@ final class TranscriptCoordinator {
     return listed.filter { item in
       switch item {
       case .transcript(let row): return matches(row)
-      // R35: search covers finished meetings only, by their visible words, title and speaker
-      // names. A meeting still recording, transcribing (a retry included) or failed is never a
+      // R35: search covers finished meetings only, by their visible words, title, speaker
+      // names, notes and invited people (#4286). A meeting still recording, transcribing (a retry included) or failed is never a
       // match, so an item does not appear and vanish as its state moves.
       case .meeting(let meeting):
         guard let row = meeting.row, meeting.record.map({ $0.state == .ready }) ?? true else {
@@ -389,6 +396,11 @@ final class TranscriptCoordinator {
         return matches(row)
           || (facts[meeting.meetingID]?.notes?.localizedCaseInsensitiveContains(key.query)
             ?? false)
+          // #4286: invited people, only while History may show the meeting's facts.
+          || (facts[meeting.meetingID].map { fact in
+            fact.info?.matching(row) != nil
+              && fact.invited.contains { $0.localizedCaseInsensitiveContains(key.query) }
+          } ?? false)
       }
     }
   }
