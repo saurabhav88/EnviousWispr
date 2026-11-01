@@ -1601,6 +1601,28 @@
         }
       }
     },
+    "A summary sends the meeting transcript and your notes, never audio. Anthropic's own retention policy for your API account governs how long the request is kept." : {
+      "comment" : "EnviousMeet Summaries tab: what Claude receives for a summary.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine Zusammenfassung werden das Meetingtranskript und deine Notizen gesendet, aber niemals Audio. Wie lange die Anfrage gespeichert wird, richtet sich nach Anthropics eigenen Aufbewahrungsregeln für dein API-Konto."
+          }
+        }
+      }
+    },
+    "A summary sends the meeting transcript and your notes, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response." : {
+      "comment" : "EnviousMeet Summaries tab: what OpenAI or Gemini receives for a summary. Keep \"store: false\" as written; it is a request field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine Zusammenfassung werden das Meetingtranskript und deine Notizen gesendet, aber niemals Audio. EnviousWispr sendet außerdem store: false, um den Anbieter anzuweisen, Anfrage und Antwort nicht zu speichern."
+          }
+        }
+      }
+    },
     "A take is stuck. Restart the app." : {
       "comment" : "Pill: an earlier dictation is stuck and holds the speech engine. Must fit a small single-line pill (about 40 characters).",
       "localizations" : {
@@ -5347,6 +5369,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle das Mikrofon für die Aufnahme."
+          }
+        }
+      }
+    },
+    "Choose the model that writes your summaries." : {
+      "comment" : "EnviousMeet Summaries tab, cloud engine: the line under the Model row's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle das Modell, das deine Zusammenfassungen erstellt."
           }
         }
       }
@@ -11621,6 +11654,17 @@
         }
       }
     },
+    "Local models stay on this Mac; hosted models send the transcript and your notes to Ollama's servers." : {
+      "comment" : "EnviousMeet Summaries tab, Ollama: the line under the Model row's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Modelle bleiben auf diesem Mac; gehostete Modelle senden das Transkript und deine Notizen an Ollamas Server."
+          }
+        }
+      }
+    },
     "Location not checked" : {
       "comment" : "Transcribe a File, Review step: where the cleanup runs is not known yet.",
       "localizations" : {
@@ -17737,6 +17781,39 @@
         }
       }
     },
+    "Sends the meeting transcript and your notes to Anthropic." : {
+      "comment" : "EnviousMeet Summaries tab: the line under the Claude API key's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet das Meetingtranskript und deine Notizen an Anthropic."
+          }
+        }
+      }
+    },
+    "Sends the meeting transcript and your notes to Google." : {
+      "comment" : "EnviousMeet Summaries tab: the line under the Google Gemini API key's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet das Meetingtranskript und deine Notizen an Google."
+          }
+        }
+      }
+    },
+    "Sends the meeting transcript and your notes to OpenAI." : {
+      "comment" : "EnviousMeet Summaries tab: the line under the OpenAI API key's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet das Meetingtranskript und deine Notizen an OpenAI."
+          }
+        }
+      }
+    },
     "Serbian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -19075,6 +19152,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zusammenfassungen sind deaktiviert. Du kannst trotzdem eine für dieses Meeting erstellen."
+          }
+        }
+      }
+    },
+    "Summaries need a key. Without one, no summary is written." : {
+      "comment" : "EnviousMeet Summaries tab: the chosen cloud engine has no saved API key.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Zusammenfassungen brauchst du einen API-Schlüssel. Ohne API-Schlüssel wird keine Zusammenfassung erstellt."
           }
         }
       }

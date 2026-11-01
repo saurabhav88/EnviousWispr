@@ -38,6 +38,68 @@ import SwiftUI
 
 // MARK: - Which screen is hosting
 
+/// #4287: the setup card's lines that say what a SUMMARY uses and sends, shown on EnviousMeet's
+/// Summaries tab in place of AI Polish's dictation lines. Summaries send the visible transcript
+/// and the notes, never audio; the hosted request is the same connector request, so OpenAI and
+/// Gemini also send store: false (`OpenAIConnector.makeRequestBody`).
+enum ProviderSetupSummaryCopy {
+  static let missingKey = LocalizedStringResource(
+    "Summaries need a key. Without one, no summary is written.",
+    comment: "EnviousMeet Summaries tab: the chosen cloud engine has no saved API key.")
+
+  /// The line under the API key's name; nil keeps the AI Polish line (no key for that engine).
+  static func keyShort(_ provider: LLMProvider) -> String? {
+    switch provider {
+    case .openAI:
+      return String(
+        localized: "Sends the meeting transcript and your notes to OpenAI.",
+        comment: "EnviousMeet Summaries tab: the line under the OpenAI API key's name.")
+    case .gemini:
+      return String(
+        localized: "Sends the meeting transcript and your notes to Google.",
+        comment: "EnviousMeet Summaries tab: the line under the Google Gemini API key's name.")
+    case .claude:
+      return String(
+        localized: "Sends the meeting transcript and your notes to Anthropic.",
+        comment: "EnviousMeet Summaries tab: the line under the Claude API key's name.")
+    case .appleIntelligence, .egOne, .s1Mini, .ollama, .none: return nil
+    }
+  }
+
+  /// What a cloud engine receives for a summary, under its key; nil keeps the AI Polish line.
+  static func privacy(_ provider: LLMProvider) -> String? {
+    switch provider {
+    case .openAI, .gemini:
+      return String(
+        localized:
+          "A summary sends the meeting transcript and your notes, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
+        comment:
+          "EnviousMeet Summaries tab: what OpenAI or Gemini receives for a summary. Keep \"store: false\" as written; it is a request field.")
+    case .claude:
+      return String(
+        localized:
+          "A summary sends the meeting transcript and your notes, never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
+        comment: "EnviousMeet Summaries tab: what Claude receives for a summary.")
+    case .appleIntelligence, .egOne, .s1Mini, .ollama, .none: return nil
+    }
+  }
+
+  /// The line under the Model row's title.
+  static func modelLine(_ provider: LLMProvider) -> String {
+    switch provider {
+    case .ollama:
+      return String(
+        localized:
+          "Local models stay on this Mac; hosted models send the transcript and your notes to Ollama's servers.",
+        comment: "EnviousMeet Summaries tab, Ollama: the line under the Model row's title.")
+    case .openAI, .gemini, .claude, .appleIntelligence, .egOne, .s1Mini, .none:
+      return String(
+        localized: "Choose the model that writes your summaries.",
+        comment: "EnviousMeet Summaries tab, cloud engine: the line under the Model row's title.")
+    }
+  }
+}
+
 /// #2772 chunk 3 — which surface's polisher choice the editor is editing.
 ///
 /// Chunk 1 moved this code and deliberately left every read pointing at dictation's
@@ -734,8 +796,11 @@ struct ProviderSetupSection: View {
         }
         PolishSectionCard {
           providerRows
-          PolishRowDivider()
-          PolishIndented { whyBlock }
+          // #4287: the WHY block explains dictation cleanup; the Summaries tab leaves it out.
+          if surface != .meetingSummary {
+            PolishRowDivider()
+            PolishIndented { whyBlock }
+          }
         }
       }
       .onChange(of: provider) { _, _ in
@@ -919,10 +984,15 @@ private var cloudRows: some View {
   // "couldn't check." `model.openAIKeySaved`/`model.geminiKeySaved` cache a CONFIRMED
   // read, updated only at the 3 real mutation points.
   if savedKeyIsEmptyForCurrentProvider {
-    PolishBand(
-      text:
-        "Dictation still works. Without a key, text is pasted without AI polish.",
-      systemImage: "exclamationmark.triangle")
+    if surface == .meetingSummary {
+      PolishBand(
+        text: ProviderSetupSummaryCopy.missingKey, systemImage: "exclamationmark.triangle")
+    } else {
+      PolishBand(
+        text:
+          "Dictation still works. Without a key, text is pasted without AI polish.",
+        systemImage: "exclamationmark.triangle")
+    }
   }
   // #2772 chunk 3, plan §7: the Keychain would not answer. Saying "you have no key"
   // here would be a false accusation against a user whose key is fine, so this states
@@ -948,7 +1018,10 @@ private var cloudRows: some View {
   }
   apiKeyRow
   PolishIndented {
-    Text(activeKeyDescriptor.privacySentence)
+    Text(
+      surface == .meetingSummary
+        ? ProviderSetupSummaryCopy.privacy(provider) ?? activeKeyDescriptor.privacySentence
+        : activeKeyDescriptor.privacySentence)
       .font(.stRowHelper)
       .foregroundStyle(Color.stTextSecondary)
       .fixedSize(horizontal: false, vertical: true)
@@ -1082,6 +1155,7 @@ private var modelSelectorRow: some View {
 }
 
 private var modelRowSubtitle: String {
+  if surface == .meetingSummary { return ProviderSetupSummaryCopy.modelLine(provider) }
   switch provider {
   case .ollama:
     return String(
@@ -1229,6 +1303,7 @@ private var apiKeyRow: some View {
   PolishRow(
       map: .id(mapID),
       icon: "key",
+      surfaceSubtitle: surface == .meetingSummary ? ProviderSetupSummaryCopy.keyShort(provider) : nil,
       detail: {
         if let link = descriptor.keyLink {
           Link(link.title, destination: link.url)

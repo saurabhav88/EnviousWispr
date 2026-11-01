@@ -1000,9 +1000,22 @@
    "meetings.tab.summaries"
   ]
  },
+ "meetings.summaries.egOne": {
+  "exempt": {},
+  "mapped": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.change",
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
  "meetings.summaries.openAI": {
   "exempt": {
-   "meetingSummarySetup": 8
+   "meetingSummarySetup": 6
   },
   "mapped": [
    "meetingSummaryEngine",

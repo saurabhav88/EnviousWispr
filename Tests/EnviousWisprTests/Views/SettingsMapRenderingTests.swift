@@ -234,6 +234,8 @@ struct SettingsMapRenderingTests {
     ] + MeetingsTab.allCases.map { "meetings.\($0.rawValue)" } + [
       // #4287: the Summaries tab with an engine chosen (collapsed card, setup card shown).
       "meetings.summaries.openAI",
+      // #4287: EG-1 while it is Coming soon shows no setup card (its controls are dictation's).
+      "meetings.summaries.egOne",
     ]
 
   static func render(_ label: String) async throws -> Rendered {

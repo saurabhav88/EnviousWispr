@@ -101,3 +101,37 @@ struct MeetingSummariesCardStatusTests {
     }
   }
 }
+
+/// #4287 UAT finding: the setup card on the Summaries tab said what AI POLISH sends and does.
+/// When these fail, the Summaries tab tells the user a summary sends their dictated text, app
+/// name and custom words (it sends the meeting transcript and notes), or talks about dictation.
+@MainActor
+@Suite("EnviousMeet Summaries setup copy (#4287)", .tags(.productOutcome))
+struct MeetingSummariesSetupCopyTests {
+  @Test("every cloud engine's summary lines name the transcript and notes, never dictation or polish")
+  func cloudLines() throws {
+    for provider in [LLMProvider.openAI, .gemini, .claude] {
+      let key = try #require(ProviderSetupSummaryCopy.keyShort(provider))
+      let privacy = try #require(ProviderSetupSummaryCopy.privacy(provider))
+      for line in [key, privacy, ProviderSetupSummaryCopy.modelLine(provider)] {
+        #expect(!line.localizedCaseInsensitiveContains("dictation"), "\(provider): \(line)")
+        #expect(!line.localizedCaseInsensitiveContains("polish"), "\(provider): \(line)")
+      }
+      #expect(key.contains("transcript") && key.contains("notes"))
+      #expect(privacy.contains("transcript") && privacy.contains("never audio"))
+    }
+    #expect(ProviderSetupSummaryCopy.privacy(.openAI)?.contains("store: false") == true)
+    #expect(ProviderSetupSummaryCopy.privacy(.gemini)?.contains("store: false") == true)
+    #expect(ProviderSetupSummaryCopy.privacy(.claude)?.contains("store: false") == false)
+  }
+
+  @Test("the missing-key notice and the Ollama model line describe summaries")
+  func otherLines() {
+    let missingKey = String(localized: ProviderSetupSummaryCopy.missingKey)
+    #expect(missingKey.contains("summary"))
+    #expect(!missingKey.localizedCaseInsensitiveContains("polish"))
+    let ollama = ProviderSetupSummaryCopy.modelLine(.ollama)
+    #expect(ollama.contains("transcript"))
+    #expect(!ollama.contains("Prepare"))
+  }
+}

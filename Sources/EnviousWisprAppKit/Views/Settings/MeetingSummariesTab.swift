@@ -70,7 +70,9 @@ struct MeetingSummariesTab: View {
         } choices: {
           choiceGrid
         }
-        if provider != .none {
+        // An engine that cannot be picked yet (EG-1 while Coming soon) shows no setup: its
+        // controls are dictation's (Remove would change dictation's engine).
+        if provider != .none, MeetingSummaryEngineChoices.isSelectable(provider) {
           ProviderSetupSection(model: setupModel, surface: .meetingSummary)
         }
       }
