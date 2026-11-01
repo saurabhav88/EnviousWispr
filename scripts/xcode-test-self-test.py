@@ -216,9 +216,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertEqual(self.configurations(), ['Debug'])
         self.assertEqual([arg for arg in self.tests[0] if arg.startswith('-only-testing:')],
                          ['-only-testing:' + name for name in filters])
-        # One resolution, one critical-bundle compile (#4243), one test command.
-        self.assertEqual(len(self.calls), 3)
-        self.assertEqual(self.critical_builds(), ['Debug'])
+        # One resolution and one test command. A filtered run skips the critical-bundle
+        # compile (#4243); the full run still does it (grouped test below).
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.critical_builds(), [])
         trace = (self.root / 'trace').read_text().splitlines()
         self.assertEqual(trace.count('generate'), 1)
         self.assertIn('verdict:Debug lane:required=', trace)

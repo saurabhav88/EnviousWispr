@@ -385,7 +385,10 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   # fails here, not first in the cloud PR check (PR #4253's first run, ReadyEGOneRuntime).
   # It is only built, never run: the executed bundles and the receipt stay unchanged, and
   # the production scheme's archive graph never contains test code.
-  if [ "$config" = Debug ]; then
+  # Full unfiltered runs only: a --filter run is a development loop, and the full
+  # run that the pre-push receipt requires still compiles this bundle before any
+  # push (it cost 6-39 s on every filtered run; 2026-10-31).
+  if [ "$config" = Debug ] && [ "$FULL_VALIDATION" = 1 ]; then
     xcodebuild build-for-testing \
       -project "$PROJECT" -scheme EnviousWispr-Critical \
       -configuration "$config" \
