@@ -1,0 +1,1 @@
+{"language":"nl","title":"taal automatisch herkennen","words":[],"phrases":["taal automatisch herkennen voor het volledige transcript na de vergadering","vergadering automatisch uitschrijven zonder zelf een taal te kiezen"]}

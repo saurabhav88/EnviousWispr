@@ -1,0 +1,245 @@
+{
+ "id": "meetingLiveWordsLanguage",
+ "blocks": {
+  "ar": {
+   "title": "لغة المعاينة المباشرة",
+   "words": [],
+   "phrases": [
+    "تغيير لغة المعاينة المباشرة للاجتماع في EnviousMeet"
+   ]
+  },
+  "bg": {
+   "title": "език на прегледа на живо",
+   "words": [],
+   "phrases": [
+    "смяна на езика на прегледа на живо в EnviousMeet",
+    "смяна на езика на текста на живо по време на среща"
+   ]
+  },
+  "cs": {
+   "title": "jazyk živého náhledu",
+   "words": [],
+   "phrases": [
+    "změnit jazyk živého náhledu při nahrávání schůzky"
+   ]
+  },
+  "da": {
+   "title": "sprog for mødets livevisning",
+   "words": [],
+   "phrases": [
+    "skift sprog for teksten, der vises, mens mødet optages",
+    "vælg sprog for livevisning i EnviousMeet"
+   ]
+  },
+  "de": {
+   "words": [
+    "Sprache",
+    "Live-Vorschau",
+    "Live-Text",
+    "Meeting"
+   ],
+   "phrases": [
+    "Sprache der Live-Vorschau ändern",
+    "Sprache für Live-Text im Meeting"
+   ]
+  },
+  "el": {
+   "title": "γλώσσα ζωντανής προεπισκόπησης",
+   "words": [],
+   "phrases": [
+    "αλλαγή γλώσσας στη ζωντανή προεπισκόπηση του EnviousMeet"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "change the live preview language for meetings",
+    "change the language of text shown while recording a meeting"
+   ]
+  },
+  "es": {
+   "title": "idioma de la vista previa en directo",
+   "words": [],
+   "phrases": [
+    "cambiar el idioma de la vista previa en directo de la reunión"
+   ]
+  },
+  "et": {
+   "title": "reaalajas eelvaate keel",
+   "words": [],
+   "phrases": [
+    "muuda koosoleku reaalajas eelvaates kuvatava teksti keelt"
+   ]
+  },
+  "fi": {
+   "title": "reaaliaikaisen esikatselun kieli",
+   "words": [],
+   "phrases": [
+    "vaihda kokouksen reaaliaikaisen esikatselun kieli",
+    "kokouksen aikana näkyvän esikatselutekstin kieli"
+   ]
+  },
+  "fr": {
+   "title": "langue de l’aperçu en direct",
+   "words": [],
+   "phrases": [
+    "changer la langue de l’aperçu en direct d’une réunion dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "मीटिंग के लाइव प्रीव्यू की भाषा",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लाइव प्रीव्यू की भाषा बदलें"
+   ]
+  },
+  "hr": {
+   "title": "jezik pregleda uživo",
+   "words": [],
+   "phrases": [
+    "promijeni jezik teksta koji se prikazuje tijekom snimanja sastanka",
+    "jezik pregleda uživo u EnviousMeet"
+   ]
+  },
+  "hu": {
+   "title": "élő előnézet nyelve",
+   "words": [],
+   "phrases": [
+    "más nyelvet választanék a megbeszélés élő előnézetéhez",
+    "a megbeszélés közben megjelenő élő szöveg nyelvét módosítanám"
+   ]
+  },
+  "it": {
+   "title": "lingua dell’anteprima in tempo reale",
+   "words": [],
+   "phrases": [
+    "cambiare la lingua dell’anteprima in tempo reale di EnviousMeet"
+   ]
+  },
+  "ja": {
+   "title": "ライブプレビューの言語",
+   "words": [],
+   "phrases": [
+    "会議のライブプレビューに表示する言語を変える"
+   ]
+  },
+  "ko": {
+   "title": "실시간 미리보기 언어",
+   "words": [],
+   "phrases": [
+    "회의 실시간 미리보기에서 인식하는 언어 바꾸기"
+   ]
+  },
+  "lt": {
+   "title": "susitikimo tiesioginės peržiūros kalba",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimo tiesioginės peržiūros kalbą",
+    "pasirinkti susitikimo metu rodomo teksto kalbą"
+   ]
+  },
+  "lv": {
+   "title": "sapulces reāllaika priekšskatījuma valoda",
+   "words": [],
+   "phrases": [
+    "mainīt valodu sapulces reāllaika priekšskatījumā"
+   ]
+  },
+  "mt": {
+   "title": "lingwa tal-preview dirett",
+   "words": [],
+   "phrases": [
+    "ibdel il-lingwa tal-preview dirett tal-laqgħa",
+    "agħżel il-lingwa tat-test li jidher waqt li tkun qed tirrekordja laqgħa"
+   ]
+  },
+  "nl": {
+   "title": "taal van de live tekst",
+   "words": [],
+   "phrases": [
+    "taal van de live tekst in EnviousMeet wijzigen",
+    "taal kiezen voor de tekst die tijdens een vergadering live wordt getoond"
+   ]
+  },
+  "pl": {
+   "title": "język podglądu na żywo",
+   "words": [],
+   "phrases": [
+    "zmień język podglądu na żywo podczas spotkania"
+   ]
+  },
+  "pt": {
+   "title": "idioma da pré-visualização em tempo real",
+   "words": [],
+   "phrases": [
+    "mudar o idioma do texto mostrado em tempo real durante a reunião",
+    "mudar o idioma da pré-visualização da reunião"
+   ]
+  },
+  "ro": {
+   "title": "limba previzualizării în timp real",
+   "words": [],
+   "phrases": [
+    "schimbă limba recunoscută în previzualizarea în timp real a întâlnirii"
+   ]
+  },
+  "ru": {
+   "title": "язык предпросмотра встречи",
+   "words": [],
+   "phrases": [
+    "изменить язык предпросмотра встречи в EnviousMeet"
+   ]
+  },
+  "sk": {
+   "title": "jazyk živého náhľadu",
+   "words": [],
+   "phrases": [
+    "zmeniť jazyk živého náhľadu počas nahrávania stretnutia"
+   ]
+  },
+  "sl": {
+   "title": "jezik predogleda v živo",
+   "words": [],
+   "phrases": [
+    "spremeni jezik predogleda v živo v EnviousMeet",
+    "jezik besedila v predogledu med snemanjem sestanka"
+   ]
+  },
+  "sv": {
+   "title": "språk för mötets liveförhandsvisning",
+   "words": [],
+   "phrases": [
+    "ändra språk för texten som visas medan mötet spelas in"
+   ]
+  },
+  "tr": {
+   "title": "canlı önizleme dili",
+   "words": [],
+   "phrases": [
+    "toplantının canlı önizleme dilini değiştir"
+   ]
+  },
+  "uk": {
+   "title": "мова попереднього перегляду зустрічі",
+   "words": [],
+   "phrases": [
+    "змінити мову попереднього перегляду зустрічі в EnviousMeet"
+   ]
+  },
+  "vi": {
+   "title": "ngôn ngữ bản xem trước trực tiếp",
+   "words": [],
+   "phrases": [
+    "đổi ngôn ngữ cho bản xem trước trực tiếp của cuộc họp",
+    "chọn ngôn ngữ văn bản hiển thị khi đang ghi âm cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "会议实时预览语言",
+   "words": [],
+   "phrases": [
+    "更改会议实时预览文字的语言"
+   ]
+  }
+ }
+}

@@ -1,0 +1,291 @@
+{
+ "id": "meetingTranscriptAutoDetect",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "اكتشاف اللغة تلقائيًا",
+   "words": [],
+   "phrases": [
+    "اكتشاف لغة الاجتماع تلقائيًا",
+    "التعرف على اللغة في تفريغ الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "автоматично разпознаване на езика",
+   "words": [],
+   "phrases": [
+    "автоматично разпознаване на езика на срещата",
+    "разпознай езика на транскрипцията"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "automatické rozpoznání jazyka",
+   "words": [],
+   "phrases": [
+    "automaticky rozpoznat jazyk schůzky",
+    "poznat jazyk přepisu schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "registrér sprog automatisk",
+   "words": [],
+   "phrases": [
+    "find mødets sprog automatisk",
+    "genkend sproget i mødets transskription"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "erkenne die Sprache im Meeting automatisch",
+    "finde automatisch heraus, welche Sprache gesprochen wird"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αυτόματη αναγνώριση γλώσσας",
+   "words": [],
+   "phrases": [
+    "αναγνώριση γλώσσας συνάντησης αυτόματα",
+    "εντοπισμός γλώσσας απομαγνητοφώνησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "automatically recognize the meeting language",
+    "detect the language for meeting transcription"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "detectar el idioma automáticamente",
+   "words": [],
+   "phrases": [
+    "reconocer automáticamente el idioma de la reunión",
+    "detectar el idioma para transcribir la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "keele automaatne tuvastamine",
+   "words": [],
+   "phrases": [
+    "tuvasta koosoleku keel automaatselt",
+    "koosoleku transkriptsiooni keele tuvastamine"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tunnista kieli automaattisesti",
+   "words": [],
+   "phrases": [
+    "tunnista kokouksen kieli",
+    "kokouksen litteroinnin automaattinen kielentunnistus"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "détecter automatiquement la langue",
+   "words": [],
+   "phrases": [
+    "reconnaître automatiquement la langue de la réunion",
+    "détecter la langue pour transcrire la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "भाषा अपने आप पहचानें",
+   "words": [],
+   "phrases": [
+    "मीटिंग की भाषा अपने आप पहचानें",
+    "मीटिंग को टेक्स्ट में लिखने के लिए भाषा पहचानें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "automatsko prepoznavanje jezika",
+   "words": [],
+   "phrases": [
+    "automatski prepoznaj jezik sastanka",
+    "prepoznaj jezik za prijepis sastanka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "nyelv automatikus felismerése",
+   "words": [],
+   "phrases": [
+    "értekezlet nyelvének automatikus felismerése",
+    "beszélt nyelv felismerése az átíráshoz"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "rileva automaticamente la lingua",
+   "words": [],
+   "phrases": [
+    "riconoscere automaticamente la lingua della riunione",
+    "rilevare la lingua per trascrivere la riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "言語を自動検出",
+   "words": [],
+   "phrases": [
+    "会議の言語を自動で判別",
+    "文字起こしの言語を自動で認識"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "언어 자동 감지",
+   "words": [],
+   "phrases": [
+    "회의 언어 자동으로 인식",
+    "회의 받아쓰기 언어 자동 감지"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "automatiškai aptikti kalbą",
+   "words": [],
+   "phrases": [
+    "automatiškai atpažinti susitikimo kalbą",
+    "nustatyti kalbą susitikimo transkripcijai"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "automātiski noteikt valodu",
+   "words": [],
+   "phrases": [
+    "automātiski atpazīt sapulces valodu",
+    "noteikt valodu sapulces transkripcijai"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "agħraf il-lingwa awtomatikament",
+   "words": [],
+   "phrases": [
+    "agħraf il-lingwa tal-laqgħa awtomatikament",
+    "identifika l-lingwa għat-traskrizzjoni tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "taal automatisch detecteren",
+   "words": [],
+   "phrases": [
+    "automatisch herkennen welke taal in de vergadering wordt gesproken",
+    "taal herkennen voor het uitschrijven van de vergadering"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "automatyczne wykrywanie języka",
+   "words": [],
+   "phrases": [
+    "automatycznie rozpoznaj język spotkania",
+    "wykryj język do transkrypcji spotkania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "detectar idioma automaticamente",
+   "words": [],
+   "phrases": [
+    "reconhecer automaticamente o idioma da reunião",
+    "detectar o idioma para transcrever a reunião"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "detectează automat limba",
+   "words": [],
+   "phrases": [
+    "recunoaște automat limba ședinței",
+    "detectează limba pentru transcrierea ședinței"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "автоматическое определение языка",
+   "words": [],
+   "phrases": [
+    "автоматически распознать язык встречи",
+    "определить язык для расшифровки встречи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "automatické rozpoznanie jazyka",
+   "words": [],
+   "phrases": [
+    "automaticky rozpoznať jazyk stretnutia",
+    "zistiť jazyk prepisu stretnutia"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "samodejno zaznavanje jezika",
+   "words": [],
+   "phrases": [
+    "samodejno prepoznaj jezik sestanka",
+    "zaznaj jezik za prepis sestanka"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "identifiera språk automatiskt",
+   "words": [],
+   "phrases": [
+    "känn igen mötets språk automatiskt",
+    "hitta språket för transkribering av mötet"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "dili otomatik algıla",
+   "words": [],
+   "phrases": [
+    "toplantının dilini otomatik tanı",
+    "toplantıyı yazıya dökmek için dili algıla"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "автоматичне визначення мови",
+   "words": [],
+   "phrases": [
+    "автоматично розпізнати мову зустрічі",
+    "визначити мову для розшифрування зустрічі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "tự động nhận diện ngôn ngữ",
+   "words": [],
+   "phrases": [
+    "tự nhận biết ngôn ngữ cuộc họp",
+    "tự động xác định ngôn ngữ để chép lời cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "自动检测语言",
+   "words": [],
+   "phrases": [
+    "自动识别会议语言",
+    "转写会议时自动判断语言"
+   ]
+  }
+ ]
+}

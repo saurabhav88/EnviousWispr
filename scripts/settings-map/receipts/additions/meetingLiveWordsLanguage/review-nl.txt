@@ -1,0 +1,1 @@
+{"language":"nl","title":"taal van de live tekst","words":[],"phrases":["taal van de live tekst in EnviousMeet wijzigen","taal kiezen voor de tekst die tijdens een vergadering live wordt getoond"]}

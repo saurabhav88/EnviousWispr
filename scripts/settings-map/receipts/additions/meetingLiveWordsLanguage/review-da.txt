@@ -1,0 +1,1 @@
+{"language":"da","title":"sprog for mødets livevisning","words":[],"phrases":["skift sprog for teksten, der vises, mens mødet optages","vælg sprog for livevisning i EnviousMeet"]}

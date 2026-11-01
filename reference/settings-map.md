@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-309 nodes, 282 searchable, 9024 vocabulary blocks.
+311 nodes, 284 searchable, 9088 vocabulary blocks.
 
-Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e`, uiCatalogSHA256 `2d3174feb55724f387c2e80ada251917293b1aaebc16d9b34f498c18e4bd02f6`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3`
+Fingerprints: mapSHA256 `34e09ce6ab23c53f944263b0d8669981f1381669082996ca8a38b9fbcbaa7c9e`, uiCatalogSHA256 `aa066cd6d8c8afc6abb11f285ffad19902086a321d0810693603b2b51787ad04`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f2a753c764f3f19fa814c68e7799e3c266f8d375e934a2bd41533c3694787e81`
 
 ## Structure
 
@@ -294,12 +294,14 @@ Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e
         - [Keep current live words engine / Aktuelle Live-Transkript-Engine beibehalten](#node-meetingLiveWords-keepCurrent) `meetingLiveWords.keepCurrent` (action)
         - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
         - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
+      - [Live Preview language / Sprache der Live-Vorschau](#node-meetingLiveWordsLanguage) `meetingLiveWordsLanguage` (setting)
       - [Transcript engine / Transkript-Engine](#node-meetingTranscriptEngine) `meetingTranscriptEngine` (setting)
         - [Change / Ändern](#node-meetingTranscriptEngine-change) `meetingTranscriptEngine.change` (action)
         - [Keep current transcript engine / Aktuelle Transkript-Engine beibehalten](#node-meetingTranscriptEngine-keepCurrent) `meetingTranscriptEngine.keepCurrent` (action)
         - [Parakeet / Parakeet](#node-meetingTranscriptEngine-parakeet) `meetingTranscriptEngine.parakeet` (choice)
         - [Whisper Large v3 Turbo / Whisper Large v3 Turbo](#node-meetingTranscriptEngine-whisper) `meetingTranscriptEngine.whisper` (choice)
         - [Apple](#node-meetingTranscriptEngine-apple) `meetingTranscriptEngine.apple` (choice)
+      - [Auto-detect language / Sprache automatisch erkennen](#node-meetingTranscriptAutoDetect) `meetingTranscriptAutoDetect` (setting)
       - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
     - [Summaries / Zusammenfassungen](#node-meetings-tab-summaries) `meetings.tab.summaries` (feature)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
@@ -2726,6 +2728,28 @@ Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e
 | Search (de) | phrases: bisherige Engine für das Live-Transkript behalten |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-meetingLiveWordsLanguage"></a>
+
+### Live Preview language / Sprache der Live-Vorschau (`meetingLiveWordsLanguage`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
+| Title source | catalog key `Live Preview language` |
+| Description | The language Live Preview listens for during a meeting. / Die Sprache, die die Live-Vorschau während eines Meetings erkennt. |
+| Description source | catalog key `The language Live Preview listens for during a meeting.` |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingLiveWordsLanguage`](#node-meetingLiveWordsLanguage) |
+| Fallbacks, in order | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: change the live preview language for meetings; change the language of text shown while recording a meeting |
+| Search (de) | words: Sprache, Live-Vorschau, Live-Text, Meeting<br>phrases: Sprache der Live-Vorschau ändern; Sprache für Live-Text im Meeting |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-meetingTranscriptEngine"></a>
 
 ### Transcript engine / Transkript-Engine (`meetingTranscriptEngine`)
@@ -2788,6 +2812,27 @@ Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: keep using the same engine for meeting transcripts |
 | Search (de) | phrases: bisherige Engine für das Transkript nach dem Meeting behalten |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptAutoDetect"></a>
+
+### Auto-detect language / Sprache automatisch erkennen (`meetingTranscriptAutoDetect`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
+| Title source | catalog key `Auto-detect language` |
+| Description | composed at display time from live state (not exported) |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptAutoDetect`](#node-meetingTranscriptAutoDetect) |
+| Fallbacks, in order | [`meetingTranscriptLanguage`](#node-meetingTranscriptLanguage) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: automatically detect the language for the full meeting transcript; turn off automatic language detection for meeting transcripts |
+| Search (de) | words: Transkript, Spracherkennung, automatisch<br>phrases: Sprache des Transkripts automatisch erkennen; automatische Spracherkennung im Meeting |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptLanguage"></a>

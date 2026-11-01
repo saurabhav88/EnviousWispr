@@ -13,12 +13,13 @@ struct MeetingModelsTab: View {
   var body: some View {
     SettingsContentView {
       VStack(alignment: .leading, spacing: 20) {
-        MeetingLiveWordsCard()
+        VStack(alignment: .leading, spacing: 12) {
+          MeetingLiveWordsCard()
+          MeetingLiveLanguageRow()
+        }
         VStack(alignment: .leading, spacing: 12) {
           MeetingTranscriptEngineCard()
-          BrandedSection {
-            BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
-          }
+          MeetingTranscriptLanguageSection()
         }
       }
     }
@@ -64,7 +65,8 @@ private func meetingStatusText(_ text: String) -> some View {
 // MARK: - Live words
 
 /// #4105 / #4287 PR 2: the Live words card. The summary names the engine; the status region keeps
-/// the row's language menu, state lines and Download, Try Again or Cancel; Change opens the Apple
+/// the status chip (#4320), state lines and Download, Try Again or Cancel; the language has its
+/// own row under the card (#4320, `MeetingLiveLanguageRow`); Change opens the Apple
 /// and Universal cards. A choice goes through `MeetingLiveWordsRowModel`, never Live Preview's own
 /// setting (decision `macos-4105-independent-meeting-languages`).
 struct MeetingLiveWordsCard: View {
@@ -128,18 +130,14 @@ struct MeetingLiveWordsCard: View {
     return model.languageName(engine: engine, code: code)
   }
 
-  /// The language menu, the state lines and the one action, outside the disclosure so they are
+  /// The status chip, the state lines and the one action, outside the disclosure so they are
   /// reachable with the cards closed.
   @ViewBuilder
   private var status: some View {
     if model.selectedEngine != nil {
       VStack(alignment: .leading, spacing: 8) {
-        ProviderStatusChip(status: MeetingEngineStatusPresentation.live(model.status), isHeadline: true)
         HStack(spacing: 8) {
-          Text(MeetingsCopy.liveWordsLanguageLabel)
-            .font(.stRowHelper)
-            .foregroundStyle(.stTextSecondary)
-          languagePicker
+          ProviderStatusChip(status: MeetingEngineStatusPresentation.live(model.status), isHeadline: true)
           Spacer(minLength: 8)
           action
         }
@@ -154,32 +152,6 @@ struct MeetingLiveWordsCard: View {
       }
       .padding(.leading, 4)
     }
-  }
-
-  private var languagePicker: some View {
-    let engine = model.selectedEngine
-    let options = engine.map { model.languages(for: $0) } ?? []
-    return Picker(
-      String(localized: MeetingsCopy.chooseLanguage),
-      selection: Binding(
-        get: { model.selectedLanguage },
-        set: { code in
-          guard let code else { return }
-          Task { await model.selectLanguage(code) }
-        })
-    ) {
-      if model.selectedLanguage == nil
-        || !options.contains(where: { $0.code == model.selectedLanguage })
-      {
-        Text(MeetingsCopy.chooseLanguage).tag(String?.none)
-      }
-      ForEach(options) { option in
-        Text(option.name).tag(String?.some(option.code))
-      }
-    }
-    .labelsHidden()
-    .disabled(engine == nil || options.isEmpty)
-    .fixedSize()
   }
 
   @ViewBuilder private var statusLine: some View {
@@ -278,6 +250,53 @@ struct MeetingLiveWordsCard: View {
       },
       fillsHeight: true,
       footer: { EmptyView() })
+  }
+}
+
+/// #4320 (founder decision 2): the Live Preview language, its own row under the live engine
+/// card. It names the chosen language and opens the shared language window
+/// (`LanguagePickerContent.meetingLive`). Hidden only while no engine is chosen; with an engine
+/// chosen and no languages to offer yet (Apple's list not read, or Apple unavailable) the row
+/// stays and Change is off, as the menu it replaces was.
+struct MeetingLiveLanguageRow: View {
+  @Environment(MeetingLiveWordsRowModel.self) private var model
+  @State private var showLanguages = false
+
+  var body: some View {
+    if let engine = model.selectedEngine {
+      BrandedSection {
+        BrandedRow(showDivider: false) {
+          SettingsRow(
+            map: .id(.meetingLiveWordsLanguage), icon: "character.bubble",
+            help: MeetingsCopy.liveWordsHelp
+          ) {
+            HStack(spacing: 10) {
+              Text(languageName(engine))
+                .font(.stRowHelper)
+                .foregroundStyle(.stTextSecondary)
+              Button(SettingsItemCopy.Engine.lockedLanguageChange) { showLanguages = true }
+                .controlSize(.small)
+                .font(.stHelper)
+                .disabled(model.languages(for: engine).isEmpty)
+                .accessibilityLabel(String(localized: MeetingsCopy.liveLanguageTitle))
+                .settingsArrivalFocusControl()
+            }
+          }
+        }
+      }
+      .sheet(isPresented: $showLanguages) {
+        LanguageLockSheet { query, dismiss in
+          LanguagePickerContent.meetingLive(model: model, query: query, dismiss: dismiss)
+        }
+      }
+    }
+  }
+
+  private func languageName(_ engine: LivePreviewEngineChoice) -> String {
+    guard let code = model.selectedLanguage else {
+      return String(localized: MeetingsCopy.chooseLanguage)
+    }
+    return model.languageName(engine: engine, code: code)
   }
 }
 

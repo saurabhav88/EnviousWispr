@@ -1,0 +1,16 @@
+You are reviewing German interface text and German Settings-search vocabulary for a macOS dictation app (EnviousWispr). It has EnviousMeet, a meeting recorder on its own Settings page with a Models tab. Use du-form, no dashes. "Live-Vorschau" is the app's existing German name for Live Preview (words shown on screen while speaking). Search-block rules: lowercase except nouns; 0 to 6 short "words", 1 to 3 everyday "phrases" a German user might type into the app's Settings search to find this one place; the interface title is supplied separately and is not part of the block.
+
+Context: on the EnviousMeet Models tab, a live engine card (Apple or Universal) has a status chip and a spec table; under it a row picks the language of the meeting's live text (separate from dictation's language and from the transcript language); a TRANSCRIPT LANGUAGE section has an Auto-detect switch (on: the after-meeting transcript works out the spoken language; off: one chosen language) and a Transcript language row whose Change button opens a searchable language list.
+
+1. Status chip when no live engine and language are chosen. English "Not set up". German "Nicht eingerichtet"
+2. Apple live engine card, Download size row value (macOS downloads each language from Apple, no single size). English "Language download from Apple". German "Sprachdownload von Apple"
+3. Live engine card, Languages row value, %lld is a number. English "%lld languages". German "%lld Sprachen"
+4. Row title and language-window title. English "Live Preview language". German "Sprache der Live-Vorschau"
+5. Short line under that row. English "The language Live Preview listens for during a meeting." German "Die Sprache, auf die die Live-Vorschau während eines Meetings hört."
+6. Heading over the language list in that window. English "AVAILABLE FOR LIVE PREVIEW". German "VERFÜGBAR FÜR LIVE-VORSCHAU"
+7. Heading over the transcript language list, %@ is the engine name (Parakeet or Whisper), shown uppercased. English "Available for %@". German "Verfügbar für %@"
+8. Line under the transcript Auto-detect switch, %@ is coverage such as "25 European languages" (German "25 europäische Sprachen"). English "Works out the language from what is said. %@." German "Erkennt die Sprache aus dem Gesagten. %@."
+9. Search block for the Live Preview language row (item 4): {"language":"de","words":[],"phrases":["ändere die Sprache der Live-Vorschau in EnviousMeet","in welcher Sprache wird die Live-Vorschau während der Meetingaufnahme angezeigt"]}
+10. Search block for the transcript Auto-detect switch (German title "Sprache automatisch erkennen"): {"language":"de","words":[],"phrases":["erkenne die gesprochene Sprache für das vollständige Meetingtranskript automatisch","lass die Sprache für das Transkript nach dem Meeting automatisch erkennen"]}
+
+For each item answer "N. OK" or "N. <corrected German>" (for 9 and 10, a corrected JSON block) plus a one-sentence reason. Keep placeholders (%lld, %@) exactly. Check accuracy (nothing promised that it does not do), natural German an app would use, and du-form.

@@ -236,6 +236,8 @@ struct SettingsMapRenderingTests {
       "meetings.summaries.openAI",
       // #4287: EG-1 while it is Coming soon shows no setup card (its controls are dictation's).
       "meetings.summaries.egOne",
+      // #4320: the Models tab with a live engine chosen, which shows the Live Preview language row.
+      "meetings.models.universal",
     ]
 
   static func render(_ label: String) async throws -> Rendered {
@@ -808,20 +810,31 @@ struct SettingsMapRenderingTests {
   static func meetings(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
     let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
+    let variant = parts.count > 2 ? parts[2] : nil
     let (home, environment) = try meetingsEnvironment(
-      summaryProvider: parts.count > 2 ? parts[2] : nil)
-    let list = try await registrations(environment(AnyView(MeetingsView(selection: .constant(tab)))))
+      summaryProvider: tab == .summaries ? variant : nil,
+      liveEngine: tab == .models ? variant : nil)
+    // #4320: the live engine choice loads when the card appears; wait for its language row.
+    let ready: ((Set<SettingsMapID>) -> Bool)? =
+      tab == .models && variant != nil ? { $0.contains(.meetingLiveWordsLanguage) } : nil
+    let list = try await registrations(
+      environment(AnyView(MeetingsView(selection: .constant(tab)))), until: ready)
     return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
   }
 
   /// What the EnviousMeet page needs around it, with no meetings and its setup finished
   /// (`.meetingSetUp`, #4017); `appleAvailable` is the Live words row's Apple engine (#4105).
-  static func meetingsEnvironment(appleAvailable: Bool = true, summaryProvider: String? = nil)
-    throws -> (Home, (AnyView) -> AnyView)
-  {
+  static func meetingsEnvironment(
+    appleAvailable: Bool = true, summaryProvider: String? = nil, liveEngine: String? = nil
+  ) throws -> (Home, (AnyView) -> AnyView) {
     let home = try Home(seed: {
       $0.set(true, forKey: "meetingOnboardingComplete")
       if let summaryProvider { $0.set(summaryProvider, forKey: "meetingSummaryLLMProvider") }
+      // #4320: a chosen live engine and language (the render fixture offers "de" and "en").
+      if let liveEngine {
+        $0.set(liveEngine, forKey: "meetingLiveWordsEngine")
+        $0.set("en", forKey: "meetingLiveWordsLanguage")
+      }
     })
     let harness = try MeetingCoordinatorTests.Harness()
     let flow = MeetingStartFlow(

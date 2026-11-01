@@ -366,9 +366,6 @@ enum MeetingsCopy {
   static let keepCurrentTranscriptEngine = LocalizedStringResource(
     "Keep current transcript engine",
     comment: "EnviousMeet Models tab: closes the transcript engine choices without changing the engine.")
-  static let liveWordsLanguageLabel = LocalizedStringResource(
-    "Language",
-    comment: "EnviousMeet Models tab, Live words card: the label before the live words language menu.")
   static let liveWordsAppleTagline = LocalizedStringResource(
     "Uses Apple's speech recognition. Some languages need an Apple language download. Needs macOS 26.",
     comment: "EnviousMeet Models tab, Live words: the Apple engine card's line. Apple is a product name.")
@@ -536,6 +533,31 @@ enum MeetingsCopy {
   static let transcriptLanguageAuto = LocalizedStringResource(
     "Auto",
     comment: "EnviousMeet page, Transcript language: the menu item that sets no language.")
+  /// #4320: the Live Preview language row (its own Settings Map place) and its window's title.
+  static let liveLanguageTitle = LocalizedStringResource(
+    "Live Preview language",
+    comment: "EnviousMeet Models tab: row that picks the language live text is shown in while a meeting records; also the title of its language window.")
+  static let liveLanguageShort = LocalizedStringResource(
+    "The language Live Preview listens for during a meeting.",
+    comment: "EnviousMeet Models tab: the short line under Live Preview language.")
+  /// #4320: the heading over the Live Preview language window's list.
+  static let liveLanguageListHeading = LocalizedStringResource(
+    "AVAILABLE FOR LIVE PREVIEW",
+    comment: "EnviousMeet Models tab, Live Preview language window: heading over the languages the chosen live engine can show.")
+  /// #4320: the heading over the Transcript language window's list. The placeholder is the
+  /// transcript engine's name (Parakeet or Whisper).
+  static func transcriptLanguageListHeading(_ engine: String) -> String {
+    String(
+      localized: "Available for \(engine)",
+      comment: "EnviousMeet Models tab, Transcript language window: heading over the languages the transcript engine can write. The placeholder is the engine's name, such as Parakeet.")
+  }
+  /// #4320: the short line under the transcript Auto-detect switch. The placeholder is the
+  /// engine's language coverage, such as "25 European languages".
+  static func transcriptAutoDetectShort(_ coverage: String) -> String {
+    String(
+      localized: "Works out the language from what is said. \(coverage).",
+      comment: "EnviousMeet Models tab, Transcript language section: the line under the Auto-detect switch. The placeholder is how many languages the transcript engine covers, such as 25 European languages.")
+  }
   static let languagesDiffer = LocalizedStringResource(
     "Live words and the transcript use different languages.",
     comment: "EnviousMeet page: note under Transcript language when its language is not the live words language. It does not block either choice.")

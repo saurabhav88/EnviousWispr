@@ -1,0 +1,1 @@
+{"language":"da","title":"genkend sproget automatisk","words":[],"phrases":["slå automatisk sproggenkendelse til for transskriptionen efter mødet","lad EnviousMeet genkende sproget automatisk i den fulde transskription"]}

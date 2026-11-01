@@ -1,0 +1,1 @@
+{"language":"lv","title":"automātiski noteikt valodu","words":[],"phrases":["ieslēgt automātisku valodas noteikšanu sapulces atšifrējumam","izslēgt automātisku valodas noteikšanu sapulces atšifrējumam"]}

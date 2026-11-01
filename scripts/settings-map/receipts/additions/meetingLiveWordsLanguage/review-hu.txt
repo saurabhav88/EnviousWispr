@@ -1,0 +1,1 @@
+{"language":"hu","title":"élő előnézet nyelve","words":[],"phrases":["más nyelvet választanék a megbeszélés élő előnézetéhez","a megbeszélés közben megjelenő élő szöveg nyelvét módosítanám"]}

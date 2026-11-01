@@ -94,6 +94,21 @@ enum EngineChoicePresentation {
   static let downloadSizeLabel = LocalizedStringResource(
     "Download size",
     comment: "Speech engine settings, engine card: a row label in the card's spec table.")
+  /// How many languages an engine covers: its card's Languages value, and (#4320) the coverage
+  /// EnviousMeet's transcript Auto-detect line names.
+  static func coverage(for backend: ASRBackendType) -> LocalizedStringResource {
+    switch backend {
+    case .parakeet:
+      LocalizedStringResource(
+        "25 European languages",
+        comment: "Speech engine settings, engine card: how many languages it covers.")
+    case .whisper:
+      LocalizedStringResource(
+        "99+ languages",
+        comment: "Speech engine settings, engine card: how many languages it covers.")
+    }
+  }
+
   /// The Runs on value for engines on the graphics processor (All Languages, and #4320
   /// EnviousMeet's Universal live engine).
   static let appleGPU = LocalizedStringResource(
@@ -196,12 +211,7 @@ enum EngineChoicePresentation {
         Spec(
           label: downloadSizeLabel,
           value: .localized(downloadSize(bytes: fastDownloadBytes(parakeetModel: parakeetModel)))),
-        Spec(
-          label: languagesLabel,
-          value: .localized(
-            LocalizedStringResource(
-              "25 European languages",
-              comment: "Speech engine settings, engine card: how many languages it covers."))),
+        Spec(label: languagesLabel, value: .localized(coverage(for: .parakeet))),
         Spec(
           label: runsOnLabel,
           value: .localized(
@@ -235,12 +245,7 @@ enum EngineChoicePresentation {
     specs: [
       Spec(label: modelLabel, value: .verbatim(allLanguagesModelName)),
       Spec(label: downloadSizeLabel, value: .localized(downloadSize(bytes: whisperDownloadBytes))),
-      Spec(
-        label: languagesLabel,
-        value: .localized(
-          LocalizedStringResource(
-            "99+ languages",
-            comment: "Speech engine settings, engine card: how many languages it covers."))),
+      Spec(label: languagesLabel, value: .localized(coverage(for: .whisper))),
       Spec(
         label: runsOnLabel,
         value: .localized(appleGPU)),

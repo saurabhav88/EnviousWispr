@@ -964,6 +964,24 @@
    "meetingLiveWords.apple",
    "meetingLiveWords.keepCurrent",
    "meetingLiveWords.universal",
+   "meetingTranscriptAutoDetect",
+   "meetingTranscriptEngine",
+   "meetingTranscriptEngine.change",
+   "meetingTranscriptLanguage",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.models.universal": {
+  "exempt": {},
+  "mapped": [
+   "meetingLiveWords",
+   "meetingLiveWords.change",
+   "meetingLiveWordsLanguage",
+   "meetingTranscriptAutoDetect",
    "meetingTranscriptEngine",
    "meetingTranscriptEngine.change",
    "meetingTranscriptLanguage",

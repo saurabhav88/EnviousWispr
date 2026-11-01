@@ -1,0 +1,1 @@
+{"language":"lt","title":"susitikimo tiesioginės peržiūros kalba","words":[],"phrases":["pakeisti susitikimo tiesioginės peržiūros kalbą","pasirinkti susitikimo metu rodomo teksto kalbą"]}

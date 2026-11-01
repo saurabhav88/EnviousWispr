@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 309,
-    "searchable" : 282,
-    "vocabularyBlocks" : 9024
+    "nodes" : 311,
+    "searchable" : 284,
+    "vocabularyBlocks" : 9088
   },
   "fingerprints" : {
-    "mapSHA256" : "8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e",
-    "uiCatalogSHA256" : "2d3174feb55724f387c2e80ada251917293b1aaebc16d9b34f498c18e4bd02f6",
+    "mapSHA256" : "34e09ce6ab23c53f944263b0d8669981f1381669082996ca8a38b9fbcbaa7c9e",
+    "uiCatalogSHA256" : "aa066cd6d8c8afc6abb11f285ffad19902086a321d0810693603b2b51787ad04",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3"
+    "vocabularySHA256" : "f2a753c764f3f19fa814c68e7799e3c266f8d375e934a2bd41533c3694787e81"
   },
   "interfaceLanguages" : [
     "en",
@@ -40408,6 +40408,349 @@
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Die Sprache, die die Live-Vorschau während eines Meetings erkennt.",
+        "en" : "The language Live Preview listens for during a meeting.",
+        "key" : "The language Live Preview listens for during a meeting.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "meetingLiveWords"
+      ],
+      "id" : "meetingLiveWordsLanguage",
+      "kind" : "setting",
+      "parent" : "meetings.tab.models",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWordsLanguage",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Sprache der Live-Vorschau",
+        "en" : "Live Preview language",
+        "key" : "Live Preview language",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تغيير لغة المعاينة المباشرة للاجتماع في EnviousMeet"
+          ],
+          "title" : "لغة المعاينة المباشرة",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "смяна на езика на прегледа на живо в EnviousMeet",
+            "смяна на езика на текста на живо по време на среща"
+          ],
+          "title" : "език на прегледа на живо",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "změnit jazyk živého náhledu při nahrávání schůzky"
+          ],
+          "title" : "jazyk živého náhledu",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "skift sprog for teksten, der vises, mens mødet optages",
+            "vælg sprog for livevisning i EnviousMeet"
+          ],
+          "title" : "sprog for mødets livevisning",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Sprache der Live-Vorschau ändern",
+            "Sprache für Live-Text im Meeting"
+          ],
+          "words" : [
+            "Sprache",
+            "Live-Vorschau",
+            "Live-Text",
+            "Meeting"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αλλαγή γλώσσας στη ζωντανή προεπισκόπηση του EnviousMeet"
+          ],
+          "title" : "γλώσσα ζωντανής προεπισκόπησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "change the live preview language for meetings",
+            "change the language of text shown while recording a meeting"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cambiar el idioma de la vista previa en directo de la reunión"
+          ],
+          "title" : "idioma de la vista previa en directo",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "muuda koosoleku reaalajas eelvaates kuvatava teksti keelt"
+          ],
+          "title" : "reaalajas eelvaate keel",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vaihda kokouksen reaaliaikaisen esikatselun kieli",
+            "kokouksen aikana näkyvän esikatselutekstin kieli"
+          ],
+          "title" : "reaaliaikaisen esikatselun kieli",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "changer la langue de l’aperçu en direct d’une réunion dans EnviousMeet"
+          ],
+          "title" : "langue de l’aperçu en direct",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के लाइव प्रीव्यू की भाषा बदलें"
+          ],
+          "title" : "मीटिंग के लाइव प्रीव्यू की भाषा",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "promijeni jezik teksta koji se prikazuje tijekom snimanja sastanka",
+            "jezik pregleda uživo u EnviousMeet"
+          ],
+          "title" : "jezik pregleda uživo",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "más nyelvet választanék a megbeszélés élő előnézetéhez",
+            "a megbeszélés közben megjelenő élő szöveg nyelvét módosítanám"
+          ],
+          "title" : "élő előnézet nyelve",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cambiare la lingua dell’anteprima in tempo reale di EnviousMeet"
+          ],
+          "title" : "lingua dell’anteprima in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のライブプレビューに表示する言語を変える"
+          ],
+          "title" : "ライブプレビューの言語",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 실시간 미리보기에서 인식하는 언어 바꾸기"
+          ],
+          "title" : "실시간 미리보기 언어",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pakeisti susitikimo tiesioginės peržiūros kalbą",
+            "pasirinkti susitikimo metu rodomo teksto kalbą"
+          ],
+          "title" : "susitikimo tiesioginės peržiūros kalba",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "mainīt valodu sapulces reāllaika priekšskatījumā"
+          ],
+          "title" : "sapulces reāllaika priekšskatījuma valoda",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "ibdel il-lingwa tal-preview dirett tal-laqgħa",
+            "agħżel il-lingwa tat-test li jidher waqt li tkun qed tirrekordja laqgħa"
+          ],
+          "title" : "lingwa tal-preview dirett",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "taal van de live tekst in EnviousMeet wijzigen",
+            "taal kiezen voor de tekst die tijdens een vergadering live wordt getoond"
+          ],
+          "title" : "taal van de live tekst",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zmień język podglądu na żywo podczas spotkania"
+          ],
+          "title" : "język podglądu na żywo",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "mudar o idioma do texto mostrado em tempo real durante a reunião",
+            "mudar o idioma da pré-visualização da reunião"
+          ],
+          "title" : "idioma da pré-visualização em tempo real",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "schimbă limba recunoscută în previzualizarea în timp real a întâlnirii"
+          ],
+          "title" : "limba previzualizării în timp real",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "изменить язык предпросмотра встречи в EnviousMeet"
+          ],
+          "title" : "язык предпросмотра встречи",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zmeniť jazyk živého náhľadu počas nahrávania stretnutia"
+          ],
+          "title" : "jazyk živého náhľadu",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "spremeni jezik predogleda v živo v EnviousMeet",
+            "jezik besedila v predogledu med snemanjem sestanka"
+          ],
+          "title" : "jezik predogleda v živo",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "ändra språk för texten som visas medan mötet spelas in"
+          ],
+          "title" : "språk för mötets liveförhandsvisning",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantının canlı önizleme dilini değiştir"
+          ],
+          "title" : "canlı önizleme dili",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "змінити мову попереднього перегляду зустрічі в EnviousMeet"
+          ],
+          "title" : "мова попереднього перегляду зустрічі",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "đổi ngôn ngữ cho bản xem trước trực tiếp của cuộc họp",
+            "chọn ngôn ngữ văn bản hiển thị khi đang ghi âm cuộc họp"
+          ],
+          "title" : "ngôn ngữ bản xem trước trực tiếp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "更改会议实时预览文字的语言"
+          ],
+          "title" : "会议实时预览语言",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
         "de" : "Wählt die Engine, die nach einem Meeting das vollständige Transkript erstellt.",
         "en" : "Chooses the engine that writes the full transcript after a meeting.",
         "key" : "Chooses the engine that writes the full transcript after a meeting.",
@@ -41406,6 +41749,363 @@
             "关闭选择列表并保留当前会后转写引擎"
           ],
           "title" : "保留当前会后转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "role" : "composed by the registering row from live state at display time; never sampled",
+        "runtime" : true,
+        "source" : "runtime"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "meetingTranscriptLanguage"
+      ],
+      "id" : "meetingTranscriptAutoDetect",
+      "kind" : "setting",
+      "parent" : "meetings.tab.models",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptAutoDetect",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Sprache automatisch erkennen",
+        "en" : "Auto-detect language",
+        "key" : "Auto-detect language",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "تفعيل اكتشاف اللغة تلقائيًا لتفريغ الاجتماع كاملًا",
+            "إيقاف اكتشاف اللغة تلقائيًا في تفريغ الاجتماع"
+          ],
+          "title" : "اكتشاف اللغة تلقائيًا",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "автоматично разпознаване на езика за пълната транскрипция на срещата",
+            "транскрипцията на срещата сама да разпознава езика"
+          ],
+          "title" : "автоматично разпознаване на езика",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "zapnout automatické rozpoznání jazyka pro úplný přepis schůzky",
+            "vypnout automatické rozpoznání jazyka přepisu v EnviousMeet"
+          ],
+          "title" : "automaticky rozpoznat jazyk",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "slå automatisk sproggenkendelse til for transskriptionen efter mødet",
+            "lad EnviousMeet genkende sproget automatisk i den fulde transskription"
+          ],
+          "title" : "genkend sproget automatisk",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Sprache des Transkripts automatisch erkennen",
+            "automatische Spracherkennung im Meeting"
+          ],
+          "words" : [
+            "Transkript",
+            "Spracherkennung",
+            "automatisch"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αυτόματη αναγνώριση γλώσσας στην απομαγνητοφώνηση της συνάντησης",
+            "να αναγνωρίζεται αυτόματα η γλώσσα στο πλήρες κείμενο μετά τη συνάντηση"
+          ],
+          "title" : "αυτόματη αναγνώριση γλώσσας",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "automatically detect the language for the full meeting transcript",
+            "turn off automatic language detection for meeting transcripts"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "activar la detección automática del idioma en la transcripción final de la reunión",
+            "desactivar la detección automática del idioma al transcribir de nuevo una reunión"
+          ],
+          "title" : "detectar el idioma automáticamente",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "lülita koosoleku transkriptsiooni keele automaatne tuvastamine sisse",
+            "lülita koosoleku transkriptsiooni keele automaatne tuvastamine välja"
+          ],
+          "title" : "keele automaatne tuvastamine",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "tunnista kokouksen litteroinnin kieli automaattisesti",
+            "kokouksen jälkeisen litteroinnin automaattinen kielentunnistus"
+          ],
+          "title" : "tunnista kieli automaattisesti",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "détecter automatiquement la langue pour transcrire la réunion une fois terminée",
+            "désactiver la détection automatique de la langue pour la transcription des réunions"
+          ],
+          "title" : "détecter automatiquement la langue",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के बाद बनने वाली ट्रांसक्रिप्ट के लिए भाषा अपने आप पहचानना चालू करें",
+            "मीटिंग की ट्रांसक्रिप्ट के लिए भाषा अपने आप पहचानना बंद करें"
+          ],
+          "title" : "भाषा अपने आप पहचानें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "automatski prepoznaj jezik za prijepis nakon sastanka",
+            "isključi automatsko prepoznavanje jezika prijepisa sastanka"
+          ],
+          "title" : "automatsko prepoznavanje jezika",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "automatikus nyelvfelismerés bekapcsolása a megbeszélés utáni átirathoz",
+            "automatikus nyelvfelismerés kikapcsolása a megbeszélés utáni átirathoz"
+          ],
+          "title" : "nyelv automatikus felismerése",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "riconoscere automaticamente la lingua per la trascrizione dopo la riunione",
+            "trascrivere la riunione senza scegliere la lingua"
+          ],
+          "title" : "rileva automaticamente la lingua",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議後の全文文字起こしで言語の自動判定をオンにする",
+            "会議後の文字起こしの言語自動判定をオフにする"
+          ],
+          "title" : "言語を自動検出",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록 언어 자동으로 인식하기",
+            "회의 후 녹취록 언어 자동 감지 끄기"
+          ],
+          "title" : "녹취록 언어 자동 감지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "automatiškai nustatyti kalbą transkribuojant susitikimą"
+          ],
+          "title" : "automatiškai nustatyti kalbą",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "ieslēgt automātisku valodas noteikšanu sapulces atšifrējumam",
+            "izslēgt automātisku valodas noteikšanu sapulces atšifrējumam"
+          ],
+          "title" : "automātiski noteikt valodu",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħraf il-lingwa awtomatikament għat-traskrizzjoni sħiħa wara l-laqgħa",
+            "itfi l-għarfien awtomatiku tal-lingwa għat-traskrizzjoni tal-laqgħa"
+          ],
+          "title" : "agħraf il-lingwa awtomatikament",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "taal automatisch herkennen voor het volledige transcript na de vergadering",
+            "vergadering automatisch uitschrijven zonder zelf een taal te kiezen"
+          ],
+          "title" : "taal automatisch herkennen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "włącz automatyczne wykrywanie języka transkrypcji po spotkaniu w EnviousMeet",
+            "wyłącz automatyczne rozpoznawanie języka pełnej transkrypcji spotkania"
+          ],
+          "title" : "automatyczne wykrywanie języka",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "detectar automaticamente o idioma para a transcrição completa da reunião",
+            "transcrever a reunião depois que terminar sem escolher o idioma"
+          ],
+          "title" : "detectar idioma automaticamente",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "activează detectarea automată a limbii pentru transcrierea de după întâlnire",
+            "transcrie întâlnirea fără să aleg manual limba"
+          ],
+          "title" : "detectare automată a limbii",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "автоматически определять язык полной расшифровки встречи",
+            "не выбирать язык расшифровки встречи вручную"
+          ],
+          "title" : "автоматическое определение языка",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "automaticky rozpoznať jazyk pri úplnom prepise stretnutia",
+            "prepis stretnutia bez ručného výberu jazyka"
+          ],
+          "title" : "automatické rozpoznanie jazyka",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "samodejno prepoznaj jezik za celoten prepis sestanka",
+            "vklopi samodejno zaznavanje jezika za prepis po sestanku"
+          ],
+          "title" : "samodejno zaznavanje jezika",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "slå på automatisk språkidentifiering för mötestranskriptet",
+            "stäng av automatisk språkidentifiering för mötestranskriptet"
+          ],
+          "title" : "identifiera språk automatiskt",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı dökümü için konuşulan dili otomatik algıla",
+            "toplantı sonrası dökümün dilini kendisi bulsun"
+          ],
+          "title" : "dili otomatik algıla",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "увімкнути автоматичне визначення мови повної стенограми зустрічі",
+            "вимкнути автовизначення мови стенограми в EnviousMeet"
+          ],
+          "title" : "автоматично визначати мову",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "tự động nhận diện ngôn ngữ cho bản chép lời cuộc họp",
+            "chép lời sau cuộc họp mà không cần chọn ngôn ngữ"
+          ],
+          "title" : "tự động nhận diện ngôn ngữ",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "会后转写时自动识别语言",
+            "关闭会后转写的语言自动识别"
+          ],
+          "title" : "自动检测语言",
           "words" : [
 
           ]

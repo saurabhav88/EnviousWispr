@@ -1,0 +1,1 @@
+{"language":"sk","title":"automatické rozpoznanie jazyka","words":[],"phrases":["automaticky rozpoznať jazyk pri úplnom prepise stretnutia","prepis stretnutia bez ručného výberu jazyka"]}

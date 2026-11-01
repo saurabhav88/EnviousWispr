@@ -2514,6 +2514,26 @@
    "seedParent": "meetingLiveWords"
   },
   {
+   "id": "meetingLiveWordsLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.models",
+   "target": "meetingLiveWordsLanguage",
+   "fallbacks": [
+    "meetingLiveWords"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "The language Live Preview listens for during a meeting."
+   }
+  },
+  {
    "id": "meetingLiveWords.apple",
    "kind": "choice",
    "destination": {
@@ -2628,6 +2648,25 @@
    "fallbacks": [],
    "dynamicTitle": false,
    "seedParent": null
+  },
+  {
+   "id": "meetingTranscriptAutoDetect",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.models",
+   "target": "meetingTranscriptAutoDetect",
+   "fallbacks": [
+    "meetingTranscriptLanguage"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
   },
   {
    "id": "meetingTranscriptLanguage",

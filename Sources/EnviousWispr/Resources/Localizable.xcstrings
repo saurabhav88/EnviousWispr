@@ -2186,6 +2186,17 @@
         }
       }
     },
+    "AVAILABLE FOR LIVE PREVIEW" : {
+      "comment" : "EnviousMeet Models tab, Live Preview language window: heading over the languages the chosen live engine can show.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VERFÜGBAR FÜR LIVE-VORSCHAU"
+          }
+        }
+      }
+    },
     "AVAILABLE ON THIS MAC" : {
       "localizations" : {
         "de" : {
@@ -4058,6 +4069,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nach dem Meeting verfügbar."
+          }
+        }
+      }
+    },
+    "Available for %@" : {
+      "comment" : "EnviousMeet Models tab, Transcript language window: heading over the languages the transcript engine can write. The placeholder is the engine's name, such as Parakeet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbar für %@"
           }
         }
       }
@@ -10972,7 +10994,6 @@
       }
     },
     "Language" : {
-      "comment" : "EnviousMeet Models tab, Live words card: the label before the live words language menu.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10988,7 +11009,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprachdownload von Apple"
+            "value" : "Download je Sprache von Apple"
           }
         }
       }
@@ -11444,6 +11465,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live-Vorschau"
+          }
+        }
+      }
+    },
+    "Live Preview language" : {
+      "comment" : "EnviousMeet Models tab: row that picks the language live text is shown in while a meeting records; also the title of its language window.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache der Live-Vorschau"
           }
         }
       }
@@ -20598,6 +20630,17 @@
         }
       }
     },
+    "The language Live Preview listens for during a meeting." : {
+      "comment" : "EnviousMeet Models tab: the short line under Live Preview language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprache, die die Live-Vorschau während eines Meetings erkennt."
+          }
+        }
+      }
+    },
     "The language of the app interface." : {
       "localizations" : {
         "de" : {
@@ -23826,6 +23869,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Funktioniert nur außerhalb einer Aufnahme: Während der Aufnahme verwendet das Tastenkürzel zum Abbrechen (%@) diese Tasten."
+          }
+        }
+      }
+    },
+    "Works out the language from what is said. %@." : {
+      "comment" : "EnviousMeet Models tab, Transcript language section: the line under the Auto-detect switch. The placeholder is how many languages the transcript engine covers, such as 25 European languages.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennt die Sprache aus dem Gesagten. %@."
           }
         }
       }

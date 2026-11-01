@@ -1,0 +1,9 @@
+{
+  "language": "vi",
+  "title": "ngôn ngữ bản xem trước trực tiếp",
+  "words": [],
+  "phrases": [
+    "đổi ngôn ngữ cho bản xem trước trực tiếp của cuộc họp",
+    "chọn ngôn ngữ văn bản hiển thị khi đang ghi âm cuộc họp"
+  ]
+}

@@ -1,0 +1,1 @@
+{"language":"pt","title":"detectar idioma automaticamente","words":[],"phrases":["detectar automaticamente o idioma para a transcrição completa da reunião","transcrever a reunião depois que terminar sem escolher o idioma"]}

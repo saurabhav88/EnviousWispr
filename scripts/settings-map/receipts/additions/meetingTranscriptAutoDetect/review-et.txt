@@ -1,0 +1,1 @@
+{"language":"et","title":"keele automaatne tuvastamine","words":[],"phrases":["lülita koosoleku transkriptsiooni keele automaatne tuvastamine sisse","lülita koosoleku transkriptsiooni keele automaatne tuvastamine välja"]}

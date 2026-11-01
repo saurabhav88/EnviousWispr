@@ -1,0 +1,1 @@
+{"language":"fr","title":"langue de l’aperçu en direct","words":[],"phrases":["changer la langue de l’aperçu en direct d’une réunion dans EnviousMeet"]}

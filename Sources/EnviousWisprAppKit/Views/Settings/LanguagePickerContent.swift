@@ -181,3 +181,107 @@ extension LanguagePickerContent {
     dismiss()
   }
 }
+
+// MARK: - EnviousMeet
+
+extension LanguagePickerContent {
+  /// #4320: the EnviousMeet Live Preview language window. Rows are the chosen live engine's
+  /// languages read now (`MeetingLiveWordsRowModel.languages(for:)`: Apple's exact runtime tags,
+  /// such as `en-US` and `en-GB`, or Universal's catalogue codes). No Automatic (live text needs
+  /// one language) and no Recent (dictation's recents are not meeting history). A choice writes
+  /// only the meeting's live language (`selectLanguage`), never dictation's, and reports nothing.
+  @MainActor
+  static func meetingLive(
+    model: MeetingLiveWordsRowModel, query: String,
+    dismiss: @escaping @MainActor () -> Void
+  ) -> LanguagePickerContent {
+    guard let engine = model.selectedEngine else {
+      return meetingLiveContent(rows: [], query: query)
+    }
+    let rows = model.languages(for: engine).map { option in
+      let names = liveNames(engine: engine, option: option)
+      return LanguagePickerRow(
+        id: option.code, code: option.code, nativeName: names.native, englishName: names.english,
+        displayName: option.name, subtitle: option.code,
+        isSelected: option.code == model.selectedLanguage, accessibilityLabel: option.name
+      ) {
+        Task { await model.selectLanguage(option.code) }
+        dismiss()
+      }
+    }
+    return meetingLiveContent(rows: rows, query: query)
+  }
+
+  private static func meetingLiveContent(rows: [LanguagePickerRow], query: String)
+    -> LanguagePickerContent
+  {
+    LanguagePickerContent(
+      title: String(localized: MeetingsCopy.liveLanguageTitle), contextSubtitle: nil,
+      autoRow: nil, recents: [], heading: String(localized: MeetingsCopy.liveLanguageListHeading),
+      emptySearchText: String(localized: "No language matches your search."),
+      rows: rows.filter { matches($0, query: query) })
+  }
+
+  /// A live row's native and English names, for search. Universal codes are catalogue entries;
+  /// Apple's exact tags (such as `en-GB`) are named by the locale itself, region included, so two
+  /// regions of one language stay two rows.
+  static func liveNames(
+    engine: LivePreviewEngineChoice, option: MeetingLiveWordsRowModel.LanguageOption
+  ) -> (native: String, english: String) {
+    switch engine {
+    case .universal:
+      let entry = LanguageCatalog.entry(for: option.code)
+      return (entry.nativeName, entry.englishName)
+    case .apple:
+      let native =
+        Locale(identifier: option.code).localizedString(forIdentifier: option.code) ?? option.name
+      let english =
+        Locale(identifier: "en").localizedString(forIdentifier: option.code) ?? option.name
+      return (native, english)
+    }
+  }
+
+  /// #4320: the EnviousMeet Transcript language window: the transcript engine's lockable
+  /// languages through `LanguageLockOptions.pickerRows` (the same owner, search and order as
+  /// `transcriptLanguageOptions`), no English (UK), no Automatic (the section's switch owns
+  /// Auto) and no Recent. A choice locks only the meeting transcript's language.
+  @MainActor
+  static func meetingTranscript(
+    model: MeetingLiveWordsRowModel, engine: MeetingEngineChoice, query: String,
+    dismiss: @escaping @MainActor () -> Void
+  ) -> LanguagePickerContent {
+    let locked: String? = {
+      if case .locked(let code) = model.transcriptLanguage { return code }
+      return nil
+    }()
+    let rows = LanguageLockOptions.pickerRows(
+      lockableCodes: LanguageLockOptions.lockableCodes(for: engine.backendType), query: query,
+      offersEnglishUK: false
+    ).map { entry in
+      dictationRow(entry, isSelected: entry.lockCode == locked) {
+        model.transcriptLanguage = .locked(entry.lockCode)
+        dismiss()
+      }
+    }
+    return LanguagePickerContent(
+      title: String(localized: MeetingsCopy.transcriptLanguageTitle), contextSubtitle: nil,
+      autoRow: nil, recents: [],
+      heading: MeetingsCopy.transcriptLanguageListHeading(
+        MeetingTranscriptEngineRowTitles.title(of: engine)
+      ).uppercased(),
+      emptySearchText: String(localized: "No language matches your search."), rows: rows)
+  }
+
+  /// Whether a caller-built row matches the search, by the fields `LanguageLockOptions.pickerRows`
+  /// searches (shown, English and native names and the code), case-insensitive, ignoring
+  /// surrounding whitespace. Apple's live tags are not catalogue entries, so they cannot go
+  /// through `pickerRows` itself.
+  static func matches(_ row: LanguagePickerRow, query: String) -> Bool {
+    let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard !needle.isEmpty else { return true }
+    return row.displayName.lowercased().contains(needle)
+      || row.englishName.lowercased().contains(needle)
+      || row.nativeName.lowercased().contains(needle)
+      || row.code.lowercased().contains(needle)
+  }
+}

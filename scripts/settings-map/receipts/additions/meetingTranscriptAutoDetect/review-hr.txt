@@ -1,0 +1,1 @@
+{"language":"hr","title":"automatsko prepoznavanje jezika","words":[],"phrases":["automatski prepoznaj jezik za prijepis nakon sastanka","isključi automatsko prepoznavanje jezika prijepisa sastanka"]}

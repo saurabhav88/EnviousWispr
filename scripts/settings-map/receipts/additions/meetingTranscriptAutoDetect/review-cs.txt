@@ -1,0 +1,1 @@
+{"language":"cs","title":"automaticky rozpoznat jazyk","words":[],"phrases":["zapnout automatické rozpoznání jazyka pro úplný přepis schůzky","vypnout automatické rozpoznání jazyka přepisu v EnviousMeet"]}

@@ -567,11 +567,12 @@ struct MeetingLiveWordsRowModelTests {
 /// A row model for rendering Settings in tests: a fixed inventory, no installer, no transfer.
 extension MeetingLiveWordsRowModel {
   @MainActor
-  static func renderFixture(settings: SettingsManager, appleAvailable: Bool = true)
-    -> MeetingLiveWordsRowModel
-  {
+  static func renderFixture(
+    settings: SettingsManager, appleAvailable: Bool = true,
+    appleTags: [String] = ["de-DE", "en-US"]
+  ) -> MeetingLiveWordsRowModel {
     let inventory = MeetingLiveWordsChoice.Inventory(
-      appleAvailable: appleAvailable, appleSupportedTags: appleAvailable ? ["de-DE", "en-US"] : [],
+      appleAvailable: appleAvailable, appleSupportedTags: appleAvailable ? appleTags : [],
       appleInstalledTags: appleAvailable ? ["en-US"] : [], universalInstalled: false,
       universalCodes: ["de", "en"])
     let choice = MeetingLiveWordsChoice.Initializer(
