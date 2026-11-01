@@ -130,6 +130,21 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
 
 /// An immutable copy of one app's windows, and of the meeting pages inside them, with what the
 /// copy can say about itself. A page that is not the meeting is never copied beyond its own node.
+/// Where one copy's time went (#4248 timing receipt): numeric aggregates only, never content.
+package struct CallAXCopyCost: Sendable, Equatable {
+  package struct Window: Sendable, Equatable {
+    package let nodes: Int
+    package let ticks: UInt64
+  }
+  /// Each copied window's elements and host ticks, in copy order.
+  package var windows: [Window] = []
+  /// Messages sent to the app and the time spent inside them.
+  package var messages = 0
+  package var messageTime: Duration = .zero
+
+  package init() {}
+}
+
 package struct CallAXCapture: Sendable, Equatable {
   package let windows: [CallAXWindow]
   package let documents: [CallAXDocument]
@@ -147,14 +162,17 @@ package struct CallAXCapture: Sendable, Equatable {
   /// after the windows, on the same queue, within its own small budget; `nil` when not read,
   /// not wholly readable or out of time. Never pressed.
   package let accountTitles: [String]?
+  package let cost: CallAXCopyCost
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
     readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
-    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil
+    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil,
+    cost: CallAXCopyCost = .init()
   ) {
     self.accountTitles = accountTitles
+    self.cost = cost
     self.nodesVisited = nodesVisited
     self.failedReads = failedReads
     self.prunedControls = prunedControls
@@ -185,7 +203,14 @@ package enum CallSpeakerCapture {
       access: access, bounds: bounds, deadline: deadline, policy: policy, keepPage: keepPage)
     var copied: [CallAXWindow] = []
     var skippedWindows = 0
+    var windowCosts: [CallAXCopyCost.Window] = []
     for window in windows {
+      let windowStart = hostTime()
+      let nodesBefore = walk.count
+      defer {
+        windowCosts.append(
+          .init(nodes: walk.count - nodesBefore, ticks: hostTime() &- windowStart))
+      }
       if policy != .standard {
         // Only a window positively known not to be the call is skipped; a failed read keeps it.
         let identifier = walk.text(window, .identifier)
@@ -229,7 +254,14 @@ package enum CallSpeakerCapture {
       windows: copied, documents: walk.documents, completeness: completeness,
       readStartHostTime: started, readEndHostTime: ended, nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
-      skippedWindows: skippedWindows, accountTitles: accountTitles)
+      skippedWindows: skippedWindows, accountTitles: accountTitles,
+      cost: {
+        var cost = CallAXCopyCost()
+        cost.windows = windowCosts
+        cost.messages = walk.messages
+        cost.messageTime = walk.messageTime
+        return cost
+      }())
   }
 
   private struct Walk<Element> {
@@ -245,6 +277,8 @@ package enum CallSpeakerCapture {
     var failedReads = 0
     var prunedControls = 0
     var documents: [CallAXDocument] = []
+    var messages = 0
+    var messageTime: Duration = .zero
 
     init(
       access: CallAXTreeAccess<Element>, bounds: CallAXBounds, deadline: ContinuousClock.Instant,
@@ -264,7 +298,10 @@ package enum CallSpeakerCapture {
         truncated = true
         return nil
       }
+      let sent = access.now()
       let result = access.read(element, attribute)
+      messages += 1
+      messageTime += access.now() - sent
       if case .failed = result { failedReads += 1 }
       return result
     }
@@ -278,7 +315,10 @@ package enum CallSpeakerCapture {
         truncated = true
         return nil
       }
+      let sent = access.now()
       var results = access.readMany(element, attributes)
+      messages += 1
+      messageTime += access.now() - sent
       if results.count != attributes.count {
         results = attributes.map { _ in .failed }
       }

@@ -28,6 +28,9 @@ struct CallMuteCopy: Equatable, Sendable {
   let completeness: CallCaptureContext.Completeness
   let nodes: Int
   let generation: UInt64
+  /// The copy's failed reads and where its time went (DEBUG timing receipt only).
+  var failedReads = 0
+  var cost = CallAXCopyCost()
 }
 
 /// What became of one chance to read the mute button (#4248 timing receipt): counted for
@@ -343,7 +346,8 @@ final class CallSpeakerObserver {
         CallMuteCopy(
           reading: mute, surface: taken.binding.surface, copyStart: copy.readStartHostTime,
           copyEnd: copy.readEndHostTime, received: received, completeness: copy.completeness,
-          nodes: copy.nodesVisited, generation: taken.binding.generation))
+          nodes: copy.nodesVisited, generation: taken.binding.generation,
+          failedReads: copy.failedReads, cost: copy.cost))
     }
     guard taken.forNaming else { return }
     // A different answer while naming settles drops naming's copy, not mute's.

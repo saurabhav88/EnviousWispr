@@ -2710,7 +2710,7 @@ final class MeetingCoordinator {
       if let trace = snapshot.trace {
         let c = trace.copy
         deps.log(
-          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state)"
+          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) msgs=\(c.cost.messages) msg_us=\(c.cost.messageTime.components.seconds * 1_000_000 + c.cost.messageTime.components.attoseconds / 1_000_000_000_000) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks)" }.joined(separator: ","))"
         )
       }
       if snapshot.ended {

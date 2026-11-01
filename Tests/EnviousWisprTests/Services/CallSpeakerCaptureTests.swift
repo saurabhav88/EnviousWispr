@@ -355,7 +355,10 @@ struct CallSpeakerCaptureTests {
     tree.node(5, "AXWebArea", children: [6])
     tree.texts[5] = [.url: "https://meet.google.com/abc-defg-hij"]
     tree.node(6, "AXStaticText")
-    _ = capture(tree) { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .googleMeet) }
+    let copy = capture(tree) { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .googleMeet) }
+    // The timing receipt's cost counts every message the fake answered and every copied element.
+    #expect(copy.cost.messages == tree.ticks)
+    #expect(copy.cost.windows.map(\.nodes) == [copy.nodesVisited])
     let asked = tree.batches.map { "\($0.0):\($0.1.joined(separator: ","))" }
     #expect(asked == [
       "1:" + common.joined(separator: ","), "1:AXChildren",
