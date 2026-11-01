@@ -69,6 +69,12 @@ package struct CallAXBounds: Sendable, Equatable {
 
   package static let standard = CallAXBounds(
     maxNodes: 6_000, maxDepth: 64, budget: .milliseconds(400))
+
+  /// The Teams app answers Accessibility slowly: in the #4248 Teams run a whole copy of about
+  /// 260 nodes took 118 to 399 ms and three in four copies hit the 400 ms bound (2026-10-31).
+  /// A characterization value under measurement, not yet a sized bound.
+  package static let teamsApp = CallAXBounds(
+    maxNodes: 6_000, maxDepth: 64, budget: .milliseconds(1_000))
 }
 
 /// What a capture skips in one provider's tree (#4013 13B runtime receipt). The live Zoom app

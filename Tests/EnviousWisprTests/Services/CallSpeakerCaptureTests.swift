@@ -322,6 +322,16 @@ struct CallSpeakerCaptureTests {
     }
   }
 
+  @Test("only the Teams app's copies get the slower-answering bound")
+  func teamsAppBounds() {
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callApp(.teams)) == .teamsApp)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callWindow(.teams)) == .teamsApp)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .browser(.chrome)) == .standard)
+    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .zoom, rule: .callApp(.zoom)) == .standard)
+    #expect(CallAXBounds.teamsApp.budget == .milliseconds(1_000))
+    #expect(CallAXBounds.teamsApp.maxNodes == CallAXBounds.standard.maxNodes)
+  }
+
   @Test("a Teams app copy through the production page rule reads the mute button")
   func teamsAppMuteThroughCapture() {
     // Window "Meeting with Sam" > web page teams.live.com/v2/ > the self tile and the button.

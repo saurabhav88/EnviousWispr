@@ -371,7 +371,8 @@ final class MeetingCoordinator {
     var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture = {
       target, family in
       CallSpeakerCapture.live(
-        pid: target.pid, bounds: .standard,
+        pid: target.pid,
+        bounds: CallSpeakerSurfaceChoice.captureBounds(family: family, rule: target.rule),
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
         keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }

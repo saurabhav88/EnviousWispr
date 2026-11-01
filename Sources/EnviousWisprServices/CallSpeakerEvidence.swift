@@ -54,6 +54,17 @@ package enum CallSpeakerSurfaceChoice {
     return family == .zoom ? .zoomApp : .standard
   }
 
+  /// The copy's bounds: the Teams app gets its slower-answering bound; every other copy the
+  /// standard one.
+  package static func captureBounds(family: CallAppFamily, rule: CallAppCatalog.Rule)
+    -> CallAXBounds
+  {
+    switch rule {
+    case .callApp(.teams), .callWindow(.teams): .teamsApp
+    case .callApp, .callWindow, .browser: .standard
+    }
+  }
+
   /// Whether a web page belongs to `family`'s meeting.
   package static func isMeetingPage(_ url: String, family: CallAppFamily) -> Bool {
     CallMeetingURL.classify(url)?.family == family
