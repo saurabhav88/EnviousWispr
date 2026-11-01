@@ -339,6 +339,14 @@ enum MeetingWiring {
           return transcriptCoordinator.summaryHasNoWords(
             of: row, info: historyInfo(coordinator, meetingID: meetingID))
         },
+        promptFacts: { [weak coordinator] meetingID in
+          // #4286: the durable record's start, recorded length and call app, and the facts the
+          // documents owner holds; never the current settings or an AI title.
+          guard let coordinator, let record = coordinator.record(id: meetingID) else { return nil }
+          return MeetingPromptFacts(
+            startedAt: record.createdAt, recordedDurationMs: record.recordedDurationMs,
+            callApp: record.callApp, context: coordinator.documents.context(meetingID))
+        },
         isLocalTurn: { [weak coordinator] in
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)
         },

@@ -53,7 +53,7 @@ struct MeetingSummaryTests {
     window: MeetingSummary.Window = large, timeout: Double = 60
   ) async throws -> String {
     try await MeetingSummary.write(
-      transcript: transcript, notes: notes, window: window, callTimeoutSeconds: timeout,
+      transcript: transcript, notes: notes, facts: "", window: window, callTimeoutSeconds: timeout,
       admit: { calls.admissions += 1 }, complete: calls.complete
     ).text
   }
@@ -458,7 +458,7 @@ struct MeetingSummaryTests {
     let calls = Calls()
     let task = Task {
       try await MeetingSummary.write(
-        transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60,
+        transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 60,
         admit: { withUnsafeCurrentTask { $0?.cancel() } }, complete: calls.complete)
     }
     await #expect(throws: MeetingSummary.Failure.cancelled) { _ = try await task.value }
@@ -478,7 +478,7 @@ struct MeetingSummaryTests {
     let ended = Calls()
     await #expect(throws: MeetingSummary.Failure.timedOut) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 0.05,
+        transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 0.05,
         admit: {},
         complete: { instructions, prompt in
           _ = try await calls.complete(instructions, prompt)
@@ -619,7 +619,7 @@ struct MeetingSummaryTests {
     local.replies = Array(repeating: .fail(URLError(.timedOut)), count: 20)
     await #expect(throws: MeetingSummary.Failure.providerFailed) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
+        transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
         complete: prepared.complete)
     }
     #expect(local.requests.count == 3, "the connector tries once; the summary owns the retries")
@@ -632,7 +632,7 @@ struct MeetingSummaryTests {
 
     local.replies = []
     let summary = try await MeetingSummary.write(
-      transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
+      transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
       complete: prepared.complete)
     #expect(summary.text == "summary")
 
@@ -650,7 +650,7 @@ struct MeetingSummaryTests {
     local.replies = [.chat("## Overview\nThe team agreed to", "length")]
     await #expect(throws: MeetingSummary.Failure.truncated) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
+        transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
         complete: prepared.complete)
     }
     #expect(local.requests.count == 1, "a cut answer is not retried")
@@ -742,7 +742,7 @@ struct MeetingSummaryTests {
     let prepared = try #require(await Self.prepare(.ollama, "llama3.2", once).successValue)
     once.replies = [.http(400, error)]
     let summary = try await MeetingSummary.write(
-      transcript: "t", notes: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
+      transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60, admit: {},
       complete: prepared.complete)
     #expect(summary.text == "summary")
     #expect(once.requests.count == 2, "the overflow is not retried; the byte plan runs once")
@@ -754,7 +754,7 @@ struct MeetingSummaryTests {
     always.replies = [.http(400, error), .http(400, error), .chat("late", "stop")]
     await #expect(throws: MeetingSummary.Failure.tooLong) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", window: again.window, callTimeoutSeconds: 60, admit: {},
+        transcript: "t", notes: "", facts: "", window: again.window, callTimeoutSeconds: 60, admit: {},
         complete: again.complete)
     }
     #expect(always.requests.count == 2)
@@ -848,7 +848,7 @@ struct MeetingSummaryTests {
     let wrapper = Script([(200, #"{"choices":[{"message":{"content":"Here is the cleaned text:"},"finish_reason":"stop"}]}"#)])
     await #expect(throws: MeetingSummary.Failure.empty) {
       _ = try await MeetingSummary.write(
-        transcript: "the review is tomorrow", notes: "", window: Self.large,
+        transcript: "the review is tomorrow", notes: "", facts: "", window: Self.large,
         callTimeoutSeconds: 60, admit: {}, complete: Self.openAI(wrapper))
     }
     #expect(wrapper.requests == 1)
@@ -860,7 +860,7 @@ struct MeetingSummaryTests {
     let retried = Script([Self.rateLimit, Self.busy, Self.ok])
     let admissions = Calls()
     let summary = try await MeetingSummary.write(
-      transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60,
+      transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 60,
       admit: { admissions.admissions += 1 }, complete: Self.openAI(retried))
     #expect(summary.text == "Summary.")
     #expect(retried.requests == 3)
@@ -871,7 +871,7 @@ struct MeetingSummaryTests {
       let script = Script([failFast, Self.ok])
       await #expect(throws: MeetingSummary.Failure.providerFailed) {
         _ = try await MeetingSummary.write(
-          transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
+          transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
           complete: Self.openAI(script))
       }
       #expect(script.requests == 1, "HTTP \(failFast.0) is not retried")
@@ -880,7 +880,7 @@ struct MeetingSummaryTests {
     let cut = Script([Self.cut])
     await #expect(throws: MeetingSummary.Failure.truncated) {
       _ = try await MeetingSummary.write(
-        transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
+        transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
         complete: Self.openAI(cut))
     }
     #expect(cut.requests == 1)
@@ -890,7 +890,7 @@ struct MeetingSummaryTests {
   func openAIOverflow() async throws {
     let script = Script([Self.tooLongReply, Self.ok])
     let summary = try await MeetingSummary.write(
-      transcript: "t", notes: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
+      transcript: "t", notes: "", facts: "", window: Self.large, callTimeoutSeconds: 60, admit: {},
       complete: Self.openAI(script))
     #expect(summary.text == "Summary.")
     #expect(script.requests == 2)
@@ -936,7 +936,7 @@ struct MeetingSummaryTests {
   func writtenPartsFact() async throws {
     let short = Calls()
     let one = try await MeetingSummary.write(
-      transcript: "You: we ship Friday", notes: "", window: Self.small,
+      transcript: "You: we ship Friday", notes: "", facts: "", window: Self.small,
       callTimeoutSeconds: 60, admit: {}, complete: short.complete)
     #expect(one.text == "summary 1")
     #expect(one.inParts == false)
@@ -945,7 +945,7 @@ struct MeetingSummaryTests {
     let meeting = try Self.longMeeting()
     let long = Calls()
     let parts = try await MeetingSummary.write(
-      transcript: meeting.transcript, notes: "", window: Self.small,
+      transcript: meeting.transcript, notes: "", facts: "", window: Self.small,
       callTimeoutSeconds: 60, admit: {}, complete: long.complete)
     #expect(parts.inParts == true)
     #expect(long.prompts.count > 1)
@@ -960,7 +960,7 @@ struct MeetingSummaryTests {
       let calls = Calls()
       calls.answers = [.failure(error), .success("Summary.")]
       let result = try await MeetingSummary.write(
-        transcript: "You: ship Friday", notes: "", window: Self.large,
+        transcript: "You: ship Friday", notes: "", facts: "", window: Self.large,
         callTimeoutSeconds: 60, admit: {}, complete: calls.complete)
       #expect(result.inParts == false)
       #expect(calls.prompts.count == 2)
@@ -973,7 +973,7 @@ struct MeetingSummaryTests {
     let calls = Calls()
     calls.answers = [.failure(LLMError.classified(.inputTooLong))]
     let result = try await MeetingSummary.write(
-      transcript: transcript, notes: "", window: Self.small,
+      transcript: transcript, notes: "", facts: "", window: Self.small,
       callTimeoutSeconds: 60, admit: {}, complete: calls.complete)
     #expect(calls.prompts.first?.contains("Transcript:") == true)
     #expect(calls.prompts.dropFirst().contains { $0.contains("This is part") })
@@ -986,7 +986,7 @@ struct MeetingSummaryTests {
     let result = try await MeetingSummary.write(
       transcript: "You: ship Friday",
       notes: String(repeating: "my note line\n", count: 800),
-      window: Self.small, callTimeoutSeconds: 60,
+      facts: "", window: Self.small, callTimeoutSeconds: 60,
       admit: {}, complete: calls.complete)
     #expect(result.inParts == true)
     #expect(calls.prompts.contains { $0.contains("the user's own notes") })
