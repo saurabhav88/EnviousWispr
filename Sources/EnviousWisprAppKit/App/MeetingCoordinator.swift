@@ -1329,6 +1329,8 @@ final class MeetingCoordinator {
     // 3 s, with muted stretches silenced) to live words while it closes the files; only then do
     // live words seal their pumps and drain them. Stop never waits for recognition.
     let report = await recorder?.stop()
+    // Tests' fake recorders have no writer; the receipt reads the production recorder only.
+    traceMuteWriter((recorder as? MeetingRecorder)?.microphoneHealth)
     // #3973, #4097: then live words retire without waiting; their cleanup drains held audio and
     // kept events and closes admission. The lines stay until the transcript is ready. A quit
     // during the close already retired them (`quit()`), so this changes nothing then.
@@ -2717,6 +2719,17 @@ final class MeetingCoordinator {
           "MEET_MUTE_TIMING_SKIPS started=\(k.started) delivered=\(k.delivered) busy=\(k.busySkip) dictation=\(k.dictationSkip) no_permission=\(k.noPermission) stale_drop=\(k.staleDrop) decided=\(t.readings) applied=\(t.applied) stale_at_delivery=\(t.staleAtDelivery) ignored=\(t.ignored) inactive=\(t.inactive) missed_events=\(snapshot.missed.events) kept_ticks=\(snapshot.missed.keptTicks) silenced_ticks=\(snapshot.missed.silencedTicks)"
         )
       }
+    #endif
+  }
+
+  /// DEBUG timing receipt: the microphone writer's final silence counts, read after its close,
+  /// so audio judged late or intervals left out by a full hold are part of the receipt.
+  private func traceMuteWriter(_ health: MeetingTrackWriter.Health?) {
+    #if DEBUG
+      guard Self.muteTimingTrace, let health else { return }
+      deps.log(
+        "MEET_MUTE_TIMING_WRITER silenced_frames=\(health.silencedFrames) late_frames=\(health.silenceLateFrames) interval_overflows=\(health.silenceIntervalOverflows) dropped_frames=\(health.droppedFrames) failed=\(health.failed ? 1 : 0)"
+      )
     #endif
   }
 
