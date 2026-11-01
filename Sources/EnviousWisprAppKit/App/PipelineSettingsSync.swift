@@ -50,6 +50,9 @@ final class PipelineSettingsSync {
   /// state: the reconciler was keyed on dictation's settings alone.
   private var lastEvictableImportOllamaModel: String?
 
+  /// #4287: the meeting summary surface's counterpart, by the same reasoning.
+  private var lastEvictableSummaryOllamaModel: String?
+
   /// #1914: is this Ollama model one the daemon proxies to Ollama's servers?
   ///
   /// `true` proven remote · `false` proven local · **`nil` absent from the
@@ -81,6 +84,7 @@ final class PipelineSettingsSync {
 
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
+  private let summaryPinnedOllamaModel: @MainActor () -> String?
 
   /// #3853 — see the initializer parameters of the same names.
   private let outputClassifierHolder: OutputClassifierHolder?
@@ -120,6 +124,11 @@ final class PipelineSettingsSync {
     /// a reload it could exceed its polish deadline waiting for. Found by Codex.
     /// Defaults to nil so every existing construction is unchanged.
     importPinnedOllamaModel: @escaping @MainActor () -> String? = { nil },
+    /// #4287 — the Ollama model a RUNNING local meeting summary call is using, or nil. Like
+    /// an import, a summary has no session config, so without this a settings change could
+    /// evict the weights a long summary call is using. Defaults to nil so every existing
+    /// construction is unchanged.
+    summaryPinnedOllamaModel: @escaping @MainActor () -> String? = { nil },
     /// #3853 — the output classifier's holder, released when no consumer needs it. Nil leaves
     /// the classifier out of this reconciliation (tests that do not care).
     outputClassifierHolder: OutputClassifierHolder? = nil,
@@ -135,6 +144,7 @@ final class PipelineSettingsSync {
     self.importPinnedPolishProvider = importPinnedPolishProvider
     self.importPinnedLocalProvider = importPinnedLocalProvider
     self.importPinnedOllamaModel = importPinnedOllamaModel
+    self.summaryPinnedOllamaModel = summaryPinnedOllamaModel
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.audioCapture = audioCapture
@@ -226,6 +236,10 @@ final class PipelineSettingsSync {
     lastEvictableImportOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.effectiveFileImportLLMProvider,
       model: settings.effectiveFileImportLLMModel
+    )
+    lastEvictableSummaryOllamaModel = OllamaConnector.effectiveOllamaModel(
+      provider: settings.effectiveMeetingSummaryLLMProvider,
+      model: settings.effectiveMeetingSummaryLLMModel
     )
 
     // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
@@ -668,13 +682,22 @@ final class PipelineSettingsSync {
     // `llama3.2:latest` are one model, and the two surfaces can hold either spelling. An
     // exact set let an import walk away from `:latest` and evict the model dictation still
     // selected under the bare name. Found by the cloud review of PR #2786.
-    let stillWanted = Set([dictation, fileImport].compactMap { $0 }.map(Self.canonical))
+    // #4287: the meeting summary surface is the third.
+    let summary = OllamaConnector.effectiveOllamaModel(
+      provider: settings.effectiveMeetingSummaryLLMProvider,
+      model: settings.effectiveMeetingSummaryLLMModel
+    )
+    let stillWanted = Set(
+      [dictation, fileImport, summary].compactMap { $0 }.map(Self.canonical))
     var scheduledThisPass = Set<String>()
     reconcileEvictableModel(
       \.lastEvictableOllamaModel, new: dictation, stillWanted: stillWanted,
       scheduled: &scheduledThisPass)
     reconcileEvictableModel(
       \.lastEvictableImportOllamaModel, new: fileImport, stillWanted: stillWanted,
+      scheduled: &scheduledThisPass)
+    reconcileEvictableModel(
+      \.lastEvictableSummaryOllamaModel, new: summary, stillWanted: stillWanted,
       scheduled: &scheduledThisPass)
   }
 
@@ -813,6 +836,8 @@ final class PipelineSettingsSync {
     // frozen, and it is the one with no `DictationSessionConfig` to read.
     let target = Self.canonical(model)
     if importPinnedOllamaModel().map(Self.canonical) == target { return true }
+    // #4287: a running local meeting summary call is the fourth.
+    if summaryPinnedOllamaModel().map(Self.canonical) == target { return true }
     for cfg in [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && Self.canonical(cfg.llmModel) == target {

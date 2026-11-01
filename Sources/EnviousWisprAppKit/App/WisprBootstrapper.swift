@@ -328,6 +328,9 @@ package final class WisprBootstrapper {
     // both constructed long before the import coordinator exists, and both have
     // to be able to see a running import.
     weak var fileImportCoordinatorForGates: FileImportCoordinator?
+    // #4287: same pattern; the settings sync is built long before the meeting summary owner,
+    // and its eviction check must see a summary call that is running on an Ollama model.
+    weak var meetingSummariesForEviction: MeetingSummaryOwner?
     // #3853: same pattern; the import's frozen polish provider lives on the runner.
     weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
@@ -896,6 +899,7 @@ package final class WisprBootstrapper {
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
+      summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
         WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
@@ -2640,6 +2644,7 @@ package final class WisprBootstrapper {
         setupService.setupState == .ready
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
+    meetingSummariesForEviction = meetingCoordinator.summaries
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
