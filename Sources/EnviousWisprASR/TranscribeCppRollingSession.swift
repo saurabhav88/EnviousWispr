@@ -492,6 +492,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
         case .silent(let through):
           // Confirmed silence: no native work and no agreement change; only the mark moves.
           lastDecodeSampleCount = max(lastDecodeSampleCount, through)
+          followSilence(through: through)
           #if DEBUG
             silentCycles += 1
           #endif
@@ -657,6 +658,26 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // 3. RETAIN (§3.5).
     retain(realAudioEnd: realAudioEnd)
     return true
+  }
+
+  /// #4254 (dev-app UAT): confirmed silence with no word in dispute moves the origin forward to
+  /// `minRetainedBufferSec` before its end, as a trim would. Silence commits nothing, so the
+  /// origin otherwise stayed before a long opening silence and the window bound later forced it
+  /// into the first speech, discarding its opening words. The mark, agreement and the hard
+  /// bound are unchanged; this is no discard and reports no discontinuity.
+  private func followSilence(through: Int) {
+    guard heldBack.isEmpty, previousHypothesis.isEmpty else { return }
+    let newOrigin = Float(through) / Self.sampleRate - Self.minRetainedBufferSec
+    guard newOrigin > bufferStart else { return }
+    for entry in committedInBuffer where entry.end <= newOrigin {
+      appendTranscript(&scrolledOutText, entry.unit.text)
+    }
+    committedInBuffer.removeAll { $0.end <= newOrigin }
+    bufferStart = newOrigin
+    originAtCommit = false
+    recognizedInput = nil
+    disputedInputEnd = nil
+    releaseAudio()
   }
 
   private func retain(realAudioEnd: Float) {

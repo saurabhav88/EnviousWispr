@@ -352,8 +352,10 @@ struct MeetingLiveSpeechGateTests {
     audio.set(seconds: 22)
     await Rolling.within("raw cycle") { await s.cyclesCompleted(reach: 2) }
     #expect(await s.speechDetectionDegradedForTests == true)
+    // The silent first cycle moved the origin to 8 s before its classified end (319,488).
+    #expect(await s.bufferStartForTests == 11.968, "control: the origin followed the silence")
     await s.cancel()
-    #expect(decoder.raws == [22 * Self.rate], "the untrimmed window from origin 0")
+    #expect(decoder.raws == [22 * Self.rate - 191_488], "the untrimmed window from that origin")
     #expect(decoder.froms.isEmpty)
     #expect(await detector.appends.count == 2, "no append after the failure")
     #expect(await s.heldBackTextForTests == "after.")
@@ -450,6 +452,31 @@ struct MeetingLiveSpeechGateTests {
     #expect(await s.committedTextForTests == "one. right two.", "the disputed words agree and commit")
   }
 
+  @Test("speech starting 21 s into a session after confirmed silence keeps its opening words")
+  func speechAfterOpeningSilenceKeepsItsStart() async {
+    // Traced in the app (#4254 UAT): 20 s of silence, then speech. Silence commits nothing, so
+    // the origin stayed at 0 and the window bound (30 s) cut into the first sentence.
+    let detector = FakeDetector(speech: [(21 * Self.rate)..<(26 * Self.rate)])
+    let opening = [Self.seg(0, 3_000, " the quarterly numbers")]
+    let whole = [Self.seg(0, 4_000, " the quarterly numbers came in.")]
+    let decoder = Decoder([opening, whole, whole])
+    let events = Rolling.Events()
+    let audio = Self.audio(seconds: 40)
+    let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: events)
+    audio.set(seconds: 20)
+    await s.start(audioSamplesProvider: audio.provider)
+    await Rolling.within("silent cycle") { await s.cyclesCompleted(reach: 1) }
+    for (step, seconds) in [24, 28, 32].enumerated() {
+      audio.set(seconds: Float(seconds))
+      await Rolling.within("decode \(step + 1)") { await s.cyclesCompleted(reach: step + 2) }
+    }
+    await s.cancel()
+    #expect(decoder.calls == 3, "control: three decodes of the speech")
+    #expect(await s.discardedUnstableAudioForTests == false, "no speech was discarded")
+    #expect(!events.all.contains(.discontinuity), "no discontinuity")
+    #expect(events.finalized == "the quarterly numbers came in.", "the opening words commit")
+  }
+
   @Test("a disputed input end extends a closed slice only within classified audio")
   func disputedEndNeedsClassifiedAudio() async throws {
     // Chunks of 4,096: 40,000 fed classifies 36,864. Speech closes at 16,000.
@@ -520,7 +547,10 @@ struct MeetingLiveSpeechGateTests {
       let first = try #require(await s.meetingDetectionSnapshot())
       #expect(first.silentCycles == 1)
       await s.cancel()
-      await s.start(audioSamplesProvider: audio.provider)
+      // A new run reads a fresh capture from sample zero (the first run released its audio).
+      let again = Self.audio(seconds: 30)
+      again.set(seconds: 20)
+      await s.start(audioSamplesProvider: again.provider)
       await Rolling.within("second run") { await s.cyclesCompleted(reach: 1) }
       let fresh = try #require(await s.meetingDetectionSnapshot())
       #expect(fresh.run == first.run + 1, "a new run")
@@ -724,8 +754,9 @@ struct MeetingLiveSpeechGateTests {
   @Test("a forced origin over a short speech tail after empty or refused recognition decodes it")
   func forcedOriginTailDecoded() async {
     for decoder in [Decoder(), Decoder(failing: true)] {
-      // Speech ends 50 ms after the forced origin (32 s at 40 s captured).
-      let detector = FakeDetector(speech: [(20 * Self.rate)..<(32 * Self.rate + 800)])
+      // Speech from the start, so the first cycle decodes (empty or refused) and nothing moves
+      // the origin before the bound; it ends 50 ms after the forced origin (32 s at 40 s).
+      let detector = FakeDetector(speech: [0..<(32 * Self.rate + 800)])
       let audio = Self.audio(seconds: 60)
       let s = Self.meeting({ detector }, decoder: decoder, audio: audio, events: .init())
       audio.set(seconds: 20)
