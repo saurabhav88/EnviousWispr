@@ -459,10 +459,14 @@ def main() -> int:
     p.add_argument("--calibration-out", type=Path, help="--calibration-fresh: output directory (created, must not exist)")
     p.add_argument("--calibration-tables", default="calibration_only", choices=["calibration_only", "calibration_only_final", "calibration_only_v6", "calibration_only_v7", "calibration_only_v8", "calibration_only_v9"], help="--calibration-fresh: which calibration-only tables")
     args = p.parse_args()
-    if args.out is None:
-        args.out = edit_judge_dir("candidates")
-    if args.dev_out is None:
-        args.dev_out = edit_judge_dir("dev")
+    # Resolve only the default the chosen mode writes to, so an explicit --out or
+    # --dev-out (or calibration mode) never needs the artifact CLI.
+    if not args.calibration_fresh:
+        if args.dev:
+            if args.dev_out is None:
+                args.dev_out = edit_judge_dir("dev")
+        elif args.out is None:
+            args.out = edit_judge_dir("candidates")
 
     required = (args.packs, args.frozen_manifest) + ((args.templates,) if (args.dev or args.calibration_fresh) else (args.polish,))
     for path in required:
