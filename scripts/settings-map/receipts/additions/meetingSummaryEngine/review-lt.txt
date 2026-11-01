@@ -1,0 +1,95 @@
+{
+  "meetings.tab.summaries": {
+    "language": "lt",
+    "title": "santraukos",
+    "words": [],
+    "phrases": [
+      "EnviousMeet santraukų skirtukas",
+      "susitikimų santraukų nustatymai"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "lt",
+    "title": "santraukų variklis",
+    "words": [
+      "susitikimų santraukų modelis"
+    ],
+    "phrases": [
+      "kuris DI rašo mano susitikimų santraukas",
+      "susitikimų santraukų variklio nustatymai"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "lt",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "naudoti Apple Intelligence susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "lt",
+    "title": "keisti",
+    "words": [],
+    "phrases": [
+      "pakeisti DI susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "lt",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "naudoti Claude susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "lt",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "kodėl negaliu pasirinkti EG-1 susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "lt",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "naudoti Google Gemini susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "lt",
+    "title": "palikti dabartinį santraukų variklį",
+    "words": [],
+    "phrases": [
+      "susitikimų santraukoms toliau naudoti tą patį dirbtinį intelektą"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "lt",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "naudoti Ollama susitikimų santraukoms"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "lt",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "naudoti OpenAI susitikimų santraukoms"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "lt",
+    "title": "kurti santrauką pasibaigus susitikimui",
+    "words": [],
+    "phrases": [
+      "apibendrinti susitikimą jam pasibaigus",
+      "automatinė susitikimo santrauka"
+    ]
+  }
+}

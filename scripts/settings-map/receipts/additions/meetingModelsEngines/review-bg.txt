@@ -1,0 +1,44 @@
+{
+  "meetingLiveWords.change": {
+    "language": "bg",
+    "title": "смяна на модела за текста на срещата в реално време",
+    "words": [],
+    "phrases": [
+      "отвори моделите за текста на срещата в реално време в EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "bg",
+    "title": "запази текущия модел за текста на срещата в реално време",
+    "words": [],
+    "phrases": [
+      "остави същия модел за текста на срещата в реално време в EnviousMeet",
+      "затвори избора на модел за текста на срещата в реално време без промяна"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "bg",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple за пълната транскрипция след срещата в EnviousMeet — очаквайте скоро"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "bg",
+    "title": "смяна на модела за пълната транскрипция след срещата",
+    "words": [],
+    "phrases": [
+      "отвори моделите за пълната транскрипция след срещата в EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "bg",
+    "title": "запази текущия модел за пълната транскрипция след срещата",
+    "words": [],
+    "phrases": [
+      "остави същия модел за пълната транскрипция след срещата в EnviousMeet",
+      "затвори избора на модел за пълната транскрипция след срещата без промяна"
+    ]
+  }
+}

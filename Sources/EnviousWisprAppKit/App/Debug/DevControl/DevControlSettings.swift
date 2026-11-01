@@ -50,6 +50,7 @@
     static let allKeys: [Key] = [
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
+      .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
       .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
@@ -105,7 +106,8 @@
       case .cancelKeyCode, .cancelModifiers, .quickAddKeyCode, .quickAddModifiers,
         .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode, .copyLastModifiers,
         .toggleKeyCode, .toggleModifiers, .vadSilenceTimeout, .fileImportLLMProvider,
-        .fileImportLLMModel, .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID:
+        .fileImportLLMModel, .fileImportOllamaModel, .ollamaModel, .inputChannelByDeviceUID,
+        .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
@@ -129,6 +131,10 @@
         return settings.fileImportLLMProvider.map { $0.rawValue as Any } ?? NSNull()
       case .fileImportLLMModel: return settings.fileImportLLMModel
       case .fileImportOllamaModel: return settings.fileImportOllamaModel
+      case .meetingSummaryLLMProvider:
+        return settings.meetingSummaryLLMProvider.map { $0.rawValue as Any } ?? NSNull()
+      case .meetingSummaryLLMModel: return settings.meetingSummaryLLMModel
+      case .meetingSummaryOllamaModel: return settings.meetingSummaryOllamaModel
       case .s1MiniStyling: return settings.s1MiniStyling.rawValue
       case .s1MiniStructure: return settings.s1MiniStructure.rawValue
       case .s1MiniContext: return settings.s1MiniContext.rawValue
@@ -272,6 +278,14 @@
         return set(Codec.string(value)) { settings.fileImportLLMModel = $0 }
       case .fileImportOllamaModel:
         return set(Codec.string(value)) { settings.fileImportOllamaModel = $0 }
+      case .meetingSummaryLLMProvider:
+        return set(Codec.optionalRaw(value, LLMProvider.self)) {
+          settings.meetingSummaryLLMProvider = $0
+        }
+      case .meetingSummaryLLMModel:
+        return set(Codec.string(value)) { settings.meetingSummaryLLMModel = $0 }
+      case .meetingSummaryOllamaModel:
+        return set(Codec.string(value)) { settings.meetingSummaryOllamaModel = $0 }
       case .s1MiniStyling:
         return set(Codec.raw(value, S1Styling.self)) { settings.s1MiniStyling = $0 }
       case .s1MiniStructure:
@@ -526,6 +540,11 @@
       case importProvider
       /// Transcribe a File's model menu, through the same offered-model groups as llmModel.
       case importModel
+      /// #4287: the Summaries tab's provider cards (`PolishSettings.setProvider` on
+      /// `.meetingSummary`). `null` is refused: no screen can return a choice to unmigrated.
+      case summaryProvider
+      /// #4287: the Summaries tab's model menu, through the same offered-model groups.
+      case summaryModel
       /// An Ollama model pick on the surface the field belongs to, allowed only while that
       /// surface's provider is Ollama; the pick goes through the model menu's own write.
       case ollamaModel
@@ -561,7 +580,11 @@
         return .importProvider
       case .fileImportLLMModel:
         return .importModel
-      case .ollamaModel, .fileImportOllamaModel:
+      case .meetingSummaryLLMProvider:
+        return .summaryProvider
+      case .meetingSummaryLLMModel:
+        return .summaryModel
+      case .ollamaModel, .fileImportOllamaModel, .meetingSummaryOllamaModel:
         return .ollamaModel
       case .inputChannelByDeviceUID:
         return .channelCommand
@@ -623,8 +646,26 @@
         return .written(forced: false)
       case .importModel:
         return writeModel(value, surface: .fileImport, context: context, to: settings)
+      case .summaryProvider:
+        guard let provider = Codec.raw(value, LLMProvider.self) else {
+          return .refused(code: "badValue", message: "wrong type or unknown value")
+        }
+        // The Summaries tab offers no S1-mini card, keeps EG-1 disabled until it can summarize,
+        // and has no "none" card; an ordinary write is what that screen can do.
+        guard MeetingSummaryEngineChoices.isSelectable(provider) else {
+          return .refused(
+            code: "checkFailed",
+            message: "the Summaries tab cannot pick that engine; use force to stage it")
+        }
+        PolishSettings.setProvider(provider, on: .meetingSummary, in: settings)
+        return .written(forced: false)
+      case .summaryModel:
+        return writeModel(value, surface: .meetingSummary, context: context, to: settings)
       case .ollamaModel:
-        let surface: ProviderSetupSurface = key == .ollamaModel ? .dictation : .fileImport
+        // `route(_:)` sends exactly these three keys here.
+        let surface: ProviderSetupSurface =
+          key == .ollamaModel
+          ? .dictation : (key == .meetingSummaryOllamaModel ? .meetingSummary : .fileImport)
         guard PolishSettings.provider(on: surface, in: settings) == .ollama else {
           return .refused(
             code: "checkFailed",
@@ -863,7 +904,10 @@
           message:
             "no usable cached model catalog for the current provider; discover its models in the app first, then retry")
       }
-      let groups = OllamaModelPickerPresentation.groups(from: catalog.models, provider: provider)
+      // #4287: the same offered list the surface's menu shows (the summary surface leaves
+      // out the first-party Ollama models).
+      let groups = OllamaModelPickerPresentation.groups(
+        from: surface.offeredModels(catalog.models, provider: provider), provider: provider)
       let offered = (groups.recommended + groups.other + groups.hosted).map(\.id)
       guard offered.contains(id) else {
         let locked = groups.locked.contains { $0.id == id }

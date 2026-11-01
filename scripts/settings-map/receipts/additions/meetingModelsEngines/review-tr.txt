@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "tr",
+    "title": "değiştir",
+    "words": [],
+    "phrases": [
+      "EnviousMeet'te toplantı sırasında gösterilen canlı metnin motorunu değiştirmek için seçenekleri aç"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "tr",
+    "title": "mevcut canlı transkripsiyon motorunu koru",
+    "words": [],
+    "phrases": [
+      "EnviousMeet'te toplantının canlı metin motorunu değiştirmeden seçenekleri kapat"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "tr",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "EnviousMeet'te toplantı sonrası döküm için yakında gelecek Apple motoru"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "tr",
+    "title": "değiştir",
+    "words": [],
+    "phrases": [
+      "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmek için seçenekleri aç"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "tr",
+    "title": "mevcut toplantı dökümü motorunu koru",
+    "words": [],
+    "phrases": [
+      "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmeden seçenekleri kapat"
+    ]
+  }
+}

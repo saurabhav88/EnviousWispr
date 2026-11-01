@@ -1,0 +1,99 @@
+{
+  "meetings.tab.summaries": {
+    "language": "nl",
+    "title": "samenvattingen",
+    "words": [],
+    "phrases": [
+      "instellingen voor vergadersamenvattingen in EnviousMeet",
+      "tabblad voor vergadersamenvattingen"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "nl",
+    "title": "samenvattingsengine",
+    "words": [
+      "samenvattingsmodel"
+    ],
+    "phrases": [
+      "welke AI schrijft mijn vergadersamenvattingen",
+      "instellingen van de engine voor vergadersamenvattingen"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "nl",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "Apple Intelligence gebruiken voor samenvattingen van vergaderingen"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "nl",
+    "title": "wijzigen",
+    "words": [],
+    "phrases": [
+      "een andere engine kiezen voor vergadersamenvattingen",
+      "keuze van engines voor vergadersamenvattingen openen"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "nl",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "Claude gebruiken voor samenvattingen van vergaderingen"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "nl",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "wanneer komt EG-1 voor vergadersamenvattingen",
+      "EG-1 voor vergadersamenvattingen binnenkort beschikbaar"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "nl",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "Google Gemini gebruiken voor vergadersamenvattingen"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "nl",
+    "title": "huidige samenvattingsengine behouden",
+    "words": [],
+    "phrases": [
+      "dezelfde AI blijven gebruiken voor vergadersamenvattingen",
+      "enginekeuze sluiten zonder de samenvattingsengine te wijzigen"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "nl",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "Ollama gebruiken voor samenvattingen van vergaderingen"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "nl",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "OpenAI gebruiken voor samenvattingen van vergaderingen"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "nl",
+    "title": "maak een samenvatting als de vergadering eindigt",
+    "words": [],
+    "phrases": [
+      "vergadering automatisch samenvatten",
+      "automatisch een samenvatting maken na afloop van elke vergadering",
+      "automatische vergadersamenvattingen aanzetten"
+    ]
+  }
+}

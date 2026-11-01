@@ -331,10 +331,11 @@ final class MeetingCoordinator {
     /// settle in time (R28).
     var settleDictationHold: @MainActor () async -> Bool
     var freeDiskBytes: @MainActor () -> Int64?
-    /// A name for a meeting starting at this time, from the user's calendar (#4017 R5, R11);
-    /// nil when the setting is off, access is missing, nothing matches or the bounded lookup
-    /// gave up. It must return within its own bound and never throw.
-    var meetingTitleAtStart: @MainActor (Date) async -> String? = { _ in nil }
+    /// The calendar event a meeting starting at this time matches, from the user's calendar
+    /// (#4017 R5, R11; #4286): its title names the meeting, its invited people become the
+    /// meeting's facts. Nil when the setting is off, access is missing, nothing matches or the
+    /// bounded lookup gave up. It must return within its own bound and never throw.
+    var meetingCalendarAtStart: @MainActor (Date) async -> CalendarEventSnapshot? = { _ in nil }
     /// #4012: whether a detected Start is still wanted (detection and its app still on, the
     /// call still going), asked after the waits and before anything is created.
     var detectedStartWanted: @MainActor () async -> Bool = { true }
@@ -1015,7 +1016,7 @@ final class MeetingCoordinator {
     // #4017 R11: one start time for the calendar lookup and the record; the name is set on the
     // record before it is first written, so no published record is ever renamed from here.
     let startedAt = Date()
-    let calendarTitle = await deps.meetingTitleAtStart(startedAt)
+    let calendar = await deps.meetingCalendarAtStart(startedAt)
     // A Stop or quit during the lookup owns the outcome: nothing was created.
     guard isCurrentStart(generation) else { return .superseded(meetingID: nil) }
     // A detected Start whose detection, app switch or call changed during the waits starts
@@ -1031,7 +1032,7 @@ final class MeetingCoordinator {
       }
     }
     var record = MeetingRecord(
-      title: calendarTitle, createdAt: startedAt, engine: transcriptEngine,
+      title: calendar?.title, createdAt: startedAt, engine: transcriptEngine,
       trackStatus: [.microphone: .captured, .callSound: captureCall ? .captured : .off])
     // #4012: the call app a detected Start was for, so the fallback name says "Zoom call".
     record.callApp = callApp
@@ -1154,6 +1155,14 @@ final class MeetingCoordinator {
     if let token = deps.beginActivity() { activity = token }
     phase = .recording(meetingID: meetingID, startedAt: record.createdAt)
     startMuteFollow(meetingID: meetingID, recorder: recorder)
+    // #4286: the matched event's facts are saved only now that the Start has committed, and not
+    // awaited, so Start gains no wait. Best effort: a Stop does not cancel it (the meeting is
+    // kept), a deletion is refused by the documents owner and the store, and a failure only
+    // logs.
+    if let calendar {
+      let facts = MeetingCalendarFacts.facts(from: calendar, at: startedAt)
+      Task { [documents] in await documents.recordFacts(meetingID, facts) }
+    }
     // #4013 13B: every recording, however it started, gets one speaker session. Not awaited:
     // Start goes on at once, and the session checks after its own wait that this recording is
     // still the one recording.

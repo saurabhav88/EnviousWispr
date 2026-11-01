@@ -328,6 +328,9 @@ package final class WisprBootstrapper {
     // both constructed long before the import coordinator exists, and both have
     // to be able to see a running import.
     weak var fileImportCoordinatorForGates: FileImportCoordinator?
+    // #4287: same pattern; the settings sync is built long before the meeting summary owner,
+    // and its eviction check must see a summary call that is running on an Ollama model.
+    weak var meetingSummariesForEviction: MeetingSummaryOwner?
     // #3853: same pattern; the import's frozen polish provider lives on the runner.
     weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
@@ -896,6 +899,7 @@ package final class WisprBootstrapper {
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
+      summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
         WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
@@ -2644,6 +2648,20 @@ package final class WisprBootstrapper {
         setupService.setupState == .ready
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
+    meetingSummariesForEviction = meetingCoordinator.summaries
+    // #4287: an eviction deferred while a summary call used its Ollama model runs once the
+    // call releases it, as dictation and file import retry theirs on completion.
+    meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
+      settingsSync?.retryDeferredOllamaEviction(settings: settings)
+    }
+    // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
+    // the same local engine. File import, re-polish and recovery build their own steps and
+    // keep the default (never skip).
+    for polishStep in [kernelDriver.llmPolish, whisperKernelDriver.llmPolish] {
+      polishStep.runningLocalSummary = { [weak summaries = meetingCoordinator.summaries] in
+        summaries?.runningLocalSummaryProvider
+      }
+    }
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(

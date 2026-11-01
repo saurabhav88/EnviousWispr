@@ -354,8 +354,8 @@ struct MeetingCoordinatorTests {
     var callSound = false
     /// When set, the dictation-settle wait at Start parks on it.
     var settleGate: Gate?
-    /// #4017 R11: the calendar name a Start's lookup returns, and a gate it parks on.
-    var calendarTitle: String?
+    /// #4017 R11, #4286: the calendar event a Start's lookup returns, and a gate it parks on.
+    var calendar: CalendarEventSnapshot?
     /// #4012: what the detected-Start check answers.
     var detectedWanted = true
     /// When set, answers the detected-Start checks in order (then `detectedWanted`).
@@ -366,8 +366,8 @@ struct MeetingCoordinatorTests {
     var recorderFailure: MeetingRecorder.FailureHandler?
     /// #4124: runs inside each detected-Start check before it answers.
     var onDetectedCheck: (@MainActor () async -> Void)?
-    var titleGate: Gate?
-    var titleLookups: [Date] = []
+    var calendarGate: Gate?
+    var calendarLookups: [Date] = []
     var freeBytes: Int64? = 50_000_000_000
     /// #4118: how many times the coordinator read the free space (once per segment update).
     var freeBytesReads = 0
@@ -436,10 +436,10 @@ struct MeetingCoordinatorTests {
           freeBytesReads += 1
           return freeBytes
         },
-        meetingTitleAtStart: { [self] startedAt in
-          titleLookups.append(startedAt)
-          await titleGate?.wait()
-          return calendarTitle
+        meetingCalendarAtStart: { [self] startedAt in
+          calendarLookups.append(startedAt)
+          await calendarGate?.wait()
+          return calendar
         },
         detectedStartWanted: { [self] in
           await detectedGate?.wait()
@@ -939,15 +939,99 @@ struct MeetingCoordinatorTests {
   @Test("a calendar name is on the meeting from its first write and survives a reload")
   func calendarTitleNamesTheMeeting() async throws {
     let harness = try Harness()
-    harness.calendarTitle = "Customer sync: Acme"
+    harness.calendar = Self.calendarEvent("Customer sync: Acme")
     let coordinator = harness.coordinator
     await coordinator.start(from: .menu)
     let meeting = try onlyMeeting(harness)
     #expect(meeting.title == "Customer sync: Acme")
     // The lookup and the record use one start time.
-    #expect(harness.titleLookups == [meeting.createdAt])
+    #expect(harness.calendarLookups == [meeting.createdAt])
     #expect(try harness.store.load(id: meeting.id).title == "Customer sync: Acme")
     await coordinator.stop()
+  }
+
+  /// #4286: a calendar event with these invitees (Dana organizes) for the Start lookup to return.
+  static func calendarEvent(_ title: String, invitees: [String] = ["Dana Lee", "Li Wu"])
+    -> CalendarEventSnapshot
+  {
+    CalendarEventSnapshot(
+      title: title, start: Date(timeIntervalSinceReferenceDate: 815_000_000),
+      end: Date(timeIntervalSinceReferenceDate: 815_002_700),
+      attendees: invitees.enumerated().map { index, name in
+        AttendeeFact(
+          name: name, email: name.lowercased().replacingOccurrences(of: " ", with: ".") + "@acme.com",
+          role: .required, status: .accepted, isSelf: false, isOrganizer: index == 0)
+      })
+  }
+
+  @Test("the matched event's facts are saved once the Start commits, stamped with its start time")
+  func calendarFactsSavedAfterCommit() async throws {
+    let harness = try Harness()
+    harness.calendar = Self.calendarEvent("Acme renewal")
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .menu)
+    let meeting = try onlyMeeting(harness)
+    await Self.eventually("facts saved") {
+      coordinator.documents.context(meeting.id)?.attendees.count == 2
+    }
+    guard case .loaded(let saved) = harness.store.loadContext(meeting: meeting.id) else {
+      Issue.record("context.json was not saved")
+      return
+    }
+    #expect(saved.calendarEvents.map(\.title) == ["Acme renewal"])
+    #expect(saved.attendees.map(\.name) == ["Dana Lee", "Li Wu"])
+    #expect(saved.facts.allSatisfy { $0.capturedAt == meeting.createdAt && $0.source == "calendar.eventkit" })
+    await coordinator.stop()
+    #expect(harness.store.loadContext(meeting: meeting.id) == .loaded(saved), "a Stop keeps them")
+  }
+
+  @Test("no matched event saves no facts")
+  func noCalendarNoFacts() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .menu)
+    let meeting = try onlyMeeting(harness)
+    await coordinator.stop()
+    await Self.eventually("idle") { !coordinator.isWorkInFlight }
+    #expect(harness.store.loadContext(meeting: meeting.id) == .absent)
+    #expect(coordinator.documents.context(meeting.id) == nil)
+  }
+
+  @Test("each meeting keeps its own event's facts across a Stop and a newer Start")
+  func factsStayWithTheirMeeting() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    harness.calendar = Self.calendarEvent("First", invitees: ["Ana"])
+    await coordinator.start(from: .menu)
+    let first = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    harness.calendar = Self.calendarEvent("Second", invitees: ["Bo"])
+    await coordinator.start(from: .menu)
+    let second = try #require(coordinator.meetings.map(\.id).first { $0 != first })
+    await Self.eventually("both saved") {
+      coordinator.documents.context(first)?.attendees.count == 1
+        && coordinator.documents.context(second)?.attendees.count == 1
+    }
+    #expect(coordinator.documents.context(first)?.attendees.map(\.name) == ["Ana"])
+    #expect(coordinator.documents.context(second)?.attendees.map(\.name) == ["Bo"])
+    await coordinator.stop()
+  }
+
+  @Test("deleting a meeting whose facts are being saved leaves no facts and no folder")
+  func deleteDuringFactsSave() async throws {
+    let harness = try Harness()
+    harness.calendar = Self.calendarEvent("Acme renewal")
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .menu)
+    let meetingID = try #require(coordinator.meetings.first?.id)
+    await coordinator.stop()
+    await coordinator.delete(meetingID: meetingID)
+    await Self.eventually("nothing pending") {
+      !coordinator.documents.hasPendingWork && coordinator.queuedFileOperations == 0
+    }
+    #expect(coordinator.documents.context(meetingID) == nil)
+    #expect(coordinator.documents.entries[meetingID] == nil)
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path) == false)
   }
 
   @Test("no calendar name leaves the title empty for the date name")
@@ -962,9 +1046,9 @@ struct MeetingCoordinatorTests {
   @Test("a Stop during the calendar lookup creates nothing, and its late name is dropped")
   func stopDuringCalendarLookup() async throws {
     let harness = try Harness()
-    harness.calendarTitle = "Late name"
+    harness.calendar = Self.calendarEvent("Late name")
     let gate = Gate()
-    harness.titleGate = gate
+    harness.calendarGate = gate
     let coordinator = harness.coordinator
     let starting = Task { await coordinator.start(from: .menu) }
     await Self.eventually("lookup parked") { gate.parked }
@@ -975,6 +1059,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.meetings.isEmpty)
     #expect(harness.recorders.isEmpty)
     #expect(coordinator.phase == .idle)
+    #expect(coordinator.documents.entries.isEmpty, "no facts for a Start that never committed")
   }
 
   @Test("Start is refused before any source opens: low disk, or sound that did not settle")

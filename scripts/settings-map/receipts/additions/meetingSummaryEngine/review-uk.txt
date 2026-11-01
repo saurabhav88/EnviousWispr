@@ -1,0 +1,100 @@
+{
+  "meetings.tab.summaries": {
+    "language": "uk",
+    "title": "підсумки",
+    "words": [],
+    "phrases": [
+      "вкладка підсумків EnviousMeet",
+      "налаштування підсумків зустрічей"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "uk",
+    "title": "рушій підсумовування",
+    "words": [
+      "модель для підсумків зустрічей"
+    ],
+    "phrases": [
+      "яка модель пише підсумки моїх зустрічей",
+      "налаштувати рушій підсумовування зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "uk",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "використовувати Apple Intelligence для підсумків зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "uk",
+    "title": "змінити",
+    "words": [],
+    "phrases": [
+      "вибрати інший рушій для підсумків зустрічей",
+      "відкрити вибір рушія підсумовування зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "uk",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "використовувати Claude для підсумків зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "uk",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "коли буде доступний EG-1 для підсумків зустрічей",
+      "EG-1 для підсумків зустрічей незабаром"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "uk",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "використовувати Gemini для підсумків зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "uk",
+    "title": "залишити поточний рушій підсумків",
+    "words": [],
+    "phrases": [
+      "залишити поточний рушій підсумовування зустрічей",
+      "закрити вибір рушія підсумків зустрічей без змін"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "uk",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "використовувати Ollama для підсумків зустрічей"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "uk",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "використовувати OpenAI для підсумків зустрічей"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "uk",
+    "title": "створювати підсумок після завершення зустрічі",
+    "words": [
+      "автопідсумок зустрічі"
+    ],
+    "phrases": [
+      "автоматично створювати підсумок після завершення зустрічі",
+      "вимкнути автоматичне створення підсумків зустрічей"
+    ]
+  }
+}

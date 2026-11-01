@@ -154,12 +154,24 @@ struct MeetingStoreTests {
       dir.appendingPathComponent(
         MeetingSegmentNaming.fileName(track: .callSound, index: 1, startMs: 0, partial: true)))
 
+    // #4286: the meeting's facts hold no audio, so Delete audio keeps them byte for byte.
+    try store.appendFacts(
+      [
+        AttendeeFact(
+          name: "Ana", email: nil, role: .required, status: .accepted, isSelf: false,
+          isOrganizer: false
+        ).fact(source: MeetingFact.eventKitSource, capturedAt: Date(timeIntervalSinceReferenceDate: 1))
+      ], meeting: record.id)
+    let contextBefore = try Data(contentsOf: store.contextURL(for: record.id))
+
     try store.deleteAudio(meeting: record.id)
     #expect(try store.segmentFiles(meeting: record.id).isEmpty)
     #expect(FileManager.default.fileExists(atPath: store.recordURL(for: record.id).path))
+    #expect(try Data(contentsOf: store.contextURL(for: record.id)) == contextBefore)
 
     try store.deleteFolder(meeting: record.id)
     #expect(!FileManager.default.fileExists(atPath: dir.path))
+    #expect(FileManager.default.fileExists(atPath: store.contextURL(for: record.id).path) == false)
     #expect(FileManager.default.fileExists(atPath: store.folder(for: neighbour.id).path))
     #expect(FileManager.default.fileExists(atPath: root.path))
   }

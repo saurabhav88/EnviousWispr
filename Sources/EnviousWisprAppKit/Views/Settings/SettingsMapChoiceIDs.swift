@@ -91,6 +91,24 @@ extension PolishRailProvider {
   }
 }
 
+extension PolishRailProvider {
+  /// #4287: the provider's entry among the Summaries tab's engine choices. S1-mini is not a
+  /// summary engine (founder 2026-10-31), and the switched-off state is not a choice.
+  var meetingSummaryMapID: SettingsMapID {
+    switch provider {
+    case .appleIntelligence: return .meetingSummaryEngineAppleIntelligence
+    case .egOne: return .meetingSummaryEngineEgOne
+    case .ollama: return .meetingSummaryEngineOllama
+    case .openAI: return .meetingSummaryEngineOpenAI
+    case .gemini: return .meetingSummaryEngineGemini
+    case .claude: return .meetingSummaryEngineClaude
+    case .s1Mini, .none:
+      SettingsMap.wiringFault("S1-mini and the off state are not summary engine choices")
+      return .meetingSummaryEngine
+    }
+  }
+}
+
 enum SettingsMapChoiceIDs {
   /// The start-word editor's language options (`SpokenPunctuationStartWordEditor.languages`).
   /// Nil, and a wiring fault, for a language the map does not name yet (the map tests fail on it).
@@ -108,7 +126,7 @@ enum SettingsMapChoiceIDs {
   }
 }
 
-// #4105: the Live words row's engine menu, in the order the menu lists them.
+// #4105: the Live words card's engines, in the order the cards show them (#4287 PR 2).
 extension LivePreviewEngineChoice {
   var meetingLiveWordsMapID: SettingsMapID {
     switch self {
@@ -125,7 +143,8 @@ extension LivePreviewEngineChoice {
   }
 }
 
-// #3973 C3: the Transcript engine row's menu, in the order the menu lists them.
+// #3973 C3: the Transcript engine card's engines (#4287 PR 2: Apple's Coming soon card is
+// `MeetingTranscriptEngineCards.Item.appleComingSoon`).
 extension MeetingEngineChoice {
   var transcriptEngineMapID: SettingsMapID {
     switch self {
@@ -138,6 +157,17 @@ extension MeetingEngineChoice {
     switch self {
     case .parakeet: .resource(MeetingsCopy.engineParakeet)
     case .whisper: .resource(MeetingsCopy.engineWhisper)
+    }
+  }
+}
+
+// #4287 PR 2: a Transcript engine card's name in the Settings Map: the engines' own titles, and
+// Apple by its product name.
+extension MeetingTranscriptEngineCards.Item {
+  var mapTitle: SettingsMapTitle {
+    switch self {
+    case .engine(let engine): engine.transcriptEngineTitle
+    case .appleComingSoon: .verbatim(LivePreviewEngineCopy.appleTitle)
     }
   }
 }

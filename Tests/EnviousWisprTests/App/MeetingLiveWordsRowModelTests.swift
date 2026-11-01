@@ -490,22 +490,19 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.mac.installCalls.isEmpty)
   }
 
-  // MARK: - The engine menu
+  // MARK: - The engine cards
 
-  /// SwiftUI fills its accessibility tree lazily, only under a real accessibility client, so a
-  /// hosted menu's items are not readable in a test (measured in RenderedPillHarness, 2026-08-25).
-  /// The menu draws exactly `engineItems`, so this checks what it draws; the greyed item on
-  /// screen is a Live UAT row.
-  @Test("Apple is listed but greyed where this Mac cannot run it, and choosing it changes nothing")
+  /// The Live words card draws its Apple card from `MeetingLiveWordsEngineCards`, which this
+  /// checks; the dimmed card on screen is a Live UAT row.
+  @Test("Apple is listed but cannot be picked where this Mac cannot run it, and choosing it changes nothing")
   func unavailableAppleIsDisabled() async throws {
+    #expect(MeetingLiveWordsEngineCards.order == [.apple, .universal])
+    #expect(!MeetingLiveWordsEngineCards.isSelectable(.apple, appleAvailable: false))
+    #expect(MeetingLiveWordsEngineCards.isSelectable(.universal, appleAvailable: false))
     #expect(
-      MeetingLiveWordsRow.engineItems(appleAvailable: false) == [
-        .init(
-          choice: .apple, label: String(localized: MeetingsCopy.appleNotOnThisMac),
-          isEnabled: false),
-        .init(choice: .universal, label: LivePreviewEngineCopy.universalTitle, isEnabled: true),
-      ])
-    #expect(MeetingLiveWordsRow.engineItems(appleAvailable: true).allSatisfy { $0.isEnabled })
+      MeetingLiveWordsEngineCards.order.allSatisfy {
+        MeetingLiveWordsEngineCards.isSelectable($0, appleAvailable: true)
+      })
     let rig = Rig()
     rig.mac.appleAvailable = false
     rig.settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
@@ -531,12 +528,12 @@ struct MeetingLiveWordsRowModelTests {
     #expect(rig.model.languagesDiffer == false, "en-US and en are the same language")
   }
 
-  // MARK: - The shown row follows a choice saved elsewhere
+  // MARK: - The shown card follows a choice saved elsewhere
 
-  @Test("an open Live words row shows the choice a meeting Start saves while Settings stays open")
+  @Test("an open Live words card shows the choice a meeting Start saves while Settings stays open")
   func openRowFollowsAChoiceStartSaves() async throws {
     let rig = Rig(dictation: .locked("de"))  // German is not ready yet: nothing is saved
-    let host = NSHostingView(rootView: MeetingLiveWordsRow().environment(rig.model))
+    let host = NSHostingView(rootView: MeetingLiveWordsCard().environment(rig.model))
     host.frame = CGRect(x: 0, y: 0, width: 700, height: 200)
     let window = NSWindow(
       contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)

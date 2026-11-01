@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-294 nodes, 267 searchable, 8544 vocabulary blocks.
+309 nodes, 282 searchable, 9024 vocabulary blocks.
 
-Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33cd5d285c7`, uiCatalogSHA256 `10670d4823970932a29c0162bd8135a1f4ab6d6d2370d174f8a3c95f7a74c507`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `08af4bb5d3fc5dba8e0a499b32e3b445ff19b751c7da7f877b4f367bceb7f122`
+Fingerprints: mapSHA256 `8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e`, uiCatalogSHA256 `5b0a3ffcc00f60585515789d3e241a5e29fdfa5b18f7c2851b921d1a3b098db3`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3`
 
 ## Structure
 
@@ -284,19 +284,34 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
   - [EnviousMeet / EnviousMeet](#node-page-meetings) `page.meetings` (page)
     - [General / Allgemein](#node-meetings-tab-general) `meetings.tab.general` (feature)
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
-      - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
       - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
       - [Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin](#node-meetingFollowsCallMute) `meetingFollowsCallMute` (setting)
       - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
       - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Models / Modelle](#node-meetings-tab-models) `meetings.tab.models` (feature)
       - [Live words / Live-Transkript](#node-meetingLiveWords) `meetingLiveWords` (setting)
+        - [Change / Ändern](#node-meetingLiveWords-change) `meetingLiveWords.change` (action)
+        - [Keep current live words engine / Aktuelle Live-Transkript-Engine beibehalten](#node-meetingLiveWords-keepCurrent) `meetingLiveWords.keepCurrent` (action)
         - [Apple](#node-meetingLiveWords-apple) `meetingLiveWords.apple` (choice)
         - [Universal / Universal](#node-meetingLiveWords-universal) `meetingLiveWords.universal` (choice)
       - [Transcript engine / Transkript-Engine](#node-meetingTranscriptEngine) `meetingTranscriptEngine` (setting)
+        - [Change / Ändern](#node-meetingTranscriptEngine-change) `meetingTranscriptEngine.change` (action)
+        - [Keep current transcript engine / Aktuelle Transkript-Engine beibehalten](#node-meetingTranscriptEngine-keepCurrent) `meetingTranscriptEngine.keepCurrent` (action)
         - [Parakeet / Parakeet](#node-meetingTranscriptEngine-parakeet) `meetingTranscriptEngine.parakeet` (choice)
         - [Whisper Large v3 Turbo / Whisper Large v3 Turbo](#node-meetingTranscriptEngine-whisper) `meetingTranscriptEngine.whisper` (choice)
+        - [Apple](#node-meetingTranscriptEngine-apple) `meetingTranscriptEngine.apple` (choice)
       - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
+    - [Summaries / Zusammenfassungen](#node-meetings-tab-summaries) `meetings.tab.summaries` (feature)
+      - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
+      - [Summary engine / Zusammenfassungs-Engine](#node-meetingSummaryEngine) `meetingSummaryEngine` (setting)
+        - [Change / Ändern](#node-meetingSummaryEngine-change) `meetingSummaryEngine.change` (action)
+        - [Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten](#node-meetingSummaryEngine-keepCurrent) `meetingSummaryEngine.keepCurrent` (action)
+        - [EG-1](#node-meetingSummaryEngine-egOne) `meetingSummaryEngine.egOne` (choice)
+        - [Apple Intelligence](#node-meetingSummaryEngine-appleIntelligence) `meetingSummaryEngine.appleIntelligence` (choice)
+        - [Ollama](#node-meetingSummaryEngine-ollama) `meetingSummaryEngine.ollama` (choice)
+        - [OpenAI](#node-meetingSummaryEngine-openAI) `meetingSummaryEngine.openAI` (choice)
+        - [Google Gemini](#node-meetingSummaryEngine-gemini) `meetingSummaryEngine.gemini` (choice)
+        - [Claude](#node-meetingSummaryEngine-claude) `meetingSummaryEngine.claude` (choice)
     - [Call Apps / Anruf-Apps](#node-meetings-tab-callApps) `meetings.tab.callApps` (feature)
       - [Notice calls in / Anrufe erkennen in](#node-meetingCallApps) `meetingCallApps` (setting)
     - [Permissions / Berechtigungen](#node-meetings-tab-permissions) `meetings.tab.permissions` (feature)
@@ -2525,18 +2540,82 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
 |---|---|
 | Structure | item |
 | Kind | setting |
-| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Parent | [`meetings.tab.summaries`](#node-meetings-tab-summaries) |
 | Title source | catalog key `Write a summary when a meeting ends` |
-| Description | Your AI Polish provider writes a summary of each meeting. / Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting. |
-| Description source | catalog key `Your AI Polish provider writes a summary of each meeting.` |
-| Destination | `meetings` › `general` |
+| Description | The summary engine on this tab writes a summary of each meeting. / Die Zusammenfassungs-Engine in diesem Tab erstellt eine Zusammenfassung für jedes Meeting. |
+| Description source | catalog key `The summary engine on this tab writes a summary of each meeting.` |
+| Destination | `meetings` › `summaries` |
 | Dictionary tab | none |
 | Shown when | `always` |
 | Arrival target | [`meetingWriteSummary`](#node-meetingWriteSummary) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: recap, summarize, summarise<br>phrases: automatically summarize meetings; AI meeting recap |
-| Search (de) | words: Meetingzusammenfassung, Besprechungszusammenfassung, Kurzfassung<br>phrases: fass mein Meeting zusammen; erstelle nach dem Meeting automatisch eine Zusammenfassung |
+| Search (en) | phrases: automatically summarize meetings; write a summary when a meeting ends |
+| Search (de) | phrases: nach jedem Meeting automatisch eine Zusammenfassung erstellen; automatische Meetingzusammenfassung nach Meetingende einschalten |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine"></a>
+
+### Summary engine / Zusammenfassungs-Engine (`meetingSummaryEngine`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.summaries`](#node-meetings-tab-summaries) |
+| Title source | catalog key `Summary engine` |
+| Description | The AI that writes your meeting summaries. Separate from AI Polish for dictation. / Die KI, die deine Meeting-Zusammenfassungen erstellt. Getrennt von der KI-Nachbearbeitung für Diktate. |
+| Description source | catalog key `The AI that writes your meeting summaries. Separate from AI Polish for dictation.` |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: which AI writes my meeting summaries; meeting summary engine setup |
+| Search (de) | words: Zusammenfassungsmodell<br>phrases: welche KI erstellt deine Meetingzusammenfassungen; Engine für Meetingzusammenfassungen einstellen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-change"></a>
+
+### Change / Ändern (`meetingSummaryEngine.change`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | catalog key `Change` |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: change AI for meeting summaries |
+| Search (de) | phrases: andere KI für Meetingzusammenfassungen auswählen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-keepCurrent"></a>
+
+### Keep current summary engine / Aktuelle Zusammenfassungs-Engine beibehalten (`meetingSummaryEngine.keepCurrent`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | catalog key `Keep current summary engine` |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `engineChoicesExpanded` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: keep using the same AI for meeting summaries |
+| Search (de) | phrases: bisherige KI für Meetingzusammenfassungen behalten |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTurnsOffDictation"></a>
@@ -2605,6 +2684,48 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
 | Search (de) | phrases: ändere die Sprache für das Live-Transkript während der Meetingaufnahme; wähle die Engine für das Live-Transkript im Meeting; ändere die Sprache der Mitschrift während des Meetings |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-meetingLiveWords-change"></a>
+
+### Change / Ändern (`meetingLiveWords.change`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Title source | catalog key `Change` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: open the live words engine choices in EnviousMeet |
+| Search (de) | phrases: Engine für das Live-Transkript ändern |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingLiveWords-keepCurrent"></a>
+
+### Keep current live words engine / Aktuelle Live-Transkript-Engine beibehalten (`meetingLiveWords.keepCurrent`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Title source | catalog key `Keep current live words engine` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `engineChoicesExpanded` |
+| Arrival target | [`meetingLiveWords`](#node-meetingLiveWords) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: keep using the same engine for live meeting transcription |
+| Search (de) | phrases: bisherige Engine für das Live-Transkript behalten |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-meetingTranscriptEngine"></a>
 
 ### Transcript engine / Transkript-Engine (`meetingTranscriptEngine`)
@@ -2625,6 +2746,48 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | words: meeting transcript engine<br>phrases: choose model for the full meeting transcript; change the engine for full meeting transcripts |
 | Search (de) | phrases: Modell für das vollständige Meetingtranskript auswählen; Engine für die Transkription nach dem Meeting ändern |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine-change"></a>
+
+### Change / Ändern (`meetingTranscriptEngine.change`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Title source | catalog key `Change` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: open the full meeting transcript engine choices in EnviousMeet |
+| Search (de) | phrases: Engine für das Transkript nach dem Meeting ändern |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine-keepCurrent"></a>
+
+### Keep current transcript engine / Aktuelle Transkript-Engine beibehalten (`meetingTranscriptEngine.keepCurrent`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | action |
+| Parent | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Title source | catalog key `Keep current transcript engine` |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `engineChoicesExpanded` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: keep using the same engine for meeting transcripts |
+| Search (de) | phrases: bisherige Engine für das Transkript nach dem Meeting behalten |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingTranscriptLanguage"></a>
@@ -4395,6 +4558,27 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
 | Search (de) | phrases: Modelle für Meetings; Modelle in EnviousMeet |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-meetings-tab-summaries"></a>
+
+### Summaries / Zusammenfassungen (`meetings.tab.summaries`)
+
+| Field | Value |
+|---|---|
+| Structure | tab |
+| Kind | feature |
+| Parent | [`page.meetings`](#node-page-meetings) |
+| Title source | catalog key `Summaries` |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetings.tab.summaries`](#node-meetings-tab-summaries) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: meeting summary settings; EnviousMeet summaries tab |
+| Search (de) | phrases: Tab Zusammenfassungen in EnviousMeet öffnen; zu den Einstellungen für Meetingzusammenfassungen wechseln |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-meetings-tab-callApps"></a>
 
 ### Call Apps / Anruf-Apps (`meetings.tab.callApps`)
@@ -5183,6 +5367,153 @@ Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: use Whisper for meeting transcripts |
 | Search (de) | phrases: Whisper für das Transkript nach dem Meeting nutzen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingTranscriptEngine-apple"></a>
+
+### Apple (`meetingTranscriptEngine.apple`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingTranscriptEngine`](#node-meetingTranscriptEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: Apple engine for full meeting transcripts coming soon |
+| Search (de) | phrases: wann kann ich Apple für das Transkript nutzen; Apple Spracherkennung für Meeting-Transkripte |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-egOne"></a>
+
+### EG-1 (`meetingSummaryEngine.egOne`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: EG-1 for meeting summaries coming soon |
+| Search (de) | phrases: EG-1 für Meetingzusammenfassungen; bald verfügbare Engine für Meetingzusammenfassungen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-appleIntelligence"></a>
+
+### Apple Intelligence (`meetingSummaryEngine.appleIntelligence`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Apple Intelligence for meeting summaries |
+| Search (de) | phrases: Apple Intelligence für Meetingzusammenfassungen auswählen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-ollama"></a>
+
+### Ollama (`meetingSummaryEngine.ollama`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Ollama for meeting summaries |
+| Search (de) | phrases: Ollama für Meetingzusammenfassungen auswählen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-openAI"></a>
+
+### OpenAI (`meetingSummaryEngine.openAI`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use OpenAI for meeting summaries |
+| Search (de) | phrases: OpenAI für Meetingzusammenfassungen auswählen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-gemini"></a>
+
+### Google Gemini (`meetingSummaryEngine.gemini`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Google Gemini for meeting summaries |
+| Search (de) | phrases: Google Gemini für Meetingzusammenfassungen auswählen |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSummaryEngine-claude"></a>
+
+### Claude (`meetingSummaryEngine.claude`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Title source | product name |
+| Description | none |
+| Destination | `meetings` › `summaries` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: use Claude for meeting summaries |
+| Search (de) | phrases: Claude für Meetingzusammenfassungen auswählen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-unloadModel-never"></a>

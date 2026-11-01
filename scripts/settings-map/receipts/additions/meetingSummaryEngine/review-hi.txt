@@ -1,0 +1,96 @@
+{
+  "meetings.tab.summaries": {
+    "language": "hi",
+    "title": "सारांश",
+    "words": [],
+    "phrases": [
+      "EnviousMeet में सारांश की सेटिंग्स",
+      "मीटिंग के सारांश वाला टैब कहाँ है"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "hi",
+    "title": "सारांश इंजन",
+    "words": [
+      "मीटिंग सारांश मॉडल"
+    ],
+    "phrases": [
+      "मेरी मीटिंग का सारांश कौन सा AI लिखता है"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "hi",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए Apple Intelligence इस्तेमाल करें"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "hi",
+    "title": "बदलें",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने वाला AI बदलें"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "hi",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए Claude इस्तेमाल करें"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "hi",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "मीटिंग के सारांश के लिए EG-1 कब आएगा",
+      "मीटिंग का सारांश बनाने के लिए EG-1 अभी क्यों नहीं चुन सकते"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "hi",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए Google Gemini चुनें"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "hi",
+    "title": "मौजूदा सारांश इंजन बनाए रखें",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने वाला इंजन बदले बिना वापस जाएँ",
+      "मीटिंग के सारांश के लिए मौजूदा इंजन रखें"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "hi",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए Ollama चुनें"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "hi",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए OpenAI चुनें"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "hi",
+    "title": "मीटिंग खत्म होने पर सारांश बनाएँ",
+    "words": [],
+    "phrases": [
+      "मीटिंग के बाद अपने आप सारांश बनाना",
+      "मीटिंग का सारांश अपने आप बनाना बंद करें"
+    ]
+  }
+}

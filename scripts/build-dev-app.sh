@@ -31,28 +31,20 @@ DEV_BUILD_LOG="$DEV_BUILD_LOG_DIR/dev-app-$(date +%Y%m%d-%H%M%S)-$$.log"
   | while IFS= read -r old_log; do rm -f -- "$old_log"; done
 exec > >(tee -a "$DEV_BUILD_LOG") 2> >(tee -a "$DEV_BUILD_LOG" >&2)
 echo "==> Full log: $DEV_BUILD_LOG"
-# #2157 chunk C: shared owner for conditional project generation. Sourced from
-# THIS worktree, never the main checkout — `scripts/` is tracked, so every
-# checkout has its own copy and each must generate its OWN project.
-# shellcheck source=scripts/lib/ensure-generated.sh
-. "$PROJECT_ROOT/scripts/lib/ensure-generated.sh"
+# Sourced from THIS worktree, never the main checkout: `scripts/` is tracked, so
+# every checkout has its own copy. Generation, package seeding and the compile
+# live in scripts/build-dev-only.sh (step 3-4 below), which owns their traps.
 # shellcheck source=scripts/lib/launch-check.sh
 . "$PROJECT_ROOT/scripts/lib/launch-check.sh"
-# shellcheck source=scripts/lib/spm-seed.sh
-. "$PROJECT_ROOT/scripts/lib/spm-seed.sh"
-# shellcheck source=scripts/lib/l10n-build-with-receipt.sh
-. "$PROJECT_ROOT/scripts/lib/l10n-build-with-receipt.sh"
-# ONE cleanup handler, releasing every seed lock this process owns. A second
-# `trap EXIT` would silently REPLACE this one rather than adding to it.
-trap 'ew_seed_on_exit' EXIT
-# bash exits on a signal WITHOUT running the EXIT trap, which would strand a
-# seed lock. Converting each signal into a normal exit makes EXIT run.
+# bash exits on a signal WITHOUT running the EXIT trap. Converting each signal
+# into a normal exit keeps cleanup in children and the log tee consistent.
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
 BUILT_APP="$DERIVED_DATA/Build/Products/Dev/EnviousWispr Local.app"
 APP_PATH="$PROJECT_ROOT/build/EnviousWispr Local.app"
+BUILD_LOCK_HELPER="$PROJECT_ROOT/scripts/lib/build-folder-lock.py"
 DEV_CERT_NAME="EnviousWispr Dev"
 DEV_BUNDLE_ID="com.enviouswispr.app.dev"
 
@@ -112,6 +104,16 @@ if ! python3 "$DEV_APP_LOCK" claim --worktree "$PROJECT_ROOT" \
   exit 1
 fi
 
+# ─── Step 1c: This checkout's build lock (#4293) ──────────────────────────────
+# Local test runs build in the same .derivedData/Dev (scripts/xcode-test.sh), and
+# two builds in one derived-data folder fail. Taken BEFORE step 2 quits the
+# running app, so waiting for a test run never leaves the app down. Held through
+# the deploy copy and its verification (step 7); closed before launch.
+echo "==> Step 1c: Taking this checkout's build lock..."
+BUILD_LOCK_PATH="$(python3 "$BUILD_LOCK_HELPER" prepare "$PROJECT_ROOT")"
+exec 8<>"$BUILD_LOCK_PATH"
+python3 "$BUILD_LOCK_HELPER" acquire 8 "$PROJECT_ROOT"
+
 # ─── Step 2: Stop ALL running dev EnviousWispr instances (any worktree) ───────
 # Only ONE dev EW runs at a time (founder decision 2026-07-01): quit every
 # running dev instance — main checkout or any worktree — before launching the
@@ -151,49 +153,10 @@ for pid in $(dev_llama_pids); do
   esac
 done
 
-# ─── Step 3: Generate the Xcode project (gitignored, never committed) ─────────
-# #2157 chunk C: only regenerates when a generation INPUT changed. Measured 6.7 s
-# per invocation for a byte-identical `project.pbxproj` on a warm tree.
-echo "==> Step 3: Ensuring Xcode project is current (Tuist)..."
-ew_ensure_generated "$PROJECT_ROOT"
-
-# ─── Step 4: Build + sign the Dev configuration via Xcode ─────────────────────
-# #2157 chunk A: clone an already-resolved package tree instead of re-resolving
-# it. 46.5 s -> 1.9 s clone + 9.0 s validate, measured. Always a cache MISS on
-# any doubt: never fails the build.
-ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
-
-# If THIS run seeded the tree, prove it resolves before the build depends on it.
-# A damaged clone that passed the shallow completeness check would otherwise kill
-# the build under `set -e` and leave the bad tree in place for every later run.
-ew_seed_resolve_or_unseed "$DERIVED_DATA" \
-  xcodebuild -resolvePackageDependencies \
-    -project EnviousWispr.xcodeproj \
-    -scheme "EnviousWispr-Dev" \
-    -derivedDataPath "$DERIVED_DATA"
-
-echo "==> Step 4: Building EnviousWispr-Dev (Dev config, self-signed)..."
-# #3524: the build runs inside the catalog-receipt wrapper, which first tries to remove the old
-# receipt (if it cannot, no new one is written) and writes .derivedData/Dev/ew-l10n-receipt.json
-# only after a successful compile of unmoved inputs. The receipt covers the compile's string extraction, not the signing, deploy or launch
-# below. xcodebuild's exit status is still this step's status.
-ew_l10n_build_with_receipt "$PROJECT_ROOT" "$DERIVED_DATA" xcodebuild build \
-  -project EnviousWispr.xcodeproj \
-  -scheme "EnviousWispr-Dev" \
-  -configuration Dev \
-  -derivedDataPath "$DERIVED_DATA" \
-  -destination 'generic/platform=macOS' \
-  -onlyUsePackageVersionsFromResolvedFile \
-  ARCHS=arm64 \
-  ONLY_ACTIVE_ARCH=YES \
-  VALID_ARCHS=arm64
-
-test -d "$BUILT_APP" || { echo "ERROR: built app not found at $BUILT_APP"; exit 1; }
-
-# Publish the now-resolved tree so the next fresh checkout clones it instead of
-# resolving. Only after a SUCCESSFUL build, so a half-resolved tree is never
-# promoted to a snapshot.
-ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
+# ─── Steps 3-4: Generate, seed, build + sign the Dev configuration ────────────
+# scripts/build-dev-only.sh owns them (also the build-only route); it reuses the
+# build lock this script holds on descriptor 8.
+EW_BUILD_LOCK_FD=8 "$PROJECT_ROOT/scripts/build-dev-only.sh"
 
 # Strict verification BEFORE copying out of DerivedData (copies can pick up
 # FileProvider xattrs that break --strict; we copy with --norsrc + xattr -cr).
@@ -245,6 +208,8 @@ done
 # Post-copy signature verification (non-strict: ditto+xattr can perturb xattrs
 # but not the seal; this confirms the copied bundle is still validly signed).
 codesign --verify "$APP_PATH"
+# The build folder is no longer read; let a waiting test run start.
+exec 8>&-
 
 # ─── Step 8: Launch ───────────────────────────────────────────────────────────
 echo "==> Step 8: Launching..."

@@ -49,7 +49,8 @@ struct PipelineSettingsSyncOllamaEvictionTests {
   /// copy works, and canonical matching is exactly where a copy would drift.
   private func makeSync(
     catalog: [OllamaDownloadedModel],
-    lookupCounter: (() -> Void)? = nil
+    lookupCounter: (() -> Void)? = nil,
+    summaryPin: @escaping @MainActor () -> String? = { nil }
   ) -> (PipelineSettingsSync, SettingsManager, EvictionRecorder) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -71,7 +72,8 @@ struct PipelineSettingsSyncOllamaEvictionTests {
       ollamaRemotenessLookup: { model in
         lookupCounter?()
         return PipelineSettingsSync.ollamaRemoteness(of: model, in: catalog)
-      }
+      },
+      summaryPinnedOllamaModel: summaryPin
     )
     sync.evictionScheduler = { recorder.record($0) }
     return (sync, settings, recorder)
@@ -111,6 +113,88 @@ struct PipelineSettingsSyncOllamaEvictionTests {
 
     settings.fileImportOllamaModel = "llama3"
     sync.handleSettingChanged(.fileImportOllamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  // MARK: - The meeting summary's own model (#4287)
+
+  private var localModels: [OllamaDownloadedModel] {
+    ["mistral", "llama3", "qwen3"].map { catalogRow($0, isRemote: false) }
+  }
+
+  @Test("a summary-only Ollama model is evicted when the summary switches away from it")
+  func summaryOnlyModelIsEvicted() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .appleIntelligence
+    settings.meetingSummaryLLMProvider = .ollama
+    settings.meetingSummaryOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+    #expect(recorder.scheduled.isEmpty, "seeding must never evict")
+
+    settings.meetingSummaryOllamaModel = "llama3"
+    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("dictation's previous model is kept while the summary still selects it, under either spelling")
+  func summaryKeepsDictationsPreviousModel() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.meetingSummaryLLMProvider = .ollama
+    settings.meetingSummaryOllamaModel = "mistral:latest"
+    sync.applyInitialSettings(settings)
+
+    settings.ollamaModel = "llama3"
+    sync.handleSettingChanged(.ollamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty)
+  }
+
+  @Test("the summary's previous model is kept while the import still selects it")
+  func importKeepsSummarysPreviousModel() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .appleIntelligence
+    settings.fileImportLLMProvider = .ollama
+    settings.fileImportOllamaModel = "mistral"
+    settings.meetingSummaryLLMProvider = .ollama
+    settings.meetingSummaryOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    settings.meetingSummaryOllamaModel = "llama3"
+    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty)
+  }
+
+  @Test("a model two surfaces left in one pass is evicted once")
+  func twoSurfacesLeavingEvictOnce() {
+    let (sync, settings, recorder) = makeSync(catalog: localModels)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    settings.meetingSummaryLLMProvider = .ollama
+    settings.meetingSummaryOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    settings.ollamaModel = "llama3"
+    settings.meetingSummaryOllamaModel = "qwen3"
+    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("a running summary call's model is not evicted, and goes once the call is over")
+  func runningSummaryCallPinsItsModel() {
+    var pinned: String? = "mistral:latest"
+    let (sync, settings, recorder) = makeSync(catalog: localModels, summaryPin: { pinned })
+    settings.llmProvider = .appleIntelligence
+    settings.meetingSummaryLLMProvider = .ollama
+    settings.meetingSummaryOllamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    settings.meetingSummaryOllamaModel = "llama3"
+    sync.handleSettingChanged(.meetingSummaryOllamaModel, settings: settings)
+    #expect(recorder.scheduled.isEmpty, "deferred while the call uses it")
+
+    pinned = nil
+    sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled == ["mistral"])
   }
 

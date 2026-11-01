@@ -42,7 +42,10 @@ SMOKE_CORPUS = "alias-smoke.jsonl"
 BASELINE_DIR = ROOT / "scripts/eval/baselines/alias-suggestions"
 GOLDEN_FILE = ROOT / "scripts/eval/golden_alias_scores.json"
 RUNS_DIR = ROOT / "benchmark-results/eval/alias-suggestions/runs"
-RUNNER_BIN = ROOT / "scripts/eval/alias_runner/.build/release/AliasRunner"
+# The runner is a product of the scripts/eval package; eval_bin.py owns where
+# its binary lives (#4293).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import eval_bin  # noqa: E402
 
 # --- Rubric constants (locked 2026-05-05) ---
 
@@ -443,14 +446,13 @@ def load_jsonl(path: Path) -> list[dict]:
 
 
 def run_runner(corpus_path: Path, out_path: Path, disable_timeout: bool = True) -> int:
-    if not RUNNER_BIN.exists():
-        infra_error(
-            f"AliasRunner binary missing at {RUNNER_BIN}. "
-            "Build it with: cd scripts/eval/alias_runner && swift build -c release"
-        )
+    try:
+        runner_bin = eval_bin.runner_bin("AliasRunner")
+    except eval_bin.RunnerMissing as e:
+        infra_error(f"AliasRunner binary missing. {e}")
     if os.environ.get("MOCK_AFM_UNAVAILABLE") == "1":
         infra_error("MOCK_AFM_UNAVAILABLE=1 — Apple Intelligence simulated unavailable")
-    args = [str(RUNNER_BIN), "--corpus", str(corpus_path), "--out", str(out_path)]
+    args = [str(runner_bin), "--corpus", str(corpus_path), "--out", str(out_path)]
     if disable_timeout:
         args.append("--disable-timeout")
     proc = subprocess.run(args, capture_output=True, text=True)

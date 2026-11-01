@@ -45,6 +45,9 @@ final class MeetingSummaryOwner {
     /// #4148: true only for known, ready inputs with no visible transcript text. False when
     /// the meeting is not ready, gone, or its facts cannot be read.
     var hasNoWords: @MainActor (UUID) -> Bool
+    /// #4286: what the summary is told about the meeting (its record's start, recorded length
+    /// and call app, and its saved calendar facts). Nil when the meeting is not known.
+    var promptFacts: @MainActor (UUID) -> MeetingPromptFacts? = { _ in nil }
     /// True when a local model call may start: dictation idle, no meeting engine unit running,
     /// no final pass due.
     var isLocalTurn: @MainActor () -> Bool
@@ -58,14 +61,14 @@ final class MeetingSummaryOwner {
     /// The summary writer; the real one in the app, a fake in tests.
     var write:
       @MainActor (
-        _ transcript: String, _ notes: String, _ window: MeetingSummary.Window,
-        _ timeoutSeconds: Double, _ admit: @escaping MeetingSummary.Admit,
-        _ complete: @escaping MeetingSummary.Complete
+        _ transcript: String, _ notes: String, _ facts: String,
+        _ window: MeetingSummary.Window, _ timeoutSeconds: Double,
+        _ admit: @escaping MeetingSummary.Admit, _ complete: @escaping MeetingSummary.Complete
       ) async throws -> MeetingSummary.Written = {
-        transcript, notes, window, timeout, admit, complete in
+        transcript, notes, facts, window, timeout, admit, complete in
         try await MeetingSummary.write(
-          transcript: transcript, notes: notes, window: window, callTimeoutSeconds: timeout,
-          admit: admit, complete: complete)
+          transcript: transcript, notes: notes, facts: facts, window: window,
+          callTimeoutSeconds: timeout, admit: admit, complete: complete)
       }
     /// Time limits for one model call. Policies until R51's measurements: a local model writes
     /// 1,500 tokens in about a minute on an M-series Mac, a hosted reasoning model in under two.
@@ -124,6 +127,22 @@ final class MeetingSummaryOwner {
   private var busy: Set<UUID> = []
   /// Local attempts run one after another: each waits for the one before it.
   private var localChain: Task<Void, Never>?
+  /// #4287: the local call the lane admitted, with the provider and model its attempt
+  /// captured. The lane admits one local call at a time, so one value suffices. `started`
+  /// marks that the physical call began: from then only `callEnded` (the call's own end)
+  /// clears it, so a write that gave up early cannot release protection while the call
+  /// still runs; before then the write's own exit clears it.
+  private struct RunningLocalCall {
+    let attempt: UUID
+    let provider: LLMProvider
+    let model: String
+    var started = false
+  }
+  private var runningLocalCall: RunningLocalCall?
+  /// #4287: told when a running local Ollama call releases its model, so an Ollama eviction
+  /// deferred for that pin is retried (`PipelineSettingsSync.retryDeferredOllamaEviction`).
+  /// Set by the composition root; nil in tests that do not care.
+  var onOllamaModelReleased: (@MainActor () -> Void)?
   private var terminating = false
 
   init(dependencies: Dependencies, documents: MeetingDocumentsOwner, lane: MeetingLocalModelLane) {
@@ -139,6 +158,17 @@ final class MeetingSummaryOwner {
   var localSummaryActive: Bool { lane.summaryActive }
   /// A local summary call runs (a final pass unit waits for it).
   var localSummaryCallRunning: Bool { lane.summaryCallRunning }
+  /// #4287: the Ollama model a running local summary call is using, from the attempt's own
+  /// captured selection (never the live setting), for `PipelineSettingsSync`'s eviction check.
+  var summaryPinnedOllamaModel: String? {
+    guard let call = runningLocalCall, call.provider == .ollama else { return nil }
+    return call.model
+  }
+  /// #4287 PR 3: the provider of the summary call the lane admitted on a local engine, from the
+  /// attempt's own captured selection (never the live setting), from admission until the call
+  /// physically ends. A dictation polishing with the same local engine skips polish meanwhile
+  /// (`SummaryEngineClash`). Hosted calls are never recorded here.
+  var runningLocalSummaryProvider: LLMProvider? { runningLocalCall?.provider }
 
   /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
   /// does not hold it (it is owed on disk and resumes).
@@ -242,6 +272,9 @@ final class MeetingSummaryOwner {
   private struct Inputs: Equatable {
     let transcript: VisibleTranscript
     let notes: String
+    /// #4286: the rendered facts block ("" when none), frozen for the attempt: the exact text
+    /// the summary is told and `summaryInputs.contextSHA256` records.
+    let factsBlock: String
     let summaryInputs: SummaryInputs
   }
 
@@ -420,7 +453,7 @@ final class MeetingSummaryOwner {
     let complete: MeetingSummary.Complete
     if local {
       admit = { @MainActor [weak self] in
-        try await self?.admitLocalCall(meetingID, attempt: attempt)
+        try await self?.admitLocalCall(meetingID, attempt: attempt, selection: selection)
       }
     } else {
       admit = { @MainActor [weak self] in
@@ -433,6 +466,7 @@ final class MeetingSummaryOwner {
     // it ends; the waits between calls hold neither.
     let call = prepared.complete
     complete = { [weak self] instructions, prompt in
+      if local { await self?.markLocalCallStarted(attempt) }
       do {
         let answer = try await call(instructions, prompt)
         await self?.callEnded(attempt, local: local)
@@ -449,10 +483,13 @@ final class MeetingSummaryOwner {
     let answer: MeetingSummary.Written
     do {
       answer = try await deps.write(
-        inputs.transcript.text, inputs.notes, prepared.window,
+        inputs.transcript.text, inputs.notes, inputs.factsBlock, prepared.window,
         local ? deps.localCallTimeoutSeconds : deps.hostedCallTimeoutSeconds, admit, complete)
     } catch let failure as MeetingSummary.Failure {
-      if local { lane.endSummaryCall() }
+      if local {
+        lane.endSummaryCall()
+        releaseUnstartedLocalCall(attempt)
+      }
       switch failure {
       case .cancelled: return Ending(end: .cancelled)
       case .tooLong: return Ending(end: .problem(.tooLong))
@@ -461,10 +498,16 @@ final class MeetingSummaryOwner {
         return Ending(end: .problem(.providerFailed))
       }
     } catch {
-      if local { lane.endSummaryCall() }
+      if local {
+        lane.endSummaryCall()
+        releaseUnstartedLocalCall(attempt)
+      }
       return Ending(end: Task.isCancelled ? .cancelled : .problem(.providerFailed))
     }
-    if local { lane.endSummaryCall() }
+    if local {
+      lane.endSummaryCall()
+      releaseUnstartedLocalCall(attempt)
+    }
     if Task.isCancelled { return Ending(end: .cancelled) }
     // The title line is never part of the saved summary, usable or not (R6).
     let (title, text) = MeetingSummary.splitTitle(answer.text)
@@ -504,18 +547,42 @@ final class MeetingSummaryOwner {
 
   /// A call has physically ended.
   private func callEnded(_ attempt: UUID, local: Bool) {
-    if local { lane.endSummaryCall() }
+    if local {
+      lane.endSummaryCall()
+      // The physical call ended: its protection ends with it, and only its own.
+      if let call = runningLocalCall, call.attempt == attempt {
+        runningLocalCall = nil
+        if call.provider == .ollama { onOllamaModelReleased?() }
+      }
+    }
     busy.remove(attempt)
   }
 
+  private func markLocalCallStarted(_ attempt: UUID) {
+    if runningLocalCall?.attempt == attempt { runningLocalCall?.started = true }
+  }
+
+  /// A write that ends (or gives up) after admission but before its call began never reaches
+  /// `callEnded`, so it releases the identity here. A started call keeps it until its own end.
+  private func releaseUnstartedLocalCall(_ attempt: UUID) {
+    if let call = runningLocalCall, call.attempt == attempt, !call.started {
+      runningLocalCall = nil
+    }
+  }
+
   /// Waits until a local call may start, then takes the lane in the same main-actor step.
-  private func admitLocalCall(_ meetingID: UUID, attempt: UUID) async throws {
+  private func admitLocalCall(
+    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String)
+  ) async throws {
     activity[meetingID] = .waiting
     while true {
       await MeetingWorkAdmission.waitUntil(deps.isLocalTurn, wakes: deps.wakes)
       try Task.checkCancellation()
       if deps.isLocalTurn(), !lane.summaryCallRunning {
         lane.beginSummaryCall()
+        // #4287: the attempt's own captured selection; only local calls are admitted here.
+        runningLocalCall = RunningLocalCall(
+          attempt: attempt, provider: selection.provider, model: selection.model)
         busy.insert(attempt)
         activity[meetingID] = .writing
         return
@@ -532,8 +599,12 @@ final class MeetingSummaryOwner {
     }
     let notes = documents.notes(meetingID)
     let hashes = fingerprint(meetingID, transcript)
+    // #4286: the facts block exactly as the summary is told it, so a changed fact makes the
+    // summary out of date.
+    let factsBlock = deps.promptFacts(meetingID).map { MeetingSummary.factsBlock($0) } ?? ""
+    let factsHash = factsBlock.isEmpty ? nil : MeetingDocumentHash.sha256(factsBlock)
     return Inputs(
-      transcript: transcript, notes: notes,
+      transcript: transcript, notes: notes, factsBlock: factsBlock,
       summaryInputs: SummaryInputs(
         transcriptSHA256: hashes.textSHA,
         notesRevision: documents.manifest(meetingID)?.notes?.revision ?? 0,
@@ -542,7 +613,7 @@ final class MeetingSummaryOwner {
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
           provider: selection.provider, model: selection.model),
-        transcriptAttemptID: transcript.transcriptAttemptID))
+        transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash))
   }
 
   /// #4148: true when the meeting is ready and has no visible transcript text, so the Summary

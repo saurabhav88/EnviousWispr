@@ -205,6 +205,11 @@ struct SettingsSearchIndex: Sendable {
     /// One point lower on every search, so the row loses exact ties, such as a misspelt engine
     /// name both it and dictation's engine choice match by typo.
     static let meetingEngineRow = -1.0
+    /// #4287: the Summaries tab's engine cards repeat AI Polish's provider names as their whole
+    /// titles, so they take the same lowering as the transcript engine choices: a bare provider
+    /// name ("openai", "ollama") lands on AI Polish's choice first; "summary openai" still finds
+    /// the summary card first.
+    static let meetingSummaryEngineChoice = meetingEngineChoice
   }
 
   static let resultCap = 30
@@ -310,6 +315,9 @@ struct SettingsSearchIndex: Sendable {
     if node.destination == .transcribeFile { return Weight.transcribeFilePage }
     if node.parent == .meetingTranscriptEngine { return Weight.meetingEngineChoice }
     if node.id == .meetingTranscriptEngine { return Weight.meetingEngineRow }
+    if node.parent == .meetingSummaryEngine, node.item == .choice {
+      return Weight.meetingSummaryEngineChoice
+    }
     return 0
   }
 

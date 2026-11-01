@@ -78,6 +78,7 @@ struct MeetingsView: View {
     switch selection {
     case .general: generalTab
     case .models: modelsTab
+    case .summaries: MeetingSummariesTab()
     case .callApps: callAppsTab
     case .permissions: permissionsTab
     }
@@ -89,7 +90,6 @@ struct MeetingsView: View {
         BrandedSection {
           BrandedRow { MeetingCallDetectionRow() }
           BrandedRow { MeetingCallSoundRow() }
-          BrandedRow { MeetingWriteSummaryRow() }
           BrandedRow { MeetingTurnsOffDictationRow() }
           BrandedRow { MeetingFollowsCallMuteRow() }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
@@ -116,10 +116,10 @@ struct MeetingsView: View {
           }
           MeetingConsentNote()
           // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
-          // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
-          // and notes.
+          // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript,
+          // notes and the meeting details of #4286's facts block.
           Text(
-            "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider.",
+            "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript, your notes and meeting details to its provider.",
             comment:
               "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary."
           )
@@ -132,22 +132,9 @@ struct MeetingsView: View {
     }
   }
 
-  /// #3973 PR B: every model choice on one tab (founder 2026-10-27): live words and the
-  /// transcript's language in one section (#4105), and who writes summaries.
-  private var modelsTab: some View {
-    SettingsContentView {
-      VStack(alignment: .leading, spacing: 16) {
-        BrandedSection {
-          BrandedRow { MeetingLiveWordsRow() }
-          BrandedRow { MeetingTranscriptEngineRow() }
-          BrandedRow(showDivider: false) { MeetingTranscriptLanguageRow() }
-        }
-        BrandedSection {
-          BrandedRow(showDivider: false) { summaryWriterRow }
-        }
-      }
-    }
-  }
+  /// #3973 PR B: the speech model choices (founder 2026-10-27). #4287 PR 2: engine cards like
+  /// dictation's Live Preview and Engine tabs; summaries have their own tab.
+  private var modelsTab: some View { MeetingModelsTab() }
 
   private var callAppsTab: some View {
     SettingsContentView {
@@ -197,64 +184,6 @@ extension MeetingsView {
     }
   }
 
-  /// Who writes the summaries (R34), from the AI Polish provider and model, with the AI Polish
-  /// settings link when none can. A status line, not a setting: search does not land on it.
-  fileprivate var summaryWriterRow: some View {
-    let status = Self.summaryWriter(settings.llmProvider, model: settings.effectiveLLMModel)
-    return SettingsRow(
-      notInSettingsMap: .statusLine, icon: "sparkles",
-      title: LocalizedStringResource(
-        "Summaries", comment: "EnviousMeet page: the row that says who writes meeting summaries."),
-      short: Self.summaryWriterLine(status),
-      help: LocalizedStringResource(
-        "Summaries use the AI Polish provider and model chosen in AI Polish settings.",
-        comment: "EnviousMeet page: help for the row that says who writes meeting summaries.")
-    ) {
-      if case .problem = status {
-        Button {
-          navigation.request(.aiPolish)
-        } label: {
-          Text(
-            "Open AI Polish settings",
-            comment: "Link button that opens the AI Polish settings page.")
-        }
-        .buttonStyle(.link)
-        .accessibilityIdentifier("meetings.settings.openAIPolish")
-      }
-    }
-  }
-
-  enum SummaryWriter: Equatable {
-    /// This provider can write summaries (whether it is ready is known only when one is written).
-    case provider(LLMProvider)
-    /// No summary can be written: no provider, or a cleanup model.
-    case problem(MeetingSummaryOwner.Problem)
-  }
-
-  static func summaryWriter(_ provider: LLMProvider, model: String) -> SummaryWriter {
-    switch MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil) {
-    case .noProvider: return .problem(.noProvider)
-    case .notForSummaries: return .problem(.notForSummaries)
-    case .supported: return .provider(provider)
-    }
-  }
-
-  static func summaryWriterLine(_ status: SummaryWriter) -> LocalizedStringResource {
-    switch status {
-    case .provider(let provider):
-      return LocalizedStringResource(
-        "Written by \(provider.displayName).",
-        comment: "EnviousMeet page: the AI Polish provider that writes meeting summaries, e.g. Ollama.")
-    case .problem(.noProvider):
-      return LocalizedStringResource(
-        "No AI Polish provider is chosen, so no summary is written.",
-        comment: "EnviousMeet page: no AI Polish provider is selected, so meetings get no summary.")
-    case .problem:
-      return LocalizedStringResource(
-        "The selected AI Polish model can't write summaries.",
-        comment: "EnviousMeet page: the selected cleanup model (EG-1, S1-mini) cannot summarize.")
-    }
-  }
 
   static func microphoneStatusLine(_ status: AVAuthorizationStatus) -> LocalizedStringResource {
     switch status {
@@ -308,7 +237,7 @@ extension MeetingsView {
         "Calendar", comment: "EnviousMeet page: the calendar permission row's title."),
       short: Self.calendarStatusLine(permissions.calendarStatus),
       help: LocalizedStringResource(
-        "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar.",
+        "macOS asks for full calendar access. EnviousMeet reads the event at the time a meeting starts to name it and to note who was invited, and never changes your calendar.",
         comment: "EnviousMeet page: help for the calendar permission row.")
     ) {
       if permissions.calendarStatus == .denied {
@@ -400,11 +329,70 @@ enum MeetingsCopy {
     "Write a summary when a meeting ends",
     comment: "EnviousMeet page: switch that writes a summary of each meeting automatically.")
   static let writeSummaryShort = LocalizedStringResource(
-    "Your AI Polish provider writes a summary of each meeting.",
+    "The summary engine on this tab writes a summary of each meeting.",
     comment: "EnviousMeet page: the short line under Write a summary when a meeting ends.")
   static let writeSummaryHelp = LocalizedStringResource(
-    "The summary is written from the transcript and your notes by your AI Polish provider. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
+    "The summary engine on this tab writes the summary from the transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
+  // #4287: the Summaries tab's engine card.
+  static let summaryEngineTitle = LocalizedStringResource(
+    "Summary engine",
+    comment: "EnviousMeet Summaries tab: the card that picks the AI engine that writes meeting summaries.")
+  static let summaryEngineShort = LocalizedStringResource(
+    "The AI that writes your meeting summaries. Separate from AI Polish for dictation.",
+    comment: "EnviousMeet Summaries tab: the line under Summary engine.")
+  static let summaryEngineNone = LocalizedStringResource(
+    "No summary engine chosen",
+    comment: "EnviousMeet Summaries tab: no engine is picked, so no summary is written.")
+  static let summaryEngineNoneShort = LocalizedStringResource(
+    "Pick an engine to write meeting summaries.",
+    comment: "EnviousMeet Summaries tab: the line under No summary engine chosen.")
+  static let changeSummaryEngine = LocalizedStringResource(
+    "Change summary engine",
+    comment: "EnviousMeet Summaries tab: VoiceOver name of the Change button for the summary engine.")
+  static let keepCurrentSummaryEngine = LocalizedStringResource(
+    "Keep current summary engine",
+    comment: "EnviousMeet Summaries tab: closes the engine choices without changing the engine.")
+  // #4287 PR 2: the Models tab's engine cards.
+  static let changeLiveWordsEngine = LocalizedStringResource(
+    "Change live words engine",
+    comment: "EnviousMeet Models tab: VoiceOver name of the Change button for the live words engine.")
+  static let keepCurrentLiveWordsEngine = LocalizedStringResource(
+    "Keep current live words engine",
+    comment: "EnviousMeet Models tab: closes the live words engine choices without changing the engine.")
+  static let changeTranscriptEngine = LocalizedStringResource(
+    "Change transcript engine",
+    comment: "EnviousMeet Models tab: VoiceOver name of the Change button for the transcript engine.")
+  static let keepCurrentTranscriptEngine = LocalizedStringResource(
+    "Keep current transcript engine",
+    comment: "EnviousMeet Models tab: closes the transcript engine choices without changing the engine.")
+  static let liveWordsLanguageLabel = LocalizedStringResource(
+    "Language",
+    comment: "EnviousMeet Models tab, Live words card: the label before the live words language menu.")
+  static let liveWordsAppleTagline = LocalizedStringResource(
+    "Uses Apple's speech recognition. Some languages need an Apple language download. Needs macOS 26.",
+    comment: "EnviousMeet Models tab, Live words: the Apple engine card's line. Apple is a product name.")
+  static let liveWordsUniversalTagline = LocalizedStringResource(
+    "Works on macOS 14 and later, in more languages. Needs a download before first use.",
+    comment: "EnviousMeet Models tab, Live words: the Universal engine card's line. Universal is the engine's name.")
+  static let liveWordsAppleNeedsMacOS = LocalizedStringResource(
+    "Not on this Mac. Needs macOS 26.",
+    comment: "EnviousMeet Models tab, Live words: the Apple engine card when this Mac cannot run it.")
+  static let transcriptParakeetTagline = LocalizedStringResource(
+    "Pick this for meetings in English and European languages.",
+    comment: "EnviousMeet Models tab, Transcript engine: when to pick Parakeet.")
+  static let transcriptWhisperTagline = LocalizedStringResource(
+    "Pick this for meetings in other languages or with tough audio.",
+    comment: "EnviousMeet Models tab, Transcript engine: when to pick Whisper Large v3 Turbo.")
+  static let transcriptAppleTagline = LocalizedStringResource(
+    "Uses Apple's speech recognition on this Mac.",
+    comment: "EnviousMeet Models tab, Transcript engine: the Apple engine card's line. Apple is a product name.")
+  static let engineComingSoon = LocalizedStringResource(
+    "Coming soon",
+    comment: "EnviousMeet Summaries and Models tabs: an engine card that is not ready yet and cannot be picked.")
+  static let summaryEngineCantSummarize = LocalizedStringResource(
+    "Can't write summaries",
+    comment: "EnviousMeet Summaries tab: status of a chosen engine or model that cannot write summaries.")
   static let turnsOffDictationTitle = LocalizedStringResource(
     "Turn off dictation during meetings",
     comment: "EnviousMeet page: switch that makes the dictation key record nothing while a meeting records.")
@@ -547,7 +535,7 @@ enum MeetingsCopy {
     "Uses the title of the calendar event at the time the meeting starts.",
     comment: "EnviousMeet page: the short line under Name meetings from my calendar.")
   static let calendarNamesHelp = LocalizedStringResource(
-    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
+    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Who was invited is saved with the meeting on your Mac and helps write its summary, so it goes to the summary provider you chose and never to Envious Labs. Turning this off stops reading your calendar; what a meeting already saved stays until you delete the meeting. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
     comment: "EnviousMeet page: help for Name meetings from my calendar.")
   static let callDetectionTitle = LocalizedStringResource(
     "When a call starts",

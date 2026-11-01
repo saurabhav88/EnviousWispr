@@ -115,6 +115,7 @@ final class LLMModelDiscoveryCoordinator {
     switch surface {
     case .dictation: selected = settings?.llmProvider
     case .fileImport: selected = settings?.effectiveFileImportLLMProvider
+    case .meetingSummary: selected = settings?.effectiveMeetingSummaryLLMProvider
     }
     return CredentialAdmission(
       generation: discoveryGeneration, provider: provider, surface: surface,
@@ -133,6 +134,8 @@ final class LLMModelDiscoveryCoordinator {
     case .fileImport:
       return settings.effectiveFileImportLLMProvider == admission.selectedProvider
         && settings.fileImportLLMProvider == admission.importOverride
+    case .meetingSummary:
+      return settings.effectiveMeetingSummaryLLMProvider == admission.selectedProvider
     }
   }
 
@@ -391,6 +394,8 @@ final class LLMModelDiscoveryCoordinator {
       case .fileImport:
         guard settings.fileImportLLMProvider == importOverrideAtStart else { break }
         settings.applyDiscoveredModelsForFileImport(models, for: provider)
+      case .meetingSummary:
+        MeetingSummaryModelPolicy.applyDiscoveredModels(models, for: provider, to: settings)
       }
     } catch LLMError.providerUnavailable {
       guard requestStillCurrent() else { return }
@@ -571,6 +576,7 @@ final class LLMModelDiscoveryCoordinator {
     switch surface {
     case .dictation: armedID = settings.llmModel
     case .fileImport: armedID = settings.effectiveFileImportLLMModel
+    case .meetingSummary: armedID = settings.effectiveMeetingSummaryLLMModel
     }
     let armedIsExcluded: Bool
     switch provider {
@@ -583,6 +589,8 @@ final class LLMModelDiscoveryCoordinator {
       settings.applyDiscoveredModels(pruned, for: provider)
     case .fileImport:
       settings.applyDiscoveredModelsForFileImport(pruned, for: provider)
+    case .meetingSummary:
+      MeetingSummaryModelPolicy.applyDiscoveredModels(pruned, for: provider, to: settings)
     }
   }
 

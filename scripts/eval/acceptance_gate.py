@@ -49,9 +49,17 @@ BASELINE_DIR = ROOT / "scripts/eval/baselines"
 GOLDEN_FILE = ROOT / "scripts/eval/golden_judge_scores.json"
 OUT_DIR = ROOT / "benchmark-results/eval/runs"
 
-# AFM polish quality benchmark (issue #372). Sub-package with the Swift runner.
-APPLE_RUNNER_DIR = ROOT / "scripts/eval/apple_runner"
-APPLE_RUNNER_BIN = APPLE_RUNNER_DIR / ".build/release/AppleIntelligenceRunner"
+# AFM polish quality benchmark (issue #372). The Swift runner is a product of the
+# scripts/eval package; eval_bin.py owns where its binary lives (#4293).
+import eval_bin  # noqa: E402  (scripts/eval is this file's directory)
+
+
+def _apple_runner_bin(label: str) -> Path:
+    try:
+        return eval_bin.runner_bin("AppleIntelligenceRunner")
+    except eval_bin.RunnerMissing as e:
+        print(f"INFRA-ERROR: {label} not built. {e}", file=sys.stderr)
+        raise SystemExit(2)
 
 # Mirror of Sources/EnviousWisprCore/LLMResult.swift:115-127. Keep byte-identical.
 # The Apple path in production passes this default unchanged, and the Apple
@@ -1131,20 +1139,13 @@ def _apple_polish_subprocess(
     Raises SystemExit(2) if the binary is missing (user must build first) or if
     the subprocess exits non-zero (AFM unavailable, corpus malformed, etc.).
     """
-    if not APPLE_RUNNER_BIN.exists():
-        print(
-            f"INFRA-ERROR: Apple Intelligence runner not built at {APPLE_RUNNER_BIN}. "
-            "Build first:\n"
-            "  cd scripts/eval/apple_runner && swift build -c release",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
+    apple_runner_bin = _apple_runner_bin("Apple Intelligence runner")
     # The shipping-recipe arm: every EW_AFM_* recipe seam is cleared, so a variable
     # left exported from prompt experimentation cannot change what this bench
     # measures (cloud review on PR #3207; same isolation as the tier-bench arms).
     env, extra = _afm_arm_env(dict(os.environ), system_prompt_path, None)
     cmd = [
-        str(APPLE_RUNNER_BIN),
+        str(apple_runner_bin),
         "--corpus", str(corpus_path),
         "--out", str(out_path),
     ] + extra
@@ -2012,11 +2013,7 @@ def _afm_tier_polish(corpus_path: Path, out_path: Path, prompt_path: Path,
     """Run the AFM runner for tier-bench. detected_language='' => nil (default
     Parakeet fidelity). The candidate files set the EW_AFM_* recipe seams for that
     arm only (`_afm_arm_env`). Returns {id: latency_ms}."""
-    if not APPLE_RUNNER_BIN.exists():
-        print(f"INFRA-ERROR: AFM runner not built at {APPLE_RUNNER_BIN}. "
-              "Build: cd scripts/eval/apple_runner && swift build -c release", file=sys.stderr)
-        raise SystemExit(2)
-    cmd = [str(APPLE_RUNNER_BIN), "--corpus", str(corpus_path), "--out", str(out_path),
+    cmd = [str(_apple_runner_bin("AFM runner")), "--corpus", str(corpus_path), "--out", str(out_path),
            "--detected-language", detected_language]
     env, extra = _afm_arm_env(dict(os.environ), prompt_path, candidate_prompt,
                               candidate_examples, candidate_trailer)

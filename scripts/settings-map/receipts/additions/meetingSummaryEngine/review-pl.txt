@@ -1,0 +1,94 @@
+{
+  "meetings.tab.summaries": {
+    "language": "pl",
+    "title": "podsumowania",
+    "words": [],
+    "phrases": [
+      "karta podsumowań w EnviousMeet",
+      "gdzie są ustawienia podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "pl",
+    "title": "silnik podsumowań",
+    "words": [
+      "model do podsumowań spotkań"
+    ],
+    "phrases": [
+      "jaki silnik tworzy podsumowania moich spotkań"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "pl",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "używaj Apple Intelligence do podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "pl",
+    "title": "zmień",
+    "words": [],
+    "phrases": [
+      "wybierz inny silnik do podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "pl",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "używaj Claude do podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "pl",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 do podsumowań spotkań już wkrótce"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "pl",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "używaj Google Gemini do podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "pl",
+    "title": "zachowaj obecny silnik podsumowań",
+    "words": [],
+    "phrases": [
+      "zostaw obecny silnik podsumowań spotkań bez zmian"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "pl",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "używaj Ollama do podsumowań spotkań"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "pl",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "użyj OpenAI do podsumowań spotkań"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "pl",
+    "title": "utwórz podsumowanie po zakończeniu spotkania",
+    "words": [],
+    "phrases": [
+      "automatycznie podsumuj każde spotkanie po jego zakończeniu",
+      "włącz automatyczne podsumowania spotkań"
+    ]
+  }
+}

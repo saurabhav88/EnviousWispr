@@ -1,0 +1,103 @@
+{
+  "meetings.tab.summaries": {
+    "language": "zh",
+    "title": "摘要",
+    "words": [
+      "会议摘要设置"
+    ],
+    "phrases": [
+      "EnviousMeet的摘要选项卡",
+      "会议摘要设置在哪"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "zh",
+    "title": "会议摘要引擎",
+    "words": [
+      "会议摘要模型"
+    ],
+    "phrases": [
+      "哪个AI写会议摘要",
+      "查看当前的会议摘要引擎"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "zh",
+    "title": "Apple Intelligence会议摘要",
+    "words": [],
+    "phrases": [
+      "用Apple Intelligence总结会议"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "zh",
+    "title": "更换会议摘要引擎",
+    "words": [],
+    "phrases": [
+      "更换生成会议摘要的AI",
+      "打开会议摘要引擎选择列表"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "zh",
+    "title": "Claude会议摘要",
+    "words": [],
+    "phrases": [
+      "用Claude生成会议摘要"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "zh",
+    "title": "EG-1会议摘要",
+    "words": [],
+    "phrases": [
+      "EG-1会议摘要即将推出",
+      "为什么还不能选EG-1生成会议摘要"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "zh",
+    "title": "Google Gemini会议摘要",
+    "words": [],
+    "phrases": [
+      "用Google Gemini生成会议摘要"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "zh",
+    "title": "保留当前会议摘要引擎",
+    "words": [],
+    "phrases": [
+      "不更换会议摘要引擎",
+      "关闭选择列表并保留当前会议摘要引擎"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "zh",
+    "title": "Ollama会议摘要",
+    "words": [],
+    "phrases": [
+      "用Ollama总结会议"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "zh",
+    "title": "OpenAI会议摘要",
+    "words": [],
+    "phrases": [
+      "用OpenAI总结会议"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "zh",
+    "title": "会议结束时生成摘要",
+    "words": [
+      "自动会议摘要",
+      "会后自动总结"
+    ],
+    "phrases": [
+      "开完会自动总结",
+      "关闭会议结束后自动生成摘要"
+    ]
+  }
+}

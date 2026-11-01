@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 294,
-    "searchable" : 267,
-    "vocabularyBlocks" : 8544
+    "nodes" : 309,
+    "searchable" : 282,
+    "vocabularyBlocks" : 9024
   },
   "fingerprints" : {
-    "mapSHA256" : "7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33cd5d285c7",
-    "uiCatalogSHA256" : "10670d4823970932a29c0162bd8135a1f4ab6d6d2370d174f8a3c95f7a74c507",
+    "mapSHA256" : "8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e",
+    "uiCatalogSHA256" : "5b0a3ffcc00f60585515789d3e241a5e29fdfa5b18f7c2851b921d1a3b098db3",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "08af4bb5d3fc5dba8e0a499b32e3b445ff19b751c7da7f877b4f367bceb7f122"
+    "vocabularySHA256" : "e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3"
   },
   "interfaceLanguages" : [
     "en",
@@ -37253,20 +37253,20 @@
       "context" : [
         "window.settings",
         "page.meetings",
-        "meetings.tab.general"
+        "meetings.tab.summaries"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
       "description" : {
         "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
-        "de" : "Dein Anbieter für KI-Nachbearbeitung erstellt eine Zusammenfassung für jedes Meeting.",
-        "en" : "Your AI Polish provider writes a summary of each meeting.",
-        "key" : "Your AI Polish provider writes a summary of each meeting.",
+        "de" : "Die Zusammenfassungs-Engine in diesem Tab erstellt eine Zusammenfassung für jedes Meeting.",
+        "en" : "The summary engine on this tab writes a summary of each meeting.",
+        "key" : "The summary engine on this tab writes a summary of each meeting.",
         "source" : "resource",
         "table" : "Localizable"
       },
       "destination" : {
         "page" : "meetings",
-        "tab" : "general"
+        "tab" : "summaries"
       },
       "dictionaryTab" : null,
       "fallbacks" : [
@@ -37274,7 +37274,7 @@
       ],
       "id" : "meetingWriteSummary",
       "kind" : "setting",
-      "parent" : "meetings.tab.general",
+      "parent" : "meetings.tab.summaries",
       "searchable" : true,
       "structure" : "item",
       "target" : "meetingWriteSummary",
@@ -37290,76 +37290,73 @@
       "vocabulary" : {
         "ar" : {
           "phrases" : [
-            "لخص الاجتماع بعد انتهائه",
-            "ملخص الاجتماع بالذكاء الاصطناعي"
+            "إنشاء ملخص تلقائيًا عند انتهاء كل اجتماع",
+            "تفعيل تلخيص الاجتماعات تلقائيًا",
+            "إيقاف التلخيص التلقائي للاجتماعات"
           ],
           "title" : "إنشاء ملخص عند انتهاء الاجتماع",
           "words" : [
-            "تلخيص",
-            "موجز"
+            "التلخيص التلقائي للاجتماعات"
           ]
         },
         "bg" : {
           "phrases" : [
-            "обобщи срещата, когато приключи",
-            "резюме на срещата с изкуствен интелект"
+            "създавай обобщение автоматично, когато срещата приключи",
+            "изключи автоматичните обобщения след срещи"
           ],
-          "title" : "създаване на обобщение след края на срещата",
+          "title" : "автоматично обобщаване след края на срещата",
           "words" : [
-            "резюме"
+            "автоматично обобщаване"
           ]
         },
         "cs" : {
           "phrases" : [
-            "shrnout schůzku po jejím skončení",
-            "shrnutí schůzky pomocí AI"
+            "automaticky shrnout schůzku po jejím skončení",
+            "zapnout automatické shrnutí schůzek",
+            "vypnout automatické shrnutí schůzek"
           ],
           "title" : "vytvořit shrnutí po skončení schůzky",
           "words" : [
-            "souhrn",
-            "rekapitulace"
+
           ]
         },
         "da" : {
           "phrases" : [
-            "opsummer mødet bagefter",
-            "automatisk resumé af mødet"
+            "lav automatisk et resumé, når mødet slutter",
+            "slå automatiske mødeopsummeringer til"
           ],
           "title" : "lav et resumé, når mødet slutter",
           "words" : [
-            "opsummering"
+
           ]
         },
         "de" : {
           "phrases" : [
-            "fass mein Meeting zusammen",
-            "erstelle nach dem Meeting automatisch eine Zusammenfassung"
+            "nach jedem Meeting automatisch eine Zusammenfassung erstellen",
+            "automatische Meetingzusammenfassung nach Meetingende einschalten"
           ],
           "words" : [
-            "Meetingzusammenfassung",
-            "Besprechungszusammenfassung",
-            "Kurzfassung"
+
           ]
         },
         "el" : {
           "phrases" : [
-            "σύνοψη μετά το τέλος της συνάντησης",
-            "περίληψη συνάντησης με τεχνητή νοημοσύνη"
+            "αυτόματη δημιουργία περίληψης όταν τελειώνει κάθε συνάντηση",
+            "ενεργοποίηση αυτόματων περιλήψεων συναντήσεων",
+            "απενεργοποίηση αυτόματων περιλήψεων συναντήσεων"
           ],
           "title" : "δημιουργία σύνοψης όταν τελειώνει η συνάντηση",
           "words" : [
-            "περίληψη"
+
           ]
         },
         "en" : {
           "phrases" : [
             "automatically summarize meetings",
-            "AI meeting recap"
+            "write a summary when a meeting ends"
           ],
           "words" : [
-            "recap",
-            "summarize",
-            "summarise"
+
           ]
         },
         "es" : {
@@ -37369,28 +37366,27 @@
           ],
           "title" : "crear un resumen al terminar la reunión",
           "words" : [
-            "síntesis"
+
           ]
         },
         "et" : {
           "phrases" : [
-            "tee pärast koosolekut kokkuvõte",
-            "automaatne koosoleku kokkuvõte"
+            "tee pärast koosolekut automaatselt kokkuvõte",
+            "lülita koosolekute automaatsed kokkuvõtted sisse või välja"
           ],
           "title" : "loo koosoleku lõpus kokkuvõte",
           "words" : [
-            "ülevaade"
+
           ]
         },
         "fi" : {
           "phrases" : [
-            "tee kokouksesta yhteenveto",
-            "automaattinen kokouksen tiivistelmä"
+            "tee yhteenveto automaattisesti kokouksen päätyttyä",
+            "ota automaattiset kokousyhteenvedot käyttöön"
           ],
           "title" : "luo yhteenveto kokouksen päätyttyä",
           "words" : [
-            "tiivistelmä",
-            "kooste"
+
           ]
         },
         "fr" : {
@@ -37400,8 +37396,7 @@
           ],
           "title" : "créer un résumé à la fin de la réunion",
           "words" : [
-            "synthèse",
-            "récapitulatif"
+
           ]
         },
         "hi" : {
@@ -37411,18 +37406,17 @@
           ],
           "title" : "मीटिंग खत्म होने पर सारांश बनाएँ",
           "words" : [
-            "सारांश",
-            "संक्षेप"
+
           ]
         },
         "hr" : {
           "phrases" : [
             "sažmi sastanak kad završi",
-            "automatski sažetak sastanka"
+            "uključi automatsku izradu sažetaka sastanaka"
           ],
           "title" : "izradi sažetak nakon završetka sastanka",
           "words" : [
-            "rezime"
+            "automatski sažetak sastanka"
           ]
         },
         "hu" : {
@@ -37432,7 +37426,7 @@
           ],
           "title" : "összefoglaló készítése a megbeszélés végén",
           "words" : [
-            "összegzés"
+
           ]
         },
         "it" : {
@@ -37442,19 +37436,17 @@
           ],
           "title" : "crea un riepilogo al termine della riunione",
           "words" : [
-            "riassunto",
-            "sintesi"
+
           ]
         },
         "ja" : {
           "phrases" : [
             "会議が終わったら自動でまとめる",
-            "AIで会議を要約"
+            "会議終了時の自動要約をオフにする"
           ],
           "title" : "会議終了時に要約を作成",
           "words" : [
-            "まとめ",
-            "サマリー"
+            "会議の自動要約"
           ]
         },
         "ko" : {
@@ -37464,8 +37456,7 @@
           ],
           "title" : "회의가 끝나면 요약 작성",
           "words" : [
-            "회의 요약",
-            "자동 요약"
+            "회의 자동 요약"
           ]
         },
         "lt" : {
@@ -37475,47 +37466,49 @@
           ],
           "title" : "kurti santrauką pasibaigus susitikimui",
           "words" : [
-            "apibendrinimas"
+
           ]
         },
         "lv" : {
           "phrases" : [
-            "automātiski apkopot sapulcē pārrunāto",
-            "sapulces kopsavilkums ar mākslīgo intelektu"
+            "automātiski izveidot kopsavilkumu pēc katras sapulces",
+            "ieslēgt sapulču kopsavilkumu automātisku veidošanu",
+            "izslēgt sapulču kopsavilkumu automātisku veidošanu"
           ],
           "title" : "izveidot kopsavilkumu pēc sapulces beigām",
           "words" : [
-            "rezumējums"
+
           ]
         },
         "mt" : {
           "phrases" : [
-            "agħmel sommarju wara l-laqgħa",
-            "sommarju awtomatiku tal-laqgħa"
+            "agħmel sommarju awtomatikament meta tintemm il-laqgħa",
+            "attiva s-sommarji awtomatiċi tal-laqgħat"
           ],
           "title" : "oħloq sommarju meta tintemm il-laqgħa",
           "words" : [
-            "ġabra fil-qosor"
+            "sommarju awtomatiku"
           ]
         },
         "nl" : {
           "phrases" : [
             "vergadering automatisch samenvatten",
-            "samenvatting na afloop van de vergadering"
+            "automatisch een samenvatting maken na afloop van elke vergadering",
+            "automatische vergadersamenvattingen aanzetten"
           ],
           "title" : "maak een samenvatting als de vergadering eindigt",
           "words" : [
-            "vergaderoverzicht"
+
           ]
         },
         "pl" : {
           "phrases" : [
-            "podsumuj spotkanie po jego zakończeniu",
-            "automatyczne streszczenie spotkania"
+            "automatycznie podsumuj każde spotkanie po jego zakończeniu",
+            "włącz automatyczne podsumowania spotkań"
           ],
           "title" : "utwórz podsumowanie po zakończeniu spotkania",
           "words" : [
-            "streszczenie"
+
           ]
         },
         "pt" : {
@@ -37525,7 +37518,7 @@
           ],
           "title" : "criar um resumo ao terminar a reunião",
           "words" : [
-            "síntese"
+
           ]
         },
         "ro" : {
@@ -37535,30 +37528,28 @@
           ],
           "title" : "creează un rezumat la încheierea întâlnirii",
           "words" : [
-            "sinteză",
-            "sumar"
+
           ]
         },
         "ru" : {
           "phrases" : [
-            "подвести итоги встречи автоматически",
-            "краткое содержание встречи с помощью ИИ"
+            "автоматически создавать сводку после каждой встречи",
+            "отключить автоматические сводки встреч"
           ],
           "title" : "создавать сводку после завершения встречи",
           "words" : [
-            "резюме",
-            "итоги"
+            "автосводка встреч"
           ]
         },
         "sk" : {
           "phrases" : [
-            "zhrnúť stretnutie po jeho skončení",
-            "automatický súhrn stretnutia"
+            "automaticky vytvoriť zhrnutie po skončení stretnutia",
+            "zapnúť automatické zhrnutia stretnutí",
+            "vypnúť automatické zhrnutia stretnutí"
           ],
           "title" : "vytvoriť zhrnutie po skončení stretnutia",
           "words" : [
-            "súhrn",
-            "rekapitulácia"
+
           ]
         },
         "sl" : {
@@ -37568,59 +37559,1087 @@
           ],
           "title" : "ustvari povzetek ob koncu sestanka",
           "words" : [
-            "povzetek sestanka"
+            "samodejni povzetki sestankov"
           ]
         },
         "sv" : {
           "phrases" : [
             "sammanfatta mötet automatiskt",
-            "sammanfattning efter mötet"
+            "slå på automatisk sammanfattning när mötet slutar"
           ],
           "title" : "skapa en sammanfattning när mötet slutar",
           "words" : [
-            "summering"
+
           ]
         },
         "tr" : {
           "phrases" : [
             "toplantı bitince otomatik özet oluştur",
-            "yapay zekâyla toplantı özeti"
+            "toplantı sonunda otomatik özetlemeyi kapat"
           ],
           "title" : "toplantı bittiğinde özet oluştur",
           "words" : [
-            "toplantı özeti"
+
           ]
         },
         "uk" : {
           "phrases" : [
-            "автоматично підбити підсумки зустрічі",
-            "стислий виклад зустрічі за допомогою ШІ"
+            "автоматично створювати підсумок після завершення зустрічі",
+            "вимкнути автоматичне створення підсумків зустрічей"
           ],
           "title" : "створювати підсумок після завершення зустрічі",
           "words" : [
-            "резюме",
-            "узагальнення"
+            "автопідсумок зустрічі"
           ]
         },
         "vi" : {
           "phrases" : [
             "tự động tóm tắt sau cuộc họp",
-            "tóm tắt cuộc họp bằng AI"
+            "bật tạo bản tóm tắt khi cuộc họp kết thúc",
+            "tắt tự động tóm tắt cuộc họp"
           ],
           "title" : "tạo bản tóm tắt khi cuộc họp kết thúc",
           "words" : [
-            "tổng kết"
+
           ]
         },
         "zh" : {
           "phrases" : [
             "开完会自动总结",
-            "用AI总结会议内容"
+            "关闭会议结束后自动生成摘要"
           ],
           "title" : "会议结束时生成摘要",
           "words" : [
-            "总结",
-            "小结"
+            "自动会议摘要",
+            "会后自动总结"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Die KI, die deine Meeting-Zusammenfassungen erstellt. Getrennt von der KI-Nachbearbeitung für Diktate.",
+        "en" : "The AI that writes your meeting summaries. Separate from AI Polish for dictation.",
+        "key" : "The AI that writes your meeting summaries. Separate from AI Polish for dictation.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine",
+      "kind" : "setting",
+      "parent" : "meetings.tab.summaries",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Zusammenfassungs-Engine",
+        "en" : "Summary engine",
+        "key" : "Summary engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "الذكاء الاصطناعي الذي يكتب ملخصات اجتماعاتي",
+            "إعدادات محرك تلخيص الاجتماعات"
+          ],
+          "title" : "محرك تلخيص الاجتماعات",
+          "words" : [
+            "محرك ملخصات الاجتماعات"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "кой изкуствен интелект обобщава срещите ми",
+            "настройки на модула за обобщаване на срещи"
+          ],
+          "title" : "модул за обобщаване",
+          "words" : [
+            "модул за обобщения"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "jaká AI píše shrnutí schůzek",
+            "nastavení modelu pro shrnutí schůzek"
+          ],
+          "title" : "nástroj pro shrnutí",
+          "words" : [
+            "model pro shrnutí schůzek"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "hvilken AI opsummerer mine møder",
+            "se den aktuelle motor til mødeopsummeringer"
+          ],
+          "title" : "opsummeringsmotor",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "welche KI erstellt deine Meetingzusammenfassungen",
+            "Engine für Meetingzusammenfassungen einstellen"
+          ],
+          "words" : [
+            "Zusammenfassungsmodell"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "ποια τεχνητή νοημοσύνη γράφει τις περιλήψεις των συναντήσεών μου",
+            "ρυθμίσεις της μηχανής για περιλήψεις συναντήσεων"
+          ],
+          "title" : "μηχανή σύνοψης",
+          "words" : [
+            "μοντέλο σύνοψης"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "which AI writes my meeting summaries",
+            "meeting summary engine setup"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "qué IA escribe los resúmenes de mis reuniones",
+            "configurar el motor de resúmenes de reuniones"
+          ],
+          "title" : "motor de resúmenes",
+          "words" : [
+            "modelo de resumen"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "milline AI teeb mu koosolekutest kokkuvõtteid",
+            "koosolekute kokkuvõttemootori seadistamine"
+          ],
+          "title" : "kokkuvõtete mootor",
+          "words" : [
+            "kokkuvõttemudel"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "mikä tekoäly tekee kokousten yhteenvedot",
+            "kokousten yhteenvetomoottorin asetukset"
+          ],
+          "title" : "yhteenvetomoottori",
+          "words" : [
+            "kokousyhteenvetomalli"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "quelle ia rédige mes résumés de réunion",
+            "configurer le moteur de résumé des réunions"
+          ],
+          "title" : "moteur de résumé",
+          "words" : [
+            "moteur de résumé des réunions"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मेरी मीटिंग का सारांश कौन सा AI लिखता है"
+          ],
+          "title" : "सारांश इंजन",
+          "words" : [
+            "मीटिंग सारांश मॉडल"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koji AI piše sažetke mojih sastanaka",
+            "postavke modela za sažetke sastanaka"
+          ],
+          "title" : "sustav za sažimanje",
+          "words" : [
+            "model za sažetke sastanaka"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "melyik modell írja a megbeszéléseim összefoglalóit",
+            "megbeszélések összefoglaló motorjának beállításai"
+          ],
+          "title" : "összefoglaló motor",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "quale ia scrive i riepiloghi delle mie riunioni",
+            "impostazioni del motore di riepilogo delle riunioni"
+          ],
+          "title" : "motore di riepilogo",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約に使っているエンジンを確認",
+            "会議の要約エンジンの設定"
+          ],
+          "title" : "要約エンジン",
+          "words" : [
+            "会議要約エンジン"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "현재 회의 요약 엔진 확인",
+            "회의 요약 엔진 설정"
+          ],
+          "title" : "요약 엔진",
+          "words" : [
+            "회의 요약 엔진"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kuris DI rašo mano susitikimų santraukas",
+            "susitikimų santraukų variklio nustatymai"
+          ],
+          "title" : "santraukų variklis",
+          "words" : [
+            "susitikimų santraukų modelis"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "kurš AI veido manu sapulču kopsavilkumus",
+            "sapulču kopsavilkumu dziņa iestatījumi"
+          ],
+          "title" : "kopsavilkumu dzinis",
+          "words" : [
+            "kopsavilkumu modelis"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "liema AI tikteb is-sommarji tal-laqgħat tiegħi",
+            "settings tal-magna tas-sommarji tal-laqgħat"
+          ],
+          "title" : "magna tas-sommarji",
+          "words" : [
+            "magna tas-sommarji tal-laqgħat"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "welke AI schrijft mijn vergadersamenvattingen",
+            "instellingen van de engine voor vergadersamenvattingen"
+          ],
+          "title" : "samenvattingsengine",
+          "words" : [
+            "samenvattingsmodel"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "jaki silnik tworzy podsumowania moich spotkań"
+          ],
+          "title" : "silnik podsumowań",
+          "words" : [
+            "model do podsumowań spotkań"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "qual inteligência artificial escreve os resumos das minhas reuniões",
+            "configurar o motor de resumos de reuniões"
+          ],
+          "title" : "motor de resumos",
+          "words" : [
+            "motor de resumos de reuniões"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "ce AI scrie rezumatele întâlnirilor mele",
+            "ce motor este folosit pentru rezumatele întâlnirilor"
+          ],
+          "title" : "motor de rezumare",
+          "words" : [
+            "model pentru rezumatele întâlnirilor"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "какая модель пишет сводки моих встреч",
+            "настройки движка сводок встреч"
+          ],
+          "title" : "движок сводок",
+          "words" : [
+            "модель для сводок встреч"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ktorá AI píše zhrnutia mojich stretnutí",
+            "nastavenia nástroja na zhrnutia stretnutí"
+          ],
+          "title" : "nástroj na zhrnutia",
+          "words" : [
+            "model na zhrnutia stretnutí"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "katera umetna inteligenca piše povzetke mojih sestankov",
+            "nastavitve pogona za povzetke sestankov"
+          ],
+          "title" : "pogon za povzetke",
+          "words" : [
+            "model za povzetke sestankov"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "vilken ai skriver mina mötessammanfattningar",
+            "inställningar för motorn som skriver mötessammanfattningar"
+          ],
+          "title" : "sammanfattningsmotor",
+          "words" : [
+            "sammanfattningsmodell"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetlerimi hangi yapay zekâ yazıyor",
+            "toplantı özetleme motorunun ayarları"
+          ],
+          "title" : "özetleme motoru",
+          "words" : [
+            "toplantı özetleme motoru"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "яка модель пише підсумки моїх зустрічей",
+            "налаштувати рушій підсумовування зустрічей"
+          ],
+          "title" : "рушій підсумовування",
+          "words" : [
+            "модель для підсумків зустрічей"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "công cụ nào viết tóm tắt cuộc họp của tôi",
+            "cài đặt công cụ tóm tắt cuộc họp"
+          ],
+          "title" : "công cụ tóm tắt cuộc họp",
+          "words" : [
+            "mô hình tóm tắt cuộc họp"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "哪个AI写会议摘要",
+            "查看当前的会议摘要引擎"
+          ],
+          "title" : "会议摘要引擎",
+          "words" : [
+            "会议摘要模型"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.change",
+      "kind" : "action",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Ändern",
+        "en" : "Change",
+        "key" : "Change",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "اختيار محرك آخر لتلخيص الاجتماعات",
+            "عرض خيارات محرك تلخيص الاجتماعات"
+          ],
+          "title" : "تغيير محرك تلخيص الاجتماعات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "смяна на изкуствения интелект за обобщения на срещи"
+          ],
+          "title" : "промяна",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "změnit AI pro shrnutí schůzek"
+          ],
+          "title" : "změnit",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "skift AI til mødereferater",
+            "vis valgmulighederne for motor til mødeopsummeringer"
+          ],
+          "title" : "skift opsummeringsmotor",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "andere KI für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "αλλαγή AI για περιλήψεις συναντήσεων"
+          ],
+          "title" : "αλλαγή",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "change AI for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cambiar la IA para resumir reuniones"
+          ],
+          "title" : "cambiar",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vaheta koosolekute kokkuvõtete tehisintellekti"
+          ],
+          "title" : "muuda",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vaihda kokousten yhteenvedot tekevä tekoäly"
+          ],
+          "title" : "vaihda",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "changer l’ia pour les résumés de réunion"
+          ],
+          "title" : "modifier",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने वाला AI बदलें"
+          ],
+          "title" : "बदलें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "promijeni AI za sažetke sastanaka"
+          ],
+          "title" : "promijeni",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "másik modell választása a megbeszélések összefoglalásához"
+          ],
+          "title" : "módosítás",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "cambiare l’ia per i riepiloghi delle riunioni"
+          ],
+          "title" : "modifica",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約に使うaiを変更",
+            "会議の要約エンジンの選択肢を開く"
+          ],
+          "title" : "変更",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약 엔진 바꾸기",
+            "다른 회의 요약 엔진 고르기"
+          ],
+          "title" : "요약 엔진 변경",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pakeisti DI susitikimų santraukoms"
+          ],
+          "title" : "keisti",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izvēlēties citu dzini sapulču kopsavilkumiem",
+            "atvērt sapulču kopsavilkumu dziņu izvēli"
+          ],
+          "title" : "mainīt",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "ibdel l-AI għas-sommarji tal-laqgħat"
+          ],
+          "title" : "ibdel",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "een andere engine kiezen voor vergadersamenvattingen",
+            "keuze van engines voor vergadersamenvattingen openen"
+          ],
+          "title" : "wijzigen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "wybierz inny silnik do podsumowań spotkań"
+          ],
+          "title" : "zmień",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "abrir as opções para trocar o motor de resumos de reuniões"
+          ],
+          "title" : "alterar",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "schimbă motorul pentru rezumatele ședințelor",
+            "arată motoarele disponibile pentru rezumatele întâlnirilor"
+          ],
+          "title" : "schimbă",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "сменить движок сводок встреч",
+            "открыть выбор модели для сводок встреч"
+          ],
+          "title" : "изменить",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zmeniť AI na súhrny stretnutí",
+            "otvoriť výber nástroja na zhrnutia stretnutí"
+          ],
+          "title" : "zmeniť",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "zamenjaj AI za povzetke sestankov"
+          ],
+          "title" : "spremeni",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "byt ai för mötessammanfattningar"
+          ],
+          "title" : "ändra",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için yapay zekâyı değiştir"
+          ],
+          "title" : "değiştir",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вибрати інший рушій для підсумків зустрічей",
+            "відкрити вибір рушія підсумовування зустрічей"
+          ],
+          "title" : "змінити",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "chọn công cụ khác để tóm tắt cuộc họp",
+            "mở danh sách công cụ tóm tắt cuộc họp"
+          ],
+          "title" : "đổi công cụ tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "更换生成会议摘要的AI",
+            "打开会议摘要引擎选择列表"
+          ],
+          "title" : "更换会议摘要引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.keepCurrent",
+      "kind" : "action",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aktuelle Zusammenfassungs-Engine beibehalten",
+        "en" : "Keep current summary engine",
+        "key" : "Keep current summary engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "engineChoicesExpanded",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إبقاء محرك تلخيص الاجتماعات كما هو",
+            "إغلاق خيارات محرك تلخيص الاجتماعات دون تغيير"
+          ],
+          "title" : "الإبقاء على محرك تلخيص الاجتماعات الحالي",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "остави същия изкуствен интелект за обобщенията на срещите"
+          ],
+          "title" : "запазване на текущия модул за обобщаване",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ponechat současný model pro shrnutí schůzek",
+            "zavřít výběr modelu pro shrnutí schůzek beze změny"
+          ],
+          "title" : "ponechat současný nástroj pro shrnutí",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug fortsat samme ai til mødereferater"
+          ],
+          "title" : "behold den nuværende opsummeringsmotor",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "bisherige KI für Meetingzusammenfassungen behalten"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "κράτα την ίδια τεχνητή νοημοσύνη για τις περιλήψεις συναντήσεων"
+          ],
+          "title" : "διατήρηση της τρέχουσας μηχανής σύνοψης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep using the same AI for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "seguir usando la misma IA para resumir reuniones",
+            "cerrar la selección sin cambiar el motor de resúmenes"
+          ],
+          "title" : "mantener el motor de resúmenes actual",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kasuta koosolekute kokkuvõteteks edasi sama tehisaru"
+          ],
+          "title" : "säilita praegune kokkuvõttemootor",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä edelleen samaa tekoälyä kokousten yhteenvetoihin"
+          ],
+          "title" : "säilytä nykyinen yhteenvetomoottori",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "garder la même ia pour les résumés de réunion"
+          ],
+          "title" : "conserver le moteur de résumé actuel",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने वाला इंजन बदले बिना वापस जाएँ",
+            "मीटिंग के सारांश के लिए मौजूदा इंजन रखें"
+          ],
+          "title" : "मौजूदा सारांश इंजन बनाए रखें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "zadrži isti AI za sažetke sastanaka",
+            "zatvori odabir bez promjene modela za sažetke sastanaka"
+          ],
+          "title" : "zadrži trenutačni sustav za sažimanje",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon a jelenlegi motor a megbeszélések összefoglalásához",
+            "összefoglaló motor választásának bezárása módosítás nélkül"
+          ],
+          "title" : "jelenlegi összefoglaló motor megtartása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "continua a usare la stessa ia per i riepiloghi delle riunioni"
+          ],
+          "title" : "mantieni il motore di riepilogo attuale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約エンジンを変えずに閉じる",
+            "会議の要約エンジンを今のままにする"
+          ],
+          "title" : "現在の要約エンジンを使う",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "지금 쓰는 회의 요약 엔진 유지하기",
+            "회의 요약 엔진을 바꾸지 않고 닫기"
+          ],
+          "title" : "현재 요약 엔진 유지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "susitikimų santraukoms toliau naudoti tą patį dirbtinį intelektą"
+          ],
+          "title" : "palikti dabartinį santraukų variklį",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atstāt sapulču kopsavilkumu dzini nemainītu",
+            "aizvērt kopsavilkumu dziņu izvēli bez izmaiņām"
+          ],
+          "title" : "paturēt pašreizējo kopsavilkumu dzini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "kompli uża l-istess intelliġenza artifiċjali għas-sommarji tal-laqgħat"
+          ],
+          "title" : "żomm il-magna tas-sommarji attwali",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "dezelfde AI blijven gebruiken voor vergadersamenvattingen",
+            "enginekeuze sluiten zonder de samenvattingsengine te wijzigen"
+          ],
+          "title" : "huidige samenvattingsengine behouden",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zostaw obecny silnik podsumowań spotkań bez zmian"
+          ],
+          "title" : "zachowaj obecny silnik podsumowań",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "continuar com o mesmo motor de resumos de reuniões",
+            "fechar as opções sem trocar o motor de resumos"
+          ],
+          "title" : "manter o motor de resumos atual",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește în continuare aceeași inteligență artificială pentru rezumatele întâlnirilor"
+          ],
+          "title" : "păstrează motorul de rezumare actual",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "не менять движок сводок встреч",
+            "закрыть выбор модели для сводок встреч без изменений"
+          ],
+          "title" : "оставить текущий движок сводок",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ponechať súčasnú AI na zhrnutia stretnutí",
+            "zavrieť výber nástroja na zhrnutia stretnutí bez zmeny"
+          ],
+          "title" : "ponechať súčasný nástroj na zhrnutia",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "še naprej uporabljaj isto umetno inteligenco za povzetke sestankov"
+          ],
+          "title" : "ohrani trenutni pogon za povzetke",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "fortsätt använda samma ai för mötessammanfattningar"
+          ],
+          "title" : "behåll nuvarande sammanfattningsmotor",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için aynı yapay zekâyı kullanmaya devam et",
+            "özetleme motorunu değiştirmeden seçimi kapat"
+          ],
+          "title" : "mevcut özetleme motorunu koru",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "залишити поточний рушій підсумовування зустрічей",
+            "закрити вибір рушія підсумків зустрічей без змін"
+          ],
+          "title" : "залишити поточний рушій підсумків",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ nguyên công cụ tóm tắt cuộc họp đang dùng",
+            "đóng danh sách mà không đổi công cụ tóm tắt cuộc họp"
+          ],
+          "title" : "giữ công cụ tóm tắt cuộc họp hiện tại",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "不更换会议摘要引擎",
+            "关闭选择列表并保留当前会议摘要引擎"
+          ],
+          "title" : "保留当前会议摘要引擎",
+          "words" : [
+
           ]
         }
       }
@@ -38731,6 +39750,659 @@
       "context" : [
         "window.settings",
         "page.meetings",
+        "meetings.tab.models",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.change",
+      "kind" : "action",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Ändern",
+        "en" : "Change",
+        "key" : "Change",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+          ],
+          "title" : "تغيير محرك النص المباشر للاجتماع",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "отвори моделите за текста на срещата в реално време в EnviousMeet"
+          ],
+          "title" : "смяна на модела за текста на срещата в реално време",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "otevřít výběr modulu pro živý přepis schůzky v EnviousMeet"
+          ],
+          "title" : "změnit",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+          ],
+          "title" : "skift motor til livetransskription af møder",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Engine für das Live-Transkript ändern"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "άνοιξε τις επιλογές μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+          ],
+          "title" : "αλλαγή",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "open the live words engine choices in EnviousMeet"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "abrir las opciones del motor de transcripción en directo de reuniones en EnviousMeet"
+          ],
+          "title" : "cambiar",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "ava koosoleku reaalajas teksti mootorite valik"
+          ],
+          "title" : "muuda",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "avaa kokouksen reaaliaikaisen litteroinnin moottorivaihtoehdot"
+          ],
+          "title" : "vaihda",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "afficher les moteurs disponibles pour la transcription en direct des réunions dans EnviousMeet"
+          ],
+          "title" : "modifier",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदलने वाला बटन दिखाएँ"
+          ],
+          "title" : "बदलें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "otvori odabir modela za prijepis sastanka uživo"
+          ],
+          "title" : "promijeni",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "motorválasztó megnyitása a megbeszélés élő átírásához az EnviousMeetben"
+          ],
+          "title" : "módosítás",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "aprire le schede dei motori per il testo mostrato in tempo reale durante le riunioni in EnviousMeet"
+          ],
+          "title" : "cambia motore di trascrizione in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしエンジンの選択肢を開く"
+          ],
+          "title" : "変更",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+          ],
+          "title" : "실시간 회의 텍스트 엔진 변경",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "atidaryti susitikimo transkripcijos realiuoju laiku variklio pasirinkimą"
+          ],
+          "title" : "keisti",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atvērt sapulces reāllaika teksta dziņu izvēli"
+          ],
+          "title" : "mainīt",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "iftaħ l-għażliet tal-magna għat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+          ],
+          "title" : "ibdel",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "enginekeuze voor live transcriptie in EnviousMeet openen"
+          ],
+          "title" : "wijzigen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "otwórz wybór silnika transkrypcji spotkania na żywo w EnviousMeet"
+          ],
+          "title" : "zmień",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "abrir as opções para trocar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+          ],
+          "title" : "alterar",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "arată opțiunile de motor pentru transcrierea în timp real a întâlnirii în EnviousMeet"
+          ],
+          "title" : "schimbă",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "открыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet"
+          ],
+          "title" : "изменить",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "otvoriť výber modelu pre živý prepis stretnutia v EnviousMeet"
+          ],
+          "title" : "zmeniť",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odpri izbiro pogona za prepis sestanka v živo"
+          ],
+          "title" : "spremeni",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "öppna motorvalen för transkribering i realtid i EnviousMeet"
+          ],
+          "title" : "ändra",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sırasında gösterilen canlı metnin motorunu değiştirmek için seçenekleri aç"
+          ],
+          "title" : "değiştir",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "відкрити вибір рушія для тексту зустрічі наживо в EnviousMeet"
+          ],
+          "title" : "змінити",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+          ],
+          "title" : "đổi công cụ chép lời trực tiếp cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "打开会议实时转写引擎选择列表"
+          ],
+          "title" : "更换会议实时转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingLiveWords"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingLiveWords.keepCurrent",
+      "kind" : "action",
+      "parent" : "meetingLiveWords",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingLiveWords",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aktuelle Live-Transkript-Engine beibehalten",
+        "en" : "Keep current live words engine",
+        "key" : "Keep current live words engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "engineChoicesExpanded",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إبقاء محرك النص المباشر للاجتماع كما هو",
+            "إغلاق خيارات محرك النص المباشر للاجتماع دون تغيير"
+          ],
+          "title" : "الإبقاء على محرك النص المباشر للاجتماع الحالي",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "остави същия модел за текста на срещата в реално време в EnviousMeet",
+            "затвори избора на модел за текста на срещата в реално време без промяна"
+          ],
+          "title" : "запази текущия модел за текста на срещата в реално време",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ponechat současný modul pro živý přepis schůzky v EnviousMeet",
+            "zavřít výběr modulu živého přepisu schůzky beze změny"
+          ],
+          "title" : "ponechat současný modul živého přepisu schůzky",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "luk motorvalget til livetransskription i EnviousMeet uden at ændre noget"
+          ],
+          "title" : "behold den nuværende motor til livetransskription af møder",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "bisherige Engine für das Live-Transkript behalten"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "κράτα την ίδια μηχανή για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet",
+            "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή ζωντανής απομαγνητοφώνησης της συνάντησης"
+          ],
+          "title" : "διατήρηση της τρέχουσας μηχανής ζωντανής απομαγνητοφώνησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep using the same engine for live meeting transcription"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cerrar las opciones sin cambiar el motor de transcripción en directo de reuniones en EnviousMeet"
+          ],
+          "title" : "mantener el motor actual de transcripción en directo",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "jäta koosoleku reaalajas teksti mootor samaks",
+            "sulge koosoleku reaalajas teksti mootorite valik muudatusteta"
+          ],
+          "title" : "säilita praegune reaalajas teksti mootor",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+          ],
+          "title" : "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "fermer le choix des moteurs sans changer la transcription en direct des réunions dans EnviousMeet"
+          ],
+          "title" : "conserver le moteur actuel de transcription en direct",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदले बिना विकल्प बंद करें"
+          ],
+          "title" : "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "zadrži isti model za prijepis sastanka uživo",
+            "zatvori odabir bez promjene modela za prijepis sastanka uživo"
+          ],
+          "title" : "zadrži trenutačni model za prijepis uživo",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon ugyanaz a motor a megbeszélés élő átírásához",
+            "az EnviousMeet élő átírási motorválasztójának bezárása módosítás nélkül"
+          ],
+          "title" : "a megbeszélés élő átírásához használt motor megtartása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiudere la scelta del motore per la trascrizione in tempo reale delle riunioni in EnviousMeet senza cambiarlo"
+          ],
+          "title" : "mantieni il motore attuale di trascrizione in tempo reale",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議のリアルタイム文字起こしエンジンを変えずに閉じる"
+          ],
+          "title" : "現在のリアルタイム文字起こしエンジンを使う",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 실시간 텍스트 엔진을 바꾸지 않고 닫기"
+          ],
+          "title" : "현재 실시간 회의 텍스트 엔진 유지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "uždaryti variklių pasirinkimą nekeičiant susitikimo transkripcijos realiuoju laiku variklio"
+          ],
+          "title" : "palikti dabartinį susitikimo transkripcijos realiuoju laiku variklį",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atstāt sapulces reāllaika teksta dzini nemainītu",
+            "aizvērt sapulces reāllaika teksta dziņu izvēli bez izmaiņām"
+          ],
+          "title" : "paturēt pašreizējo sapulces reāllaika teksta dzini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+          ],
+          "title" : "żomm il-magna attwali tat-traskrizzjoni diretta",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "huidige engine voor live transcriptie in EnviousMeet behouden",
+            "enginekeuze voor live transcriptie van vergaderingen sluiten zonder iets te wijzigen"
+          ],
+          "title" : "huidige engine voor live transcriptie behouden",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zamknij wybór silnika transkrypcji spotkania na żywo bez zmian"
+          ],
+          "title" : "zachowaj obecny silnik transkrypcji spotkań na żywo",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "fechar as opções sem mudar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+          ],
+          "title" : "manter o motor atual de transcrição em tempo real",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "închide opțiunile fără să schimbi motorul de transcriere în timp real a întâlnirii în EnviousMeet"
+          ],
+          "title" : "păstrează motorul actual de transcriere în timp real",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "закрыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet без изменений"
+          ],
+          "title" : "оставить текущий движок расшифровки встречи в реальном времени",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zavrieť výber modelu pre živý prepis stretnutia v EnviousMeet bez zmeny"
+          ],
+          "title" : "ponechať aktuálny model živého prepisu stretnutia",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "zapri izbiro pogona za prepis sestanka v živo brez sprememb"
+          ],
+          "title" : "ohrani trenutni pogon za prepis sestanka v živo",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+          ],
+          "title" : "behåll nuvarande motor för mötets transkribering i realtid",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantının canlı metin motorunu değiştirmeden seçenekleri kapat"
+          ],
+          "title" : "mevcut canlı transkripsiyon motorunu koru",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "залишити поточний рушій для тексту зустрічі наживо в EnviousMeet",
+            "закрити вибір рушія для тексту зустрічі наживо без змін"
+          ],
+          "title" : "залишити поточний рушій для тексту зустрічі наживо",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ nguyên công cụ chép lời trực tiếp cuộc họp trong EnviousMeet",
+            "đóng danh sách công cụ chép lời trực tiếp cuộc họp mà không thay đổi"
+          ],
+          "title" : "giữ công cụ chép lời trực tiếp cuộc họp hiện tại",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "关闭选择列表并保留当前会议实时转写引擎"
+          ],
+          "title" : "保留当前会议实时转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
         "meetings.tab.models"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
@@ -39083,6 +40755,659 @@
           "words" : [
             "会议转写引擎",
             "会议转写模型"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.change",
+      "kind" : "action",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Ändern",
+        "en" : "Change",
+        "key" : "Change",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "فتح خيارات محرك كتابة نص الاجتماع بعد انتهائه في EnviousMeet"
+          ],
+          "title" : "تغيير محرك تفريغ الاجتماعات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "отвори моделите за пълната транскрипция след срещата в EnviousMeet"
+          ],
+          "title" : "смяна на модела за пълната транскрипция след срещата",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "otevřít výběr modulu pro přepis po skončení schůzky v EnviousMeet"
+          ],
+          "title" : "změnit",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "vis valgmulighederne for motor til den fulde transskription efter mødet i EnviousMeet"
+          ],
+          "title" : "skift motor til mødets fulde transskription",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Engine für das Transkript nach dem Meeting ändern"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "άνοιξε τις επιλογές μηχανής για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet"
+          ],
+          "title" : "αλλαγή",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "open the full meeting transcript engine choices in EnviousMeet"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "abrir las opciones del motor de transcripción completa de reuniones en EnviousMeet"
+          ],
+          "title" : "cambiar",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "ava koosoleku lõpliku transkriptsiooni mootorite valik"
+          ],
+          "title" : "muuda",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "avaa kokouksen lopullisen litteroinnin moottorivaihtoehdot"
+          ],
+          "title" : "vaihda",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet"
+          ],
+          "title" : "modifier",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदलने का बटन दिखाएँ"
+          ],
+          "title" : "बदलें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "otvori odabir modela za potpuni prijepis nakon sastanka"
+          ],
+          "title" : "promijeni",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "motorválasztó megnyitása a megbeszélés utáni átíráshoz az EnviousMeetben"
+          ],
+          "title" : "módosítás",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "aprire le schede dei motori per la trascrizione completa delle riunioni dopo la registrazione in EnviousMeet"
+          ],
+          "title" : "cambia motore di trascrizione delle riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こしエンジンの選択肢を開く"
+          ],
+          "title" : "変更",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 후 전체 녹취록을 작성할 엔진 선택 카드 열기"
+          ],
+          "title" : "회의 녹취록 엔진 변경",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "atidaryti variklio pasirinkimą susitikimui transkribuoti po įrašymo"
+          ],
+          "title" : "keisti",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atvērt pilna sapulces atšifrējuma dziņu izvēli"
+          ],
+          "title" : "mainīt",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "iftaħ l-għażliet tal-magna għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+          ],
+          "title" : "ibdel",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "enginekeuze voor volledige vergadertranscripten in EnviousMeet openen"
+          ],
+          "title" : "wijzigen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "otwórz wybór silnika pełnej transkrypcji po spotkaniu w EnviousMeet"
+          ],
+          "title" : "zmień",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "abrir as opções para trocar o motor da transcrição completa de reuniões no EnviousMeet"
+          ],
+          "title" : "alterar",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "arată opțiunile de motor pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+          ],
+          "title" : "schimbă",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "открыть выбор движка для полной расшифровки встречи после её завершения в EnviousMeet"
+          ],
+          "title" : "изменить",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "otvoriť výber modelu na úplný prepis stretnutia v EnviousMeet"
+          ],
+          "title" : "zmeniť",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "odpri izbiro pogona za celotni prepis po sestanku"
+          ],
+          "title" : "spremeni",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "öppna motorvalen för transkribering efter mötet i EnviousMeet"
+          ],
+          "title" : "ändra",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmek için seçenekleri aç"
+          ],
+          "title" : "değiştir",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "відкрити вибір рушія для повної стенограми зустрічі в EnviousMeet"
+          ],
+          "title" : "змінити",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "mở danh sách công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet"
+          ],
+          "title" : "đổi công cụ tạo bản chép lời sau cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "打开会后完整会议转写的引擎选择列表"
+          ],
+          "title" : "更换会后转写引擎",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.keepCurrent",
+      "kind" : "action",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Aktuelle Transkript-Engine beibehalten",
+        "en" : "Keep current transcript engine",
+        "key" : "Keep current transcript engine",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "engineChoicesExpanded",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إبقاء محرك كتابة نص الاجتماع بعد انتهائه كما هو",
+            "إغلاق خيارات محرك تفريغ الاجتماعات دون تغيير"
+          ],
+          "title" : "الإبقاء على محرك تفريغ الاجتماعات الحالي",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "остави същия модел за пълната транскрипция след срещата в EnviousMeet",
+            "затвори избора на модел за пълната транскрипция след срещата без промяна"
+          ],
+          "title" : "запази текущия модел за пълната транскрипция след срещата",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "ponechat současný modul pro přepis po skončení schůzky v EnviousMeet",
+            "zavřít výběr modulu pro úplný přepis schůzky beze změny"
+          ],
+          "title" : "ponechat současný modul přepisu schůzek",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "luk motorvalget til mødets fulde transskription i EnviousMeet uden at ændre noget"
+          ],
+          "title" : "behold den nuværende motor til mødets fulde transskription",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "bisherige Engine für das Transkript nach dem Meeting behalten"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "κράτα την ίδια μηχανή για την πλήρη απομαγνητοφώνηση συναντήσεων στο EnviousMeet",
+            "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή για την πλήρη απομαγνητοφώνηση της συνάντησης"
+          ],
+          "title" : "διατήρηση της τρέχουσας μηχανής απομαγνητοφώνησης",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep using the same engine for meeting transcripts"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cerrar las opciones sin cambiar el motor de transcripción completa de reuniones en EnviousMeet"
+          ],
+          "title" : "mantener el motor actual de transcripción de reuniones",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "jäta koosoleku lõpliku transkriptsiooni mootor samaks",
+            "sulge koosoleku lõpliku transkriptsiooni mootorite valik muudatusteta"
+          ],
+          "title" : "säilita praegune transkriptsioonimootor",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä edelleen samaa moottoria kokouksen lopulliseen litterointiin"
+          ],
+          "title" : "säilytä nykyinen litterointimoottori",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"
+          ],
+          "title" : "conserver le moteur de transcription actuel",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदले बिना विकल्प बंद करें"
+          ],
+          "title" : "मौजूदा ट्रांसक्रिप्ट इंजन रखें",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "zadrži isti model za potpuni prijepis nakon sastanka",
+            "zatvori odabir bez promjene modela za potpuni prijepis sastanka"
+          ],
+          "title" : "zadrži trenutačni model za prijepis sastanka",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon ugyanaz a motor a megbeszélés utáni átíráshoz",
+            "a teljes megbeszélés átiratához tartozó motorválasztó bezárása módosítás nélkül"
+          ],
+          "title" : "a megbeszélés teljes átiratához használt motor megtartása",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chiudere la scelta del motore per la trascrizione completa delle riunioni in EnviousMeet senza cambiarlo"
+          ],
+          "title" : "mantieni il motore attuale di trascrizione delle riunioni",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こしエンジンを変えずに閉じる"
+          ],
+          "title" : "現在の全文文字起こしエンジンを使う",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록 엔진을 바꾸지 않고 닫기"
+          ],
+          "title" : "현재 회의 녹취록 엔진 유지",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "uždaryti variklių pasirinkimą nekeičiant susitikimų transkripcijos variklio"
+          ],
+          "title" : "palikti dabartinį susitikimų transkripcijos variklį",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atstāt pilna sapulces atšifrējuma dzini nemainītu",
+            "aizvērt sapulces atšifrējuma dziņu izvēli bez izmaiņām"
+          ],
+          "title" : "paturēt pašreizējo sapulces atšifrējuma dzini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+          ],
+          "title" : "żomm il-magna attwali tat-traskrizzjoni tal-laqgħat",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "huidige engine voor volledige vergadertranscripten in EnviousMeet behouden",
+            "enginekeuze voor vergadertranscripten sluiten zonder iets te wijzigen"
+          ],
+          "title" : "huidige transcriptie-engine behouden",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zamknij wybór silnika pełnej transkrypcji po spotkaniu bez zmian"
+          ],
+          "title" : "zachowaj obecny silnik transkrypcji spotkań",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "fechar as opções sem mudar o motor da transcrição completa de reuniões no EnviousMeet"
+          ],
+          "title" : "manter o motor de transcrição atual",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "închide opțiunile fără să schimbi motorul pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+          ],
+          "title" : "păstrează motorul actual de transcriere a întâlnirilor",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "закрыть выбор движка полной расшифровки встреч в EnviousMeet без изменений"
+          ],
+          "title" : "оставить текущий движок полной расшифровки встреч",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "zavrieť výber modelu na úplný prepis stretnutia v EnviousMeet bez zmeny"
+          ],
+          "title" : "ponechať aktuálny model prepisu stretnutí",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "zapri izbiro pogona za celotni prepis sestanka brez sprememb"
+          ],
+          "title" : "ohrani trenutni pogon za celotni prepis sestanka",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "stäng motorvalen och behåll samma motor för transkribering efter mötet i EnviousMeet"
+          ],
+          "title" : "behåll nuvarande motor för mötestranskript",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmeden seçenekleri kapat"
+          ],
+          "title" : "mevcut toplantı dökümü motorunu koru",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "залишити поточний рушій для повної стенограми зустрічі в EnviousMeet",
+            "закрити вибір рушія транскрибування зустрічей без змін"
+          ],
+          "title" : "залишити поточний рушій транскрибування зустрічей",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giữ nguyên công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet",
+            "đóng danh sách công cụ tạo bản chép lời sau cuộc họp mà không thay đổi"
+          ],
+          "title" : "giữ công cụ tạo bản chép lời sau cuộc họp hiện tại",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "关闭选择列表并保留当前会后转写引擎"
+          ],
+          "title" : "保留当前会后转写引擎",
+          "words" : [
+
           ]
         }
       }
@@ -68646,6 +70971,356 @@
       "description" : null,
       "destination" : {
         "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetings.tab.summaries",
+      "kind" : "feature",
+      "parent" : "page.meetings",
+      "searchable" : true,
+      "structure" : "tab",
+      "target" : "meetings.tab.summaries",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Zusammenfassungen",
+        "en" : "Summaries",
+        "key" : "Summaries",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "إعدادات ملخصات الاجتماعات في EnviousMeet",
+            "تبويب ملخصات الاجتماعات"
+          ],
+          "title" : "الملخصات",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "настройки за обобщения на срещи",
+            "раздел за обобщения в EnviousMeet"
+          ],
+          "title" : "обобщения",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "karta shrnutí v EnviousMeet",
+            "nastavení shrnutí schůzek"
+          ],
+          "title" : "shrnutí",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "fanen med opsummeringer i EnviousMeet",
+            "indstillinger for mødeopsummeringer"
+          ],
+          "title" : "opsummeringer",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Tab Zusammenfassungen in EnviousMeet öffnen",
+            "zu den Einstellungen für Meetingzusammenfassungen wechseln"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "καρτέλα περιλήψεων του EnviousMeet",
+            "πού είναι οι ρυθμίσεις για τις περιλήψεις συναντήσεων"
+          ],
+          "title" : "περιλήψεις",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "meeting summary settings",
+            "EnviousMeet summaries tab"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "pestaña de resúmenes de EnviousMeet",
+            "dónde están los ajustes de resúmenes de reuniones"
+          ],
+          "title" : "resúmenes",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "EnviousMeet kokkuvõtete vahekaart",
+            "kus on koosolekute kokkuvõtete seaded"
+          ],
+          "title" : "kokkuvõtted",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "avaa EnviousMeetin yhteenvedot-välilehti",
+            "kokousten yhteenvetojen asetukset"
+          ],
+          "title" : "yhteenvedot",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "ouvrir l’onglet résumés d’EnviousMeet",
+            "où sont les réglages des résumés de réunion"
+          ],
+          "title" : "résumés",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में सारांश की सेटिंग्स",
+            "मीटिंग के सारांश वाला टैब कहाँ है"
+          ],
+          "title" : "सारांश",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "postavke sažetaka sastanaka u EnviousMeet",
+            "kartica sažeci u EnviousMeet"
+          ],
+          "title" : "sažeci",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "EnviousMeet összefoglalók lapja"
+          ],
+          "title" : "összefoglalók",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "impostazioni dei riepiloghi di EnviousMeet",
+            "scheda dei riepiloghi delle riunioni"
+          ],
+          "title" : "riepiloghi",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "EnviousMeetの要約タブを開く",
+            "会議の要約設定のページ"
+          ],
+          "title" : "要約",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "EnviousMeet 요약 탭",
+            "회의 요약 설정 페이지"
+          ],
+          "title" : "요약",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "EnviousMeet santraukų skirtukas",
+            "susitikimų santraukų nustatymai"
+          ],
+          "title" : "santraukos",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "EnviousMeet kopsavilkumu cilne",
+            "sapulču kopsavilkumu iestatījumi"
+          ],
+          "title" : "kopsavilkumi",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "settings tas-sommarji f’EnviousMeet",
+            "iftaħ it-tab tas-sommarji"
+          ],
+          "title" : "sommarji",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "instellingen voor vergadersamenvattingen in EnviousMeet",
+            "tabblad voor vergadersamenvattingen"
+          ],
+          "title" : "samenvattingen",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "karta podsumowań w EnviousMeet",
+            "gdzie są ustawienia podsumowań spotkań"
+          ],
+          "title" : "podsumowania",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "aba de resumos do EnviousMeet",
+            "configurações dos resumos de reuniões"
+          ],
+          "title" : "resumos",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "fila rezumate din EnviousMeet",
+            "setările pentru rezumatele întâlnirilor din EnviousMeet"
+          ],
+          "title" : "rezumate",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "вкладка сводок в EnviousMeet",
+            "где настройки сводок встреч"
+          ],
+          "title" : "сводки",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "karta zhrnutí v EnviousMeet",
+            "nastavenia zhrnutí stretnutí"
+          ],
+          "title" : "zhrnutia",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "nastavitve povzetkov v EnviousMeet",
+            "zavihek s povzetki sestankov"
+          ],
+          "title" : "povzetki",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "fliken sammanfattningar i EnviousMeet",
+            "inställningar för sammanfattningar i EnviousMeet"
+          ],
+          "title" : "sammanfattningar",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri sekmesi",
+            "EnviousMeet özet ayarları"
+          ],
+          "title" : "özetler",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вкладка підсумків EnviousMeet",
+            "налаштування підсумків зустрічей"
+          ],
+          "title" : "підсумки",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "cài đặt tóm tắt trong EnviousMeet",
+            "tab tóm tắt cuộc họp"
+          ],
+          "title" : "tóm tắt",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "EnviousMeet的摘要选项卡",
+            "会议摘要设置在哪"
+          ],
+          "title" : "摘要",
+          "words" : [
+            "会议摘要设置"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
         "tab" : "callApps"
       },
       "dictionaryTab" : null,
@@ -82379,6 +85054,2263 @@
             "用Whisper转写会议"
           ],
           "title" : "Whisper Large v3 Turbo",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models",
+        "meetingTranscriptEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingTranscriptEngine.apple",
+      "kind" : "choice",
+      "parent" : "meetingTranscriptEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingTranscriptEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Apple"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "محرك Apple لكتابة نص الاجتماع بعد انتهائه قريبًا في EnviousMeet",
+            "لماذا لا يمكن اختيار Apple لتفريغ الاجتماعات"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "Apple за пълната транскрипция след срещата в EnviousMeet — очаквайте скоро"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "připravovaný modul Apple pro úplný přepis schůzek v EnviousMeet",
+            "Apple pro přepis po skončení schůzky zatím není dostupný"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "Apple til mødets fulde transskription i EnviousMeet kommer snart"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wann kann ich Apple für das Transkript nutzen",
+            "Apple Spracherkennung für Meeting-Transkripte"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "Apple για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet",
+            "πότε θα είναι διαθέσιμη η μηχανή Apple για την πλήρη απομαγνητοφώνηση συναντήσεων"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "Apple engine for full meeting transcripts coming soon"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "Apple para la transcripción completa de reuniones en EnviousMeet (próximamente)"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "peagi tulev Apple'i mootor koosoleku lõpliku transkriptsiooni jaoks"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "Apple-moottori kokouksen lopulliseen litterointiin ei ole vielä saatavilla"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "moteur Apple bientôt disponible pour la transcription complète des réunions dans EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला Apple इंजन जो जल्द आ रहा है"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "Apple za potpuni prijepis sastanka uskoro dolazi",
+            "zašto još ne mogu odabrati Apple za prijepis nakon sastanka"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Apple motor az EnviousMeetben a megbeszélés utáni átíráshoz",
+            "hamarosan elérhető Apple motor a megbeszélések teljes átiratához"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "motore Apple in arrivo per la trascrizione completa delle riunioni in EnviousMeet",
+            "perché Apple non è ancora selezionabile per trascrivere le riunioni dopo la registrazione in EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の全文文字起こし用Appleエンジン（近日公開）"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 녹취록용 Apple 음성 인식 엔진 출시 예정"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "Apple variklis susitikimų transkripcijai po įrašymo",
+            "dar nepasiekiamas Apple variklis susitikimų transkripcijai"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "Apple dzinis pilnam sapulces atšifrējumam",
+            "kad būs pieejams Apple dzinis sapulču atšifrēšanai"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "Apple għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet għadha mhix disponibbli"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Apple voor volledige vergadertranscripten in EnviousMeet binnenkort beschikbaar"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "silnik Apple do pełnej transkrypcji po spotkaniu — wkrótce"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "ver a opção Apple para a transcrição completa de reuniões no EnviousMeet",
+            "quando o motor Apple estará disponível para transcrever reuniões no EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "motorul Apple pentru transcrierea completă a întâlnirilor în EnviousMeet, disponibil în curând"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "Apple для полной расшифровки встречи после её завершения в EnviousMeet — скоро"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "pripravovaný model Apple na úplný prepis stretnutí v EnviousMeet"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "Apple za celotni prepis sestanka še ni na voljo"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "Apple för mötestranskript i EnviousMeet kommer snart"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "EnviousMeet'te toplantı sonrası döküm için yakında gelecek Apple motoru"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "Apple для повної стенограми зустрічі в EnviousMeet",
+            "Apple для транскрибування зустрічей ще недоступний"
+          ],
+          "title" : "Apple",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "Apple để tạo bản chép lời sau cuộc họp trong EnviousMeet sắp ra mắt",
+            "công cụ Apple cho bản chép lời sau cuộc họp chưa chọn được"
+          ],
+          "title" : "Apple cho bản chép lời sau cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "即将推出的Apple会议转写引擎"
+          ],
+          "title" : "Apple会后转写引擎（即将推出）",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.egOne",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "EG-1"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "EG-1 لتلخيص الاجتماعات قريبًا",
+            "متى يتوفر EG-1 لتلخيص الاجتماعات"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "EG-1 за обобщения на срещи",
+            "кога ще е достъпен EG-1 за обобщения на срещи"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "kdy bude EG-1 dostupný pro shrnutí schůzek"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "EG-1 til mødeopsummeringer kommer snart"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "EG-1 für Meetingzusammenfassungen",
+            "bald verfügbare Engine für Meetingzusammenfassungen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "EG-1 για περιλήψεις συναντήσεων προσεχώς",
+            "γιατί δεν μπορώ να επιλέξω EG-1 για περιλήψεις συναντήσεων"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "EG-1 for meeting summaries coming soon"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "EG-1 para resúmenes de reuniones próximamente",
+            "por qué no puedo elegir EG-1 para resumir reuniones"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "EG-1 koosolekute kokkuvõtete jaoks",
+            "EG-1 kokkuvõttemootor on tulekul"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "EG-1 kokousten yhteenvetoihin tulossa pian"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "EG-1 pour les résumés de réunion bientôt disponible"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग के सारांश के लिए EG-1 कब आएगा",
+            "मीटिंग का सारांश बनाने के लिए EG-1 अभी क्यों नहीं चुन सकते"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "EG-1 za sažetke sastanaka uskoro",
+            "zašto EG-1 još nije dostupan za sažetke sastanaka"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "EG-1 a megbeszélések összefoglalásához"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "EG-1 per i riepiloghi delle riunioni",
+            "EG-1 in arrivo per riassumere le riunioni"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議要約用のEG-1の提供予定を確認"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약용 EG-1 출시 예정"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kodėl negaliu pasirinkti EG-1 susitikimų santraukoms"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "kad būs pieejams EG-1 sapulču kopsavilkumiem"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "EG-1 għas-sommarji tal-laqgħat",
+            "EG-1 għas-sommarji tal-laqgħat dalwaqt disponibbli"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "wanneer komt EG-1 voor vergadersamenvattingen",
+            "EG-1 voor vergadersamenvattingen binnenkort beschikbaar"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "EG-1 do podsumowań spotkań już wkrótce"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "EG-1 para resumos de reuniões",
+            "EG-1 para resumir reuniões em breve"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "EG-1 pentru rezumatele ședințelor",
+            "când va fi disponibil EG-1 pentru rezumatele întâlnirilor"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "когда появится EG-1 для сводок встреч",
+            "почему нельзя выбрать EG-1 для сводок встреч"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "kedy bude EG-1 dostupný na zhrnutia stretnutí",
+            "EG-1 na zhrnutia stretnutí už čoskoro"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "EG-1 za povzetke sestankov bo kmalu na voljo",
+            "zakaj EG-1 za povzetke sestankov še ni na voljo"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "EG-1 för mötessammanfattningar kommer snart"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için EG-1 ne zaman gelecek",
+            "toplantı özetleri için EG-1 neden seçilemiyor"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "коли буде доступний EG-1 для підсумків зустрічей",
+            "EG-1 для підсумків зустрічей незабаром"
+          ],
+          "title" : "EG-1",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "EG-1 tóm tắt cuộc họp sắp ra mắt"
+          ],
+          "title" : "EG-1 cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "EG-1会议摘要即将推出",
+            "为什么还不能选EG-1生成会议摘要"
+          ],
+          "title" : "EG-1会议摘要",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.appleIntelligence",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Apple Intelligence"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Apple Intelligence لتلخيص الاجتماعات"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "използвай Apple Intelligence за обобщения на срещи"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "používat Apple Intelligence pro shrnutí schůzek"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Apple Intelligence til mødereferater"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Apple Intelligence für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "χρήση Apple Intelligence για περιλήψεις συναντήσεων"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Apple Intelligence for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Apple Intelligence para resumir reuniones"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kasuta koosolekute kokkuvõteteks Apple Intelligence'i"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Apple Intelligenceä kokousten yhteenvetoihin"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser Apple Intelligence pour résumer les réunions"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने के लिए Apple Intelligence इस्तेमाल करें"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koristi Apple Intelligence za sažetke sastanaka"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "megbeszélések összefoglalása Apple Intelligence segítségével"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Apple Intelligence per riassumere le riunioni"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "Apple Intelligenceで会議を要約"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "Apple Intelligence로 회의 요약하기"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti Apple Intelligence susitikimų santraukoms"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Apple Intelligence sapulču kopsavilkumiem"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża Apple Intelligence biex tiġbor il-laqgħat fil-qosor"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Apple Intelligence gebruiken voor samenvattingen van vergaderingen"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "używaj Apple Intelligence do podsumowań spotkań"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Apple Intelligence para resumir reuniões"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește Apple Intelligence pentru rezumatele întâlnirilor"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "использовать Apple Intelligence для итогов встреч"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "používať Apple Intelligence na súhrny stretnutí"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "uporabi Apple Intelligence za povzetke sestankov"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Apple Intelligence för mötessammanfattningar"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için Apple Intelligence kullan"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "використовувати Apple Intelligence для підсумків зустрічей"
+          ],
+          "title" : "Apple Intelligence",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng Apple Intelligence để tóm tắt cuộc họp"
+          ],
+          "title" : "Apple Intelligence cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Apple Intelligence总结会议"
+          ],
+          "title" : "Apple Intelligence会议摘要",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.ollama",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Ollama"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Ollama لتلخيص الاجتماعات"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "Ollama за обобщения на срещи"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "používat Ollama pro shrnutí schůzek"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Ollama til mødereferater"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Ollama für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "χρήση Ollama για περιλήψεις συναντήσεων"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Ollama for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Ollama para resumir reuniones"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "tee koosolekute kokkuvõtteid Ollama abil"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Ollamaa kokousten yhteenvetoihin"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser Ollama pour résumer les réunions"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने के लिए Ollama चुनें"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koristi Ollama za sažetke sastanaka"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Ollama használata megbeszélések összefoglalásához"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Ollama per riassumere le riunioni"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約にOllamaを使う"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약에 Ollama 사용"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti Ollama susitikimų santraukoms"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Ollama sapulču kopsavilkumiem"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża Ollama għas-sommarji tal-laqgħat"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Ollama gebruiken voor samenvattingen van vergaderingen"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "używaj Ollama do podsumowań spotkań"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Ollama para resumir reuniões"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește Ollama pentru rezumatele întâlnirilor"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "использовать Ollama для сводок встреч"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "používať Ollama na zhrnutia stretnutí"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "za povzetke sestankov uporabi model iz programa Ollama"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Ollama för mötessammanfattningar"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için Ollama kullan"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "використовувати Ollama для підсумків зустрічей"
+          ],
+          "title" : "Ollama",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng Ollama để tóm tắt cuộc họp"
+          ],
+          "title" : "Ollama cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Ollama总结会议"
+          ],
+          "title" : "Ollama会议摘要",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.openAI",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "OpenAI"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام OpenAI لتلخيص الاجتماعات"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "използване на OpenAI за обобщения на срещи"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "použít OpenAI pro shrnutí schůzek"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug OpenAI til mødereferater"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "OpenAI für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "χρήση OpenAI για περιλήψεις συναντήσεων"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use OpenAI for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar OpenAI para resumir reuniones"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kasuta koosolekute kokkuvõteteks OpenAI-d"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä OpenAI:ta kokousten yhteenvetoihin"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser OpenAI pour résumer les réunions"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने के लिए OpenAI चुनें"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koristi OpenAI za sažetke sastanaka"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "OpenAI használata megbeszélések összefoglalásához"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare OpenAI per riassumere le riunioni"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約にOpenAIを使う"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약에 OpenAI 사용"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti OpenAI susitikimų santraukoms"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot OpenAI sapulču kopsavilkumiem"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża OpenAI għas-sommarji tal-laqgħat"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "OpenAI gebruiken voor samenvattingen van vergaderingen"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "użyj OpenAI do podsumowań spotkań"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar OpenAI para resumir reuniões"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește OpenAI pentru rezumatele ședințelor"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "использовать OpenAI для итогов встреч"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "použiť OpenAI na zhrnutia stretnutí"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "uporabi OpenAI za povzetke sestankov"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd OpenAI för mötessammanfattningar"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için OpenAI kullan"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "використовувати OpenAI для підсумків зустрічей"
+          ],
+          "title" : "OpenAI",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng OpenAI để tóm tắt cuộc họp"
+          ],
+          "title" : "OpenAI cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用OpenAI总结会议"
+          ],
+          "title" : "OpenAI会议摘要",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.gemini",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Google Gemini"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Google Gemini لتلخيص الاجتماعات"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "използвай Google Gemini за обобщения на срещи"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "používat Gemini pro shrnutí schůzek"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Google Gemini til mødereferater"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Google Gemini für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "χρήση Google Gemini για περιλήψεις συναντήσεων"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Google Gemini for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Google Gemini para resumir reuniones"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kasuta koosolekute kokkuvõteteks Google Gemini mudelit"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Geminiä kokousten yhteenvetoihin"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser Google Gemini pour résumer les réunions"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने के लिए Google Gemini चुनें"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koristi Google Gemini za sažetke sastanaka"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Google Gemini használata megbeszélések összefoglalásához"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Google Gemini per riassumere le riunioni"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約にGoogle Geminiを使う"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약에 Google Gemini 사용"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti Google Gemini susitikimų santraukoms"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Google Gemini sapulču kopsavilkumiem"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża Google Gemini għas-sommarji tal-laqgħat"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Google Gemini gebruiken voor vergadersamenvattingen"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "używaj Google Gemini do podsumowań spotkań"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Google Gemini para resumir reuniões"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește Google Gemini pentru rezumatele ședințelor"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "использовать Google Gemini для итогов встреч"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "používať Google Gemini na zhrnutia stretnutí"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "uporabi Google Gemini za povzetke sestankov"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Gemini för mötessammanfattningar"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için Google Gemini kullan"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "використовувати Gemini для підсумків зустрічей"
+          ],
+          "title" : "Google Gemini",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng Google Gemini để tóm tắt cuộc họp"
+          ],
+          "title" : "Google Gemini cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Google Gemini生成会议摘要"
+          ],
+          "title" : "Google Gemini会议摘要",
+          "words" : [
+
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.summaries",
+        "meetingSummaryEngine"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "summaries"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSummaryEngine.claude",
+      "kind" : "choice",
+      "parent" : "meetingSummaryEngine",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSummaryEngine",
+      "title" : {
+        "note" : "a shared product name, the same in every language",
+        "source" : "verbatim",
+        "text" : "Claude"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "استخدام Claude لتلخيص الاجتماعات"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "използвай Claude за обобщения на срещи"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "používat Claude pro shrnutí schůzek"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "brug Claude til mødereferater"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "Claude für Meetingzusammenfassungen auswählen"
+          ],
+          "words" : [
+
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "χρήση του Claude για περιλήψεις συναντήσεων"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "use Claude for meeting summaries"
+          ],
+          "words" : [
+
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "usar Claude para resumir reuniones"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kasuta Claude'i koosolekute kokkuvõtete jaoks"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "käytä Claudea kokousten yhteenvetoihin"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "utiliser Claude pour résumer les réunions"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग का सारांश बनाने के लिए Claude इस्तेमाल करें"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koristi Claude za sažetke sastanaka"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "Claude használata a megbeszélések összefoglalásához"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "usare Claude per riassumere le riunioni"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議の要約にClaudeを使う"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의 요약에 Claude 사용"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "naudoti Claude susitikimų santraukoms"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "izmantot Claude sapulču kopsavilkumiem"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "uża Claude għas-sommarji tal-laqgħat"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "Claude gebruiken voor samenvattingen van vergaderingen"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "używaj Claude do podsumowań spotkań"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "usar Claude para resumir reuniões"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "folosește Claude pentru rezumatele ședințelor"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "использовать Claude для сводок встреч"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "používať Claude na zhrnutia stretnutí"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "uporabi Claude za povzetke sestankov"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "använd Claude för mötessammanfattningar"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantı özetleri için Claude kullan"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "використовувати Claude для підсумків зустрічей"
+          ],
+          "title" : "Claude",
+          "words" : [
+
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "dùng Claude để tóm tắt cuộc họp"
+          ],
+          "title" : "Claude cho tóm tắt cuộc họp",
+          "words" : [
+
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "用Claude生成会议摘要"
+          ],
+          "title" : "Claude会议摘要",
           "words" : [
 
           ]

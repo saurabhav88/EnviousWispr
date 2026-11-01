@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "mt",
+    "title": "ibdel",
+    "words": [],
+    "phrases": [
+      "iftaħ l-għażliet tal-magna għat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "mt",
+    "title": "żomm il-magna attwali tat-traskrizzjoni diretta",
+    "words": [],
+    "phrases": [
+      "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "mt",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet għadha mhix disponibbli"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "mt",
+    "title": "ibdel",
+    "words": [],
+    "phrases": [
+      "iftaħ l-għażliet tal-magna għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "mt",
+    "title": "żomm il-magna attwali tat-traskrizzjoni tal-laqgħat",
+    "words": [],
+    "phrases": [
+      "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+    ]
+  }
+}

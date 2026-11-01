@@ -672,6 +672,23 @@
    "section.previewEngine"
   ]
  },
+ "dictation.livePreview.appleUnsupported": {
+  "exempt": {},
+  "mapped": [
+   "dictation.tab.chimes",
+   "dictation.tab.clipboard",
+   "dictation.tab.engine",
+   "dictation.tab.livePreview",
+   "dictation.tab.microphone",
+   "dictation.tab.pill",
+   "livePreview",
+   "previewEngine",
+   "previewEngine.change",
+   "previewEngine.compare",
+   "section.livePreview",
+   "section.previewEngine"
+  ]
+ },
  "dictation.livePreview.choicesOpen": {
   "exempt": {},
   "mapped": [
@@ -914,6 +931,108 @@
    "section.keybindsShortcuts"
   ]
  },
+ "meetings.callApps": {
+  "exempt": {},
+  "mapped": [
+   "meetingCallApps",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.general": {
+  "exempt": {},
+  "mapped": [
+   "meetingCallDetection",
+   "meetingCaptureCallSound",
+   "meetingFollowsCallMute",
+   "meetingTurnsOffDictation",
+   "meetingUseCalendarForNames",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.models": {
+  "exempt": {},
+  "mapped": [
+   "meetingLiveWords",
+   "meetingLiveWords.apple",
+   "meetingLiveWords.keepCurrent",
+   "meetingLiveWords.universal",
+   "meetingTranscriptEngine",
+   "meetingTranscriptEngine.change",
+   "meetingTranscriptLanguage",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.permissions": {
+  "exempt": {
+   "statusLine": 4
+  },
+  "mapped": [
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.summaries": {
+  "exempt": {},
+  "mapped": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.appleIntelligence",
+   "meetingSummaryEngine.claude",
+   "meetingSummaryEngine.egOne",
+   "meetingSummaryEngine.gemini",
+   "meetingSummaryEngine.keepCurrent",
+   "meetingSummaryEngine.ollama",
+   "meetingSummaryEngine.openAI",
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.summaries.egOne": {
+  "exempt": {},
+  "mapped": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.change",
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.summaries.openAI": {
+  "exempt": {
+   "meetingSummarySetup": 6
+  },
+  "mapped": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.change",
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
  "snippets": {
   "exempt": {
    "switchingHandoffCard": 1
@@ -961,73 +1080,6 @@
   "exempt": {},
   "mapped": [
    "transcribeFile.steps"
-  ]
- },
- "dictation.livePreview.appleUnsupported": {
-  "exempt": {},
-  "mapped": [
-   "dictation.tab.chimes",
-   "dictation.tab.clipboard",
-   "dictation.tab.engine",
-   "dictation.tab.livePreview",
-   "dictation.tab.microphone",
-   "dictation.tab.pill",
-   "livePreview",
-   "previewEngine",
-   "previewEngine.change",
-   "previewEngine.compare",
-   "section.livePreview",
-   "section.previewEngine"
-  ]
- },
- "meetings.callApps": {
-  "exempt": {},
-  "mapped": [
-   "meetingCallApps",
-   "meetings.tab.callApps",
-   "meetings.tab.general",
-   "meetings.tab.models",
-   "meetings.tab.permissions"
-  ]
- },
- "meetings.general": {
-  "exempt": {},
-  "mapped": [
-   "meetingCallDetection",
-   "meetingCaptureCallSound",
-   "meetingFollowsCallMute",
-   "meetingTurnsOffDictation",
-   "meetingUseCalendarForNames",
-   "meetingWriteSummary",
-   "meetings.tab.callApps",
-   "meetings.tab.general",
-   "meetings.tab.models",
-   "meetings.tab.permissions"
-  ]
- },
- "meetings.permissions": {
-  "exempt": {
-   "statusLine": 4
-  },
-  "mapped": [
-   "meetings.tab.callApps",
-   "meetings.tab.general",
-   "meetings.tab.models",
-   "meetings.tab.permissions"
-  ]
- },
- "meetings.models": {
-  "exempt": {
-   "statusLine": 1
-  },
-  "mapped": [
-   "meetingLiveWords",
-   "meetingTranscriptEngine",
-   "meetingTranscriptLanguage",
-   "meetings.tab.callApps",
-   "meetings.tab.general",
-   "meetings.tab.models",
-   "meetings.tab.permissions"
   ]
  }
 }

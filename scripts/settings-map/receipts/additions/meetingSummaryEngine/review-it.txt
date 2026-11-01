@@ -1,0 +1,94 @@
+{
+  "meetings.tab.summaries": {
+    "language": "it",
+    "title": "riepiloghi",
+    "words": [],
+    "phrases": [
+      "impostazioni dei riepiloghi di EnviousMeet",
+      "scheda dei riepiloghi delle riunioni"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "it",
+    "title": "motore di riepilogo",
+    "words": [],
+    "phrases": [
+      "quale ia scrive i riepiloghi delle mie riunioni",
+      "impostazioni del motore di riepilogo delle riunioni"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "it",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "usare Apple Intelligence per riassumere le riunioni"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "it",
+    "title": "modifica",
+    "words": [],
+    "phrases": [
+      "cambiare l’ia per i riepiloghi delle riunioni"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "it",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "usare Claude per riassumere le riunioni"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "it",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 per i riepiloghi delle riunioni",
+      "EG-1 in arrivo per riassumere le riunioni"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "it",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "usare Google Gemini per riassumere le riunioni"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "it",
+    "title": "mantieni il motore di riepilogo attuale",
+    "words": [],
+    "phrases": [
+      "continua a usare la stessa ia per i riepiloghi delle riunioni"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "it",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "usare Ollama per riassumere le riunioni"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "it",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "usare OpenAI per riassumere le riunioni"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "it",
+    "title": "crea un riepilogo al termine della riunione",
+    "words": [],
+    "phrases": [
+      "riassumi la riunione quando finisce",
+      "riepilogo automatico delle riunioni"
+    ]
+  }
+}

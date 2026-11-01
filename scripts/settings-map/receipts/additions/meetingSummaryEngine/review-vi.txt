@@ -1,0 +1,98 @@
+{
+  "meetings.tab.summaries": {
+    "language": "vi",
+    "title": "tóm tắt",
+    "words": [],
+    "phrases": [
+      "cài đặt tóm tắt trong EnviousMeet",
+      "tab tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "vi",
+    "title": "công cụ tóm tắt cuộc họp",
+    "words": [
+      "mô hình tóm tắt cuộc họp"
+    ],
+    "phrases": [
+      "công cụ nào viết tóm tắt cuộc họp của tôi",
+      "cài đặt công cụ tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "vi",
+    "title": "Apple Intelligence cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng Apple Intelligence để tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "vi",
+    "title": "đổi công cụ tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "chọn công cụ khác để tóm tắt cuộc họp",
+      "mở danh sách công cụ tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "vi",
+    "title": "Claude cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng Claude để tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "vi",
+    "title": "EG-1 cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "EG-1 tóm tắt cuộc họp sắp ra mắt"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "vi",
+    "title": "Google Gemini cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng Google Gemini để tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "vi",
+    "title": "giữ công cụ tóm tắt cuộc họp hiện tại",
+    "words": [],
+    "phrases": [
+      "giữ nguyên công cụ tóm tắt cuộc họp đang dùng",
+      "đóng danh sách mà không đổi công cụ tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "vi",
+    "title": "Ollama cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng Ollama để tóm tắt cuộc họp"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "vi",
+    "title": "OpenAI cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng OpenAI để tóm tắt cuộc họp"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "vi",
+    "title": "tạo bản tóm tắt khi cuộc họp kết thúc",
+    "words": [],
+    "phrases": [
+      "tự động tóm tắt sau cuộc họp",
+      "bật tạo bản tóm tắt khi cuộc họp kết thúc",
+      "tắt tự động tóm tắt cuộc họp"
+    ]
+  }
+}

@@ -6,18 +6,19 @@ Local Swift CLI that drives the shipped `WordSuggestionService` over a JSONL cor
 
 ## Build
 
+Its sources are a target of the one eval package, `scripts/eval/Package.swift` (#4293), so all three runners share one build of the app's code:
+
 ```bash
-cd scripts/eval/alias_runner
-swift build -c release
+swift build -c release --package-path scripts/eval --product AliasRunner
 ```
 
-The built binary ends up at `scripts/eval/alias_runner/.build/release/AliasRunner`.
+The binary's location comes from SwiftPM: `python3 scripts/eval/eval_bin.py AliasRunner` prints it (the gates use the same resolver).
 
 ## Use
 
 ```bash
-./.build/release/AliasRunner \
-  --corpus ../corpus/alias-corpus-a.jsonl \
+"$(python3 scripts/eval/eval_bin.py AliasRunner)" \
+  --corpus scripts/eval/corpus/alias-corpus-a.jsonl \
   --out /tmp/alias-corpus-a-candidates.jsonl \
   --disable-timeout
 ```

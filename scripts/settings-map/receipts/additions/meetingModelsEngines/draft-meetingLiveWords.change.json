@@ -1,0 +1,259 @@
+{
+ "id": "meetingLiveWords.change",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تغيير",
+   "words": [],
+   "phrases": [
+    "تغيير محرك التفريغ المباشر للاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "промяна",
+   "words": [],
+   "phrases": [
+    "смяна на модела за транскрипция на срещата в реално време"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "změnit model pro živý přepis schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "skift",
+   "words": [],
+   "phrases": [
+    "skift model til live transskription af møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "Modell fürs Live-Transkript im Meeting ändern"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "αλλαγή μοντέλου για ζωντανή απομαγνητοφώνηση συνάντησης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "change model for live meeting transcription"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "cambiar modelo de transcripción en directo de reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "muuda koosoleku reaalajas transkriptsiooni mudelit"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "vaihda kokouksen reaaliaikaisen litteroinnin mallia"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "changer le modèle de transcription en direct des réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लाइव ट्रांसक्रिप्शन का मॉडल बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "promijeni model za prijepis sastanka uživo"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "élő értekezlet-átírás modelljének cseréje"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "modifica",
+   "words": [],
+   "phrases": [
+    "cambiare modello per la trascrizione in tempo reale delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議のリアルタイム文字起こしモデルを変更"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "변경",
+   "words": [],
+   "phrases": [
+    "회의 실시간 받아쓰기 모델 바꾸기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimo transkribavimo realiuoju laiku modelį"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "mainīt sapulces reāllaika transkripcijas modeli"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "ibdel il-mudell għat-traskrizzjoni diretta tal-laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "model voor live transcriptie van vergaderingen wijzigen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "zmień model transkrypcji spotkania na żywo"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "mudar modelo de transcrição de reuniões em tempo real"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "modifică",
+   "words": [],
+   "phrases": [
+    "schimbă modelul pentru transcrierea ședinței în timp real"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "сменить модель расшифровки встречи в реальном времени"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "zmeniť model pre živý prepis stretnutia"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "zamenjaj model za sprotni prepis sestanka"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "byt modell för transkribering av möten i realtid"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "toplantıyı anlık yazıya dökme modelini değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "змінити модель розшифрування зустрічі в реальному часі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "thay đổi",
+   "words": [],
+   "phrases": [
+    "đổi mô hình chép lời cuộc họp theo thời gian thực"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "更改",
+   "words": [],
+   "phrases": [
+    "更换会议实时转写模型"
+   ]
+  }
+ ]
+}

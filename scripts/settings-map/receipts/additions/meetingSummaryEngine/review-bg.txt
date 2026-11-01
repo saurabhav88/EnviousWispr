@@ -1,0 +1,98 @@
+{
+  "meetings.tab.summaries": {
+    "language": "bg",
+    "title": "обобщения",
+    "words": [],
+    "phrases": [
+      "настройки за обобщения на срещи",
+      "раздел за обобщения в EnviousMeet"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "bg",
+    "title": "модул за обобщаване",
+    "words": [
+      "модул за обобщения"
+    ],
+    "phrases": [
+      "кой изкуствен интелект обобщава срещите ми",
+      "настройки на модула за обобщаване на срещи"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "bg",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "използвай Apple Intelligence за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "bg",
+    "title": "промяна",
+    "words": [],
+    "phrases": [
+      "смяна на изкуствения интелект за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "bg",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "използвай Claude за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "bg",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 за обобщения на срещи",
+      "кога ще е достъпен EG-1 за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "bg",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "използвай Google Gemini за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "bg",
+    "title": "запазване на текущия модул за обобщаване",
+    "words": [],
+    "phrases": [
+      "остави същия изкуствен интелект за обобщенията на срещите"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "bg",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "Ollama за обобщения на срещи"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "bg",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "използване на OpenAI за обобщения на срещи"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "bg",
+    "title": "автоматично обобщаване след края на срещата",
+    "words": [
+      "автоматично обобщаване"
+    ],
+    "phrases": [
+      "създавай обобщение автоматично, когато срещата приключи",
+      "изключи автоматичните обобщения след срещи"
+    ]
+  }
+}

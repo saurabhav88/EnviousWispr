@@ -36,6 +36,8 @@ class RunnerContract(unittest.TestCase):
         # stand-ins with the real output contracts (#3729 PR-C).
         shutil.copyfile(RUNNER.with_name('lib') / 'validation-receipt.py', lib / 'validation-receipt.py')
         shutil.copyfile(RUNNER.with_name('lib') / 'prepare-toolchain-syntax.py', lib / 'prepare-toolchain-syntax.py')
+        # #4293: the real per-checkout build lock; its file lives inside this fixture.
+        shutil.copyfile(RUNNER.with_name('lib') / 'build-folder-lock.py', lib / 'build-folder-lock.py')
         # Private COPY of the machine queue: a missed rewrite must never acquire
         # the developer's real slot from a self-test fixture.
         queue = (RUNNER.parent / 'local-ci-queue.py').read_text()
@@ -442,6 +444,97 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.run_runner('--configuration', 'both')
         self.assertEqual(self.configurations(), ['Debug', 'Release'])
 
+    # ── #4293: the local Debug lane builds in Dev inside .derivedData/Dev ──────────
+    def shared_folder_env(self, identities='  1) ABC "EnviousWispr Dev"\n     1 valid identities found\n', security_rc=0):
+        """No DERIVED_DATA_PATH, and a stub `security` answering the identity probe."""
+        security = self.root / 'bin/security'
+        security.write_text('#!/usr/bin/env bash\necho "security $*" >> "$TRACE"\n'
+                            f'printf %s {identities!r}\nexit {security_rc}\n')
+        security.chmod(0o755)
+        self.env.pop('DERIVED_DATA_PATH')
+        (self.root / '.derivedData/Test').mkdir(parents=True, exist_ok=True)
+
+    def derived_paths(self, rows):
+        return [row[row.index('-derivedDataPath') + 1] for row in rows]
+
+    def test_debug_lane_builds_in_dev_inside_the_dev_apps_folder(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None)
+        dev = str(self.root / '.derivedData/Dev')
+        builds = [r for r in self.calls if r[0] == 'build-for-testing']
+        self.assertEqual([r[r.index('-configuration') + 1] for r in builds], ['Dev', 'Dev'])
+        self.assertEqual(self.derived_paths(builds), [dev, dev])
+        self.assertEqual(self.critical_builds(), ['Dev'])
+        self.assertIn('security find-identity -p codesigning', self.trace())
+        self.assertIn('verdict:Debug lane:required=unset', self.trace())
+        self.assertIn('Debug lane: Xcode configuration Dev in ' + dev, result.stdout)
+        data = self.receipt_data()
+        self.assertEqual((data['configuration'], data['xcode_configuration']), ('Debug', 'Dev'))
+        self.assertTrue((self.root / '.derivedData/.ew-build.lock').is_file())
+
+    def test_without_the_dev_identity_the_debug_lane_keeps_debug_in_the_test_folder(self):
+        self.shared_folder_env(identities='     0 valid identities found\n')
+        result = self.run_runner()
+        self.assertEqual(self.configurations(), ['Debug'])
+        self.assertEqual(self.derived_paths(self.tests), [str(self.root / '.derivedData/Test')])
+        self.assertIn("no 'EnviousWispr Dev' signing identity", result.stdout)
+        self.assertEqual(self.receipt_data()['xcode_configuration'], 'Debug')
+
+    def test_an_identity_probe_error_stops_before_any_build(self):
+        self.shared_folder_env(identities='security: SecKeychainSearchCopyNext failed\n', security_rc=1)
+        result = self.run_runner(rc=2)
+        self.assertEqual(self.calls, [])
+        self.assertIn('could not list code-signing identities', result.stdout)
+
+    def test_ci_mode_keeps_debug_even_with_the_identity(self):
+        self.shared_folder_env()
+        self.run_runner(CI='true')
+        self.assertEqual(self.configurations(), ['Debug'])
+        self.assertNotIn('security find-identity -p codesigning', self.trace())
+
+    def test_both_keeps_release_in_the_test_folder(self):
+        self.shared_folder_env()
+        self.run_runner('--configuration', 'both')
+        self.assertEqual(self.configurations(), ['Dev', 'Release'])
+        self.assertEqual(self.derived_paths(self.tests),
+                         [str(self.root / '.derivedData/Dev'), str(self.root / '.derivedData/Test')])
+        self.assertEqual(self.trace().count('seed'), 2)  # each lane folder is seeded
+
+    def test_release_only_never_probes_or_uses_the_dev_folder(self):
+        self.shared_folder_env()
+        self.run_runner('--configuration', 'Release')
+        self.assertEqual(self.derived_paths(self.tests), [str(self.root / '.derivedData/Test')])
+        self.assertNotIn('security find-identity -p codesigning', self.trace())
+
+    def test_the_build_lock_is_held_for_the_whole_run(self):
+        self.shared_folder_env()
+        hold, started = self.root / 'hold', self.root / 'started'
+        hold.write_text('')
+        env = dict(self.env, HOLD=str(hold), STARTED=str(started))
+        proc = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'), '--log-dir',
+                                 str(self.root / 'logs'), '--serial'], env=env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.time() + 10
+            while not started.exists() and time.time() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(started.exists(), 'the fixture test command never started')
+            probe = os.open(self.root / '.derivedData/.ew-build.lock', os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(probe)
+        finally:
+            hold.unlink()
+            out, _ = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 0, out)
+        probe = os.open(self.root / '.derivedData/.ew-build.lock', os.O_RDWR)
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released at exit
+        finally:
+            os.close(probe)
+
     def test_invalid_configuration_before_setup(self):
         self.run_runner('--configuration', 'Fast', rc=2)
         self.assertEqual(self.calls, [])
@@ -664,35 +757,53 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
 
 class EvalCompileContract(unittest.TestCase):
     """The real compile-eval-packages.sh against a recorded `swift` and pin seeder:
-    three Release compiles, serially, each in its own package path, tracked pins."""
+    ONE pinned Release compile of the scripts/eval package (#4293), then a bin-path
+    query, and a refusal when any runner binary is missing."""
 
-    def test_three_serial_pinned_release_compiles(self):
+    def _run(self, root, bin_dir, calls, built):
+        swift = bin_dir / 'swift'
+        swift.write_text('#!/usr/bin/env bash\necho "$*" >> "$SWIFT_CALLS"\n'
+                         'case "$*" in *--show-bin-path*) echo "warning: noise"; echo "$FAKE_BIN";; esac\n')
+        swift.chmod(0o755)
+        fake_bin = root / 'fakebin'
+        fake_bin.mkdir(exist_ok=True)
+        for exe in built:
+            p = fake_bin / exe
+            p.write_text('#!/bin/sh\n')
+            p.chmod(0o755)
+        return subprocess.run(['bash', 'scripts/ci/compile-eval-packages.sh'], cwd=root, text=True,
+                              env=dict(os.environ, PATH=f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
+                                       SWIFT_CALLS=str(calls), FAKE_BIN=str(fake_bin)),
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+
+    def _fixture(self, tmp):
+        root = Path(tmp)
+        (root / 'scripts/ci').mkdir(parents=True)
+        shutil.copyfile(RUNNER.parent / 'ci/compile-eval-packages.sh', root / 'scripts/ci/compile-eval-packages.sh')
+        (root / 'scripts/ci/seed-eval-package-pins.py').write_text(
+            'import sys\nopen(sys.argv[-1] + "/.seeded", "w").write("x")\n')
+        (root / 'Package.resolved').write_text('{}')
+        (root / 'scripts/eval').mkdir(parents=True)
+        bin_dir = root / 'bin'
+        bin_dir.mkdir()
+        return root, bin_dir, root / 'swift-calls'
+
+    def test_one_pinned_release_compile_then_every_binary_checked(self):
         with tempfile.TemporaryDirectory(prefix='ew-eval-contract-') as tmp:
-            root = Path(tmp)
-            (root / 'scripts/ci').mkdir(parents=True)
-            shutil.copyfile(RUNNER.parent / 'ci/compile-eval-packages.sh', root / 'scripts/ci/compile-eval-packages.sh')
-            (root / 'scripts/ci/seed-eval-package-pins.py').write_text(
-                'import sys\nopen(sys.argv[-1] + ".seeded", "w").write("x")\n')
-            (root / 'Package.resolved').write_text('{}')
-            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
-                (root / 'scripts/eval' / pkg).mkdir(parents=True)
-            bin_dir = root / 'bin'
-            bin_dir.mkdir()
-            swift = bin_dir / 'swift'
-            swift.write_text('#!/usr/bin/env bash\necho "$*" >> "$SWIFT_CALLS"\n')
-            swift.chmod(0o755)
-            calls = root / 'swift-calls'
-            r = subprocess.run(['bash', 'scripts/ci/compile-eval-packages.sh'], cwd=root, text=True,
-                               env=dict(os.environ, PATH=f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
-                                        SWIFT_CALLS=str(calls)),
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+            root, bin_dir, calls = self._fixture(tmp)
+            r = self._run(root, bin_dir, calls, ('AppleIntelligenceRunner', 'AliasRunner', 'PromptRender'))
             self.assertEqual(r.returncode, 0, r.stdout)
-            rows = calls.read_text().splitlines()
-            self.assertEqual(rows, [f'build -c release --package-path scripts/eval/{p} --only-use-versions-from-resolved-file'
-                                    for p in ('apple_runner', 'alias_runner', 'prompt_render')])
-            for pkg in ('apple_runner', 'alias_runner', 'prompt_render'):
-                self.assertTrue((root / f'scripts/eval/{pkg}.seeded').exists())
+            self.assertEqual(calls.read_text().splitlines(), [
+                'build -c release --package-path scripts/eval --only-use-versions-from-resolved-file',
+                'build -c release --package-path scripts/eval --show-bin-path'])
+            self.assertTrue((root / 'scripts/eval/.seeded').exists())
 
+    def test_a_missing_runner_binary_fails_the_step(self):
+        with tempfile.TemporaryDirectory(prefix='ew-eval-contract-') as tmp:
+            root, bin_dir, calls = self._fixture(tmp)
+            r = self._run(root, bin_dir, calls, ('AppleIntelligenceRunner', 'PromptRender'))
+            self.assertNotEqual(r.returncode, 0, r.stdout)
+            self.assertIn('AliasRunner was not built', r.stdout)
 
 
 class BuildEntrypointHookContract(unittest.TestCase):

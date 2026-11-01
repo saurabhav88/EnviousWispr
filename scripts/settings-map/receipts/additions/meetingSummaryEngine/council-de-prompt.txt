@@ -1,0 +1,26 @@
+You are reviewing German Settings-search vocabulary for a macOS dictation app (EnviousWispr) with a meeting recorder (EnviousMeet). Each block lists short "words" and everyday "phrases" a German user might type into the app's Settings search to find one place. Use du-form, no dashes of any kind, lowercase except nouns. The interface title is supplied separately and is not part of the block. Each block must fit its own place better than the others, and the six engine cards must not compete with the AI Polish (KI-Nachbearbeitung) provider choices of the same names.
+
+1. Place: die Karte „Zusammenfassungs-Engine“ im Tab Zusammenfassungen von EnviousMeet: wählt die KI, die Meeting-Zusammenfassungen erstellt (Apple Intelligence, EG-1 bald verfügbar, Ollama, OpenAI, Google Gemini, Claude), getrennt von der KI-Nachbearbeitung fürs Diktieren.
+   Block: {"words": ["Zusammenfassungsmodell"], "phrases": ["welche KI schreibt meine Meeting-Zusammenfassungen", "Einstellungen der KI für meine Meeting-Zusammenfassungen"]}
+2. Place: die Schaltfläche „Ändern“ auf dieser Karte: öffnet die Engine-Karten.
+   Block: {"words": [], "phrases": ["KI für deine Meeting-Zusammenfassungen ändern"]}
+3. Place: der Link „Aktuelle Zusammenfassungs-Engine beibehalten“: schließt die Karten ohne Änderung.
+   Block: {"words": [], "phrases": ["behalte die gleiche KI für meine Meeting-Zusammenfassungen"]}
+4. Place: die Karte Apple Intelligence als Engine für Meeting-Zusammenfassungen (nicht die gleichnamige Wahl der KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["nutze Apple Intelligence für deine Meeting-Zusammenfassungen"]}
+5. Place: die Karte EG-1 als Engine für Meeting-Zusammenfassungen, bald verfügbar (nicht die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["EG-1 für Meeting-Zusammenfassungen kommt bald"]}
+6. Place: die Karte Ollama als Engine für Meeting-Zusammenfassungen (nicht die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["nutze Ollama für Meeting-Zusammenfassungen"]}
+7. Place: die Karte OpenAI als Engine für Meeting-Zusammenfassungen (nicht die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["OpenAI für deine Meeting-Zusammenfassungen nutzen"]}
+8. Place: die Karte Google Gemini als Engine für Meeting-Zusammenfassungen (nicht die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["nutze Google Gemini für meine Meeting-Zusammenfassungen"]}
+9. Place: die Karte Claude als Engine für Meeting-Zusammenfassungen (nicht die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["nutze Claude für meine Meeting-Zusammenfassungen"]}
+10. Place: der Tab „Zusammenfassungen“ der EnviousMeet-Seite.
+   Block: {"words": [], "phrases": ["Einstellungen für Zusammenfassungen in EnviousMeet", "Tab für Meeting-Zusammenfassungen öffnen"]}
+11. Place: der Schalter „Zusammenfassung erstellen, wenn ein Meeting endet“, jetzt im Tab Zusammenfassungen; die Engine dieses Tabs schreibt die Zusammenfassung (nicht mehr die KI-Nachbearbeitung).
+   Block: {"words": [], "phrases": ["Meeting-Zusammenfassungen nach jedem Meeting automatisch erstellen", "erstelle nach dem Meeting automatisch eine Zusammenfassung"]}
+
+For each block answer "N. OK" or "N. <corrected JSON block>" plus a one-sentence reason. Keep 0 to 6 words and 1 to 3 phrases.

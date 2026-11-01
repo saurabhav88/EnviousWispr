@@ -1,0 +1,227 @@
+{
+ "id": "meetingTranscriptEngine.change",
+ "blocks": {
+  "ar": {
+   "title": "تغيير محرك تفريغ الاجتماعات",
+   "words": [],
+   "phrases": [
+    "فتح خيارات محرك كتابة نص الاجتماع بعد انتهائه في EnviousMeet"
+   ]
+  },
+  "bg": {
+   "title": "смяна на модела за пълната транскрипция след срещата",
+   "words": [],
+   "phrases": [
+    "отвори моделите за пълната транскрипция след срещата в EnviousMeet"
+   ]
+  },
+  "cs": {
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "otevřít výběr modulu pro přepis po skončení schůzky v EnviousMeet"
+   ]
+  },
+  "da": {
+   "title": "skift motor til mødets fulde transskription",
+   "words": [],
+   "phrases": [
+    "vis valgmulighederne for motor til den fulde transskription efter mødet i EnviousMeet"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "Engine für das Transkript nach dem Meeting ändern"
+   ]
+  },
+  "el": {
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "άνοιξε τις επιλογές μηχανής για την πλήρη απομαγνητοφώνηση μετά τη συνάντηση στο EnviousMeet"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "open the full meeting transcript engine choices in EnviousMeet"
+   ]
+  },
+  "es": {
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "abrir las opciones del motor de transcripción completa de reuniones en EnviousMeet"
+   ]
+  },
+  "et": {
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "ava koosoleku lõpliku transkriptsiooni mootorite valik"
+   ]
+  },
+  "fi": {
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "avaa kokouksen lopullisen litteroinnin moottorivaihtoehdot"
+   ]
+  },
+  "fr": {
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "afficher les moteurs disponibles pour transcrire toute la réunion après l’enregistrement dans EnviousMeet"
+   ]
+  },
+  "hi": {
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "EnviousMeet में मीटिंग के बाद पूरी ट्रांसक्रिप्ट बनाने वाला इंजन बदलने का बटन दिखाएँ"
+   ]
+  },
+  "hr": {
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "otvori odabir modela za potpuni prijepis nakon sastanka"
+   ]
+  },
+  "hu": {
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "motorválasztó megnyitása a megbeszélés utáni átíráshoz az EnviousMeetben"
+   ]
+  },
+  "it": {
+   "title": "cambia motore di trascrizione delle riunioni",
+   "words": [],
+   "phrases": [
+    "aprire le schede dei motori per la trascrizione completa delle riunioni dopo la registrazione in EnviousMeet"
+   ]
+  },
+  "ja": {
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議の全文文字起こしエンジンの選択肢を開く"
+   ]
+  },
+  "ko": {
+   "title": "회의 녹취록 엔진 변경",
+   "words": [],
+   "phrases": [
+    "회의 후 전체 녹취록을 작성할 엔진 선택 카드 열기"
+   ]
+  },
+  "lt": {
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "atidaryti variklio pasirinkimą susitikimui transkribuoti po įrašymo"
+   ]
+  },
+  "lv": {
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "atvērt pilna sapulces atšifrējuma dziņu izvēli"
+   ]
+  },
+  "mt": {
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "iftaħ l-għażliet tal-magna għat-traskrizzjoni sħiħa tal-laqgħat f'EnviousMeet"
+   ]
+  },
+  "nl": {
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "enginekeuze voor volledige vergadertranscripten in EnviousMeet openen"
+   ]
+  },
+  "pl": {
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "otwórz wybór silnika pełnej transkrypcji po spotkaniu w EnviousMeet"
+   ]
+  },
+  "pt": {
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "abrir as opções para trocar o motor da transcrição completa de reuniões no EnviousMeet"
+   ]
+  },
+  "ro": {
+   "title": "schimbă",
+   "words": [],
+   "phrases": [
+    "arată opțiunile de motor pentru transcrierea completă după încheierea întâlnirii în EnviousMeet"
+   ]
+  },
+  "ru": {
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "открыть выбор движка для полной расшифровки встречи после её завершения в EnviousMeet"
+   ]
+  },
+  "sk": {
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "otvoriť výber modelu na úplný prepis stretnutia v EnviousMeet"
+   ]
+  },
+  "sl": {
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "odpri izbiro pogona za celotni prepis po sestanku"
+   ]
+  },
+  "sv": {
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "öppna motorvalen för transkribering efter mötet i EnviousMeet"
+   ]
+  },
+  "tr": {
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "EnviousMeet'te toplantı sonrası döküm motorunu değiştirmek için seçenekleri aç"
+   ]
+  },
+  "uk": {
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "відкрити вибір рушія для повної стенограми зустрічі в EnviousMeet"
+   ]
+  },
+  "vi": {
+   "title": "đổi công cụ tạo bản chép lời sau cuộc họp",
+   "words": [],
+   "phrases": [
+    "mở danh sách công cụ tạo bản chép lời sau cuộc họp trong EnviousMeet"
+   ]
+  },
+  "zh": {
+   "title": "更换会后转写引擎",
+   "words": [],
+   "phrases": [
+    "打开会后完整会议转写的引擎选择列表"
+   ]
+  }
+ }
+}

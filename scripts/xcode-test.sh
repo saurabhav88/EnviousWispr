@@ -32,6 +32,7 @@ if [ "${1:-}" = "--self-test" ]; then
   python3 "$PROJECT_ROOT/scripts/local-test-groups-test.py"
   python3 "$PROJECT_ROOT/scripts/local-test-plan-test.py"
   python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" --self-test
+  python3 "$PROJECT_ROOT/scripts/lib/build-folder-lock-test.py"
   exec python3 "$PROJECT_ROOT/scripts/local-ci-queue-test.py"
 fi
 # #3524: keep the tracked pre-push hook switched on (scripts/githooks/install.sh owns the
@@ -186,6 +187,36 @@ if [ -n "$RESULT_BUNDLE_PATH" ] && [ "$CONFIGURATION" = "both" ]; then
   exit 2
 fi
 
+# #4293: this block is the one owner of which Xcode configuration and folder the
+# local Debug lane builds in. The lane keeps its logical name "Debug" (DEBUG
+# compile conditions) everywhere: logs, verdicts, EW_EXPECTED_DEBUG_TESTS and the
+# receipt's `configuration`. Locally it builds in the Dev configuration inside
+# .derivedData/Dev, the dev app's own folder: Dev has Debug's compiler flags
+# (Project.swift devConfigSettings), so the modules the dev app compiled are
+# reused instead of compiled a second time (measured: 66 s off a fresh worktree's
+# test build, 48 s after a public-API edit in EnviousWisprCore). Building the
+# scheme in Dev also builds and signs the dev app, so this needs the self-signed
+# "EnviousWispr Dev" identity; probed like scripts/build-dev-app.sh step 1, without
+# `-v`, which hides a usable self-signed identity. An explicit DERIVED_DATA_PATH,
+# CI mode and a machine without that identity keep the Debug configuration in
+# $DERIVED_DATA. The Release lane never moves.
+DEBUG_XCODE_CONFIG="Debug"
+DEBUG_DERIVED_DATA="$DERIVED_DATA"
+if [ "$CONFIGURATION" != "Release" ] && [ -z "${DERIVED_DATA_PATH:-}" ] && [ -z "${CI:-}" ]; then
+  if SIGNING_IDENTITIES="$(security find-identity -p codesigning 2>&1)"; then
+    if printf '%s\n' "$SIGNING_IDENTITIES" | grep -qF '"EnviousWispr Dev"'; then
+      DEBUG_XCODE_CONFIG="Dev"
+      DEBUG_DERIVED_DATA="$PROJECT_ROOT/.derivedData/Dev"
+    else
+      echo "==> no 'EnviousWispr Dev' signing identity: the Debug lane builds in the Debug configuration ($DERIVED_DATA) and does not reuse the dev app's build"
+    fi
+  else
+    echo "ERROR: could not list code-signing identities to choose the Debug lane's build folder:" >&2
+    printf '%s\n' "$SIGNING_IDENTITIES" >&2
+    exit 2
+  fi
+fi
+
 if [ "$TEST_EXECUTION" = "grouped" ] && {
   [ "$CONFIGURATION" != "Debug" ] || [ "${#TEST_ARGS[@]}" -gt 0 ] ||
   [ -n "${CI:-}" ] || [ -n "${EW_LANE_REQUIRED_BUNDLES+set}" ];
@@ -256,6 +287,16 @@ exec 9<>"$CI_QUEUE_PATH"
 python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 &
 CI_QUEUE_PID=$!
 if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
+# #4293: this checkout's build lock (scripts/lib/build-folder-lock.py), held on
+# descriptor 8 until exit, so scripts/build-dev-app.sh and scripts/build-dev-only.sh
+# wait for this run instead of building in the shared .derivedData/Dev beside it.
+# Taken after the account queue and before toolchain preparation, generation and
+# seeding; the same owned-async-job pattern as the queue above.
+BUILD_LOCK_PATH="$(python3 "$PROJECT_ROOT/scripts/lib/build-folder-lock.py" prepare "$PROJECT_ROOT")"
+exec 8<>"$BUILD_LOCK_PATH"
+python3 "$PROJECT_ROOT/scripts/lib/build-folder-lock.py" acquire 8 "$PROJECT_ROOT" &
+BUILD_LOCK_PID=$!
+if wait "$BUILD_LOCK_PID"; then :; else exit "$?"; fi
 PHASE_START=$SECONDS
 # Owner: scripts/lib/log-dir.sh, which has its own two-way suite. Creating the
 # directory is deliberately the caller's job — a resolver with a side effect
@@ -295,11 +336,20 @@ fi
 # Generate the Xcode project (gitignored, never committed) — only when a
 # generation input actually changed (#2157 chunk C).
 # #4089: source-built package interfaces otherwise shadow the optimized compiler libraries.
-python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" "$DERIVED_DATA"
+# The folders this run's lanes build in (#4293: Debug may use .derivedData/Dev).
+LANE_DERIVED_DATA=()
+[ "$CONFIGURATION" != "Release" ] && LANE_DERIVED_DATA+=("$DEBUG_DERIVED_DATA")
+if [ "$CONFIGURATION" != "Debug" ] && [ "${LANE_DERIVED_DATA[*]:-}" != "$DERIVED_DATA" ]; then
+  LANE_DERIVED_DATA+=("$DERIVED_DATA")
+fi
+for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
+  python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" "$lane_dd"
+done
 ew_ensure_generated "$PROJECT_ROOT"
 echo "==> phase generate: $((SECONDS - PHASE_START))s"
 
-printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "$DERIVED_DATA"
+printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "${LANE_DERIVED_DATA[*]}"
+[ "$CONFIGURATION" != "Release" ] && printf "==> Debug lane: Xcode configuration %s in %s\n" "$DEBUG_XCODE_CONFIG" "$DEBUG_DERIVED_DATA"
 # EVERY lane now names its result bundle, because the verdict is read from it
 # (#2401). `-resultBundlePath` does not CREATE the artifact — `xcodebuild test`
 # writes one into `<derivedData>/Logs/Test/` on every run regardless, measured at
@@ -370,8 +420,8 @@ PY
   echo "==> $label ran all ${#TEST_ARGS[@]} selection(s)"
 }
 
-run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build settings
-  local scheme="$1" config="$2" log="$3" bundle="$4"; shift 4
+run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $4=derived data $5=logfile $6=bundle $7...=extra build settings
+  local scheme="$1" config="$2" xcode_config="$3" derived="$4" log="$5" bundle="$6"; shift 6
   # xcodebuild refuses to overwrite an existing bundle. Scoped to a path that
   # actually names one: `--result-bundle-path` is caller-supplied, and an
   # unscoped `rm -rf` on a caller-supplied path is a sharp edge nobody needs.
@@ -391,8 +441,8 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   if [ "$config" = Debug ] && [ "$FULL_VALIDATION" = 1 ]; then
     xcodebuild build-for-testing \
       -project "$PROJECT" -scheme EnviousWispr-Critical \
-      -configuration "$config" \
-      -derivedDataPath "$DERIVED_DATA" -destination "$DEST" \
+      -configuration "$xcode_config" \
+      -derivedDataPath "$derived" -destination "$DEST" \
       -onlyUsePackageVersionsFromResolvedFile \
       ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "$@" \
       2>&1 | tee "$LOG_DIR/xcode-build-critical-debug.log" || return "$?"
@@ -400,8 +450,8 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   if [ "$TEST_EXECUTION" = "grouped" ]; then
     local build_start=$SECONDS supervisor rc
     xcodebuild build-for-testing \
-      -project "$PROJECT" -scheme "$scheme" -configuration "$config" \
-      -derivedDataPath "$DERIVED_DATA" -destination "$DEST" \
+      -project "$PROJECT" -scheme "$scheme" -configuration "$xcode_config" \
+      -derivedDataPath "$derived" -destination "$DEST" \
       -onlyUsePackageVersionsFromResolvedFile \
       ARCHS=arm64 VALID_ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "$@" \
       2>&1 | tee "$LOG_DIR/xcode-build-debug.log"
@@ -409,7 +459,7 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
     # Background only inside this supervised runner so the shell can handle a
     # signal to its OWN PID while waiting, forward it, and wait for cleanup.
     python3 "$PROJECT_ROOT/scripts/local-test-groups.py" \
-      --products "$DERIVED_DATA/Build/Products" --scheme "$scheme" \
+      --products "$derived/Build/Products" --scheme "$scheme" \
       --log "$log" --result-bundle "$bundle" &
     supervisor=$!
     if wait "$supervisor"; then rc=0; else rc=$?; fi
@@ -430,8 +480,8 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   TEST_RUNNER_CI="${CI:-}" xcodebuild test \
     -project "$PROJECT" \
     -scheme "$scheme" \
-    -configuration "$config" \
-    -derivedDataPath "$DERIVED_DATA" \
+    -configuration "$xcode_config" \
+    -derivedDataPath "$derived" \
     -destination "$DEST" \
     -onlyUsePackageVersionsFromResolvedFile \
     ARCHS=arm64 \
@@ -460,42 +510,51 @@ run_lane() {  # $1=scheme $2=config $3=logfile $4=bundle $5...=extra build setti
   fi
 }
 
-# #2157 chunk A: seed before the first lane resolves anything.
-ew_seed_consume "$PROJECT_ROOT" "$DERIVED_DATA"
+# #2157 chunk A: seed before the first lane resolves anything, in every folder a
+# lane builds in (#4293: the Debug lane may use .derivedData/Dev).
 # Same fallback as the dev-app script: a seeded tree proves it resolves before
 # either lane depends on it, so a damaged clone degrades to a slow run instead of
 # a wedged DerivedData nobody can clear without deleting it by hand.
-RESOLVE_SCHEME="$DEBUG_SCHEME"
-[ "$CONFIGURATION" = "Release" ] && RESOLVE_SCHEME="$RELEASE_SCHEME"
-ew_seed_resolve_or_unseed "$DERIVED_DATA" \
-  xcodebuild -resolvePackageDependencies \
-    -project "$PROJECT" \
-    -scheme "$RESOLVE_SCHEME" \
-    -derivedDataPath "$DERIVED_DATA"
+for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
+  ew_seed_consume "$PROJECT_ROOT" "$lane_dd"
+  if [ "$CONFIGURATION" != "Release" ] && [ "$lane_dd" = "$DEBUG_DERIVED_DATA" ]; then
+    RESOLVE_SCHEME="$DEBUG_SCHEME"
+  else
+    RESOLVE_SCHEME="$RELEASE_SCHEME"
+  fi
+  ew_seed_resolve_or_unseed "$lane_dd" \
+    xcodebuild -resolvePackageDependencies \
+      -project "$PROJECT" \
+      -scheme "$RESOLVE_SCHEME" \
+      -derivedDataPath "$lane_dd"
+done
 
 DEBUG_EXECUTED=0
 DEBUG_BUNDLES=""
 if [ "$CONFIGURATION" != "Release" ]; then
   PHASE_START=$SECONDS
-  run_lane "$DEBUG_SCHEME" Debug "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
+  run_lane "$DEBUG_SCHEME" Debug "$DEBUG_XCODE_CONFIG" "$DEBUG_DERIVED_DATA" \
+    "$LOG_DIR/xcode-test-debug.log" "$DEBUG_RESULT_BUNDLE"
   echo "==> phase debug build+test: $((SECONDS - PHASE_START))s"
   DEBUG_EXECUTED="${EW_LANE_EXECUTED_COUNT:-0}"
   DEBUG_BUNDLES="${EW_LANE_JUDGED_BUNDLES:-}"
 fi
 if [ "$CONFIGURATION" != "Debug" ]; then
-  run_lane "$RELEASE_SCHEME" Release "$LOG_DIR/xcode-test-release.log" \
-    "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
+  run_lane "$RELEASE_SCHEME" Release Release "$DERIVED_DATA" \
+    "$LOG_DIR/xcode-test-release.log" "$RELEASE_RESULT_BUNDLE" ENABLE_TESTABILITY=YES
 fi
 # A retained package tree may predate the current lockfile; the seed resolver
 # only runs for a freshly consumed snapshot. Publish after the selected test
 # build refreshed packages and passed, never before a Release-only run (#3044).
-ew_seed_publish "$PROJECT_ROOT" "$DERIVED_DATA"
+for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
+  ew_seed_publish "$PROJECT_ROOT" "$lane_dd"
+done
 
 [ "$FULL_VALIDATION" = 1 ] || exit 0
 # The standalone eval packages compile only here (the PR check stopped in #3729 PR-B):
 # serially, Release, each in its own persistent .build directory, held to tracked pins.
 PHASE_START=$SECONDS
-echo "==> eval packages: compiling apple_runner, alias_runner, prompt_render (Release, serial)"
+echo "==> eval packages: compiling the eval runner package scripts/eval (Release)"
 if bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
   echo "==> phase eval compile: $((SECONDS - PHASE_START))s"
   echo "==> eval packages verdict: PASS"
@@ -509,7 +568,8 @@ if [ -n "$NO_RECEIPT_REASON" ]; then
   exit 0
 fi
 if python3 "$RECEIPT_HELPER" publish --root "$PROJECT_ROOT" --start "$START_IDENTITY" \
-    --field configuration=Debug --field "scheme=$DEBUG_SCHEME" \
+    --field configuration=Debug --field "xcode_configuration=$DEBUG_XCODE_CONFIG" \
+    --field "scheme=$DEBUG_SCHEME" \
     --field "bundles=$DEBUG_BUNDLES" --field "executed_tests=$DEBUG_EXECUTED" \
     --field debug_verdict=PASS --field eval_verdict=PASS \
     --field "result_bundle=$DEBUG_RESULT_BUNDLE" >/dev/null; then

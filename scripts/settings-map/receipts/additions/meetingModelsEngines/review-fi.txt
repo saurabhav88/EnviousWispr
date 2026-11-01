@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "fi",
+    "title": "vaihda",
+    "words": [],
+    "phrases": [
+      "avaa kokouksen reaaliaikaisen litteroinnin moottorivaihtoehdot"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "fi",
+    "title": "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+    "words": [],
+    "phrases": [
+      "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "fi",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple-moottori kokouksen lopulliseen litterointiin ei ole vielä saatavilla"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "fi",
+    "title": "vaihda",
+    "words": [],
+    "phrases": [
+      "avaa kokouksen lopullisen litteroinnin moottorivaihtoehdot"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "fi",
+    "title": "säilytä nykyinen litterointimoottori",
+    "words": [],
+    "phrases": [
+      "käytä edelleen samaa moottoria kokouksen lopulliseen litterointiin"
+    ]
+  }
+}

@@ -18,7 +18,7 @@ MODELS=("$@")
 [ ${#MODELS[@]} -gt 0 ] || { echo "FAIL: no models given" >&2; exit 2; }
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-RENDER_PKG="$ROOT/scripts/eval/prompt_render"
+EVAL_PKG="$ROOT/scripts/eval"  # the one eval runner package (#4293)
 EXPECTED=$(grep -c . "$ROOT/$CORPUS" 2>/dev/null || grep -c . "$CORPUS")
 
 mkdir -p "$OUTDIR"
@@ -55,11 +55,10 @@ sys.exit(3)
 }
 
 echo "building PromptRender…" >&2
-swift build -c release --package-path "$RENDER_PKG" >&2
-# `--show-bin-path` prints unhandled-resource WARNINGS on stdout alongside the
-# path, so taking the whole output yields a multi-line string and the -x test
-# below fails for a reason that looks nothing like its cause. Take the last line.
-BIN="$(swift build -c release --package-path "$RENDER_PKG" --show-bin-path 2>/dev/null | tail -1)/PromptRender"
+swift build -c release --package-path "$EVAL_PKG" --product PromptRender >&2
+# The bin path comes from the shared resolver (eval_bin.py), the one owner of
+# where the runners live.
+BIN="$(python3 "$ROOT/scripts/eval/eval_bin.py" PromptRender)" || { echo "FAIL: PromptRender binary not found" >&2; exit 2; }
 [ -x "$BIN" ] || { echo "FAIL: PromptRender binary not found at $BIN" >&2; exit 2; }
 
 for m in "${MODELS[@]}"; do

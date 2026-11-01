@@ -354,30 +354,42 @@ struct SettingsArrivalFocusTests {
     (
       "meetings.general",
       [
-        .meetingCallDetection, .meetingCaptureCallSound, .meetingWriteSummary,
+        .meetingCallDetection, .meetingCaptureCallSound,
         .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingUseCalendarForNames,
         .meetingsTabGeneral,
-        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
+        .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
     ),
-    // #4105: both menus of each row are pickers. #3973 PR B: they live on the Models tab.
-    // #3973 C3: the Transcript engine menu is a picker too.
+    // #4287: the automatic-summary switch and the summary engine card live on the Summaries tab.
+    (
+      "meetings.summaries",
+      [
+        .meetingWriteSummary, .meetingsTabGeneral, .meetingsTabModels,
+        .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
+      ],
+      // With no engine chosen the card opens on its choices, so it has no Change button.
+      [.meetingSummaryEngine]
+    ),
+    // #4287 PR 2: the Models tab's engine cards. With no live words engine chosen its card opens
+    // on its choices, so it has no Change button; the Transcript engine card has one. The
+    // Transcript language menu is a picker.
     (
       "meetings.models",
       [
-        .meetingLiveWords, .meetingTranscriptEngine, .meetingTranscriptLanguage, .meetingsTabGeneral,
-        .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
+        .meetingLiveWordsApple, .meetingLiveWordsUniversal, .meetingTranscriptEngine,
+        .meetingTranscriptEngineChange, .meetingTranscriptLanguage, .meetingsTabGeneral,
+        .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
-      []
+      [.meetingLiveWords]
     ),
     // #4284: the call-app switches sit under the row's title, outside the row; a search for
     // "Notice calls in" must still land on a switch, not only on the heading.
     (
       "meetings.callApps",
       [
-        .meetingCallApps, .meetingsTabGeneral, .meetingsTabModels, .meetingsTabCallApps,
-        .meetingsTabPermissions,
+        .meetingCallApps, .meetingsTabGeneral, .meetingsTabModels, .meetingsTabSummaries,
+        .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []
     ),

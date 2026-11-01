@@ -1,0 +1,42 @@
+{
+  "meetingLiveWords.change": {
+    "language": "da",
+    "title": "skift motor til livetransskription af møder",
+    "words": [],
+    "phrases": [
+      "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "da",
+    "title": "behold den nuværende motor til livetransskription af møder",
+    "words": [],
+    "phrases": [
+      "luk motorvalget til livetransskription i EnviousMeet uden at ændre noget"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "da",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "Apple til mødets fulde transskription i EnviousMeet kommer snart"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "da",
+    "title": "skift motor til mødets fulde transskription",
+    "words": [],
+    "phrases": [
+      "vis valgmulighederne for motor til den fulde transskription efter mødet i EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "da",
+    "title": "behold den nuværende motor til mødets fulde transskription",
+    "words": [],
+    "phrases": [
+      "luk motorvalget til mødets fulde transskription i EnviousMeet uden at ændre noget"
+    ]
+  }
+}

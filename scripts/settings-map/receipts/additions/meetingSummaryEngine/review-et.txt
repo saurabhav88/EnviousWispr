@@ -1,0 +1,96 @@
+{
+  "meetings.tab.summaries": {
+    "language": "et",
+    "title": "kokkuvõtted",
+    "words": [],
+    "phrases": [
+      "EnviousMeet kokkuvõtete vahekaart",
+      "kus on koosolekute kokkuvõtete seaded"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "et",
+    "title": "kokkuvõtete mootor",
+    "words": [
+      "kokkuvõttemudel"
+    ],
+    "phrases": [
+      "milline AI teeb mu koosolekutest kokkuvõtteid",
+      "koosolekute kokkuvõttemootori seadistamine"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "et",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "kasuta koosolekute kokkuvõteteks Apple Intelligence'i"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "et",
+    "title": "muuda",
+    "words": [],
+    "phrases": [
+      "vaheta koosolekute kokkuvõtete tehisintellekti"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "et",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "kasuta Claude'i koosolekute kokkuvõtete jaoks"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "et",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 koosolekute kokkuvõtete jaoks",
+      "EG-1 kokkuvõttemootor on tulekul"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "et",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "kasuta koosolekute kokkuvõteteks Google Gemini mudelit"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "et",
+    "title": "säilita praegune kokkuvõttemootor",
+    "words": [],
+    "phrases": [
+      "kasuta koosolekute kokkuvõteteks edasi sama tehisaru"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "et",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "tee koosolekute kokkuvõtteid Ollama abil"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "et",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "kasuta koosolekute kokkuvõteteks OpenAI-d"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "et",
+    "title": "loo koosoleku lõpus kokkuvõte",
+    "words": [],
+    "phrases": [
+      "tee pärast koosolekut automaatselt kokkuvõte",
+      "lülita koosolekute automaatsed kokkuvõtted sisse või välja"
+    ]
+  }
+}

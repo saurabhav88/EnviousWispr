@@ -9,6 +9,21 @@ import Foundation
 enum MeetingsPresentation {
   // MARK: - Recorder
 
+  // MARK: - Invited people (#4286)
+
+  /// The detail's "Invited: …" line from the meeting's saved facts, or nil when no invited
+  /// person can be named. Names as the invite spells them, an email when there is no name.
+  /// An invitation says nothing about who attended or spoke.
+  static func invitedLine(_ context: MeetingContext?) -> String? {
+    let names = MeetingParticipants.resolve(attendees: context?.attendees ?? [])
+      .compactMap { $0.name ?? $0.email }
+    guard !names.isEmpty else { return nil }
+    let list = names.formatted(.list(type: .and))
+    return String(
+      localized: "Invited: \(list)",
+      comment: "History, a meeting: the people invited to its calendar event, under its title.")
+  }
+
   // MARK: - Export (R38)
 
   /// A saved meeting: its visible transcript, then the user's notes under their own heading

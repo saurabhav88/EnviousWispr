@@ -1,0 +1,259 @@
+{
+ "id": "meetingSummaryEngine.gemini",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "استخدام Gemini لتلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "използвай Gemini за обобщения на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "používat Gemini pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "brug Gemini til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nutze Gemini für meine Meeting-Zusammenfassungen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "χρήση Gemini για περιλήψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use Gemini for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "usar Gemini para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "kasuta Geminit koosolekute kokkuvõteteks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "käytä Geminiä kokousten yhteenvetoihin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "utiliser Gemini pour résumer les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए Gemini चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "koristi Gemini za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "Gemini használata megbeszélések összefoglalásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "usare Gemini per riassumere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "会議の要約にGeminiを使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "회의 요약에 Gemini 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "naudoti Gemini susitikimų santraukoms"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "izmantot Gemini sapulču kopsavilkumiem"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "uża Gemini għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "Gemini gebruiken voor vergadersamenvattingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "używaj Gemini do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "usar Gemini para resumir reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "folosește Gemini pentru rezumatele ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "использовать Gemini для итогов встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "používať Gemini na zhrnutia stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "uporabi Gemini za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "använd Gemini för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için Gemini kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "використовувати Gemini для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "dùng Gemini để tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "Google Gemini",
+   "words": [],
+   "phrases": [
+    "用Gemini生成会议摘要"
+   ]
+  }
+ ]
+}

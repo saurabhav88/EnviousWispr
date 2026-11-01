@@ -12,6 +12,8 @@ enum PolishSettings {
     switch surface {
     case .dictation: return settings.llmProvider
     case .fileImport: return settings.effectiveFileImportLLMProvider
+    // #4287: no engine until migrated or chosen; never dictation's.
+    case .meetingSummary: return settings.effectiveMeetingSummaryLLMProvider
     }
   }
 
@@ -23,6 +25,7 @@ enum PolishSettings {
     case .fileImport:
       return settings.fileImportLLMProvider == nil
         ? settings.llmModel : settings.fileImportLLMModel
+    case .meetingSummary: return settings.meetingSummaryLLMModel
     }
   }
 
@@ -34,6 +37,7 @@ enum PolishSettings {
     case .fileImport:
       return settings.fileImportLLMProvider == nil
         ? settings.ollamaModel : settings.fileImportOllamaModel
+    case .meetingSummary: return settings.meetingSummaryOllamaModel
     }
   }
 
@@ -47,6 +51,8 @@ enum PolishSettings {
     case .fileImport:
       settings.seedFileImportPolishModelsIfNeeded()
       settings.fileImportLLMProvider = newValue
+    // #4287: the summary surface owns its fields from migration on; nothing to seed.
+    case .meetingSummary: settings.meetingSummaryLLMProvider = newValue
     }
   }
 
@@ -63,6 +69,7 @@ enum PolishSettings {
         settings.fileImportLLMProvider = settings.llmProvider
       }
       settings.fileImportLLMModel = newValue
+    case .meetingSummary: settings.meetingSummaryLLMModel = newValue
     }
   }
 }

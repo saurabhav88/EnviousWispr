@@ -1,0 +1,259 @@
+{
+ "id": "meetingSummaryEngine.change",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تغيير",
+   "words": [],
+   "phrases": [
+    "تغيير الذكاء الاصطناعي لتلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "промяна",
+   "words": [],
+   "phrases": [
+    "смяна на изкуствения интелект за обобщения на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "změnit AI pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "skift",
+   "words": [],
+   "phrases": [
+    "skift AI til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "KI für deine Meeting-Zusammenfassungen ändern"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "αλλαγή AI για περιλήψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "change AI for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "cambiar la IA para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "vaheta koosolekute kokkuvõtete tehisintellekti"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "vaihda kokousten yhteenvedot tekevä tekoäly"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "changer l’IA pour les résumés de réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने वाला AI बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "promijeni AI za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "másik AI választása a megbeszélések összefoglalásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "modifica",
+   "words": [],
+   "phrases": [
+    "cambiare l’IA per i riepiloghi delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議の要約に使うAIを変更"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "변경",
+   "words": [],
+   "phrases": [
+    "회의 요약에 쓰는 AI 바꾸기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "pakeisti DI susitikimų santraukoms"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "mainīt AI sapulču kopsavilkumiem"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "ibdel l-AI għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "AI voor vergadersamenvattingen veranderen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "zmień AI do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "mudar a IA para os resumos de reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "schimbă",
+   "words": [],
+   "phrases": [
+    "schimbă AI pentru rezumatele ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "сменить ИИ для сводок встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "zmeniť AI na súhrny stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "zamenjaj AI za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "byt AI för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için yapay zekayı değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "змінити ШІ для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "thay đổi",
+   "words": [],
+   "phrases": [
+    "đổi AI tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "更改",
+   "words": [],
+   "phrases": [
+    "更换生成会议摘要的AI"
+   ]
+  }
+ ]
+}

@@ -54,6 +54,8 @@ struct MeetingSummaryOwnerTests {
     /// #4148: the meeting is known and ready, but has no visible transcript text.
     var noWords = false
     var speakerNames = ["mic:you": "You"]
+    /// #4286: what the summary is told about the meeting.
+    var facts: MeetingPromptFacts?
     /// #3973 C2: the shown History row's transcript attempt.
     var transcriptAttemptID: UUID?
     var localTurn = true
@@ -71,8 +73,15 @@ struct MeetingSummaryOwnerTests {
     @ObservationIgnored private var heldCalls: [CheckedContinuation<Void, Never>] = []
     private(set) var callsWaiting = 0
 
-    func call(_ prompt: String) async -> String {
+    /// #4286: when true, the next call answers that its input was too long (once).
+    var overflowNext = false
+
+    func call(_ prompt: String) async throws -> String {
       calls.append(prompt)
+      if overflowNext {
+        overflowNext = false
+        throw LLMError.classified(.inputTooLong)
+      }
       duringCall?()
       if holdCalls {
         callsWaiting += 1
@@ -143,7 +152,7 @@ struct MeetingSummaryOwnerTests {
             return .success(
               MeetingSummaryProviders.Prepared(
                 execution: world.execution, window: world.window,
-                complete: { @MainActor _, prompt in await world.call(prompt) }))
+                complete: { @MainActor _, prompt in try await world.call(prompt) }))
           },
           visibleTranscript: { _ in
             world.visible && !world.noWords
@@ -152,6 +161,7 @@ struct MeetingSummaryOwnerTests {
                 transcriptAttemptID: world.transcriptAttemptID) : nil
           },
           hasNoWords: { _ in world.visible && world.noWords },
+          promptFacts: { _ in world.facts },
           isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
@@ -323,6 +333,120 @@ struct MeetingSummaryOwnerTests {
     #expect(try rig.manifest(id).summaryPending == nil)
   }
 
+  static let acmeFacts = MeetingPromptFacts(
+    startedAt: Date(timeIntervalSinceReferenceDate: 815_000_000), recordedDurationMs: 2_700_000,
+    callAppName: "Zoom", calendarTitle: "Acme renewal",
+    participants: MeetingParticipants.resolve(attendees: [
+      AttendeeFact(
+        name: "Dana Lee", email: "dana@acme.com", role: .required, status: .accepted,
+        isSelf: false, isOrganizer: true)
+    ]))
+
+  @Test("#4286: the summary is told the meeting facts and records their fingerprint")
+  func factsSentAndFingerprinted() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.facts = Self.acmeFacts
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .hosted)])
+    let block = MeetingSummary.factsBlock(Self.acmeFacts)
+    #expect(rig.world.calls.first?.contains(block) == true)
+    #expect(rig.world.calls.first?.contains("Dana Lee (acme.com, organizer)") == true)
+    let inputs = try #require(try rig.manifest(id).summary?.inputs)
+    #expect(inputs.contextSHA256 == MeetingDocumentHash.sha256(block))
+    #expect(rig.owner.isOutOfDate(id) == false)
+
+    rig.world.facts?.calendarTitle = "Acme renewal (moved)"
+    #expect(rig.owner.isOutOfDate(id), "a changed fact makes the summary out of date")
+  }
+
+  @Test("#4286: without facts nothing is fingerprinted, and facts arriving later make it out of date")
+  func noFactsThenFacts() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(try rig.manifest(id).summary?.inputs?.contextSHA256 == nil)
+    #expect(rig.world.calls.first?.contains("Meeting facts") == false)
+    #expect(rig.owner.isOutOfDate(id) == false)
+    rig.world.facts = Self.acmeFacts
+    #expect(rig.owner.isOutOfDate(id))
+  }
+
+  @Test("#4286: facts that change while the summary is written keep no stale answer")
+  func factsChangeDuringCall() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.facts = Self.acmeFacts
+    rig.world.duringCall = { rig.world.facts?.calendarTitle = "Other meeting" }
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.stale, .hosted)])
+    #expect(rig.summaryOnDisk(id) == nil)
+  }
+
+  @Test("#4286: at a 4,096-token window the saved fingerprint is of the exact block sent, also after a re-plan")
+  func smallWindowHashMatchesSent() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.window = MeetingSummary.Window(
+      contextTokens: 4_096, outputReserveTokens: MeetingSummary.outputTokens)
+    rig.world.execution = .local
+    var facts = Self.acmeFacts
+    facts.participants = MeetingParticipants.resolve(
+      attendees: (1...6).map {
+        AttendeeFact(
+          name: "Person \($0)", email: "p\($0)@acme.com", role: .required, status: .accepted,
+          isSelf: false, isOrganizer: false)
+      })
+    rig.world.facts = facts
+    rig.world.overflowNext = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .local)])
+    let block = MeetingSummary.factsBlock(facts)
+    #expect(rig.world.calls.count == 2, "the estimate call, then the byte re-plan")
+    #expect(rig.world.calls.allSatisfy { $0.contains(block) })
+    let inputs = try #require(try rig.manifest(id).summary?.inputs)
+    #expect(inputs.contextSHA256 == MeetingDocumentHash.sha256(block))
+  }
+
+  @Test("#4286: a block too long for a 4,096-token byte re-plan fails the summary, never drops the facts")
+  func smallWindowFactsTooLongFails() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.window = MeetingSummary.Window(
+      contextTokens: 4_096, outputReserveTokens: MeetingSummary.outputTokens)
+    rig.world.execution = .local
+    var facts = Self.acmeFacts
+    facts.participants = MeetingParticipants.resolve(
+      attendees: (1...25).map {
+        AttendeeFact(
+          name: "Participant Number \($0)", email: "participant.\($0)@example.org",
+          role: .required, status: .accepted, isSelf: false, isOrganizer: false)
+      })
+    rig.world.facts = facts
+    rig.world.overflowNext = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.calls.count == 1, "the byte plan was refused before any call")
+    #expect(rig.world.calls.first?.contains(MeetingSummary.factsBlock(facts)) == true)
+    #expect(rig.summaryOnDisk(id) == nil)
+    #expect(rig.owner.activity[id] == .failed(.notForSummaries))
+  }
+
+  @Test("#4286: a summary the user wrote is not made out of date by facts")
+  func userSummaryIgnoresFacts() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    try #require(await rig.documents.load(id))
+    rig.documents.setSummary(id, "My own summary")
+    #expect(await rig.documents.flushSummary(id))
+    rig.world.facts = Self.acmeFacts
+    #expect(rig.owner.isOutOfDate(id) == false)
+  }
+
   @Test("a local model waits for its turn and holds the lane only while it calls")
   func localTurn() async throws {
     let rig = try Rig()
@@ -346,6 +470,122 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.world.finished == [Self.row(.written, .local)])
     #expect(rig.lane.summaryCallRunning == false)
     #expect(rig.lane.summaryActive == false)
+  }
+
+  /// #4287: dictation's Ollama eviction must not unload the model a summary call is using.
+  @Test("a running local Ollama call pins its own model until the call physically ends")
+  func runningOllamaCallPinsItsModel() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.provider = .ollama
+    rig.world.model = "mistral"
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == nil, "waiting for a turn pins nothing")
+
+    rig.world.localTurn = true
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral")
+    rig.world.model = "llama3"
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral", "the attempt's own model, not the setting")
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.owner.summaryPinnedOllamaModel == nil)
+  }
+
+  @Test("a local Ollama call's end asks for the deferred eviction once; a local Apple call does not")
+  func releaseRetriesDeferredEviction() async throws {
+    for (provider, expected) in [(LLMProvider.ollama, 1), (.appleIntelligence, 0)] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      var releases = 0
+      rig.owner.onOllamaModelReleased = { releases += 1 }
+      rig.world.provider = provider
+      rig.world.model = "mistral"
+      rig.world.execution = .local
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(releases == 0, "nothing is released while the call runs")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(releases == expected, "\(provider)")
+    }
+  }
+
+  @Test("hosted Ollama and local non-Ollama calls pin no Ollama model")
+  func onlyLocalOllamaPins() async throws {
+    for (provider, execution) in [
+      (LLMProvider.ollama, MeetingSummary.Execution.hosted), (.appleIntelligence, .local),
+    ] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.provider = provider
+      rig.world.model = "mistral"
+      rig.world.execution = execution
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(rig.owner.summaryPinnedOllamaModel == nil, "\(provider) \(execution)")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+    }
+  }
+
+  /// #4287 PR 3: a dictation on the same local engine skips polish only while this reports it.
+  @Test("the running local summary engine is reported from admission to the call's end, never for hosted")
+  func runningLocalSummaryProviderLifetime() async throws {
+    for (provider, execution, expected) in [
+      (LLMProvider.appleIntelligence, MeetingSummary.Execution.local, LLMProvider.appleIntelligence),
+      (.ollama, .local, .ollama), (.ollama, .hosted, nil), (.openAI, .hosted, nil),
+    ] as [(LLMProvider, MeetingSummary.Execution, LLMProvider?)] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.provider = provider
+      rig.world.model = "m"
+      rig.world.execution = execution
+      rig.world.localTurn = false
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      if execution == .local {
+        await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+        #expect(rig.owner.runningLocalSummaryProvider == nil, "\(provider): waiting reports nothing")
+        rig.world.localTurn = true
+      }
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(rig.owner.runningLocalSummaryProvider == expected, "\(provider) \(execution)")
+      rig.world.provider = .claude
+      #expect(
+        rig.owner.runningLocalSummaryProvider == expected, "\(provider): the attempt's own, not the setting")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(rig.owner.runningLocalSummaryProvider == nil, "\(provider): cleared at the call's end")
+    }
+  }
+
+  @Test("a deleted meeting's call keeps its pin until the call ends, then releases it")
+  func cancelledCallReleasesPinAtItsEnd() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.provider = .ollama
+    rig.world.model = "mistral"
+    rig.world.execution = .local
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    rig.documents.forget(id)
+    let deletion = Task { await rig.owner.cancelAndWait(id) }
+    // `cancelAndWait` clears the activity and cancels the attempt in one main-actor step.
+    await Self.eventually("cancelling") { rig.owner.activity[id] == nil }
+    #expect(rig.world.callsWaiting == 1, "the cancelled call is still physically running")
+    #expect(rig.owner.summaryPinnedOllamaModel == "mistral", "the call still runs")
+    rig.world.releaseCall()
+    await deletion.value
+    await Self.eventually("released") { rig.owner.summaryPinnedOllamaModel == nil }
   }
 
   @Test("local summaries run one after another")
@@ -1052,7 +1292,7 @@ struct MeetingSummaryOwnerTests {
         == "Paused while a meeting summary is written")
   }
 
-  @Test("every summary problem has its own message, and the provider ones open AI Polish")
+  @Test("every summary problem has its own message, and the engine ones open Summaries settings")
   func problemCopy() {
     let problems: [MeetingSummaryOwner.Problem] = [
       .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
@@ -1062,7 +1302,7 @@ struct MeetingSummaryOwnerTests {
     #expect(Set(messages).count == problems.count)
     #expect(messages.allSatisfy { !$0.isEmpty })
     #expect(
-      problems.filter(MeetingSummaryView.opensAIPolish)
+      problems.filter(MeetingSummaryView.opensSummarySettings)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
   }
 
@@ -1325,7 +1565,7 @@ struct MeetingSummaryOwnerTests {
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
-          write: { _, _, _, _, _, _ in
+          write: { _, _, _, _, _, _, _ in
             MeetingSummary.Written(
               text: "Title: Launch\n## Overview\nShip Friday.", inParts: inParts)
           }),

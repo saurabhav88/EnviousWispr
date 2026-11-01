@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Tests for scripts/ci/seed-eval-package-pins.py (#996 chunk 2b-ii follow-up).
 
-compile-eval-packages.sh seeds each standalone eval package's Package.resolved
-from the app's tracked pins and then builds with
-`--only-use-versions-from-resolved-file`. alias_runner depends on a package the
+compile-eval-packages.sh seeds the eval package's (scripts/eval, #4293)
+Package.resolved from the app's tracked pins and then builds with
+`--only-use-versions-from-resolved-file`. AliasRunner depends on a package the
 app does not (swift-transformers), so the seed must also carry the package's
 tracked runner-only pins, and it must refuse a runner-only pin that would shadow
-an app pin. The tracked alias_runner pins file is run through the same merge, so
+an app pin. The tracked runner-only pins file is run through the same merge, so
 it cannot drift into a shape the merge refuses; SwiftPM's own acceptance is proven
 by compile-eval-packages.sh, not here.
 
@@ -25,7 +25,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 SCRIPT = REPO / "scripts" / "ci" / "seed-eval-package-pins.py"
-ALIAS_RUNNER = REPO / "scripts" / "eval" / "alias_runner"
+# The one eval package (#4293); it holds AliasRunner's runner-only pins.
+EVAL_PACKAGE = REPO / "scripts" / "eval"
 
 _spec = importlib.util.spec_from_file_location("seed_eval_package_pins", SCRIPT)
 seed_mod = importlib.util.module_from_spec(_spec)
@@ -118,20 +119,20 @@ class SeedEvalPackagePinsTests(unittest.TestCase):
         self.assertEqual(seed_mod.main(["seed", str(self.root), str(self.pkg)]), 2)
         self.assertFalse((self.pkg / "Package.resolved").exists())
 
-    def test_tracked_alias_runner_pins_merge_cleanly_into_the_real_root_pins(self) -> None:
+    def test_tracked_runner_only_pins_merge_cleanly_into_the_real_root_pins(self) -> None:
         # The real tracked fragment is checked against the merger's schema here.
         # compile-eval-packages.sh is the authority that proves SwiftPM accepts it.
         with tempfile.TemporaryDirectory() as scratch:
-            pkg = Path(scratch) / "alias_runner"
+            pkg = Path(scratch) / "eval"
             pkg.mkdir()
             (pkg / seed_mod.RUNNER_ONLY_NAME).write_bytes(
-                (ALIAS_RUNNER / seed_mod.RUNNER_ONLY_NAME).read_bytes()
+                (EVAL_PACKAGE / seed_mod.RUNNER_ONLY_NAME).read_bytes()
             )
             seed_mod.seed(REPO / "Package.resolved", pkg)
             identities = [p["identity"] for p in json.loads((pkg / "Package.resolved").read_text())["pins"]]
         self.assertIn("swift-transformers", identities)
         self.assertEqual(len(identities), len(set(identities)))
-        manifest = (ALIAS_RUNNER / "Package.swift").read_text()
+        manifest = (EVAL_PACKAGE / "Package.swift").read_text()
         self.assertIn('url: "https://github.com/huggingface/swift-transformers"', manifest)
 
 

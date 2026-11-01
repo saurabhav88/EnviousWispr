@@ -1,0 +1,37 @@
+{
+  "meetingLiveWords.change": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Engine-Auswahl für das Live-Transkript im Meeting öffnen"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "behalte die bisherige Engine für das Live-Transkript im Meeting"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Apple für Meeting-Transkripte demnächst verfügbar"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Engine-Auswahl für das vollständige Transkript nach dem Meeting öffnen"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "behalte die bisherige Engine für Meeting-Transkripte"
+    ]
+  }
+}

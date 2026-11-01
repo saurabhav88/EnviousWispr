@@ -29,6 +29,9 @@ enum SettingsProjection {
     /// cannot tell them apart.
     case fileImportLLMProvider = "file_import_llm_provider"
     case fileImportLLMModel = "file_import_llm_model"
+    /// #4287: the meeting summary engine's provider KIND only, no model, to answer whether
+    /// people choose a different engine for summaries than for dictation.
+    case meetingSummaryLLMProvider = "meeting_summary_llm_provider"
     case autoCopy = "auto_copy"
     case hotkeyEnabled = "hotkey_enabled"
     case vadAutoStop = "vad_auto_stop"
@@ -152,6 +155,9 @@ enum SettingsProjection {
     // unchanged. Found by the local lens on the cloud review.
     case .fileImportLLMProvider: return [.fileImportLLMProvider, .fileImportLLMModel]
     case .fileImportLLMModel, .fileImportOllamaModel: return [.fileImportLLMModel]
+    case .meetingSummaryLLMProvider: return [.meetingSummaryLLMProvider]
+    // #4287: provider kind only; model ids never become a summary delta.
+    case .meetingSummaryLLMModel, .meetingSummaryOllamaModel: return []
     case .autoCopyToClipboard: return [.autoCopy]
     // #3972: no settings delta. `meeting.ended` carries the call-sound track status of every
     // meeting, which is the question this choice answers.
@@ -275,6 +281,9 @@ enum SettingsProjection {
       return model(
         provider: settings.effectiveFileImportLLMProvider,
         id: settings.effectiveFileImportLLMModel)
+    case .meetingSummaryLLMProvider:
+      // Absent before migration (onboarding not finished) or unreadable after a downgrade.
+      return settings.meetingSummaryLLMProvider?.rawValue ?? "unset"
     case .autoCopy: return onOff(settings.autoCopyToClipboard)
     case .hotkeyEnabled: return onOff(settings.hotkeyEnabled)
     case .vadAutoStop: return onOff(settings.vadAutoStop)

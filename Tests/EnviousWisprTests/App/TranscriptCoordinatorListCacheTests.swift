@@ -24,6 +24,8 @@
       /// Info that differs from what the record would give (an orphan's, or a stale pairing).
       var infoOverride: [UUID: MeetingHistoryInfo] = [:]
       var notes: [UUID: String] = [:]
+      /// #4286: each meeting's invited search terms.
+      var invited: [UUID: [String]] = [:]
     }
 
     /// One coordinator that keeps its list and one that never does, fed the same inputs.
@@ -56,6 +58,7 @@
               ?? sources.records.first { $0.id == id }.flatMap { MeetingHistoryInfo.paired(with: $0) }
           }
           c.meetingNotes = { [unowned self] in sources.notes[$0] }
+          c.meetingInvited = { [unowned self] in sources.invited[$0] ?? [] }
         }
       }
 
@@ -333,6 +336,48 @@
       Self.expectAgree(w, "notes match")
     }
 
+    @Test("#4286: a meeting found only by its invited people appears, updates and disappears")
+    func invitedTermsMatch() {
+      let w = World()
+      let record = Self.record(at: w.time, ready: true)
+      w.sources.records = [record]
+      w.setRows([Self.meetingRow(record.id, words: "standup", at: w.time)])
+      for c in w.both { c.searchQuery = "ACME" }
+      #expect(w.cached.listedItems.isEmpty)
+      w.sources.invited[record.id] = ["Dana Lee", "dana@acme.com", "acme.com"]
+      #expect(w.cached.listedItems.map(\.id) == [.meeting(record.id)], "case-insensitive substring")
+      Self.expectAgree(w, "invited match")
+      let builds = w.cached.listBuildsForTesting
+      _ = w.cached.listedItems
+      #expect(w.cached.listBuildsForTesting == builds, "unchanged input reuses the kept list")
+      w.sources.invited[record.id] = ["Li Wu", "li@other.org", "other.org"]
+      #expect(w.cached.listedItems.isEmpty, "a changed list no longer matches")
+      Self.expectAgree(w, "invited changed")
+      for c in w.both { c.searchQuery = "li wu" }
+      #expect(w.cached.listedItems.map(\.id) == [.meeting(record.id)])
+      w.sources.invited[record.id] = nil
+      #expect(w.cached.listedItems.isEmpty, "removed terms no longer match")
+      Self.expectAgree(w, "invited removed")
+    }
+
+    @Test("#4286: invited people never make an unfinished or withheld meeting a match")
+    func invitedRespectsFences() {
+      let w = World()
+      let processing = Self.record(at: w.time, ready: false)
+      var withheld = Self.record(at: w.time, ready: true)
+      withheld.deletionRequested = true
+      w.sources.records = [processing, withheld]
+      w.setRows([
+        Self.meetingRow(processing.id, words: "standup", at: w.time),
+        Self.meetingRow(withheld.id, words: "standup", at: w.time),
+      ])
+      w.sources.invited = [processing.id: ["acme.com"], withheld.id: ["acme.com"]]
+      for c in w.both { c.searchQuery = "acme" }
+      #expect(w.cached.listedItems.contains { $0.id == .meeting(processing.id) } == false)
+      #expect(w.cached.listedItems.contains { $0.id == .meeting(withheld.id) } == false)
+      Self.expectAgree(w, "fenced")
+    }
+
     /// After a kept answer, a `listedItems` read must be told about `change`.
     func expectObserved(_ name: String, _ w: World, change: () -> Void) {
       let c = w.cached
@@ -400,6 +445,12 @@
       expectObserved("unmatched notes", w) { w.sources.notes[orphan] = "zebra" }
       #expect(c.listedItems.contains { $0.id == .meeting(orphan) })
       expectObserved("a matched meeting's notes", w) { w.sources.notes[record.id] = "x" }
+      w.sources.records[0].title = nil
+      #expect(c.listedItems.contains { $0.id == .meeting(record.id) } == false)
+      expectObserved("unmatched invited people", w) { w.sources.invited[record.id] = ["zebra co"] }
+      #expect(c.listedItems.contains { $0.id == .meeting(record.id) })
+      expectObserved("a matched meeting's invited people", w) { w.sources.invited[record.id] = [] }
+      #expect(c.listedItems.contains { $0.id == .meeting(record.id) } == false)
       let row = try #require(c.rawTranscriptsForTesting.first { !$0.isMeeting })
       await expectObserved("a deletion", w) { try? await c.removeRow(id: row.id) }
     }

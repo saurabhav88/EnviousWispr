@@ -1,0 +1,259 @@
+{
+ "id": "meetingTranscriptEngine.change",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "تغيير",
+   "words": [],
+   "phrases": [
+    "تغيير محرك تفريغ الاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "промяна",
+   "words": [],
+   "phrases": [
+    "смяна на модела за транскрипция на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "změnit model pro přepis schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "skift",
+   "words": [],
+   "phrases": [
+    "skift model til transskription af møder"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "ändere die Engine fürs Meeting-Transkript"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "αλλαγή μοντέλου για απομαγνητοφώνηση συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "change the meeting transcription engine"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "cambiar el motor de transcripción de reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "muuda koosolekute transkribeerimise mudelit"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "vaihda kokousten litterointimallia"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "changer le moteur de transcription des réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "मीटिंग को टेक्स्ट में बदलने वाला मॉडल बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "promijeni model za transkripciju sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "értekezletek átírásához használt modell cseréje"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "modifica",
+   "words": [],
+   "phrases": [
+    "cambiare il motore di trascrizione delle riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議の文字起こしエンジンを変える"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "변경",
+   "words": [],
+   "phrases": [
+    "회의 전사 엔진 바꾸기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimų transkribavimo modelį"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "mainīt sapulču transkripcijas modeli"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "ibdel il-mudell għat-traskrizzjoni tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "de transcriptie-engine voor vergaderingen wijzigen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "zmień model do transkrypcji spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "mudar o motor de transcrição de reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "modifică",
+   "words": [],
+   "phrases": [
+    "schimbă modelul pentru transcrierea ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "сменить движок расшифровки встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "zmeniť model na prepis stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "zamenjaj model za prepis sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "byt modell för transkribering av möten"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "toplantıyı yazıya döken modeli değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "змінити рушій розшифрування зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "thay đổi",
+   "words": [],
+   "phrases": [
+    "đổi mô hình chuyển lời nói cuộc họp thành văn bản"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "更改",
+   "words": [],
+   "phrases": [
+    "更换会议转写引擎"
+   ]
+  }
+ ]
+}

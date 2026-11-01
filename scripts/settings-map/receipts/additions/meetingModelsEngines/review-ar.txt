@@ -1,0 +1,45 @@
+{
+  "meetingLiveWords.change": {
+    "language": "ar",
+    "title": "تغيير محرك النص المباشر للاجتماع",
+    "words": [],
+    "phrases": [
+      "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "ar",
+    "title": "الإبقاء على محرك النص المباشر للاجتماع الحالي",
+    "words": [],
+    "phrases": [
+      "إبقاء محرك النص المباشر للاجتماع كما هو",
+      "إغلاق خيارات محرك النص المباشر للاجتماع دون تغيير"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "ar",
+    "title": "Apple",
+    "words": [],
+    "phrases": [
+      "محرك Apple لكتابة نص الاجتماع بعد انتهائه قريبًا في EnviousMeet",
+      "لماذا لا يمكن اختيار Apple لتفريغ الاجتماعات"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "ar",
+    "title": "تغيير محرك تفريغ الاجتماعات",
+    "words": [],
+    "phrases": [
+      "فتح خيارات محرك كتابة نص الاجتماع بعد انتهائه في EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "ar",
+    "title": "الإبقاء على محرك تفريغ الاجتماعات الحالي",
+    "words": [],
+    "phrases": [
+      "إبقاء محرك كتابة نص الاجتماع بعد انتهائه كما هو",
+      "إغلاق خيارات محرك تفريغ الاجتماعات دون تغيير"
+    ]
+  }
+}

@@ -255,6 +255,11 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Called before LLM processing starts (pipeline uses this to set .polishing state).
   public var onWillProcess: (() -> Void)?
 
+  /// #4287 PR 3: the provider of the EnviousMeet summary call running on a local engine now, or
+  /// nil. Only the live dictation steps are wired (`WisprBootstrapper`); file import, re-polish
+  /// and recovery keep this default and never skip for a summary.
+  public var runningLocalSummary: @MainActor () -> LLMProvider? = { nil }
+
   /// Streaming token callback — invoked with each text fragment as it arrives from the LLM.
   public var onToken: (@Sendable (String) -> Void)?
 
@@ -951,6 +956,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       // respects the distinction.
       ollamaThinks = nil
       ollamaRemote = nil
+    }
+
+    // #4287 PR 3: the same local engine is writing an EnviousMeet summary. Checked here, after
+    // the Ollama probe has said whether this request's model runs on this Mac and before any
+    // polisher, server lease or request exists; the runner turns it into a skip with a notice.
+    if let busy = SummaryEngineClash.busyEngine(
+      dictation: provider, dictationOllamaRemote: ollamaRemote,
+      runningLocalSummary: runningLocalSummary())
+    {
+      throw SummaryEngineBusy(provider: busy)
     }
 
     // #1271: EG-1 resolves its polisher from the live server endpoint, not

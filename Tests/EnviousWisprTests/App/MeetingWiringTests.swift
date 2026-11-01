@@ -403,6 +403,26 @@ struct MeetingWiringTests {
     var count = 0
   }
 
+  /// #4287: the production summary owner reads the Summaries tab's engine, not dictation's.
+  @Test("the wired summary owner uses the summary engine, never dictation's")
+  func summariesUseTheirOwnEngine() throws {
+    let rig = try Rig()
+    let settings = rig.inputs.settings
+    let coordinator = MeetingWiring.make(rig.inputs)
+    let summaries = try #require(coordinator.summaries)
+
+    settings.llmProvider = .egOne
+    settings.meetingSummaryLLMProvider = .claude
+    #expect(summaries.configurationProblem() == nil, "dictation's EG-1 must not block summaries")
+
+    settings.llmProvider = .claude
+    settings.meetingSummaryLLMProvider = .s1Mini
+    #expect(summaries.configurationProblem() == .notForSummaries)
+
+    settings.meetingSummaryLLMProvider = LLMProvider.none
+    #expect(summaries.configurationProblem() == .noProvider)
+  }
+
   @Test("History's delete of a meeting row goes through EnviousMeet and removes its folder")
   func historyDeleteRoutesThroughMeetings() async throws {
     let rig = try Rig()
@@ -421,6 +441,38 @@ struct MeetingWiringTests {
       coordinator.meetings.isEmpty && !rig.transcripts.hasRow(id: row.id)
     }
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
+  }
+
+  @Test("#4286: after a relaunch, an invited-only search matches once the launch read lands")
+  func relaunchInvitedSearch() async throws {
+    let rig = try Rig()
+    var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try rig.store.create(record)
+    record.state = .ready
+    try rig.store.save(record)
+    try rig.store.appendFacts(
+      [
+        AttendeeFact(
+          name: "Dana Lee", email: "dana@acme.com", role: .required, status: .accepted,
+          isSelf: false, isOrganizer: true
+        ).fact(source: MeetingFact.eventKitSource, capturedAt: record.createdAt)
+      ], meeting: record.id)
+    let row = Transcript(
+      id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
+    try await rig.transcripts.saveAndShowDurably(row)
+    rig.transcripts.searchQuery = "acme.com"
+    #expect(rig.transcripts.filteredTranscripts.isEmpty, "nothing listed before the launch")
+
+    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    let coordinator = MeetingWiring.make(rig.inputs)
+    coordinator.launch()
+    #expect(
+      rig.transcripts.filteredTranscripts.isEmpty, "no invited match while the launch read waits")
+    hold.signal()
+    await MeetingCoordinatorTests.eventually("invited-only match after the launch read") {
+      rig.transcripts.filteredTranscripts.map(\.id) == [row.id]
+    }
+    #expect(coordinator.documents.invitedSearchTerms(record.id).contains("acme.com"))
   }
 
   @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")

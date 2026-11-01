@@ -116,8 +116,9 @@ func targetSettings(
   )
 }
 
-// TEST targets only. Identical to `projectSettings` in Debug and Dev; the Release
-// configuration drops optimization for the two unit-test bundles and nothing else.
+// TEST targets only. Identical to `projectSettings` in Debug; Dev differs only in
+// `testDevSettings` below (no test-bundle dSYM, #4293); the Release configuration drops
+// optimization for the unit-test bundles and nothing else.
 //
 // Why: `EnviousWisprTests` is one 128,735-line module, and compiling it at
 // `-O`/`wholemodule` is the single most expensive thing in CI. Measured on PR run
@@ -182,7 +183,13 @@ let testReleaseSettings: SettingsDictionary = [
   "SWIFT_OPTIMIZATION_LEVEL": "-Onone",
   "SWIFT_COMPILATION_MODE": "singlefile",
 ]
-let testTargetSettings = targetSettings(releaseExtra: testReleaseSettings)
+// #4293: local tests build in the Dev configuration so they reuse the dev app's compiled
+// modules in .derivedData/Dev (scripts/xcode-test.sh). Dev's dwarf-with-dsym is for the app;
+// a test bundle needs no dSYM, and making one for the 128k-line main bundle costs every run.
+let testDevSettings: SettingsDictionary = [
+  "DEBUG_INFORMATION_FORMAT": "dwarf",
+]
+let testTargetSettings = targetSettings(devExtra: testDevSettings, releaseExtra: testReleaseSettings)
 
 // #4243: the ONLY tests the cloud PR check runs (scheme `EnviousWispr-Critical`).
 // Each file also stays in `EnviousWisprTests`, so local and full runs are unchanged.
@@ -229,6 +236,7 @@ let sourceAnalysisTestSettings = targetSettings(
       "-Wl,-rpath,$(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host",
     ]),
   ],
+  devExtra: testDevSettings,
   releaseExtra: testReleaseSettings
 )
 

@@ -1,0 +1,239 @@
+{
+ "id": "meetingSummaryEngine.change",
+ "blocks": {
+  "ar": {
+   "title": "تغيير محرك تلخيص الاجتماعات",
+   "words": [],
+   "phrases": [
+    "اختيار محرك آخر لتلخيص الاجتماعات",
+    "عرض خيارات محرك تلخيص الاجتماعات"
+   ]
+  },
+  "bg": {
+   "title": "промяна",
+   "words": [],
+   "phrases": [
+    "смяна на изкуствения интелект за обобщения на срещи"
+   ]
+  },
+  "cs": {
+   "title": "změnit",
+   "words": [],
+   "phrases": [
+    "změnit AI pro shrnutí schůzek"
+   ]
+  },
+  "da": {
+   "title": "skift opsummeringsmotor",
+   "words": [],
+   "phrases": [
+    "skift AI til mødereferater",
+    "vis valgmulighederne for motor til mødeopsummeringer"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "andere KI für Meetingzusammenfassungen auswählen"
+   ]
+  },
+  "el": {
+   "title": "αλλαγή",
+   "words": [],
+   "phrases": [
+    "αλλαγή AI για περιλήψεις συναντήσεων"
+   ]
+  },
+  "en": {
+   "words": [],
+   "phrases": [
+    "change AI for meeting summaries"
+   ]
+  },
+  "es": {
+   "title": "cambiar",
+   "words": [],
+   "phrases": [
+    "cambiar la IA para resumir reuniones"
+   ]
+  },
+  "et": {
+   "title": "muuda",
+   "words": [],
+   "phrases": [
+    "vaheta koosolekute kokkuvõtete tehisintellekti"
+   ]
+  },
+  "fi": {
+   "title": "vaihda",
+   "words": [],
+   "phrases": [
+    "vaihda kokousten yhteenvedot tekevä tekoäly"
+   ]
+  },
+  "fr": {
+   "title": "modifier",
+   "words": [],
+   "phrases": [
+    "changer l’ia pour les résumés de réunion"
+   ]
+  },
+  "hi": {
+   "title": "बदलें",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने वाला AI बदलें"
+   ]
+  },
+  "hr": {
+   "title": "promijeni",
+   "words": [],
+   "phrases": [
+    "promijeni AI za sažetke sastanaka"
+   ]
+  },
+  "hu": {
+   "title": "módosítás",
+   "words": [],
+   "phrases": [
+    "másik modell választása a megbeszélések összefoglalásához"
+   ]
+  },
+  "it": {
+   "title": "modifica",
+   "words": [],
+   "phrases": [
+    "cambiare l’ia per i riepiloghi delle riunioni"
+   ]
+  },
+  "ja": {
+   "title": "変更",
+   "words": [],
+   "phrases": [
+    "会議の要約に使うaiを変更",
+    "会議の要約エンジンの選択肢を開く"
+   ]
+  },
+  "ko": {
+   "title": "요약 엔진 변경",
+   "words": [],
+   "phrases": [
+    "회의 요약 엔진 바꾸기",
+    "다른 회의 요약 엔진 고르기"
+   ]
+  },
+  "lt": {
+   "title": "keisti",
+   "words": [],
+   "phrases": [
+    "pakeisti DI susitikimų santraukoms"
+   ]
+  },
+  "lv": {
+   "title": "mainīt",
+   "words": [],
+   "phrases": [
+    "izvēlēties citu dzini sapulču kopsavilkumiem",
+    "atvērt sapulču kopsavilkumu dziņu izvēli"
+   ]
+  },
+  "mt": {
+   "title": "ibdel",
+   "words": [],
+   "phrases": [
+    "ibdel l-AI għas-sommarji tal-laqgħat"
+   ]
+  },
+  "nl": {
+   "title": "wijzigen",
+   "words": [],
+   "phrases": [
+    "een andere engine kiezen voor vergadersamenvattingen",
+    "keuze van engines voor vergadersamenvattingen openen"
+   ]
+  },
+  "pl": {
+   "title": "zmień",
+   "words": [],
+   "phrases": [
+    "wybierz inny silnik do podsumowań spotkań"
+   ]
+  },
+  "pt": {
+   "title": "alterar",
+   "words": [],
+   "phrases": [
+    "abrir as opções para trocar o motor de resumos de reuniões"
+   ]
+  },
+  "ro": {
+   "title": "schimbă",
+   "words": [],
+   "phrases": [
+    "schimbă motorul pentru rezumatele ședințelor",
+    "arată motoarele disponibile pentru rezumatele întâlnirilor"
+   ]
+  },
+  "ru": {
+   "title": "изменить",
+   "words": [],
+   "phrases": [
+    "сменить движок сводок встреч",
+    "открыть выбор модели для сводок встреч"
+   ]
+  },
+  "sk": {
+   "title": "zmeniť",
+   "words": [],
+   "phrases": [
+    "zmeniť AI na súhrny stretnutí",
+    "otvoriť výber nástroja na zhrnutia stretnutí"
+   ]
+  },
+  "sl": {
+   "title": "spremeni",
+   "words": [],
+   "phrases": [
+    "zamenjaj AI za povzetke sestankov"
+   ]
+  },
+  "sv": {
+   "title": "ändra",
+   "words": [],
+   "phrases": [
+    "byt ai för mötessammanfattningar"
+   ]
+  },
+  "tr": {
+   "title": "değiştir",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için yapay zekâyı değiştir"
+   ]
+  },
+  "uk": {
+   "title": "змінити",
+   "words": [],
+   "phrases": [
+    "вибрати інший рушій для підсумків зустрічей",
+    "відкрити вибір рушія підсумовування зустрічей"
+   ]
+  },
+  "vi": {
+   "title": "đổi công cụ tóm tắt cuộc họp",
+   "words": [],
+   "phrases": [
+    "chọn công cụ khác để tóm tắt cuộc họp",
+    "mở danh sách công cụ tóm tắt cuộc họp"
+   ]
+  },
+  "zh": {
+   "title": "更换会议摘要引擎",
+   "words": [],
+   "phrases": [
+    "更换生成会议摘要的AI",
+    "打开会议摘要引擎选择列表"
+   ]
+  }
+ }
+}

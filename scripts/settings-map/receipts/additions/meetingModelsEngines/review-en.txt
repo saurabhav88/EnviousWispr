@@ -1,0 +1,37 @@
+{
+  "meetingLiveWords.change": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "open the live words engine choices in EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "keep using the same engine for live meeting transcription"
+    ]
+  },
+  "meetingTranscriptEngine.apple": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "Apple engine for full meeting transcripts coming soon"
+    ]
+  },
+  "meetingTranscriptEngine.change": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "open the full meeting transcript engine choices in EnviousMeet"
+    ]
+  },
+  "meetingTranscriptEngine.keepCurrent": {
+    "language": "en",
+    "words": [],
+    "phrases": [
+      "keep using the same engine for meeting transcripts"
+    ]
+  }
+}

@@ -92,6 +92,34 @@ import Testing
       #expect(box.all.map { $0.stringProps["setting"] } == ["smart_insertion"])
     }
 
+    /// #4287: the summary engine reports its provider kind only; summary model edits send
+    /// nothing. Smart insertion in the same flush is the positive control.
+    @Test("the summary engine emits a provider delta and no model delta")
+    func summaryEngineEmitsProviderOnly() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      // Before migration (a store that never finished onboarding) the choice is absent.
+      let unmigrated = SettingsManager(
+        defaults: TestDefaults.suite("ew.tests.4287.telemetry.\(UUID().uuidString)")!)
+      #expect(
+        SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: unmigrated) == "unset")
+
+      settings.meetingSummaryLLMProvider = .claude
+      settings.meetingSummaryLLMModel = "claude-private-name"
+      settings.meetingSummaryOllamaModel = "my-local-model"
+      settings.smartInsertion = false
+      telemetry.flush()
+
+      #expect(SettingsProjection.logicals(for: .meetingSummaryLLMModel) == [])
+      #expect(SettingsProjection.logicals(for: .meetingSummaryOllamaModel) == [])
+      #expect(SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: settings) == "claude")
+      let summary = deltas(box, setting: "meeting_summary_llm_provider")
+      #expect(summary.count == 1)
+      #expect(summary.first?.stringProps["to"] == "claude")
+      #expect(Set(box.all.compactMap { $0.stringProps["setting"] })
+        == ["meeting_summary_llm_provider", "smart_insertion"])
+    }
+
     /// #2087. Off-to-on is the direction that matters: the feature ships OFF, so
     /// every real adoption event is this transition, and adoption is the single
     /// question that decides whether the rest of Escape Recovery earns its keep.

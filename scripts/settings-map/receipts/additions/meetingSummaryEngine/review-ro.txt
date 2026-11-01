@@ -1,0 +1,97 @@
+{
+  "meetings.tab.summaries": {
+    "language": "ro",
+    "title": "rezumate",
+    "words": [],
+    "phrases": [
+      "fila rezumate din EnviousMeet",
+      "setările pentru rezumatele întâlnirilor din EnviousMeet"
+    ]
+  },
+  "meetingSummaryEngine": {
+    "language": "ro",
+    "title": "motor de rezumare",
+    "words": [
+      "model pentru rezumatele întâlnirilor"
+    ],
+    "phrases": [
+      "ce AI scrie rezumatele întâlnirilor mele",
+      "ce motor este folosit pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.appleIntelligence": {
+    "language": "ro",
+    "title": "Apple Intelligence",
+    "words": [],
+    "phrases": [
+      "folosește Apple Intelligence pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.change": {
+    "language": "ro",
+    "title": "schimbă",
+    "words": [],
+    "phrases": [
+      "schimbă motorul pentru rezumatele ședințelor",
+      "arată motoarele disponibile pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.claude": {
+    "language": "ro",
+    "title": "Claude",
+    "words": [],
+    "phrases": [
+      "folosește Claude pentru rezumatele ședințelor"
+    ]
+  },
+  "meetingSummaryEngine.egOne": {
+    "language": "ro",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 pentru rezumatele ședințelor",
+      "când va fi disponibil EG-1 pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.gemini": {
+    "language": "ro",
+    "title": "Google Gemini",
+    "words": [],
+    "phrases": [
+      "folosește Google Gemini pentru rezumatele ședințelor"
+    ]
+  },
+  "meetingSummaryEngine.keepCurrent": {
+    "language": "ro",
+    "title": "păstrează motorul de rezumare actual",
+    "words": [],
+    "phrases": [
+      "folosește în continuare aceeași inteligență artificială pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.ollama": {
+    "language": "ro",
+    "title": "Ollama",
+    "words": [],
+    "phrases": [
+      "folosește Ollama pentru rezumatele întâlnirilor"
+    ]
+  },
+  "meetingSummaryEngine.openAI": {
+    "language": "ro",
+    "title": "OpenAI",
+    "words": [],
+    "phrases": [
+      "folosește OpenAI pentru rezumatele ședințelor"
+    ]
+  },
+  "meetingWriteSummary": {
+    "language": "ro",
+    "title": "creează un rezumat la încheierea întâlnirii",
+    "words": [],
+    "phrases": [
+      "rezumă întâlnirea când se termină",
+      "rezumat automat al ședinței"
+    ]
+  }
+}
