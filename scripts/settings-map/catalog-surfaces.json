@@ -57,12 +57,17 @@
   "mac-ctl-meeting-live-words": [
    "meetingLiveWords",
    "meetingLiveWords.apple",
-   "meetingLiveWords.universal"
+   "meetingLiveWords.universal",
+   "meetingLiveWords.change",
+   "meetingLiveWords.keepCurrent"
   ],
   "mac-ctl-meeting-transcript-engine": [
    "meetingTranscriptEngine",
    "meetingTranscriptEngine.parakeet",
-   "meetingTranscriptEngine.whisper"
+   "meetingTranscriptEngine.whisper",
+   "meetingTranscriptEngine.apple",
+   "meetingTranscriptEngine.change",
+   "meetingTranscriptEngine.keepCurrent"
   ],
   "mac-ctl-meeting-transcript-language": [
    "meetingTranscriptLanguage"
@@ -680,6 +685,20 @@
   ],
   "mac-ctl-provider-claude": [
    "aiPolishProvider.claude"
+  ],
+  "mac-tab-meetings-summaries": [
+   "meetings.tab.summaries"
+  ],
+  "mac-ctl-meeting-summary-engine": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.appleIntelligence",
+   "meetingSummaryEngine.change",
+   "meetingSummaryEngine.claude",
+   "meetingSummaryEngine.egOne",
+   "meetingSummaryEngine.gemini",
+   "meetingSummaryEngine.keepCurrent",
+   "meetingSummaryEngine.ollama",
+   "meetingSummaryEngine.openAI"
   ]
  },
  "newSurfaces": {
@@ -817,6 +836,16 @@
    "kind": "section",
    "parent": "mac-page-meetings",
    "label": "Permissions [tab]"
+  },
+  "mac-tab-meetings-summaries": {
+   "kind": "section",
+   "parent": "mac-page-meetings",
+   "label": "Summaries [tab]"
+  },
+  "mac-ctl-meeting-summary-engine": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Summary engine"
   }
  }
 }
