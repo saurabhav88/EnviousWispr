@@ -271,7 +271,7 @@
       case .meetingSummaryWrite:
         return await meetings.summaryWrite(args)
       case .meetingLive:
-        return meetings.live(args)
+        return await meetings.live(args)
       case .meetingLiveWordsStatus:
         return await meetings.liveWordsStatus(args)
       case .callSimulate:

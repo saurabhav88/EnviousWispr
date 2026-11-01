@@ -866,6 +866,322 @@ struct TranscribeCppWhisperBackendTests {
       }
     }
   }
+
+  // MARK: - #4254 meeting speech detection
+
+  /// 5 s of run: speech (0.3) at [16,000, 32,000) and [48,000, 56,000), exact zeros elsewhere.
+  fileprivate static let meetingRun: [Float] = (0..<80_000).map {
+    (16_000..<32_000).contains($0) || (48_000..<56_000).contains($0) ? 0.3 : 0
+  }
+  fileprivate static let meetingSpans = [16_000..<32_000, 48_000..<56_000]
+
+  private func meetingEngine(
+    _ driver: FakeWhisperDriver, detect: @escaping MeetingSpeechSpans
+  ) async throws -> MeetingWhisperEngine<FakeWhisperDriver> {
+    let engine = MeetingWhisperEngine(driver: driver, detectSpeech: detect)
+    try await engine.load(modelPath: "turbo.gguf")
+    return engine
+  }
+
+  @Test("#4254: a run with no speech is an empty success and the decoder is never entered")
+  func meetingConfirmedSilence() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in [] }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    #expect(result.text == "")
+    #expect(result.meetingSpeechPreparation == .confirmedSilence)
+    #expect(result.segmentTimings == [])
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty, "no native call")
+  }
+
+  @Test("#4254: speech with a short pause and short edges is the whole run, decoded as recorded")
+  func meetingOneGroup() async throws {
+    let driver = FakeWhisperDriver()
+    let seen = LockedBox<[[Float]]>([])
+    driver.runOutcome = { input, _ in
+      seen.set(seen.get() + [input])
+      // Group-relative times; edges under 8 s (c4.1) start the group at the run start.
+      return TranscribeCppRunResult(
+        text: " one two", detectedLanguage: nil,
+        segments: [
+          TranscribeCppSegment(startMs: 1_000, endMs: 2_000, text: " one"),
+          TranscribeCppSegment(startMs: 3_000, endMs: 3_500, text: " two"),
+        ])
+    }
+    // Spans 1-2 s and 3-3.5 s of a 5 s run: a 1 s pause and both edges under the 8 s gap.
+    let engine = try await meetingEngine(driver) { _ in Self.meetingSpans }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    let inputs = seen.get()
+    #expect(inputs.count == 1, "one native call for one group")
+    #expect(
+      inputs.first.map { Array($0[0..<80_000]) } == Self.meetingRun,
+      "the whole run, pause and short edges kept as recorded (c4.1)")
+    #expect(inputs.first.map { $0.count } == 80_000 + 8_000)
+    #expect(result.meetingSpeechPreparation == .protectedSpeech)
+    #expect(result.text == "one two")
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[1_000, 2_000], [3_000, 3_500]])
+    #expect(result.duration == 5)
+  }
+
+  /// 20 s of run: speech (0.3) at 1-2 s and 12-13 s, zeros elsewhere: a 10 s silence.
+  fileprivate static let twoGroupRun: [Float] = (0..<320_000).map {
+    (16_000..<32_000).contains($0) || (192_000..<208_000).contains($0) ? 0.3 : 0
+  }
+
+  @Test(
+    "#4254: a silence of 8 s or more separates groups; each is decoded alone, results combine in order"
+  )
+  func meetingTwoGroups() async throws {
+    let driver = FakeWhisperDriver()
+    let calls = LockedBox<[Int]>([])
+    driver.runOutcome = { input, language in
+      let n = calls.get().count
+      calls.set(calls.get() + [input.count])
+      return TranscribeCppRunResult(
+        text: n == 0 ? " hello there" : " bye now", detectedLanguage: language == nil ? "de" : nil,
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 900, text: n == 0 ? " hello there" : " bye now")
+        ])
+    }
+    let engine = try await meetingEngine(driver) { _ in [16_000..<32_000, 192_000..<208_000] }
+    let result = try await engine.transcribe(samples: Self.twoGroupRun, language: nil)
+    // c4.1: the 1 s lead and the 7 s tail are under the gap, so they join their groups.
+    #expect(
+      calls.get() == [32_000 + 8_000, 128_000 + 8_000], "two calls; the 10 s silence never decoded")
+    #expect(result.text == "hello there bye now")
+    #expect(
+      result.segmentTimings?.map(\.range) == [0..<11, 12..<19],
+      "ranges shifted past the inserted space")
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 900], [12_000, 12_900]],
+      "the second group's 12 s offset applied once")
+    #expect(result.language == "de", "the first group's language")
+    #expect(driver.lastLanguage == "de", "carried to the later group")
+    #expect(result.duration == 20)
+  }
+
+  @Test(
+    "#4254: when the first group detects no language, later calls stay automatic and none is reported"
+  )
+  func meetingFirstGroupWithoutLanguage() async throws {
+    let driver = FakeWhisperDriver()
+    let languages = LockedBox<[String?]>([])
+    driver.runOutcome = { _, language in
+      let n = languages.get().count
+      languages.set(languages.get() + [language])
+      return TranscribeCppRunResult(
+        text: " word\(n)", detectedLanguage: n == 0 ? nil : "fr", segments: [])
+    }
+    // Three groups: 1-2 s, 12-13 s, 24-25 s (10 s silences).
+    let run: [Float] = (0..<480_000).map {
+      (16_000..<32_000).contains($0) || (192_000..<208_000).contains($0)
+        || (384_000..<400_000).contains($0) ? 0.3 : 0
+    }
+    let engine = try await meetingEngine(driver) { _ in
+      [16_000..<32_000, 192_000..<208_000, 384_000..<400_000]
+    }
+    let result = try await engine.transcribe(samples: run, language: nil)
+    #expect(languages.get() == [nil, nil, nil], "every call automatic")
+    #expect(result.language == nil, "no language invented")
+    #expect(result.text == "word0 word1 word2")
+  }
+
+  #if DEBUG
+    @Test("#4254: the detection registry holds concurrent tokens and clears each on every exit")
+    func detectionRegistryClears() async throws {
+      // Two detections at once: both visible while running.
+      let driver = FakeWhisperDriver()
+      let gate = AsyncGate(open: false)
+      defer { gate.open() }
+      // Appends under one lock: two detectors entering together must both be counted.
+      let seen = Recorder<[UInt32]>()
+      let engineA = try await meetingEngine(driver) { _ in
+        seen.append(MeetingSpeechDetectionActivity.snapshot().tokens)
+        await gate.wait()
+        return []
+      }
+      let first = Task { try await engineA.transcribe(samples: Self.meetingRun, language: "en") }
+      let second = Task { try await engineA.transcribe(samples: Self.meetingRun, language: "en") }
+      let deadline = ContinuousClock.now + .seconds(10)
+      while seen.values.count < 2, ContinuousClock.now < deadline { await Task.yield() }
+      try #require(seen.values.count == 2, "both detections started")
+      #expect(
+        MeetingSpeechDetectionActivity.snapshot().tokens.count >= 2,
+        "both running detections listed")
+      gate.open()
+      _ = try await first.value
+      _ = try await second.value
+      // Success, unavailable and cancellation each clear their token before returning.
+      struct Broken: Error {}
+      let detectors: [MeetingSpeechSpans] = [
+        { _ in [] },
+        { _ in throw Broken() },
+        { _ in throw CancellationError() },
+      ]
+      for detect in detectors {
+        let before = Set(MeetingSpeechDetectionActivity.snapshot().tokens)
+        let engine = try await meetingEngine(driver, detect: detect)
+        _ = try? await engine.transcribe(samples: Self.meetingRun, language: "en")
+        #expect(Set(MeetingSpeechDetectionActivity.snapshot().tokens) == before, "token cleared")
+      }
+    }
+  #endif
+
+  @Test("#4254: a meeting live session decodes from the speech and filters on the whole window")
+  func meetingLiveTrimThroughRuntime() async throws {
+    let driver = FakeWhisperDriver()
+    let inputs = LockedBox<[Int]>([])
+    // Window-relative: speech 5 s to 9 s, then silence. Decoder times are relative to the trim.
+    driver.runOutcome = { samples, _ in
+      inputs.set(inputs.get() + [samples.count])
+      return TranscribeCppRunResult(
+        text: "hello. Thank you.", detectedLanguage: "en",
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 3_500, text: " hello."),
+          // Over the silence after the speech, inside real audio: the tail filter's case.
+          TranscribeCppSegment(startMs: 9_000, endMs: 10_500, text: " Thank you."),
+        ])
+    }
+    let runtime = TranscribeCppPreviewRuntime(
+      driver: driver, modelPath: "small.gguf", isAdmitted: { true }, cadence: .milliseconds(1),
+      residency: .init())
+    let detector = MeetingLiveSpeechGateTests.FakeDetector(speech: [80_000..<144_000])
+    let session = try await runtime.makeSession(
+      language: "en", hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
+      onAudioReleased: { _ in }, onTranscript: { _ in }, liveSpeechDetector: { detector })
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    let audio = (0..<320_000).map { $0 >= 80_000 && $0 < 144_000 ? Float(sin(Double($0) * 0.05)) * 0.2 : 0 }
+    await rolling.start(audioSamplesProvider: { (audio, audio.count) })
+    await TranscribeCppRollingSessionTests.within("decode") { await rolling.cyclesCompleted(reach: 1) }
+    await rolling.cancel()
+    #expect(
+      inputs.get() == [144_000 - 80_000 + LiveTranscribeCppWhisperBackend.silencePaddingSamples],
+      "the native input is the speech slice; padding added once")
+    #expect(await rolling.heldBackTextForTests == "hello.", "nothing past the slice end is real")
+    await runtime.releaseAndDrain()
+  }
+
+  @Test("#4254: a failure in a later group returns nothing and drains; no partial result")
+  func meetingAtomicFailure() async throws {
+    struct Broken: Error {}
+    let driver = FakeWhisperDriver()
+    let calls = LockedBox(0)
+    driver.runOutcome = { _, _ in
+      calls.set(calls.get() + 1)
+      if calls.get() == 2 { throw TranscribeCppExecutor.ExecutorError.preempted }
+      return TranscribeCppRunResult(text: " one", detectedLanguage: nil, segments: [])
+    }
+    let engine = try await meetingEngine(driver) { _ in [16_000..<32_000, 192_000..<208_000] }
+    await #expect(throws: MeetingEngineYield.self) {
+      _ = try await engine.transcribe(samples: Self.twoGroupRun, language: "en")
+    }
+    #expect(calls.get() == 2)
+  }
+
+  @Test("#4254: admission lost after the first group yields before the next native call")
+  func meetingAdmissionPerGroup() async throws {
+    let driver = FakeWhisperDriver()
+    let calls = LockedBox(0)
+    driver.runOutcome = { _, _ in
+      calls.set(calls.get() + 1)
+      return TranscribeCppRunResult(text: " one", detectedLanguage: nil, segments: [])
+    }
+    let handle = try await driver.load(modelPath: "turbo.gguf", lane: .preview)
+    let checks = LockedBox(0)
+    await #expect(throws: MeetingEngineYield.self) {
+      _ = try await Backend.meetingDecode(
+        driver: driver, handle: handle, samples: Self.twoGroupRun, language: "en", route: "test",
+        detectSpeech: { _ in [16_000..<32_000, 192_000..<208_000] },
+        isAdmitted: {
+          checks.set(checks.get() + 1)
+          return checks.get() == 1
+        })
+    }
+    #expect(checks.get() == 2, "admission is checked before each group")
+    #expect(calls.get() == 1, "the second group never reached native work")
+    await driver.unload(handle)
+  }
+
+  @Test("#4254: cancellation during detection that finds no speech is cancellation")
+  func meetingCancelledSilentDetection() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in
+      withUnsafeCurrentTask { $0?.cancel() }
+      return []
+    }
+    await #expect(throws: CancellationError.self) {
+      _ = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    }
+  }
+
+  @Test("#4254: a quiet genuine ending after a long silence keeps its words")
+  func meetingQuietEndingKept() async throws {
+    // Loud speech early, a long silence, then a quiet but voiced ending at 4.5-5 s.
+    let run: [Float] = (0..<80_000).map {
+      if (0..<16_000).contains($0) { return 0.3 }
+      if (72_000..<80_000).contains($0) { return 0.05 }
+      return 0
+    }
+    let driver = FakeWhisperDriver()
+    driver.runOutcome = { _, _ in
+      TranscribeCppRunResult(
+        text: " hello bye", detectedLanguage: nil,
+        segments: [
+          TranscribeCppSegment(startMs: 0, endMs: 1_000, text: " hello"),
+          TranscribeCppSegment(startMs: 4_500, endMs: 5_000, text: " bye"),
+        ])
+    }
+    let engine = try await meetingEngine(driver) { _ in [0..<16_000, 72_000..<80_000] }
+    let result = try await engine.transcribe(samples: run, language: "en")
+    #expect(result.text == "hello bye")
+    #expect(
+      result.segmentTimings?.map { [$0.startMs, $0.endMs] } == [[0, 1_000], [4_500, 5_000]])
+  }
+
+  @Test("#4254: a detector that cannot run decodes the whole run, marked unavailable")
+  func meetingDetectorUnavailable() async throws {
+    struct Broken: Error {}
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in throw Broken() }
+    let result = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    #expect(result.meetingSpeechPreparation == .detectionUnavailable)
+    #expect(driver.lastSampleCount == 80_000 + 8_000)
+  }
+
+  @Test("#4254: cancellation during detection is cancellation, never an unfiltered decode")
+  func meetingCancelledDuringDetection() async throws {
+    let driver = FakeWhisperDriver()
+    let engine = try await meetingEngine(driver) { _ in throw CancellationError() }
+    await #expect(throws: CancellationError.self) {
+      _ = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    }
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty)
+  }
+
+  @Test("#4254: a model unloaded during detection yields before the native call")
+  func meetingAdmissionLostDuringDetection() async throws {
+    let driver = FakeWhisperDriver()
+    let box = LockedBox<MeetingWhisperEngine<FakeWhisperDriver>?>(nil)
+    let engine = try await meetingEngine(driver) { _ in
+      await box.get()?.unload()
+      return Self.meetingSpans
+    }
+    box.set(engine)
+    await #expect(throws: MeetingEngineYield.self) {
+      _ = try await engine.transcribe(samples: Self.meetingRun, language: "en")
+    }
+    #expect(driver.log.filter { $0.hasPrefix("enter ") }.isEmpty)
+  }
+}
+
+/// A value shared with a `@Sendable` closure.
+private final class LockedBox<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Value
+  init(_ value: Value) { self.value = value }
+  func get() -> Value { lock.withLock { value } }
+  func set(_ new: Value) { lock.withLock { value = new } }
 }
 
 // MARK: - Helpers

@@ -278,6 +278,12 @@ public enum AudioConstants {
   /// Minimum samples required for valid transcription (1 second).
   public static let minimumTranscriptionSamples: Int = 16000
 
+  /// Audio kept on each side of a detected speech range before recognition (100 ms): dictation's
+  /// trim (`SampleFilter`) and meeting Whisper's speech-only decode (#4254) both use it. It is
+  /// the padding measured to restore a soft spoken start that the detector's boundary trimmed
+  /// (#604), separate from the VAD's own segmentation padding (zero).
+  public static let speechPaddingSamples: Int = 1600
+
   /// Mid-take all-exact-zero ceiling for a BLUETOOTH capture (#1788), 3.0s.
   ///
   /// Distinct from `minimumTranscriptionSamples`, which stays 1.0s and continues to

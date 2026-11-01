@@ -22,10 +22,14 @@ public struct MeetingTrackPiece: Sendable, Equatable {
   /// False for a marker the job writes in place of speech it could not transcribe ("[Could not
   /// transcribe ...]"): a marker on the call track is not the far side talking (#4138).
   public let isSpeech: Bool
+  /// #4254: how the decode that produced this piece prepared its input; nil is unknown. Carried
+  /// to the checkpoint only; composition never reads it.
+  public let speechPreparation: MeetingSpeechPreparation?
 
   public init(
     text: String, startMs: Int, endMs: Int, words: [ASRWordTiming],
-    segments: [ASRSegmentTiming] = [], isSegmentLevel: Bool = false, isSpeech: Bool = true
+    segments: [ASRSegmentTiming] = [], isSegmentLevel: Bool = false, isSpeech: Bool = true,
+    speechPreparation: MeetingSpeechPreparation? = nil
   ) {
     self.text = text
     self.startMs = startMs
@@ -34,6 +38,7 @@ public struct MeetingTrackPiece: Sendable, Equatable {
     self.segments = segments
     self.isSegmentLevel = isSegmentLevel || !segments.isEmpty
     self.isSpeech = isSpeech
+    self.speechPreparation = speechPreparation
   }
 
   /// #3973 C3: speech timed by segment only.

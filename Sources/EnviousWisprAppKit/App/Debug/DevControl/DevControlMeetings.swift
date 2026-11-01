@@ -561,9 +561,12 @@
     }
 
     /// `{}`: the live words of the meeting recording now (memory only, R59), or null.
-    func live(_ args: [String: Any]) -> Result {
+    func live(_ args: [String: Any]) async -> Result {
       guard args.isEmpty else { return .failure(.badArgs, "meeting.live takes no arguments") }
       guard let coordinator = sources.coordinator() else { return unwiredResult }
+      guard coordinator.liveTranscript != nil else { return .ok(["live": NSNull()]) }
+      // #4254: read first, then the transcript, so both describe the recording after the await.
+      let detection = await coordinator.liveWords?.detectionReports() ?? [:]
       guard let live = coordinator.liveTranscript else { return .ok(["live": NSNull()]) }
       return .ok([
         "live": [
@@ -585,12 +588,26 @@
             uniqueKeysWithValues: live.tracks.map { track, state -> (String, Any) in
               (
                 track.rawValue,
-                ["status": Self.name(state.status), "droppedAudio": state.droppedAudio]
-                  as [String: Any]
+                [
+                  "status": Self.name(state.status), "droppedAudio": state.droppedAudio,
+                  // #4254: the track's session epoch and speech detection counts, or null.
+                  "detection": Self.detection(detection[track]),
+                ] as [String: Any]
               )
             }),
         ] as [String: Any]
       ])
+    }
+
+    /// #4254: one track's detection report as the door shows it; null when unknown.
+    static func detection(_ entry: (epoch: Int, report: LiveDetectionReport?)?) -> Any {
+      guard let entry, let report = entry.report else { return NSNull() }
+      return [
+        "epoch": entry.epoch, "run": report.run, "degraded": report.degraded, "fed": report.fed,
+        "classified": report.classified, "silentCycles": report.silentCycles,
+        "coveredCycles": report.coveredCycles, "pendingCycles": report.pendingCycles,
+        "completedDecodes": report.completedDecodes,
+      ] as [String: Any]
     }
 
     static func name(_ kind: LiveWordsAssembler.Line.Kind) -> String {

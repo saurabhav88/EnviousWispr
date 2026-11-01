@@ -873,7 +873,8 @@ import EnviousWisprAppKitTestSupport
       text: "let run = try await driver.transcribe(", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "transcribe",
-      text: "let result = try await model.transcribe(samples, language)",
+      // #4254: meeting live words decode one speech slice of the same preview model.
+      text: "let result = try await model.transcribe(samples, from, to, language)",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprASR/TranscribeCppPreviewRuntime.swift", matcher: "unload",

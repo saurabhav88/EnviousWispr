@@ -3937,6 +3937,17 @@ final class RecordingSessionKernel {
   /// zero-signal exit queued before Live keeps its reason (§3.4).
   private func beginLiveRecording(_ sid: SessionID) {
     guard isCurrent(sid), state == .live, recordingOutcome == nil else { return }
+    #if DEBUG
+      // #4254 runtime checkpoint: the take that just went live and the CLOCK_UPTIME_RAW reading
+      // at that moment, read here before the asynchronous log write.
+      let readyNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+      let readyTake = sid.raw.uuidString
+      Task {
+        await AppLogger.shared.log(
+          "RECORDING_READY take=\(readyTake) uptime_raw_ns=\(readyNs)", level: .info,
+          category: "Pipeline")
+      }
+    #endif
     recordingStartedAtDate = Date()
     recordingStartedAtUptimeNs = DispatchTime.now().uptimeNanoseconds
     // #1376: snapshot the resolved route AFTER all start retries so the recorded

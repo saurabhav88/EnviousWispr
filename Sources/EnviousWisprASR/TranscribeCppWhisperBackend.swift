@@ -189,6 +189,8 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
   // Operation and pressure bookkeeping.
   private var inFlight = 0
   private var admissionClosed = false
+  /// #4254: the speech detector each meeting decode creates fresh; tests set their own.
+  private var meetingSpeechSpans: MeetingSpeechSpans = MeetingWhisperPreparation.bundled
   /// #3849: Whisper may load only while it is the active heart engine. Set by `park()` (engine
   /// switch away) or at construction when another engine is selected; cleared only by
   /// `unpark()`. A completed unload never clears it.
@@ -638,8 +640,18 @@ package actor TranscribeCppWhisperBackend<Driver: WhisperExecutorDriving>: ASRBa
       throw MeetingEngineYield()
     }
     return try await Self.meetingDecode(
-      driver: driver, handle: handle, samples: audioSamples, language: language)
+      driver: driver, handle: handle, samples: audioSamples, language: language,
+      route: "shared_model", detectSpeech: meetingSpeechSpans,
+      isAdmitted: { await self.admitsMeetingDecode() })
   }
+
+  /// #4254: tests give meeting decodes their own detector.
+  package func setMeetingSpeechSpans(_ spans: @escaping MeetingSpeechSpans) {
+    meetingSpeechSpans = spans
+  }
+
+  /// #4254: admission still open for a meeting decode about to enter native work.
+  private func admitsMeetingDecode() -> Bool { !admissionClosed }
 
   static func mapRunError(_ error: any Error) -> any Error {
     switch error {

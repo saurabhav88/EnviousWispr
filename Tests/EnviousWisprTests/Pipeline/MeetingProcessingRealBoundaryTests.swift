@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import CryptoKit
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
@@ -34,7 +35,9 @@ struct MeetingProcessingRealBoundaryTests {
   }
 
   /// Splits a 16 kHz mono file into the meeting's 60 s segment files, streaming.
-  private func segments(from source: URL, into folder: URL) throws -> MeetingTrackAudio {
+  private func segments(
+    from source: URL, into folder: URL, track: MeetingTrackKind = .callSound
+  ) throws -> MeetingTrackAudio {
     let input = try AVAudioFile(forReading: source)
     let format = AVAudioFormat(
       commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
@@ -48,7 +51,7 @@ struct MeetingProcessingRealBoundaryTests {
       try input.read(into: buffer, frameCount: min(chunk, remaining))
       guard buffer.frameLength > 0 else { break }
       let name = MeetingSegmentNaming.fileName(
-        track: .callSound, index: index, startMs: startSample / 16, partial: false)
+        track: track, index: index, startMs: startSample / 16, partial: false)
       let url = folder.appendingPathComponent(name)
       let out = try AVAudioFile(
         forWriting: url,
@@ -377,5 +380,195 @@ extension MeetingProcessingRealBoundaryTests {
     print(
       "MEETING_DIARIZER_COMPARE array_s=\(String(format: "%.1f", arraySeconds)) lazy_s=\(String(format: "%.1f", lazySeconds)) "
         + "array_speakers=\(Set(arraySegments.map(\.speakerId)).count) lazy_speakers=\(Set(lazySegments.map(\.speakerId)).count)")
+  }
+}
+
+// MARK: - #4254 representative voices (plan §16.5)
+
+/// One case of `Tests/Fixtures/meeting-voices/manifest.json` (written by its
+/// `generate-fixtures.py`): literal scripts per voice, and the whole reference when the words
+/// have one order (nil for overlapping voices, which are scored per voice).
+struct MeetingVoiceCase: Decodable, Sendable {
+  struct Voice: Decodable, Sendable { let text: String }
+  let id: String
+  let file: String
+  let reference: String?
+  let language: String?
+  let voices: [Voice]
+  let sha256: String
+
+  static let fixtureDirectory = "Tests/Fixtures/meeting-voices"
+  static let expectedCount = 7
+
+  static func load(root: URL) throws -> [MeetingVoiceCase] {
+    try JSONDecoder().decode(
+      [MeetingVoiceCase].self,
+      from: Data(contentsOf: root.appending(path: "\(fixtureDirectory)/manifest.json")))
+  }
+
+  /// The literal word sequences the output is scored against.
+  var references: [[String]] {
+    if let reference { return [Self.words(reference)] }
+    return voices.map { Self.words($0.text) }
+  }
+
+  static func words(_ text: String) -> [String] {
+    text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+  }
+
+  /// Ordered alignment of `words` to `reference` by longest common subsequence: reference words
+  /// missing (deletions, in order) and words not in the reference (insertions). A substitution
+  /// is one of each.
+  static func edits(_ words: [String], against reference: [String]) -> (
+    missing: [String], extra: [String], missingAt: [Int]
+  ) {
+    let n = words.count
+    let m = reference.count
+    var table = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+    for i in stride(from: n - 1, through: 0, by: -1) {
+      for j in stride(from: m - 1, through: 0, by: -1) {
+        table[i][j] =
+          words[i] == reference[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+      }
+    }
+    var missing: [String] = []
+    var missingAt: [Int] = []
+    var extra: [String] = []
+    var (i, j) = (0, 0)
+    while i < n || j < m {
+      if i < n, j < m, words[i] == reference[j] {
+        i += 1
+        j += 1
+      } else if j < m, i == n || table[i][j + 1] >= table[i + 1][j] {
+        missing.append(reference[j])
+        missingAt.append(j)
+        j += 1
+      } else {
+        extra.append(words[i])
+        i += 1
+      }
+    }
+    return (missing, extra, missingAt)
+  }
+
+}
+
+extension MeetingProcessingRealBoundaryTests {
+  struct DetectionUnavailable: Error {}
+
+  /// The approved #3705 turbo Q8_0, by content.
+  nonisolated static let turboDigest = "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183"
+
+  /// #4254 §16.5: each representative voice case enters the meeting pass as the microphone track
+  /// or the call-sound track, on the real turbo model with the pinned speech detector, beside
+  /// the same pass with detection unavailable (today's undetected decode). Detection may lose no
+  /// word the undetected decode keeps; music and noise alone give no words.
+  /// **What the user sees when this fails:** a quiet, soft, brief, overlapping, accompanied or
+  /// non-English contribution is missing from the saved meeting transcript, or background
+  /// music becomes words.
+  @Test(
+    "#4254: representative voices keep their words through the real meeting pass on each track",
+    .enabled(
+      if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
+    .tags(.realBoundary), .timeLimit(.minutes(20)), .realBoundaryRun,
+    arguments: [MeetingTrackKind.microphone, .callSound])
+  func representativeVoicesFinal(track: MeetingTrackKind) async throws {
+    let root = WhisperProductionWiringRealBoundaryTests.repoRoot
+    let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
+    let digest = SHA256.hash(data: try Data(contentsOf: URL(filePath: modelPath), options: .mappedIfSafe))
+      .map { String(format: "%02x", $0) }.joined()
+    try #require(digest == Self.turboDigest, "requires the approved turbo Q8_0 model")
+    let cases = try MeetingVoiceCase.load(root: root)
+    try #require(cases.count == MeetingVoiceCase.expectedCount, "every §16.5 case is in the manifest")
+
+    // The pinned detector through its production loader, from a bundle linking the asset.
+    let vadRoot = TestTemporaryDirectory.url
+      .appendingPathComponent("MeetingVoices-VAD-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: vadRoot, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: vadRoot.appendingPathComponent("\(BundledVADModelLoader.pinnedModelName).mlmodelc"),
+      withDestinationURL: PinnedVADModel.url)
+    let vadPath = vadRoot.path
+    let detections = OSAllocatedUnfairLock(initialState: 0)
+
+    /// The pass's text and each decode's speech preparation.
+    func pass(_ fixture: URL, language: String, detect: Bool) async throws -> (
+      text: String, preparations: [MeetingSpeechPreparation?]
+    ) {
+      let dir = try folder("voices")
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let audio = try segments(from: fixture, into: dir, track: track)
+      let engine = LiveMeetingWhisperEngine(
+        driver: LiveWhisperExecutorDriver(),
+        detectSpeech: { samples in
+          guard detect else { throw DetectionUnavailable() }
+          detections.withLock { $0 += 1 }
+          return try await MeetingSpeechDetector.spans(
+            in: samples, modelBundle: Bundle(path: vadPath) ?? .main)
+        })
+      var configuration = MeetingTranscriptionJob.Configuration()
+      configuration.cutsPieces = false
+      var preparations: [MeetingSpeechPreparation?] = []
+      let job = MeetingTranscriptionJob(
+        dependencies: .init(
+          isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+          loadEngine: { try await engine.load(modelPath: modelPath) },
+          transcribe: { samples, language in
+            let decoded = try await engine.transcribe(samples: samples, language: language)
+            preparations.append(decoded.meetingSpeechPreparation)
+            return decoded
+          },
+          unloadEngine: { await engine.unload() },
+          analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }),
+        configuration: configuration)
+      let result = try await job.runTestAttempt(tracks: [track: audio], language: language) { _ in }
+      #expect(result.failedPieces == 0, "no piece failed")
+      return (result.composition.text, preparations)
+    }
+
+    var lost: [String: [String]] = [:]
+    for item in cases {
+      let fixture = root.appending(path: "\(MeetingVoiceCase.fixtureDirectory)/\(item.file)")
+      let bytes = try Data(contentsOf: fixture)
+      try #require(
+        SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined() == item.sha256,
+        "\(item.id): fixture matches its manifest hash")
+      let language = item.language ?? "en"
+      let before = detections.withLock { $0 }
+      let (detected, detectedPreparations) = try await pass(fixture, language: language, detect: true)
+      #expect(detections.withLock { $0 } > before, "\(item.id): the detector was asked")
+      // A detector error fails open to the undetected decode: only the result's provenance
+      // shows detection actually ran.
+      #expect(!detectedPreparations.isEmpty)
+      #expect(
+        detectedPreparations.allSatisfy { $0 == .protectedSpeech || $0 == .confirmedSilence },
+        "\(item.id): detection ran on every decode: \(detectedPreparations)")
+      let (undetected, undetectedPreparations) = try await pass(fixture, language: language, detect: false)
+      #expect(!undetectedPreparations.isEmpty)
+      #expect(
+        undetectedPreparations.allSatisfy { $0 == .detectionUnavailable },
+        "\(item.id): the baseline is the undetected decode: \(undetectedPreparations)")
+      let words = MeetingVoiceCase.words(detected)
+      let baseline = MeetingVoiceCase.words(undetected)
+      if item.references == [[]] {
+        print("VOICES final track=\(track.rawValue) case=\(item.id) detected=\(words) undetected=\(baseline)")
+        #expect(words.isEmpty, "\(item.id): music and noise alone give no words: \(detected)")
+        continue
+      }
+      for (index, reference) in item.references.enumerated() {
+        let g = MeetingVoiceCase.edits(words, against: reference)
+        let u = MeetingVoiceCase.edits(baseline, against: reference)
+        print(
+          "VOICES final track=\(track.rawValue) case=\(item.id) ref=\(index) "
+            + "detected_missing=\(g.missing) detected_extra=\(g.extra) "
+            + "undetected_missing=\(u.missing) undetected_extra=\(u.extra) "
+            + "detected=\"\(detected)\" undetected=\"\(undetected)\"")
+        // By reference occurrence: a word detection lost is never offset by one it kept elsewhere.
+        let kept = Set(u.missingAt)
+        let vadLost = g.missingAt.filter { !kept.contains($0) }.map { "\($0):\(reference[$0])" }
+        if !vadLost.isEmpty { lost["\(item.id)#\(index)"] = vadLost }
+      }
+    }
+    #expect(lost.isEmpty, "words detection lost that the undetected decode kept: \(lost)")
   }
 }

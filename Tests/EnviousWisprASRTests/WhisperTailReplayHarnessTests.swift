@@ -1,5 +1,9 @@
+import CryptoKit
+import EnviousWisprAudio
+import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
@@ -12,6 +16,13 @@ import Testing
 /// Optional: `TEST_RUNNER_EW_TAIL_ARMS` (comma list), `TEST_RUNNER_EW_TAIL_REPS` (default 3),
 /// `TEST_RUNNER_EW_TAIL_MODEL` (default: the app's installed turbo Q8_0 GGUF),
 /// `TEST_RUNNER_EW_TAIL_OUT` (default: beside the manifest).
+///
+/// #4254 chunk 4: arm `meeting` runs each clip's ORIGINAL samples through production
+/// `MeetingWhisperEngine.transcribe` (`meetingDecode`: pinned bundled Silero from a fixture
+/// bundle, grouped decode, tail filter, binding, provenance) on the executor. With it the model
+/// must be the approved turbo Q8_0 by digest, a 30 s zeros control must be confirmed silence
+/// with no native call, and `TEST_RUNNER_EW_TAIL_REFERENCES` (jsonl of `{"id", "reference"}`)
+/// feeds the ordered-diff report written to `TEST_RUNNER_EW_TAIL_DIFFS`.
 private enum TailReplayConfig {
   static let env = ProcessInfo.processInfo.environment
   static var manifestPath: String? { env["EW_TAIL_MANIFEST"] }
@@ -37,6 +48,75 @@ private enum TailReplayConfig {
     isConfigured && (refilterPath.map { FileManager.default.fileExists(atPath: $0) } ?? false)
   }
   static var outPath: String { env["EW_TAIL_OUT"] ?? (manifestPath ?? "/tmp/x") + ".results.jsonl" }
+  static var referencesPath: String? { env["EW_TAIL_REFERENCES"] }
+  /// #4254: a saved replay.jsonl to rescore offline with the current comparator (no decoding).
+  static var rescorePath: String? { env["EW_TAIL_RESCORE"] }
+  static var isRescoreConfigured: Bool {
+    isConfigured && (rescorePath.map { FileManager.default.fileExists(atPath: $0) } ?? false)
+  }
+  static var diffsPath: String { env["EW_TAIL_DIFFS"] ?? outPath + ".diffs.json" }
+  /// The approved #3705 turbo Q8_0 (the real-boundary fixture's identity).
+  static let turboDigest = "b2e30cc286bc9f3aba4db9099fc7403543497c05ce7100d0d83091ddfd25a183"
+  static let repoRoot = URL(filePath: #filePath).deletingLastPathComponent()
+    .deletingLastPathComponent().deletingLastPathComponent()
+}
+
+/// The pinned Silero asset through its production loader, from a temporary bundle holding a
+/// link to the checked-in model (the real-boundary suite's fixture shape).
+private func pinnedVADBundle() throws -> Bundle {
+  let model = TailReplayConfig.repoRoot.appending(
+    path: "Sources/EnviousWispr/Resources/VAD/\(MeetingSpeechDetector.modelVersion).mlmodelc")
+  try #require(FileManager.default.fileExists(atPath: model.path), "pinned VAD model missing")
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+    "TailReplayVAD-\(UUID().uuidString)")
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  try FileManager.default.createSymbolicLink(
+    at: root.appendingPathComponent("\(MeetingSpeechDetector.modelVersion).mlmodelc"),
+    withDestinationURL: model)
+  return try #require(Bundle(path: root.path))
+}
+
+/// The live executor driver, counting native transcribe entries; with `EW_TAIL_TRACE` set it
+/// also keeps each native input's sha256, count and language and the raw native result (before
+/// production filtering), for attribution of a single clip.
+private struct CountingReplayDriver: WhisperExecutorDriving {
+  typealias Handle = TranscribeCppExecutor.ModelHandle
+  let live = LiveWhisperExecutorDriver()
+  let entries = OSAllocatedUnfairLock(initialState: 0)
+  /// JSON lines, one per native call (Data is Sendable; dictionaries of Any are not).
+  let traces = OSAllocatedUnfairLock(initialState: [Data]())
+
+  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle {
+    try await live.load(modelPath: modelPath, lane: lane)
+  }
+  func detectLanguage(_ handle: Handle, samples: [Float], lane: TranscribeCppExecutor.Lane)
+    async throws -> TranscribeCppLanguageObservation
+  {
+    try await live.detectLanguage(handle, samples: samples, lane: lane)
+  }
+  func transcribe(
+    _ handle: Handle, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane,
+    onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
+  ) async throws -> TranscribeCppRunResult {
+    entries.withLock { $0 += 1 }
+    let result = try await live.transcribe(
+      handle, samples: samples, language: language, lane: lane,
+      onInferenceEntered: onInferenceEntered, onProgress: onProgress)
+    if TailReplayConfig.env["EW_TAIL_TRACE"] != nil {
+      let line = try JSONSerialization.data(withJSONObject: [
+        "inputSha256": replaySHA(samples), "inputSamples": samples.count,
+        "language": language as Any, "rawText": result.text,
+        "rawSegments": result.segments.map { ["t0": $0.startMs, "t1": $0.endMs, "text": $0.text] },
+      ])
+      traces.withLock { $0.append(line) }
+    }
+    return result
+  }
+  func waitForDrain(_ handle: Handle) async { await live.waitForDrain(handle) }
+  func unload(_ handle: Handle) async { await live.unload(handle) }
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+    await live.awaitSettled(openedOn: lane)
+  }
 }
 
 private struct TailReplayItem: Decodable {
@@ -71,6 +151,13 @@ private func readPCM16Mono(_ path: String) throws -> [Float] {
   throw CocoaError(.fileReadCorruptFile)
 }
 
+/// sha256 of the samples' little-endian Float32 bytes.
+private func replaySHA(_ samples: [Float]) -> String {
+  samples.withUnsafeBufferPointer { buffer in
+    SHA256.hash(data: UnsafeRawBufferPointer(buffer)).map { String(format: "%02x", $0) }.joined()
+  }
+}
+
 /// Deterministic low-level white noise (fixed seed, fixed RMS) for the noise-pad arm.
 private func fixedNoise(count: Int, rms: Float) -> [Float] {
   var state: UInt64 = 0x3801
@@ -99,33 +186,104 @@ private func shape(_ samples: [Float], arm: String) -> [Float] {
 struct WhisperTailReplayHarnessTests {
   @Test(
     "replays the manifest through every arm and records raw text",
-    .enabled(if: TailReplayConfig.isConfigured && TailReplayConfig.refilterPath == nil),
+    .enabled(
+      if: TailReplayConfig.isConfigured && TailReplayConfig.refilterPath == nil
+        && TailReplayConfig.rescorePath == nil),
     .tags(.realBoundary), .realBoundaryRun
   )
-  func replay() throws {
+  func replay() async throws {
     let manifest = try JSONDecoder().decode(
       [TailReplayItem].self, from: Data(contentsOf: URL(filePath: TailReplayConfig.manifestPath!)))
+    let arms = TailReplayConfig.arms
+    let usesMeeting = arms.contains("meeting")
     let session = try TranscribeCppSession(modelPath: TailReplayConfig.modelPath)
     defer { session.close() }
     FileManager.default.createFile(atPath: TailReplayConfig.outPath, contents: nil)
     let out = try FileHandle(forWritingTo: URL(filePath: TailReplayConfig.outPath))
     defer { try? out.close() }
 
-    let arms = TailReplayConfig.arms
+    // #4254: the production meeting arm, its identity and its silence control.
+    let driver = CountingReplayDriver()
+    let detectorCalls = OSAllocatedUnfairLock(initialState: 0)
+    var engine: MeetingWhisperEngine<CountingReplayDriver>?
+    if usesMeeting {
+      let data = try Data(contentsOf: URL(filePath: TailReplayConfig.modelPath), options: .mappedIfSafe)
+      let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+      try #require(digest == TailReplayConfig.turboDigest, "requires the approved turbo Q8_0 model")
+      let bundle = try pinnedVADBundle()
+      let made = MeetingWhisperEngine(driver: driver) { samples in
+        detectorCalls.withLock { $0 += 1 }
+        return try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+      }
+      try await made.load(modelPath: TailReplayConfig.modelPath)
+      engine = made
+      let nativeBefore = driver.entries.withLock { $0 }
+      // The model is loaded from here on: a failing control frees it before throwing.
+      let control: ASRResult
+      do {
+        control = try await made.transcribe(samples: [Float](repeating: 0, count: 30 * 16_000), language: nil)
+      } catch {
+        await made.unload()
+        throw error
+      }
+      let controlNative = driver.entries.withLock { $0 } - nativeBefore
+      #expect(control.meetingSpeechPreparation == .confirmedSilence, "control: confirmed silence")
+      #expect(controlNative == 0, "control: no native entry on silence")
+      #expect(detectorCalls.withLock { $0 } == 1, "control: the detector really ran")
+      out.write(
+        try JSONSerialization.data(withJSONObject: [
+          "id": "control-zeros-30s", "arm": "control", "rep": 0, "text": control.text,
+          "preparation": control.meetingSpeechPreparation?.rawValue ?? "nil", "nativeCalls": controlNative,
+        ]) + Data("\n".utf8))
+    }
+    var texts: [String: [String: String]] = [:]  // "id|rep" -> arm -> text
     var rows = 0
+    // The loaded model is freed on every exit: a failed clip, an error or a cancellation.
+    try await ReplayCleanup.run({
     for rep in 0..<TailReplayConfig.reps {
       for item in manifest {
         let samples = try readPCM16Mono(item.path)
         // Interleave arm order by repetition so no arm always runs first.
         let ordered = rep % 2 == 0 ? arms : arms.reversed()
         for arm in ordered {
+          if arm == "meeting", let engine {
+            let nativeBefore = driver.entries.withLock { $0 }
+            let detectorBefore = detectorCalls.withLock { $0 }
+            let start = ContinuousClock.now
+            // Original, unpadded samples: production adds its own padding.
+            let result = try await engine.transcribe(samples: samples, language: item.language)
+            let ms = Double((ContinuousClock.now - start) / .microseconds(1)) / 1000
+            let preparation = result.meetingSpeechPreparation
+            let traced = try driver.traces.withLock { all -> [Data] in
+              defer { all = [] }
+              return all
+            }.map { try JSONSerialization.jsonObject(with: $0) }
+            #expect(
+              preparation == .protectedSpeech || preparation == .confirmedSilence,
+              "\(item.id): detection must run (got \(preparation?.rawValue ?? "nil"))")
+            let row: [String: Any] = [
+              "id": item.id, "arm": arm, "rep": rep, "ms": ms, "inputSamples": samples.count,
+              "text": result.text, "preparation": preparation?.rawValue ?? "nil",
+              "nativeCalls": driver.entries.withLock { $0 } - nativeBefore,
+              "detectorCalls": detectorCalls.withLock { $0 } - detectorBefore,
+              "segments": (result.segmentTimings ?? []).map {
+                ["t0": $0.startMs as Any, "t1": $0.endMs as Any, "range": [$0.range.lowerBound, $0.range.upperBound]]
+              },
+              "nativeTrace": traced,
+            ]
+            texts["\(item.id)|\(rep)", default: [:]][arm] = result.text
+            out.write(try JSONSerialization.data(withJSONObject: row) + Data("\n".utf8))
+            rows += 1
+            continue
+          }
           let input = shape(samples, arm: arm)
           let start = ContinuousClock.now
           let result = try session.run(samples: input, language: item.language)
           let ms = Double((ContinuousClock.now - start) / .microseconds(1)) / 1000
           var row: [String: Any] = [
             "id": item.id, "arm": arm, "rep": rep, "ms": ms,
-            "inputSamples": input.count, "text": result.text,
+            "inputSamples": input.count, "text": result.text, "inputSha256": replaySHA(input),
+            "language": item.language as Any,
             "segments": result.segments.map {
               ["t0": $0.startMs, "t1": $0.endMs, "text": $0.text]
             },
@@ -148,14 +306,80 @@ struct WhisperTailReplayHarnessTests {
               ["t0": $0.startMs, "t1": $0.endMs, "text": $0.text]
             }
           }
+          texts["\(item.id)|\(rep)", default: [:]][arm] = result.text
           out.write(try JSONSerialization.data(withJSONObject: row) + Data("\n".utf8))
           rows += 1
         }
       }
     }
+    }, finally: { await engine?.unload() })
     #expect(!manifest.isEmpty)
     // Fails loudly on any silently skipped decode.
     #expect(rows == manifest.count * arms.count * TailReplayConfig.reps)
+    if usesMeeting, arms.contains("zeros500") {
+      try writeDiffs(manifest: manifest, texts: texts)
+    }
+  }
+
+  @Test(
+    "rescores a saved replay with the current comparator, without decoding",
+    .enabled(if: TailReplayConfig.isRescoreConfigured)
+  )
+  func rescore() throws {
+    let manifest = try JSONDecoder().decode(
+      [TailReplayItem].self, from: Data(contentsOf: URL(filePath: TailReplayConfig.manifestPath!)))
+    var texts: [String: [String: String]] = [:]
+    var rows = 0
+    for line in try String(contentsOfFile: TailReplayConfig.rescorePath!, encoding: .utf8).split(separator: "\n") {
+      let row = try #require(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+      let arm = try #require(row["arm"] as? String)
+      guard arm == "zeros500" || arm == "meeting" else { continue }
+      let id = try #require(row["id"] as? String)
+      let rep = try #require(row["rep"] as? Int)
+      texts["\(id)|\(rep)", default: [:]][arm] = try #require(row["text"] as? String)
+      rows += 1
+    }
+    #expect(rows == manifest.count * 2 * TailReplayConfig.reps, "every saved arm row rescored")
+    try writeDiffs(manifest: manifest, texts: texts)
+  }
+
+  /// #4254: per clip and repetition, the meeting arm's ordered edits against the unfiltered
+  /// `zeros500` arm, and each arm's against the reference (or NOT ADJUDICATED without one).
+  private func writeDiffs(manifest: [TailReplayItem], texts: [String: [String: String]]) throws {
+    var references: [String: String] = [:]
+    if let path = TailReplayConfig.referencesPath {
+      for line in try String(contentsOfFile: path, encoding: .utf8).split(separator: "\n") {
+        let row = try #require(try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        if let id = row["id"] as? String, let reference = row["reference"] as? String {
+          references[id] = reference
+        }
+      }
+    }
+    func encode(_ edits: [ReplayWordDiff.Edit]) -> [[String: Any]] {
+      edits.map { ["kind": $0.kind.rawValue, "position": $0.position, "expected": $0.expected as Any, "actual": $0.actual as Any] }
+    }
+    func versus(_ text: String, _ id: String) -> Any {
+      switch ReplayWordDiff.compare(text, reference: references[id]) {
+      case .compared(let edits): return encode(edits)
+      case .notAdjudicated: return "NOT ADJUDICATED"
+      }
+    }
+    var report: [[String: Any]] = []
+    for item in manifest {
+      for rep in 0..<TailReplayConfig.reps {
+        let arms = try #require(texts["\(item.id)|\(rep)"])
+        let unfiltered = try #require(arms["zeros500"])
+        let meeting = try #require(arms["meeting"])
+        let change = ReplayWordDiff.edits(
+          expected: ReplayWordDiff.tokens(unfiltered), actual: ReplayWordDiff.tokens(meeting))
+        report.append([
+          "id": item.id, "rep": rep, "changed": !change.isEmpty, "meetingVsUnfiltered": encode(change),
+          "meetingVsReference": versus(meeting, item.id), "unfilteredVsReference": versus(unfiltered, item.id),
+        ])
+      }
+    }
+    let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted])
+    try data.write(to: URL(filePath: TailReplayConfig.diffsPath))
   }
 
   @Test(

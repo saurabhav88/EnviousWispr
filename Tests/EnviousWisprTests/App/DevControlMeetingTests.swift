@@ -5,6 +5,7 @@
 
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprCore
+  @testable import EnviousWisprLivePreview
   @testable import EnviousWisprServices
 
   /// #3972 C6a: when these fail, an agent's meeting command reports a meeting that never
@@ -95,7 +96,7 @@
         Self.code(await unwired.notesSet(["meetingID": id, "notes": "x"])) == "notWired")
       #expect(Self.code(await unwired.summaryGet(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.summaryWrite(["meetingID": id])) == "notWired")
-      #expect(Self.code(unwired.live([:])) == "notWired")
+      #expect(Self.code(await unwired.live([:])) == "notWired")
       #expect(Self.code(await unwired.liveWordsStatus([:])) == "notWired")
       let meetingCommands = DevControlDispatcher.Command.allCases.filter {
         $0.rawValue.hasPrefix("meeting.")
@@ -386,7 +387,7 @@
       await MeetingLiveWordsTests.until("one line", live.owner) {
         $0.transcript?.lines.count == 1
       }
-      let reply = try #require(Self.ok(meetings.live([:])))
+      let reply = try #require(Self.ok(await meetings.live([:])))
       let body = try #require(reply["live"] as? [String: Any])
       #expect(body["meetingID"] as? String == meetingID.uuidString)
       #expect(body["engine"] as? String == "apple")
@@ -398,7 +399,60 @@
       #expect(tracks["microphone"]?["status"] as? String == "running")
       #expect(tracks["callSound"]?["status"] as? String == "off:notCaptured")
       #expect(tracks["microphone"]?["droppedAudio"] as? Bool == false)
+      // #4254: a session without speech detection, and an uncaptured track, report null.
+      #expect(tracks["microphone"]?["detection"] is NSNull)
+      #expect(tracks["callSound"]?["detection"] is NSNull)
+      // A session with detection reports its counts and the track's epoch.
+      let session = try #require(world.appleEngines.first?.sessions.first)
+      session.report = LiveDetectionReport(
+        run: 2, degraded: false, fed: 48_000, classified: 45_056, silentCycles: 3, coveredCycles: 1,
+        pendingCycles: 0, completedDecodes: 4)
+      let counted = try #require(Self.ok(await meetings.live([:]))?["live"] as? [String: Any])
+      let countedTracks = try #require(counted["tracks"] as? [String: [String: Any]])
+      let detection = try #require(countedTracks["microphone"]?["detection"] as? [String: Any])
+      #expect(detection["epoch"] as? Int == 1)
+      #expect(detection["run"] as? Int == 2)
+      #expect(detection["degraded"] as? Bool == false)
+      #expect(detection["fed"] as? Int == 48_000)
+      #expect(detection["classified"] as? Int == 45_056)
+      #expect(detection["silentCycles"] as? Int == 3)
+      #expect(detection["coveredCycles"] as? Int == 1)
+      #expect(detection["pendingCycles"] as? Int == 0)
+      #expect(detection["completedDecodes"] as? Int == 4)
+      #expect(countedTracks["callSound"]?["detection"] is NSNull)
       await live.coordinator.stop()
+      #expect(await live.owner.waitForCleanups(seconds: 10))
+    }
+
+    @Test("detection reports read across two tracks are dropped when the recording ends meanwhile")
+    func detectionReportsRevalidatedAfterAllReads() async throws {
+      let world = MeetingLiveWordsTests.World()
+      world.apple = .ready(world.appleCandidate())
+      let live = try MeetingLiveWordsIntegrationTests.Rig(world: world, callSound: true)
+      await live.coordinator.start(from: .menu)
+      await MeetingLiveWordsTests.until("both running", live.owner) {
+        MeetingLiveWordsTests.status($0, .microphone) == .running
+          && MeetingLiveWordsTests.status($0, .callSound) == .running
+      }
+      let sessions = world.appleEngines.flatMap(\.sessions)
+      try #require(sessions.count == 2)
+      // The first track's read answers; the second is held while the recording ends.
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+      let hold = MeetingLiveWordsTests.Gate()
+      for session in sessions {
+        session.report = LiveDetectionReport(
+          run: 1, degraded: false, fed: 16_000, classified: 12_288, silentCycles: 1, coveredCycles: 0,
+          pendingCycles: 0, completedDecodes: 0)
+        session.reportHold = {
+          if reads.withLock({ $0 += 1; return $0 }) == 2 { await hold.pass() }
+        }
+      }
+      let reading = Task { await live.owner.detectionReports() }
+      await hold.reached(1)
+      await live.coordinator.stop()
+      hold.open()
+      let reports = await reading.value
+      #expect(reports.isEmpty, "a recording that ended during the reads reports nothing: \(reports.keys)")
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
@@ -562,7 +616,7 @@
       await MeetingLiveWordsTests.until("Universal running", live.owner) {
         MeetingLiveWordsTests.status($0, .microphone) == .running
       }
-      let forced = try #require(Self.ok(meetings.live([:]))?["live"] as? [String: Any])
+      let forced = try #require(Self.ok(await meetings.live([:]))?["live"] as? [String: Any])
       #expect(forced["engine"] as? String == "universal")
       #expect(world.shared.count == 1 && world.appleEngines.isEmpty)
       #expect(live.owner.debugEngineOverrideNextRecording == nil, "consumed by that recording")
@@ -572,7 +626,7 @@
       await MeetingLiveWordsTests.until("Apple running", live.owner) {
         MeetingLiveWordsTests.status($0, .microphone) == .running
       }
-      let next = try #require(Self.ok(meetings.live([:]))?["live"] as? [String: Any])
+      let next = try #require(Self.ok(await meetings.live([:]))?["live"] as? [String: Any])
       #expect(next["engine"] as? String == "apple")
       await live.coordinator.stop()
       #expect(await live.owner.waitForCleanups(seconds: 10))

@@ -185,4 +185,26 @@ struct MeetingProcessingCheckpointStoreTests {
       MeetingProcessingCheckpoint.Key.self, from: try JSONSerialization.data(withJSONObject: edited))
     #expect(decoded == key(nil), "an empty stored language reads as Auto")
   }
+
+  @Test("#4254: a piece saved before provenance existed decodes as unknown and is not reusable")
+  func legacyPieceProvenanceIsUnknown() throws {
+    let json = Data(
+      #"{"startSample":0,"endSample":16000,"forcedCut":false,"text":"Hi","words":[],"segments":[]}"#
+        .utf8)
+    let piece = try JSONDecoder().decode(MeetingProcessingCheckpoint.Piece.self, from: json)
+    #expect(piece.speechPreparation == nil)
+    #expect(piece.isReusable == false, "missing provenance is never evidence detection ran")
+    let failed = try JSONDecoder().decode(
+      MeetingProcessingCheckpoint.Piece.self,
+      from: Data(#"{"startSample":0,"endSample":16000,"forcedCut":false}"#.utf8))
+    #expect(failed.isReusable, "a failed piece keeps its truthful gap")
+    let silent = MeetingProcessingCheckpoint.Piece(
+      startSample: 0, endSample: 16_000, forcedCut: false, text: "", words: [], segments: [],
+      speechPreparation: .confirmedSilence)
+    let back = try JSONDecoder().decode(
+      MeetingProcessingCheckpoint.Piece.self, from: JSONEncoder().encode(silent))
+    #expect(back == silent)
+    #expect(back.isReusable)
+    #expect(back.isFailed == false)
+  }
 }

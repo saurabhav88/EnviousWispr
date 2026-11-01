@@ -115,6 +115,27 @@ public struct ASRSegmentTiming: Sendable, Codable, Equatable {
   }
 }
 
+/// #4254: how a meeting Whisper decode prepared its input. Missing (`nil`) is unknown, never
+/// evidence that speech detection ran.
+public enum MeetingSpeechPreparation: String, Sendable, Codable, Equatable {
+  /// Detection ran; only the detected speech (padded) reached the decoder.
+  case protectedSpeech
+  /// Detection ran and found no speech: nothing was decoded, and the empty text is a success.
+  case confirmedSilence
+  /// Detection could not run; the whole run was decoded as before.
+  case detectionUnavailable
+  /// The engine does not use meeting speech detection (Parakeet, Apple).
+  case notApplicable
+
+  /// Whether a decode prepared this way may be reused from a checkpoint.
+  public var isReusable: Bool {
+    switch self {
+    case .protectedSpeech, .confirmedSilence, .notApplicable: true
+    case .detectionUnavailable: false
+    }
+  }
+}
+
 /// Result from an ASR transcription pass.
 public struct ASRResult: Sendable, Codable {
   public let text: String
@@ -140,12 +161,16 @@ public struct ASRResult: Sendable, Codable {
   /// produced `text` (0 = it ran and removed nothing). `nil` for Parakeet and when not measured.
   /// Telemetry metadata only. Optional + defaulted so existing callers and old payloads decode.
   public let silentTailDropped: Int?
+  /// #4254: set by the meeting Whisper decode; `nil` for every other decode, and in old
+  /// payloads. Optional + defaulted so existing callers and old payloads decode.
+  public var meetingSpeechPreparation: MeetingSpeechPreparation?
 
   public init(
     text: String, language: String?, duration: TimeInterval, processingTime: TimeInterval,
     backendType: ASRBackendType, tokenTimingSummary: ASRTokenTimingSummary? = nil,
     wordTimings: [ASRWordTiming]? = nil, wordTimingCoverage: ASRWordTimingCoverage? = nil,
-    segmentTimings: [ASRSegmentTiming]? = nil, silentTailDropped: Int? = nil
+    segmentTimings: [ASRSegmentTiming]? = nil, silentTailDropped: Int? = nil,
+    meetingSpeechPreparation: MeetingSpeechPreparation? = nil
   ) {
     self.text = text
     self.language = language
@@ -157,6 +182,7 @@ public struct ASRResult: Sendable, Codable {
     self.wordTimingCoverage = wordTimingCoverage
     self.segmentTimings = segmentTimings
     self.silentTailDropped = silentTailDropped
+    self.meetingSpeechPreparation = meetingSpeechPreparation
   }
 }
 

@@ -186,7 +186,7 @@ package final class MeetingTranscriptionJob {
 
   /// Bumped whenever segmentation or ownership changes what a piece contains; a checkpoint
   /// from another version is discarded.
-  package nonisolated static let processingVersion = 4
+  package nonisolated static let processingVersion = 5
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -409,7 +409,8 @@ package final class MeetingTranscriptionJob {
     // the pass (`prepareModelUnit`).
     let speechNeeded = order.contains { kind in
       guard let audio = tracks[kind] else { return false }
-      return !Self.isFullyCovered(audio, by: progress?.tracks[kind]?.pieces ?? [])
+      return !Self.isFullyCovered(
+        audio, by: (progress?.tracks[kind]?.pieces ?? []).filter(\.isReusable))
     }
     if speechNeeded {
       do {
@@ -425,7 +426,8 @@ package final class MeetingTranscriptionJob {
               try checkCancelled()
               let piece: MeetingProcessingCheckpoint.Piece
               if let reused = committed.first(where: {
-                $0.startSample == cursor && $0.endSample <= run.endSample && $0.endSample > cursor
+                $0.isReusable && $0.startSample == cursor && $0.endSample <= run.endSample
+                  && $0.endSample > cursor
               }) {
                 piece = reused
               } else {
@@ -690,7 +692,7 @@ package final class MeetingTranscriptionJob {
           word: $0.word, lower: $0.range.lowerBound, upper: $0.range.upperBound,
           startMs: $0.startMs, endMs: $0.endMs)
       },
-      segments: owned.flatMap(Self.storedSegments))
+      segments: owned.flatMap(Self.storedSegments), speechPreparation: owned?.speechPreparation)
   }
 
   /// A piece's segments as the checkpoint stores them. A segment-level piece stores its
@@ -759,7 +761,7 @@ package final class MeetingTranscriptionJob {
       },
       segments: (piece.segments ?? []).map {
         ASRSegmentTiming(range: $0.lower..<$0.upper, startMs: $0.startMs, endMs: $0.endMs)
-      }, isSegmentLevel: piece.segments != nil)
+      }, isSegmentLevel: piece.segments != nil, speechPreparation: piece.speechPreparation)
   }
 
   /// Whether a stored checkpoint is internally sound for these tracks before any of it is used:
@@ -960,7 +962,14 @@ package final class MeetingTranscriptionJob {
             range: $0.range, startMs: $0.startMs.map { startMs + $0 },
             endMs: $0.endMs.map { startMs + $0 })
         } : [],
-      isSegmentLevel: words.isEmpty && result.segmentTimings != nil)
+      isSegmentLevel: words.isEmpty && result.segmentTimings != nil,
+      speechPreparation: speechPreparation(of: result))
+  }
+
+  /// #4254: a meeting Whisper decode says how it prepared its input; any other engine does not
+  /// use meeting speech detection. A Whisper result without it is unknown.
+  nonisolated static func speechPreparation(of result: ASRResult) -> MeetingSpeechPreparation? {
+    result.meetingSpeechPreparation ?? (result.backendType == .whisper ? nil : .notApplicable)
   }
 
   /// The words of `result` whose midpoint falls in this piece's own range, as a piece on the
@@ -975,7 +984,9 @@ package final class MeetingTranscriptionJob {
     guard let timings = result.wordTimings, !timings.isEmpty,
       timings.contains(where: { $0.startMs != nil && $0.endMs != nil })
     else {
-      return MeetingTrackPiece(text: result.text, startMs: startMs, endMs: endMs, words: [])
+      return MeetingTrackPiece(
+        text: result.text, startMs: startMs, endMs: endMs, words: [],
+        speechPreparation: speechPreparation(of: result))
     }
     func owned(_ w: ASRWordTiming) -> Bool? {
       guard let s = w.startMs, let e = w.endMs else { return nil }
@@ -1005,7 +1016,9 @@ package final class MeetingTranscriptionJob {
           word: trimmed, range: lower..<text.utf16.count,
           startMs: w.startMs.map { paddedStartMs + $0 }, endMs: w.endMs.map { paddedStartMs + $0 }))
     }
-    return MeetingTrackPiece(text: text, startMs: startMs, endMs: endMs, words: words)
+    return MeetingTrackPiece(
+      text: text, startMs: startMs, endMs: endMs, words: words,
+      speechPreparation: speechPreparation(of: result))
   }
 
   // MARK: - Units and admission

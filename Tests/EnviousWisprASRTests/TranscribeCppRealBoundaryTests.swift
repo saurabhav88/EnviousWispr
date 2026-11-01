@@ -1,8 +1,11 @@
 import CryptoKit
+import Darwin
+import EnviousWisprAudio
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprTranscribeCpp
@@ -224,6 +227,63 @@ struct TranscribeCppExecutorRealBoundaryTests {
 
     await executor.unload(model)
     #expect(await executor.counters.freed == 1)
+  }
+
+  /// #4254 Q-a: the native decoder's own copy of a meeting's decode input. One hour of real
+  /// speech (the committed clip repeated, worst case all speech) through the executor on the
+  /// real model, with the process footprint sampled before the load, after it, and while the
+  /// decode runs. Prints one `QA-NATIVE` line for the #4254 receipt.
+  @Test(
+    "#4254 Q-a: peak footprint of an hour-long real decode",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(15)), .realBoundaryRun
+  )
+  func hourDecodeFootprint() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let hour = 3_600 * 16_000
+    var samples: [Float] = []
+    samples.reserveCapacity(hour)
+    while samples.count < hour { samples.append(contentsOf: clip.prefix(hour - samples.count)) }
+    let beforeLoad = Self.footprintMB()
+    let executor = TranscribeCppExecutor()
+    let model = try await executor.load(
+      modelPath: TranscribeCppRealBoundaryFixture.modelPath, lane: .heart)
+    let loaded = Self.footprintMB()
+    let peak = OSAllocatedUnfairLock(initialState: loaded)
+    // detached: samples the process from outside the decode being measured.
+    let sampler = Task.detached {
+      while !Task.isCancelled {
+        let now = Self.footprintMB()
+        peak.withLock { $0 = max($0, now) }
+        try? await Task.sleep(for: .milliseconds(50))  // test-fixture-timer: sampling period
+      }
+    }
+    let start = ContinuousClock.now
+    let result = try await executor.transcribe(model, samples: samples, language: "en", lane: .heart)
+    let elapsed = ContinuousClock.now - start
+    sampler.cancel()
+    _ = await sampler.value
+    let after = Self.footprintMB()
+    await executor.unload(model)
+    let unloaded = Self.footprintMB()
+    #expect(!result.text.isEmpty)
+    print(
+      "QA-NATIVE hour_decode input_samples=\(samples.count) input_mb=\(samples.count * 4 / 1_048_576) footprint_mb before_load=\(Int(beforeLoad)) loaded=\(Int(loaded)) peak_during_decode=\(Int(peak.withLock { $0 })) after_decode=\(Int(after)) after_unload=\(Int(unloaded)) decode_s=\(elapsed.components.seconds)"
+    )
+  }
+
+  private static func footprintMB() -> Double {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(
+      MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+      $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+      }
+    }
+    return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
   }
 
   /// #3849 plan §11 item 2: the crash on quit itself. A child process loads the real model,
@@ -561,5 +621,779 @@ private final class ProgressRecorder: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return calls
+  }
+}
+
+/// Records each native decode's input length, then forwards to the real executor.
+private struct CountingDriver: WhisperExecutorDriving {
+  typealias Handle = TranscribeCppExecutor.ModelHandle
+  let live = LiveWhisperExecutorDriver()
+  let inputs = OSAllocatedUnfairLock<[Int]>(initialState: [])
+
+  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Handle {
+    try await live.load(modelPath: modelPath, lane: lane)
+  }
+  func detectLanguage(_ handle: Handle, samples: [Float], lane: TranscribeCppExecutor.Lane)
+    async throws -> TranscribeCppLanguageObservation
+  {
+    try await live.detectLanguage(handle, samples: samples, lane: lane)
+  }
+  func transcribe(
+    _ handle: Handle, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane,
+    onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?
+  ) async throws -> TranscribeCppRunResult {
+    inputs.withLock { $0.append(samples.count) }
+    return try await live.transcribe(
+      handle, samples: samples, language: language, lane: lane,
+      onInferenceEntered: onInferenceEntered, onProgress: onProgress)
+  }
+  func waitForDrain(_ handle: Handle) async { await live.waitForDrain(handle) }
+  func unload(_ handle: Handle) async { await live.unload(handle) }
+  func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int {
+    await live.awaitSettled(openedOn: lane)
+  }
+}
+
+/// #4254 on the real models: the pinned Silero detector through its production loader (from a
+/// fixture bundle holding the checked-in asset) and the approved turbo Q8_0 decoder.
+private enum MeetingVADFixture {
+  static var modelBundle: Bundle {
+    get throws {
+      let model = TranscribeCppRealBoundaryFixture.repoRoot.appending(
+        path: "Sources/EnviousWispr/Resources/VAD/\(MeetingSpeechDetector.modelVersion).mlmodelc")
+      try #require(FileManager.default.fileExists(atPath: model.path), "pinned VAD model missing")
+      let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("MeetingVADFixture-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      try FileManager.default.createSymbolicLink(
+        at: root.appendingPathComponent("\(MeetingSpeechDetector.modelVersion).mlmodelc"),
+        withDestinationURL: model)
+      return try #require(Bundle(path: root.path))
+    }
+  }
+
+  /// The committed clip's words, the literal reference.
+  static let script = TranscribeCppRealBoundaryFixture.expectedWords
+
+  /// A second, different committed clip and its script (`scripts/freeze-suite/mumbled-speech.txt`).
+  static let otherURL = TranscribeCppRealBoundaryFixture.repoRoot.appending(
+    path: "scripts/freeze-suite/clips/mumbled-speech.wav")
+  static var otherScript: String {
+    get throws {
+      try String(
+        contentsOf: TranscribeCppRealBoundaryFixture.repoRoot.appending(
+          path: "scripts/freeze-suite/mumbled-speech.txt"), encoding: .utf8)
+    }
+  }
+
+  static func words(_ text: String) -> [String] {
+    text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+  }
+}
+
+@Suite("Meeting Whisper speech detection on the real models (#4254)", .serialized, .tags(.productOutcome))
+struct MeetingWhisperVADRealBoundaryTests {
+  @Test(
+    "speech, 20 s of silence, speech: only speech is decoded, both sides survive, times come back",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func protectedSpeechOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let gap = 20 * 16_000
+    let run = clip + [Float](repeating: 0, count: gap) + other
+    let driver = CountingDriver()
+    let detectorRuns = OSAllocatedUnfairLock(initialState: 0)
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      detectorRuns.withLock { $0 += 1 }
+      return try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(samples: run, language: "en")
+    await engine.unload()
+
+    #expect(detectorRuns.withLock { $0 } == 1)
+    #expect(result.meetingSpeechPreparation == .protectedSpeech, "the detector really ran")
+    let decoded = try #require(driver.inputs.withLock { $0 }.first)
+    #expect(decoded < run.count, "the silent gap never reached the decoder: \(decoded) of \(run.count)")
+    let words = MeetingVADFixture.words(result.text)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    #expect(Array(words.prefix(script.count)) == script, "the first side, whole: \(result.text)")
+    #expect(words.contains("dinner"), "the second side survives: \(result.text)")
+    #expect(!words.contains("thank"), "nothing invented over the gap: \(result.text)")
+    let clipMs = clip.count * 1000 / 16_000
+    let timed = (result.segmentTimings ?? []).compactMap { t in t.startMs.map { ($0, t.endMs ?? $0) } }
+    #expect(timed.contains { $0.0 < clipMs }, "a line in the first spoken side")
+    #expect(timed.contains { $0.0 >= clipMs + 20_000 - 200 }, "a line restored past the gap: \(timed)")
+    #expect(timed.allSatisfy { $0.1 <= run.count * 1000 / 16_000 })
+  }
+
+  @Test(
+    "speech then 3 s of silence (under the gap): the whole run is decoded, the ending kept, nothing invented",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func shortOuterSilenceOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let run = [Float](repeating: 0, count: 16_000) + clip + [Float](repeating: 0, count: 3 * 16_000)
+    let driver = CountingDriver()
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(samples: run, language: "en")
+    await engine.unload()
+    #expect(result.meetingSpeechPreparation == .protectedSpeech)
+    // c4.1: both outer silences are under 8 s, so the decoder hears the run's own boundaries.
+    #expect(driver.inputs.withLock { $0 } == [run.count + 8_000], "the whole run plus padding")
+    let words = MeetingVADFixture.words(result.text)
+    #expect(words == MeetingVADFixture.words(MeetingVADFixture.script), "every word, nothing added: \(result.text)")
+  }
+
+  @Test(
+    "30 s of exact zeros: confirmed silence, empty, and the decoder is never entered",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func confirmedSilenceOnRealModels() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let driver = CountingDriver()
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    let result = try await engine.transcribe(
+      samples: [Float](repeating: 0, count: 30 * 16_000), language: "en")
+    await engine.unload()
+    #expect(result.meetingSpeechPreparation == .confirmedSilence)
+    #expect(result.text.isEmpty)
+    #expect(driver.inputs.withLock { $0 }.isEmpty, "no native call")
+  }
+
+  /// The Q-b failures as regression cases through the production decode (plan §17): each
+  /// input's literal ordered reference, zero edits, nothing invented over silence, and each
+  /// second sentence placed within 0.5 s of when it was spoken.
+  @Test(
+    "speech groups keep every word: repeated, independently repeated, distinct, long gap, room tone below the gap",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(10)), .realBoundaryRun
+  )
+  func groupedDecodeRegressions() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let rate = 16_000
+    let clipA = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let clipB = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let room = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.repoRoot.appending(
+        path: "scripts/freeze-suite/clips/background-noise.wav").path)
+    let scriptA = MeetingVADFixture.words(MeetingVADFixture.script)
+    let scriptB = MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let takeURL = FileManager.default.temporaryDirectory.appendingPathComponent("grp-take-\(UUID().uuidString).wav")
+    let say = Process()
+    say.executableURL = URL(filePath: "/usr/bin/say")
+    say.arguments = ["-o", takeURL.path, "--file-format=WAVE", "--data-format=LEI16@16000", MeetingVADFixture.script]
+    try say.run()
+    say.waitUntilExit()
+    try #require(say.terminationStatus == 0, "local voice for the independent take")
+    let takeA2 = try AudioConverter().resampleAudioFile(path: takeURL.path)
+    func zeros(_ seconds: Double) -> [Float] { [Float](repeating: 0, count: Int(seconds * Double(rate))) }
+    var roomTone: [Float] = []
+    while roomTone.count < Int(7.5 * Double(rate)) { roomTone += room }
+    roomTone = Array(roomTone.prefix(Int(7.5 * Double(rate))))
+    let cases: [(String, [Float], [String], Int)] = [
+      ("repeat_exact", zeros(3) + clipA + zeros(13.5) + clipA, scriptA + scriptA, 3 * rate + clipA.count + Int(13.5 * Double(rate))),
+      ("repeat_take2", zeros(3) + clipA + zeros(13.5) + takeA2, scriptA + scriptA, 3 * rate + clipA.count + Int(13.5 * Double(rate))),
+      ("repeat_close", zeros(3) + clipA + zeros(1) + takeA2, scriptA + scriptA, 3 * rate + clipA.count + rate),
+      ("distinct", zeros(3) + clipA + zeros(8.3) + clipB, scriptA + scriptB, 3 * rate + clipA.count + Int(8.3 * Double(rate))),
+      ("control60", clipA + zeros(60) + clipA, scriptA + scriptA, clipA.count + 60 * rate),
+      ("room_tone_7_5s", zeros(1) + clipA + roomTone + clipB, scriptA + scriptB, rate + clipA.count + roomTone.count),
+    ]
+    let driver = CountingDriver()
+    let engine = MeetingWhisperEngine(driver: driver) { samples in
+      try await MeetingSpeechDetector.spans(in: samples, modelBundle: bundle)
+    }
+    try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+    var failures: [String] = []
+    for (name, samples, reference, secondStart) in cases {
+      let before = driver.inputs.withLock { $0.count }
+      let result = try await engine.transcribe(samples: samples, language: "en")
+      let calls = driver.inputs.withLock { $0.count } - before
+      let words = MeetingVADFixture.words(result.text)
+      let edits = WordDiff.edits(reference: reference, hypothesis: words)
+      let starts = (result.segmentTimings ?? []).compactMap(\.startMs)
+      let secondMs = secondStart * 1000 / rate
+      let placed = starts.contains { abs($0 - secondMs) <= 500 }
+      print("GRP case=\(name) calls=\(calls) provenance=\(String(describing: result.meetingSpeechPreparation)) words=\(words.count)/\(reference.count) edits=\(edits.isEmpty ? "none" : edits.joined(separator: ";")) second_spoken_ms=\(secondMs) starts=\(starts) placed=\(placed)")
+      #expect(result.meetingSpeechPreparation == .protectedSpeech, "\(name)")
+      // repeat_close keeps its 1 s pause inside one group. Its loss counts as inherited only
+      // when the same original input decoded WITHOUT detection loses the same words.
+      if name == "repeat_close" {
+        struct NoDetector: Error {}
+        let plain = MeetingWhisperEngine(driver: driver) { _ in throw NoDetector() }
+        try await plain.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+        let unfiltered = try await plain.transcribe(samples: samples, language: "en")
+        await plain.unload()
+        let baseline = MeetingVADFixture.words(unfiltered.text)
+        print("GRP baseline case=\(name) provenance=\(String(describing: unfiltered.meetingSpeechPreparation)) words=\(baseline.count)/\(reference.count) same_as_grouped=\(baseline == words) edits=\(WordDiff.edits(reference: reference, hypothesis: baseline).count)")
+        #expect(unfiltered.meetingSpeechPreparation == .detectionUnavailable)
+        #expect(words == baseline, "grouped output equals the unfiltered decode of the same input")
+        continue
+      }
+      if !edits.isEmpty { failures.append("\(name): \(edits)") }
+      #expect(edits.isEmpty, "\(name): \(result.text)")
+      #expect(placed, "\(name): second sentence within 0.5 s of \(secondMs) ms: \(starts)")
+    }
+    await engine.unload()
+    print("GRP failures=\(failures.count)")
+  }
+
+  /// Plan §17 performance: two hour-scale runs, dense speech and many short groups separated
+  /// by gaps above the grouping gap, decoded grouped and without detection. Prints `PERF`
+  /// lines: groups, native calls, elapsed seconds and peak footprint.
+  @Test(
+    "hour-scale cost of grouped decoding: dense speech and many short groups",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(20)), .realBoundaryRun
+  )
+  func groupedDecodeHourCost() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let rate = 16_000
+    let clip = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let hour = 3_600 * rate
+    var dense: [Float] = []
+    dense.reserveCapacity(hour)
+    while dense.count < hour { dense.append(contentsOf: clip.prefix(hour - dense.count)) }
+    var sparse: [Float] = []
+    sparse.reserveCapacity(hour)
+    while sparse.count < hour {
+      sparse.append(contentsOf: clip.prefix(hour - sparse.count))
+      sparse.append(contentsOf: repeatElement(0, count: min(10 * rate, max(0, hour - sparse.count))))
+    }
+    func footprintMB() -> Double {
+      var info = task_vm_info_data_t()
+      var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+      let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+          task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+        }
+      }
+      return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+    struct NoDetector: Error {}
+    for (name, samples) in [("dense", dense), ("sparse", sparse)] {
+      for (arm, grouped) in [("grouped", true), ("no_vad", false)] {
+        let driver = CountingDriver()
+        let engine = MeetingWhisperEngine(driver: driver) { input in
+          guard grouped else { throw NoDetector() }
+          return try await MeetingSpeechDetector.spans(in: input, modelBundle: bundle)
+        }
+        try await engine.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath)
+        let peak = OSAllocatedUnfairLock(initialState: footprintMB())
+        // detached: samples the process from outside the decode being measured.
+        let sampler = Task.detached {
+          while !Task.isCancelled {
+            let now = footprintMB()
+            peak.withLock { $0 = max($0, now) }
+            try? await Task.sleep(for: .milliseconds(100))  // test-fixture-timer: sampling period
+          }
+        }
+        let start = ContinuousClock.now
+        let result = try await engine.transcribe(samples: samples, language: "en")
+        let elapsed = ContinuousClock.now - start
+        sampler.cancel()
+        _ = await sampler.value
+        await engine.unload()
+        let calls = driver.inputs.withLock { $0 }
+        print("PERF run=\(name) arm=\(arm) native_calls=\(calls.count) decoded_samples=\(calls.reduce(0, +)) elapsed_s=\(elapsed.components.seconds) peak_mb=\(Int(peak.withLock { $0 })) words=\(MeetingVADFixture.words(result.text).count) provenance=\(String(describing: result.meetingSpeechPreparation))")
+        #expect(!calls.isEmpty)
+      }
+    }
+  }
+
+  /// Q-b diagnostic (buddy round 2): where the second of two spoken repetitions is lost, and
+  /// how the smallest remedies compare, WITHOUT changing production preparation. Every arm
+  /// goes through the same steps as `meetingDecode`: one native decode of the prepared input,
+  /// segment times restored onto the ORIGINAL run, the silent-tail filter on the original
+  /// samples, binding on the original bounds. Arms: leading-only trimming, gap removal (the
+  /// production zero-separator join), a 1 s synthetic separator (mapped as removed time), and
+  /// an experimental cap keeping one second of original audio at each edge of every removed
+  /// gap. Each arm runs twice. Prints `QB2` lines for the receipt; a PASS here is not a
+  /// speech-preservation pass.
+  @Test(
+    "Q-b diagnostic: where repeated speech is lost; gap removal, separator and capped gap",
+    .enabled(if: TranscribeCppRealBoundaryFixture.modelIsPresent),
+    .tags(.realBoundary), .timeLimit(.minutes(15)), .realBoundaryRun
+  )
+  func interiorGapExperiment() async throws {
+    try TranscribeCppRealBoundaryFixture.requireExpectedModel()
+    let bundle = try MeetingVADFixture.modelBundle
+    let rate = 16_000
+    let clipA = try AudioConverter().resampleAudioFile(
+      path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let clipB = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let scriptA = MeetingVADFixture.words(MeetingVADFixture.script)
+    let scriptB = MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    // An independently spoken take of script A, from the local macOS voice (no network).
+    let takeURL = FileManager.default.temporaryDirectory.appendingPathComponent("qb-take-\(UUID().uuidString).wav")
+    let say = Process()
+    say.executableURL = URL(filePath: "/usr/bin/say")
+    say.arguments = ["-o", takeURL.path, "--file-format=WAVE", "--data-format=LEI16@16000", MeetingVADFixture.script]
+    try say.run()
+    say.waitUntilExit()
+    let takeA2: [Float]? = say.terminationStatus == 0
+      ? try? AudioConverter().resampleAudioFile(path: takeURL.path) : nil
+    print("QB2 take2 available=\(takeA2 != nil) samples=\(takeA2?.count ?? 0) voice=macOS-default")
+
+    func window(_ first: [Float], _ second: [Float], total: Int = 30) -> [Float] {
+      let lead = 3 * rate
+      let gap = max(rate, total * rate - lead - first.count - second.count - rate)
+      return [Float](repeating: 0, count: lead) + first + [Float](repeating: 0, count: gap) + second
+        + [Float](repeating: 0, count: rate)
+    }
+    var inputs: [(name: String, samples: [Float], reference: [String], speech: [Range<Int>])] = []
+    func add(_ name: String, _ first: [Float], _ second: [Float], _ reference: [String]) {
+      let w = window(first, second)
+      let s1 = 3 * rate..<(3 * rate + first.count)
+      let s2 = (w.count - rate - second.count)..<(w.count - rate)
+      inputs.append((name, w, reference, [s1, s2]))
+    }
+    add("distinct", clipA, clipB, scriptA + scriptB)
+    add("repeat_exact", clipA, clipA, scriptA + scriptA)
+    if let takeA2 { add("repeat_take2", clipA, takeA2, scriptA + scriptA) }
+    let control = clipA + [Float](repeating: 0, count: 60 * rate) + clipA
+    inputs.append(("control60", control, scriptA + scriptA, [0..<clipA.count, (control.count - clipA.count)..<control.count]))
+
+    let driver = LiveWhisperExecutorDriver()
+    let handle = try await driver.load(modelPath: TranscribeCppRealBoundaryFixture.modelPath, lane: .preview)
+    var armRuns = 0
+    for input in inputs {
+      let spans = try await MeetingSpeechDetector.spans(in: input.samples, modelBundle: bundle)
+      let ms = { (r: Range<Int>) in "\(r.lowerBound * 1000 / rate)-\(r.upperBound * 1000 / rate)" }
+      print("QB2 input=\(input.name) seconds=\(input.samples.count / rate) spoken_ms=\(input.speech.map(ms)) detected_ms=\(spans.map(ms)) reference=\(input.reference.count)_words")
+      guard let first = spans.first?.lowerBound else { continue }
+      // Experimental cap: one second of original audio kept at each edge of every removed gap.
+      var capped: [Range<Int>] = []
+      for span in spans {
+        if let last = capped.last, span.lowerBound - last.upperBound <= 2 * rate {
+          capped[capped.count - 1] = last.lowerBound..<span.upperBound
+        } else if let last = capped.last {
+          capped[capped.count - 1] = last.lowerBound..<(last.upperBound + rate)
+          capped.append((span.lowerBound - rate)..<span.upperBound)
+        } else {
+          capped.append(span)
+        }
+      }
+      let arms: [(String, [Range<Int>], Int)] = [
+        ("leading_only", [first..<input.samples.count], 0), ("gap_removed", spans, 0),
+        ("separator_1s", spans, rate), ("capped_gap_2s", capped, 0),
+      ]
+      for (arm, stretches, separator) in arms {
+        for repeatIndex in 0..<2 {
+          let map = SeparatedMap(stretches: stretches, separator: separator, original: input.samples.count)
+          let decoderInput = map.input(from: input.samples, lookAhead: 8_000)
+          let native = try await driver.transcribe(
+            handle, samples: decoderInput, language: "en", lane: .preview, onInferenceEntered: nil,
+            onProgress: nil)
+          let restored = map.restore(native)
+          let tail = WhisperSilentTailFilter.filter(
+            restored, statsSamples: input.samples, segmentOffsetSamples: 0,
+            realEndSample: input.samples.count)
+          let result = TranscribeCppWhisperBackend<LiveWhisperExecutorDriver>.mapResult(
+            tail.result, languageHint: "en", envelope: 0..<input.samples.count,
+            originalSampleCount: input.samples.count, processingTime: 0, enableTimestamps: true)
+          armRuns += 1
+          let finalWords = MeetingVADFixture.words(result.text)
+          let edits = WordDiff.edits(reference: input.reference, hypothesis: finalWords)
+          print("QB2 arm=\(input.name)/\(arm) repeat=\(repeatIndex) decoder_input_samples=\(decoderInput.count) native_words=\(MeetingVADFixture.words(native.text).count) native_segments_decoder_ms=\(native.segments.map { "\($0.startMs)-\($0.endMs)" }) restored_segments_original_ms=\(restored.segments.map { "\($0.startMs)-\($0.endMs)" }) filter_dropped=\(tail.dropped) final_words=\(finalWords.count) reference=\(input.reference.count) edits=\(edits.isEmpty ? "none" : edits.joined(separator: ";"))")
+          if repeatIndex == 0 { print("QB2 text arm=\(input.name)/\(arm) native=\"\(native.text.trimmingCharacters(in: .whitespaces))\" final=\"\(result.text)\"") }
+        }
+      }
+    }
+    await driver.unload(handle)
+    #expect(armRuns == inputs.count * 4 * 2, "every arm and repetition ran: \(armRuns)")
+  }
+
+}
+
+/// Decoder layout for the Q-b diagnostic: stretches joined with `separator` synthetic zeros
+/// between them. A decoded start inside a separator belongs to the following stretch, an end
+/// to the preceding one; `separator == 0` is the production map (`MeetingWhisperPreparation`).
+private struct SeparatedMap {
+  let stretches: [Range<Int>]
+  let separator: Int
+  let original: Int
+
+  var speech: Int { stretches.reduce(0) { $0 + $1.count } + separator * max(0, stretches.count - 1) }
+
+  func input(from samples: [Float], lookAhead: Int) -> [Float] {
+    var out: [Float] = []
+    out.reserveCapacity(speech + lookAhead)
+    for (i, s) in stretches.enumerated() {
+      if i > 0 { out.append(contentsOf: repeatElement(0, count: separator)) }
+      out.append(contentsOf: samples[s])
+    }
+    out.append(contentsOf: repeatElement(0, count: lookAhead))
+    return out
+  }
+
+  func start(_ d: Int) -> Int {
+    guard d >= 0 else { return d }
+    guard d < speech else { return original + (d - speech) }
+    var offset = 0
+    for (i, s) in stretches.enumerated() {
+      if d < offset + s.count { return s.lowerBound + (d - offset) }
+      offset += s.count
+      if i + 1 < stretches.count {
+        if d < offset + separator { return stretches[i + 1].lowerBound }
+        offset += separator
+      }
+    }
+    return original
+  }
+
+  func end(_ d: Int) -> Int {
+    guard d > 0 else { return d }
+    guard d <= speech else { return original + (d - speech) }
+    var offset = 0
+    for (i, s) in stretches.enumerated() {
+      if d <= offset + s.count { return s.lowerBound + (d - offset) }
+      offset += s.count
+      if i + 1 < stretches.count {
+        if d <= offset + separator { return s.upperBound }
+        offset += separator
+      }
+    }
+    return original
+  }
+
+  func restore(_ run: TranscribeCppRunResult) -> TranscribeCppRunResult {
+    let segments = run.segments.map { seg -> TranscribeCppSegment in
+      guard seg.startMs >= 0, seg.endMs >= seg.startMs else { return seg }
+      let a = start(Int(seg.startMs) * 16)
+      let b = max(a, end(Int(seg.endMs) * 16))
+      return TranscribeCppSegment(startMs: Int64(a / 16), endMs: Int64(b / 16), text: seg.text)
+    }
+    return TranscribeCppRunResult(
+      text: run.text, detectedLanguage: run.detectedLanguage, segments: segments)
+  }
+}
+
+/// Ordered word edits between a literal reference and a result (minimum edit distance).
+private enum WordDiff {
+  static func edits(reference r: [String], hypothesis h: [String]) -> [String] {
+    var d = [[Int]](repeating: [Int](repeating: 0, count: h.count + 1), count: r.count + 1)
+    for i in 0...r.count { d[i][0] = i }
+    for j in 0...h.count { d[0][j] = j }
+    if !r.isEmpty && !h.isEmpty {
+      for i in 1...r.count {
+        for j in 1...h.count {
+          d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (r[i - 1] == h[j - 1] ? 0 : 1))
+        }
+      }
+    }
+    var out: [String] = []
+    var i = r.count
+    var j = h.count
+    while i > 0 || j > 0 {
+      if i > 0, j > 0, d[i][j] == d[i - 1][j - 1] + (r[i - 1] == h[j - 1] ? 0 : 1) {
+        if r[i - 1] != h[j - 1] { out.append("sub@\(i - 1):\(r[i - 1])->\(h[j - 1])") }
+        i -= 1
+        j -= 1
+      } else if i > 0, d[i][j] == d[i - 1][j] + 1 {
+        out.append("del@\(i - 1):\(r[i - 1])")
+        i -= 1
+      } else {
+        out.append("ins@\(i):\(h[j - 1])")
+        j -= 1
+      }
+    }
+    return out.reversed()
+  }
+}
+
+// MARK: - #4254 meeting live words on the real models
+
+/// #4254 plan §16.2, §16.6 through the production meeting-enabled preview runtime: the
+/// approved whisper-small preview model and the pinned bundled Silero detector.
+///
+/// **What the user sees when this fails:** EnviousMeet's live words invent text over silence,
+/// lose the first words after a long pause, drop one side of a short pause, or lose soft speech
+/// that today's live words keep.
+extension TranscribeCppPreviewRealBoundaryTests {
+  /// Reveals `audio` 4 s per step; every step adds at least 1 s, so each completes one cycle.
+  final class SteppedAudio: @unchecked Sendable {
+    let audio: [Float]
+    private let lock = NSLock()
+    private var revealed = 0
+    init(_ audio: [Float]) { self.audio = audio }
+    var steps: Int { (audio.count + 63_999) / 64_000 }
+    func step(_ n: Int) { lock.withLock { revealed = min(audio.count, n * 64_000) } }
+    var provider: @Sendable () async -> (samples: [Float], count: Int) {
+      { [self] in
+        let count = lock.withLock { revealed }
+        return (Array(audio[0..<count]), count)
+      }
+    }
+  }
+
+  /// Every finalized delta plus the latest held-back words.
+  final class LiveText: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finalized = ""
+    private var inProgress = ""
+    private(set) var discontinuities = 0
+    func append(_ event: TranscriptEvent) {
+      lock.withLock {
+        switch event {
+        case .update(let done, let held):
+          finalized += done
+          inProgress = held
+        case .discontinuity:
+          discontinuities += 1
+          inProgress = ""
+        }
+      }
+    }
+    var text: String { lock.withLock { finalized + inProgress } }
+  }
+
+  /// The ordered word alignment of `words` to the literal `reference`: reference words missing
+  /// (deletions, in order) and words not in the reference (insertions), by longest common
+  /// subsequence.
+  static func edits(_ words: [String], against reference: [String]) -> (
+    missing: [String], extra: [String], missingAt: [Int]
+  ) {
+    let n = words.count
+    let m = reference.count
+    var table = [[Int]](repeating: [Int](repeating: 0, count: m + 1), count: n + 1)
+    for i in stride(from: n - 1, through: 0, by: -1) {
+      for j in stride(from: m - 1, through: 0, by: -1) {
+        table[i][j] =
+          words[i] == reference[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+      }
+    }
+    var missing: [String] = []
+    var missingAt: [Int] = []
+    var extra: [String] = []
+    var (i, j) = (0, 0)
+    while i < n || j < m {
+      if i < n, j < m, words[i] == reference[j] {
+        i += 1
+        j += 1
+      } else if j < m, i == n || table[i][j + 1] >= table[i + 1][j] {
+        missing.append(reference[j])
+        missingAt.append(j)
+        j += 1
+      } else {
+        extra.append(words[i])
+        i += 1
+      }
+    }
+    return (missing, extra, missingAt)
+  }
+
+  /// Runs `audio` through one live transcript session; returns its text and native inputs.
+  /// `degraded`: whether the session's detection had turned off, read before cancel (which
+  /// releases it); nil when the session had none.
+  static func live(_ audio: [Float], gated: Bool, language: String = "en") async throws -> (
+    text: String, inputs: [Int], degraded: Bool?
+  ) {
+    let bundle = try MeetingVADFixture.modelBundle
+    let driver = CountingDriver()
+    let runtime = TranscribeCppPreviewRuntime(
+      driver: driver, modelPath: Self.smallPath, isAdmitted: { true },
+      cadence: .milliseconds(10), residency: .init())
+    let text = LiveText()
+    // A path, not the Bundle (not Sendable); the fixture bundle exists for the whole test.
+    let bundlePath = bundle.bundlePath
+    let detector: (@Sendable () -> any LiveSpeechDetecting)? =
+      gated
+      ? { @Sendable in MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) } : nil
+    let session = try await runtime.makeSession(
+      language: language, hypothesisRetentionLimit: 2_000, onHypothesis: { _ in },
+      onAudioReleased: { _ in }, onTranscript: text.append,
+      liveSpeechDetector: detector)
+    let rolling = try #require(session as? TranscribeCppRollingSession)
+    let stepped = SteppedAudio(audio)
+    stepped.step(1)
+    await rolling.start(audioSamplesProvider: stepped.provider)
+    for n in 1...stepped.steps {
+      await TranscribeCppRollingSessionTests.within("cycle \(n)", seconds: 120) {
+        await rolling.cyclesCompleted(reach: n)
+      }
+      stepped.step(n + 1)
+    }
+    let degraded = await rolling.speechDetectionDegradedForTests
+    await rolling.cancel()
+    await runtime.releaseAndDrain()
+    return (text.text, driver.inputs.withLock { $0 }, degraded)
+  }
+
+  @Test(
+    "meeting live words: 30 s of zeros never enters the decoder",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(3)), .realBoundaryRun
+  )
+  func meetingLiveSilenceSkipsNative() async throws {
+    let (text, inputs, _) = try await Self.live([Float](repeating: 0, count: 30 * 16_000), gated: true)
+    #expect(inputs.isEmpty, "no native call on confirmed silence: \(inputs)")
+    #expect(text.isEmpty)
+  }
+
+  @Test(
+    "meeting live words: speech, 60 s of silence, speech: both sides, nothing invented",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveLongGap() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let audio = clip + [Float](repeating: 0, count: 60 * 16_000) + other
+      + [Float](repeating: 0, count: 8 * 16_000)
+    let (text, inputs, _) = try await Self.live(audio, gated: true)
+    let baseline = try await Self.live(audio, gated: false)
+    let words = MeetingVADFixture.words(text)
+    let reference = MeetingVADFixture.words(MeetingVADFixture.script)
+      + MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let gated = Self.edits(words, against: reference)
+    let ungated = Self.edits(MeetingVADFixture.words(baseline.text), against: reference)
+    print(
+      "meeting live long gap: gated missing \(gated.missing) extra \(gated.extra) native \(inputs.count);"
+        + " baseline missing \(ungated.missing) extra \(ungated.extra) native \(baseline.inputs.count)")
+    #expect(gated.missing.isEmpty, "every reference word, in order, on both sides: \(gated.missing) in \(text)")
+    #expect(gated.extra.isEmpty, "nothing invented, over the gap or anywhere: \(gated.extra) in \(text)")
+    #expect(inputs.count < (audio.count + 63_999) / 64_000, "silent cycles skipped the decoder: \(inputs)")
+  }
+
+  @Test(
+    "meeting live words: a 5 s pause inside one window keeps the speech on both sides",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveInteriorGap() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let other = try AudioConverter().resampleAudioFile(path: MeetingVADFixture.otherURL.path)
+    let audio = clip + [Float](repeating: 0, count: 5 * 16_000) + other
+      + [Float](repeating: 0, count: 8 * 16_000)
+    let (text, _, _) = try await Self.live(audio, gated: true)
+    let reference = MeetingVADFixture.words(MeetingVADFixture.script)
+      + MeetingVADFixture.words(try MeetingVADFixture.otherScript)
+    let result = Self.edits(MeetingVADFixture.words(text), against: reference)
+    print("meeting live interior gap: missing \(result.missing) extra \(result.extra)")
+    #expect(result.missing.isEmpty, "both sides whole, in order: \(result.missing) in \(text)")
+    #expect(result.extra.isEmpty, "nothing invented: \(result.extra) in \(text)")
+  }
+
+  @Test(
+    "meeting live words: soft speech keeps the words today's live words keep",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(5)), .realBoundaryRun
+  )
+  func meetingLiveSoftSpeechPreserved() async throws {
+    let clip = try AudioConverter().resampleAudioFile(path: TranscribeCppRealBoundaryFixture.audioURL.path)
+    let soft = clip.map { $0 * 0.1 } + [Float](repeating: 0, count: 8 * 16_000)
+    let gated = MeetingVADFixture.words(try await Self.live(soft, gated: true).text)
+    let ungated = MeetingVADFixture.words(try await Self.live(soft, gated: false).text)
+    let script = MeetingVADFixture.words(MeetingVADFixture.script)
+    let withDetection = Self.edits(gated, against: script)
+    let today = Self.edits(ungated, against: script)
+    print("meeting live soft speech: gated missing \(withDetection.missing) extra \(withDetection.extra); baseline missing \(today.missing)")
+    #expect(!ungated.isEmpty, "control: today's live words hear the soft clip")
+    // Ordered, occurrence by occurrence: today's live words miss nothing on this clip, so
+    // neither may detection.
+    #expect(today.missing.isEmpty, "control: today's live words keep the whole soft clip: \(today.missing)")
+    #expect(withDetection.missing.isEmpty, "every reference word, in order: \(withDetection.missing)")
+    #expect(withDetection.extra.isEmpty, "nothing invented: \(withDetection.extra)")
+  }
+
+  /// The pinned preview model (#3705), by content.
+  static let smallDigest = "9b9c8811bbcc82a7766f0fb0925614bdacb0923b2cc630daeac17108b655b860"
+
+  /// One case of `Tests/Fixtures/meeting-voices/manifest.json` (see its `generate-fixtures.py`).
+  struct VoiceCase: Decodable {
+    struct Voice: Decodable { let text: String }
+    let id: String
+    let file: String
+    let reference: String?
+    let language: String?
+    let voices: [Voice]
+    let sha256: String
+    /// The whole reference when the words have one order; per voice when voices overlap.
+    var references: [[String]] {
+      if let reference { return [MeetingVADFixture.words(reference)] }
+      return voices.map { MeetingVADFixture.words($0.text) }
+    }
+  }
+
+  /// #4254 §16.5: each representative voice case through a meeting live words session on the
+  /// pinned preview model, with the pinned detector and without it (today's live words). The
+  /// score is every finalized delta plus the latest words in progress at cancellation; no flush.
+  /// Detection may lose no word today's live words keep; music and noise alone give no words.
+  /// **What the user sees when this fails:** a quiet, soft, brief, overlapping, accompanied or
+  /// non-English contribution is missing from the live words, or background music becomes words.
+  @Test(
+    "meeting live words: representative voices keep the words today's live words keep",
+    .enabled(if: TranscribeCppPreviewRealBoundaryTests.modelsArePresent),
+    .tags(.realBoundary), .timeLimit(.minutes(20)), .realBoundaryRun
+  )
+  func meetingLiveRepresentativeVoices() async throws {
+    let digest = SHA256.hash(data: try Data(contentsOf: URL(filePath: Self.smallPath), options: .mappedIfSafe))
+      .map { String(format: "%02x", $0) }.joined()
+    try #require(digest == Self.smallDigest, "requires the pinned preview model")
+    let root = TranscribeCppRealBoundaryFixture.repoRoot
+    let cases = try JSONDecoder().decode(
+      [VoiceCase].self,
+      from: Data(contentsOf: root.appending(path: "Tests/Fixtures/meeting-voices/manifest.json")))
+    try #require(cases.count == 7, "every §16.5 case is in the manifest")
+    var lost: [String: [String]] = [:]
+    for item in cases {
+      let path = root.appending(path: "Tests/Fixtures/meeting-voices/\(item.file)").path
+      let bytes = try Data(contentsOf: URL(filePath: path))
+      try #require(
+        SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined() == item.sha256,
+        "\(item.id): fixture matches its manifest hash")
+      // Trailing quiet so the last words can settle, up to whole 4 s steps: the loop completes
+      // no cycle for a final step shorter than its minimum new audio, so `live` would wait.
+      var audio = try AudioConverter().resampleAudioFile(path: path) + [Float](repeating: 0, count: 4 * 16_000)
+      audio += [Float](repeating: 0, count: (64_000 - audio.count % 64_000) % 64_000)
+      let language = item.language ?? "en"
+      let gated = try await Self.live(audio, gated: true, language: language)
+      let ungated = try await Self.live(audio, gated: false, language: language)
+      #expect(gated.degraded == false, "\(item.id): detection stayed on to the end")
+      #expect(ungated.degraded == nil, "\(item.id): the baseline has no detection")
+      let words = MeetingVADFixture.words(gated.text)
+      let baseline = MeetingVADFixture.words(ungated.text)
+      if item.references == [[]] {
+        print("VOICES live case=\(item.id) detected=\(words) undetected=\(baseline) native=\(gated.inputs.count)")
+        #expect(words.isEmpty, "\(item.id): music and noise alone give no words: \(gated.text)")
+        #expect(gated.inputs.isEmpty, "\(item.id): confirmed silence, no native call: \(gated.inputs)")
+        continue
+      }
+      for (index, reference) in item.references.enumerated() {
+        let g = Self.edits(words, against: reference)
+        let u = Self.edits(baseline, against: reference)
+        print(
+          "VOICES live case=\(item.id) ref=\(index) detected_missing=\(g.missing) detected_extra=\(g.extra) "
+            + "undetected_missing=\(u.missing) undetected_extra=\(u.extra) native=\(gated.inputs.count)/\(ungated.inputs.count) "
+            + "detected=\"\(gated.text)\" undetected=\"\(ungated.text)\"")
+        // By reference occurrence: a word detection lost is never offset by one it kept elsewhere.
+        let kept = Set(u.missingAt)
+        let vadLost = g.missingAt.filter { !kept.contains($0) }.map { "\($0):\(reference[$0])" }
+        if !vadLost.isEmpty { lost["\(item.id)#\(index)"] = vadLost }
+      }
+    }
+    #expect(lost.isEmpty, "words detection lost that today's live words kept: \(lost)")
   }
 }

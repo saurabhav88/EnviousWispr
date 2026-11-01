@@ -128,7 +128,48 @@ package protocol LivePreviewEngineSession: Sendable {
   /// resources until explicitly ended, and four separate abandonment sites were
   /// found on #1988, three of them only by review.
   func end() async
+
+  #if DEBUG
+    /// #4254 UAT evidence: this session's meeting speech detection, read while it runs; nil
+    /// when the session has none (Apple sessions, dictation preview) or it changed meanwhile.
+    func detectionReport() async -> LiveDetectionReport?
+  #endif
 }
+
+#if DEBUG
+  extension LivePreviewEngineSession {
+    package func detectionReport() async -> LiveDetectionReport? { nil }
+  }
+
+  /// #4254 UAT evidence (DEBUG builds only): counts, never audio or words.
+  package struct LiveDetectionReport: Sendable, Equatable {
+    /// The session run this report belongs to (bumped by every start).
+    package var run: Int
+    /// Detection turned off for this run (a detector failure or a gap it never saw).
+    package var degraded: Bool
+    /// Samples handed to the detector, and samples the model has classified.
+    package var fed: Int
+    package var classified: Int
+    package var silentCycles: Int
+    package var coveredCycles: Int
+    package var pendingCycles: Int
+    package var completedDecodes: Int
+
+    package init(
+      run: Int, degraded: Bool, fed: Int, classified: Int, silentCycles: Int, coveredCycles: Int,
+      pendingCycles: Int, completedDecodes: Int
+    ) {
+      self.run = run
+      self.degraded = degraded
+      self.fed = fed
+      self.classified = classified
+      self.silentCycles = silentCycles
+      self.coveredCycles = coveredCycles
+      self.pendingCycles = pendingCycles
+      self.completedDecodes = completedDecodes
+    }
+  }
+#endif
 
 /// An engine that could serve a recording, plus the key that says whether the one
 /// already prepared will do.

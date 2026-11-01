@@ -130,10 +130,13 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     /// meeting timeline. Nil for a word-timed engine and for a failed piece; empty for a
     /// segment-timed piece none of whose segments could be bound to its text.
     public let segments: [SegmentTiming]?
+    /// #4254: how the decode prepared its input. Nil for a failed piece and in payloads written
+    /// before it existed: unknown, never evidence that speech detection ran.
+    public let speechPreparation: MeetingSpeechPreparation?
 
     public init(
       startSample: Int, endSample: Int, forcedCut: Bool, text: String?, words: [Word]?,
-      segments: [SegmentTiming]? = nil
+      segments: [SegmentTiming]? = nil, speechPreparation: MeetingSpeechPreparation? = nil
     ) {
       self.startSample = startSample
       self.endSample = endSample
@@ -141,10 +144,16 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
       self.text = text
       self.words = words
       self.segments = segments
+      self.speechPreparation = speechPreparation
     }
 
     /// The one failure test: the piece failed twice and carries no text.
     public var isFailed: Bool { text == nil }
+
+    /// #4254: whether a later pass may use this piece instead of decoding it again: a failed
+    /// piece (its truthful gap stays), or a decoded one whose preparation is known and sound.
+    /// A decode without speech detection, or with unknown preparation, is decoded again.
+    public var isReusable: Bool { isFailed || speechPreparation?.isReusable == true }
   }
 
   /// #3973 C3: one engine segment of a piece's text.

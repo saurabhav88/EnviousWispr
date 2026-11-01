@@ -187,7 +187,9 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
         onHypothesis: { _ in },
         onAudioReleased: handle.releaseAudio(before:),
         onTranscript: handle.publish,
-        admitDecode: admitTranscriptDecode)
+        admitDecode: admitTranscriptDecode,
+        // #4254: meeting live words skip native work on confirmed silence.
+        liveSpeechDetector: meetingLiveSpeechDetector)
     } catch {
       // Never handed to the owner: no events, not even a terminal; the queue's task ends.
       await handle.discard()

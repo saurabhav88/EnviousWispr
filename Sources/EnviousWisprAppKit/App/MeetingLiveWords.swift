@@ -396,6 +396,36 @@ final class MeetingLiveWords {
   var currentLanguage: String? { recording?.language }
 
   #if DEBUG
+    /// #4254 UAT evidence (DEBUG door): each captured track's session epoch and its speech
+    /// detection report. Every entry is checked again after ALL reads: a recording that changed
+    /// meanwhile gives no reports, and a track whose slot, epoch or session changed gives nil
+    /// (unknown, never evidence). A session without detection also gives nil.
+    func detectionReports() async -> [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] {
+      guard let current = recording else { return [:] }
+      var read: [(track: MeetingTrackKind, slot: TrackSlot, epoch: Int, session: ObjectIdentifier?,
+        report: LiveDetectionReport?)] = []
+      for (track, slot) in current.tracks {
+        let epoch = slot.epoch
+        guard let session = slot.session else {
+          read.append((track, slot, epoch, nil, nil))
+          continue
+        }
+        read.append(
+          (track, slot, epoch, ObjectIdentifier(session as AnyObject), await session.detectionReport()))
+      }
+      guard recording === current else { return [:] }
+      var reports: [MeetingTrackKind: (epoch: Int, report: LiveDetectionReport?)] = [:]
+      for entry in read {
+        let unchanged =
+          current.tracks[entry.track] === entry.slot && entry.slot.epoch == entry.epoch
+          && entry.slot.session.map { ObjectIdentifier($0 as AnyObject) } == entry.session
+        reports[entry.track] = (entry.epoch, unchanged ? entry.report : nil)
+      }
+      return reports
+    }
+  #endif
+
+  #if DEBUG
     /// DEBUG door only (`meeting start --live-engine apple|universal`, runtime UAT): the next
     /// recording uses this engine with the stored language matched to it, never storing it and
     /// never downloading. Consumed by that recording's `captureStarted`, and cleared by the door

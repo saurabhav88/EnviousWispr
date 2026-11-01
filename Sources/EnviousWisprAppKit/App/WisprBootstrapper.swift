@@ -64,6 +64,8 @@ package final class WisprBootstrapper {
     /// The launch-time install, kept so quit can cancel it; `uninstall()` is what stops a
     /// listener, before or while it starts.
     private var devControlInstall: Task<Void, Never>?
+    /// #4254 runtime checkpoint: holds Quit until its detection witness is written.
+    private let quitWitnessGate = QuitWitnessGate(write: QuitWitnessGate.appLog)
   #endif
   let liveRecordingState: LiveRecordingState
   let lastRecordingResult: LastRecordingResult
@@ -3095,7 +3097,18 @@ package final class WisprBootstrapper {
   /// #4086: dictionary saves already queued finish before the app quits. Nothing else
   /// asks to finish first today.
   package func applicationShouldTerminate(reply: @escaping @MainActor (Bool) -> Void) -> Bool {
-    customWordsCoordinator.requestQuit(reply: reply)
+    #if DEBUG
+      // #4254 runtime checkpoint: the meeting speech detections running when Quit was asked,
+      // written before the quit proceeds.
+      let (tokens, uptime) = MeetingSpeechDetectionActivity.snapshot()
+      let list = tokens.isEmpty ? "none" : tokens.map(String.init).joined(separator: ",")
+      return quitWitnessGate.request(
+        line: "whisper_meeting_vad_active request=quit id=none tokens=\(list) uptime_raw_ns=\(uptime)",
+        forward: { [customWordsCoordinator] in customWordsCoordinator.requestQuit(reply: $0) },
+        reply: reply)
+    #else
+      return customWordsCoordinator.requestQuit(reply: reply)
+    #endif
   }
 
   package func applicationWillTerminate() {
