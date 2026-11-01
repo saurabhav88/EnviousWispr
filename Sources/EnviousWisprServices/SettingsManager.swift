@@ -151,6 +151,7 @@ public final class SettingsManager {
   /// live setting and is stripped on load by the #734 migration below.
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
+    "meetingSummaryLLMProvider", "meetingSummaryLLMModel", "meetingSummaryOllamaModel",
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
@@ -497,6 +498,138 @@ public final class SettingsManager {
       ollamaModel: fileImportOllamaModel)
   }
 
+  // MARK: - Meeting summary engine (#4287)
+
+  /// #4287: transient identity of the summary provider selection, like the two counters
+  /// above. Every actual change bumps it, including A -> B -> A, so discovery admissions
+  /// started for an older selection can be refused. Not a persisted user setting.
+  package private(set) var meetingSummaryProviderSelectionRevision: UInt64 = 0
+
+  static let meetingSummaryProviderKey = "meetingSummaryLLMProvider"
+
+  /// The engine EnviousMeet writes meeting summaries with, chosen independently of
+  /// dictation's AI Polish (#4287, founder decisions 7-15).
+  ///
+  /// - `nil` only before the one-time migration has run (onboarding not yet completed), or
+  ///   when a later build stored a provider this build does not know. It is NEVER "follow
+  ///   dictation": after migration the two settings never follow each other. Readers use
+  ///   `effectiveMeetingSummaryLLMProvider`, which reads `nil` as no engine.
+  /// - `.none` is an explicit "no summary engine", stored by migration for users whose
+  ///   dictation polish was off or S1-mini, or chosen by the user.
+  public var meetingSummaryLLMProvider: LLMProvider? {
+    didSet {
+      if oldValue != meetingSummaryLLMProvider { meetingSummaryProviderSelectionRevision &+= 1 }
+      if let chosen = meetingSummaryLLMProvider {
+        defaults.set(chosen.rawValue, forKey: Self.meetingSummaryProviderKey)
+      } else {
+        defaults.removeObject(forKey: Self.meetingSummaryProviderKey)
+      }
+      // Synchronous, before any notification, for the reason the import twin gives: a
+      // provider change can leave the cloud field holding the previous provider's id.
+      canonicalizeMeetingSummaryLLMModelForProvider()
+    }
+  }
+
+  /// The summary engine's CLOUD model (OpenAI, Gemini, Claude).
+  public var meetingSummaryLLMModel: String {
+    didSet {
+      defaults.set(meetingSummaryLLMModel, forKey: "meetingSummaryLLMModel")
+    }
+  }
+
+  /// The summary engine's OLLAMA model, separate from the cloud field for the reason the
+  /// dictation and import pairs are separate (`effectiveLLMModel` reads the Ollama field).
+  public var meetingSummaryOllamaModel: String {
+    didSet {
+      defaults.set(meetingSummaryOllamaModel, forKey: "meetingSummaryOllamaModel")
+    }
+  }
+
+  /// The provider a summary will use. An unmigrated or unreadable choice is no engine.
+  public var effectiveMeetingSummaryLLMProvider: LLMProvider {
+    meetingSummaryLLMProvider ?? .none
+  }
+
+  /// The model a summary will ask for, through the same provider-to-field policy as
+  /// dictation and file import (`model(for:cloudModel:ollamaModel:)`).
+  public var effectiveMeetingSummaryLLMModel: String {
+    Self.model(
+      for: effectiveMeetingSummaryLLMProvider,
+      cloudModel: meetingSummaryLLMModel,
+      ollamaModel: meetingSummaryOllamaModel)
+  }
+
+  /// The pair `MeetingSummaryOwner` reads, provider and model together.
+  public var meetingSummarySelection: (provider: LLMProvider, model: String) {
+    (effectiveMeetingSummaryLLMProvider, effectiveMeetingSummaryLLMModel)
+  }
+
+  /// The import sweep's twin over the summary fields. An unmigrated choice has no fields
+  /// of its own yet, so it is skipped.
+  private func canonicalizeMeetingSummaryLLMModelForProvider() {
+    guard let provider = meetingSummaryLLMProvider else { return }
+    meetingSummaryLLMModel = Self.normalizedModel(
+      for: provider,
+      cloudModel: meetingSummaryLLMModel,
+      ollamaModel: meetingSummaryOllamaModel)
+  }
+
+  /// #4287 founder decisions 13-15: the summary engine each user starts with, mapped ONCE
+  /// from dictation's stored polish provider.
+  ///
+  /// The stored object is decoded here, not the resolved `llmProvider`: an ABSENT key is
+  /// the shipped default the user has been running (init never persists it), so it maps
+  /// like that default; a PRESENT value that is not a known provider (a provider a later
+  /// build added, read after a downgrade, or a non-string value) maps to explicit no engine
+  /// rather than to the default, which the user never chose. Presence is read with
+  /// `object(forKey:)` by the caller because `string(forKey:)` reports a non-string value
+  /// as absent. Every case is named so a new provider cannot compile without a decision.
+  static func migratedMeetingSummaryProvider(
+    storedDictationProvider stored: Any?, resolvedDictationProvider: LLMProvider
+  ) -> LLMProvider {
+    let source: LLMProvider
+    if let stored {
+      guard let raw = stored as? String, let known = LLMProvider(rawValue: raw) else {
+        return .none
+      }
+      source = known
+    } else {
+      source = resolvedDictationProvider
+    }
+    switch source {
+    case .appleIntelligence: return .appleIntelligence
+    // Until EG-1 can write summaries the Summaries tab shows it as Coming soon; the release
+    // waits for that work (founder 2026-10-31).
+    case .egOne: return .egOne
+    // Decision 14 taken literally (plan I5): an Ollama user keeps provider AND model, even an
+    // EG-1/S1 Ollama model that cannot summarize; capability reports that, never migration.
+    case .ollama: return .ollama
+    case .openAI: return .openAI
+    case .gemini: return .gemini
+    case .claude: return .claude
+    case .s1Mini, .none: return .none
+    }
+  }
+
+  /// Runs the one-time migration when the summary choice is absent and the user has
+  /// finished onboarding now or ever (a Diagnostics restart resets only the former).
+  /// Called at the end of `init` (init assignments bypass `didSet`) and when onboarding
+  /// completes, so a fresh install maps from the polish engine it picked in onboarding.
+  ///
+  /// Never overwrites a stored choice: the key's presence, not a readable value, is the
+  /// completion marker. Models are written BEFORE the provider key, so an interruption
+  /// between them leaves the key absent and the next launch repeats the same mapping.
+  func migrateMeetingSummaryEngineIfNeeded() {
+    guard defaults.object(forKey: Self.meetingSummaryProviderKey) == nil else { return }
+    guard onboardingState == .completed || onboardingEverCompleted else { return }
+    let mapped = Self.migratedMeetingSummaryProvider(
+      storedDictationProvider: defaults.object(forKey: "llmProvider"),
+      resolvedDictationProvider: llmProvider)
+    meetingSummaryLLMModel = llmModel
+    meetingSummaryOllamaModel = ollamaModel
+    meetingSummaryLLMProvider = mapped
+  }
+
   // MARK: - S1-mini control line (#2649)
 
   /// Persisted as three raw strings, one per axis. Each raw value is the exact
@@ -750,6 +883,9 @@ public final class SettingsManager {
       // `source` as first_run vs diagnostics_restart in the SHARED settings store.
       if onboardingState == .completed {
         defaults.set(true, forKey: Self.onboardingEverCompletedKey)
+        // #4287: a fresh install maps its summary engine from the polish engine it just
+        // picked; a no-op once a choice is stored.
+        migrateMeetingSummaryEngineIfNeeded()
       }
       onChange?(.onboardingState)
     }
@@ -1569,6 +1705,14 @@ public final class SettingsManager {
       defaults.string(forKey: "fileImportLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
     fileImportOllamaModel =
       defaults.string(forKey: "fileImportOllamaModel") ?? SettingsDefaultValues.ollamaModel
+    // #4287: an unknown stored value (a later build's provider) reads as nil, which readers
+    // treat as no engine; migration never runs over it because the key is present.
+    meetingSummaryLLMProvider = (defaults.object(forKey: Self.meetingSummaryProviderKey) as? String)
+      .flatMap { LLMProvider(rawValue: $0) }
+    meetingSummaryLLMModel =
+      defaults.string(forKey: "meetingSummaryLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
+    meetingSummaryOllamaModel =
+      defaults.string(forKey: "meetingSummaryOllamaModel") ?? SettingsDefaultValues.ollamaModel
     autoCopyToClipboard =
       defaults.object(forKey: "autoCopyToClipboard") as? Bool
       ?? SettingsDefaultValues.autoCopyToClipboard
@@ -1904,6 +2048,10 @@ public final class SettingsManager {
     // in `defaults` and no discovery runs at launch to fix it. The helper skips a follower,
     // whose fields are dictation's and already repaired one line up.
     canonicalizeFileImportLLMModelForProvider()
+    // #4287: the same launch-time repair for the summary fields, then the one-time
+    // migration, which needs every dictation field loaded and canonical first.
+    canonicalizeMeetingSummaryLLMModelForProvider()
+    migrateMeetingSummaryEngineIfNeeded()
     // Initial assignments bypass didSet; repair old incompatible ON values once loaded.
     normalizeStreamingPreference()
   }
