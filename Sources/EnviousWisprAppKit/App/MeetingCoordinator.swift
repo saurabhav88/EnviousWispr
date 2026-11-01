@@ -2709,7 +2709,7 @@ final class MeetingCoordinator {
       if let trace = snapshot.trace {
         let c = trace.copy
         deps.log(
-          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome)"
+          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state)"
         )
       }
       if snapshot.ended {
