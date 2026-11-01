@@ -115,10 +115,10 @@ struct MeetingsView: View {
           }
           MeetingConsentNote()
           // R48: true for every provider. Audio never leaves the Mac; a summary by a cloud model
-          // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript
-          // and notes.
+          // (OpenAI, Gemini, Claude, or an Ollama hosted model) sends its provider the transcript,
+          // notes and the meeting details of #4286's facts block.
           Text(
-            "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider.",
+            "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript, your notes and meeting details to its provider.",
             comment:
               "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary."
           )
@@ -341,7 +341,7 @@ enum MeetingsCopy {
     "The summary engine on this tab writes a summary of each meeting.",
     comment: "EnviousMeet page: the short line under Write a summary when a meeting ends.")
   static let writeSummaryHelp = LocalizedStringResource(
-    "The summary is written from the transcript and your notes by the summary engine on this tab. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
+    "The summary engine on this tab writes the summary from the transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript.",
     comment: "EnviousMeet page: help for Write a summary when a meeting ends.")
   // #4287: the Summaries tab's engine card.
   static let summaryEngineTitle = LocalizedStringResource(

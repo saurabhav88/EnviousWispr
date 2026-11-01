@@ -52,15 +52,15 @@ enum ProviderSetupSummaryCopy {
     switch provider {
     case .openAI:
       return String(
-        localized: "Sends the meeting transcript and your notes to OpenAI.",
+        localized: "Sends the meeting transcript, your notes and meeting details to OpenAI.",
         comment: "EnviousMeet Summaries tab: the line under the OpenAI API key's name.")
     case .gemini:
       return String(
-        localized: "Sends the meeting transcript and your notes to Google.",
+        localized: "Sends the meeting transcript, your notes and meeting details to Google.",
         comment: "EnviousMeet Summaries tab: the line under the Google Gemini API key's name.")
     case .claude:
       return String(
-        localized: "Sends the meeting transcript and your notes to Anthropic.",
+        localized: "Sends the meeting transcript, your notes and meeting details to Anthropic.",
         comment: "EnviousMeet Summaries tab: the line under the Claude API key's name.")
     case .appleIntelligence, .egOne, .s1Mini, .ollama, .none: return nil
     }
@@ -72,13 +72,13 @@ enum ProviderSetupSummaryCopy {
     case .openAI, .gemini:
       return String(
         localized:
-          "A summary sends the meeting transcript and your notes, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
+          "A summary sends the meeting transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response.",
         comment:
           "EnviousMeet Summaries tab: what OpenAI or Gemini receives for a summary. Keep \"store: false\" as written; it is a request field.")
     case .claude:
       return String(
         localized:
-          "A summary sends the meeting transcript and your notes, never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
+          "A summary sends the meeting transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited, never audio. Anthropic's own retention policy for your API account governs how long the request is kept.",
         comment: "EnviousMeet Summaries tab: what Claude receives for a summary.")
     case .appleIntelligence, .egOne, .s1Mini, .ollama, .none: return nil
     }
@@ -90,7 +90,7 @@ enum ProviderSetupSummaryCopy {
     case .ollama:
       return String(
         localized:
-          "Local models stay on this Mac; hosted models send the transcript and your notes to Ollama's servers.",
+          "Local models stay on this Mac; hosted models send the transcript, your notes and meeting details to Ollama's servers.",
         comment: "EnviousMeet Summaries tab, Ollama: the line under the Model row's title.")
     case .openAI, .gemini, .claude, .appleIntelligence, .egOne, .s1Mini, .none:
       return String(

@@ -1601,24 +1601,24 @@
         }
       }
     },
-    "A summary sends the meeting transcript and your notes, never audio. Anthropic's own retention policy for your API account governs how long the request is kept." : {
+    "A summary sends the meeting transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited, never audio. Anthropic's own retention policy for your API account governs how long the request is kept." : {
       "comment" : "EnviousMeet Summaries tab: what Claude receives for a summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für eine Zusammenfassung werden das Meetingtranskript und deine Notizen gesendet, aber niemals Audio. Wie lange die Anfrage gespeichert wird, richtet sich nach Anthropics eigenen Aufbewahrungsregeln für dein API-Konto."
+            "value" : "Für eine Zusammenfassung werden das Meetingtranskript, deine Notizen und Meetingdetails wie die Startzeit, die Anruf-App, der Titel des Kalendertermins und die eingeladenen Personen gesendet, aber niemals Audio. Wie lange die Anfrage gespeichert wird, richtet sich nach Anthropics eigenen Aufbewahrungsregeln für dein API-Konto."
           }
         }
       }
     },
-    "A summary sends the meeting transcript and your notes, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response." : {
+    "A summary sends the meeting transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response." : {
       "comment" : "EnviousMeet Summaries tab: what OpenAI or Gemini receives for a summary. Keep \"store: false\" as written; it is a request field.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für eine Zusammenfassung werden das Meetingtranskript und deine Notizen gesendet, aber niemals Audio. EnviousWispr sendet außerdem store: false, um den Anbieter anzuweisen, Anfrage und Antwort nicht zu speichern."
+            "value" : "Für eine Zusammenfassung werden das Meetingtranskript, deine Notizen und Meetingdetails wie die Startzeit, die Anruf-App, der Titel des Kalendertermins und die eingeladenen Personen gesendet, aber niemals Audio. EnviousWispr sendet außerdem store: false, um den Anbieter anzuweisen, Anfrage und Antwort nicht zu speichern."
           }
         }
       }
@@ -11654,13 +11654,13 @@
         }
       }
     },
-    "Local models stay on this Mac; hosted models send the transcript and your notes to Ollama's servers." : {
+    "Local models stay on this Mac; hosted models send the transcript, your notes and meeting details to Ollama's servers." : {
       "comment" : "EnviousMeet Summaries tab, Ollama: the line under the Model row's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokale Modelle bleiben auf diesem Mac; gehostete Modelle senden das Transkript und deine Notizen an Ollamas Server."
+            "value" : "Lokale Modelle bleiben auf diesem Mac; gehostete Modelle senden das Transkript, deine Notizen und Meetingdetails an Ollamas Server."
           }
         }
       }
@@ -17781,35 +17781,35 @@
         }
       }
     },
-    "Sends the meeting transcript and your notes to Anthropic." : {
+    "Sends the meeting transcript, your notes and meeting details to Anthropic." : {
       "comment" : "EnviousMeet Summaries tab: the line under the Claude API key's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sendet das Meetingtranskript und deine Notizen an Anthropic."
+            "value" : "Sendet das Meetingtranskript, deine Notizen und Meetingdetails an Anthropic."
           }
         }
       }
     },
-    "Sends the meeting transcript and your notes to Google." : {
+    "Sends the meeting transcript, your notes and meeting details to Google." : {
       "comment" : "EnviousMeet Summaries tab: the line under the Google Gemini API key's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sendet das Meetingtranskript und deine Notizen an Google."
+            "value" : "Sendet das Meetingtranskript, deine Notizen und Meetingdetails an Google."
           }
         }
       }
     },
-    "Sends the meeting transcript and your notes to OpenAI." : {
+    "Sends the meeting transcript, your notes and meeting details to OpenAI." : {
       "comment" : "EnviousMeet Summaries tab: the line under the OpenAI API key's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sendet das Meetingtranskript und deine Notizen an OpenAI."
+            "value" : "Sendet das Meetingtranskript, deine Notizen und Meetingdetails an OpenAI."
           }
         }
       }
@@ -20709,13 +20709,13 @@
         }
       }
     },
-    "The summary is written from the transcript and your notes by the summary engine on this tab. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript." : {
+    "The summary engine on this tab writes the summary from the transcript, your notes and meeting details such as the start time, call app, calendar event title and who was invited. OpenAI, Gemini and Claude receive them under your key. An Ollama hosted model sends them to Ollama's servers. Apple Intelligence and Ollama models on this Mac keep them on your Mac. Turning this off does not stop a summary that has already started. In History you can write a summary for any meeting that has a transcript." : {
       "comment" : "EnviousMeet page: help for Write a summary when a meeting ends.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Zusammenfassungs-Engine in diesem Tab erstellt die Zusammenfassung aus dem Transkript und deinen Notizen. OpenAI, Gemini und Claude erhalten beides über deinen eigenen API-Schlüssel. Ein gehostetes Ollama-Modell sendet beides an die Server von Ollama. Apple Intelligence und Ollama-Modelle auf diesem Mac behalten beides auf deinem Mac. Wenn du diese Option ausschaltest, wird eine bereits begonnene Zusammenfassung nicht gestoppt. Im Verlauf kannst du für jedes Meeting mit einem Transkript eine Zusammenfassung erstellen."
+            "value" : "Die Zusammenfassungs-Engine in diesem Tab erstellt die Zusammenfassung aus dem Transkript, deinen Notizen und Meetingdetails wie der Startzeit, der Anruf-App, dem Titel des Kalendertermins und den eingeladenen Personen. OpenAI, Gemini und Claude erhalten sie über deinen eigenen API-Schlüssel. Ein gehostetes Ollama-Modell sendet sie an die Server von Ollama. Apple Intelligence und Ollama-Modelle auf diesem Mac behalten sie auf deinem Mac. Wenn du diese Option ausschaltest, wird eine bereits begonnene Zusammenfassung nicht gestoppt. Im Verlauf kannst du für jedes Meeting mit einem Transkript eine Zusammenfassung erstellen."
           }
         }
       }
@@ -23631,13 +23631,13 @@
         }
       }
     },
-    "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript and your notes to its provider." : {
+    "Works with any headphones. Recordings stay on your Mac. A summary written by a cloud model sends the transcript, your notes and meeting details to its provider." : {
       "comment" : "EnviousMeet page: the footnote. Recordings are kept on the Mac; a cloud model's provider receives the text of a summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funktioniert mit allen Kopfhörern. Aufnahmen bleiben auf deinem Mac. Erstellt ein Cloud-Modell eine Zusammenfassung, sendet es das Transkript und deine Notizen an seinen Anbieter."
+            "value" : "Funktioniert mit allen Kopfhörern. Aufnahmen bleiben auf deinem Mac. Erstellt ein Cloud-Modell eine Zusammenfassung, sendet es das Transkript, deine Notizen und Meetingdetails an seinen Anbieter."
           }
         }
       }
