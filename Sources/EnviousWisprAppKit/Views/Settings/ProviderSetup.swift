@@ -51,13 +51,81 @@ import SwiftUI
 enum ProviderSetupSurface {
   case dictation
   case fileImport
+  /// #4287: EnviousMeet's summary engine, chosen on the Summaries tab independently of the
+  /// other two. Like the import, it never probes, warms up or activates dictation's engines.
+  case meetingSummary
 
   @MainActor
   func selectionRevision(in settings: SettingsManager) -> UInt64 {
     switch self {
     case .dictation: return settings.dictationProviderSelectionRevision
     case .fileImport: return settings.importProviderSelectionRevision
+    case .meetingSummary: return settings.meetingSummaryProviderSelectionRevision
     }
+  }
+
+  /// #4287: the ONE decision behind every Ollama model this surface offers to pick or to
+  /// download. Every offer producer on the polish editor reads it:
+  /// - the model picker (`offeredModels`, over discovered models),
+  /// - the Models sheet's catalog rows (`offeredCatalog`),
+  /// - the Models sheet's typed-name suggestion (`offeredCatalog` over the suggestion),
+  /// - the guided "Download a model" button (`guidedDownloadModel`),
+  /// - dev-control ordinary model writes (`offeredModels`),
+  /// - discovery repair (`MeetingSummaryModelPolicy.applyDiscoveredModels`).
+  /// A download already running (the pinned typed row) is shared work another surface may
+  /// own, so it keeps its progress and Cancel here.
+  func offersOllamaModel(named name: String) -> Bool {
+    switch self {
+    case .dictation, .fileImport: return true
+    case .meetingSummary: return !MeetingSummaryModelPolicy.isUnsupportedOllamaModel(name)
+    }
+  }
+
+  /// The models this surface offers from a shared catalog; the catalog itself is untouched.
+  func offeredModels(_ models: [LLMModelInfo], provider: LLMProvider) -> [LLMModelInfo] {
+    guard provider == .ollama else { return models }
+    return models.filter { offersOllamaModel(named: $0.id) }
+  }
+
+  /// The Ollama download rows this surface offers.
+  func offeredCatalog(_ entries: [OllamaModelCatalogEntry]) -> [OllamaModelCatalogEntry] {
+    entries.filter { offersOllamaModel(named: $0.name) }
+  }
+
+  /// What the guided "Download a model" button downloads: the surface's remembered Ollama
+  /// model, or, when this surface does not offer it (a kept EG-1 summary model, plan I5),
+  /// the shipped recommended model.
+  func guidedDownloadModel(remembered: String) -> String {
+    offersOllamaModel(named: remembered) ? remembered : LLMProvider.defaultModel(for: .ollama)
+  }
+}
+
+/// #4287: the one owner of which Ollama models the summary surface may use and how a
+/// discovered catalog repairs its selection.
+///
+/// The first-party Ollama models (EG-1, S1-mini) cannot write summaries
+/// (`MeetingSummary.capability`), so they are never offered and never armed automatically.
+/// A stored one is KEPT until the user picks another (plan I5: an Ollama dictation user keeps
+/// provider and model; the Summaries tab then says that model cannot write summaries).
+@MainActor
+enum MeetingSummaryModelPolicy {
+  nonisolated static func isUnsupportedOllamaModel(_ id: String) -> Bool {
+    OllamaSetupService.isFirstPartyModel(id) || OllamaSetupService.isS1MiniModel(id)
+  }
+
+  /// Every discovered-catalog repair of the summary fields goes through here: live and
+  /// cached discovery, and the repair after a model is removed.
+  static func applyDiscoveredModels(
+    _ models: [LLMModelInfo], for provider: LLMProvider, to settings: SettingsManager
+  ) {
+    if provider == .ollama, settings.meetingSummaryLLMProvider == .ollama,
+      isUnsupportedOllamaModel(settings.meetingSummaryOllamaModel)
+    {
+      return
+    }
+    settings.applyDiscoveredModelsForMeetingSummary(
+      ProviderSetupSurface.meetingSummary.offeredModels(models, provider: provider),
+      for: provider)
   }
 }
 
@@ -74,12 +142,16 @@ enum ProviderSetupSurface {
 /// live selection; a following import reads dictation's, so leaving Ollama on dictation with
 /// nothing overriding it correctly cancels.
 enum SharedOllamaCleanup {
+  /// #4287: three surfaces now; the shared work goes only when neither OTHER surface is on
+  /// Ollama.
   static func mayCancel(
-    leaving surface: ProviderSetupSurface, dictation: LLMProvider, importEffective: LLMProvider
+    leaving surface: ProviderSetupSurface, dictation: LLMProvider, importEffective: LLMProvider,
+    summary: LLMProvider
   ) -> Bool {
     switch surface {
-    case .dictation: return importEffective != .ollama
-    case .fileImport: return dictation != .ollama
+    case .dictation: return importEffective != .ollama && summary != .ollama
+    case .fileImport: return dictation != .ollama && summary != .ollama
+    case .meetingSummary: return dictation != .ollama && importEffective != .ollama
     }
   }
 }
@@ -199,6 +271,7 @@ enum ProviderSetupKeyActions {
     switch owners.surface {
     case .dictation: return owners.settings.llmProvider
     case .fileImport: return owners.settings.effectiveFileImportLLMProvider
+    case .meetingSummary: return owners.settings.effectiveMeetingSummaryLLMProvider
     }
   }
 
@@ -637,7 +710,8 @@ struct ProviderSetupSection: View {
   }
 
   private var surfaceDiscoveredModels: [LLMModelInfo] {
-    stateIsAboutThisSurface ? llmDiscovery.discoveredModels : []
+    stateIsAboutThisSurface
+      ? surface.offeredModels(llmDiscovery.discoveredModels, provider: provider) : []
   }
 
   private var surfaceIsDiscovering: Bool {
@@ -1730,7 +1804,8 @@ private var ollamaSetupContent: some View {
         // the same signal.
         SettingsActionButton(
           verbatimTitle: SettingsMapRef.dynamic(
-            .ollamaDownloadModel, .ollamaModel(name: surfaceOllamaModel)
+            .ollamaDownloadModel,
+            .ollamaModel(name: surface.guidedDownloadModel(remembered: surfaceOllamaModel))
           ).title,
           isEnabled: !hostedAddIsResolving,
           emphasis: .filled, size: .medium
@@ -1738,7 +1813,8 @@ private var ollamaSetupContent: some View {
           // #1950: through the funnel, not straight to `pullModel`. The shipped default is a
           // recommended model so this normally downloads immediately, but a user who has
           // changed the setting to something that failed every test gets asked first.
-          ProviderSetupDownloads.request(surfaceOllamaModel, model: model, setup: setup)
+          ProviderSetupDownloads.request(
+            surface.guidedDownloadModel(remembered: surfaceOllamaModel), model: model, setup: setup)
         }
         .settingsMapRegistration(.ollamaDownloadModel)
         ollamaRefreshButton()
@@ -2128,7 +2204,7 @@ private var ollamaBrowseModelsCard: some View {
 
   @ViewBuilder
   private var ollamaModelCatalogView: some View {
-    let catalog = setup.ollamaSetup.dynamicCatalog
+    let catalog = surface.offeredCatalog(setup.ollamaSetup.dynamicCatalog)
     let isPulling: Bool = {
       if case .pullingModel = setup.ollamaSetup.setupState { return true }
       return false
@@ -2164,10 +2240,11 @@ private var ollamaBrowseModelsCard: some View {
     let hosted = groups.hosted.filter(matches)
     // And an exact unlisted name typed into a search that matched nothing becomes a row too, so a
     // mistyped name that failed never blocks offering the corrected one.
+    let suggestion = OllamaCatalogPresentation.typedDownloadSuggestion(
+      query: modelSearch, catalog: catalog, searchMatchedAnyRow: !local.isEmpty || !hosted.isEmpty)
     let typedRows = OllamaCatalogPresentation.typedRows(
       pinned: pinnedTyped,
-      suggestion: OllamaCatalogPresentation.typedDownloadSuggestion(
-        query: modelSearch, catalog: catalog, searchMatchedAnyRow: !local.isEmpty || !hosted.isEmpty))
+      suggestion: suggestion.flatMap { surface.offeredCatalog([$0]).first })
 
     VStack(alignment: .leading, spacing: 10) {
       Text(
@@ -2495,6 +2572,8 @@ private var ollamaBrowseModelsCard: some View {
                 let models = llmDiscovery.discoveredModels
                 settings.applyDiscoveredModels(models, for: .ollama)
                 settings.applyDiscoveredModelsForFileImport(models, for: .ollama)
+                MeetingSummaryModelPolicy.applyDiscoveredModels(
+                  models, for: .ollama, to: settings)
               }
             }
           } label: {
@@ -2817,24 +2896,12 @@ struct ProviderSetupLifecycle: ViewModifier {
   /// The provider THIS surface has chosen. Every arming decision below reads it, so the
   /// import host validates the import's key and starts the import's engine rather than
   /// dictation's (#2772 chunk 3). Same resolution rule as `ProviderSetupSection.provider`.
-  private var provider: LLMProvider {
-    switch surface {
-    case .dictation: return settings.llmProvider
-    case .fileImport: return settings.effectiveFileImportLLMProvider
-    }
-  }
+  private var provider: LLMProvider { PolishSettings.provider(on: surface, in: settings) }
 
   /// The CLOUD model field this surface's picker writes. For Ollama it is what
   /// `PipelineSettingsSync` mirrors into the armed field, which is why the warm-up below
   /// watches it on both surfaces.
-  private var surfaceCloudModel: String {
-    switch surface {
-    case .dictation: return settings.llmModel
-    case .fileImport:
-      return settings.fileImportLLMProvider == nil
-        ? settings.llmModel : settings.fileImportLLMModel
-    }
-  }
+  private var surfaceCloudModel: String { PolishSettings.cloudModel(on: surface, in: settings) }
 
   func body(content: Content) -> some View {
     content
@@ -2912,7 +2979,8 @@ struct ProviderSetupLifecycle: ViewModifier {
         // surface is still on Ollama. See `SharedOllamaCleanup`.
         if SharedOllamaCleanup.mayCancel(
           leaving: surface, dictation: settings.llmProvider,
-          importEffective: settings.effectiveFileImportLLMProvider)
+          importEffective: settings.effectiveFileImportLLMProvider,
+          summary: settings.effectiveMeetingSummaryLLMProvider)
         {
           setup.ollamaSetup.cancelPull()
           // #1956: `cancelPull()` cannot reach a hosted Add that is still probing

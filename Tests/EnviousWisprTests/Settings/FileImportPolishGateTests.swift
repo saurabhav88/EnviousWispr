@@ -330,19 +330,19 @@ struct FileImportPolishGateTests {
     // Import leaves; dictation stays on Ollama: keep.
     #expect(
       !SharedOllamaCleanup.mayCancel(
-        leaving: .fileImport, dictation: .ollama, importEffective: .appleIntelligence))
+        leaving: .fileImport, dictation: .ollama, importEffective: .appleIntelligence, summary: .none))
     // Import leaves; dictation never used Ollama: cancel.
     #expect(
       SharedOllamaCleanup.mayCancel(
-        leaving: .fileImport, dictation: .claude, importEffective: .appleIntelligence))
+        leaving: .fileImport, dictation: .claude, importEffective: .appleIntelligence, summary: .none))
     // Dictation leaves; import overrides to Ollama on its own: keep.
     #expect(
       !SharedOllamaCleanup.mayCancel(
-        leaving: .dictation, dictation: .claude, importEffective: .ollama))
+        leaving: .dictation, dictation: .claude, importEffective: .ollama, summary: .none))
     // Dictation leaves and import follows it, so its effective provider left too: cancel.
     #expect(
       SharedOllamaCleanup.mayCancel(
-        leaving: .dictation, dictation: .claude, importEffective: .claude))
+        leaving: .dictation, dictation: .claude, importEffective: .claude, summary: .none))
   }
 
   /// The armed Ollama model must be one the daemon has (#2772). `.ready` only says some

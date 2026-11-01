@@ -311,6 +311,19 @@ final class PipelineSettingsSync {
       if key == .fileImportLLMProvider {
         reconcileOutputClassifierDemand(settings: settings, reason: "provider_switch")
       }
+    // #4287: the summary surface's model picker writes `meetingSummaryLLMModel`; for Ollama
+    // the armed field is the Ollama one, mirrored by the same policy as the two arms above.
+    // Summaries never activate a bundled engine here; eviction protection for the summary
+    // model is the reconciler's.
+    case .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
+      if key == .meetingSummaryLLMModel,
+        Self.shouldMirrorLLMModelToOllama(
+          provider: settings.effectiveMeetingSummaryLLMProvider,
+          llmModel: settings.meetingSummaryLLMModel)
+      {
+        settings.meetingSummaryOllamaModel = settings.meetingSummaryLLMModel
+      }
+      reconcileOllamaEviction(settings: settings)
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
     case .cancelKeyCode:

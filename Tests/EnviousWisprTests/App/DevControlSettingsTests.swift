@@ -76,10 +76,10 @@
 
     // MARK: - Catalog
 
-    @Test("the table lists exactly the 84 declared keys, once each, in four kinds")
+    @Test("the table lists exactly the 87 declared keys, once each, in four kinds")
     func catalogMatchesDeclaration() throws {
       let declared = try Self.declaredKeyNames()
-      #expect(declared.count == 84)
+      #expect(declared.count == 87)
       #expect(Set(declared).count == declared.count)
       let listed = DevControlSettings.allKeys.map(DevControlSettings.name)
       #expect(listed == declared)
@@ -90,7 +90,7 @@
 
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
-      #expect(rows.count == 84)
+      #expect(rows.count == 87)
       #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
@@ -103,7 +103,7 @@
       }
       #expect(kinds["direct"]?.count == 52)
       #expect(kinds["viaOwner"]?.count == 8)
-      #expect(kinds["extractedCheck"]?.count == 16)
+      #expect(kinds["extractedCheck"]?.count == 19)
       #expect(kinds["staging"]?.count == 8)
       #expect(kinds.keys.sorted() == ["direct", "extractedCheck", "staging", "viaOwner"])
     }
@@ -221,6 +221,14 @@
         holds: { $0.fileImportLLMProvider == .gemini }, fires: .fileImportLLMProvider),
       text("fileImportLLMModel", \.fileImportLLMModel, fires: .fileImportLLMModel),
       text("fileImportOllamaModel", \.fileImportOllamaModel, fires: .fileImportOllamaModel),
+      // #4287: the meeting summary engine's three fields.
+      Row(
+        name: "meetingSummaryLLMProvider", wire: { _ in "\"claude\"" },
+        holds: { $0.meetingSummaryLLMProvider == .claude }, fires: .meetingSummaryLLMProvider),
+      text("meetingSummaryLLMModel", \.meetingSummaryLLMModel, fires: .meetingSummaryLLMModel),
+      text(
+        "meetingSummaryOllamaModel", \.meetingSummaryOllamaModel,
+        fires: .meetingSummaryOllamaModel),
       choice("s1MiniStyling", \.s1MiniStyling, [.formal, .casual], fires: .s1MiniStyling),
       choice("s1MiniStructure", \.s1MiniStructure, [.lists, .prose], fires: .s1MiniStructure),
       choice("s1MiniContext", \.s1MiniContext, [.email, .general], fires: .s1MiniContext),
@@ -371,7 +379,7 @@
       "llmModel": "llmModel",
     ]
 
-    @Test("a forced write lands on the right property for every one of the 84 keys and persists")
+    @Test("a forced write lands on the right property for every one of the 87 keys and persists")
     func forcedWriteEveryKey() throws {
       let declared = try Self.declaredKeyNames()
       #expect(Self.rows.map(\.name) == declared)
@@ -405,8 +413,8 @@
         }
         exercised += 1
       }
-      #expect(exercised == 84)
-      #expect(readChecks == 84)
+      #expect(exercised == 87)
+      #expect(readChecks == 87)
     }
 
     @Test("hasCompletedOnboarding is the onboarding alias; forcing it moves onboardingState")
@@ -858,10 +866,12 @@
       #expect(counts[.silenceTimeout] == 1)
       #expect(counts[.importProvider] == 1)
       #expect(counts[.importModel] == 1)
-      #expect(counts[.ollamaModel] == 2)
+      #expect(counts[.summaryProvider] == 1)
+      #expect(counts[.summaryModel] == 1)
+      #expect(counts[.ollamaModel] == 3)
       #expect(counts[.channelCommand] == 1)
       #expect(counts[.shortcutField] == 10)
-      #expect(counts.values.reduce(0, +) == 84)
+      #expect(counts.values.reduce(0, +) == 87)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
@@ -1197,6 +1207,23 @@
       #expect(write(.fileImportOllamaModel, "local-dev:1b") == .written(forced: false))
       #expect(settings.fileImportLLMModel == "local-dev:1b")
       #expect(settings.llmProvider == .openAI)
+    }
+
+    @Test("a summary Ollama model write is refused for a model the Summaries tab does not offer")
+    func summaryOllamaWriteRespectsOfferedList() {
+      let (_, _, settings) = Self.fixture()
+      settings.meetingSummaryLLMProvider = .ollama
+      let ollama = DevControlSettings.ModelCatalog(
+        provider: .ollama,
+        models: [Self.model("local-dev:1b", .ollama), Self.model("eg-1:latest", .ollama)])
+      func write(_ key: SettingsManager.SettingKey, _ id: String) -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          key, value: id, force: false, context: Self.context(catalog: ollama), to: settings)
+      }
+      #expect(write(.meetingSummaryOllamaModel, "eg-1:latest").code == "badValue")
+      #expect(write(.meetingSummaryLLMModel, "eg-1:latest").code == "badValue")
+      #expect(write(.meetingSummaryOllamaModel, "local-dev:1b") == .written(forced: false))
+      #expect(settings.meetingSummaryLLMModel == "local-dev:1b")
     }
 
     @Test("channel.set takes an input a connected multi-input device has, and only that device's")

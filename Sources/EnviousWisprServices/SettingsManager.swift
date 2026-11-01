@@ -16,6 +16,11 @@ public final class SettingsManager {
     case fileImportLLMProvider
     case fileImportLLMModel
     case fileImportOllamaModel
+    /// #4287: the meeting summary engine, chosen independently of dictation's and the
+    /// import's. One key per field, matching the two trios above.
+    case meetingSummaryLLMProvider
+    case meetingSummaryLLMModel
+    case meetingSummaryOllamaModel
     /// #2649: S1-mini's three control-line picks, one key each so a change to
     /// one axis emits one delta and telemetry can answer which axis users touch.
     case s1MiniStyling
@@ -527,6 +532,7 @@ public final class SettingsManager {
       // Synchronous, before any notification, for the reason the import twin gives: a
       // provider change can leave the cloud field holding the previous provider's id.
       canonicalizeMeetingSummaryLLMModelForProvider()
+      onChange?(.meetingSummaryLLMProvider)
     }
   }
 
@@ -534,6 +540,7 @@ public final class SettingsManager {
   public var meetingSummaryLLMModel: String {
     didSet {
       defaults.set(meetingSummaryLLMModel, forKey: "meetingSummaryLLMModel")
+      onChange?(.meetingSummaryLLMModel)
     }
   }
 
@@ -542,6 +549,7 @@ public final class SettingsManager {
   public var meetingSummaryOllamaModel: String {
     didSet {
       defaults.set(meetingSummaryOllamaModel, forKey: "meetingSummaryOllamaModel")
+      onChange?(.meetingSummaryOllamaModel)
     }
   }
 
@@ -2276,6 +2284,26 @@ public final class SettingsManager {
   /// exists for. A FOLLOWER has no fields of its own — its provider and model ARE
   /// dictation's — so it is routed to the dictation applier rather than given a private copy
   /// that would immediately be stale.
+  /// #4287: the same repair over the summary surface's own fields. Unlike an import
+  /// follower, the summary surface never borrows dictation's fields: an unmigrated (nil)
+  /// choice has no engine, so a catalog for any provider is not about it.
+  public func applyDiscoveredModelsForMeetingSummary(
+    _ models: [LLMModelInfo], for provider: LLMProvider
+  ) {
+    guard let chosen = meetingSummaryLLMProvider, provider == chosen else { return }
+    isApplyingSystemWrite = true
+    defer { isApplyingSystemWrite = false }
+    let repair = Self.discoveredModelRepair(
+      for: models, provider: provider,
+      cloudModel: meetingSummaryLLMModel, ollamaModel: meetingSummaryOllamaModel)
+    if let newCloud = repair.cloudModel, meetingSummaryLLMModel != newCloud {
+      meetingSummaryLLMModel = newCloud
+    }
+    if let newOllama = repair.ollamaModel, meetingSummaryOllamaModel != newOllama {
+      meetingSummaryOllamaModel = newOllama
+    }
+  }
+
   public func applyDiscoveredModelsForFileImport(
     _ models: [LLMModelInfo], for provider: LLMProvider
   ) {
