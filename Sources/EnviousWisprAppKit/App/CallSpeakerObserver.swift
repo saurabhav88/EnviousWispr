@@ -72,7 +72,9 @@ final class CallSpeakerObserver {
   /// still blocked from a recording that ended keeps a new recording from starting another.
   /// A test makes its own.
   final class Lane: Sendable {
-    let queue = DispatchQueue(label: "com.enviouswispr.call-speaker-capture", qos: .utility)
+    /// Trial: test whether scheduling contributes to loaded capture delays (#4248).
+    let queue = DispatchQueue(
+      label: "com.enviouswispr.call-speaker-capture", qos: .userInitiated)
     let busy = OSAllocatedUnfairLock(initialState: false)
     static let shared = Lane()
 
