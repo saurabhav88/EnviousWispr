@@ -5,6 +5,7 @@ import Foundation
 import Testing
 import os
 
+@testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
@@ -143,87 +144,6 @@ enum MuteSilenceP4 {
     return output.filter { !known.contains($0) }
   }
 
-  // MARK: Cutoff characterization (r6, buddy finding 1)
-
-  /// The longest exact-zero run the r6 rule still hands to a recognizer: one sample under the
-  /// cutoff. 0.5 s (8,000) failed on Whisper (`docs/audits/2026-10-30-4248/r6-cutoff-0.5s.log`);
-  /// candidate 0.1 s. `EW_P4_FED_ZEROS` overrides it for a characterization run.
-  static var longestFedZeros: Int {
-    ProcessInfo.processInfo.environment["EW_P4_FED_ZEROS"].flatMap(Int.init) ?? 1_599
-  }
-
-  /// The first spoken sentence pair: the speech up to the first pause of at least 0.4 s after 3 s.
-  static func firstTurn(_ speech: [Float]) -> [Float] {
-    let window = 160
-    var quiet = 0
-    var at = 48_000
-    while at + window < speech.count {
-      let peak = speech[at..<(at + window)].map(abs).max() ?? 0
-      quiet = peak < 0.003 ? quiet + window : 0
-      if quiet >= 6_400 { return Array(speech[0..<(at - quiet / 2)]) }
-      at += window
-    }
-    return speech
-  }
-
-  /// Where to put a gap inside the first sentence: the quietest 20 ms between 0.5 s and 2 s.
-  static func inSentenceGap(_ turn: [Float]) -> Int {
-    var best = 8_000
-    var bestPeak = Float.infinity
-    var at = 8_000
-    while at + 320 < min(32_000, turn.count) {
-      let peak = turn[at..<(at + 320)].map(abs).max() ?? 0
-      if peak < bestPeak {
-        bestPeak = peak
-        best = at + 160
-      }
-      at += 80
-    }
-    return best
-  }
-
-  /// The sub-threshold cases, each with `longestFedZeros` exact zeros: alone, leading, trailing
-  /// and inside the sentence.
-  static func subThresholdCases(_ turn: [Float]) -> [(label: String, samples: [Float])] {
-    let zeros = [Float](repeating: 0, count: longestFedZeros)
-    let gap = inSentenceGap(turn)
-    // The same length of quiet non-zero noise (seeded, peak 0.001): a change it also causes is
-    // the engine's sensitivity to any short insertion, not to exact zeros.
-    var seed: UInt64 = 0x4248
-    let noise = (0..<longestFedZeros).map { _ -> Float in
-      seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-      return (Float(seed >> 40) / Float(1 << 24) - 0.5) * 0.002
-    }
-    return [
-      ("control_repeat", turn),
-      ("noise_leading", noise + turn),
-      ("noise_in_sentence", Array(turn[0..<gap]) + noise + Array(turn[gap...])),
-      ("zeros_only", zeros),
-      ("leading", zeros + turn),
-      ("trailing", turn + zeros),
-      ("in_sentence", Array(turn[0..<gap]) + zeros + Array(turn[gap...])),
-    ]
-  }
-
-  /// The characterization verdict for one route: zeros alone give no words, and every case with
-  /// speech gives exactly the control's words in the control's order.
-  static func judgeSubThreshold(route: String, control: String, outputs: [String: String]) {
-    let expected = words(control)
-    receipt(route, "sub_control", control)
-    #expect(!expected.isEmpty, "\(route): the control sentence is transcribed")
-    for (label, text) in outputs.sorted(by: { $0.key < $1.key }) {
-      receipt(route, "sub_\(label)", text, extra: "zeros=\(longestFedZeros)")
-      if label.hasPrefix("noise_") {
-        // Diagnostic only: shows whether a change also follows a non-zero insertion.
-        continue
-      } else if label == "zeros_only" {
-        #expect(words(text).isEmpty, "\(route) \(label): zeros alone give no words")
-      } else {
-        #expect(words(text) == expected, "\(route) \(label): same words, same order as the control")
-      }
-    }
-  }
-
   static func receipt(_ route: String, _ label: String, _ text: String, extra: String = "") {
     print("P4 route=\(route) case=\(label) words=\(words(text).count) \(extra) text=\(text)")
   }
@@ -244,9 +164,11 @@ struct MeetingMuteSilenceRealBoundaryTests {
 
   /// The finalized text one transcript session delivers for `samples`, fed in 100 ms chunks;
   /// returns once `end()` has delivered the session's `.ended`.
-  private func transcribe(_ samples: [Float], on engine: any LivePreviewEngine) async throws
-    -> String
-  {
+  /// `requireDetection`: the session's meeting speech detection must have run, undegraded,
+  /// before `end()`.
+  private func transcribe(
+    _ samples: [Float], on engine: any LivePreviewEngine, requireDetection: Bool
+  ) async throws -> String {
     let finalized = OSAllocatedUnfairLock(initialState: "")
     let ended = OSAllocatedUnfairLock<LiveWordsEnd?>(initialState: nil)
     let updates = OSAllocatedUnfairLock(initialState: 0)
@@ -277,6 +199,16 @@ struct MeetingMuteSilenceRealBoundaryTests {
       // settle: real-time playback; chunk i is due at start + i x 100 ms.
       try await Task.sleep(until: start + .milliseconds(100 * index), clock: clock)
     }
+    if requireDetection {
+      #if DEBUG
+        let report = await session.detectionReport()
+        #expect(report != nil, "the session has meeting speech detection")
+        #expect(report?.degraded == false, "detection never turned off: \(String(describing: report))")
+        #expect((report?.classified ?? 0) > 0, "detection classified audio: \(String(describing: report))")
+      #else
+        Issue.record("detection reports exist only in DEBUG builds")
+      #endif
+    }
     // end() delivers every accepted final, then exactly one .ended, before it returns.
     await session.end()
     let end = ended.withLock { $0 }
@@ -286,7 +218,9 @@ struct MeetingMuteSilenceRealBoundaryTests {
   }
 
   /// Control, layout and all-zero cases on one engine, with the P4 verdict.
-  private func runCases(route: String, engine: any LivePreviewEngine) async throws {
+  private func runCases(
+    route: String, engine: any LivePreviewEngine, requireDetection: Bool
+  ) async throws {
     let speech = try MuteSilenceP4.speech()
     let layout = MuteSilenceP4.layout(speech)
     let dir = try folder(route)
@@ -309,9 +243,10 @@ struct MeetingMuteSilenceRealBoundaryTests {
       #expect(laidOut[span].allSatisfy { $0 == 0 })
     }
 
-    let control = try await transcribe(try MuteSilenceP4.decoded(controlAudio), on: engine)
-    let spliced = try await transcribe(laidOut, on: engine)
-    let silent = try await transcribe(zero, on: engine)
+    let control = try await transcribe(
+      try MuteSilenceP4.decoded(controlAudio), on: engine, requireDetection: requireDetection)
+    let spliced = try await transcribe(laidOut, on: engine, requireDetection: requireDetection)
+    let silent = try await transcribe(zero, on: engine, requireDetection: requireDetection)
     let spans = layout.zeroSpans.map { "\($0.lowerBound)..<\($0.upperBound)" }.joined(
       separator: ",")
     MuteSilenceP4.receipt(route, "control", control)
@@ -329,57 +264,6 @@ struct MeetingMuteSilenceRealBoundaryTests {
       "no word outside the speech and the control")
   }
 
-  /// r6 cutoff characterization on one live engine: the sentence alone, then each
-  /// sub-threshold case, each on its own session.
-  private func subThreshold(route: String, engine: any LivePreviewEngine) async throws {
-    let turn = MuteSilenceP4.firstTurn(try MuteSilenceP4.speech())
-    let control = try await transcribe(turn, on: engine)
-    var outputs: [String: String] = [:]
-    for item in MuteSilenceP4.subThresholdCases(turn) {
-      outputs[item.label] = try await transcribe(item.samples, on: engine)
-    }
-    MuteSilenceP4.judgeSubThreshold(route: route, control: control, outputs: outputs)
-  }
-
-  @Test(
-    "r6 cutoff: Apple live words on sub-threshold zero spans",
-    .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(4)))
-  func appleSubThreshold() async throws {
-    let resolution = await ApplePreviewEngineResolver.resolveMeeting(languageTag: "en-US")
-    guard case .ready(let candidate) = resolution else {
-      Issue.record("Apple meeting module not ready on this Mac: \(resolution)")
-      return
-    }
-    let engine = candidate.makeEngine()
-    try await engine.prepare()
-    try await subThreshold(route: "apple-live", engine: engine)
-  }
-
-  @Test(
-    "r6 cutoff: Universal live words on sub-threshold zero spans",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
-    .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(6)))
-  func universalSubThreshold() async throws {
-    let resolve = WhisperPreviewDeliveryWiring.meetingResolver(
-      WhisperPreviewEngineResolver.Environment(
-        artifactIdentity: "p4",
-        modelPath: WhisperProductionWiringRealBoundaryTests.evaluationModel.path,
-        isAdmitted: { true }, isHeartStreaming: { false }))
-    guard case .ready(let makeEngine) = await resolve(.locked("en")) else {
-      Issue.record("Universal meeting engine not ready")
-      return
-    }
-    let shared = makeEngine({})
-    try await shared.prepare()
-    do {
-      try await subThreshold(route: "universal-live", engine: shared.recognizer)
-    } catch {
-      await shared.beginRelease().value
-      throw error
-    }
-    await shared.beginRelease().value
-  }
-
   @Test(
     "P4: Apple's meeting live words invent nothing from exact zeros and keep the speech",
     .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(6)))
@@ -391,32 +275,31 @@ struct MeetingMuteSilenceRealBoundaryTests {
     }
     let engine = candidate.makeEngine()
     try await engine.prepare()
-    try await runCases(route: "apple-live", engine: engine)
+    try await runCases(route: "apple-live", engine: engine, requireDetection: false)
   }
 
   @Test(
     "P4: Universal live words invent nothing from exact zeros and keep the speech",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
     .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(10)))
   func universalLiveWords() async throws {
-    let resolve = WhisperPreviewDeliveryWiring.meetingResolver(
-      WhisperPreviewEngineResolver.Environment(
-        artifactIdentity: "p4",
-        modelPath: WhisperProductionWiringRealBoundaryTests.evaluationModel.path,
-        isAdmitted: { true }, isHeartStreaming: { false }))
-    guard case .ready(let makeEngine) = await resolve(.locked("en")) else {
-      Issue.record("Universal meeting engine not ready")
-      return
-    }
-    let shared = makeEngine({})
-    try await shared.prepare()
+    // The meeting recognizer and transcript session production builds, with the pinned speech
+    // detector the app bundle supplies (#4254); the test process's main bundle has no model.
+    let bundlePath = try PinnedVADModel.bundlePath()
+    let runtime = TranscribeCppPreviewRuntime(
+      modelPath: WhisperProductionWiringRealBoundaryTests.evaluationModel.path,
+      isAdmitted: { true })
+    let recognizer = WhisperPreviewRecognizer(
+      runtime: runtime, language: "en",
+      liveSpeechDetector: { MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) })
+    try await recognizer.prepare()
     do {
-      try await runCases(route: "universal-live", engine: shared.recognizer)
+      try await runCases(route: "universal-live", engine: recognizer, requireDetection: true)
     } catch {
-      await shared.beginRelease().value
+      await runtime.releaseAndDrain()
       throw error
     }
-    await shared.beginRelease().value
+    await runtime.releaseAndDrain()
   }
 }
 

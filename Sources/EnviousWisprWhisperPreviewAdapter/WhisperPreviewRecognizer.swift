@@ -79,6 +79,9 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   /// Asked before every decode of this recognizer's transcript sessions (#3973); a throw is a
   /// temporary refusal the rolling loop retries. Dictation's `openSession` never uses it.
   private let admitTranscriptDecode: @Sendable () async throws -> Void
+  /// #4254: the speech detector each meeting transcript session creates. Production uses the
+  /// app bundle's model; real-model tests pass one built from the pinned model.
+  private let liveSpeechDetector: @Sendable () -> any LiveSpeechDetecting
 
   /// The session most recently opened, so the NEXT `openSession` can wait for it
   /// to finish tearing down before starting another decode loop over the SAME
@@ -104,11 +107,14 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   /// (EnviousMeet supplies its heart-streaming refusal); the default admits every decode.
   package init(
     runtime: TranscribeCppPreviewRuntime, language: String?,
-    admitTranscriptDecode: @escaping @Sendable () async throws -> Void = {}
+    admitTranscriptDecode: @escaping @Sendable () async throws -> Void = {},
+    liveSpeechDetector: @escaping @Sendable () -> any LiveSpeechDetecting =
+      meetingLiveSpeechDetector
   ) {
     self.runtime = runtime
     self.language = language
     self.admitTranscriptDecode = admitTranscriptDecode
+    self.liveSpeechDetector = liveSpeechDetector
   }
 
   /// Claim the model. Throws rather than downloading: a display-only limb must
@@ -189,7 +195,7 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
         onTranscript: handle.publish,
         admitDecode: admitTranscriptDecode,
         // #4254: meeting live words skip native work on confirmed silence.
-        liveSpeechDetector: meetingLiveSpeechDetector)
+        liveSpeechDetector: liveSpeechDetector)
     } catch {
       // Never handed to the owner: no events, not even a terminal; the queue's task ends.
       await handle.discard()

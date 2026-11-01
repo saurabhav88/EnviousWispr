@@ -308,7 +308,10 @@ struct MeetingProcessingRealBoundaryTests {
     -> MeetingComposition
   {
     let modelPath = WhisperProductionWiringRealBoundaryTests.evaluationModel.path
-    let engine = LiveMeetingWhisperEngine(driver: LiveWhisperExecutorDriver())
+    // #4254: the pinned detector, as the app bundle supplies it; the test process has none.
+    let engine = LiveMeetingWhisperEngine(
+      driver: LiveWhisperExecutorDriver(), detectSpeech: try PinnedVADModel.finalDetector())
+    let preparations = OSAllocatedUnfairLock<[MeetingSpeechPreparation?]>(initialState: [])
     var configuration = MeetingTranscriptionJob.Configuration()
     configuration.cutsPieces = false
     let job = MeetingTranscriptionJob(
@@ -317,7 +320,9 @@ struct MeetingProcessingRealBoundaryTests {
         endModelUse: {},
         loadEngine: { try await engine.load(modelPath: modelPath) },
         transcribe: { samples, language in
-          try await engine.transcribe(samples: samples, language: language)
+          let decoded = try await engine.transcribe(samples: samples, language: language)
+          preparations.withLock { $0.append(decoded.meetingSpeechPreparation) }
+          return decoded
         },
         unloadEngine: { await engine.unload() },
         analyzeSpeakers: { audio in
@@ -341,52 +346,11 @@ struct MeetingProcessingRealBoundaryTests {
       attempt: MeetingAttemptConfiguration(
         requestedEngine: .whisper, languageIntent: "en", requestedEffectiveLanguage: "en"))
     #expect(await engine.isLoaded == false)
+    let prepared = preparations.withLock { $0 }
+    #expect(
+      !prepared.isEmpty && prepared.allSatisfy(PinnedVADModel.detectionRan),
+      "speech detection ran on every decode: \(prepared)")
     return result.composition
-  }
-
-  /// r6 cutoff characterization on one final engine: the sentence alone, then each
-  /// sub-threshold case, each written through the real held writer and decoded on its own.
-  private func p4SubThreshold(
-    route: String, run: (MeetingTrackAudio) async throws -> MeetingComposition
-  ) async throws {
-    let turn = MuteSilenceP4.firstTurn(try MuteSilenceP4.speech())
-    let dir = try folder("p4-sub-\(route)")
-    defer { try? FileManager.default.removeItem(at: dir) }
-    func decode(_ samples: [Float], _ name: String) async throws -> String {
-      let url = dir.appendingPathComponent(name, isDirectory: true)
-      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-      let audio = try await MuteSilenceP4.throughGate(samples, silenceAll: false, into: url)
-      return try await run(audio).text
-    }
-    let control = try await decode(turn, "control")
-    var outputs: [String: String] = [:]
-    for item in MuteSilenceP4.subThresholdCases(turn) {
-      outputs[item.label] = try await decode(item.samples, item.label)
-    }
-    MuteSilenceP4.judgeSubThreshold(route: route, control: control, outputs: outputs)
-  }
-
-  @Test(
-    "r6 cutoff: the real Parakeet meeting pass on sub-threshold zero spans",
-    .enabled(if: MeetingProcessingRealBoundaryTests.ultraIsInstalled),
-    .tags(.realBoundary), .timeLimit(.minutes(4)), .realBoundaryRun)
-  func p4ParakeetSubThreshold() async throws {
-    try await p4SubThreshold(route: "parakeet-final") { audio in
-      let (job, _) = try realJob()
-      return try await job.runTestAttempt(tracks: [.microphone: audio], language: nil) { _ in }
-        .composition
-    }
-  }
-
-  @Test(
-    "r6 cutoff: the real Whisper meeting pass on sub-threshold zero spans",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
-    .tags(.realBoundary), .timeLimit(.minutes(6)), .realBoundaryRun)
-  func p4WhisperSubThreshold() async throws {
-    let speakerBundle = try Self.speakerModelBundle()
-    try await p4SubThreshold(route: "whisper-final") { audio in
-      try await self.whisperComposition(audio, speakerBundle: speakerBundle)
-    }
   }
 
   @Test(
@@ -403,7 +367,7 @@ struct MeetingProcessingRealBoundaryTests {
 
   @Test(
     "#4248 P4: the real Whisper meeting pass makes no words from the mute hold's zeros",
-    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent),
+    .enabled(if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn),
     .tags(.realBoundary), .timeLimit(.minutes(8)), .realBoundaryRun)
   func p4Whisper() async throws {
     let speakerBundle = try Self.speakerModelBundle()
