@@ -36,6 +36,8 @@ class RunnerContract(unittest.TestCase):
         # stand-ins with the real output contracts (#3729 PR-C).
         shutil.copyfile(RUNNER.with_name('lib') / 'validation-receipt.py', lib / 'validation-receipt.py')
         shutil.copyfile(RUNNER.with_name('lib') / 'prepare-toolchain-syntax.py', lib / 'prepare-toolchain-syntax.py')
+        # #4293: the real per-checkout build lock; its file lives inside this fixture.
+        shutil.copyfile(RUNNER.with_name('lib') / 'build-folder-lock.py', lib / 'build-folder-lock.py')
         # Private COPY of the machine queue: a missed rewrite must never acquire
         # the developer's real slot from a self-test fixture.
         queue = (RUNNER.parent / 'local-ci-queue.py').read_text()
@@ -441,6 +443,97 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
     def test_explicit_both(self):
         self.run_runner('--configuration', 'both')
         self.assertEqual(self.configurations(), ['Debug', 'Release'])
+
+    # ── #4293: the local Debug lane builds in Dev inside .derivedData/Dev ──────────
+    def shared_folder_env(self, identities='  1) ABC "EnviousWispr Dev"\n     1 valid identities found\n', security_rc=0):
+        """No DERIVED_DATA_PATH, and a stub `security` answering the identity probe."""
+        security = self.root / 'bin/security'
+        security.write_text('#!/usr/bin/env bash\necho "security $*" >> "$TRACE"\n'
+                            f'printf %s {identities!r}\nexit {security_rc}\n')
+        security.chmod(0o755)
+        self.env.pop('DERIVED_DATA_PATH')
+        (self.root / '.derivedData/Test').mkdir(parents=True, exist_ok=True)
+
+    def derived_paths(self, rows):
+        return [row[row.index('-derivedDataPath') + 1] for row in rows]
+
+    def test_debug_lane_builds_in_dev_inside_the_dev_apps_folder(self):
+        self.shared_folder_env()
+        result = self.run_runner('--grouped', execution=None)
+        dev = str(self.root / '.derivedData/Dev')
+        builds = [r for r in self.calls if r[0] == 'build-for-testing']
+        self.assertEqual([r[r.index('-configuration') + 1] for r in builds], ['Dev', 'Dev'])
+        self.assertEqual(self.derived_paths(builds), [dev, dev])
+        self.assertEqual(self.critical_builds(), ['Dev'])
+        self.assertIn('security find-identity -p codesigning', self.trace())
+        self.assertIn('verdict:Debug lane:required=unset', self.trace())
+        self.assertIn('Debug lane: Xcode configuration Dev in ' + dev, result.stdout)
+        data = self.receipt_data()
+        self.assertEqual((data['configuration'], data['xcode_configuration']), ('Debug', 'Dev'))
+        self.assertTrue((self.root / '.derivedData/.ew-build.lock').is_file())
+
+    def test_without_the_dev_identity_the_debug_lane_keeps_debug_in_the_test_folder(self):
+        self.shared_folder_env(identities='     0 valid identities found\n')
+        result = self.run_runner()
+        self.assertEqual(self.configurations(), ['Debug'])
+        self.assertEqual(self.derived_paths(self.tests), [str(self.root / '.derivedData/Test')])
+        self.assertIn("no 'EnviousWispr Dev' signing identity", result.stdout)
+        self.assertEqual(self.receipt_data()['xcode_configuration'], 'Debug')
+
+    def test_an_identity_probe_error_stops_before_any_build(self):
+        self.shared_folder_env(identities='security: SecKeychainSearchCopyNext failed\n', security_rc=1)
+        result = self.run_runner(rc=2)
+        self.assertEqual(self.calls, [])
+        self.assertIn('could not list code-signing identities', result.stdout)
+
+    def test_ci_mode_keeps_debug_even_with_the_identity(self):
+        self.shared_folder_env()
+        self.run_runner(CI='true')
+        self.assertEqual(self.configurations(), ['Debug'])
+        self.assertNotIn('security find-identity -p codesigning', self.trace())
+
+    def test_both_keeps_release_in_the_test_folder(self):
+        self.shared_folder_env()
+        self.run_runner('--configuration', 'both')
+        self.assertEqual(self.configurations(), ['Dev', 'Release'])
+        self.assertEqual(self.derived_paths(self.tests),
+                         [str(self.root / '.derivedData/Dev'), str(self.root / '.derivedData/Test')])
+        self.assertEqual(self.trace().count('seed'), 2)  # each lane folder is seeded
+
+    def test_release_only_never_probes_or_uses_the_dev_folder(self):
+        self.shared_folder_env()
+        self.run_runner('--configuration', 'Release')
+        self.assertEqual(self.derived_paths(self.tests), [str(self.root / '.derivedData/Test')])
+        self.assertNotIn('security find-identity -p codesigning', self.trace())
+
+    def test_the_build_lock_is_held_for_the_whole_run(self):
+        self.shared_folder_env()
+        hold, started = self.root / 'hold', self.root / 'started'
+        hold.write_text('')
+        env = dict(self.env, HOLD=str(hold), STARTED=str(started))
+        proc = subprocess.Popen(['bash', str(self.root / 'scripts/xcode-test.sh'), '--log-dir',
+                                 str(self.root / 'logs'), '--serial'], env=env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.time() + 10
+            while not started.exists() and time.time() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(started.exists(), 'the fixture test command never started')
+            probe = os.open(self.root / '.derivedData/.ew-build.lock', os.O_RDWR)
+            try:
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(probe)
+        finally:
+            hold.unlink()
+            out, _ = proc.communicate(timeout=15)
+        self.assertEqual(proc.returncode, 0, out)
+        probe = os.open(self.root / '.derivedData/.ew-build.lock', os.O_RDWR)
+        try:
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released at exit
+        finally:
+            os.close(probe)
 
     def test_invalid_configuration_before_setup(self):
         self.run_runner('--configuration', 'Fast', rc=2)

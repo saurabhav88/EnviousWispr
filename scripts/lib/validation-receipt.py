@@ -42,7 +42,7 @@ SCHEMA = 1
 RECEIPT_REL = ".derivedData/Test/ew-validation-receipt.json"
 REQUIRED = {
     "schema": int, "tree": str, "head": str, "toolchain": str,
-    "configuration": str, "scheme": str, "bundles": list, "executed_tests": int,
+    "configuration": str, "xcode_configuration": str, "scheme": str, "bundles": list, "executed_tests": int,
     "debug_verdict": str, "eval_verdict": str, "result_bundle": str, "utc": str,
 }
 
@@ -55,6 +55,11 @@ COMPILED_SOURCE_SUFFIXES = (".swift", ".m", ".mm", ".c", ".cc", ".cpp", ".cxx", 
                             ".metal", ".s")
 # The full Debug run's required bundles: lane-verdict.sh's default list.
 EXPECTED_BUNDLES = {"EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"}
+# #4293: `configuration` names the logical lane (DEBUG compile conditions);
+# `xcode_configuration` the Xcode configuration it actually built in. Locally that
+# is Dev (shared with the dev app); a machine without the dev signing identity
+# builds Debug. scripts/xcode-test.sh owns the choice.
+XCODE_CONFIGURATIONS = {"Dev", "Debug"}
 
 
 class Ineligible(Exception):
@@ -193,6 +198,8 @@ def validate(data, tree=None, build=None, root=None):
         raise ValueError("receipt tree is not a full object id")
     if data["configuration"] != "Debug" or data["debug_verdict"] != "PASS" or data["eval_verdict"] != "PASS":
         raise ValueError("receipt does not record a passing Debug and eval run")
+    if data["xcode_configuration"] not in XCODE_CONFIGURATIONS:
+        raise ValueError("receipt xcode_configuration is not Dev or Debug")
     if data["executed_tests"] < 1 or not data["bundles"]:
         raise ValueError("receipt records no executed tests or bundles")
     if tree is not None and data["tree"] != tree:
@@ -322,7 +329,7 @@ def self_test():
         run("config", "user.email", "t@t"); run("config", "user.name", "t")
         (root / "Sources/A.swift").write_text("let a = 1\n")
         run("add", "-A"); run("commit", "-qm", "base")
-        fields = ["configuration=Debug", "scheme=EnviousWispr", "bundles=EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests", "executed_tests=5",
+        fields = ["configuration=Debug", "xcode_configuration=Dev", "scheme=EnviousWispr", "bundles=EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests", "executed_tests=5",
                   "debug_verdict=PASS", "eval_verdict=PASS", "result_bundle=/x.xcresult"]
 
         start = capture(root)
@@ -449,6 +456,14 @@ def self_test():
         rejects("validate rejects a non-string bundle", lambda d: d.update(bundles=d["bundles"][:2] + [None]))
         rejects("validate rejects an unexpected bundle", lambda d: d.update(bundles=d["bundles"][:2] + ["Other"]))
         rejects("validate rejects another scheme", lambda d: d.update(scheme="EnviousWispr-Release"))
+        rejects("validate rejects a receipt without xcode_configuration (written before #4293)",
+                lambda d: d.pop("xcode_configuration"))
+        rejects("validate rejects an unknown xcode_configuration", lambda d: d.update(xcode_configuration="Release"))
+        debug_built = json.loads(json.dumps(good)); debug_built["xcode_configuration"] = "Debug"
+        try:
+            validate(debug_built); case("validate accepts a Debug-configuration receipt (no dev identity)", True)
+        except ValueError as e:
+            case("validate accepts a Debug-configuration receipt (no dev identity)", False, str(e))
         rejects("validate rejects an empty toolchain", lambda d: d.update(toolchain="  "))
         rejects("validate rejects an empty result bundle path", lambda d: d.update(result_bundle=""))
         try:
