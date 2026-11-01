@@ -19,15 +19,16 @@ with the SHIPPED stack, not a Python approximation:
 
 Nothing here is an accuracy result, a winner or a frozen-report run; the
 frozen rows are never read. Everything the probe downloads or exports lives
-under the gitignored main-checkout tree `artifacts/issue-996-edit-judge/`.
+under the edit-judge tree `artifacts/issue-996-edit-judge/` (in the agent artifact
+library since 2026-10-31: `~/.claude/bin/artifact path artifacts/issue-996-edit-judge`).
 
-Run from the worktree, with the runner built (`swift build -c release` in
-`scripts/eval/alias_runner`) and the probe venv created
+Run from the worktree, with the runner built (`swift build -c release --package-path
+scripts/eval --product AliasRunner`) and the probe venv created
 (`artifacts/issue-996-edit-judge/.venv`, torch + transformers 4.50.0 +
 coremltools 9.0):
 
-  <main>/artifacts/issue-996-edit-judge/.venv/bin/python \\
-      scripts/eval/probe_edit_judge_compatibility.py --artifacts <main>/artifacts/issue-996-edit-judge
+  "$T/.venv/bin/python" \\
+      scripts/eval/probe_edit_judge_compatibility.py --artifacts "$T"   # T as above
 
 Pure helpers (`mirror_pair_encoding`, `compare_ids`, `placement_verdict`) are
 tested in `scripts/eval/tests/test_probe_edit_judge_compatibility.py`.
@@ -633,7 +634,7 @@ def probe_candidate(name: str, spec: dict, artifacts: Path, run_root: Path, n_in
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--artifacts", type=Path, required=True, help="main-checkout artifacts/issue-996-edit-judge")
+    p.add_argument("--artifacts", type=Path, required=True, help="the edit-judge tree: ~/.claude/bin/artifact path artifacts/issue-996-edit-judge")
     p.add_argument("--candidates", nargs="+", default=list(CANDIDATES), choices=list(CANDIDATES))
     p.add_argument("--inputs", type=int, default=8, help="synthetic inputs per placement check")
     p.add_argument("--skip-conversion", action="store_true", help="tokenizer half only; the report says so")

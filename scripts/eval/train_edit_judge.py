@@ -29,9 +29,10 @@ Outputs, under `<artifacts>/runs/<run id>/`:
   metrics.json         per-epoch dev metrics, calibration sweep, locked results
 
 Toolchain: the pinned probe venv (`edit-judge-requirements.txt`).
-Run from the worktree:
-  <main>/artifacts/issue-996-edit-judge/.venv/bin/python scripts/eval/train_edit_judge.py \\
-      --artifacts <main>/artifacts/issue-996-edit-judge --candidate xenc-xlmr-base
+Run from the worktree (the tree lives in the agent artifact library since
+2026-10-31; `T=$(~/.claude/bin/artifact path artifacts/issue-996-edit-judge)` prints it):
+  "$T/.venv/bin/python" scripts/eval/train_edit_judge.py \\
+      --artifacts "$T" --candidate xenc-xlmr-base
 Add `--smoke` for the pipeline smoke (a few steps on a few rows; never a result).
 
 Training on a machine without the Swift runner (the CUDA rig, 2026-09-20): the two
