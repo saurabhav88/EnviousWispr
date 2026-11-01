@@ -1,0 +1,1 @@
+{"language":"es","title":"excluir mi voz cuando esté silenciado","words":[],"phrases":["no grabar mi voz cuando estoy silenciado en Zoom","excluir mi voz de la grabación cuando silencio el micrófono en Teams","no incluir mi voz en la grabación cuando estoy silenciado en Google Meet"]}

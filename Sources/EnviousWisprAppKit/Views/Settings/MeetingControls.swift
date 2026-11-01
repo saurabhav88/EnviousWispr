@@ -286,6 +286,25 @@ struct MeetingWriteSummaryRow: View {
   }
 }
 
+/// "Leave my voice out when I'm muted" (#4248): applies to a recording in progress at once.
+struct MeetingFollowsCallMuteRow: View {
+  @Environment(SettingsManager.self) private var settings
+
+  var body: some View {
+    @Bindable var settings = settings
+    SettingsRow(
+      map: .id(.meetingFollowsCallMute), icon: "mic.slash.circle",
+      help: MeetingsCopy.followsCallMuteHelp
+    ) {
+      Toggle("", isOn: $settings.meetingFollowsCallMute)
+        .labelsHidden()
+        .toggleStyle(BrandedToggleStyle())
+        .fixedSize()
+        .accessibilityLabel(Text(MeetingsCopy.followsCallMuteTitle))
+    }
+  }
+}
+
 /// "Turn off dictation during meetings" (#4069): read at each dictation start press.
 struct MeetingTurnsOffDictationRow: View {
   @Environment(SettingsManager.self) private var settings

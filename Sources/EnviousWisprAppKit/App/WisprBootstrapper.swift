@@ -1213,7 +1213,7 @@ package final class WisprBootstrapper {
         weak settingsSync, weak settings, weak settingsChangeTelemetry,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
         weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder,
-        menuBarControllerHolder
+        menuBarControllerHolder, meetingBox
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -1233,6 +1233,10 @@ package final class WisprBootstrapper {
       // #2480: the Dock switch takes effect now, not at the next window close.
       if key == .showInDock {
         appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
+      }
+      // #4248: "Leave my voice out when I'm muted" applies to a recording in progress at once.
+      if key == .meetingFollowsCallMute {
+        meetingBox.coordinator?.muteFollowingChanged()
       }
       // #3441: the update-alert switch changes the menu bar icon now.
       if key == .showMenuBarUpdateAlert {

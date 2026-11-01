@@ -378,8 +378,8 @@ final class MeetingCoordinator {
     }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared
-    /// #4248: whether "leave my voice out while muted" is on. Chunk 6 reads the setting and
-    /// calls `muteFollowingChanged()` when it changes.
+    /// #4248: whether "Leave my voice out when I'm muted" is on (`meetingFollowsCallMute`); the
+    /// settings change route calls `muteFollowingChanged()` when it changes.
     var muteFollowingEnabled: @MainActor () -> Bool = { true }
     /// #4248: the host clock mute changes are stamped with.
     var hostTime: @Sendable () -> UInt64 = { mach_absolute_time() }
@@ -2669,7 +2669,7 @@ final class MeetingCoordinator {
     }
   }
 
-  /// "Leave my voice out while muted" was switched (chunk 6 calls this).
+  /// "Leave my voice out when I'm muted" was switched (`WisprBootstrapper`'s settings route).
   func muteFollowingChanged() {
     let on = deps.muteFollowingEnabled()
     guard let follow = muteFollow else { return }

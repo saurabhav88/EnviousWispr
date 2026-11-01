@@ -1,0 +1,1 @@
+{"language":"hr","title":"izostavi moj glas kad sam utišan u pozivu","words":["mute"],"phrases":["ne snimaj moj glas dok sam utišan u pozivu","izostavi moj glas iz snimke kad utišam mikrofon u Zoomu"]}

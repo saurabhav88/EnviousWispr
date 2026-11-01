@@ -267,7 +267,9 @@ enum MeetingWiring {
               .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })
           else { return nil }
           return (selected, bundled.rules)
-        }))
+        },
+        // #4248: "Leave my voice out when I'm muted"; changes reach `muteFollowingChanged()`.
+        muteFollowingEnabled: { [settings = inputs.settings] in settings.meetingFollowsCallMute }))
     inputs.transcriptCoordinator.deleteMeeting = {
       [weak coordinator, weak transcripts = inputs.transcriptCoordinator] meetingID in
       Task {

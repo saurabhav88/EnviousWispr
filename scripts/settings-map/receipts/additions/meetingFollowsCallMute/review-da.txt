@@ -1,0 +1,1 @@
+{"language":"da","title":"udelad min stemme, når mikrofonen er slået fra i opkaldet","words":["mute"],"phrases":["tag ikke min stemme med i optagelsen, når jeg er på mute","udelad min mikrofon fra optagelsen, når jeg er på mute i Teams"]}

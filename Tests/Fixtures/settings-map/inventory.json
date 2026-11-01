@@ -2320,6 +2320,24 @@
    }
   },
   {
+   "id": "meetingFollowsCallMute",
+   "kind": "setting",
+   "destination": {
+    "page": "meetings",
+    "tab": "general"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.general",
+   "target": "meetingFollowsCallMute",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting."
+   }
+  },
+  {
    "id": "meetingLiveWords",
    "kind": "setting",
    "destination": {

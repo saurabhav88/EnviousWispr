@@ -1,0 +1,1 @@
+{"language":"fr","title":"exclure ma voix quand je suis en sourdine","words":["sourdine","mute"],"phrases":["ne pas enregistrer ma voix quand je suis en sourdine dans l’appel","exclure mon micro de l’enregistrement quand il est coupé dans Teams"]}

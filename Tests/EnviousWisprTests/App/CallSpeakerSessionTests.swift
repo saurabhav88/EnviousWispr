@@ -309,7 +309,8 @@ import os
       await eventually("copy delivered") { observer.deliveriesForTesting > before }
     }
 
-    @Test("a single supported call binds the mute button at once; a change rebinds or unbinds at once")
+    @Test(
+      "a single supported call binds the mute button at once; a change rebinds or unbinds at once")
     func muteBindsWithoutSettle() throws {
       let sources = Sources(Self.meet)
       let clock = Clock()
@@ -446,6 +447,69 @@ import os
       #expect(rig.readings.count == 1)
       #expect(session.currentLog?.segments.first?.observations.count == 2)
       session.cancel()
+    }
+
+    @Test("switching mute following off then on mid-recording keeps one copy taker and naming")
+    func muteSwitchOffAndOnWithNaming() async throws {
+      let sources = Sources(Self.meet)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig)
+      session.start()
+      let observer = try #require(session.captureObserverForTesting)
+      try await capture(session)
+      #expect(rig.readings.count == 1)
+      // A copy in flight when the switch goes off reaches neither mute nor naming.
+      rig.holding.withLock { $0 = true }
+      observer.tick()
+      await eventually("copy started") { rig.copies.withLock { $0 } == 2 }
+      rig.following = false
+      session.muteFollowingChanged()
+      #expect(rig.bindings.map { $0?.surface } == [.meet, nil], "unbound at once")
+      rig.letGo()
+      await eventually("copy delivered") { observer.deliveriesForTesting == 2 }
+      #expect(rig.readings.count == 1, "the copy begun while on is fenced")
+      #expect(session.currentLog?.segments.first?.observations.count == 1)
+      // Off: naming still reads on the same observer; mute reads nothing.
+      try await capture(session)
+      #expect(rig.readings.count == 1)
+      #expect(session.currentLog?.segments.first?.observations.count == 2)
+      rig.following = true
+      session.muteFollowingChanged()
+      #expect(rig.bindings.map { $0?.surface } == [.meet, nil, .meet])
+      #expect(rig.bindings.last??.generation == 1, "the same call keeps its generation")
+      #expect(session.captureObserverForTesting === observer, "no second copy taker")
+      try await capture(session)
+      #expect(rig.readings.count == 2)
+      #expect(rig.copies.withLock { $0 } == 4, "one copy per tick")
+      #expect(session.currentLog?.segments.first?.observations.count == 3)
+      session.cancel()
+    }
+
+    @Test("without talker rules, off retires the mute-only copy taker and on starts exactly one")
+    func muteSwitchOffAndOnMuteOnly() async throws {
+      let sources = Sources(Self.teams)
+      let clock = Clock()
+      let rig = MuteRig()
+      let session = try muteSession(sources, clock: clock, rig: rig, rules: false)
+      session.start()
+      let first = try #require(session.captureObserverForTesting)
+      #expect(session.isMuteOnlyForTesting)
+      rig.following = false
+      session.muteFollowingChanged()
+      #expect(session.captureObserverForTesting == nil, "nothing copies while off")
+      #expect(rig.bindings.map { $0?.surface } == [.teamsApp, nil])
+      rig.following = true
+      session.muteFollowingChanged()
+      session.muteFollowingChanged()
+      let second = try #require(session.captureObserverForTesting)
+      #expect(second !== first)
+      #expect(
+        rig.bindings.map { $0?.surface } == [.teamsApp, nil, .teamsApp], "a repeat is a no-op")
+      try await capture(session)
+      #expect(rig.readings.map(\.surface) == [.teamsApp])
+      #expect(rig.copies.withLock { $0 } == 1)
+      #expect(await session.finish())
     }
 
     @Test("past the most segments a log may hold, no segment opens and the refusal is counted")

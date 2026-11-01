@@ -1,0 +1,1 @@
+{"language":"sk","title":"vynechať môj hlas, keď mám stlmený mikrofón","words":["stlmenie"],"phrases":["nenahrávať môj hlas, keď mám v hovore stlmený mikrofón","vynechať môj hlas pri stlmení v aplikácii Teams"]}

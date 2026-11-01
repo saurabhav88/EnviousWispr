@@ -292,7 +292,12 @@ final class CallSpeakerSession {
       retireMuteOnly()
       return
     }
-    guard binding?.mute == true, muteOnly == nil else { return }
+    guard binding?.mute == true else {
+      // Switched off or no supported call: nothing is left to read.
+      retireMuteOnly()
+      return
+    }
+    guard muteOnly == nil else { return }
     let observer = CallSpeakerObserver(
       muteOnlyAnchor: anchor, dependencies: observerDependencies())
     muteOnly = observer

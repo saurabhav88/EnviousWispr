@@ -1,0 +1,1 @@
+{"language":"hu","title":"a hangom kihagyása, ha le vagyok némítva","words":["némítás"],"phrases":["ne kerüljön a hangom a felvételbe, ha le vagyok némítva","ne rögzítse a hangomat, ha le vagyok némítva a Teamsben"]}

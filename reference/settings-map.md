@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-293 nodes, 266 searchable, 8512 vocabulary blocks.
+294 nodes, 267 searchable, 8544 vocabulary blocks.
 
-Fingerprints: mapSHA256 `d81591c33d2990a3da23a7f2ccedcaa4c0a69b2d70a117234a50a9d685cc6f37`, uiCatalogSHA256 `d73c091521fec69dd977114aedba61b904632dca4eaff67209cbb28d7a38de10`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af`
+Fingerprints: mapSHA256 `38f28e788d72df8ec7b1264ed3d3f41ff60adb0d5049f625b6e61203ef0e3b1b`, uiCatalogSHA256 `d2eb481339732b0027a79cd13f4496bd8ae66d9ea1e49468c2fdcf3968003aa4`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `87926fdafc055c2cc199031e3307339e222533b1715fbba6ada1f5a8891846d2`
 
 ## Structure
 
@@ -286,6 +286,7 @@ Fingerprints: mapSHA256 `d81591c33d2990a3da23a7f2ccedcaa4c0a69b2d70a117234a50a9d
       - [Record only my voice / Nur meine Stimme aufnehmen](#node-meetingCaptureCallSound) `meetingCaptureCallSound` (setting)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
       - [Turn off dictation during meetings / Diktieren während Meetings ausschalten](#node-meetingTurnsOffDictation) `meetingTurnsOffDictation` (setting)
+      - [Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin](#node-meetingFollowsCallMute) `meetingFollowsCallMute` (setting)
       - [Name meetings from my calendar / Meetings nach meinem Kalender benennen](#node-meetingUseCalendarForNames) `meetingUseCalendarForNames` (setting)
       - [When a call starts / Wenn ein Anruf beginnt](#node-meetingCallDetection) `meetingCallDetection` (setting)
     - [Models / Modelle](#node-meetings-tab-models) `meetings.tab.models` (feature)
@@ -2558,6 +2559,28 @@ Fingerprints: mapSHA256 `d81591c33d2990a3da23a7f2ccedcaa4c0a69b2d70a117234a50a9d
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: disable dictation while recording a meeting; dictation key does nothing during meeting recording |
 | Search (de) | words: Meetingaufnahme, Besprechung<br>phrases: während einer Meetingaufnahme kein Diktat starten; schalte Diktieren im Meeting aus |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingFollowsCallMute"></a>
+
+### Leave my voice out when I'm muted / Meine Stimme weglassen, wenn ich stummgeschaltet bin (`meetingFollowsCallMute`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
+| Title source | catalog key `Leave my voice out when I'm muted` |
+| Description | While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting. / Wenn Zoom, Teams oder Google Meet dich als stummgeschaltet anzeigt, wird deine Stimme in der Meetingaufnahme weggelassen. |
+| Description source | catalog key `While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting.` |
+| Destination | `meetings` › `general` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingFollowsCallMute`](#node-meetingFollowsCallMute) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | phrases: leave my voice out of the meeting recording when I'm muted; record my mic even when I'm muted in a meeting |
+| Search (de) | words: Stummschaltung, Mikrofon, Stimme<br>phrases: lass meine Stimme in der Aufnahme weg, wenn ich stummgeschaltet bin; Stimme bei Stummschaltung weglassen; nimm mein Mikrofon auch dann auf, wenn ich in Google Meet stummgeschaltet bin |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords"></a>

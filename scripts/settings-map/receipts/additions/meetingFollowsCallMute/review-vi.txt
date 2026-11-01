@@ -1,0 +1,1 @@
+{"language":"vi","title":"không ghi âm giọng tôi khi tôi tắt mic","words":["tắt mic","mute"],"phrases":["không ghi giọng tôi vào bản ghi khi tắt mic trên Zoom","bỏ giọng tôi khỏi bản ghi khi tắt mic trên Teams hoặc Google Meet"]}

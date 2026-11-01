@@ -91,6 +91,7 @@ struct MeetingsView: View {
           BrandedRow { MeetingCallSoundRow() }
           BrandedRow { MeetingWriteSummaryRow() }
           BrandedRow { MeetingTurnsOffDictationRow() }
+          BrandedRow { MeetingFollowsCallMuteRow() }
           BrandedRow(showDivider: false) { MeetingCalendarNamesRow() }
         }
         VStack(alignment: .leading, spacing: 8) {
@@ -413,6 +414,16 @@ enum MeetingsCopy {
   static let turnsOffDictationHelp = LocalizedStringResource(
     "Dictation is off during meetings. Turn it back on in EnviousMeet settings. A dictation that already started before the meeting finishes normally.",
     comment: "EnviousMeet page: help for Turn off dictation during meetings. The founder's sentence (#4069).")
+  // #4248: follow the call app's mute button.
+  static let followsCallMuteTitle = LocalizedStringResource(
+    "Leave my voice out when I'm muted",
+    comment: "EnviousMeet page: switch that leaves the user's microphone out of the meeting while the call app shows them muted.")
+  static let followsCallMuteShort = LocalizedStringResource(
+    "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting.",
+    comment: "EnviousMeet page: the short line under Leave my voice out when I'm muted.")
+  static let followsCallMuteHelp = LocalizedStringResource(
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls. Brief audio around mute changes may be kept or omitted. While EnviousMeet checks your mute state, or cannot read it, your voice is recorded as usual.",
+    comment: "EnviousMeet page: help for Leave my voice out when I'm muted (#4248 plan section 3.4).")
   // #4105: Live words and Transcript language.
   static let liveWordsTitle = LocalizedStringResource(
     "Live words",

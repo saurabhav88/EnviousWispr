@@ -1,0 +1,11 @@
+{
+  "language": "mt",
+  "title": "tinkludix leħni meta nkun fuq mute",
+  "words": [
+    "mute"
+  ],
+  "phrases": [
+    "tirrekordjax leħni meta nkun fuq mute",
+    "tinkludix leħni fir-reġistrazzjoni meta nkun fuq mute f’Teams"
+  ]
+}

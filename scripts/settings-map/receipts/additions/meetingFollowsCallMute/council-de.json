@@ -1,0 +1,22 @@
+{
+  "run_id": "run-1793524080-8e3d68a1",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793524080-8e3d68a1",
+  "providers": {
+    "openai": {
+      "content": "1. OK \u2014 Der Titel ist verst\u00e4ndlich und beschreibt, was mit deiner Stimme in der Aufnahme geschieht.\n\n2. Wenn Zoom, Teams oder Google Meet dich als stummgeschaltet anzeigt, wird deine Stimme in der Meetingaufnahme weggelassen. \u2014 \u201eDein Mikrofon im Meeting\u201c k\u00f6nnte f\u00e4lschlich so klingen, als w\u00fcrde die Funktion deinen Ton im Anruf ver\u00e4ndern.\n\n3. Richtet sich nach deiner Stummschaltung in unterst\u00fctzten Anrufen mit Zoom, Teams und Google Meet. Kurze Audioabschnitte bei \u00c4nderungen der Stummschaltung k\u00f6nnen in der Aufnahme bleiben oder fehlen. W\u00e4hrend EnviousMeet pr\u00fcft, ob du stummgeschaltet bist, oder dies nicht erkennen kann, wird deine Stimme wie gewohnt aufgenommen. \u2014 Das klingt nat\u00fcrlicher und macht die Ausnahmen deutlich, ohne eine l\u00fcckenlose Erkennung zu versprechen.\n\n4. {\"words\":[\"Stummschaltung\",\"Mikrofon\",\"Stimme\",\"Aufnahme\",\"Zoom\",\"Teams\"],\"phrases\":[\"Stimme bei Stummschaltung weglassen\",\"Stimme nicht aufnehmen\",\"stumm in Google Meet\"]} \u2014 Die Suchbegriffe sind k\u00fcrzer und passen zu typischen Eingaben f\u00fcr diese Einstellung.",
+      "latest_response_id": "resp_088f6374c733f784006ae7017106f481969857b180c2fceca9",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "4248-german-mute-switch-2026-11-01-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 947,
+        "cost_usd": 0.004417,
+        "latency_ms": 10185,
+        "prompt_tokens": 629,
+        "reasoning_tokens": 690,
+        "total_tokens": 1576
+      }
+    }
+  }
+}

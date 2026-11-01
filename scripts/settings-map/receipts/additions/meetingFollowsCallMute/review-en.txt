@@ -1,0 +1,8 @@
+{
+  "language": "en",
+  "words": [],
+  "phrases": [
+    "leave my voice out of the meeting recording when I'm muted",
+    "record my mic even when I'm muted in a meeting"
+  ]
+}

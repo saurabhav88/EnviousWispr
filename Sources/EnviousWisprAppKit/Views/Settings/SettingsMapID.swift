@@ -165,6 +165,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case meetingTranscriptEngineWhisper = "meetingTranscriptEngine.whisper"
   case meetingTranscriptLanguage = "meetingTranscriptLanguage"
   case meetingTurnsOffDictation = "meetingTurnsOffDictation"
+  case meetingFollowsCallMute = "meetingFollowsCallMute"
   case meetingUseCalendarForNames = "meetingUseCalendarForNames"
   case meetingCallDetection = "meetingCallDetection"
   case meetingCallApps = "meetingCallApps"

@@ -355,7 +355,8 @@ struct SettingsArrivalFocusTests {
       "meetings.general",
       [
         .meetingCallDetection, .meetingCaptureCallSound, .meetingWriteSummary,
-        .meetingTurnsOffDictation, .meetingUseCalendarForNames, .meetingsTabGeneral,
+        .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingUseCalendarForNames,
+        .meetingsTabGeneral,
         .meetingsTabModels, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       []

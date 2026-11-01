@@ -243,7 +243,8 @@ import os
         dependencies: .init(
           binding: {
             CallCaptureBinding(
-              source: .init(family: .teams, target: CallSpeakerTarget(pid: 1, rule: .callApp(.teams))),
+              source: .init(
+                family: .teams, target: CallSpeakerTarget(pid: 1, rule: .callApp(.teams))),
               surface: .teamsApp, generation: 1, mute: false)
           },
           capture: { _, _ in copies.take() }, isTrusted: { true },
@@ -373,6 +374,33 @@ import os
       recorder.runSteps(now: mach_absolute_time())
       await eventually("snapshot landed") { coordinator.muteState == .checking }
       await coordinator.stop()
+    }
+
+    @Test("switching mute following off then on mid-recording reaches the writer each time")
+    func muteFollowingOffThenOn() async throws {
+      let harness = try Harness()
+      let capture = Capture()
+      let flag = Flag(true)
+      let coordinator = try coordinator(harness, capture: capture, muteFollowing: { flag.on })
+      _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+      let recorder = try #require(harness.recorders.first)
+      await eventually("bind and a reading sent") { recorder.steps.count >= 2 }
+      recorder.runSteps(now: mach_absolute_time())
+      await eventually("checking") { coordinator.muteState == .checking }
+      flag.on = false
+      let beforeOff = recorder.steps.count
+      coordinator.muteFollowingChanged()
+      #expect(recorder.steps.count >= beforeOff + 2, "switched off and unbound, at once")
+      recorder.runSteps(now: mach_absolute_time())
+      await eventually("disabled") { coordinator.muteState == .disabled }
+      flag.on = true
+      let beforeOn = recorder.steps.count
+      coordinator.muteFollowingChanged()
+      #expect(recorder.steps.count >= beforeOn + 2, "switched on and bound, at once")
+      recorder.runSteps(now: mach_absolute_time())
+      await eventually("checking again") { coordinator.muteState == .checking }
+      await coordinator.stop()
+      #expect(recorder.mutedMeter.last == false)
     }
 
     @Test("mute reading starts before the rules arrive; naming attaches to the same capture")

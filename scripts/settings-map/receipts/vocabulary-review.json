@@ -101,13 +101,18 @@
    "id": "meetingTranscriptEngine.whisper",
    "review": "additions/meetingTranscriptEngine.whisper.json",
    "reviewSHA256": "4759f4cac521d81f9fab22be80a17335761bbfd6fe3a2b331fec311736bf9e8c"
+  },
+  {
+   "id": "meetingFollowsCallMute",
+   "review": "additions/meetingFollowsCallMute.json",
+   "reviewSHA256": "9c1232d68850264e95a0186c9891ae01b217685150c3353e6d167b240cb44fdb"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "054d757d92dba5995a9bf31ab3ad1af5e7b3df6f57372539e12080c18334c5af",
-  "bytes": 1711441
+  "sha256": "87926fdafc055c2cc199031e3307339e222533b1715fbba6ada1f5a8891846d2",
+  "bytes": 1720131
  },
  "sources": [
   {
@@ -391,7 +396,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "952003c2a3947f50648acfd3e99f8de4e420a378d251ce3a47089aefe62458a4",
+   "contentSHA256": "78b9621c6f5e632c7db296a55f4b697294dca0b8d341173b833e277e384ba438",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -910,13 +915,32 @@
       "sha256": "59d8edc88a0c53f14ecaff0e46dc9486ef123e20ae32efcf32edd92e937878a5"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ar.txt",
+      "sha256": "df85be248c69f512a20aa0bf34e7710d2e77cf6fbac5bfd750aac5d92b131053"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "c51bb54016ac2b77cfa94d4d5d87a3a8582152441585eacaf25d3afe6468d574",
+   "contentSHA256": "a2c64f8b428f7b2f65b576018c5b8ba6be3e249d31b2934cf464031e2d0af209",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1426,13 +1450,32 @@
       "sha256": "b5b82970498514941264ae502739e0ace3b7eac74c101cc81ef7d3a3f954d387"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-bg.txt",
+      "sha256": "c57a2bbb6df1ed410b9ed7bc1c789ed4e9e4cb7ba77c29980bc3bd521a7db894"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "dbd76bcba29ef4693c64638343c855b84d1016165095b97ec8aa510b85f15420",
+   "contentSHA256": "3b45a8f5ce6a8f69359a96cde39dca2ca19c699007bc7a668482315097edbf06",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1942,13 +1985,32 @@
       "sha256": "0b071cdced0c2493da1f85b53fd9b9de8d9201ecaae9c9e3f94c6e1e13d8d29b"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-cs.txt",
+      "sha256": "58cbefb02e8b2b66c033cf1ff73c95600a9afd68112afbcbf17f802df614b0ff"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "e88709a5a3a575fa90cce31cfc901491914beace21c07879dcb0072d104cd384",
+   "contentSHA256": "147de7c27daf57d34481772d5dc53dcf27457007851c7bc1d150e2ad0d54f310",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2458,13 +2520,32 @@
       "sha256": "81b714d0d567b514ee54521b7c0485e7b32d21142c22199273c35e4dbc41bf17"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-da.txt",
+      "sha256": "f13f6282c3d0d44e5a128620488f13a6fdf1c92fd034b684c979f323824b5de3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "e0eb7a0c3921a1c24620907bb7558236e11e8d53aafd9dd888da056217722636",
+   "contentSHA256": "0ae407f5798b8480b53291a616187446491dec8e1f613ffd7e8a9b0eadd466f5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3076,13 +3157,37 @@
       "path": "additions/meetingTranscriptEngine/council-de.json",
       "sha256": "8b2d85ff580c4f9cd652f76ff1d764c1ffd4ff7f0ebbb2b7e38693b207707ded"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-de.txt",
+      "sha256": "341e0b98b3847862a377b9eb4bb246ee929bc193adb74354ff3343479e9f47c1"
+     },
+     "disposition": "merged from the German review by GPT gpt-6-sol on Azure only (additions/meetingFollowsCallMute.json; the Gemini half was not run: its key has no standing spend approval): kept its words Stummschaltung, Mikrofon and Stimme and its phrase Stimme bei Stummschaltung weglassen; dropped Zoom, Teams and Aufnahme (they fit the call-app and call-sound places equally); kept two reviewed phrases. The same review reworded the German short line and help text in the interface catalog",
+     "council": {
+      "path": "additions/meetingFollowsCallMute/council-de.json",
+      "sha256": "b5e8ab020e29454374cb3fcfd153d7405622da2bc404d3d8d80225a674096076",
+      "prompt": "additions/meetingFollowsCallMute/council-de-prompt.txt"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "744a5efcd9f8d9a34bb4b8c6a372d97d8709efdedc3f032938dcbfe8cfca20e2",
+   "contentSHA256": "2d08ad7069413a96bd20093141c4df617cf39fad513cb42a61bb3575b57d69fc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3601,13 +3706,32 @@
       "sha256": "e4a63d55f16918308e5be5e817baebcb05eef6283fff8037186598fed92c1f18"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-el.txt",
+      "sha256": "d9f3441f884e0fe228c5e35f24e54f4474ec4140b9b5a6cbc7ad86483c9ad000"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "d83314fc06a9c6e62e143779001e88a670491c6ea140861f2dd783a6b8f543a9",
+   "contentSHA256": "896f0350eb1b2a3f796002290b58c52a586d9784df5725bb527fc626ca952373",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4132,13 +4256,32 @@
       "sha256": "1088c59764c95ba64c9f3410f8a5d584057aef8aa43a9400d57581fa56813ba8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-en.txt",
+      "sha256": "085ee88a8d43af57311062f5c5244cb97a8da82ff57a74e02dbd2b6ce4f5edf2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "5be62232fe6a2c5da459f4861905cfcb3eeeed8dcb45ff836cba9dc85319c13b",
+   "contentSHA256": "a8ef5a78a4d90664c3e82bbad54170fd07a0fa8d510baa174879fecdbed6beaf",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4657,13 +4800,32 @@
       "sha256": "df213d82234ea930db20800ab0b51df3121131c241cff5ebdf1671bcf82e15a1"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-es.txt",
+      "sha256": "7604506b8fb008e89d3d4758b94c1f2a82db6c802f1bc7a4bb9e8af0e2942f8d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "676b4065ab1814164405c72fae096397bd2dda095b2fc893be8296b9f3a71ce3",
+   "contentSHA256": "0ec1234c58491431b17f65abcfd8eb0f1f3a726a11cb2e3cb3be148592e4eacd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5173,13 +5335,32 @@
       "sha256": "95bcac90addbcf6bb6a169de87e49f0b7bc6f256da140a4c9fdb6100e8a94dcf"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-et.txt",
+      "sha256": "d561269f31666ff6c20fca5d6173727e8c4e8c194f33607cab2fefef5c0888c8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "cb45e1021aab4a04c8408fc2c8b270553002dada4a242ed5491815ba782df716",
+   "contentSHA256": "6e513986022f5faa86322a63bb0f1ce107ccb16ec37418f0fd7f12a571eff2ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5689,13 +5870,32 @@
       "sha256": "db8e77b1a3f4936e5189d08d7c12ecbff44341a703bcca50ed8bc6be7f450283"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-fi.txt",
+      "sha256": "526556124b9b556bbb2dbb8ab880e49218f37992342e7a2ba9da17c6085902d9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "12ad46d61755fd0a7141d4b03f2f457c32d33fde86da865c6b7c8e3a10c9e137",
+   "contentSHA256": "0c5ba83a995f7f7f044e51c2bb7f9b5ff348a5f1921fb5ed559fc571effa9ec0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6205,13 +6405,32 @@
       "sha256": "1d35d6de2507c38958a03f1363c22e1be24f09416896e9316f1979f8cedd0ada"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-fr.txt",
+      "sha256": "610a49dca5286e3e1d7dce21763465ea0f904afca48f5d9da9f7b33a3f2d283b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "fb2ee1f28c02a5d4d7d5f847b710dbb5d4dccb3709f8582da162333bbf41ef0a",
+   "contentSHA256": "fa17cfdf46f7619aeb96e49817d78e079e1c345241f6523e1f01579f1eccf827",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6721,13 +6940,32 @@
       "sha256": "eaedf463834c4a9cb0bd70e9ad44854e6ecac660e1b81341c2aab0c1e51affa7"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hi.txt",
+      "sha256": "27e6e9331977e65ef7bc7c165298776405dbb52d99e523ff54b981b892c55d69"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "d633d827e480a9c15e8c17033eac643ab048ec82eeeb924ceaaa0953ca1fdf23",
+   "contentSHA256": "d151bd0ec526fbbbd9193898d9d28051f493c96ebfdc0226fa985db70941b9e1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7237,13 +7475,32 @@
       "sha256": "2a27af8f9c96fec4f8d8564ff2cf018c243d1ddf220c550341eb3cb08140be8f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hr.txt",
+      "sha256": "a1903e786a7576007cdec0943b19a4db46430d03900b70a94840e9781fcfc964"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "3be58eb53661ec5ce3194e89e02e327f63d22f6a95f09ca249557910b3512f4b",
+   "contentSHA256": "7b08b9bd5d60515419ac4e5ebdfd21416f1ae6539b5e69a769034ce31e4d4f1a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7753,13 +8010,32 @@
       "sha256": "153ec789cdc89d5756d1d64c1e05a4fe9fc76a2ba9a3e4dbd59b3434472da91a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-hu.txt",
+      "sha256": "eea3f7baf9f6df76c719d96062124b0ee26e0e7708fa046e339e43a356eadc04"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "d05eb99b27634efc4c9de73ac3df0983fef983bf5847aa8c039df5f42045b78a",
+   "contentSHA256": "68c232d9c21ce8130f8cdab4b79256dc6859976138e9519b0e31ad34d2612224",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8278,13 +8554,32 @@
       "sha256": "0fa98b8bc44484ce81489b9ebdfba627e1a916d61d759d40ce2e4a0ab9e57f17"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-it.txt",
+      "sha256": "a108712b77284b7ccee2b0e913f8941e83dfe80276b221e54d4498ef91ef86d7"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "3596c79fc0c9a3f69278888c6a525b332355ff4a44a513b6a37c2cbfc3272662",
+   "contentSHA256": "5fc7c4024f1cd56590d54b026829daab6de0ea609644483381900ec0099d9dec",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8794,13 +9089,32 @@
       "sha256": "fa76f97318b09fc3236bc636531fe8f61ecae1e82ca80829a575d2c6fa475d11"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ja.txt",
+      "sha256": "81f181ca543707407a7dee3672c0a28e80e48887e9405e98d04b038a3e848e21"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "e2b7e8fea4eec57cd934f462ea32d41a80e8641d7fa538ba46ccdb0bac4165be",
+   "contentSHA256": "7ea82dc351b36c466ff65c82ff76cdb3a6ade9fa0ebaee69d8b7107af434cf71",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9310,13 +9624,32 @@
       "sha256": "6bf995a524f3f914675cc5f2e380fead03bd3c7fe3b49cffc9be35b7f93299bf"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ko.txt",
+      "sha256": "3bcdb30a01d8152bf631f5ebb1da8c6c98f6452bfc183de7b5c5e535ef144638"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "2a82977c956c1fc1e04fe73c2e28b5196dbd49eeafb9836b814483b67c6c530e",
+   "contentSHA256": "9dd27e43bfd99f6848770e56863844be10e20680bc2fb3a8020fd6c349c21cb2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9835,13 +10168,32 @@
       "sha256": "a111c16685fe6e2001031bc00d9b227b97cb293795b5e7f46fbadb6c01c3226f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-lt.txt",
+      "sha256": "0e535a63f50bc495fd1ecca7233b224f1d5dcb182d9366ff9c4aaa44c99c2f24"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "99e76d2a86ae28cdf0f54b55ad3ee4f333922f966442a15dd6c918f5ef275ea1",
+   "contentSHA256": "db065b3aa4ff909c9a9a2a22d63f1a6212415a7c716cce3ed3e532280d22f295",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10351,13 +10703,32 @@
       "sha256": "618dfe6ccf6d65099dc96400ad4001602e4803809562c4eb01e70666fa2121ad"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-lv.txt",
+      "sha256": "fd87a7f9fbadccb636615f77364dfe4ef6eb85e67c3908ad8b2b5d6f9e678b60"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "46575b4968022416c016dcad1a5de81162e1e7fdcbfde5152bf3e446c0b2ec42",
+   "contentSHA256": "f8a41faf38d8391fa719ac75b54a4334ed001138103115fa78cd18de990ed87b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10876,13 +11247,32 @@
       "sha256": "f1de4901c6bfba4ea522d8642a408fb36aa80f7068a0df92bffe014eb3bb920c"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-mt.txt",
+      "sha256": "9812df8c6e70d9d2112d8a71d2654f0424f3bbea86a1cf3e15bf654a1e8160a8"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "1f7fdcd31a96f7784efbcf32b9a43d96a54ef8b307f301423a1c517032c4c081",
+   "contentSHA256": "9f60a267a6121828da5578b03f7e07b73700432d32b3c9b7e2fca08c23391396",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11392,13 +11782,32 @@
       "sha256": "51241e9cb7a26cbaa252856c25dae25005545e75c574449d339f287dbaa6bbe8"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-nl.txt",
+      "sha256": "27b3e8da5f84e8a2dee62ec99f559ae077d6d53267df5b720bebbed10aab6cc2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "536eab4bcd2067cad6e1fcd8ba5b4699431e7a437b79b58be749d780a9c35246",
+   "contentSHA256": "ebfc2345c62720060c30b04465b77d365b8d9757e85dd325eb23e5f776ee715f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11908,13 +12317,32 @@
       "sha256": "89cb66fcb1aeaa5d1c60be095cea1dee67101d4b4b3c0bac86e4b255351b1cd9"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-pl.txt",
+      "sha256": "92e5a9785d688fe7b2c11da051006c012166f4c900d8c31bac59034f2d1040e0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "20d9ce23fd5888affeab59e58b8cf0cff61211999b4919714992c5a017eaf09c",
+   "contentSHA256": "5adbdf02dd2b4384d7f85d99bcbd22d23170f3c7d1ca566bcbd50c04a1608600",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12432,13 +12860,32 @@
       "sha256": "a787e7f7bffe8c357305dbae30d565f630a977d7a3f6186b884b40123640585f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-pt.txt",
+      "sha256": "bba7e8ec785d83fd442c04977803697ce9cbc3b4c6ac664bff942081ae7c4239"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "22fc3dfc5703a6e636f7a7d5db90a0b689aa3de17b1f1dad3bd6274e310a9ff6",
+   "contentSHA256": "ed40bdd404c1a2a92e7a8649c27088e715b97a2411127ee160c3957ce865914a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12948,13 +13395,32 @@
       "sha256": "a0d9d215210ffbe8340872373f3364e322fe925f7ee699c4a095ad3494b91158"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ro.txt",
+      "sha256": "ffd1ec5a5627dc4a3ba4874d8e55ad6392f3b41720235419029fc6493c9f17a3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "16dde534ee895c899cd647ab3ff06cb495c90875e101ae33e34b85c641fc689d",
+   "contentSHA256": "76c350955cebcfa209d357b748eac2a6b61f69061ab71e56e2ed3ccf02b72da8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13464,13 +13930,32 @@
       "sha256": "45679c38a7aa5417fb81f5406f6d36c93e47857f294c0a42b858610f88f26bde"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-ru.txt",
+      "sha256": "84fd15376218b3d795b5418fa449511421b47100b245b93462bd3333472f0c51"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "debced757f3b6a05f7af6ba1c5eddf7d704b58638c9e7e9a0479002bfd4975ae",
+   "contentSHA256": "bdb37714688b87ded08ccf9ea75816849932418dd9e6bd53ba77e6e1f824f256",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13980,13 +14465,32 @@
       "sha256": "7662e2e08a7dcb479680a92e08fbd8d943c1036dc63d3f3650a2faf9666559c5"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sk.txt",
+      "sha256": "22556d3c9710ed0ea580a1b9ef3ae75017994350bac0566666db521b7e43778c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "90645ff9818b5294b4167bbd346288aaa5fab29bdc34ecef087d26147d4fda5d",
+   "contentSHA256": "4ea0ad0f2274221772718dbb4ff313d118c49deb5a13d3e518a09af7a3a2681c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14505,13 +15009,32 @@
       "sha256": "1e19be8c99d299ac08e33450a53793dc60b2e14d2a17e6f4af1ce4fb9c951793"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sl.txt",
+      "sha256": "50125d3da1261d076decb42345ba715d939b833fd1e8b40c39c975c2689eac91"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "9a255f1a11cb960997cecda16ca87b3fb878f9028267dd06fbbfa7f769366d7b",
+   "contentSHA256": "8e475dd4b741a95350686b7263dc104e2a2d97c7b7675743af1472b75003eb22",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15021,13 +15544,32 @@
       "sha256": "6d8427ba96050bb1a63fce81c434c3e514ac0981b97c474dbfc6235dfa3f3a3a"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-sv.txt",
+      "sha256": "4940a3a867b766899340eeda8ce77b752c9e5bda4b3ae035f0370a4b7238992a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "a4813802b99c50bd6646eecd8a10505e49827ef2bd83665ec8a2a6fa74181f18",
+   "contentSHA256": "c2cec8e43b0f020518263bd7f24e7add090523ad0152fd17032439d293363a33",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15537,13 +16079,32 @@
       "sha256": "6822de896806ee594e8ff4ae4c66661489490e8adecd14bcca5c9b2af2a2515d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-tr.txt",
+      "sha256": "f00dcf2eddb4fb53d93fec07dd565321655262173650416586cf5519dda8780d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "7e1cac687cca2f5de822ac3ac8fe1e943bab249462546602fb2139923cede13b",
+   "contentSHA256": "4f819c4bf93c3c9afee528e7f79609421bec59955983f8ed638c2d3b70dc8072",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16062,13 +16623,32 @@
       "sha256": "49ed7af1db40f8fd89d098bdd1422b79f0cb27a8364bf30f85cb02551d1d7cdc"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-uk.txt",
+      "sha256": "12430cccdd989f7b0c43bac87d883465aa3748d2252f5278522e6ae6c31478df"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "5c0adb5956c5539b09a3c9dae5c8317ad67479814c9f7861ae91f4f8326e1f61",
+   "contentSHA256": "58d81a92bc717313b5b89911877e92c259ffe4e6018dec1d4f3e815e92b2e23b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16578,13 +17158,32 @@
       "sha256": "77082ece7c24b1fa41459ccc9a4ff3cbea5875aad8919f818968f2e480d53216"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-vi.txt",
+      "sha256": "4cf3635922c35fc82841eca38a4947bb5c293b7ce38a8a34eb3e5f5559ee6580"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "ebad15541dc153d491b7997778004067d61fd53705d04fb27cb7c52174209054",
+   "contentSHA256": "4e5ac4c1fd7e24276cc4c6bdebe3fd10d1b2fc3cac65ecfdf2d141aa400dfa98",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17094,6 +17693,25 @@
       "sha256": "21252e45c07624df9f56093f4ff708b1aa6d1538c4c929a14e63ccdc143e2fd9"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptEngine.whisper.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingFollowsCallMute",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Turn off dictation during meetings, the call-sound switch, When a call starts and media during dictation); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingFollowsCallMute/draft.json",
+      "sha256": "178b305b4f51e41030f3992e7623b51cf10e8df67684be5d82034cc8af6074c4"
+     },
+     "prompt": {
+      "path": "additions/meetingFollowsCallMute/review-driver.py.txt",
+      "sha256": "03f7212770403eef65ccf9a48348e7f2bfa443db74061789b62c80f0cd399f58"
+     },
+     "output": {
+      "path": "additions/meetingFollowsCallMute/review-zh.txt",
+      "sha256": "680d474df1c90318e3091cde7eec8c0bc0ff6d765bc988055bd29b31c098f645"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
     }
    ],
    "phraseExemptions": []
@@ -17365,7 +17983,8 @@
   "meetings.tab.models": "abbd57d935d39352b3af5d99640756cf7b634b658709f15d9beaf5cb1ae335c7",
   "meetingTranscriptEngine": "264c21ee1f140d4a93209a0695218755e505f68e1bb373c30878b0f8fe429160",
   "meetingTranscriptEngine.parakeet": "33a15c8e5584d12e1ecbf8cb4862acd6ff323f53c8726a9a7693914f7897b81c",
-  "meetingTranscriptEngine.whisper": "e916c3305fb21c5c8900613f07b48d8d6a95f18c7cb3185e8db029ad4bd0cc67"
+  "meetingTranscriptEngine.whisper": "e916c3305fb21c5c8900613f07b48d8d6a95f18c7cb3185e8db029ad4bd0cc67",
+  "meetingFollowsCallMute": "7a0a561f0782d3b26e41233488626220e57b791f602a2d8774405f70b6371090"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

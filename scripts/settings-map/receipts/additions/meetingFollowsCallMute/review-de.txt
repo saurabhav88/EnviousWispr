@@ -1,0 +1,1 @@
+{"language":"de","words":["Stummschaltung","Mikrofon"],"phrases":["nimm meine Stimme nicht auf, wenn ich in Zoom stummgeschaltet bin","lass meine Stimme in der Aufnahme weg, wenn ich in Teams stummgeschaltet bin","nimm mein Mikrofon auch dann auf, wenn ich in Google Meet stummgeschaltet bin"]}

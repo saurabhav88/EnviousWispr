@@ -1,0 +1,1 @@
+{"language":"lt","title":"neįrašyti mano balso, kai esu nutildytas","words":[],"phrases":["neįtraukti mano balso į susitikimo įrašą, kai esu nutildytas","neįrašyti mano balso, kai mikrofonas nutildytas per Zoom"]}
