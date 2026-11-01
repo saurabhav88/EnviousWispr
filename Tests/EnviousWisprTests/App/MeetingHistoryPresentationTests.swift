@@ -721,4 +721,29 @@ struct MeetingHistoryPresentationTests {
     rig.records = [record]
     #expect(rig.coordinator.listedItems.isEmpty, "finished meetings only, invited people included")
   }
+
+  @Test("#4286: the detail's Invited line names invited people, an email when no name, one per email")
+  func invitedLine() {
+    func fact(_ name: String?, _ email: String?, status: AttendeeFact.Status = .accepted)
+      -> MeetingFact
+    {
+      AttendeeFact(
+        name: name, email: email, role: .required, status: status, isSelf: false,
+        isOrganizer: false
+      ).fact(source: MeetingFact.eventKitSource, capturedAt: Date(timeIntervalSinceReferenceDate: 1))
+    }
+    #expect(MeetingsPresentation.invitedLine(nil) == nil)
+    #expect(MeetingsPresentation.invitedLine(MeetingContext()) == nil)
+    let line = MeetingsPresentation.invitedLine(
+      MeetingContext(facts: [
+        fact("Dana Lee", "dana@acme.com"), fact(nil, "ops@acme.com"),
+        fact("Li Wu", "li@acme.com", status: .declined), fact(nil, "DANA@acme.com"),
+      ]))
+    let text = try? #require(line)
+    #expect(text?.hasPrefix("Invited: ") == true)
+    #expect(text?.contains("Dana Lee") == true)
+    #expect(text?.contains("ops@acme.com") == true)
+    #expect(text?.contains("Li Wu") == true)
+    #expect(text?.contains("dana@acme.com") == false, "the named person is not listed twice")
+  }
 }

@@ -307,7 +307,7 @@ extension MeetingsView {
         "Calendar", comment: "EnviousMeet page: the calendar permission row's title."),
       short: Self.calendarStatusLine(permissions.calendarStatus),
       help: LocalizedStringResource(
-        "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar.",
+        "macOS asks for full calendar access. EnviousMeet reads the event at the time a meeting starts to name it and to note who was invited, and never changes your calendar.",
         comment: "EnviousMeet page: help for the calendar permission row.")
     ) {
       if permissions.calendarStatus == .denied {
@@ -536,7 +536,7 @@ enum MeetingsCopy {
     "Uses the title of the calendar event at the time the meeting starts.",
     comment: "EnviousMeet page: the short line under Name meetings from my calendar.")
   static let calendarNamesHelp = LocalizedStringResource(
-    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
+    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Who was invited is saved with the meeting on your Mac and helps write its summary, so it goes to the summary provider you chose and never to Envious Labs. Turning this off stops reading your calendar; what a meeting already saved stays until you delete the meeting. Your calendar is read on your Mac and never changed. You can rename any meeting in History.",
     comment: "EnviousMeet page: help for Name meetings from my calendar.")
   static let callDetectionTitle = LocalizedStringResource(
     "When a call starts",

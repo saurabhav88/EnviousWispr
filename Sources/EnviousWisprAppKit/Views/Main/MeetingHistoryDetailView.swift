@@ -60,6 +60,16 @@ struct MeetingHistoryDetailView: View {
           Text(MeetingsPresentation.title(record))
             .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(.stTextPrimary)
+          // #4286: who the calendar event invited, from the facts the documents owner holds
+          // (nil for a meeting being deleted).
+          if !record.deletionRequested,
+            let invited = MeetingsPresentation.invitedLine(meetings.documents.context(meetingID))
+          {
+            Text(invited)
+              .font(.stBody)
+              .foregroundStyle(.stTextBody)
+              .textSelection(.enabled)
+          }
           // #4001 step 2b-A: the name draft and the playback position are read by these two
           // views only, so typing a name or a playback tick does not rebuild the transcript.
           MeetingDetailHeader(meetingID: meetingID, record: record, audioSize: audioSize)

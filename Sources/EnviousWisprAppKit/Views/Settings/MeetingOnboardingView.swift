@@ -286,7 +286,7 @@ private struct MeetingSetupPermissions: View {
           title: LocalizedStringResource(
             "Calendar", comment: "EnviousMeet setup: a permission name."),
           line: LocalizedStringResource(
-            "To name each meeting after its event. macOS asks for full access; EnviousMeet only reads event titles, times and meeting links, and never changes your calendar.",
+            "To name each meeting after its event and note who was invited. macOS asks for full access; EnviousMeet looks for a matching event when a meeting starts and never changes your calendar.",
             comment: "EnviousMeet setup: why the calendar."),
           state: model.calendar, busy: model.asking,
           allow: { Task { await model.allowCalendar() } }, skip: { model.skipCalendar() },

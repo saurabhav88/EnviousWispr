@@ -10254,6 +10254,17 @@
         }
       }
     },
+    "Invited: %@" : {
+      "comment" : "History, a meeting: the people invited to its calendar event, under its title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingeladen: %@"
+          }
+        }
+      }
+    },
     "It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {
       "comment" : "AI Polish, Why use S1-mini: how it handles other languages.",
       "localizations" : {
@@ -21402,13 +21413,13 @@
         }
       }
     },
-    "To name each meeting after its event. macOS asks for full access; EnviousMeet only reads event titles, times and meeting links, and never changes your calendar." : {
+    "To name each meeting after its event and note who was invited. macOS asks for full access; EnviousMeet looks for a matching event when a meeting starts and never changes your calendar." : {
       "comment" : "EnviousMeet setup: why the calendar.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Damit jedes Meeting nach seinem Termin benannt wird. macOS fragt nach vollem Zugriff; EnviousMeet liest nur Titel, Zeiten und Meeting-Links von Terminen und ändert deinen Kalender nie."
+            "value" : "Damit jedes Meeting nach seinem Termin benannt wird und festgehalten wird, wer eingeladen war. macOS fragt nach vollem Zugriff; EnviousMeet sucht beim Start eines Meetings nach einem passenden Termin und ändert deinen Kalender nie."
           }
         }
       }
@@ -23067,13 +23078,13 @@
         }
       }
     },
-    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Your calendar is read on your Mac and never changed. You can rename any meeting in History." : {
+    "When a meeting starts, EnviousMeet looks for the calendar event at that time and uses its title. If several events overlap, it prefers one with a meeting link or a place, and otherwise keeps the date as the name. Who was invited is saved with the meeting on your Mac and helps write its summary, so it goes to the summary provider you chose and never to Envious Labs. Turning this off stops reading your calendar; what a meeting already saved stays until you delete the meeting. Your calendar is read on your Mac and never changed. You can rename any meeting in History." : {
       "comment" : "EnviousMeet page: help for Name meetings from my calendar.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn ein Meeting beginnt, sucht EnviousMeet den Kalendertermin zu dieser Zeit und nutzt seinen Titel. Wenn sich mehrere Termine überschneiden, bevorzugt es einen mit Meeting-Link oder Ort und behält sonst das Datum als Namen. Dein Kalender wird auf deinem Mac gelesen und nie geändert. Im „Verlauf“ kannst du jedes Meeting umbenennen."
+            "value" : "Wenn ein Meeting beginnt, sucht EnviousMeet den Kalendertermin zu dieser Zeit und nutzt seinen Titel. Wenn sich mehrere Termine überschneiden, bevorzugt es einen mit Meeting-Link oder Ort und behält sonst das Datum als Namen. Die Information darüber, wer eingeladen war, wird mit dem Meeting auf deinem Mac gespeichert und hilft beim Schreiben der Zusammenfassung. Sie wird daher an den von dir gewählten Anbieter für Zusammenfassungen übermittelt, aber nie an Envious Labs. Wenn du das ausschaltest, liest EnviousMeet deinen Kalender nicht mehr; was bereits mit einem Meeting gespeichert wurde, bleibt erhalten, bis du das Meeting löschst. Dein Kalender wird auf deinem Mac gelesen und nie geändert. Im „Verlauf“ kannst du jedes Meeting umbenennen."
           }
         }
       }
@@ -26296,13 +26307,13 @@
         }
       }
     },
-    "macOS asks for full calendar access. EnviousMeet only reads event titles, times and meeting links to name your meetings, and never changes your calendar." : {
+    "macOS asks for full calendar access. EnviousMeet reads the event at the time a meeting starts to name it and to note who was invited, and never changes your calendar." : {
       "comment" : "EnviousMeet page: help for the calendar permission row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS fragt nach vollem Kalenderzugriff. EnviousMeet liest nur Titel, Zeiten und Meeting-Links von Terminen, um deine Meetings zu benennen, und ändert deinen Kalender nie."
+            "value" : "macOS fragt nach vollem Kalenderzugriff. EnviousMeet liest den Termin zur Startzeit eines Meetings, um es zu benennen und festzuhalten, wer eingeladen war, und ändert deinen Kalender nie."
           }
         }
       }
