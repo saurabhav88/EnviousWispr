@@ -677,6 +677,96 @@ struct TextProcessingRunnerCaptureTests {
     #expect(skips.calls.first?.reason == "context_window_timeout")
   }
 
+  // MARK: - #4287 PR 3: the same local engine writing an EnviousMeet summary
+
+  @Test("a summary on the same local engine skips polish with a named notice, counted once, nobody paged")
+  func summaryOnSameLocalEngineSkips() async throws {
+    for provider in [LLMProvider.appleIntelligence, .egOne, .ollama] {
+      let spy = CaptureSpy()
+      let records = RecordSpy()
+      let skips = SkipSpy()
+      let runner = makeRunner(spy, records, skips)
+      // The polisher would throw if it were ever asked: a failure record proves a request ran.
+      let step = makeStep(provider: provider, model: "m") { LLMError.requestFailed("asked") }
+      step.runningLocalSummary = { provider }
+
+      let result = try await runner.run(
+        rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step],
+        takeID: Self.takeA)
+
+      #expect(result.polishNotice == SummaryEngineBusy(provider: provider).notice, "\(provider)")
+      #expect(result.polishNotice?.leadIn == .skipped)
+      #expect(
+        result.polishError
+          == "AI polish skipped: \(provider.displayName) is writing your EnviousMeet summary.")
+      #expect(result.context.polishedText == nil, "\(provider): the deterministic text is delivered")
+      #expect(result.context.llmProvider == nil, "\(provider): no provider stamp")
+      #expect(spy.calls.isEmpty, "\(provider): no Sentry capture")
+      #expect(records.calls.isEmpty, "\(provider): no request ran, nothing failed")
+      #expect(skips.calls.count == 1)
+      #expect(skips.calls.first?.provider == provider.rawValue)
+      #expect(skips.calls.first?.reason == "summary_busy")
+      #expect(skips.calls.first?.takeID == Self.takeA)
+    }
+  }
+
+  @Test("different engines, a hosted Ollama dictation, and an unwired step never skip for a summary")
+  func summaryOnAnotherEngineDoesNotSkip() async throws {
+    // A summary on Apple Intelligence never touches an OpenAI dictation.
+    var cases: [(LLMProvider, LLMProvider?, Bool?)] = [
+      (.openAI, .appleIntelligence, nil), (.appleIntelligence, .ollama, nil),
+      (.egOne, .appleIntelligence, nil), (.ollama, .egOne, false),
+      // A hosted Ollama model is not local, even while a local Ollama summary runs.
+      (.ollama, .ollama, true),
+    ]
+    // The default (file import, re-polish, recovery): nothing running is reported.
+    cases.append((.appleIntelligence, nil, nil))
+    for (dictation, summary, remote) in cases {
+      let records = RecordSpy()
+      let skips = SkipSpy()
+      let runner = makeRunner(CaptureSpy(), records, skips)
+      let step = makeStep(provider: dictation, model: "m") { LLMError.requestFailed("asked") }
+      if dictation == .ollama {
+        step.ollamaReadinessProbe = { _ in
+          .ready(facts: OllamaModelFacts(isRemote: remote ?? false, thinks: false))
+        }
+      }
+      if let summary { step.runningLocalSummary = { summary } }
+      _ = try await runner.run(
+        rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
+      #expect(
+        !skips.calls.contains { $0.reason == "summary_busy" },
+        "dictation \(dictation), summary \(String(describing: summary)), remote \(String(describing: remote))")
+    }
+  }
+
+  @Test("the clash rule, case by case: the same local engine only")
+  func clashRule() {
+    let cases: [(LLMProvider, Bool?, LLMProvider?, LLMProvider?)] = [
+      // dictation, its Ollama remoteness, running local summary, expected busy engine
+      (.appleIntelligence, nil, .appleIntelligence, .appleIntelligence),
+      (.egOne, nil, .egOne, .egOne),
+      (.ollama, false, .ollama, .ollama),
+      (.ollama, true, .ollama, nil),
+      (.ollama, nil, .ollama, nil),
+      (.s1Mini, nil, .egOne, nil),
+      (.egOne, nil, .ollama, nil),
+      (.appleIntelligence, nil, .egOne, nil),
+      (.openAI, nil, .openAI, nil),
+      (.gemini, nil, .gemini, nil),
+      (.claude, nil, .claude, nil),
+      (.none, nil, .none, nil),
+      (.appleIntelligence, nil, nil, nil),
+    ]
+    for (dictation, remote, summary, expected) in cases {
+      #expect(
+        SummaryEngineClash.busyEngine(
+          dictation: dictation, dictationOllamaRemote: remote, runningLocalSummary: summary)
+          == expected,
+        "\(dictation) \(String(describing: remote)) \(String(describing: summary))")
+    }
+  }
+
   // MARK: - No-false-positive boundary
 
   @Test("a cancelled cloud request fires no telemetry and surfaces no notice")

@@ -16,9 +16,9 @@ import Foundation
 ///
 /// "Skip" means no polish output was accepted — NOT "never attempted."
 /// `outputLanguageDrift` fires only after a real generation attempt; the other
-/// AFM cases are pre-attempt bypasses. All 16 cases share the same contract
+/// AFM cases are pre-attempt bypasses. Every case shares the same contract
 /// (Bypass, per `llm-contract.md`): no `polishedText`, no provider stamp, no
-/// error banner.
+/// error banner. `summaryUsesEngine` (#4287) is the one with a skipped-tone notice.
 enum PolishSkipReason: Sendable, Equatable {
   case contextWindowPredicted
   case contextWindowCaught
@@ -36,6 +36,9 @@ enum PolishSkipReason: Sendable, Equatable {
   case frameworkUnavailable
   case unsupportedInputLanguage
   case outputLanguageDrift
+  /// #4287 PR 3: the same local engine was writing an EnviousMeet summary. A skip with a notice,
+  /// before any polish request.
+  case summaryUsesEngine(LLMProvider)
 
   var telemetryTag: String {
     switch self {
@@ -58,6 +61,7 @@ enum PolishSkipReason: Sendable, Equatable {
     case .frameworkUnavailable: return "framework_unavailable"
     case .unsupportedInputLanguage: return "unsupported_input_language"
     case .outputLanguageDrift: return "output_language_drift"
+    case .summaryUsesEngine: return "summary_busy"
     }
   }
 
@@ -74,7 +78,7 @@ enum PolishSkipReason: Sendable, Equatable {
       return provider
     case .ollamaProviderUnreachable, .ollamaModelUnavailable, .ollamaNoModelSelected:
       return .ollama
-    case .tooShort(let provider):
+    case .tooShort(let provider), .summaryUsesEngine(let provider):
       return provider
     }
   }

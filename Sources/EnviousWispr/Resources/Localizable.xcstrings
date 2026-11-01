@@ -2045,6 +2045,17 @@
         }
       }
     },
+    "AI polish skipped: %@ is writing your EnviousMeet summary." : {
+      "comment" : "Dictation notice: AI polish was skipped for this dictation because the same AI engine on this Mac (the value: Apple Intelligence, EG-1 or Ollama) is busy writing a meeting summary; the text was still pasted. EnviousMeet is the meeting recorder's name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Nachbearbeitung übersprungen: %@ erstellt gerade deine EnviousMeet-Zusammenfassung."
+          }
+        }
+      }
+    },
     "AI polish skipped: Ollama isn't running. Start it in Settings → AI Polish." : {
       "comment" : "Dictation notice: AI polish was skipped because Ollama is not ready; the original text was used. Settings → AI Polish names a settings page.",
       "localizations" : {

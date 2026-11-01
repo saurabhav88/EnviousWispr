@@ -536,6 +536,37 @@ struct MeetingSummaryOwnerTests {
     }
   }
 
+  /// #4287 PR 3: a dictation on the same local engine skips polish only while this reports it.
+  @Test("the running local summary engine is reported from admission to the call's end, never for hosted")
+  func runningLocalSummaryProviderLifetime() async throws {
+    for (provider, execution, expected) in [
+      (LLMProvider.appleIntelligence, MeetingSummary.Execution.local, LLMProvider.appleIntelligence),
+      (.ollama, .local, .ollama), (.ollama, .hosted, nil), (.openAI, .hosted, nil),
+    ] as [(LLMProvider, MeetingSummary.Execution, LLMProvider?)] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.provider = provider
+      rig.world.model = "m"
+      rig.world.execution = execution
+      rig.world.localTurn = false
+      rig.world.holdCalls = true
+      _ = await Self.schedule(rig, id)
+      if execution == .local {
+        await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+        #expect(rig.owner.runningLocalSummaryProvider == nil, "\(provider): waiting reports nothing")
+        rig.world.localTurn = true
+      }
+      await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+      #expect(rig.owner.runningLocalSummaryProvider == expected, "\(provider) \(execution)")
+      rig.world.provider = .claude
+      #expect(
+        rig.owner.runningLocalSummaryProvider == expected, "\(provider): the attempt's own, not the setting")
+      rig.world.releaseCall()
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(rig.owner.runningLocalSummaryProvider == nil, "\(provider): cleared at the call's end")
+    }
+  }
+
   @Test("a deleted meeting's call keeps its pin until the call ends, then releases it")
   func cancelledCallReleasesPinAtItsEnd() async throws {
     let rig = try Rig()

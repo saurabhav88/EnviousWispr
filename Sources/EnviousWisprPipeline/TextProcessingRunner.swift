@@ -451,6 +451,9 @@ internal final class TextProcessingRunner {
         {
           localPolishSkipReason = notReady
         }
+        // #4287 PR 3: the same local engine was writing an EnviousMeet summary. A skip with a
+        // notice, like the Ollama preflight class above: no Sentry capture, no failure count.
+        let summaryBusy = error as? SummaryEngineBusy
         let reason: String
         if isAppleIntelligencePolishTimeout {
           reason =
@@ -464,6 +467,9 @@ internal final class TextProcessingRunner {
           reason = "skipped: too long for on-device AI polish (\(cw.stage.rawValue))"
         } else if let notReady = localPolishSkipReason {
           reason = "skipped: Ollama polish not ready (\(notReady.telemetryTag)), using raw text"
+        } else if let summaryBusy {
+          reason =
+            "skipped: \(summaryBusy.provider.rawValue) is writing an EnviousMeet summary, using deterministic text"
         } else {
           reason = "failed: \(error.localizedDescription)"
         }
@@ -533,8 +539,10 @@ internal final class TextProcessingRunner {
         let polishSkippedSilently =
           isSilentPolishSkip || contextWindowSkip != nil || isAppleIntelligencePolishTimeout
           || isLocalEnginePolishTimeout || isCancellationLike
-        if polishSkippedSilently { context.polishWasBypassed = true }
-        if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
+        if polishSkippedSilently || summaryBusy != nil { context.polishWasBypassed = true }
+        if step.errorSurfacePolicy == .surface, let summaryBusy {
+          polishNotice = summaryBusy.notice
+        } else if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed
           // fallback covers a defensive future reason without pinned copy.
@@ -614,7 +622,9 @@ internal final class TextProcessingRunner {
             result = .cancelled
           } else if polishSkippedSilently {
             result = .skippedSilently
-          } else if localPolishSkipReason != nil || polishNotice?.leadIn == .skipped {
+          } else if localPolishSkipReason != nil || summaryBusy != nil
+            || polishNotice?.leadIn == .skipped
+          {
             result = .skippedWithNotice
           } else {
             result = .failed
@@ -662,6 +672,9 @@ internal final class TextProcessingRunner {
           // reason family as EG-1 — the observability split between "preflight
           // said not ready" (here) and "mid-flight failure on a running
           // server" (the capture path above) falls out of the reason strings.
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+        } else if let summaryBusy {
+          let reason = PolishSkipReason.summaryUsesEngine(summaryBusy.provider)
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
