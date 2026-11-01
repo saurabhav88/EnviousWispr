@@ -100,7 +100,7 @@ struct MeetingSummaryView: View {
         if MeetingSummaryLongMeetingHint.shows(
           writtenInParts: documents.manifest(meetingID)?.summary?.writtenInParts,
           summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID,
-          currentProvider: settings.llmProvider)
+          settings: settings)
         {
           MeetingSummaryLongMeetingHint()
         }
@@ -236,8 +236,8 @@ struct MeetingSummaryView: View {
         .foregroundStyle(.stError)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("history.meeting.summaryProblem")
-      if Self.opensAIPolish(problem) {
-        AIPolishSettingsLink()
+      if Self.opensSummarySettings(problem) {
+        MeetingSummarySettingsLink()
       }
     }
   }
@@ -252,7 +252,9 @@ struct MeetingSummaryView: View {
     return nil
   }
 
-  static func opensAIPolish(_ problem: MeetingSummaryOwner.Problem) -> Bool {
+  /// #4287: the problems the summary engine choice fixes, with a link to EnviousMeet's
+  /// Summaries tab, where that engine is chosen.
+  static func opensSummarySettings(_ problem: MeetingSummaryOwner.Problem) -> Bool {
     switch problem {
     case .noProvider, .notForSummaries, .notReady, .ollamaTooOld: return true
     case .tooLong, .providerFailed, .notesUnreadable, .storageFailed: return false
@@ -264,17 +266,17 @@ struct MeetingSummaryView: View {
     switch problem {
     case .noProvider:
       return String(
-        localized: "Choose an AI Polish provider to write summaries.",
-        comment: "History, a meeting: no AI Polish provider is selected, so no summary.")
+        localized: "Choose a summary engine to write summaries.",
+        comment: "History, a meeting: no summary engine is chosen on EnviousMeet's Summaries tab, so no summary.")
     case .notForSummaries:
       return String(
-        localized: "The selected AI Polish model can't write summaries. Choose another model.",
-        comment: "History, a meeting: the cleanup models (EG-1, S1-mini) cannot summarize.")
+        localized: "This engine can't write summaries. Choose another one.",
+        comment: "History, a meeting: the chosen summary engine or model (an EG-1 or S1-mini Ollama model) cannot summarize.")
     case .notReady:
       return String(
         localized:
-          "The AI Polish provider isn't ready. Check it in AI Polish settings, then try again.",
-        comment: "History, a meeting: Ollama is not running or Apple Intelligence is not available."
+          "The summary engine isn't ready. Check it in Summaries settings, then try again.",
+        comment: "History, a meeting: the summary engine (Ollama not running, Apple Intelligence not available, no key) is not ready."
       )
     case .ollamaTooOld:
       return String(

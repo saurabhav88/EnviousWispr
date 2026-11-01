@@ -1241,7 +1241,7 @@ struct MeetingSummaryOwnerTests {
         == "Paused while a meeting summary is written")
   }
 
-  @Test("every summary problem has its own message, and the provider ones open AI Polish")
+  @Test("every summary problem has its own message, and the engine ones open Summaries settings")
   func problemCopy() {
     let problems: [MeetingSummaryOwner.Problem] = [
       .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
@@ -1251,7 +1251,7 @@ struct MeetingSummaryOwnerTests {
     #expect(Set(messages).count == problems.count)
     #expect(messages.allSatisfy { !$0.isEmpty })
     #expect(
-      problems.filter(MeetingSummaryView.opensAIPolish)
+      problems.filter(MeetingSummaryView.opensSummarySettings)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
   }
 

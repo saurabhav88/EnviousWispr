@@ -5211,13 +5211,13 @@
         }
       }
     },
-    "Choose an AI Polish provider to write summaries." : {
-      "comment" : "History, a meeting: no AI Polish provider is selected, so no summary.",
+    "Choose a summary engine to write summaries." : {
+      "comment" : "History, a meeting: no summary engine is chosen on EnviousMeet's Summaries tab, so no summary.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle einen Anbieter für KI-Nachbearbeitung, um Zusammenfassungen zu erstellen."
+            "value" : "Wähle eine Zusammenfassungs-Engine, um Zusammenfassungen zu erstellen."
           }
         }
       }
@@ -11653,13 +11653,13 @@
         }
       }
     },
-    "Long meeting: this summary was written in parts. The default OpenAI, Gemini and Claude models fit much longer meetings in one piece. AI Polish also uses that choice for dictation." : {
-      "comment" : "History, a meeting summarized in parts by Apple Intelligence. Explains that the default models of the three named providers support much longer meetings in a single summary call. The AI Polish provider and model choice also applies to dictation. This does not promise unlimited meeting length.",
+    "Long meeting: this summary was written in parts. The default OpenAI, Gemini and Claude models fit much longer meetings in one piece." : {
+      "comment" : "History, a meeting summarized in parts by Apple Intelligence. Explains that the default models of the three named providers support much longer meetings in a single summary call. This does not promise unlimited meeting length.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Die Standardmodelle von OpenAI, Gemini und Claude fassen viel längere Meetings in einem Durchgang zusammen. Die KI-Nachbearbeitung nutzt diese Auswahl auch für Diktate."
+            "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Die Standardmodelle von OpenAI, Gemini und Claude fassen viel längere Meetings in einem Durchgang zusammen."
           }
         }
       }
@@ -14446,17 +14446,6 @@
         }
       }
     },
-    "Open AI Polish settings" : {
-      "comment" : "History, a meeting: opens the AI Polish settings to fix the summary provider.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungen für KI-Nachbearbeitung öffnen"
-          }
-        }
-      }
-    },
     "Open EnviousMeet" : {
       "comment" : "EnviousMeet setup: finishes setup and shows its settings.",
       "localizations" : {
@@ -14497,6 +14486,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen öffnen"
+          }
+        }
+      }
+    },
+    "Open Summaries settings" : {
+      "comment" : "History, a meeting: opens EnviousMeet's Summaries settings to choose or fix the summary engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen für Zusammenfassungen öffnen"
           }
         }
       }
@@ -19938,17 +19938,6 @@
         }
       }
     },
-    "The AI Polish provider isn't ready. Check it in AI Polish settings, then try again." : {
-      "comment" : "History, a meeting: Ollama is not running or Apple Intelligence is not available.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Anbieter für KI-Nachbearbeitung ist nicht bereit. Prüfe ihn in den Einstellungen für KI-Nachbearbeitung und versuche es erneut."
-          }
-        }
-      }
-    },
     "The AI that writes your meeting summaries. Separate from AI Polish for dictation." : {
       "comment" : "EnviousMeet Summaries tab: the line under Summary engine.",
       "localizations" : {
@@ -20561,17 +20550,6 @@
         }
       }
     },
-    "The selected AI Polish model can't write summaries. Choose another model." : {
-      "comment" : "History, a meeting: the cleanup models (EG-1, S1-mini) cannot summarize.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das ausgewählte Modell für KI-Nachbearbeitung kann keine Zusammenfassungen erstellen. Wähle ein anderes Modell."
-          }
-        }
-      }
-    },
     "The speech engine did not finish waking up." : {
       "localizations" : {
         "de" : {
@@ -20617,6 +20595,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Zusammenfassung konnte nicht erstellt werden. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "The summary engine isn't ready. Check it in Summaries settings, then try again." : {
+      "comment" : "History, a meeting: the summary engine (Ollama not running, Apple Intelligence not available, no key) is not ready.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zusammenfassungs-Engine ist nicht einsatzbereit. Überprüfe sie in den Einstellungen für Zusammenfassungen und versuche es dann erneut."
           }
         }
       }
@@ -21000,6 +20989,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Diktat wurde ohne KI-Nachbearbeitung eingefügt. Auf deinem Mac war zu diesem Zeitpunkt nur wenig Arbeitsspeicher frei. Wir versuchen es automatisch erneut."
+          }
+        }
+      }
+    },
+    "This engine can't write summaries. Choose another one." : {
+      "comment" : "History, a meeting: the chosen summary engine or model (an EG-1 or S1-mini Ollama model) cannot summarize.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Engine kann keine Zusammenfassungen erstellen. Wähle eine andere."
           }
         }
       }
