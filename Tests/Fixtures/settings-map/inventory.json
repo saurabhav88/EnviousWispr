@@ -2334,7 +2334,7 @@
    "seedParent": null,
    "description": {
     "kind": "static",
-    "english": "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting."
+    "english": "Follows the mute button in supported Zoom, Teams and Google Meet calls."
    }
   },
   {

@@ -8826,6 +8826,17 @@
         }
       }
     },
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls." : {
+      "comment" : "EnviousMeet page: the short line under Leave my voice out when I'm muted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet."
+          }
+        }
+      }
+    },
     "Follows the mute button in supported Zoom, Teams and Google Meet calls. Brief audio around mute changes may be kept or omitted. While EnviousMeet checks your mute state, or cannot read it, your voice is recorded as usual." : {
       "comment" : "EnviousMeet page: help for Leave my voice out when I'm muted (#4248 plan section 3.4).",
       "localizations" : {
@@ -23158,17 +23169,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anzuzeigende Wörter"
-          }
-        }
-      }
-    },
-    "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting." : {
-      "comment" : "EnviousMeet page: the short line under Leave my voice out when I'm muted.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn Zoom, Teams oder Google Meet dich als stummgeschaltet anzeigt, wird deine Stimme in der Meetingaufnahme weggelassen."
           }
         }
       }

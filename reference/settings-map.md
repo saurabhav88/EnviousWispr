@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 294 nodes, 267 searchable, 8544 vocabulary blocks.
 
-Fingerprints: mapSHA256 `38f28e788d72df8ec7b1264ed3d3f41ff60adb0d5049f625b6e61203ef0e3b1b`, uiCatalogSHA256 `d2eb481339732b0027a79cd13f4496bd8ae66d9ea1e49468c2fdcf3968003aa4`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `87926fdafc055c2cc199031e3307339e222533b1715fbba6ada1f5a8891846d2`
+Fingerprints: mapSHA256 `7c9986b1ed6f678c248b59a5301fa1e21aef793ffb1f79e83a7ab33cd5d285c7`, uiCatalogSHA256 `91f6511c31b00764c28c7dbe7fbbd76b75f19908ff3f2aa8abca437cb0144fd5`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `08af4bb5d3fc5dba8e0a499b32e3b445ff19b751c7da7f877b4f367bceb7f122`
 
 ## Structure
 
@@ -2571,8 +2571,8 @@ Fingerprints: mapSHA256 `38f28e788d72df8ec7b1264ed3d3f41ff60adb0d5049f625b6e6120
 | Kind | setting |
 | Parent | [`meetings.tab.general`](#node-meetings-tab-general) |
 | Title source | catalog key `Leave my voice out when I'm muted` |
-| Description | While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting. / Wenn Zoom, Teams oder Google Meet dich als stummgeschaltet anzeigt, wird deine Stimme in der Meetingaufnahme weggelassen. |
-| Description source | catalog key `While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting.` |
+| Description | Follows the mute button in supported Zoom, Teams and Google Meet calls. / Richtet sich nach deiner Stummschaltung in unterstützten Anrufen mit Zoom, Teams und Google Meet. |
+| Description source | catalog key `Follows the mute button in supported Zoom, Teams and Google Meet calls.` |
 | Destination | `meetings` › `general` |
 | Dictionary tab | none |
 | Shown when | `always` |
@@ -2580,7 +2580,7 @@ Fingerprints: mapSHA256 `38f28e788d72df8ec7b1264ed3d3f41ff60adb0d5049f625b6e6120
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: leave my voice out of the meeting recording when I'm muted; record my mic even when I'm muted in a meeting |
-| Search (de) | words: Stummschaltung, Mikrofon, Stimme<br>phrases: lass meine Stimme in der Aufnahme weg, wenn ich stummgeschaltet bin; Stimme bei Stummschaltung weglassen; nimm mein Mikrofon auch dann auf, wenn ich in Google Meet stummgeschaltet bin |
+| Search (de) | words: Stummschaltung, stummgeschaltet, Mikrofon, Stimme<br>phrases: meine Stimme nicht aufnehmen, wenn ich stumm bin; Stimme bei Stummschaltung weglassen; Stummschaltung in Google Meet |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingLiveWords"></a>

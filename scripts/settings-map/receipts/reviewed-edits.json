@@ -13421,13 +13421,14 @@
     "de": {
      "words": [
       "Stummschaltung",
+      "stummgeschaltet",
       "Mikrofon",
       "Stimme"
      ],
      "phrases": [
-      "lass meine Stimme in der Aufnahme weg, wenn ich stummgeschaltet bin",
+      "meine Stimme nicht aufnehmen, wenn ich stumm bin",
       "Stimme bei Stummschaltung weglassen",
-      "nimm mein Mikrofon auch dann auf, wenn ich in Google Meet stummgeschaltet bin"
+      "Stummschaltung in Google Meet"
      ]
     },
     "el": {
@@ -13667,8 +13668,7 @@
      "words": [],
      "phrases": [
       "не записувати мій голос, коли я на м’юті",
-      "не записувати мене, коли мікрофон у Zoom вимкнено",
-      "записувати мій голос навіть із вимкненим мікрофоном у дзвінку"
+      "не записувати мене, коли мікрофон у Zoom вимкнено"
      ]
     },
     "vi": {
@@ -13693,7 +13693,7 @@
     }
    },
    "review": "additions/meetingFollowsCallMute.json",
-   "reviewSHA256": "9c1232d68850264e95a0186c9891ae01b217685150c3353e6d167b240cb44fdb"
+   "reviewSHA256": "79235760e2a31a06ec47f0bb764e4ae8c1b9fa158e62ed2f84f66365df40c3cc"
   }
  }
 }

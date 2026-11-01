@@ -419,7 +419,7 @@ enum MeetingsCopy {
     "Leave my voice out when I'm muted",
     comment: "EnviousMeet page: switch that leaves the user's microphone out of the meeting while the call app shows them muted.")
   static let followsCallMuteShort = LocalizedStringResource(
-    "While Zoom, Teams or Google Meet shows you muted, your microphone is left out of the meeting.",
+    "Follows the mute button in supported Zoom, Teams and Google Meet calls.",
     comment: "EnviousMeet page: the short line under Leave my voice out when I'm muted.")
   static let followsCallMuteHelp = LocalizedStringResource(
     "Follows the mute button in supported Zoom, Teams and Google Meet calls. Brief audio around mute changes may be kept or omitted. While EnviousMeet checks your mute state, or cannot read it, your voice is recorded as usual.",
