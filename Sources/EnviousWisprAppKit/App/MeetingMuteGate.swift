@@ -45,6 +45,10 @@ final class MeetingMuteGate: Sendable {
     var ignored = 0
     var inactive = 0
     var readings: Int { applied + staleAtDelivery + ignored + inactive }
+    /// Queue host ticks a supported call was bound while the switch was on (telemetry
+    /// denominator), and the part of them spent checking or unable to read the button.
+    var eligibleTicks: UInt64 = 0
+    var unknownTicks: UInt64 = 0
 
     mutating func count(_ outcome: MeetingMuteFollower.Outcome) {
       switch outcome {
@@ -99,6 +103,10 @@ final class MeetingMuteGate: Sendable {
     var lastState: MeetingMuteFollower.State
     var lastMissed = MeetingMuteFollower.Missed()
     var totals = Totals()
+    /// The queue time of the last step, so time is counted in the state it was spent in.
+    var lastNow: UInt64?
+    /// The `.end` step ran: the clock steps of the closing writer count no more time.
+    var countingEnded = false
   }
 
   let recording: UUID
@@ -115,6 +123,9 @@ final class MeetingMuteGate: Sendable {
       initialState: Inner(follower: follower, lastState: follower.state))
   }
 
+  /// The counts so far; read after the writer closed, they include the `.end` step.
+  var totals: Totals { inner.withLock { $0.totals } }
+
   /// The step that applies `input` on the writer's queue.
   func step(_ input: Input) -> MeetingSilenceStep {
     { [self] now, released in run(input, now: now, released: released) }
@@ -129,6 +140,20 @@ final class MeetingMuteGate: Sendable {
     -> [MeetingSilenceInterval]?
   {
     let (intervals, snapshot) = inner.withLock { s -> ([MeetingSilenceInterval]?, Snapshot?) in
+      // The time since the last step was spent in the state the follower showed then.
+      if !s.countingEnded, let last = s.lastNow, now > last {
+        switch s.follower.state {
+        case .checking, .cannotSee:
+          s.totals.eligibleTicks += now - last
+          s.totals.unknownTicks += now - last
+        case .muted, .unmuted:
+          s.totals.eligibleTicks += now - last
+        case .unbound, .disabled:
+          break
+        }
+      }
+      s.lastNow = max(s.lastNow ?? now, now)
+      if input == .end { s.countingEnded = true }
       s.follower.commit(through: released)
       // Expiry first, at the queue's time: a reading that aged out stops counting before the
       // input or the release that follows.

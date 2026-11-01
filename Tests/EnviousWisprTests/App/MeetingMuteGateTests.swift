@@ -57,6 +57,26 @@ struct MeetingMuteGateTests {
       s(d), s(released))
   }
 
+  @Test("telemetry time: bound time counts while the switch is on, unknown time is checking or blind, nothing after the end")
+  func eligibleAndUnknownTime() {
+    let published = Published()
+    let g = gate(published)  // bound at 0: checking
+    read(g, .muted, t: 2, d: 2)  // 0 to 2 checking
+    read(g, .unmuted, t: 5, d: 5)  // 2 to 5 muted
+    _ = g.step(.setEnabled(false, at: s(6)))(s(6), 0)  // 5 to 6 unmuted
+    _ = g.step(.advance)(s(9), 0)  // 6 to 9 switched off: not counted
+    _ = g.step(.setEnabled(true, at: s(9)))(s(9), 0)
+    _ = g.step(.advance)(s(10), 0)  // 9 to 10 checking again
+    _ = g.step(.unbind)(s(10), 0)
+    _ = g.step(.advance)(s(12), 0)  // 10 to 12 unbound: not counted
+    _ = g.step(.bind(.teamsApp, generation: 2))(s(12), 0)
+    _ = g.step(.end)(s(13), 0)  // 12 to 13 checking
+    _ = g.clock(s(20), 0)  // the closing writer's clock counts nothing more
+    #expect(g.totals.eligibleTicks == s(2 + 3 + 1 + 1 + 1))
+    #expect(g.totals.unknownTicks == s(2 + 1 + 1))
+    #expect(g.totals.readings == 2)
+  }
+
   @Test("a reading already stale when it reaches the queue installs no silence")
   func staleAtQueue() throws {
     let published = Published()
@@ -196,7 +216,9 @@ struct MeetingMuteGateTests {
     #expect(all.compactMap(\.trace).count == 3, "one trace per reading")
     let last = try #require(all.last)
     #expect(last.ended)
-    #expect(last.totals == .init(applied: 1, staleAtDelivery: 1, ignored: 1, inactive: 0))
+    let t = last.totals
+    let counts: [Int] = [t.applied, t.staleAtDelivery, t.ignored, t.inactive]
+    #expect(counts == [1, 1, 1, 0], "applied, stale at delivery, ignored, inactive")
   }
 
   #if DEBUG

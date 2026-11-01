@@ -4136,6 +4136,9 @@ public final class TelemetryService {
   /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
   /// #4013: `speaker_names_surface` and `speaker_names_outcome` (strings) and `auto_named_count`
   /// (`Int`) are each omitted when not known.
+  /// #4248: `mute_follow_enabled` (`Bool`), `mute_eligible_seconds_bucket`, `mute_reads_bucket`
+  /// and, when anything was eligible, `mute_silenced_share_bucket` and `mute_unknown_share_bucket`
+  /// (strings); all omitted when the attempt has no mute summary.
   static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
     var props: [String: Any] = [
       "outcome": event.outcome.rawValue,
@@ -4162,7 +4165,39 @@ public final class TelemetryService {
     if let surface = event.speakerNamesSurface { props["speaker_names_surface"] = surface.rawValue }
     if let outcome = event.speakerNamesOutcome { props["speaker_names_outcome"] = outcome.rawValue }
     if let count = event.autoNamedCount { props["auto_named_count"] = count }
+    if let mute = event.muteFollow {
+      props["mute_follow_enabled"] = mute.enabledAtStop
+      props["mute_eligible_seconds_bucket"] =
+        mute.eligibleSeconds > 0 ? fileImportDurationBucket(mute.eligibleSeconds) : "0"
+      props["mute_reads_bucket"] = meetingMuteReadsBucket(mute.reads)
+      if let share = mute.silencedShare { props["mute_silenced_share_bucket"] = meetingShareBucket(share) }
+      if let share = mute.unknownShare { props["mute_unknown_share_bucket"] = meetingShareBucket(share) }
+    }
     return props
+  }
+
+  /// #4248: a share of eligible time: `0`, `<5%`, `5-25%`, `25-50%`, `50-75%`, `75%+`.
+  static func meetingShareBucket(_ share: Double) -> String {
+    switch share {
+    case ...0: return "0"
+    case ..<0.05: return "<5%"
+    case ..<0.25: return "5-25%"
+    case ..<0.5: return "25-50%"
+    case ..<0.75: return "50-75%"
+    default: return "75%+"
+    }
+  }
+
+  /// #4248: mute readings decided (about two a second while a call is bound): `0`, `1-99`,
+  /// `100-999`, `1000-4999`, `5000+`.
+  static func meetingMuteReadsBucket(_ count: Int) -> String {
+    switch count {
+    case ...0: return "0"
+    case 1...99: return "1-99"
+    case 100...999: return "100-999"
+    case 1000...4999: return "1000-4999"
+    default: return "5000+"
+    }
   }
 
   /// #3972 R48, R54: one `meeting.summary_finished` row per summary attempt, at its end. Two

@@ -40,7 +40,8 @@ import Testing
       outcome: MeetingEndedTelemetry.Outcome = .ready, entry: MeetingEntryPoint? = .menu,
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
       echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
-      engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil
+      engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil,
+      muteFollow: MuteFollowSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
@@ -48,7 +49,7 @@ import Testing
         processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
         summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
-        speakerNaming: speakerNaming)
+        speakerNaming: speakerNaming, muteFollow: muteFollow)
     }
 
     private static let speakerNameKeys: Set<String> = [
@@ -98,6 +99,47 @@ import Testing
           #expect(props["auto_named_count"] as? Int == 1)
         }
       }
+    }
+
+    private static let muteKeys: Set<String> = [
+      "mute_follow_enabled", "mute_eligible_seconds_bucket", "mute_reads_bucket",
+      "mute_silenced_share_bucket", "mute_unknown_share_bucket",
+    ]
+
+    @Test("#4248: a mute summary adds a bool and four bucket strings, shares of eligible time")
+    func muteFields() throws {
+      let row = try #require(
+        capture(
+          event(
+            muteFollow: MuteFollowSummary(
+              enabledAtStop: true, eligibleSeconds: 1_200, unknownSeconds: 30,
+              silencedSeconds: 400, reads: 2_400))))
+      #expect(row.boolProps["mute_follow_enabled"] == true)
+      #expect(row.stringProps["mute_eligible_seconds_bucket"] == "15-30min")
+      #expect(row.stringProps["mute_reads_bucket"] == "1000-4999")
+      #expect(row.stringProps["mute_silenced_share_bucket"] == "25-50%")
+      #expect(row.stringProps["mute_unknown_share_bucket"] == "<5%")
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(Self.muteKeys))
+    }
+
+    @Test("#4248: nothing eligible omits both shares; no summary omits every mute key")
+    func muteFieldsOmitted() throws {
+      let off = try #require(
+        capture(
+          event(
+            muteFollow: MuteFollowSummary(
+              enabledAtStop: false, eligibleSeconds: 0, unknownSeconds: 0, silencedSeconds: 0,
+              reads: 0))))
+      #expect(off.boolProps["mute_follow_enabled"] == false)
+      #expect(off.stringProps["mute_eligible_seconds_bucket"] == "0")
+      #expect(off.stringProps["mute_reads_bucket"] == "0")
+      #expect(off.stringProps["mute_silenced_share_bucket"] == nil)
+      #expect(off.stringProps["mute_unknown_share_bucket"] == nil)
+      let none = try #require(capture(event()))
+      let keys = Set(none.stringProps.keys).union(none.boolProps.keys)
+      #expect(keys.isDisjoint(with: Self.muteKeys))
     }
 
     @Test("#4121: a call-sound summary adds exactly four keys, a string and three integers; a known zero stays 0")
@@ -242,6 +284,17 @@ import Testing
             "<1min", "1-5min", "1-5min", "5-15min", "5-15min", "15-30min", "15-30min",
             "30-60min", "30-60min", "60min+", "60min+",
           ])
+      #expect(
+        [0, 0.01, 0.05, 0.249, 0.25, 0.5, 0.75, 1].map(TelemetryService.meetingShareBucket) == [
+          "0", "<5%", "5-25%", "5-25%", "25-50%", "50-75%", "75%+", "75%+",
+        ])
+      #expect(
+        [0, 1, 99, 100, 999, 1_000, 4_999, 5_000].map(TelemetryService.meetingMuteReadsBucket) == [
+          "0", "1-99", "1-99", "100-999", "100-999", "1000-4999", "1000-4999", "5000+",
+        ])
+      let tooMuch = MuteFollowSummary(
+        enabledAtStop: true, eligibleSeconds: 10, unknownSeconds: 0, silencedSeconds: 12, reads: 1)
+      #expect(tooMuch.silencedShare == 1, "a share never exceeds all eligible time")
     }
   }
 #endif

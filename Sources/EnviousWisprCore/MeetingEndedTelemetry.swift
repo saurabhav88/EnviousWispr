@@ -11,6 +11,40 @@ public enum MeetingEntryPoint: String, Sendable, Equatable {
   case detected
 }
 
+/// #4248: what following the call's mute button did in one recording, frozen at capture stop.
+/// Applied behavior only, never whether anything private stayed out.
+public struct MuteFollowSummary: Sendable, Equatable {
+  /// "Leave my voice out when I'm muted" at stop.
+  public let enabledAtStop: Bool
+  /// Time a supported call was bound while the switch was on: the denominator of both shares.
+  public let eligibleSeconds: Double
+  /// Eligible time spent checking or unable to read the mute button.
+  public let unknownSeconds: Double
+  /// Microphone audio written as silence.
+  public let silencedSeconds: Double
+  /// Mute readings decided.
+  public let reads: Int
+
+  public init(
+    enabledAtStop: Bool, eligibleSeconds: Double, unknownSeconds: Double,
+    silencedSeconds: Double, reads: Int
+  ) {
+    self.enabledAtStop = enabledAtStop
+    self.eligibleSeconds = eligibleSeconds
+    self.unknownSeconds = unknownSeconds
+    self.silencedSeconds = silencedSeconds
+    self.reads = reads
+  }
+
+  /// A share of eligible time, nil when nothing was eligible; clamped to 0...1.
+  func share(_ seconds: Double) -> Double? {
+    guard eligibleSeconds > 0, eligibleSeconds.isFinite, seconds.isFinite else { return nil }
+    return min(1, max(0, seconds / eligibleSeconds))
+  }
+  public var silencedShare: Double? { share(silencedSeconds) }
+  public var unknownShare: Double? { share(unknownSeconds) }
+}
+
 /// The one `meeting.ended` row (#3972 R11, plan C4): one row per meeting attempt, at its
 /// terminal. Shape only: never words, names, titles, paths or ids. Built by `MeetingCoordinator`,
 /// sent by `TelemetryService.trackMeetingEnded`.
@@ -65,6 +99,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let speakerNamesSurface: SpeakerNamingSummary.Surface?
   public let speakerNamesOutcome: SpeakerNamingSummary.Outcome?
   public let autoNamedCount: Int?
+  /// #4248: the recording's mute following, frozen at capture stop; nil when the attempt has no
+  /// summary (a Start that failed, an attempt recovered after a relaunch). A Retry inherits it.
+  public let muteFollow: MuteFollowSummary?
 
   /// The summary decision taken when the meeting ends (R48, R54).
   public enum SummaryPlan: String, Sendable, CaseIterable {
@@ -88,7 +125,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     engine: MeetingEngineChoice?, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
     summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil,
-    speakerNaming: SpeakerNamingSummary? = nil
+    speakerNaming: SpeakerNamingSummary? = nil, muteFollow: MuteFollowSummary? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -112,6 +149,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.speakerNamesSurface = speakerNaming?.surface
     self.speakerNamesOutcome = speakerNaming?.outcome
     self.autoNamedCount = speakerNaming?.autoNamedCount
+    self.muteFollow = muteFollow
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a

@@ -113,6 +113,8 @@ struct MeetingCoordinatorTests {
     }
     func setSilenceClock(_ step: MeetingSilenceStep?) { clock = step }
     func setMicrophoneMuted(_ muted: Bool) { mutedMeter.append(muted) }
+    /// #4248: the writer counters a test sets for the silenced share.
+    @ObservationIgnored var microphoneHealth: MeetingTrackWriter.Health?
     /// Runs every step not run yet at (`now`, `released`), as the writer queue would; returns
     /// the last intervals any of them installed.
     @ObservationIgnored private var stepsRun = 0

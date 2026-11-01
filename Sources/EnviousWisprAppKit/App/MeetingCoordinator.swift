@@ -26,6 +26,8 @@ protocol MeetingRecording: AnyObject {
   func applySilenceStep(_ step: @escaping MeetingSilenceStep)
   func setSilenceClock(_ step: MeetingSilenceStep?)
   func setMicrophoneMuted(_ muted: Bool)
+  /// #4248: the microphone writer's counters, for the silenced share (`MeetingRecorder`).
+  var microphoneHealth: MeetingTrackWriter.Health? { get }
 }
 
 extension MeetingRecorder: MeetingRecording {}
@@ -578,6 +580,9 @@ final class MeetingCoordinator {
     /// Each binding generation's call app, so a snapshot names the call it was decided for.
     var callApps: [UInt64: CallAppFamily] = [:]
   }
+  /// #4248: a follower whose recording is stopping, kept until its writer closed so the
+  /// `meeting.ended` counts include the `.end` step; the switch is read when following ends.
+  private var stoppingMuteFollows: [UUID: (gate: MeetingMuteGate, enabledAtStop: Bool)] = [:]
   /// #4248 timing receipt: each recording's chances to read the mute button, kept until its
   /// gate reports the `.end` decision (after the follower itself was released).
   private var muteCaptureCounts: [UUID: MuteCaptureCounts] = [:]
@@ -625,7 +630,7 @@ final class MeetingCoordinator {
         audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
-        speakerNaming: speakerNaming)
+        speakerNaming: speakerNaming, muteFollow: facts.muteFollow)
     }
   }
 
@@ -634,6 +639,8 @@ final class MeetingCoordinator {
     var diskStopped: Bool?
     /// #4121: the recorder's call-sound summary, frozen at stop; nil when none.
     var callSound: CallSoundSummary?
+    /// #4248: the recording's mute following, frozen at stop; nil when none.
+    var muteFollow: MuteFollowSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
   }
@@ -1346,6 +1353,7 @@ final class MeetingCoordinator {
     let report = await recorder?.stop()
     // Tests' fake recorders have no writer; the receipt reads the production recorder only.
     traceMuteWriter((recorder as? MeetingRecorder)?.microphoneHealth)
+    adoptMuteSummary(for: meetingID, health: recorder?.microphoneHealth)
     // #3973, #4097: then live words retire without waiting; their cleanup drains held audio and
     // kept events and closes admission. The lines stay until the transcript is ready. A quit
     // during the close already retired them (`quit()`), so this changes nothing then.
@@ -1405,6 +1413,23 @@ final class MeetingCoordinator {
   private func adoptCallSoundSummary(_ report: MeetingRecorder.StopReport?, for meetingID: UUID) {
     guard let summary = report?.callSoundSummary else { return }
     openAttempts[meetingID]?.callSound = summary
+  }
+
+  /// #4248: freezes the stopped recording's mute following on its open attempt, read after the
+  /// writer closed (a quit whose close timed out reads what had run). Converts queue host ticks
+  /// with the live timebase and silenced frames at the meeting rate.
+  private func adoptMuteSummary(for meetingID: UUID, health: MeetingTrackWriter.Health?) {
+    guard let stopping = stoppingMuteFollows.removeValue(forKey: meetingID) else { return }
+    let totals = stopping.gate.totals
+    let base = CallSpeakerTimeline.liveTimebase
+    func seconds(_ ticks: UInt64) -> Double {
+      Double(ticks) * Double(base.numer) / Double(base.denom) / 1_000_000_000
+    }
+    openAttempts[meetingID]?.muteFollow = MuteFollowSummary(
+      enabledAtStop: stopping.enabledAtStop, eligibleSeconds: seconds(totals.eligibleTicks),
+      unknownSeconds: seconds(totals.unknownTicks),
+      silencedSeconds: Double(health?.silencedFrames ?? 0) / MeetingAudioFormat.sampleRate,
+      reads: totals.readings)
   }
 
   private static func anyCloseTimedOut(_ report: MeetingRecorder.StopReport) -> Bool {
@@ -2352,6 +2377,7 @@ final class MeetingCoordinator {
     self.recorder = nil
     let report = recorder.stopForQuit(deadline: deadline)
     adoptCallSoundSummary(report, for: meetingID)
+    adoptMuteSummary(for: meetingID, health: recorder.microphoneHealth)
     finishSegmentSaves(meetingID, into: &record)
     apply(report, to: &record)
     if Self.anyCloseTimedOut(report) { closeOwned.insert(meetingID) }
@@ -2768,6 +2794,7 @@ final class MeetingCoordinator {
   /// timing trace; the live card stops following now.
   private func endMuteFollow(_ meetingID: UUID) {
     guard let follow = muteFollow, follow.meetingID == meetingID else { return }
+    stoppingMuteFollows[meetingID] = (follow.gate, deps.muteFollowingEnabled())
     if let recorder {
       recorder.applySilenceStep(follow.gate.step(.end))
       recorder.setMicrophoneMuted(false)
