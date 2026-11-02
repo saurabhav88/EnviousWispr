@@ -386,6 +386,9 @@ public struct CallDetectionPolicy: Sendable {
     case candidate
     // At settlement (the frozen call is only checked for invalidation).
     case superseded
+    /// The pending start was cleared before it finished (wake, call detection switched off, a
+    /// replaced read lifetime), so its frozen call was dropped.
+    case invalidated
     case notStarted = "not_started"
     case alreadyDecided = "already_decided"
     case meetingChanged = "meeting_changed"
@@ -704,10 +707,12 @@ public struct CallDetectionPolicy: Sendable {
     else {
       // A request refused at acceptance keeps that reason; a hand start that was replaced says
       // so. A detected call's own start never had a manual decision.
-      if request.route == .menu || request.route == .history,
-        manualLink?.generation != request.generation
-      {
-        manualLink = (request.generation, .superseded)
+      if request.route == .menu || request.route == .history {
+        if manualLink?.generation != request.generation {
+          manualLink = (request.generation, .superseded)
+        } else if manualLink?.reason == .candidate {
+          manualLink = (request.generation, .invalidated)
+        }
       }
       return []
     }

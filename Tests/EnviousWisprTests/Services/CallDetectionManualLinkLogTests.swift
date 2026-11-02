@@ -107,6 +107,20 @@ struct CallDetectionManualLinkLogTests {
     #expect(s.policy.manualLink?.reason == .notStarted)
   }
 
+  @Test("a frozen call dropped before the start finished says invalidated, never candidate")
+  func invalidatedPendingStart() {
+    var s = Story()
+    s.ongoing(Self.zoom(.active))
+    let request = s.acceptManual()
+    #expect(s.policy.manualLink?.reason == .candidate)
+    s.policy.invalidateAcceptedStart()
+    let id = UUID()
+    s.meeting = .recording(meetingID: id)
+    s.settleManual(request, recordingID: id)
+    #expect(s.policy.manualLink?.generation == 1)
+    #expect(s.policy.manualLink?.reason == .invalidated)
+  }
+
   @Test("a detected call's own start records no hand-start decision")
   func detectedRouteRecordsNothing() {
     var s = Story()
