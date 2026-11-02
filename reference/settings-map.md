@@ -14,7 +14,7 @@ The interface ships in English and German. The other 30 languages (ar, bg, cs, d
 
 311 nodes, 284 searchable, 9088 vocabulary blocks.
 
-Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182b90598c30`, uiCatalogSHA256 `6d85f281e5128ef1b70ff609162c4a21e621b00c1b1701579596f4517216ac26`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `25440e549c14def5af6e59e99f2ff2e889ab859f3ff76dc447e0d964598a1426`
+Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182b90598c30`, uiCatalogSHA256 `ac495e9bd5bab0bfc8a20bfdac14be53b79b87fdd074c42b7531dd4f7cbf874b`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `01f63261e01077041f88573647ff9eda5533a54ffe751848c58e53916f22762e`
 
 ## Structure
 
@@ -5452,8 +5452,8 @@ Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182
 | Arrival target | [`meetingSummaryEngine`](#node-meetingSummaryEngine) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | phrases: EG-1 for meeting summaries coming soon |
-| Search (de) | phrases: EG-1 für Meetingzusammenfassungen; bald verfügbare Engine für Meetingzusammenfassungen |
+| Search (en) | phrases: use EG-1 for meeting summaries |
+| Search (de) | phrases: EG-1 für Meetingzusammenfassungen auswählen |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingSummaryEngine-appleIntelligence"></a>

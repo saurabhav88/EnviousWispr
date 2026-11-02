@@ -914,7 +914,8 @@ private var providerRows: some View {
   // download for a 2.9 GB model, and nothing downstream would notice.
   case .egOne:
     LocalEngineStatusCard(
-      runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation
+      runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation,
+      isMeetingSummarySurface: surface == .meetingSummary
     ) {
       egOne.removeModel()
       // Removing the selected engine must move the user somewhere that

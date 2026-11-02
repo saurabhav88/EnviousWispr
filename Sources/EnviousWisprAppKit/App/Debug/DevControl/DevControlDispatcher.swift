@@ -56,6 +56,8 @@
       case meetingLive = "meeting.live"
       /// #4105: the live words choice a meeting would use now (read only).
       case meetingLiveWordsStatus = "meeting.liveWordsStatus"
+      /// #4319: EG-1's bundled server slots, content-free (read only).
+      case meetingEgOneSlots = "meeting.egOneSlots"
       case callSimulate = "call.simulate"
     }
 
@@ -274,6 +276,8 @@
         return await meetings.live(args)
       case .meetingLiveWordsStatus:
         return await meetings.liveWordsStatus(args)
+      case .meetingEgOneSlots:
+        return await meetings.egOneSlots(args)
       case .callSimulate:
         return calls.simulate(args)
       }

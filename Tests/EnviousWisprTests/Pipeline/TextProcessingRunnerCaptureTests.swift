@@ -679,32 +679,39 @@ struct TextProcessingRunnerCaptureTests {
 
   // MARK: - #4287 PR 3: the same local engine writing an EnviousMeet summary
 
-  @Test("a summary on the same local engine skips polish with a named notice, counted once, nobody paged")
+  @Test("a summary on the same local engine or the shared bundled server skips polish with a notice naming the summary engine, counted once, nobody paged")
   func summaryOnSameLocalEngineSkips() async throws {
-    for provider in [LLMProvider.appleIntelligence, .egOne, .ollama] {
+    // #4319: S1-mini dictation during an EG-1 summary shares the bundled server; the notice and
+    // the skip name EG-1, the engine writing the summary.
+    for (provider, summary) in [
+      (LLMProvider.appleIntelligence, LLMProvider.appleIntelligence),
+      (.egOne, .egOne),
+      (.ollama, .ollama),
+      (.s1Mini, .egOne),
+    ] {
       let spy = CaptureSpy()
       let records = RecordSpy()
       let skips = SkipSpy()
       let runner = makeRunner(spy, records, skips)
       // The polisher would throw if it were ever asked: a failure record proves a request ran.
       let step = makeStep(provider: provider, model: "m") { LLMError.requestFailed("asked") }
-      step.runningLocalSummary = { provider }
+      step.runningLocalSummary = { summary }
 
       let result = try await runner.run(
         rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step],
         takeID: Self.takeA)
 
-      #expect(result.polishNotice == SummaryEngineBusy(provider: provider).notice, "\(provider)")
+      #expect(result.polishNotice == SummaryEngineBusy(provider: summary).notice, "\(provider)")
       #expect(result.polishNotice?.leadIn == .skipped)
       #expect(
         result.polishError
-          == "AI polish skipped: \(provider.displayName) is writing your EnviousMeet summary.")
+          == "AI polish skipped: \(summary.displayName) is writing your EnviousMeet summary.")
       #expect(result.context.polishedText == nil, "\(provider): the deterministic text is delivered")
       #expect(result.context.llmProvider == nil, "\(provider): no provider stamp")
       #expect(spy.calls.isEmpty, "\(provider): no Sentry capture")
       #expect(records.calls.isEmpty, "\(provider): no request ran, nothing failed")
       #expect(skips.calls.count == 1)
-      #expect(skips.calls.first?.provider == provider.rawValue)
+      #expect(skips.calls.first?.provider == summary.rawValue)
       #expect(skips.calls.first?.reason == "summary_busy")
       #expect(skips.calls.first?.takeID == Self.takeA)
     }
@@ -740,7 +747,7 @@ struct TextProcessingRunnerCaptureTests {
     }
   }
 
-  @Test("the clash rule, case by case: the same local engine only")
+  @Test("the clash rule, case by case: the same local engine or the shared bundled server")
   func clashRule() {
     let cases: [(LLMProvider, Bool?, LLMProvider?, LLMProvider?)] = [
       // dictation, its Ollama remoteness, running local summary, expected busy engine
@@ -749,7 +756,10 @@ struct TextProcessingRunnerCaptureTests {
       (.ollama, false, .ollama, .ollama),
       (.ollama, true, .ollama, nil),
       (.ollama, nil, .ollama, nil),
-      (.s1Mini, nil, .egOne, nil),
+      // #4319: both bundled models share one server; an EG-1 summary holds it, so S1-mini
+      // dictation skips and the notice names EG-1.
+      (.s1Mini, nil, .egOne, .egOne),
+      (.egOne, nil, .s1Mini, nil),
       (.egOne, nil, .ollama, nil),
       (.appleIntelligence, nil, .egOne, nil),
       (.openAI, nil, .openAI, nil),

@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "el",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "χρήση του EG-1 για περιλήψεις συναντήσεων"
+    ]
+  }
+}

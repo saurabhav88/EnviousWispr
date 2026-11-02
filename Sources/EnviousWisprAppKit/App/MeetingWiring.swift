@@ -51,6 +51,11 @@ enum MeetingWiring {
     let log: @MainActor (String) -> Void
     /// The AI Polish keys, for meeting summaries (#3972 R44).
     let keychain: KeychainManager
+    /// #4319: the bundled polisher a file import holds (`FileImportCoordinator`
+    /// `.pinnedLocalPolishProvider`), or nil; an EG-1 summary waits while it is set.
+    var importPinnedLocalProvider: @MainActor () -> LLMProvider? = { nil }
+    /// #4319: lends the bundled EG-1 server to a summary attempt; nil leaves EG-1 refused.
+    var egOneSummaryEngine: EGOneSummaryEngine?
     /// The `meeting.ended` emitter (`TelemetryService.trackMeetingEnded` in production).
     var emitMeetingEnded: @MainActor (MeetingEndedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingEnded($0)
@@ -316,8 +321,15 @@ enum MeetingWiring {
         isEnabled: { settings.meetingWriteSummary },
         // #4287: the summary engine chosen on the Summaries tab, never dictation's.
         selection: { settings.meetingSummarySelection },
-        prepare: { provider, model in
-          await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)
+        prepare: { [egOne = inputs.egOneSummaryEngine] provider, model in
+          // #4319: native EG-1 is prepared by the engine that can lend it the bundled server;
+          // every other provider is unchanged.
+          if provider == .egOne, let egOne {
+            return egOne.prepare(
+              timeoutSeconds: MeetingSummaryOwner.Dependencies.defaultLocalCallTimeoutSeconds)
+          }
+          return await MeetingSummaryProviders.prepare(
+            provider: provider, model: model, keychain: keychain)
         },
         visibleTranscript: {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in
@@ -353,15 +365,24 @@ enum MeetingWiring {
             startedAt: record.createdAt, recordedDurationMs: record.recordedDurationMs,
             callApp: record.callApp, context: coordinator.documents.context(meetingID))
         },
-        isLocalTurn: { [weak coordinator] in
+        isLocalTurn: { [weak coordinator, importPin = inputs.importPinnedLocalProvider] provider in
+          // #4319: an EG-1 summary borrows the bundled server, so it also waits while a file
+          // import holds one (from the import's preparation to its cancellation drain); the
+          // import's pin is observable, so its release wakes the wait. Other engines are
+          // unchanged.
           isIdle() && lane.asrUnits == 0 && !(coordinator?.hasFinalPassWork ?? false)
+            && (provider != .egOne || importPin() == nil)
         },
         wakes: inputs.dictationWakes,
         emitFinished: inputs.emitSummaryFinished,
         log: inputs.log,
         assignTitle: { [weak coordinator] meetingID, title in
           await coordinator?.assignAITitle(meetingID: meetingID, title: title)
-        }),
+        },
+        artifactRevision: { [egOne = inputs.egOneSummaryEngine] provider in
+          provider == .egOne ? egOne?.artifactRevision : nil
+        },
+        beginTermination: { [egOne = inputs.egOneSummaryEngine] in egOne?.beginTermination() }),
       documents: coordinator.documents, lane: lane)
   }
 

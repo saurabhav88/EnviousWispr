@@ -1,0 +1,1 @@
+{"meetingSummaryEngine.egOne":{"language":"ja","title":"EG-1","words":[],"phrases":["会議の要約にEG-1を使う"]}}

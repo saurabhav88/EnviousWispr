@@ -16248,6 +16248,17 @@
         }
       }
     },
+    "Ready for meeting summaries" : {
+      "comment" : "EnviousMeet Summaries tab, local model card: the model is downloaded and will be loaded when a meeting summary is written.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit für Meeting-Zusammenfassungen"
+          }
+        }
+      }
+    },
     "Ready in a few seconds" : {
       "comment" : "Pill line under Installing Parakeet Ultra.",
       "localizations" : {

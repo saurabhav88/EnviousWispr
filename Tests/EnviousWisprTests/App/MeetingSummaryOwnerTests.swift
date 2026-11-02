@@ -75,6 +75,32 @@ struct MeetingSummaryOwnerTests {
 
     /// #4286: when true, the next call answers that its input was too long (once).
     var overflowNext = false
+    /// #4319: how often a prepared attempt's cleanup ran, and its borrow step's answers in
+    /// order (nil: the attempt borrows nothing, as for every provider but EG-1).
+    var finishes = 0
+    /// When set, a prepared attempt's cleanup waits for `releaseFinish()`.
+    var holdFinish = false
+    @ObservationIgnored private var heldFinish: CheckedContinuation<Void, Never>?
+    private(set) var finishWaiting = false
+    /// #4319: when set, replaces the fake preparation (an engine under test prepares instead).
+    @ObservationIgnored var prepareOverride:
+      (@MainActor () -> Result<MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable>)?
+
+    func finishAttempt() async {
+      finishes += 1
+      guard holdFinish else { return }
+      finishWaiting = true
+      await withCheckedContinuation { heldFinish = $0 }
+      finishWaiting = false
+    }
+
+    func releaseFinish() {
+      heldFinish?.resume()
+      heldFinish = nil
+    }
+    var borrowAnswers: [MeetingSummaryProviders.BorrowOutcome]?
+    var borrows = 0
+    var artifactRevision: String?
 
     func call(_ prompt: String) async throws -> String {
       calls.append(prompt)
@@ -148,11 +174,23 @@ struct MeetingSummaryOwnerTests {
           selection: { (world.provider, world.model) },
           prepare: { _, _ in
             await world.prepare()
+            if let prepareOverride = world.prepareOverride { return prepareOverride() }
             if let unavailable = world.unavailable { return .failure(unavailable) }
+            let borrow: (@Sendable () async throws -> MeetingSummaryProviders.BorrowOutcome)? =
+              world.borrowAnswers == nil
+              ? nil
+              : { @MainActor in
+                world.borrows += 1
+                guard let next = world.borrowAnswers?.first else { return .ready }
+                world.borrowAnswers?.removeFirst()
+                return next
+              }
             return .success(
               MeetingSummaryProviders.Prepared(
                 execution: world.execution, window: world.window,
-                complete: { @MainActor _, prompt in try await world.call(prompt) }))
+                complete: { @MainActor _, prompt in try await world.call(prompt) },
+                finish: { @MainActor in await world.finishAttempt() },
+                borrow: borrow))
           },
           visibleTranscript: { _ in
             world.visible && !world.noWords
@@ -162,11 +200,12 @@ struct MeetingSummaryOwnerTests {
           },
           hasNoWords: { _ in world.visible && world.noWords },
           promptFacts: { _ in world.facts },
-          isLocalTurn: { world.localTurnCheck?() ?? world.localTurn },
+          isLocalTurn: { _ in world.localTurnCheck?() ?? world.localTurn },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
-          assignTitle: { _, title in world.titles.append(title) }),
+          assignTitle: { _, title in world.titles.append(title) },
+          artifactRevision: { _ in world.artifactRevision }),
         documents: documents ?? self.documents, lane: lane)
     }
 
@@ -208,7 +247,10 @@ struct MeetingSummaryOwnerTests {
     rig.world.enabled = true
     rig.world.provider = .none
     #expect(rig.owner.decide() == .noProvider)
+    // #4319: native EG-1 summarizes now; S1-mini and EG-1 through Ollama do not.
     rig.world.provider = .egOne
+    #expect(rig.owner.decide() == .scheduled)
+    rig.world.provider = .s1Mini
     #expect(rig.owner.decide() == .unsupported)
     rig.world.provider = .ollama
     rig.world.model = "eg-1:q4"
@@ -607,6 +649,124 @@ struct MeetingSummaryOwnerTests {
     rig.world.releaseCall()
     await Self.eventually("both") { rig.world.finished.count == 2 }
     #expect(rig.lane.summaryWaiting == 0)
+  }
+
+  // MARK: - #4319: a prepared attempt's cleanup runs exactly once, and a borrow can wait
+
+  @Test("cleanup runs once after a written summary, local and hosted")
+  func finishOnceWhenWritten() async throws {
+    for execution in [MeetingSummary.Execution.local, .hosted] {
+      let rig = try Rig()
+      let id = try rig.readyMeeting()
+      rig.world.execution = execution
+      _ = await Self.schedule(rig, id)
+      await Self.eventually("finished") { rig.world.finished.count == 1 }
+      #expect(rig.world.finished == [Self.row(.written, execution == .local ? .local : .hosted)])
+      await Self.eventually("cleaned") { rig.world.finishes == 1 }
+      #expect(rig.world.finishes == 1, "\(execution)")
+    }
+  }
+
+  @Test("cleanup runs once after a failed call")
+  func finishOnceWhenFailed() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.duringCall = { rig.world.answer = "" }
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    await Self.eventually("cleaned") { rig.world.finishes == 1 }
+    #expect(rig.world.finishes == 1)
+  }
+
+  @Test("cleanup runs once when a waiting attempt is deleted, and when preparation is cancelled")
+  func finishOnceWhenCancelled() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    rig.documents.forget(id)
+    await rig.owner.cancelAndWait(id)
+    #expect(rig.world.finishes == 1, "a deleted waiting attempt is cleaned up once")
+
+    let other = try Rig()
+    let doomed = try other.readyMeeting()
+    other.world.holdPrepare = true
+    _ = await Self.schedule(other, doomed)
+    await Self.eventually("preparing") { other.world.preparing }
+    other.documents.forget(doomed)
+    try #require(other.owner.activity[doomed] == .waiting)
+    let deletion = Task { await other.owner.cancelAndWait(doomed) }
+    await Self.eventually("deletion applied cancellation") {
+      other.owner.activity[doomed] == nil
+    }
+    other.world.releasePrepare()
+    await deletion.value
+    #expect(other.world.finished == [Self.row(.cancelled, .hosted)])
+    #expect(other.world.finishes == 1, "a preparation that succeeded after the cancel is cleaned up")
+  }
+
+  @Test("a failed preparation has nothing to clean up")
+  func noFinishWithoutPreparation() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.unavailable = .notReady
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finishes == 0)
+  }
+
+  @Test("a borrow that must wait gives the lane back, then the summary is written once")
+  func borrowRetryThenWrite() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.borrowAnswers = [.retryLater, .ready]
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .local)])
+    #expect(rig.world.borrows == 2, "asked again after the wait")
+    #expect(rig.world.calls.count == 1, "no call ran without the engine")
+    await Self.eventually("cleaned") { rig.world.finishes == 1 }
+    await Self.eventually("lane free") { rig.lane.summaryActive == false }
+  }
+
+  @Test("the next local attempt waits for the previous attempt's cleanup before it borrows")
+  func nextAttemptWaitsForCleanup() async throws {
+    let rig = try Rig()
+    let first = try rig.readyMeeting()
+    let second = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.borrowAnswers = []
+    rig.world.holdFinish = true
+    _ = await Self.schedule(rig, first)
+    await Self.eventually("first cleanup parked") { rig.world.finishWaiting }
+    #expect(rig.world.borrows == 1)
+    _ = await Self.schedule(rig, second)
+    await Self.eventually("both local attempts queued") {
+      rig.lane.summaryWaiting == 2
+    }
+    #expect(rig.world.borrows == 1, "the second attempt does not borrow before the first is cleaned up")
+    #expect(rig.world.calls.count == 1)
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("both written") { rig.world.finished.count == 2 }
+    #expect(rig.world.borrows == 2)
+    #expect(rig.world.finishes == 2)
+  }
+
+  @Test("a new engine revision makes the saved summary out of date")
+  func artifactRevisionMakesItStale() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.artifactRevision = "eg1-1.2-c003"
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.owner.isOutOfDate(id) == false)
+    rig.world.artifactRevision = "eg1-1.3-c001"
+    #expect(rig.owner.isOutOfDate(id))
   }
 
   @Test("deleting a meeting ends its summary: one cancelled row, nothing written")
@@ -1403,6 +1563,8 @@ struct MeetingSummaryOwnerTests {
     rig.world.provider = .none
     #expect(rig.owner.configurationProblem() == .noProvider)
     rig.world.provider = .egOne
+    #expect(rig.owner.configurationProblem() == nil)
+    rig.world.provider = .s1Mini
     #expect(rig.owner.configurationProblem() == .notForSummaries)
     rig.world.provider = .ollama
     rig.world.model = "eg-1:q4"
@@ -1561,7 +1723,7 @@ struct MeetingSummaryOwnerTests {
             .init(text: world.transcript, speakerNames: world.speakerNames)
           },
           hasNoWords: { _ in false },
-          isLocalTurn: { true },
+          isLocalTurn: { _ in true },
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },

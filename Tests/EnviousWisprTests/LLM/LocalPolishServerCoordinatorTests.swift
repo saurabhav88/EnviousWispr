@@ -173,7 +173,7 @@ struct LocalPolishServerCoordinatorTests {
     let coordinator = LocalPolishServerCoordinator()
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
     let stopIntent = coordinator.claimIntent()
-    let acquiring = Task { await coordinator.acquireLease(for: .egOne) }
+    let acquiring = Task { await coordinator.acquireLease(for: .egOne, purpose: .inference) }
     let stopping = Task { await coordinator.transition(to: .idle(.egOne), intent: stopIntent) }
     let admission = await acquiring.value
     await stopping.value
@@ -196,7 +196,7 @@ struct LocalPolishServerCoordinatorTests {
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
     let restateIntent = coordinator.claimIntent()
     let restating = Task { await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: restateIntent) }
-    let acquiring = Task { await coordinator.acquireLease(for: .egOne) }
+    let acquiring = Task { await coordinator.acquireLease(for: .egOne, purpose: .inference) }
     let admission = await acquiring.value
     await restating.value
     guard case .granted(let lease) = admission else {
@@ -211,7 +211,7 @@ struct LocalPolishServerCoordinatorTests {
   func releaseRetriesDeferredSwitch() async {
     let coordinator = LocalPolishServerCoordinator()
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
-    let admission = await coordinator.acquireLease(for: .egOne)
+    let admission = await coordinator.acquireLease(for: .egOne, purpose: .inference)
     guard case .granted(let lease) = admission else {
       Issue.record("resident server refused its lease")
       return
@@ -226,7 +226,7 @@ struct LocalPolishServerCoordinatorTests {
   func removalWaitsForLease() async {
     let coordinator = LocalPolishServerCoordinator()
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
-    let admission = await coordinator.acquireLease(for: .egOne)
+    let admission = await coordinator.acquireLease(for: .egOne, purpose: .inference)
     guard case .granted(let lease) = admission else {
       Issue.record("resident server refused its lease")
       return
@@ -247,7 +247,7 @@ struct LocalPolishServerCoordinatorTests {
   func reselectedRemovalKeepsServer() async {
     let coordinator = LocalPolishServerCoordinator()
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
-    let admission = await coordinator.acquireLease(for: .egOne)
+    let admission = await coordinator.acquireLease(for: .egOne, purpose: .inference)
     guard case .granted(let lease) = admission else {
       Issue.record("resident server refused its lease")
       return
@@ -261,7 +261,7 @@ struct LocalPolishServerCoordinatorTests {
     #expect(await removing.value == false)
     #expect(await coordinator.residentModelForTesting == .egOne)
     // Nothing was claimed, so the next take is admitted.
-    guard case .granted(let next) = await coordinator.acquireLease(for: .egOne) else {
+    guard case .granted(let next) = await coordinator.acquireLease(for: .egOne, purpose: .inference) else {
       Issue.record("an abandoned removal left the server changing")
       return
     }

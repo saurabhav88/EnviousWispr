@@ -81,6 +81,7 @@ final class PipelineSettingsSync {
 
   /// #2648 — see the initializer parameter of the same name.
   private let importPinnedLocalProvider: @MainActor () -> LLMProvider?
+  private let summaryPinnedLocalProvider: @MainActor () -> LLMProvider?
 
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
@@ -115,6 +116,10 @@ final class PipelineSettingsSync {
     /// remaining parts came back raw. Found by cloud review. Defaults to nil so
     /// every existing construction is unchanged.
     importPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
+    /// #4319 — the bundled model an EnviousMeet summary attempt holds
+    /// (`LocalPolishRuntimeSet.summaryHeldProvider`), or nil. Like an import, it has no
+    /// session config, and a provider switch must not tear its server down mid-summary.
+    summaryPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
     /// #2648 — the Ollama model a RUNNING file import froze, or nil.
     ///
     /// `isOllamaModelPinnedInFlight` reads the two DICTATION drivers' session
@@ -143,6 +148,7 @@ final class PipelineSettingsSync {
     self.loadOutputClassifier = loadOutputClassifier
     self.importPinnedPolishProvider = importPinnedPolishProvider
     self.importPinnedLocalProvider = importPinnedLocalProvider
+    self.summaryPinnedLocalProvider = summaryPinnedLocalProvider
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.summaryPinnedOllamaModel = summaryPinnedOllamaModel
     self.kernelDriver = kernelDriver
@@ -619,6 +625,8 @@ final class PipelineSettingsSync {
     // #2648: the file import is a third holder of a bundled local server, and it
     // has no session config for the loop below to read.
     if let imported = importPinnedLocalProvider() { return imported }
+    // #4319: an EnviousMeet summary is a fourth holder, with no session config either.
+    if let summarized = summaryPinnedLocalProvider() { return summarized }
     for cfg in [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig] {
       // #2651: the optional is unwrapped BEFORE the switch, so `.none` means
       // `LLMProvider.none` and nothing else. Matching on `cfg?.llmProvider`

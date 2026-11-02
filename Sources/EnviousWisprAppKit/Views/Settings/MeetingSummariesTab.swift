@@ -10,8 +10,8 @@ enum MeetingSummaryEngineChoices {
     $0.provider != .s1Mini
   }
 
-  /// Whether a provider card can be picked now. EG-1 waits for its summary support; the single
-  /// gate is `MeetingSummary.capability`, so the card opens when that work lands.
+  /// Whether a provider card can be picked now. The single gate is `MeetingSummary.capability`
+  /// (native EG-1 summarizes since #4319).
   static func isSelectable(_ provider: LLMProvider) -> Bool {
     switch provider {
     case .egOne:
@@ -70,8 +70,8 @@ struct MeetingSummariesTab: View {
         } choices: {
           choiceGrid
         }
-        // An engine that cannot be picked yet (EG-1 while Coming soon) shows no setup: its
-        // controls are dictation's (Remove would change dictation's engine).
+        // An engine that cannot be picked shows no setup. EG-1's setup here offers its
+        // download but no Remove, which would change dictation's engine too (#4319).
         if provider != .none, MeetingSummaryEngineChoices.isSelectable(provider) {
           ProviderSetupSection(model: setupModel, surface: .meetingSummary)
         }

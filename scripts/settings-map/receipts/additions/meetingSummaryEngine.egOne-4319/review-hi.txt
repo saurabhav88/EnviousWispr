@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "hi",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "मीटिंग का सारांश बनाने के लिए EG-1 चुनें"
+    ]
+  }
+}

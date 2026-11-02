@@ -50,7 +50,9 @@ final class MeetingSummaryOwner {
     var promptFacts: @MainActor (UUID) -> MeetingPromptFacts? = { _ in nil }
     /// True when a local model call may start: dictation idle, no meeting engine unit running,
     /// no final pass due.
-    var isLocalTurn: @MainActor () -> Bool
+    /// #4319: per provider, because an EG-1 summary also waits while a file import holds a
+    /// bundled server (it would otherwise borrow the server the import is using).
+    var isLocalTurn: @MainActor (LLMProvider) -> Bool
     /// Pokes for inputs of `isLocalTurn` that Observation cannot see.
     var wakes: MeetingWakeSignal?
     var emitFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void
@@ -72,8 +74,16 @@ final class MeetingSummaryOwner {
       }
     /// Time limits for one model call. Policies until R51's measurements: a local model writes
     /// 1,500 tokens in about a minute on an M-series Mac, a hosted reasoning model in under two.
-    var localCallTimeoutSeconds: Double = 300
+    var localCallTimeoutSeconds: Double = Self.defaultLocalCallTimeoutSeconds
     var hostedCallTimeoutSeconds: Double = 180
+    /// #4319: the one local call limit, read by these dependencies and by EG-1's preparation
+    /// (its request waits this plus ten seconds, so this limit fires first).
+    static let defaultLocalCallTimeoutSeconds: Double = 300
+    /// #4319: the weights' revision for a provider whose model name is fixed while its weights
+    /// change (EG-1), so a new release makes an older summary out of date; nil for the rest.
+    var artifactRevision: @MainActor (LLMProvider) -> String? = { _ in nil }
+    /// #4319: the app is quitting; an engine lent to a summary must not be loaded or restored.
+    var beginTermination: @MainActor () -> Void = {}
   }
 
   struct VisibleTranscript: Equatable {
@@ -93,7 +103,7 @@ final class MeetingSummaryOwner {
 
   enum Problem: Equatable {
     case noProvider
-    /// EG-1 or S1-mini, or a model whose window is too small.
+    /// S1-mini, EG-1 through Ollama, or a model whose window is too small.
     case notForSummaries
     /// Ollama is not running or lacks the model, or Apple Intelligence is not available.
     case notReady
@@ -169,6 +179,9 @@ final class MeetingSummaryOwner {
   /// physically ends. A dictation polishing with the same local engine skips polish meanwhile
   /// (`SummaryEngineClash`). Hosted calls are never recorded here.
   var runningLocalSummaryProvider: LLMProvider? { runningLocalCall?.provider }
+
+  /// Test seam (#4319): the wired local-turn predicate for `provider`.
+  func isLocalTurnForTesting(_ provider: LLMProvider) -> Bool { deps.isLocalTurn(provider) }
 
   /// An attempt is calling a model or saving: a relaunch must wait. One waiting for its turn
   /// does not hold it (it is owed on disk and resumes).
@@ -247,6 +260,7 @@ final class MeetingSummaryOwner {
   /// its one row.
   func prepareForTermination() {
     terminating = true
+    deps.beginTermination()
     for running in attempts.values { running.task.cancel() }
   }
 
@@ -349,21 +363,32 @@ final class MeetingSummaryOwner {
     }
     let prepared: MeetingSummaryProviders.Prepared
     let preparation = await deps.prepare(selection.provider, selection.model)
-    // A quit or deletion during preparation is a cancel, whatever the provider answered.
-    if Task.isCancelled { return Ending(end: .cancelled) }
+    // #4319: a successful preparation is unpacked before anything else, so its `finish` runs
+    // exactly once on every path from here, a cancel included.
     switch preparation {
-    case .failure(.noProvider): return Ending(end: .problem(.noProvider))
-    case .failure(.notForSummaries): return Ending(end: .problem(.notForSummaries))
-    case .failure(.notReady): return Ending(end: .problem(.notReady))
-    case .failure(.ollamaTooOld): return Ending(end: .problem(.ollamaTooOld))
     case .success(let ready): prepared = ready
+    case .failure(let unavailable):
+      // A quit or deletion during preparation is a cancel, whatever the provider answered.
+      if Task.isCancelled { return Ending(end: .cancelled) }
+      switch unavailable {
+      case .noProvider: return Ending(end: .problem(.noProvider))
+      case .notForSummaries: return Ending(end: .problem(.notForSummaries))
+      case .notReady: return Ending(end: .problem(.notReady))
+      case .ollamaTooOld: return Ending(end: .problem(.ollamaTooOld))
+      }
+    }
+    if Task.isCancelled {
+      await prepared.finish()
+      return Ending(end: .cancelled)
     }
     kind = prepared.execution == .local ? .local : .hosted
 
     guard prepared.execution == .local else {
-      return await write(
+      let ending = await write(
         meetingID, attempt: attempt, selection: selection, prepared: prepared,
         approvedUserEdit: approvedUserEdit)
+      await prepared.finish()
+      return ending
     }
     lane.summaryQueued()
     defer { lane.summaryFinished() }
@@ -372,14 +397,22 @@ final class MeetingSummaryOwner {
     // whole-diff review r2 F1), but the chain link it leaves still waits for the previous
     // attempt too, so the next attempt is never ordered behind anything but the real owner.
     let previous = localChain
+    // #4319: the attempt's cleanup (`prepared.finish`, which gives a borrowed engine back) runs
+    // inside the body, so the chain link, and with it the next local attempt, waits for it.
     let body = Task { @MainActor [weak self] () -> Ending in
       if let previous, !(await Self.waitUnlessCancelled(previous)) {
+        await prepared.finish()
         return Ending(end: .cancelled)
       }
-      guard let self else { return Ending(end: .cancelled) }
-      return await self.write(
+      guard let self else {
+        await prepared.finish()
+        return Ending(end: .cancelled)
+      }
+      let ending = await self.write(
         meetingID, attempt: attempt, selection: selection, prepared: prepared,
         approvedUserEdit: approvedUserEdit)
+      await prepared.finish()
+      return ending
     }
     localChain = Task {
       await previous?.value
@@ -452,8 +485,9 @@ final class MeetingSummaryOwner {
     let admit: MeetingSummary.Admit
     let complete: MeetingSummary.Complete
     if local {
-      admit = { @MainActor [weak self] in
-        try await self?.admitLocalCall(meetingID, attempt: attempt, selection: selection)
+      admit = { @MainActor [weak self, borrow = prepared.borrow] in
+        try await self?.admitLocalCall(
+          meetingID, attempt: attempt, selection: selection, borrow: borrow)
       }
     } else {
       admit = { @MainActor [weak self] in
@@ -572,20 +606,30 @@ final class MeetingSummaryOwner {
 
   /// Waits until a local call may start, then takes the lane in the same main-actor step.
   private func admitLocalCall(
-    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String)
+    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
+    borrow: (@Sendable () async throws -> MeetingSummaryProviders.BorrowOutcome)? = nil
   ) async throws {
     activity[meetingID] = .waiting
     while true {
-      await MeetingWorkAdmission.waitUntil(deps.isLocalTurn, wakes: deps.wakes)
+      let provider = selection.provider
+      await MeetingWorkAdmission.waitUntil({ [deps] in deps.isLocalTurn(provider) }, wakes: deps.wakes)
       try Task.checkCancellation()
-      if deps.isLocalTurn(), !lane.summaryCallRunning {
+      if deps.isLocalTurn(provider), !lane.summaryCallRunning {
         lane.beginSummaryCall()
         // #4287: the attempt's own captured selection; only local calls are admitted here.
         runningLocalCall = RunningLocalCall(
           attempt: attempt, provider: selection.provider, model: selection.model)
         busy.insert(attempt)
         activity[meetingID] = .writing
-        return
+        // #4319: EG-1 takes the shared server here. A file import holding it wins: the lane
+        // and the busy mark go back and the attempt waits for its next turn (the import's pin
+        // keeps the turn closed until the import lets go, so this does not spin).
+        guard let borrow, try await borrow() == .retryLater else { return }
+        lane.endSummaryCall()
+        runningLocalCall = nil
+        busy.remove(attempt)
+        activity[meetingID] = .waiting
+        continue
       }
     }
   }
@@ -612,7 +656,8 @@ final class MeetingSummaryOwner {
         promptVersion: MeetingSummary.promptVersion,
         providerID: selection.provider.rawValue,
         configurationSHA256: MeetingSummary.configurationFingerprint(
-          provider: selection.provider, model: selection.model),
+          provider: selection.provider, model: selection.model,
+          artifactRevision: deps.artifactRevision(selection.provider)),
         transcriptAttemptID: transcript.transcriptAttemptID, contextSHA256: factsHash))
   }
 

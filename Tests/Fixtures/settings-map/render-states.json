@@ -1024,7 +1024,24 @@
   ]
  },
  "meetings.summaries.egOne": {
-  "exempt": {},
+  "exempt": {
+   "meetingSummarySetup": 3
+  },
+  "mapped": [
+   "meetingSummaryEngine",
+   "meetingSummaryEngine.change",
+   "meetingWriteSummary",
+   "meetings.tab.callApps",
+   "meetings.tab.general",
+   "meetings.tab.models",
+   "meetings.tab.permissions",
+   "meetings.tab.summaries"
+  ]
+ },
+ "meetings.summaries.egOne.installed": {
+  "exempt": {
+   "meetingSummarySetup": 2
+  },
   "mapped": [
    "meetingSummaryEngine",
    "meetingSummaryEngine.change",

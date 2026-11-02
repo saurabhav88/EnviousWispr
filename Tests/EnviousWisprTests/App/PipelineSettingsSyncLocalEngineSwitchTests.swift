@@ -19,7 +19,9 @@ import EnviousWisprPipeline
 struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   private func makeSync(
-    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    importPin: @escaping @MainActor () -> LLMProvider? = { nil },
+    summaryPin: @escaping @MainActor () -> LLMProvider? = { nil }
   ) -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator,
     KernelDictationDriver, KernelDictationDriver) {
     let audio = RouterTestAudioCapture()
@@ -50,7 +52,9 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
       egOneRuntime: egOne,
       s1MiniRuntime: s1Mini,
       checkerSelectionProvider: selection,
-      ollamaRemotenessLookup: { _ in nil }
+      ollamaRemotenessLookup: { _ in nil },
+      importPinnedLocalProvider: importPin,
+      summaryPinnedLocalProvider: summaryPin
     )
     return (sync, settings, coordinator, pipeline, whisperDriver)
   }
@@ -63,6 +67,33 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     body()
     let after = coordinator.claimIntent()
     return after - before - 1
+  }
+
+  /// #4319: an EnviousMeet summary holding EG-1 pins it like an import: a switch away claims
+  /// no stop until the summary ends, and an import's pin is read first.
+  @Test("a summary holding EG-1 pins it: a switch away stops nothing; an import pin wins")
+  func summaryPinDefersTheStop() {
+    var summary: LLMProvider? = .egOne
+    var imported: LLMProvider?
+    let (sync, settings, coordinator, _, _) = makeSync(
+      importPin: { imported }, summaryPin: { summary })
+    settings.llmProvider = .egOne
+    sync.applyInitialSettings(settings)
+    #expect(sync.pinnedLocalProvider() == .egOne)
+    let held = stampsClaimed(
+      by: {
+        settings.llmProvider = .claude
+        sync.handleSettingChanged(.llmProvider, settings: settings)
+      }, on: coordinator)
+    #expect(held == 0, "nothing is stopped under a summary")
+    imported = .s1Mini
+    #expect(sync.pinnedLocalProvider() == .s1Mini, "the import's pin is read first")
+    imported = nil
+    summary = nil
+    let released = stampsClaimed(
+      by: { sync.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true) },
+      on: coordinator)
+    #expect(released == 2, "after the summary both engines are stopped, one stamp each")
   }
 
   @Test("switching S1-mini to EG-1 stops S1-mini exactly once")

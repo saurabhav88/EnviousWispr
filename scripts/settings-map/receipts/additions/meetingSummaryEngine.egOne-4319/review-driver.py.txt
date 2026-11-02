@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""#4319: one fresh isolated Codex session per language reviews the redrafted search block for
+meetingSummaryEngine.egOne, now that EG-1 writes meeting summaries (it was Coming soon). Adapted
+from the #4287 driver beside it (same isolation and launch).
+Usage: review-driver.py <worktree> <outdir> meetingSummaryEngine.egOne=<draft.json>"""
+import concurrent.futures
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+out.mkdir(parents=True, exist_ok=True)
+drafts = {}
+for arg in sys.argv[3:]:
+    pid, path = arg.split("=", 1)
+    drafts[pid] = {b["language"]: b for b in json.load(open(path, encoding="utf-8"))["blocks"]}
+
+def choice(name, de_name, extra):
+    return {
+        "title_en": name, "title_de": de_name,
+        "description_en": "(none) A choice among the Summary engine cards.",
+        "truth": (
+            f"The {name} card on the Summaries tab of the EnviousMeet (meeting recorder) page: "
+            f"meeting summaries written by {name}. {extra} It is NOT the AI Polish (dictation "
+            "cleanup) provider choice of the same name, which stays separate."),
+    }
+
+
+PLACES = {
+    "meetingSummaryEngine.egOne": choice(
+        "EG-1", "EG-1",
+        "EG-1 is the app's own on-device model; picking it here makes EG-1 write meeting "
+        "summaries on the Mac. It is loaded only while a summary is written. It is available now "
+        "(no longer 'coming soon'), so the block must not say it is coming, unavailable or "
+        "cannot be picked."),
+}
+SIBLINGS = ["aiPolishProvider", "aiPolishProvider.appleIntelligence", "aiPolishProvider.egOne",
+            "aiPolishProvider.ollama", "aiPolishProvider.openAI", "aiPolishProvider.gemini",
+            "aiPolishProvider.claude", "enableAIPolish", "meetingTranscriptEngine",
+            "meetingSummaryEngine", "meetingSummaryEngine.appleIntelligence",
+            "meetingSummaryEngine.ollama", "meetingSummaryEngine.openAI",
+            "meetingSummaryEngine.gemini", "meetingSummaryEngine.claude",
+            "meetings.tab.models", "meetings.tab.general", "previewEngine.change",
+            "previewEngine.keepCurrent"]
+
+vocab = json.load(
+    open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+missing = [s for s in SIBLINGS if s not in by_id]
+assert not missing, f"unknown sibling ids: {missing}"
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The places (English titles and descriptions are the source of truth):
+{places}
+
+For each place's draft block in "{lang}":
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: the block must not fit an existing sibling place equally well. It must clearly name EG-1 AND meeting summaries, so it never competes with the AI Polish EG-1 choice or the other summary engines. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For a title: how an app in that language would label this place. Keep product names (EnviousMeet, EnviousWispr, Apple Intelligence, EG-1, Ollama, OpenAI, Google Gemini, Claude, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft blocks (place id -> block):
+{drafts}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, mapping the place id to its corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). Return a block unchanged if it is already right. After the JSON add nothing.
+"""
+
+
+def describe() -> str:
+    lines = []
+    for pid, p in PLACES.items():
+        lines.append(
+            f"- {pid}: English title {p['title_en']}; German title {p['title_de']}; English "
+            f"description: {p['description_en']}; what it really is: {p['truth']}")
+    return "\n".join(lines)
+
+
+def run(lang: str) -> tuple[str, int]:
+    prompt = BRIEF.format(
+        lang=lang, places=describe(),
+        drafts=json.dumps({pid: d[lang] for pid, d in drafts.items()}, ensure_ascii=False, indent=1),
+        siblings=json.dumps(
+            {i: by_id[i][lang] for i in SIBLINGS if lang in by_id[i]}, ensure_ascii=False, indent=1),
+    )
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false",
+         "exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral",
+         "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(
+            f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+
+langs = sorted(next(iter(drafts.values())).keys())
+assert all(sorted(d.keys()) == langs for d in drafts.values()), "drafts cover different languages"
+# A rerun of languages whose session stalled: EW_LANGS="de fr ...", fewer at a time.
+if os.environ.get("EW_LANGS"):
+    langs = [l for l in langs if l in os.environ["EW_LANGS"].split()]
+with concurrent.futures.ThreadPoolExecutor(
+        max_workers=int(os.environ.get("EW_WORKERS", "6"))) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)
