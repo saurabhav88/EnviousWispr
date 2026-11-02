@@ -1484,3 +1484,249 @@ struct WhisperGGUFRegistrationTests {
     #expect(String(localized: DictationSettingsCopy.Engine.modelSetupHelp).contains("\(megabytes) MB"))
   }
 }
+
+// MARK: - #4325: one door for "the user wants Universal"
+
+/// #4325: when these fail, picking Universal does nothing, downloads twice or during a meeting,
+/// keeps downloading after both pages went back to Apple, or a Remove during a meeting stops the
+/// meeting's live words. Fake replacement commands only: nothing is fetched or deleted.
+extension ModelDeliveryHomeTests {
+  /// Fired by the subject; waited for with a deadline that fails loudly instead of hanging.
+  @MainActor
+  final class SubjectSignal {
+    private(set) var fired = false
+    private var waiting: CheckedContinuation<Void, Never>?
+
+    func fire() {
+      fired = true
+      waiting?.resume()
+      waiting = nil
+    }
+
+    func wait(_ what: String, sourceLocation: SourceLocation = #_sourceLocation) async {
+      if fired { return }
+      let deadline = Task { @MainActor [weak self] in
+        // deadline-fallback: fail loudly and release a missing-signal wait.
+        try? await Task.sleep(for: .seconds(10))
+        guard let self, !self.fired, let waiting = self.waiting else { return }
+        Issue.record("\(what) never happened", sourceLocation: sourceLocation)
+        self.waiting = nil
+        waiting.resume()
+      }
+      await withCheckedContinuation { waiting = $0 }
+      deadline.cancel()
+    }
+  }
+
+  @MainActor
+  final class PreviewCommandRecorder {
+    var downloads = 0
+    var declines = 0
+    var declineSucceeds = true
+    /// When set, `download` parks until `release()`, so a test can act while it is scheduled.
+    var parks = false
+    let parked = SubjectSignal()
+    private var parkedDownload: CheckedContinuation<Void, Never>?
+
+    func release() {
+      parkedDownload?.resume()
+      parkedDownload = nil
+    }
+
+    func bind(_ home: ModelDeliveryHome) {
+      home.previewReplacement = .init(
+        download: { [self] in
+          downloads += 1
+          if parks {
+            await withCheckedContinuation {
+              parkedDownload = $0
+              parked.fire()
+            }
+          }
+          return true
+        },
+        decline: { [self] in
+          declines += 1
+          return declineSucceeds
+        })
+    }
+  }
+
+  func universalHome(deliveryEnabled: Bool = true) throws -> ModelDeliveryHome {
+    let suite = try #require(TestDefaults.suite("ew-4325-request-\(UUID().uuidString)"))
+    suite.set(deliveryEnabled, forKey: "modelDelivery.whisper.enabled")
+    return ModelDeliveryHome(
+      engineMutationScope: .live(tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
+      manifestBundle: try Self.manifestBundle(),
+      appSupportOverride: try Self.tempAppSupport(),
+      deliveryFlagDefaults: suite)
+  }
+
+  @Test("a request during a meeting waits, and starts exactly once when the meeting ends")
+  func requestQueuesUntilTheMeetingEnds() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+
+    #expect(home.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    #expect(home.previewDownloadQueued == true)
+    #expect(home.previewDownloadIsPending == true)
+    #expect(home.previewDownloadTaskForTests == nil, "nothing is scheduled during the meeting")
+
+    home.meetingBecameIdle()
+    let task = try #require(home.previewDownloadTaskForTests, "the meeting ended: it starts")
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 1)
+    #expect(home.previewDownloadQueued == false)
+
+    home.meetingBecameIdle()
+    #expect(home.previewDownloadTaskForTests == task, "a second idle signal starts nothing")
+    #expect(commands.downloads == 1)
+  }
+
+  @Test("queued, then a click after the meeting, then the idle signal: one download")
+  func queuedThenClickThenIdleDownloadsOnce() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+
+    #expect(home.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    #expect(home.requestPreviewDownload(meetingActive: false) == .started)
+    let task = try #require(home.previewDownloadTaskForTests)
+    home.meetingBecameIdle()
+    #expect(home.previewDownloadTaskForTests == task, "the idle signal found nothing to start")
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 1)
+  }
+
+  @Test("a second request while one is scheduled reuses it")
+  func requestDeduplicatesAScheduledDownload() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.parks = true
+    commands.bind(home)
+
+    #expect(home.requestPreviewDownload(meetingActive: false) == .started)
+    let first = try #require(home.previewDownloadTaskForTests)
+    #expect(home.requestPreviewDownload(meetingActive: false) == .started)
+    #expect(home.previewDownloadTaskForTests == first, "no second download was scheduled")
+
+    await commands.parked.wait("the scheduled download")
+    commands.release()
+    try await Self.awaitBounded(first)
+    #expect(commands.downloads == 1)
+    #expect(home.previewDownloadIsPending == false, "the finished download is no longer pending")
+  }
+
+  @Test("an installed model needs no download; a refused door says so")
+  func requestReportsAvailableAndRefused() async throws {
+    let installed = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(installed)
+    let probed = SubjectSignal()
+    installed.onPreviewLaunchProbeFinished = { probed.fire() }
+    await probed.wait("the preview launch probe")
+    try #require(installed.previewLaunchProbeDidFinishForTests, "the launch probe must finish first")
+    installed.applyPreviewStateForTests(.admitted)
+    #expect(installed.requestPreviewDownload(meetingActive: false) == .alreadyAvailable)
+    #expect(installed.requestPreviewDownload(meetingActive: true) == .alreadyAvailable)
+    #expect(installed.previewDownloadTaskForTests == nil)
+    #expect(installed.previewDownloadQueued == false)
+    #expect(commands.downloads == 0)
+
+    let switchedOff = try universalHome(deliveryEnabled: false)
+    PreviewCommandRecorder().bind(switchedOff)
+    #expect(switchedOff.requestPreviewDownload(meetingActive: false) == .refused)
+    #expect(switchedOff.previewDownloadIsPending == false)
+  }
+
+  @Test("Universal then Apple before the download runs: no fetch, decline recorded")
+  func switchingBackBeforeDispatchFetchesNothing() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+
+    #expect(home.requestPreviewDownload(meetingActive: false) == .started)
+    let task = try #require(home.previewDownloadTaskForTests)
+    #expect(home.previewDownloadIsPending == true, "reserved before the task runs")
+    home.previewChoiceChanged(dictationWantsUniversal: false, meetingWantsUniversal: false)
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 0, "the scheduled download dropped its work")
+    #expect(commands.declines == 1, "the cancel recorded the decline, so launch does not refetch")
+    #expect(home.previewDownloadIsPending == false)
+  }
+
+  @Test("a page going back to Apple keeps the download when the other page still wants Universal")
+  func otherPageStillWantingUniversalKeepsTheDownload() throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+
+    #expect(home.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    home.previewChoiceChanged(dictationWantsUniversal: false, meetingWantsUniversal: true)
+    #expect(home.previewDownloadQueued == true, "EnviousMeet still wants Universal")
+    #expect(commands.declines == 0)
+    home.previewChoiceChanged(dictationWantsUniversal: false, meetingWantsUniversal: false)
+    #expect(home.previewDownloadQueued == false, "neither page wants it now")
+    #expect(commands.declines == 1)
+    home.meetingBecameIdle()
+    #expect(home.previewDownloadTaskForTests == nil, "a cancelled queue starts nothing later")
+  }
+
+  @Test("a Cancel whose decline cannot be written leaves queued and scheduled requests as they were")
+  func refusedCancelPreservesTheRequest() async throws {
+    let queued = try universalHome()
+    let queuedCommands = PreviewCommandRecorder()
+    queuedCommands.declineSucceeds = false
+    queuedCommands.bind(queued)
+    #expect(queued.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    queued.cancelPreviewDownload()
+    #expect(queuedCommands.declines == 1)
+    #expect(queued.previewDownloadQueued == true, "the refused Cancel changed nothing")
+
+    let scheduled = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.parks = true
+    commands.declineSucceeds = false
+    commands.bind(scheduled)
+    #expect(scheduled.requestPreviewDownload(meetingActive: false) == .started)
+    let task = try #require(scheduled.previewDownloadTaskForTests)
+    await commands.parked.wait("the scheduled download")
+    scheduled.cancelPreviewDownload()
+    #expect(scheduled.previewDownloadIsPending == true, "the scheduled download is still owned")
+    #expect(
+      scheduled.requestPreviewDownload(meetingActive: false) == .started,
+      "and still deduplicates a new request")
+    commands.release()
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 1)
+  }
+
+  @Test("Remove during a meeting is refused before anything is recorded or drained")
+  func removalIsRefusedDuringAMeeting() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+    var meetingActive = true
+    home.isMeetingActive = { meetingActive }
+    var drained = 0
+    home.drainPreviewHoldersBeforeRemoval = { drained += 1 }
+    home.deletePreviewModelOverrideForTests = {}
+    let finished = SubjectSignal()
+    home.previewRemovalDidFinish = { finished.fire() }
+
+    #expect(home.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    #expect(home.removePreviewModel() == .refusedMeetingActive)
+    #expect(commands.declines == 0, "no decline record during the meeting")
+    #expect(home.previewDownloadQueued == true, "the queued request is untouched")
+    #expect(home.removalStepsForTests.isEmpty, "no removal step ran")
+
+    meetingActive = false
+    #expect(home.removePreviewModel() == .started, "control: after the meeting it proceeds")
+    #expect(commands.declines == 1)
+    #expect(home.previewDownloadQueued == false, "an accepted Remove clears the queue")
+    await finished.wait("the removal")
+    #expect(drained == 1)
+    #expect(home.removalStepsForTests == ["drain", "delete", "finish"])
+  }
+}
