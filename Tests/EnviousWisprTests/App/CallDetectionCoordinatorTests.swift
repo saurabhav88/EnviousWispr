@@ -7,6 +7,7 @@
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprAudio
   @testable import EnviousWisprCore
+  @testable import EnviousWisprLivePreview
   @testable import EnviousWisprServices
 
   /// #4012: what the call panel shows and what its answers do. When these fail, Yes records
@@ -53,6 +54,8 @@
       var followedAttempts: [UUID] = []
       var openedMeetings: [UUID] = []
       var callSound = false
+      /// #4249: the recording's live words, as `MeetingCoordinator.liveTranscript` reports them.
+      var transcript: MeetingLiveWords.Transcript?
       /// The panel's own Start goes through the real manual flow (route .menu) when true.
       var userStartsViaFlow = false
       /// The real flow stops at the call-sound explainer while true.
@@ -170,7 +173,9 @@
             callSoundCaptured: { [weak self] in
               guard let self, self.recordingID == $0 else { return false }
               return self.callSound
-            }))
+            },
+            liveTranscript: { [weak self] in self?.transcript },
+            wallNow: { [weak self] in self?.clock ?? Date() }))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -1935,6 +1940,122 @@
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
     }
 
+    /// #4249: a recording linked to Zoom whose app used the microphone after linking, old enough
+    /// for a release to count.
+    func armedRecording(_ rig: Rig) async throws -> UUID {
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      rig.advance(CallDetectionPolicy.minRecordingAge)
+      await rig.proof(.unknown, input: .active)
+      return meeting
+    }
+
+    func releaseZoom(_ rig: Rig) async {
+      rig.advance(1)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(2)
+      await rig.proof(.unknown, input: .inactive)
+    }
+
+    func callWords(_ meeting: UUID, endMs: Int) -> MeetingLiveWords.Transcript {
+      .init(meetingID: meeting,
+        lines: [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: endMs, text: "x")],
+        tracks: [.callSound: .init(status: .running)])
+    }
+
+    @Test("#4249: Zoom releasing the microphone shows the countdown with Keep; Keep keeps recording")
+    func releaseCountdownKeep() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      #expect(rig.press("keepRecording"))
+      #expect(!rig.panel.isShowing)
+      rig.advance(CallDetectionPolicy.countdownLength + 2)
+      await rig.proof(.unknown, input: .inactive)
+      await settleStarts()
+      #expect(rig.stops == 0 && rig.recordingID == meeting)
+      // The next real release shows a visible countdown again.
+      await rig.proof(.unknown, input: .active)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+    }
+
+    @Test("#4249: the call track's advancing live words hold the release countdown; text-only edits do not")
+    func callWordsHoldReleaseCountdown() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = callWords(meeting, endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      rig.advance(1)
+      rig.transcript = callWords(meeting, endMs: 2_000)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(2)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(!rig.panel.isShowing, "words advanced 2 s ago: held")
+      rig.advance(4)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(rig.panel.content.testName == "countdown:10", "quiet for 6 s: the countdown starts")
+      // Same furthest word end, new text: not activity.
+      var edited = callWords(meeting, endMs: 2_000)
+      edited.lines = [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: 2_000, text: "y")]
+      rig.transcript = edited
+      rig.advance(1)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content.testName == "countdown:9", "a text-only edit does not pause it")
+    }
+
+    @Test("#4249: a countdown hidden with × stays hidden through a far-side pause and resume")
+    func hiddenCountdownSurvivesPause() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = callWords(meeting, endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      #expect(rig.press("close"))
+      rig.advance(2)
+      rig.transcript = callWords(meeting, endMs: 3_000)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(6)
+      await rig.proof(.unknown, input: .inactive)
+      rig.coordinator.tickForTesting()
+      #expect(!rig.panel.isShowing, "resumed, still hidden")
+      rig.advance(9)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(await settleUntilObserved { rig.stops == 1 }, "the resumed countdown still stops")
+    }
+
+    @Test("#4249: the first call words after an empty transcript pause the countdown and keep its time")
+    func firstWordsAfterEmptyTranscriptPause() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = .init(meetingID: meeting, tracks: [.callSound: .init(status: .running)])
+      rig.coordinator.stepForTesting()
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      rig.advance(3)
+      rig.transcript = callWords(meeting, endMs: 800)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(!rig.panel.isShowing, "paused by the first words")
+      rig.advance(6)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(rig.panel.content.testName == "countdown:7", "resumed with the 7 s that were left")
+    }
+
+    @Test("#4249: another recording's live words never hold this recording's countdown")
+    func otherMeetingWordsIgnored() async throws {
+      let rig = try Rig()
+      _ = try await armedRecording(rig)
+      rig.transcript = callWords(UUID(), endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      rig.transcript = callWords(UUID(), endMs: 5_000)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+    }
+
     @Test("× hides the countdown; ticks never redraw it and the recording still stops on time")
     func closeHidesCountdown() async throws {
       let rig = try Rig()
@@ -1944,7 +2065,6 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(!rig.press("keepRecording"), "#4232: the countdown has no Keep")
       #expect(rig.press("close"))
       #expect(!rig.panel.isShowing)
       for _ in 0..<4 {

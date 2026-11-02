@@ -194,7 +194,7 @@
       arguments: [
         ("askTeams", "yes", "Start recording"), ("switchMeeting", "yes", "Start recording"),
         ("switchMeeting", "no", "Not now"), ("endConfirmation", "keepRecording", "Keep recording"),
-        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "endRecording", "End recording"),
+        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "endRecording", "End recording"), ("countdown", "keepRecording", "Keep recording"),
         ("switchNotConfirmed", "startNewRecording", "Start recording"), ("switchNotConfirmed", "no", "Not now"),
         ("notesReady", "open", "Open"), ("needsAttention", "openSettings", "Open settings"),
       ])

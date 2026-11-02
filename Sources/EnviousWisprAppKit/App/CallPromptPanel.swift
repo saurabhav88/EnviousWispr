@@ -57,7 +57,7 @@ extension CallPromptActions {
     switch (name, content) {
     case ("yes", .ask), ("yes", .switchMeeting): yes
     case ("no", .ask), ("no", .switchMeeting), ("no", .switchNotConfirmed): no
-    case ("keepRecording", .endConfirmation): keepRecording
+    case ("keepRecording", .endConfirmation), ("keepRecording", .countdown): keepRecording
     case ("stopRecording", .endConfirmation): stopRecording
     case ("endRecording", .countdown): endRecording
     case ("startNewRecording", .switchNotConfirmed): startNewRecording

@@ -2830,7 +2830,9 @@ package final class WisprBootstrapper {
         },
         callSoundCaptured: { [weak meetingCoordinator] in
           meetingCoordinator?.callSoundCaptured(meetingID: $0) ?? false
-        }),
+        },
+        // #4249: far-side live words hold a microphone-release countdown.
+        liveTranscript: { [weak meetingCoordinator] in meetingCoordinator?.liveTranscript }),
       discovery: callSources)
     meetingBox.callDetection = callDetection
     self.callDetection = callDetection

@@ -569,9 +569,21 @@ public struct CallDetectionPolicy: Sendable {
         "episode=\(episode.id) app=\(episode.family.rawValue) phase=\(Self.word(episode.phase))"
           + " native=\(Self.isNative(episode.rule)) owner=\(episode.owner != nil ? "known" : "none")"
           + " evidence=\(view) observations=\(applicable.count) mic_on=\(live)"
-          + " end_reads=\(episode.endReadings)/\(Self.endReadingsRequired)")
+          + " end_reads=\(episode.endReadings)/\(Self.endReadingsRequired)"
+          + " release=\(Self.releaseWord(episode))")
     }
     return parts.joined(separator: " ")
+  }
+
+  /// #4249: the microphone-release state in one word: counting (a release countdown runs),
+  /// held (a release is seen but waits: confirmation, age, far side, or a paused countdown),
+  /// armed (the app used the microphone since the link or the last Keep), none.
+  private static func releaseWord(_ episode: Episode) -> String {
+    if case .ending = episode.phase, episode.endOrigin == .release {
+      return episode.pausedRemaining == nil ? "counting" : "held"
+    }
+    if episode.releaseSince != nil { return "held" }
+    return episode.releaseArmed ? "armed" : "none"
   }
 
   private static func word(_ meeting: Meeting) -> String {

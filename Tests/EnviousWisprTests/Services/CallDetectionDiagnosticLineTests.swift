@@ -63,6 +63,20 @@ struct CallDetectionDiagnosticLineTests {
     #expect(!line.contains("end_reads=1"), "no end read is counted: \(line)")
   }
 
+  @Test("#4249: the line names the microphone-release state: none, armed, held, counting")
+  func releaseStates() {
+    var s = fixture.recordingZoom()
+    #expect(s.policy.diagnosticLine(s.context).contains("release=none"), "no active reading since linking")
+    s.hold([CallDetectionPolicyTests.zoom(.active)], for: Policy.minRecordingAge)
+    #expect(s.policy.diagnosticLine(s.context).contains("release=armed"))
+    s.read([CallDetectionPolicyTests.zoom(.inactive)])
+    #expect(s.policy.diagnosticLine(s.context).contains("release=held"), "seen, not yet confirmed")
+    s.wait(2)
+    s.read([CallDetectionPolicyTests.zoom(.inactive)])
+    let line = s.policy.diagnosticLine(s.context)
+    #expect(line.contains("release=counting") && line.contains("interaction=countdown"))
+  }
+
   @Test("the line carries no room, process id or link, only states and counts")
   func lineHasNoContent() {
     var s = CallDetectionPolicyTests.Story()

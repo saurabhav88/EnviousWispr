@@ -52,6 +52,12 @@ final class CallDetectionCoordinator {
     var showMeeting: @MainActor (UUID) -> Void = { _ in }
     /// #4232: whether the Mac's sound is being captured for this recording now.
     var callSoundCaptured: @MainActor (UUID) -> Bool = { _ in false }
+    /// #4249: the recording's live words (`MeetingCoordinator.liveTranscript`), read to hold a
+    /// microphone-release countdown while the far side still speaks.
+    var liveTranscript: @MainActor () -> MeetingLiveWords.Transcript? = { nil }
+    /// #4249: the wall clock `MeetingCoordinator.Phase.recording(startedAt:)` is stamped with;
+    /// only its difference to `startedAt` is used, mapped into `now`'s clock.
+    var wallNow: @MainActor () -> Date = { Date() }
   }
 
   /// #4232 card lifetimes: the writing card's cap, the ready card, the menu-bar start card.
@@ -122,6 +128,16 @@ final class CallDetectionCoordinator {
   }
   private var manualCard: ManualCard?
   private var ownGeneration = 0
+  /// #4249: the call track's live-word progress for one recording: the furthest word end seen
+  /// and when (in `now`'s clock) it last advanced. Reset when the recording changes.
+  private struct CallWords {
+    let meetingID: UUID
+    /// The first running snapshot (even an empty one) only sets the baseline.
+    var baselineSet = false
+    var maxEndMs: Int?
+    var advancedAt: Date?
+  }
+  private var callWords: CallWords?
 
   init(dependencies: Dependencies, discovery: CallSourceDiscovery? = nil) {
     deps = dependencies
@@ -283,12 +299,46 @@ final class CallDetectionCoordinator {
     let settings = deps.settings
     var switchAnswered = false
     if forPress, case .switchCall = policy.interaction { switchAnswered = true }
+    var recordingSince: Date?
+    if case .recording(_, let startedAt) = deps.meetingPhase() {
+      // Wall-clock age, placed on `now`'s (uptime) clock.
+      recordingSince = now.addingTimeInterval(-max(0, deps.wallNow().timeIntervalSince(startedAt)))
+    }
     return .init(
       now: now, meeting: meeting, dictationActive: deps.dictationActive(), mode: mode,
       appsOff: appsOff, setUp: settings.meetingOnboardingComplete,
       startBlocked: switchAnswered && deps.detectedStartIsBlocked(),
       firstTipShown: settings.meetingCallFirstTipShown,
-      noCounts: Self.counts(settings.meetingCallNoCounts))
+      noCounts: Self.counts(settings.meetingCallNoCounts),
+      callWordsAt: projectCallWords(meeting, now), recordingSince: recordingSince)
+  }
+
+  /// #4249: when the call track's live words last advanced for the current recording, or nil
+  /// when that track's live words do not run. Advancing means the furthest word end moved
+  /// forward (a new or extended line); a text-only correction does not count. The first sighting
+  /// of a recording only sets the baseline.
+  private func projectCallWords(_ meeting: CallDetectionPolicy.Meeting, _ now: Date) -> Date? {
+    guard case .recording(let meetingID) = meeting else {
+      callWords = nil
+      return nil
+    }
+    if callWords?.meetingID != meetingID { callWords = CallWords(meetingID: meetingID) }
+    guard let transcript = deps.liveTranscript(), transcript.meetingID == meetingID,
+      transcript.tracks[.callSound]?.status == .running
+    else { return nil }
+    let furthest = transcript.lines.filter { $0.track == .callSound }.map(\.endMs).max()
+    if var words = callWords {
+      if !words.baselineSet {
+        words.baselineSet = true
+        words.maxEndMs = furthest
+      } else if let furthest, furthest > (words.maxEndMs ?? Int.min) {
+        // Includes an empty snapshot's first words.
+        words.maxEndMs = furthest
+        words.advancedAt = now
+      }
+      callWords = words
+    }
+    return callWords?.advancedAt
   }
 
   private func step() {

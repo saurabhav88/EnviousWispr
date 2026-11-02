@@ -253,11 +253,19 @@ private struct CallPromptCard: View {
           primary: true, action: actions.keepRecording)
       }
     case .countdown:
-      button(
-        LocalizedStringResource(
-          "End recording",
-          comment: "EnviousMeet: stops the recording now instead of after the countdown."),
-        primary: true, action: actions.endRecording)
+      // #4249: Keep recording is back, since a microphone release can happen inside a live call.
+      HStack(spacing: 8) {
+        button(
+          LocalizedStringResource(
+            "End recording",
+            comment: "EnviousMeet: stops the recording now instead of after the countdown."),
+          primary: false, action: actions.endRecording)
+        button(
+          LocalizedStringResource(
+            "Keep recording",
+            comment: "EnviousMeet: keep recording after an uncertain browser ending."),
+          primary: true, action: actions.keepRecording)
+      }
     case .notesReady:
       button(
         LocalizedStringResource(
