@@ -136,6 +136,38 @@ struct EGOneSummaryCallTests {
     }
   }
 
+  @Test("a prompt the server's window cannot hold is input too long, so the summary re-plans")
+  func contextOverflow() async {
+    // The bundled llama-server's own wording (strings in Sources/EnviousWispr/Resources/llama-server).
+    let overflow = Data(
+      #"{"error":{"code":400,"message":"request (17000 tokens) exceeds the available context size (16384 tokens), try increasing it","type":"exceed_context_size_error"}}"#
+        .utf8)
+    do {
+      _ = try await Self.call(Transport(.success((overflow, 400))))
+      Issue.record("expected a failure")
+    } catch LLMError.classified(.inputTooLong) {
+    } catch {
+      Issue.record("expected inputTooLong, got \(error)")
+    }
+    // The error type alone is enough, whatever the message says.
+    let typed = Data(#"{"error":{"code":400,"message":"too many tokens","type":"exceed_context_size_error"}}"#.utf8)
+    do {
+      _ = try await Self.call(Transport(.success((typed, 400))))
+      Issue.record("expected a failure")
+    } catch LLMError.classified(.inputTooLong) {
+    } catch {
+      Issue.record("expected inputTooLong, got \(error)")
+    }
+    // Another 400 stays a plain request failure.
+    do {
+      _ = try await Self.call(Transport(.success((Data(#"{"error":"bad request"}"#.utf8), 400))))
+      Issue.record("expected a failure")
+    } catch LLMError.requestFailed {
+    } catch {
+      Issue.record("expected requestFailed, got \(error)")
+    }
+  }
+
   @Test("a transport timeout is the summary's timeout; a cancel is a cancel")
   func timeoutAndCancel() async {
     let timedOut = Transport(.failure(URLError(.timedOut)))

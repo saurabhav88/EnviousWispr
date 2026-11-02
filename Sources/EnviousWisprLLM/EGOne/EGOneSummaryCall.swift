@@ -9,7 +9,9 @@ import Foundation
 /// `MeetingSummary`'s own policy: a length stop is a cut-off answer (`Failure.truncated`, never
 /// saved; no loop guard, founder 2026-11-01), an empty answer is `Failure.empty`, a timeout is
 /// `Failure.timedOut`, a dropped connection stays a `URLError` the summary's retry policy
-/// already treats as retryable, and any other HTTP status is a non-retryable request failure.
+/// already treats as retryable, a prompt the server's window cannot hold is
+/// `LLMError.classified(.inputTooLong)` (the summary re-plans with its byte count, as for the
+/// other engines), and any other HTTP status is a non-retryable request failure.
 /// No transcript-tag stripping (the summary prompt wraps nothing in transcript tags) and no
 /// preamble removal (the owner already splits the title line).
 public enum EGOneSummaryCall {
@@ -44,9 +46,25 @@ public enum EGOneSummaryCall {
     }
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard status == 200 else {
+      // The planning estimate can undercount EG-1's tokenizer; the bundled llama-server then
+      // answers 400 with type `exceed_context_size_error` and "request (N tokens) exceeds the
+      // available context size". The type is checked first, so new wording still re-plans.
+      if status == 400, isContextOverflow(data) {
+        throw LLMError.classified(.inputTooLong)
+      }
       throw LLMError.requestFailed("EG-1 summary HTTP \(status)")
     }
     return try parse(data)
+  }
+
+  /// The server's own overflow error: its type, else the llama.cpp wording the Ollama path
+  /// already recognizes.
+  static func isContextOverflow(_ data: Data) -> Bool {
+    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    if (json?["error"] as? [String: Any])?["type"] as? String == "exceed_context_size_error" {
+      return true
+    }
+    return OllamaConnector.isContextOverflow(String(decoding: data, as: UTF8.self))
   }
 
   /// The chat-completions body: system and user as given, the fixed EG-1 model name, the
