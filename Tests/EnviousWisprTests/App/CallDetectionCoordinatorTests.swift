@@ -2123,20 +2123,24 @@
       #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))
     }
 
-    @Test("#4249: dropped live audio keeps the silence question away")
-    func silenceBackstopNeedsHealthyWords() async throws {
+    @Test("#4249 Live UAT: a provisional line that keeps growing and an old dropped-audio mark do not stop the question")
+    func silenceIgnoresProvisionalAndDropLatch() async throws {
       let rig = try Rig()
       let meeting = UUID()
       rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
-      rig.transcript = .init(meetingID: meeting,
-        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+      let confirmed = LiveWordsAssembler.Line(
+        id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")
+      rig.transcript = .init(meetingID: meeting, lines: [confirmed],
         tracks: [.microphone: .init(status: .running, droppedAudio: true)])
       rig.coordinator.stepForTesting()
-      for _ in 0..<310 {
+      for tick in 0..<301 {
         rig.advance(2)
+        // A lone provisional "." whose end keeps moving, as Apple speech showed in silence.
+        rig.transcript?.lines = [confirmed,
+          .init(id: "p", track: .microphone, kind: .provisional, startMs: 600, endMs: 1_000 + tick * 2_000, text: ".")]
         rig.coordinator.tickForTesting()
       }
-      #expect(!rig.panel.isShowing && rig.stops == 0)
+      #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))
     }
 
     @Test("#4249: another recording's live words never hold this recording's countdown")

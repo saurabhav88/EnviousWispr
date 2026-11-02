@@ -326,15 +326,17 @@ final class CallDetectionCoordinator {
       anyWordsAt: callWords?.anyWordsAt, wordsHealthy: wordsHealthy(meeting))
   }
 
-  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`): live words run, with no
-  /// reported dropped audio, on EVERY captured track. One dead track (the call sound's live words
-  /// stopped while the far side talks) must not let a quiet microphone read as silence.
+  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`, a CURRENT state): live words
+  /// run on EVERY captured track. One dead track (the call sound's live words stopped while the
+  /// far side talks) must not let a quiet microphone read as silence. `droppedAudio` is a latch
+  /// (once any audio was ever dropped) and says nothing about now, so it is not used: in Live UAT
+  /// 2026-11-02 both tracks latched it early and the question could never come.
   private func wordsHealthy(_ meeting: CallDetectionPolicy.Meeting) -> Bool {
     guard case .recording(let meetingID) = meeting, let transcript = deps.liveTranscript(),
       transcript.meetingID == meetingID
     else { return false }
     let captured = transcript.tracks.values.filter { $0.status != .off(.notCaptured) }
-    return !captured.isEmpty && captured.allSatisfy { $0.status == .running && !$0.droppedAudio }
+    return !captured.isEmpty && captured.allSatisfy { $0.status == .running }
   }
 
   /// #4249: when the call track's live words last advanced for the current recording, or nil
@@ -349,8 +351,10 @@ final class CallDetectionCoordinator {
     if callWords?.meetingID != meetingID { callWords = CallWords(meetingID: meetingID) }
     guard let transcript = deps.liveTranscript(), transcript.meetingID == meetingID else { return nil }
     if var words = callWords {
-      // Any track (silence backstop): new or extended words, never a text-only edit.
-      let furthest = transcript.lines.map(\.endMs).max()
+      // Any track (silence backstop): new or extended CONFIRMED words (Wispr Flow counts finals);
+      // never a text-only edit, and never a provisional line, which in Live UAT kept extending a
+      // lone "." through ten minutes of silence.
+      let furthest = transcript.lines.filter { $0.kind == .confirmed }.map(\.endMs).max()
       if !words.anyBaselineSet {
         words.anyBaselineSet = true
         words.anyMaxEndMs = furthest
@@ -362,7 +366,8 @@ final class CallDetectionCoordinator {
       callWords = words
     }
     guard transcript.tracks[.callSound]?.status == .running else { return nil }
-    let furthest = transcript.lines.filter { $0.track == .callSound }.map(\.endMs).max()
+    let furthest = transcript.lines.filter { $0.track == .callSound && $0.kind == .confirmed }
+      .map(\.endMs).max()
     if var words = callWords {
       if !words.baselineSet {
         words.baselineSet = true
