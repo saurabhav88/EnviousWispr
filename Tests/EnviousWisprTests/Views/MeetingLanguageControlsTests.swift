@@ -66,6 +66,10 @@ struct MeetingLanguageControlsTests {
       german.accessibilityLabel.contains(german.nativeName),
       "\(german.accessibilityLabel) names \(german.nativeName)")
     #expect(
+      LanguagePickerContent.accessibilityLabel(
+        displayName: "English (United States)", nativeName: "English (United States)")
+        == "English (United States)", "a name the same in both is said once")
+    #expect(
       LanguagePickerContent.meetingLive(model: model, query: "en-gb") {}.rows.map(\.code) == [
         "en-GB"
       ])

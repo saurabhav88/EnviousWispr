@@ -122,7 +122,9 @@ extension LanguagePickerContent {
   /// A language row's VoiceOver and Voice Control name: its name in the interface language and the
   /// native name the row shows, so a spoken "click Deutsch" finds the row in either window.
   static func accessibilityLabel(displayName: String, nativeName: String) -> String {
-    String(
+    // "English (United States), native English (United States)" says nothing twice.
+    guard nativeName != displayName else { return displayName }
+    return String(
       localized: "\(displayName), native \(nativeName)",
       comment:
         "Language picker (dictation and EnviousMeet), VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language."
