@@ -40,15 +40,39 @@ struct MeetingSummariesTabTests {
     }
   }
 
-  @Test("an installed EG-1 offers Remove on AI Polish and import, never on the Summaries tab (#4319)")
-  func noRemoveOnSummaries() {
+  @Test("an installed EG-1 offers Remove on every page, the Summaries tab included (#4328)")
+  func removeOnEveryPage() {
     let installed = EGOneRowPresentation.forState(.installed(version: "1"), engine: "EG-1")
-    #expect(installed.showsRemove, "control: the installed state offers Remove elsewhere")
+    #expect(LocalEngineStatusCard<EmptyView>.showsRemoveRow(installed))
+    let missing = EGOneRowPresentation.forState(.notInstalled, engine: "EG-1")
+    #expect(!LocalEngineStatusCard<EmptyView>.showsRemoveRow(missing), "nothing to remove")
+  }
+
+  @Test("the Summaries tab starts EG-1 only when dictation's own engine is EG-1 (#4328)")
+  func egOneActivationFollowsDictation() {
+    #expect(ProviderSetupSurface.mayActivateEGOne(.dictation, dictationProvider: .openAI))
+    #expect(ProviderSetupSurface.mayActivateEGOne(.meetingSummary, dictationProvider: .egOne))
+    #expect(!ProviderSetupSurface.mayActivateEGOne(.meetingSummary, dictationProvider: .s1Mini))
+    #expect(!ProviderSetupSurface.mayActivateEGOne(.meetingSummary, dictationProvider: .openAI))
+    #expect(!ProviderSetupSurface.mayActivateEGOne(.fileImport, dictationProvider: .egOne))
+  }
+
+  @Test("removing a bundled engine moves dictation, import and summaries off it, and nothing else")
+  func removalMovesEverySurface() {
+    let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
+    settings.llmProvider = .egOne
+    settings.fileImportLLMProvider = .openAI
+    settings.meetingSummaryLLMProvider = .egOne
+    BundledEngineRemoval.moveSurfaces(off: .egOne, in: settings)
+    #expect(settings.llmProvider == .appleIntelligence)
+    #expect(settings.fileImportLLMProvider == .openAI, "a surface on another engine stays")
     #expect(
-      LocalEngineStatusCard<EmptyView>.showsRemoveRow(installed, isMeetingSummarySurface: false))
-    #expect(
-      LocalEngineStatusCard<EmptyView>.showsRemoveRow(installed, isMeetingSummarySurface: true)
-        == false)
+      settings.meetingSummaryLLMProvider == .appleIntelligence,
+      "summaries no longer point at a removed EG-1")
+
+    settings.meetingSummaryLLMProvider = .s1Mini
+    BundledEngineRemoval.moveSurfaces(off: .s1Mini, in: settings)
+    #expect(settings.meetingSummaryLLMProvider == .appleIntelligence, "a stored S1-mini moves too")
   }
 
   @Test("every engine choice has its own Summaries map identity")
@@ -86,7 +110,8 @@ struct MeetingSummariesCardStatusTests {
   func noEngine() {
     #expect(
       MeetingSummariesTab.cardStatus(
-        provider: .none, model: "", facts: facts(provider: .none, keySaved: nil, validation: .idle))
+        provider: .none, model: "", facts: facts(provider: .none, keySaved: nil, validation: .idle),
+        healthApplies: false)
         == nil)
   }
 
@@ -95,9 +120,9 @@ struct MeetingSummariesCardStatusTests {
     let label = String(localized: MeetingsCopy.summaryEngineCantSummarize)
     // #4319: native EG-1 summarizes; EG-1 picked through Ollama still cannot.
     let f = facts(provider: .egOne, keySaved: nil, validation: .idle)
-    #expect(MeetingSummariesTab.cardStatus(provider: .egOne, model: "eg-1", facts: f)?.label != label)
+    #expect(MeetingSummariesTab.cardStatus(provider: .egOne, model: "eg-1", facts: f, healthApplies: false)?.label != label)
     #expect(
-      MeetingSummariesTab.cardStatus(provider: .ollama, model: "eg-1:latest", facts: f)?.label
+      MeetingSummariesTab.cardStatus(provider: .ollama, model: "eg-1:latest", facts: f, healthApplies: false)?.label
         == label)
   }
 
@@ -109,7 +134,7 @@ struct MeetingSummariesCardStatusTests {
       let f = facts(provider: .openAI, keySaved: keySaved, validation: validation)
       let expected = ProviderStatusMapping.status(
         for: .openAI, context: ProviderStatusContext(selected: true, healthApplies: false), facts: f)
-      let shown = MeetingSummariesTab.cardStatus(provider: .openAI, model: "gpt-4o-mini", facts: f)
+      let shown = MeetingSummariesTab.cardStatus(provider: .openAI, model: "gpt-4o-mini", facts: f, healthApplies: false)
       #expect(shown != nil, "a chosen cloud engine shows a status")
       #expect(shown == expected)
     }

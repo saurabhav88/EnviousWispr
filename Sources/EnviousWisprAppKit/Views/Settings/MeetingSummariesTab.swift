@@ -70,8 +70,8 @@ struct MeetingSummariesTab: View {
         } choices: {
           choiceGrid
         }
-        // An engine that cannot be picked shows no setup. EG-1's setup here offers its
-        // download but no Remove, which would change dictation's engine too (#4319).
+        // An engine that cannot be picked shows no setup. #4328: EG-1's setup here offers the same
+        // download and Remove as AI Polish; a removal moves every surface that used it.
         if provider != .none, MeetingSummaryEngineChoices.isSelectable(provider) {
           ProviderSetupSection(model: setupModel, surface: .meetingSummary)
         }
@@ -104,7 +104,9 @@ struct MeetingSummariesTab: View {
   @ViewBuilder
   private var status: some View {
     if let status = Self.cardStatus(
-      provider: provider, model: settings.effectiveMeetingSummaryLLMModel, facts: statusFacts)
+      provider: provider, model: settings.effectiveMeetingSummaryLLMModel, facts: statusFacts,
+      healthApplies: ProviderSetupSurface.mayActivateEGOne(
+        .meetingSummary, dictationProvider: settings.llmProvider) && provider == .egOne)
     {
       ProviderStatusChip(status: status, isHeadline: true)
     }
@@ -126,8 +128,9 @@ struct MeetingSummariesTab: View {
   }
 
   /// Pure, for tests: nil says nothing (no engine, or a state never observed).
-  static func cardStatus(provider: LLMProvider, model: String, facts: PolishSetupFacts)
-    -> ProviderStatus?
+  static func cardStatus(
+    provider: LLMProvider, model: String, facts: PolishSetupFacts, healthApplies: Bool
+  ) -> ProviderStatus?
   {
     guard provider != .none else { return nil }
     if MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil)
@@ -136,9 +139,10 @@ struct MeetingSummariesTab: View {
       return ProviderStatus(
         label: String(localized: MeetingsCopy.summaryEngineCantSummarize), tone: .unavailable)
     }
-    // Health is probed only where the engine may be started (dictation's AI Polish page).
+    // Health is read only where the engine may be started: dictation's AI Polish page, and
+    // (#4328) this tab when dictation's own engine is EG-1 too.
     return ProviderStatusMapping.status(
-      for: provider, context: ProviderStatusContext(selected: true, healthApplies: false),
+      for: provider, context: ProviderStatusContext(selected: true, healthApplies: healthApplies),
       facts: facts)
   }
 
