@@ -311,7 +311,7 @@ struct MeetingLiveWordsTests {
     func noteLanguage(_ mode: LanguageMode) { lock.withLock { _languages.append(mode) } }
 
     func appleCandidate() -> LivePreviewEngineCandidate {
-      LivePreviewEngineCandidate(key: .init(engine: "apple", commitment: "en-US")) {
+      LivePreviewEngineCandidate(telemetryEngine: .apple, key: .init(engine: "apple", commitment: "en-US")) {
         let engine = FakeEngine(self.nextGates())
         self.lock.withLock {
           engine.failOpen = self.appleOpenFails.contains(self._appleEngines.count)

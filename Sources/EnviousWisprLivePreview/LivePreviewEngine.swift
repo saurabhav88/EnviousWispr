@@ -187,12 +187,27 @@ package struct LivePreviewEngineCandidate: Sendable {
 
   package let makeEngine: @Sendable () -> any LivePreviewEngine
 
+  /// #4325: which engine this candidate IS, separate from the cache key, which carries artifact
+  /// identity. A route can now answer with another engine's candidate (Apple standing in while
+  /// Universal downloads), so ready outcomes report this rather than the route's id. Required:
+  /// every candidate says which engine it is.
+  package let telemetryEngine: LivePreviewTelemetryEngine
+
   package init(
-    key: LivePreviewEngineKey, makeEngine: @escaping @Sendable () -> any LivePreviewEngine
+    telemetryEngine: LivePreviewTelemetryEngine, key: LivePreviewEngineKey,
+    makeEngine: @escaping @Sendable () -> any LivePreviewEngine
   ) {
+    self.telemetryEngine = telemetryEngine
     self.key = key
     self.makeEngine = makeEngine
   }
+}
+
+/// #4325: the closed engine vocabulary the `live_preview.outcome` event reports (`apple` or
+/// `universal`), never an artifact identity.
+package enum LivePreviewTelemetryEngine: String, Sendable, Equatable {
+  case apple
+  case universal
 }
 
 /// What makes one prepared engine reusable for the next recording.

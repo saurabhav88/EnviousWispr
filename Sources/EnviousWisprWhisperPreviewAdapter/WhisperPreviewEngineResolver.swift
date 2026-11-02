@@ -111,7 +111,7 @@ package enum WhisperPreviewEngineResolver {
     let (language, commitment) = decodeLanguage(for: mode)
 
     return .ready(
-      LivePreviewEngineCandidate(key: key(environment, commitment)) {
+      LivePreviewEngineCandidate(telemetryEngine: .universal, key: key(environment, commitment)) {
         WhisperPreviewRecognizer(
           runtime: TranscribeCppPreviewRuntime(
             modelPath: environment.modelPath, isAdmitted: environment.isAdmitted),

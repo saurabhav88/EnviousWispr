@@ -538,7 +538,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     guard await ensurePrepared(candidate), let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
-      reportOutcome("prepare_failed", engine: route.telemetryEngineID)
+      reportOutcome("prepare_failed", engine: candidate.telemetryEngine.rawValue)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment)")
       return
@@ -603,7 +603,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       session = try await engine.openSession(vocabulary: vocabulary, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
-      reportOutcome("open_failed", engine: route.telemetryEngineID)
+      reportOutcome("open_failed", engine: candidate.telemetryEngine.rawValue)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
@@ -641,7 +641,9 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // leaves a session that is immediately torn down. Counting that as "started"
     // would inflate the metric with previews the user never saw.
     if isCurrent(generation) {
-      reportOutcome("started", engine: route.telemetryEngineID)
+      // #4325: the candidate's engine, which is Apple when Apple stands in for a Universal
+      // choice whose model is not downloaded yet; blocked outcomes above keep the route's id.
+      reportOutcome("started", engine: candidate.telemetryEngine.rawValue)
     }
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
