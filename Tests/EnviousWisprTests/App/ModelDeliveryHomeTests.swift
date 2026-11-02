@@ -1702,6 +1702,30 @@ extension ModelDeliveryHomeTests {
     #expect(commands.downloads == 1)
   }
 
+  /// #4325: the dictation page's own selection decision (`LivePreviewSettingsView.choose`).
+  @Test("picking Universal on the dictation page downloads it even with Live Preview off")
+  func dictationPickRequestsTheDownload() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+    let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
+    settings.livePreviewEnabled = false
+    settings.livePreviewEngine = .apple
+
+    LivePreviewSettingsView.choose(.universal, settings: settings, modelDelivery: home)
+    #expect(settings.livePreviewEngine == .universal)
+    let task = try #require(home.previewDownloadTaskForTests, "the pick asked for the download")
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 1)
+
+    // Back to Apple while EnviousMeet still wants Universal: nothing is cancelled.
+    settings.meetingLiveWordsEngine = .universal
+    #expect(home.requestPreviewDownload(meetingActive: true) == .queuedUntilMeetingEnds)
+    LivePreviewSettingsView.choose(.apple, settings: settings, modelDelivery: home)
+    #expect(home.previewDownloadQueued == true, "EnviousMeet still wants Universal")
+    #expect(commands.declines == 0)
+  }
+
   @Test("Remove during a meeting is refused before anything is recorded or drained")
   func removalIsRefusedDuringAMeeting() async throws {
     let home = try universalHome()

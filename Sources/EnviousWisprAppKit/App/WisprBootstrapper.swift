@@ -46,6 +46,8 @@ package final class WisprBootstrapper {
   /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
   /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
   let meetingLiveWordsRow: MeetingLiveWordsRowModel
+  /// #4325: starts a Universal download that waited for the meeting to end.
+  private let meetingIdleObserver: MeetingIdleObserver
   /// #3973 C3: EnviousMeet > Models' Transcript engine row.
   let meetingTranscriptEngineRow: MeetingTranscriptEngineRowModel
   /// #4012: notices calls and asks to record them.
@@ -2702,9 +2704,31 @@ package final class WisprBootstrapper {
         universalState: { [modelDelivery] in
           modelDelivery.whisperPreviewHandle == nil ? nil : modelDelivery.whisperPreviewState
         },
-        startUniversalDownload: { [modelDelivery] in modelDelivery.startPreviewDownload() },
+        // #4325: the one shared door; it queues during a meeting.
+        startUniversalDownload: { [modelDelivery, weak meetingCoordinator] in
+          modelDelivery.requestPreviewDownload(
+            meetingActive: meetingCoordinator?.isMeetingActive ?? false) != .refused
+        },
         universalDownloadRefused: { [modelDelivery] in modelDelivery.previewDownloadRefused },
-        cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() }))
+        cancelUniversalDownload: { [modelDelivery] in modelDelivery.cancelPreviewDownload() },
+        universalDownloadQueued: { [modelDelivery] in modelDelivery.previewDownloadQueued },
+        previewChoiceChanged: { [modelDelivery, settings] in
+          modelDelivery.previewChoiceChanged(
+            dictationWantsUniversal: settings.livePreviewEngine == .universal,
+            meetingWantsUniversal: settings.meetingLiveWordsEngine == .universal)
+        },
+        removeUniversal: { [modelDelivery] in modelDelivery.removePreviewModel() == .started }))
+    // #4325: both Remove owners refuse while a meeting is active (recording, stopping or its final
+    // pass), and a Universal request made during one starts when it ends. One authority for all
+    // three: the coordinator's whole activity expression.
+    let meetingIsActive: @MainActor () -> Bool = { [weak meetingCoordinator] in
+      meetingCoordinator?.isMeetingActive ?? false
+    }
+    modelDelivery.isMeetingActive = meetingIsActive
+    whisper.setupService.isMeetingActive = meetingIsActive
+    self.meetingIdleObserver = MeetingIdleObserver(
+      isActive: meetingIsActive,
+      onIdle: { [modelDelivery] in modelDelivery.meetingBecameIdle() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: settings, whisperSetup: whisper.setupService,

@@ -112,4 +112,24 @@ struct MeetingTranscriptEngineRowModelTests {
     await rig.model.select(.parakeet)
     #expect(rig.model.unsupportedTranscriptLanguage == "haw")
   }
+
+  /// #4325: when this fails, EnviousMeet's Whisper card removes the shared model during a meeting,
+  /// or offers no Remove at all where dictation's Engine tab does.
+  @Test("the Whisper card's Remove is the shared one and waits for an active meeting")
+  func whisperRemove() {
+    let busy = Rig(whisper: .ready, meetingActive: true)
+    busy.setup.isDictationInFlight = { false }
+    busy.setup.isMeetingActive = { true }
+    #expect(busy.model.removeWaitsForMeeting == true)
+    busy.model.removeWhisper()
+    #expect(busy.model.whisperRemoveNotice == .refusedMeetingActive)
+    #expect(busy.model.isRemovingWhisper == false)
+
+    let idle = Rig(whisper: .ready)
+    idle.setup.isDictationInFlight = { false }
+    idle.setup.isMeetingActive = { false }
+    #expect(idle.model.removeWaitsForMeeting == false)
+    idle.model.removeWhisper()
+    #expect(idle.model.isRemovingWhisper == true, "control: it proceeds outside a meeting")
+  }
 }

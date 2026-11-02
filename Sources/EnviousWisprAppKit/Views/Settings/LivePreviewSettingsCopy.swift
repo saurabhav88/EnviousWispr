@@ -236,6 +236,13 @@ enum LivePreviewSettingsCopy {
       "Live Preview settings: status needs download detail. Universal is the name of the other preview engine."
   )
 
+  /// #4325: Universal chosen but not downloaded, while Apple's preview works on this Mac.
+  static let statusNeedsDownloadAppleMeanwhile = String(
+    localized: "Apple shows Live Preview in your Live Preview language until Universal is downloaded.",
+    comment:
+      "Live Preview settings: status detail when Universal is chosen but not downloaded and Apple's speech recognition shows the live words meanwhile, in the language chosen for Live Preview. Apple and Universal are engine names."
+  )
+
   static let statusGettingReadyLabel = String(
     localized: "Getting ready",
     comment: "Live Preview settings: status getting ready label.")

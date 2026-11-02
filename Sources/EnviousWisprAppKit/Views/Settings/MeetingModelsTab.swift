@@ -157,6 +157,15 @@ struct MeetingLiveWordsCard: View {
   @ViewBuilder private var statusLine: some View {
     // #4320: the chip above says Checking, Not set up and Ready; a line stays wherever it adds
     // which language, what happened or what to do.
+    // #4325: a Universal request made during a meeting waits for it to end.
+    if model.universalDownloadQueued {
+      meetingStatusText(LivePreviewEngineCopy.waitingForMeeting)
+    } else {
+      statusLineForStatus
+    }
+  }
+
+  @ViewBuilder private var statusLineForStatus: some View {
     switch model.status {
     case .loading, .notSetUp(nil), .ready:
       EmptyView()
@@ -171,6 +180,12 @@ struct MeetingLiveWordsCard: View {
       VStack(alignment: .leading, spacing: 4) {
         meetingStatusText(
           MeetingsCopy.liveWordsDownloading(model.languageName(engine: engine, code: language)))
+        // #4325: what live words do meanwhile, for the Universal engine.
+        if engine == .universal {
+          meetingStatusText(
+            model.appleCanStandIn(forUniversal: language)
+              ? LivePreviewEngineCopy.appleMeanwhile : LivePreviewEngineCopy.startsWhenDownloaded)
+        }
         // Apple reports no progress before it finishes: an indeterminate bar, never a percentage.
         if let fraction {
           ProgressView(value: fraction).frame(maxWidth: 220)
@@ -188,9 +203,28 @@ struct MeetingLiveWordsCard: View {
   /// Download, Try Again or (Universal only) Cancel. While a meeting is active the card says when
   /// a download can start instead; the model refuses the command too.
   @ViewBuilder private var action: some View {
+    if model.universalDownloadQueued {
+      Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) {
+        model.cancelDownload()
+      }
+    } else {
+      actionForStatus
+    }
+  }
+
+  @ViewBuilder private var actionForStatus: some View {
     switch model.status {
     case .notDownloaded, .notSetUp(.some):
       downloadButton(SettingsItemCopy.LivePreview.universalDownload)
+    case .failed(.universal, _) where model.isAppleAvailable:
+      // #4325: after a failed Universal download, Try Again or switch to Apple.
+      HStack(spacing: 8) {
+        downloadButton(SettingsItemCopy.LivePreview.universalRetry)
+        Button(LivePreviewEngineCopy.useAppleInstead) {
+          Task { await model.selectEngine(.apple) }
+        }
+        .buttonStyle(.link)
+      }
     case .failed:
       downloadButton(SettingsItemCopy.LivePreview.universalRetry)
     case .downloading(.universal, _, _):
@@ -249,7 +283,20 @@ struct MeetingLiveWordsCard: View {
         choicesOpen = false
       },
       fillsHeight: true,
-      footer: { EmptyView() })
+      footer: {
+        // #4325: the shared Universal Remove, the same as dictation's card. A sibling of the
+        // selection button, never a child. Waits for an active meeting.
+        if engine == .universal, model.universalInstalled {
+          VStack(alignment: .leading, spacing: 6) {
+            Button(String(localized: SettingsItemCopy.LivePreview.universalRemove)) {
+              model.removeUniversal()
+            }
+            .disabled(model.downloadRefusalForRemove != nil)
+            if let refusal = model.downloadRefusalForRemove { meetingStatusText(refusal) }
+          }
+          .padding([.horizontal, .bottom], 16)
+        }
+      })
   }
 }
 
@@ -605,7 +652,33 @@ struct MeetingTranscriptEngineCard: View {
         choicesOpen = false
       },
       fillsHeight: true,
-      footer: { EmptyView() })
+      footer: {
+        // #4325: the shared Whisper Remove Model, the same as dictation's Engine tab. Parakeet
+        // has none anywhere. Waits for an active meeting; the selected engine stays as it is.
+        // The notice renders whatever state follows a failed removal (dictation's tab does the
+        // same), so a partial delete never hides its explanation.
+        if item == .engine(.whisper),
+          model.isWhisperReady || model.isRemovingWhisper || model.whisperRemoveNotice != nil
+        {
+          VStack(alignment: .leading, spacing: 6) {
+            if model.isRemovingWhisper {
+              meetingStatusText(String(localized: "Removing model..."))
+            } else if model.isWhisperReady {
+              Button(String(localized: SettingsItemCopy.Engine.whisperRemove)) {
+                model.removeWhisper()
+              }
+              .disabled(model.removeWaitsForMeeting)
+              if model.removeWaitsForMeeting {
+                meetingStatusText(MeetingDownloadAdmission.refusal)
+              }
+            }
+            if let notice = model.whisperRemoveNotice {
+              meetingStatusText(SpeechEngineSettingsView.removeNoticeText(notice))
+            }
+          }
+          .padding([.horizontal, .bottom], 16)
+        }
+      })
   }
 }
 

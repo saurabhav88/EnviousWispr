@@ -1001,7 +1001,14 @@ struct SpeechEngineSettingsView: View {
             .foregroundStyle(.stError)
             .settingsArrivalFocusControl()
             .settingsMapRegistration(.whisperModelRemove)
+            // #4325: Remove waits for an active meeting, the same on EnviousMeet's card; the
+            // service refuses too.
+            .disabled(setup.whisperSetup.isMeetingActive?() == true)
             whisperRefreshButton
+            if setup.whisperSetup.isMeetingActive?() == true {
+              Text(MeetingDownloadAdmission.refusal)
+                .font(.stHelper).foregroundStyle(.stTextSecondary)
+            }
           }
         }
       }

@@ -134,6 +134,44 @@ struct LivePreviewSettingsView: View {
     previewStatus(isEnabled: true)
   }
 
+  /// #4325: whether Apple's preview would run here right now, so it can stand in while Universal
+  /// downloads. The same current-answer guards as the status mapping.
+  private var appleCanStandIn: Bool {
+    guard isAppleSupported, packs.installingTag == nil, !activeDescribesAnotherLanguage,
+      !heartIsStreaming
+    else {
+      return false
+    }
+    if case .ready? = currentActive { return true }
+    return false
+  }
+
+  /// #4325: a meeting is active, so Universal and Whisper Remove wait for it to end.
+  private var meetingIsActive: Bool { modelDelivery?.isMeetingActive() ?? false }
+
+  /// #4325: picking an engine. Universal also asks the shared door for its download (even with
+  /// Live Preview off: the user asked for the engine); Apple reports both pages' choices so a
+  /// download nobody wants any more stops.
+  private func choose(_ choice: LivePreviewEngineChoice) {
+    Self.choose(choice, settings: settings, modelDelivery: modelDelivery)
+  }
+
+  /// The selection decision itself, testable without the page.
+  static func choose(
+    _ choice: LivePreviewEngineChoice, settings: SettingsManager, modelDelivery: ModelDeliveryHome?
+  ) {
+    settings.livePreviewEngine = choice
+    guard let modelDelivery else { return }
+    switch choice {
+    case .universal:
+      modelDelivery.requestPreviewDownload(meetingActive: modelDelivery.isMeetingActive())
+    case .apple:
+      modelDelivery.previewChoiceChanged(
+        dictationWantsUniversal: false,
+        meetingWantsUniversal: settings.meetingLiveWordsEngine == .universal)
+    }
+  }
+
   private func previewStatus(isEnabled: Bool) -> LivePreviewStatusMapping.Summary {
     LivePreviewStatusMapping.summary(
       isEnabled: isEnabled,
@@ -512,7 +550,10 @@ struct LivePreviewSettingsView: View {
     let universal = LivePreviewEnginePresentation.universalCard(
       isSelected: settings.livePreviewEngine == .universal,
       routeExists: universalExists,
-      state: universalState)
+      state: universalState,
+      queued: modelDelivery?.previewDownloadQueued ?? false,
+      appleCanStandIn: appleCanStandIn,
+      previewPaused: heartIsStreaming)
     let selected = isUsingApple ? apple : universal
 
     return VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
@@ -619,12 +660,17 @@ struct LivePreviewSettingsView: View {
                 // it has a hover state, which the flat one did not.
                 SettingsActionButton(
                   verbatimTitle: Self.label(for: action),
-                  isEnabled: true,
+                  isEnabled: !(action == .remove && meetingIsActive),
                   emphasis: action == .remove ? .quiet : .filled, shape: .roundedRect, size: .medium
                 ) {
                   perform(action)
                 }
                 .settingsMapRegistration(Self.mapID(for: action))
+              }
+              // #4325: after a failed download, switch to Apple where it can run.
+              if universal.action == .retryDownload, isAppleSupported, !isUsingApple {
+                Button(LivePreviewEngineCopy.useAppleInstead) { choose(.apple) }
+                  .buttonStyle(.link)
               }
             }
             if let progress = universal.progress {
@@ -729,7 +775,7 @@ struct LivePreviewSettingsView: View {
       unavailability: card.unavailability,
       isSelected: card.isSelected,
       onSelect: {
-        settings.livePreviewEngine = choice
+        choose(choice)
         // Picking, including the engine already chosen, closes the cards.
         showPreviewEngineChoices = false
       },
@@ -739,13 +785,20 @@ struct LivePreviewSettingsView: View {
           let action = card.action
         {
           // A sibling of the selection button, never a child (see above).
-          SettingsActionButton(
-            verbatimTitle: Self.label(for: action), isEnabled: true,
-            emphasis: .quiet, shape: .roundedRect, size: .medium
-          ) {
-            perform(action)
+          VStack(alignment: .leading, spacing: 6) {
+            SettingsActionButton(
+              verbatimTitle: Self.label(for: action), isEnabled: !meetingIsActive,
+              emphasis: .quiet, shape: .roundedRect, size: .medium
+            ) {
+              perform(action)
+            }
+            .settingsMapRegistration(Self.mapID(for: action))
+            // #4325: Remove waits for an active meeting, on both pages.
+            if meetingIsActive {
+              Text(MeetingDownloadAdmission.refusal)
+                .font(.stHelper).foregroundStyle(.stTextSecondary)
+            }
           }
-          .settingsMapRegistration(Self.mapID(for: action))
           .padding([.horizontal, .bottom], 16)
         }
       })
@@ -782,7 +835,8 @@ struct LivePreviewSettingsView: View {
     // Download, resume and retry are one operation to the delivery layer; only
     // the word on the button differs, and the card already chose it.
     case .download, .resumeDownload, .retryDownload:
-      modelDelivery.startPreviewDownload()
+      // #4325: the one shared door; it queues during a meeting.
+      modelDelivery.requestPreviewDownload(meetingActive: modelDelivery.isMeetingActive())
     case .cancelDownload:
       modelDelivery.cancelPreviewDownload()
     case .remove:

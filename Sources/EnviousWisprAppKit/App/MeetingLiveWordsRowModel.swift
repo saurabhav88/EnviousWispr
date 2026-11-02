@@ -29,14 +29,22 @@ final class MeetingLiveWordsRowModel {
     /// The Universal engine's delivery state (`ModelDeliveryHome.whisperPreviewState`); nil when
     /// this build has no Universal delivery.
     let universalState: @MainActor () -> DeliveryState?
-    /// `ModelDeliveryHome.startPreviewDownload` / `cancelPreviewDownload`: the existing
+    /// `ModelDeliveryHome.requestPreviewDownload` / `cancelPreviewDownload`: the existing
     /// transfer, its progress and Cancel, never a second copy. Start answers whether it was
-    /// scheduled (false: no delivery in this build, or turned off remotely).
+    /// accepted: scheduled, already running, already here, or (#4325) queued until the meeting
+    /// ends; false means no delivery in this build, or turned off remotely.
     let startUniversalDownload: @MainActor () -> Bool
     /// The delivery refused the last Download press, now or once its work ran
     /// (`ModelDeliveryHome.previewDownloadRefused`).
     let universalDownloadRefused: @MainActor () -> Bool
     let cancelUniversalDownload: @MainActor () -> Void
+    /// #4325: a Universal request waits for the meeting to end (`previewDownloadQueued`).
+    var universalDownloadQueued: @MainActor () -> Bool = { false }
+    /// #4325: this page went back to Apple; the shared door stops the download only when
+    /// dictation does not want Universal either (`previewChoiceChanged`).
+    var previewChoiceChanged: @MainActor () -> Void = {}
+    /// #4325: the shared Universal Remove (`removePreviewModel`); false when refused.
+    var removeUniversal: @MainActor () -> Bool = { false }
   }
 
   /// What the row says now.
@@ -250,7 +258,13 @@ final class MeetingLiveWordsRowModel {
 
   /// "Available after the meeting." while a meeting records or processes; nil otherwise.
   var downloadRefusal: String? {
-    environment.isMeetingActive() ? MeetingDownloadAdmission.refusal : nil
+    // #4325: only Apple's installer waits for the meeting; a Universal Download press queues.
+    guard environment.isMeetingActive() else { return nil }
+    switch status {
+    case .notDownloaded(.universal, _), .failed(.universal, _): return nil
+    case .notSetUp(let suggestion?) where suggestion.engine == .universal: return nil
+    default: return MeetingDownloadAdmission.refusal
+    }
   }
 
   // MARK: - Choosing
@@ -279,6 +293,13 @@ final class MeetingLiveWordsRowModel {
       settings.meetingLiveWordsLanguage = nil
       settings.meetingLiveWordsEngine = engine
     }
+    // #4325: picking Universal asks for its download through the shared door (queued during a
+    // meeting); picking Apple lets a download nobody wants any more stop. Only the winning
+    // selection reaches here.
+    switch engine {
+    case .universal: _ = environment.startUniversalDownload()
+    case .apple: environment.previewChoiceChanged()
+    }
     await refresh()
   }
 
@@ -296,6 +317,16 @@ final class MeetingLiveWordsRowModel {
   /// the start are one main-actor step, with no suspension between them.
   @discardableResult
   func download() -> DownloadOutcome {
+    // #4325: a Universal download asked for during a meeting waits for it to end (the shared
+    // door queues it); Apple's installer keeps the meeting refusal.
+    switch status {
+    case .notDownloaded(.universal, _), .failed(.universal, _):
+      return startUniversalDownload()
+    case .notSetUp(let suggestion?) where suggestion.engine == .universal:
+      return startUniversalDownload()
+    default:
+      break
+    }
     guard MeetingDownloadAdmission.canStart(meetingActive: environment.isMeetingActive()) else {
       return .refusedDuringMeeting
     }
@@ -318,8 +349,36 @@ final class MeetingLiveWordsRowModel {
 
   /// Cancels the Universal download (Apple's installer offers no Cancel).
   func cancelDownload() {
-    if case .downloading(.universal, _, _) = status { environment.cancelUniversalDownload() }
+    if case .downloading(.universal, _, _) = status {
+      environment.cancelUniversalDownload()
+    } else if universalDownloadQueued {
+      environment.cancelUniversalDownload()
+    }
   }
+
+  /// #4325: a Universal request waits for the meeting to end.
+  var universalDownloadQueued: Bool { environment.universalDownloadQueued() }
+
+  /// #4325: the Universal model is on this Mac, so its card offers Remove.
+  var universalInstalled: Bool { environment.universalState() == .admitted }
+
+  /// #4325: Apple's meeting module has an installed language for `code`, so it fills in while
+  /// Universal downloads (the meeting resolves the exact tag at Start).
+  func appleCanStandIn(forUniversal code: String) -> Bool {
+    guard let inventory, inventory.appleAvailable else { return false }
+    let base = MeetingLiveWordsChoice.baseCode(code)
+    return inventory.appleInstalledTags.contains { MeetingLiveWordsChoice.baseCode($0) == base }
+  }
+
+  /// #4325: "Available after the meeting." while a meeting is active, in place of an enabled
+  /// Universal Remove; nil otherwise.
+  var downloadRefusalForRemove: String? {
+    environment.isMeetingActive() ? MeetingDownloadAdmission.refusal : nil
+  }
+
+  /// #4325: the shared Universal Remove; refused while a meeting is active.
+  @discardableResult
+  func removeUniversal() -> Bool { environment.removeUniversal() }
 
   private func startUniversalDownload() -> DownloadOutcome {
     environment.startUniversalDownload() ? .started : .unavailable

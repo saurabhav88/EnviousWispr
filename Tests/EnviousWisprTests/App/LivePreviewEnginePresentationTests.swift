@@ -265,4 +265,45 @@ import Testing
       !LivePreviewEngineCopy.universalDescription.contains("\(megabytes + 1) MB"),
       "control: the copy should not also contain a neighbouring size")
   }
+
+  /// #4325: when this fails, the Universal card hides that picking it downloads it, says nothing
+  /// while a meeting holds the download, or promises Apple's words on a Mac where Apple cannot run.
+  @Test("Universal card: picking downloads it, a meeting holds it, and the meantime is honest")
+  func universalCardDownloadFlowCopy() {
+    let unpicked = LivePreviewEnginePresentation.universalCard(
+      isSelected: false, routeExists: true, state: .notReady)
+    #expect(unpicked.unavailability == LivePreviewEngineCopy.pickingStartsDownload)
+    let picked = LivePreviewEnginePresentation.universalCard(
+      isSelected: true, routeExists: true, state: .notReady)
+    #expect(picked.unavailability == LivePreviewEngineCopy.notDownloadedYet)
+
+    let queued = LivePreviewEnginePresentation.universalCard(
+      isSelected: true, routeExists: true, state: .notReady, queued: true)
+    #expect(queued.unavailability == LivePreviewEngineCopy.waitingForMeeting)
+    #expect(queued.action == .cancelDownload)
+    let queuedButHere = LivePreviewEnginePresentation.universalCard(
+      isSelected: true, routeExists: true, state: .admitted, queued: true)
+    #expect(queuedButHere.action == .remove, "an installed model is never shown as waiting")
+
+    let downloading = DeliveryState.downloading(
+      fractionCompleted: 0.5, bytesWritten: 5, totalBytes: 10)
+    #expect(
+      LivePreviewEnginePresentation.universalCard(
+        isSelected: true, routeExists: true, state: downloading, appleCanStandIn: true
+      ).unavailability == LivePreviewEngineCopy.appleMeanwhile)
+    #expect(
+      LivePreviewEnginePresentation.universalCard(
+        isSelected: true, routeExists: true, state: downloading, appleCanStandIn: false
+      ).unavailability == LivePreviewEngineCopy.startsWhenDownloaded)
+    #expect(
+      LivePreviewEnginePresentation.universalCard(
+        isSelected: false, routeExists: true, state: downloading, appleCanStandIn: true
+      ).unavailability == nil, "only the chosen engine describes what Live Preview does meanwhile")
+    #expect(
+      LivePreviewEnginePresentation.universalCard(
+        isSelected: true, routeExists: true, state: downloading, appleCanStandIn: true,
+        previewPaused: true
+      ).unavailability == nil, "paused for Faster Transcription: no promise about live words")
+  }
+
 }
