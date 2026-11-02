@@ -79,9 +79,10 @@ struct LocalEngineStatusCard<Middle: View>: View {
   /// unaffected, and the run itself starts and awaits the server through `prepareLocalPolish`.
   /// Found by the cloud review of PR #2786.
   var allowsRuntimeActivation: Bool = true
-  /// #4319: on the EnviousMeet Summaries tab the card offers no Remove (removing the model
-  /// would also move dictation and file import off it) and says the installed model is ready
-  /// for meeting summaries. Every other surface keeps Remove and its own wording.
+  /// #4319: on the EnviousMeet Summaries tab the card says the installed model is ready for
+  /// meeting summaries. #4328: it offers the same Remove as every other page (founder
+  /// 2026-11-02: shared models are managed the same way wherever they appear, with a shared
+  /// effect); the host's `onRemove` moves every surface that selected the engine.
   var isMeetingSummarySurface: Bool = false
   /// Removing a model is not just a delete: the caller owns the provider
   /// selection and must move the user off the engine being removed. Passed in
@@ -91,11 +92,9 @@ struct LocalEngineStatusCard<Middle: View>: View {
   /// writing-style dials, #3385).
   @ViewBuilder let middle: () -> Middle
 
-  /// #4319: the Remove row shows where the install state offers it, except on the Summaries tab.
-  static func showsRemoveRow(
-    _ presentation: EGOneRowPresentation, isMeetingSummarySurface: Bool
-  ) -> Bool {
-    presentation.showsRemove && !isMeetingSummarySurface
+  /// #4328: the Remove row shows wherever the install state offers it, on every page.
+  static func showsRemoveRow(_ presentation: EGOneRowPresentation) -> Bool {
+    presentation.showsRemove
   }
 
   private var isLowMemoryMac: Bool {
@@ -280,7 +279,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
       }
     }
     middle()
-    if Self.showsRemoveRow(presentation, isMeetingSummarySurface: isMeetingSummarySurface) {
+    if Self.showsRemoveRow(presentation) {
       removeRow
     }
     if engine.showsLowMemoryNote, isLowMemoryMac {
@@ -313,9 +312,9 @@ struct LocalEngineStatusCard<Middle: View>: View {
       Text(
         String(
           localized:
-            "Removing frees \(engine.downloadSize). Polish switches to Apple Intelligence.",
+            "Removing frees \(engine.downloadSize). Dictation, Transcribe a File and meeting summaries that use it switch to Apple Intelligence.",
           comment:
-            "AI Polish, local model: what Remove Model does. %@ is the model's size, such as 2.9 GB.")
+            "AI Polish and EnviousMeet Summaries, local model: what Remove Model does. The model is shared, so every feature using it moves. %@ is the model's size, such as 2.9 GB.")
       )
       .font(.stRowHelper)
       .foregroundStyle(Color.stTextSecondary)
@@ -327,6 +326,7 @@ struct LocalEngineStatusCard<Middle: View>: View {
       ) {
         onRemove()
       }
+      .settingsMapRegistration(.exempt(.bundledModelRemove))
     }
     .padding(.leading, PolishSectionLayout.textIndent)
     .padding(.trailing, PolishSectionLayout.rowPaddingH)

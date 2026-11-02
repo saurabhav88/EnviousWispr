@@ -114,8 +114,24 @@ enum ProviderSetupSurface {
   case dictation
   case fileImport
   /// #4287: EnviousMeet's summary engine, chosen on the Summaries tab independently of the
-  /// other two. Like the import, it never probes, warms up or activates dictation's engines.
+  /// other two. Like the import, it never warms up dictation's engines and never starts an engine
+  /// dictation is not using (#4328: see `mayActivateEGOne`).
   case meetingSummary
+
+  /// Whether EG-1's card on `surface` may start or probe its server (the health line and its
+  /// test button). There is ONE local inference slot (#2772): dictation's page always may; the
+  /// Summaries tab may only when dictation's own engine is EG-1 (#4328), because the slot then
+  /// holds or starts dictation's engine and never evicts another; a held engine is still refused
+  /// by the runtime. The import page never may: it would evict dictation's runtime.
+  static func mayActivateEGOne(_ surface: ProviderSetupSurface, dictationProvider: LLMProvider)
+    -> Bool
+  {
+    switch surface {
+    case .dictation: return true
+    case .meetingSummary: return dictationProvider == .egOne
+    case .fileImport: return false
+    }
+  }
 
   @MainActor
   func selectionRevision(in settings: SettingsManager) -> UInt64 {
@@ -203,6 +219,23 @@ enum MeetingSummaryModelPolicy {
 /// A pure decision so it can be tested without a view. The caller passes the OTHER surface's
 /// live selection; a following import reads dictation's, so leaving Ollama on dictation with
 /// nothing overriding it correctly cancels.
+/// #2772 / #4328: removing a bundled engine moves EVERY surface that selected it (dictation, file
+/// import, EnviousMeet summaries) to Apple Intelligence, whichever page ran the removal. Apple
+/// Intelligence is what a fresh install selects. One owner, so a new surface cannot be missed by one
+/// engine's closure and not the other's.
+enum BundledEngineRemoval {
+  @MainActor
+  static func moveSurfaces(off engine: LLMProvider, in settings: SettingsManager) {
+    if settings.llmProvider == engine { settings.llmProvider = .appleIntelligence }
+    if settings.fileImportLLMProvider == engine {
+      settings.fileImportLLMProvider = .appleIntelligence
+    }
+    if settings.meetingSummaryLLMProvider == engine {
+      settings.meetingSummaryLLMProvider = .appleIntelligence
+    }
+  }
+}
+
 enum SharedOllamaCleanup {
   /// #4287: three surfaces now; the shared work goes only when neither OTHER surface is on
   /// Ollama.
@@ -914,7 +947,9 @@ private var providerRows: some View {
   // download for a 2.9 GB model, and nothing downstream would notice.
   case .egOne:
     LocalEngineStatusCard(
-      runtime: egOne, engine: .egOne, allowsRuntimeActivation: surface == .dictation,
+      runtime: egOne, engine: .egOne,
+      allowsRuntimeActivation: ProviderSetupSurface.mayActivateEGOne(
+        surface, dictationProvider: settings.llmProvider),
       isMeetingSummarySurface: surface == .meetingSummary
     ) {
       egOne.removeModel()
@@ -930,10 +965,9 @@ private var providerRows: some View {
       // ran from; a following import follows dictation's move. The first version moved
       // dictation only when run from the import page, which left an import OVERRIDE on
       // the engine when the removal ran from AI Polish. Found by the cloud review.
-      if settings.llmProvider == .egOne { settings.llmProvider = .appleIntelligence }
-      if settings.fileImportLLMProvider == .egOne {
-        settings.fileImportLLMProvider = .appleIntelligence
-      }
+      // #4328: EnviousMeet summaries are the third surface. Without this a removal from any page
+      // left summaries on a missing EG-1 and the next summary failed.
+      BundledEngineRemoval.moveSurfaces(off: .egOne, in: settings)
     } middle: {
       EmptyView()
     }
@@ -943,10 +977,9 @@ private var providerRows: some View {
       allowsRuntimeActivation: surface == .dictation
     ) {
       localPolishRuntimes.s1Mini.removeModel()
-      if settings.llmProvider == .s1Mini { settings.llmProvider = .appleIntelligence }
-      if settings.fileImportLLMProvider == .s1Mini {
-        settings.fileImportLLMProvider = .appleIntelligence
-      }
+      // #4328: S1-mini is not offered for summaries, but a stored value can still hold it (older
+      // builds, forced writes), so the removal moves that surface too.
+      BundledEngineRemoval.moveSurfaces(off: .s1Mini, in: settings)
     } middle: {
       // #2649: S1-mini is one model with three dials. They are text at the top of every
       // request, not model variants, so they are rows of their own rather than a model
@@ -3024,7 +3057,11 @@ struct ProviderSetupLifecycle: ViewModifier {
         // provider activation via PipelineSettingsSync). No background polling.
         // #2772: DICTATION only, same reason as the provider-change arm below — an import
         // page that probes on appearance evicts dictation's runtime just by being opened.
-        if surface == .dictation { egOne.activateAndProbe() }
+        // #4328: the Summaries tab probes too when dictation's own engine is EG-1: the slot then
+        // holds or starts dictation's engine, never evicting another.
+        if ProviderSetupSurface.mayActivateEGOne(surface, dictationProvider: settings.llmProvider) {
+          egOne.activateAndProbe()
+        }
       } else if provider == .s1Mini {
         // #2649: same two probe moments for the second bundled engine. Found by
         // the class sweep "code that names EG-1 where it means any bundled

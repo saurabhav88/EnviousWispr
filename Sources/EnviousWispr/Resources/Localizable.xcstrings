@@ -16960,13 +16960,13 @@
         }
       }
     },
-    "Removing frees %@. Polish switches to Apple Intelligence." : {
-      "comment" : "AI Polish, local model: what Remove Model does. %@ is the model's size, such as 2.9 GB.",
+    "Removing frees %@. Dictation, Transcribe a File and meeting summaries that use it switch to Apple Intelligence." : {
+      "comment" : "AI Polish and EnviousMeet Summaries, local model: what Remove Model does. The model is shared, so every feature using it moves. %@ is the model's size, such as 2.9 GB.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entfernen gibt %@ frei. Polish wechselt zu Apple Intelligence."
+            "value" : "Entfernen gibt %@ frei. Diktat, Datei transkribieren und Meeting-Zusammenfassungen, die es verwenden, wechseln zu Apple Intelligence."
           }
         }
       }

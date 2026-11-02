@@ -65,6 +65,7 @@
  "LocalEngineStatusCard.swift | PolishRow | exempt .statusLine",
  "LocalEngineStatusCard.swift | PolishRow | exempt .statusLine",
  "LocalEngineStatusCard.swift | PolishRow | exempt .statusLine",
+ "LocalEngineStatusCard.swift | settingsMapRegistration | .exempt(.bundledModelRemove)",
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelCancel",
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelDownload",
  "LocalEngineStatusCard.swift | settingsMapRegistration | .localModelResume",

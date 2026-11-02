@@ -18,9 +18,11 @@ import Testing
 /// inventory is not injectable.
 struct LivePreviewLocaleResolutionTests {
 
-  private func satisfying(_ code: String, _ resolved: String, _ installed: [String]) -> String? {
+  private func satisfying(
+    _ code: String, _ resolved: String, _ installed: [String], macRegion: String? = nil
+  ) -> String? {
     ApplePreviewEngineResolver.satisfyingTag(
-      requestedCode: code, resolvedTag: resolved, installedTags: installed)
+      requestedCode: code, resolvedTag: resolved, installedTags: installed, macRegion: macRegion)
   }
 
   @Test("A locked language is satisfied by any installed region of that language")
@@ -67,5 +69,39 @@ struct LivePreviewLocaleResolutionTests {
   func neverCrossesLanguages() {
     #expect(satisfying("fr", "fr-CH", ["de-DE", "de-AT"]) == nil)
     #expect(satisfying("de", "de-DE", ["fr-FR", "de-AT"]) == "de-AT")
+  }
+
+  /// #4326: a US Mac locked to English previewed in en-AU, the alphabetically first installed
+  /// English. The Mac's region now wins among installed variants; without a match the stable
+  /// sorted pick stays.
+  @Test("A locked language prefers the installed variant in this Mac's region")
+  func bareCodePrefersTheMacRegion() {
+    let english = ["en-AU", "en-GB", "en-US"]
+    #expect(satisfying("en", "en-IN", english, macRegion: "US") == "en-US")
+    #expect(satisfying("en", "en-IN", english, macRegion: "GB") == "en-GB")
+    #expect(
+      satisfying("en", "en-IN", english.reversed(), macRegion: "US") == "en-US",
+      "order of the inventory does not matter")
+    #expect(
+      satisfying("en", "en-IN", english, macRegion: "JP") == "en-AU",
+      "no installed English in Japan: the stable sorted pick")
+    #expect(satisfying("en", "en-IN", english, macRegion: nil) == "en-AU")
+    #expect(
+      satisfying("fr", "fr-CH", ["fr-FR", "en-US"], macRegion: "US") == "fr-FR",
+      "the Mac's region never crosses languages")
+  }
+
+  @Test("Chinese follows the Mac's region, including a tag that names its script")
+  func chineseFollowsTheMacRegion() {
+    #expect(satisfying("zh", "zh-CN", ["zh-CN", "zh-TW"], macRegion: "TW") == "zh-TW")
+    #expect(satisfying("zh", "zh-CN", ["zh-CN", "zh-TW"], macRegion: "CN") == "zh-CN")
+    #expect(satisfying("zh", "zh-CN", ["zh-Hans-CN", "zh-Hant-TW"], macRegion: "TW") == "zh-Hant-TW")
+    #expect(satisfying("zh", "zh-CN", ["zh-CN", "zh-TW"], macRegion: "US") == "zh-CN")
+  }
+
+  @Test("A request carrying a region ignores the Mac's region")
+  func fullLocaleIgnoresTheMacRegion() {
+    #expect(satisfying("en-GB", "en-GB", ["en-GB", "en-US"], macRegion: "US") == "en-GB")
+    #expect(satisfying("en-GB", "en-GB", ["en-US"], macRegion: "US") == nil)
   }
 }
