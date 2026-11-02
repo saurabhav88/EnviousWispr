@@ -62,7 +62,8 @@
    "meetingLiveWords.apple",
    "meetingLiveWords.universal",
    "meetingLiveWords.change",
-   "meetingLiveWords.keepCurrent"
+   "meetingLiveWords.keepCurrent",
+   "meetingLiveWordsLanguage"
   ],
   "mac-ctl-meeting-transcript-engine": [
    "meetingTranscriptEngine",
@@ -73,6 +74,7 @@
    "meetingTranscriptEngine.keepCurrent"
   ],
   "mac-ctl-meeting-transcript-language": [
+   "meetingTranscriptAutoDetect",
    "meetingTranscriptLanguage"
   ],
   "mac-ctl-meeting-calendar-names": [

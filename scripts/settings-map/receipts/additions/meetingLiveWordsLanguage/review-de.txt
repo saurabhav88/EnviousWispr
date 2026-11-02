@@ -1,0 +1,1 @@
+{"language":"de","words":[],"phrases":["ändere die Sprache der Live-Vorschau in EnviousMeet","in welcher Sprache wird die Live-Vorschau während der Meetingaufnahme angezeigt"]}

@@ -1,0 +1,1 @@
+{"language":"ro","title":"detectare automată a limbii","words":[],"phrases":["activează detectarea automată a limbii pentru transcrierea de după întâlnire","transcrie întâlnirea fără să aleg manual limba"]}

@@ -1,0 +1,1 @@
+{"language":"pl","title":"automatyczne wykrywanie języka","words":[],"phrases":["włącz automatyczne wykrywanie języka transkrypcji po spotkaniu w EnviousMeet","wyłącz automatyczne rozpoznawanie języka pełnej transkrypcji spotkania"]}

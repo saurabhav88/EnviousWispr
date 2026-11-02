@@ -11,6 +11,11 @@ import SwiftUI
 /// Auto row above them sets `.auto`, so the sheet can both set and clear a lock.
 /// Either way it dismisses. The sheet is a settings detail, never an interrupt: nothing
 /// here blocks dictation.
+///
+/// #4320: the sheet renders only from a `LanguagePickerContent`. The dictation initializer
+/// builds today's content (`LanguagePickerContent.dictation`); `init(content:)` takes a
+/// caller's own rows and actions (EnviousMeet's Live Preview and transcript languages), which
+/// write only the caller's setting: no dictation write, recents or lock telemetry.
 struct LanguageLockSheet: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(\.dismiss) private var dismiss
@@ -38,12 +43,48 @@ struct LanguageLockSheet: View {
   /// cannot (`LanguageLockOptions.previewOffersEnglishUK`). The Transcription page passes nothing.
   let offersEnglishUK: Bool
 
+  /// #4320: a caller's own content, built during rendering from the current search, so it
+  /// follows the caller's live state. `dismiss` closes this window; call it after a choice.
+  typealias ContentBuilder =
+    @MainActor (_ query: String, _ dismiss: @escaping @MainActor () -> Void) ->
+    LanguagePickerContent
+
+  /// nil for the dictation window.
+  private let customContent: ContentBuilder?
+
   init(
     lockableCodes: Set<String>? = nil, contextSubtitle: String? = nil, offersEnglishUK: Bool = true
   ) {
     self.lockableCodes = lockableCodes
     self.contextSubtitle = contextSubtitle
     self.offersEnglishUK = offersEnglishUK
+    self.customContent = nil
+  }
+
+  /// #4320: a window over a caller's own rows and actions.
+  init(content: @escaping ContentBuilder) {
+    self.lockableCodes = nil
+    self.contextSubtitle = nil
+    self.offersEnglishUK = true
+    self.customContent = content
+  }
+
+  /// What this render shows. Resolved here, after environment injection, never frozen at init.
+  private var content: LanguagePickerContent {
+    let close: @MainActor () -> Void = { dismiss() }
+    if let customContent { return customContent(searchText, close) }
+    return LanguagePickerContent.dictation(
+      mode: settings.languageMode, stored: settings.englishSpelling,
+      lockableCodes: lockableCodes, contextSubtitle: contextSubtitle,
+      offersEnglishUK: offersEnglishUK, query: searchText, recents: recents
+    ) { entry in
+      LanguagePickerContent.commitDictation(
+        entry, to: settings,
+        track: { from, to, reason in
+          TelemetryService.shared.trackManualLockUsed(fromLang: from, toLang: to, reason: reason)
+        },
+        dismiss: close)
+    }
   }
 
   @State private var searchText: String = ""
@@ -56,6 +97,7 @@ struct LanguageLockSheet: View {
   private let maxRecents = 5
 
   var body: some View {
+    let content = content
     // **Same chrome as `LivePreviewPackCatalogSheet`, for the same reason.**
     // `.navigationTitle` renders through AppKit's title chrome, whose inset this
     // sheet does not control — measured here at ~178pt from the sheet edge while
@@ -63,11 +105,11 @@ struct LanguageLockSheet: View {
     // a different container (founder, 2026-08-26, on both sheets independently).
     // One shared inset makes them line up by construction.
     VStack(spacing: 0) {
-      titleBar
+      titleBar(content.title)
       Divider().overlay(Color.stDivider)
 
       VStack(alignment: .leading, spacing: 12) {
-        if let contextSubtitle {
+        if let contextSubtitle = content.contextSubtitle {
           // **Reading copy, not microcopy.** This was `stHelper`, the app's
           // smallest token, on the one sentence explaining that the choice reaches
           // dictation and not only the preview — "too wordy and too small to read"
@@ -82,13 +124,13 @@ struct LanguageLockSheet: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
-          if searchText.isEmpty {
-            autoDetectSection
+          if searchText.isEmpty, let autoRow = content.autoRow {
+            autoDetectSection(autoRow)
           }
-          if !recents.isEmpty && searchText.isEmpty {
-            recentSection
+          if !content.recents.isEmpty && searchText.isEmpty {
+            recentSection(content.recents)
           }
-          allLanguagesSection
+          allLanguagesSection(content)
         }
         .padding(.horizontal, Self.inset)
         .padding(.vertical, 12)
@@ -99,20 +141,20 @@ struct LanguageLockSheet: View {
     }
     .background(Color.stPageBg)
     .frame(minWidth: 420, minHeight: 520)
-    .onAppear(perform: loadRecents)
+    .onAppear {
+      // Recents are loaded once when the sheet appears, and only for the dictation window.
+      if customContent == nil { loadRecents() }
+    }
   }
 
   /// One inset shared by the title, the header and the list beneath them.
   private static let inset: CGFloat = 16
 
-  // "Lock language" while the first row CLEARS the lock is the sheet
-  // contradicting itself, the same defect r8 and r9 fixed on the page that
-  // opens it. This title is true of both actions and of both presenters —
-  // and it matches the Change button's copy, which already says out loud
-  // that this sets the DICTATION language, not a preview-only one.
-  private var titleBar: some View {
+  /// The title comes from the content (the dictation title's reasons live with
+  /// `LanguagePickerContent.dictation`).
+  private func titleBar(_ title: String) -> some View {
     HStack(spacing: 8) {
-      Text("Dictation language")
+      Text(title)
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
@@ -183,11 +225,8 @@ struct LanguageLockSheet: View {
   /// searching for the same reason recents are — typing means looking for a
   /// specific language.
   @ViewBuilder
-  private var autoDetectSection: some View {
-    let isAuto: Bool = {
-      if case .auto = settings.languageMode { return true }
-      return false
-    }()
+  private func autoDetectSection(_ autoRow: LanguagePickerAutoRow) -> some View {
+    let isAuto = autoRow.isSelected
 
     VStack(alignment: .leading, spacing: 6) {
       Text("Automatic")
@@ -196,7 +235,7 @@ struct LanguageLockSheet: View {
 
       VStack(spacing: 0) {
         Button {
-          selectAuto()
+          autoRow.action()
         } label: {
           HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
@@ -243,7 +282,7 @@ struct LanguageLockSheet: View {
   }
 
   @ViewBuilder
-  private var recentSection: some View {
+  private func recentSection(_ recents: [LanguagePickerRow]) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text("RECENT")
         .font(.stSectionHeader)
@@ -251,8 +290,8 @@ struct LanguageLockSheet: View {
         .padding(.leading, 4)
 
       VStack(alignment: .leading, spacing: 0) {
-        ForEach(Array(recents.enumerated()), id: \.element.code) { index, entry in
-          languageRow(entry, showDivider: index < recents.count - 1)
+        ForEach(Array(recents.enumerated()), id: \.element.id) { index, row in
+          languageRow(row, showDivider: index < recents.count - 1)
         }
       }
       .background(Color.stSectionBg)
@@ -265,16 +304,13 @@ struct LanguageLockSheet: View {
   }
 
   @ViewBuilder
-  private var allLanguagesSection: some View {
-    let filtered = filteredLanguages
+  private func allLanguagesSection(_ content: LanguagePickerContent) -> some View {
+    let filtered = content.rows
 
     VStack(alignment: .leading, spacing: 6) {
-      // **`ALL LANGUAGES` was a claim wider than the list.** Opened from Live
-      // Preview this sheet shows only the languages installed AND lockable — on a
-      // stock Mac, one — under a heading saying all, so the app appeared to speak
-      // one language (#2443). The caller knows whether its list is complete;
-      // `lockableCodes == nil` is exactly "no filter applied".
-      Text(lockableCodes == nil ? "ALL LANGUAGES" : "AVAILABLE ON THIS MAC")
+      // The heading comes from the content (the dictation heading's reasons, #2443, live with
+      // `LanguagePickerContent.dictation`).
+      Text(content.heading)
         .font(.stSectionHeader)
         .foregroundStyle(.stTextSecondary)
         .padding(.leading, 4)
@@ -282,7 +318,7 @@ struct LanguageLockSheet: View {
       if filtered.isEmpty {
         VStack(alignment: .leading, spacing: 0) {
           HStack {
-            Text("No language matches your search.")
+            Text(content.emptySearchText)
               .font(.stHelper)
               .foregroundStyle(.stTextSecondary)
             Spacer()
@@ -298,8 +334,8 @@ struct LanguageLockSheet: View {
         )
       } else {
         VStack(alignment: .leading, spacing: 0) {
-          ForEach(Array(filtered.enumerated()), id: \.element.code) { index, entry in
-            languageRow(entry, showDivider: index < filtered.count - 1)
+          ForEach(Array(filtered.enumerated()), id: \.element.id) { index, row in
+            languageRow(row, showDivider: index < filtered.count - 1)
           }
         }
         .background(Color.stSectionBg)
@@ -313,7 +349,7 @@ struct LanguageLockSheet: View {
   }
 
   @ViewBuilder
-  private func languageRow(_ entry: LanguageCatalog.Entry, showDivider: Bool) -> some View {
+  private func languageRow(_ row: LanguagePickerRow, showDivider: Bool) -> some View {
     VStack(spacing: 0) {
       // **Hover is what makes a row read as a row you can press.** These are the
       // only way to choose a language and nothing changed under the pointer, so
@@ -321,13 +357,7 @@ struct LanguageLockSheet: View {
       // doesn't highlight so it doesn't feel like it's clickable", founder).
       // Extracted into a type because a hover needs its own `@State`, which a
       // `@ViewBuilder` function cannot hold.
-      LanguageLockRow(
-        entry: entry,
-        isSelected: LanguageLockOptions.isSelected(
-          entry, mode: settings.languageMode, stored: settings.englishSpelling)
-      ) {
-        select(entry)
-      }
+      LanguageLockRow(row: row)
 
       if showDivider {
         Divider()
@@ -337,82 +367,15 @@ struct LanguageLockSheet: View {
     }
   }
 
-  // MARK: - Filtering
-
-  /// The rows to show: `LanguageLockOptions.pickerRows`, the one owner of which rows the engine
-  /// can honour and which match the search.
-  private var filteredLanguages: [LanguageCatalog.Entry] {
-    LanguageLockOptions.pickerRows(
-      lockableCodes: lockableCodes, query: searchText, offersEnglishUK: offersEnglishUK)
-  }
-
-  // MARK: - Actions
-
-  private func select(_ entry: LanguageCatalog.Entry) {
-    apply(entry)
-  }
-
-  /// The way back out of a lock. Same path as `select(_:)` so the two can never
-  /// report differently.
-  private func selectAuto() {
-    apply(nil)
-  }
-
-  /// One owner for the write order and the telemetry decision
-  /// (`LanguageLockOptions.apply`): the event is read before any mutation, and
-  /// the spelling is written before the lock (#3124). nil is Auto.
-  private func apply(_ entry: LanguageCatalog.Entry?) {
-    let event = LanguageLockOptions.apply(entry, to: settings)
-    TelemetryService.shared.trackManualLockUsed(
-      fromLang: event.fromLang,
-      toLang: event.toLang,
-      reason: event.reason
-    )
-    dismiss()
-  }
-
   // MARK: - Recents
 
-  /// Reads `SessionLanguageMemory.usage24h` from UserDefaults (written by
-  /// the detector stack in W2), sorts by `lastSeen` desc, and maps to
-  /// catalog entries. Silently drops unknown codes. Hides the section if
-  /// empty (does not show an empty state).
+  /// Reads `SessionLanguageMemory.usage24h` from UserDefaults; the TTL, ordering, engine
+  /// restriction and spelling rules live in `LanguagePickerContent.dictationRecents`.
   private func loadRecents() {
-    let key = SessionLanguageMemory.userDefaultsKey
-    guard let data = UserDefaults.standard.data(forKey: key),
-      let memory = try? JSONDecoder().decode(SessionLanguageMemory.self, from: data)
-    else {
-      recents = []
-      return
-    }
-
-    // Honor the 24-hour TTL on SessionLanguageMemory.usage24h here in the
-    // UI layer too, so a user who opens Settings after a day without
-    // dictating does not see stale "Recent" langs. The detector's own
-    // pruneExpiredUsage only runs when the detector does; this keeps the
-    // UI consistent with the cache's expiration contract.
-    let now = Date()
-    let ttl = SessionLanguageMemory.usageCacheTTL
-    let sorted = memory.usage24h
-      .filter { now.timeIntervalSince($0.value.lastSeen) <= ttl }
-      .sorted { $0.value.lastSeen > $1.value.lastSeen }
-      // #1678: the engine restriction applies BEFORE the recency cap, not after.
-      // Recents are cross-engine — a user who dictated Japanese on the
-      // multilingual engine and then switched engines would otherwise be offered
-      // Japanese here, which the fast engine cannot honour. Filtering after
-      // `prefix` would also silently shorten the list instead of showing the
-      // next eligible language.
-      .filter { LanguageLockOptions.isLockHonoured($0.key, in: lockableCodes) }
-      .prefix(maxRecents)
-      .compactMap { pair -> LanguageCatalog.Entry? in
-        guard LanguageTypes.isSupported(pair.key) else { return nil }
-        // #3124: a recent "en" is shown as the English the user has chosen, and only as a row
-        // this sheet is allowed to offer.
-        return LanguageLockOptions.recentRow(
-          code: pair.key, stored: settings.englishSpelling, offersEnglishUK: offersEnglishUK)
-      }
-
-    recents = Array(sorted)
+    recents = LanguagePickerContent.dictationRecents(
+      memoryData: UserDefaults.standard.data(forKey: SessionLanguageMemory.userDefaultsKey),
+      now: Date(), lockableCodes: lockableCodes, stored: settings.englishSpelling,
+      offersEnglishUK: offersEnglishUK, maxRecents: maxRecents)
   }
 }
 
@@ -424,21 +387,19 @@ struct LanguageLockSheet: View {
 /// selection still lives with the caller, which is the only thing that knows what
 /// is currently locked.
 private struct LanguageLockRow: View {
-  let entry: LanguageCatalog.Entry
-  let isSelected: Bool
-  let action: () -> Void
+  let row: LanguagePickerRow
 
   var body: some View {
-    Button(action: action) {
+    Button(action: row.action) {
       HStack(spacing: 10) {
         VStack(alignment: .leading, spacing: 2) {
-          Text(entry.nativeName).settingsRowLabel()
-          Text(LanguageCatalog.pickerSubtitle(for: entry))
+          Text(row.nativeName).settingsRowLabel()
+          Text(row.subtitle)
             .font(.stHelper)
             .foregroundStyle(.stTextSecondary)
         }
         Spacer()
-        if isSelected {
+        if row.isSelected {
           Image(systemName: "checkmark")
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Color.stAccent)
@@ -450,28 +411,16 @@ private struct LanguageLockRow: View {
       // the pointer sits on a neighbour, so the current choice never disappears.
       // The hover tint composites ON TOP of that wash rather than replacing it,
       // so the selected row under the pointer reads as both.
-      .background(isSelected ? Color.stAccent.opacity(0.10) : Color.clear)
+      .background(row.isSelected ? Color.stAccent.opacity(0.10) : Color.clear)
       .settingsHoverRow(cornerRadius: 0)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    // #3124: the two English rows differ only by spelling, so VoiceOver says which.
-    .accessibilityLabel(
-      entry.spelling == nil
-        ? String(
-          localized: "\(entry.displayName), native \(entry.nativeName)",
-          comment:
-            "Dictation language picker, VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language."
-        )
-        : String(
-          localized: "language.picker.spellingAccessibility",
-          defaultValue: "\(entry.displayName), \(LanguageCatalog.pickerSubtitle(for: entry))",
-          comment:
-            "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses."
-        )
-    )
+    // #3124: the two English rows differ only by spelling, so VoiceOver says which
+    // (`LanguagePickerContent.accessibilityLabel(for:)`).
+    .accessibilityLabel(row.accessibilityLabel)
     .accessibilityValue(
-      isSelected
+      row.isSelected
         ? String(
           localized: "selected", comment: "Dictation language picker, VoiceOver: the chosen row.")
         : "")

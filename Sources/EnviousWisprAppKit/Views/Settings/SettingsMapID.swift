@@ -172,12 +172,16 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case meetingLiveWordsKeepCurrent = "meetingLiveWords.keepCurrent"
   case meetingLiveWordsApple = "meetingLiveWords.apple"
   case meetingLiveWordsUniversal = "meetingLiveWords.universal"
+  // #4320: the Live Preview language row, a place of its own under the live engine card.
+  case meetingLiveWordsLanguage = "meetingLiveWordsLanguage"
   case meetingTranscriptEngine = "meetingTranscriptEngine"
   case meetingTranscriptEngineChange = "meetingTranscriptEngine.change"
   case meetingTranscriptEngineKeepCurrent = "meetingTranscriptEngine.keepCurrent"
   case meetingTranscriptEngineParakeet = "meetingTranscriptEngine.parakeet"
   case meetingTranscriptEngineWhisper = "meetingTranscriptEngine.whisper"
   case meetingTranscriptEngineApple = "meetingTranscriptEngine.apple"
+  // #4320: the transcript Auto-detect switch, beside the Transcript language row.
+  case meetingTranscriptAutoDetect = "meetingTranscriptAutoDetect"
   case meetingTranscriptLanguage = "meetingTranscriptLanguage"
   case meetingTurnsOffDictation = "meetingTurnsOffDictation"
   case meetingFollowsCallMute = "meetingFollowsCallMute"

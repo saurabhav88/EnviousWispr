@@ -1008,7 +1008,7 @@ struct MenuBarControllerTests {
     #expect(spy.shownMeetings == [id])
   }
 
-  @Test("Show Live Transcript opens History on the recording meeting")
+  @Test("Show Live Preview opens History on the recording meeting")
   func meetingShowLive() {
     let spy = ActionSpy()
     let controller = makeController(spy: spy)

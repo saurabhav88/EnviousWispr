@@ -1,0 +1,1 @@
+{"language":"de","words":[],"phrases":["erkenne die gesprochene Sprache für das vollständige Meetingtranskript automatisch","lass die Sprache für das Transkript nach dem Meeting automatisch erkennen"]}

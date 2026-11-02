@@ -1,0 +1,8 @@
+{
+  "language": "en",
+  "words": [],
+  "phrases": [
+    "automatically detect the language for the full meeting transcript",
+    "turn off automatic language detection for meeting transcripts"
+  ]
+}

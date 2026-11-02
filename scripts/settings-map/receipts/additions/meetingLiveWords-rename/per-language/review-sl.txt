@@ -1,0 +1,71 @@
+{
+  "meetingLiveWords": {
+    "title": "sprotni predogled v EnviousMeet",
+    "words": [
+      "prepis sestanka v živo"
+    ],
+    "phrases": [
+      "izberi pogon za sprotni predogled sestanka",
+      "nastavitve sprotnega predogleda v EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "ohrani trenutni pogon za sprotni predogled v EnviousMeet",
+    "words": [],
+    "phrases": [
+      "ohrani trenutni pogon za sprotni predogled sestanka",
+      "zapri izbiro pogona za sprotni predogled v EnviousMeet brez sprememb"
+    ]
+  },
+  "livePreview": {
+    "language": "sl",
+    "title": "Prikazuj besede med govorjenjem",
+    "words": [
+      "sprotno besedilo",
+      "besede med govorom",
+      "live text"
+    ],
+    "phrases": [
+      "vklopi prikaz besed, še preden končam narekovanje",
+      "besedilo bi rad videl že med govorjenjem"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "sl",
+    "title": "Sprotni predogled",
+    "words": [
+      "zavihek predogleda",
+      "nastavitve predogleda"
+    ],
+    "phrases": [
+      "odpri zavihek z nastavitvami sprotnega predogleda"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "sl",
+    "title": "jezik predogleda v živo",
+    "words": [],
+    "phrases": [
+      "spremeni jezik predogleda v živo v EnviousMeet",
+      "jezik besedila v predogledu med snemanjem sestanka"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "sl",
+    "title": "jezik prepisa",
+    "words": [],
+    "phrases": [
+      "spremeni jezik celotnega prepisa po sestanku",
+      "jezik celotnega prepisa po sestanku"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "sl",
+    "title": "pogon za celotni prepis sestanka",
+    "words": [],
+    "phrases": [
+      "izberi model za celoten prepis sestanka",
+      "zamenjaj pogon za prepis po sestanku"
+    ]
+  }
+}

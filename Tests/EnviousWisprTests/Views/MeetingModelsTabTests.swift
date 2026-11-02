@@ -80,4 +80,30 @@ struct MeetingModelsTabTests {
           == MeetingLiveWordsEngineCards.title(engine))
     }
   }
+
+  // MARK: - #4320 live engine spec tables
+
+  @Test("the Apple live card shows model, Apple's per-language download and its supported locale count, no Runs on")
+  func appleLiveSpecs() {
+    let rows = MeetingLiveWordsEngineCards.specs(.apple, appleLanguageCount: 12)
+    #expect(rows.map(\.label) == ["Model", "Download size", "Languages"])
+    #expect(rows.map(\.value) == ["Apple Speech", "Language download from Apple", "12 languages"])
+    #expect(
+      MeetingLiveWordsEngineCards.specs(.apple, appleLanguageCount: 0).map(\.value).last
+        == "0 languages", "the supported count is always shown, even zero")
+  }
+
+  @Test("the Universal live card shows Whisper Small, its download, 100 languages and the GPU")
+  func universalLiveSpecs() {
+    let rows = MeetingLiveWordsEngineCards.specs(.universal, appleLanguageCount: 12)
+    #expect(rows.map(\.label) == ["Model", "Download size", "Languages", "Runs on"])
+    #expect(rows.map(\.value) == ["Whisper Small", "270 MB", "100 languages", "Apple GPU"])
+  }
+
+  @Test("the Universal download size is the preview delivery manifest's total")
+  func universalSizeFollowsTheManifest() throws {
+    #expect(
+      EngineChoicePresentation.whisperPreviewDownloadBytes
+        == (try EngineChoicePresentationTests.totalBytes("whisper-preview-delivery-manifest.json")))
+  }
 }

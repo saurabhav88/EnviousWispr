@@ -1,0 +1,18 @@
+{
+  "meetingLiveWords": {
+    "title": "koosoleku reaalajas eelvaade",
+    "words": [],
+    "phrases": [
+      "vali koosoleku reaalajas eelvaate mootor",
+      "muuda koosoleku reaalajas eelvaate mootorit ja keelt"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "säilita koosoleku reaalajas eelvaate praegune mootor",
+    "words": [],
+    "phrases": [
+      "jäta koosoleku reaalajas eelvaate mootor samaks",
+      "sulge koosoleku reaalajas eelvaate mootorite valik muudatusteta"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "language": "pt",
+  "title": "idioma da pré-visualização em tempo real",
+  "words": [],
+  "phrases": [
+    "mudar o idioma do texto mostrado em tempo real durante a reunião",
+    "mudar o idioma da pré-visualização da reunião"
+  ]
+}

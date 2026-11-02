@@ -1,0 +1,1 @@
+{"language":"sl","title":"samodejno zaznavanje jezika","words":[],"phrases":["samodejno prepoznaj jezik za celoten prepis sestanka","vklopi samodejno zaznavanje jezika za prepis po sestanku"]}

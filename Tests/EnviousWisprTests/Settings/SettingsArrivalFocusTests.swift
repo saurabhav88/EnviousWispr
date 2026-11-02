@@ -378,7 +378,8 @@ struct SettingsArrivalFocusTests {
       "meetings.models",
       [
         .meetingLiveWordsApple, .meetingLiveWordsUniversal, .meetingTranscriptEngine,
-        .meetingTranscriptEngineChange, .meetingTranscriptLanguage, .meetingsTabGeneral,
+        .meetingTranscriptEngineChange, .meetingTranscriptAutoDetect, .meetingTranscriptLanguage,
+        .meetingsTabGeneral,
         .meetingsTabModels, .meetingsTabSummaries, .meetingsTabCallApps, .meetingsTabPermissions,
       ],
       [.meetingLiveWords]

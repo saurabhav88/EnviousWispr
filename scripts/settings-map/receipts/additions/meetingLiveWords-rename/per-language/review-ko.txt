@@ -1,0 +1,26 @@
+{
+  "meetingLiveWords": {
+    "title": "EnviousMeet 실시간 미리보기",
+    "words": [
+      "회의 실시간 텍스트"
+    ],
+    "phrases": [
+      "회의 실시간 미리보기 엔진 설정",
+      "회의 중 표시되는 텍스트의 엔진과 언어 설정"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "title": "EnviousMeet 실시간 미리보기 엔진 변경",
+    "words": [],
+    "phrases": [
+      "회의 실시간 미리보기 엔진 선택 창 열기"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "EnviousMeet 실시간 미리보기의 현재 엔진 유지",
+    "words": [],
+    "phrases": [
+      "회의 실시간 미리보기 엔진을 바꾸지 않고 닫기"
+    ]
+  }
+}

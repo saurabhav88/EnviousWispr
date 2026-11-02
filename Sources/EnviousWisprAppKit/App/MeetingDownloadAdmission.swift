@@ -16,6 +16,6 @@ enum MeetingDownloadAdmission {
   static var refusal: String {
     String(
       localized: "Available after the meeting.",
-      comment: "EnviousMeet settings, Live words row: why Download is unavailable while a meeting records or is being transcribed.")
+      comment: "EnviousMeet settings, Live Preview row: why Download is unavailable while a meeting records or is being transcribed.")
   }
 }

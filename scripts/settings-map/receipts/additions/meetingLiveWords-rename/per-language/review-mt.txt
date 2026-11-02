@@ -1,0 +1,72 @@
+{
+  "meetingLiveWords": {
+    "title": "“uri l-kliem waqt li titkellem” għal-laqgħat f'EnviousMeet",
+    "words": [
+      "traskrizzjoni diretta tal-laqgħa"
+    ],
+    "phrases": [
+      "agħżel il-magna li turi l-kliem waqt laqgħa f'EnviousMeet",
+      "agħżel Apple jew Universal għall-preview dirett tal-laqgħa"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "żomm il-magna attwali għal “uri l-kliem waqt li titkellem” f'EnviousMeet",
+    "words": [],
+    "phrases": [
+      "agħlaq l-għażliet mingħajr ma tibdel il-magna tal-preview dirett tal-laqgħa f'EnviousMeet"
+    ]
+  },
+  "livePreview": {
+    "language": "mt",
+    "title": "Uri l-kliem waqt li titkellem",
+    "words": [
+      "test dirett",
+      "kliem live",
+      "realtime"
+    ],
+    "phrases": [
+      "urini dak li qed ngħid qabel nispiċċa niddetta",
+      "ixgħel jew itfi t-test li jidher waqt li nitkellem"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "mt",
+    "title": "Preview dirett",
+    "words": [
+      "tab tal-preview",
+      "settings tal-preview"
+    ],
+    "phrases": [
+      "iftaħ it-tab tal-preview dirett"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "mt",
+    "title": "lingwa tal-preview dirett",
+    "words": [],
+    "phrases": [
+      "ibdel il-lingwa tal-preview dirett tal-laqgħa",
+      "agħżel il-lingwa tat-test li jidher waqt li tkun qed tirrekordja laqgħa"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "mt",
+    "title": "lingwa tat-traskrizzjoni",
+    "words": [],
+    "phrases": [
+      "ibdel il-lingwa tat-traskrizzjoni sħiħa wara l-laqgħa",
+      "lingwa tat-test sħiħ wara l-laqgħa"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "mt",
+    "title": "magna tat-traskrizzjoni tal-laqgħat",
+    "words": [
+      "mudell għat-traskrizzjoni tal-laqgħat"
+    ],
+    "phrases": [
+      "agħżel il-magna għat-traskrizzjoni sħiħa tal-laqgħat",
+      "ibdel il-magna li tittraskrivi l-laqgħat wara li jintemmu"
+    ]
+  }
+}

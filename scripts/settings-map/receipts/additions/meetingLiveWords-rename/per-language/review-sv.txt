@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "visa ord medan du pratar i EnviousMeet",
+    "words": [
+      "mötestext i realtid"
+    ],
+    "phrases": [
+      "välj motor för texten som visas medan mötet spelas in",
+      "ändra motor för mötets liveförhandsvisning"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "behåll nuvarande motor för ”visa ord medan du pratar” i EnviousMeet",
+    "words": [],
+    "phrases": [
+      "stäng motorvalet utan att ändra motorn för mötets liveförhandsvisning"
+    ]
+  }
+}

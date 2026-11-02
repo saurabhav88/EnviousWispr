@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "mostrar palavras enquanto você fala no EnviousMeet",
+    "words": [
+      "transcrição ao vivo da reunião"
+    ],
+    "phrases": [
+      "escolher o motor que mostra o texto ao vivo durante a reunião",
+      "usar Apple ou Universal para mostrar palavras durante a reunião no EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "manter o motor atual de “mostrar palavras enquanto você fala” no EnviousMeet",
+    "words": [],
+    "phrases": [
+      "fechar as opções sem mudar o motor do texto ao vivo da reunião no EnviousMeet"
+    ]
+  }
+}

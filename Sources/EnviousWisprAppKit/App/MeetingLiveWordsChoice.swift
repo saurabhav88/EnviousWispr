@@ -25,6 +25,9 @@ enum MeetingLiveWordsChoice {
     var universalInstalled: Bool
     /// The base language codes Universal transcribes (`LanguageCatalog`).
     var universalCodes: Set<String>
+    /// This Mac's region (`Locale.current`), such as `US`: a bare code prefers its installed
+    /// region here (#4320).
+    var macRegion: String? = nil
   }
 
   /// The outcome a caller acts on. `language` is what the engine would run in; for a choice that
@@ -111,9 +114,9 @@ enum MeetingLiveWordsChoice {
 
   /// The language `engine` would use for `code`, or nil when it has none. The policy for both
   /// guessing and switching engines (plan R2.2):
-  /// - Apple, from a bare language or another engine's code: an installed region first, chosen
-  ///   by `satisfyingTag` (stable: the same inventory gives the same tag), else Apple's equivalent
-  ///   supported tag as the download target.
+  /// - Apple, from a bare language or another engine's code: an installed region first: this
+  ///   Mac's region, then Apple's equivalent, then any other by `satisfyingTag` (stable: the same
+  ///   inventory gives the same tag); else Apple's equivalent supported tag as the download target.
   /// - Apple, from an exact tag Apple supports: that tag, unchanged.
   /// - Universal: the base code, when Universal has it.
   static func language(
@@ -128,6 +131,13 @@ enum MeetingLiveWordsChoice {
       }
       let base = baseCode(code)
       let resolved = await appleEquivalent(base)
+      // #4320: an installed tag in this Mac's region, then Apple's own equivalent, before any
+      // other installed region. Without this a bare `en` (switching back from Universal) took
+      // the alphabetically first installed English, en-AU, on a US Mac.
+      let preferred = [inventory.macRegion.map { "\(base)-\($0)" }, resolved].compactMap { $0 }
+      if let tag = preferred.first(where: inventory.appleInstalledTags.contains) {
+        return tag
+      }
       if let installed = ApplePreviewEngineResolver.satisfyingTag(
         requestedCode: base, resolvedTag: resolved ?? base,
         installedTags: inventory.appleInstalledTags)
@@ -204,20 +214,23 @@ enum MeetingLiveWordsChoice {
     return Inventory(
       appleAvailable: apple.available, appleSupportedTags: apple.supported,
       appleInstalledTags: apple.installed, universalInstalled: await universalAdmitted(),
-      universalCodes: Set(LanguageCatalog.all.map(\.code)))
+      universalCodes: Set(LanguageCatalog.all.map(\.code)),
+      macRegion: Locale.current.region?.identifier)
   }
 
   /// Apple's equivalent meeting-module tag for a code, or nil (`supportedLocale(equivalentTo:)`).
   static let liveAppleEquivalent: @Sendable (String) async -> String? = { code in
     guard #available(macOS 26.0, *) else { return nil }
-    return await AppleTranscriberFactory.supportedLocale(.meeting, equivalentTo: Locale(identifier: code))?
+    return await AppleTranscriberFactory.supportedLocale(
+      .meeting, equivalentTo: Locale(identifier: code))?
       .identifier(.bcp47)
   }
 
   /// The resolution as one log field: engine, language code and readiness; never text.
   static func logDescription(_ resolution: Resolution) -> String {
     switch resolution {
-    case .ready(let engine, let language): "engine=\(engine.rawValue) language=\(language) state=ready"
+    case .ready(let engine, let language):
+      "engine=\(engine.rawValue) language=\(language) state=ready"
     case .notDownloaded(let engine, let language):
       "engine=\(engine.rawValue) language=\(language) state=notDownloaded"
     case .notSetUp(let suggestion):
@@ -318,13 +331,15 @@ extension MeetingLiveWordsChoice {
     func resolve(forcing engine: LivePreviewEngineChoice) async -> Resolution {
       let settings = environment.settings
       let inventory = await environment.inventory()
-      let from = settings.meetingLiveWordsLanguage ?? MeetingLiveWordsChoice.guessCode(settings.languageMode)
+      let from =
+        settings.meetingLiveWordsLanguage ?? MeetingLiveWordsChoice.guessCode(settings.languageMode)
       guard
         let language = await MeetingLiveWordsChoice.language(
           for: engine, from: from, inventory: inventory,
           appleEquivalent: environment.appleEquivalent)
       else { return .notSetUp(suggestion: nil) }
-      return MeetingLiveWordsChoice.explicit(engine: engine, language: language, inventory: inventory)
+      return MeetingLiveWordsChoice.explicit(
+        engine: engine, language: language, inventory: inventory)
     }
 
     /// The stored choice as it resolves now (a user change that landed during the lookup).

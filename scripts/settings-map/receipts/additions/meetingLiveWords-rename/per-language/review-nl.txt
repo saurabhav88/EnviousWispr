@@ -1,0 +1,18 @@
+{
+  "meetingLiveWords": {
+    "title": "toon woorden terwijl je spreekt in EnviousMeet",
+    "words": [],
+    "phrases": [
+      "engine en taal kiezen voor live tekst tijdens vergaderingen",
+      "engine voor live transcriptie van vergaderingen kiezen"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "huidige engine voor ‘toon woorden terwijl je spreekt’ in EnviousMeet behouden",
+    "words": [],
+    "phrases": [
+      "huidige engine voor live tekst in EnviousMeet behouden",
+      "enginekeuze voor live tekst tijdens vergaderingen sluiten zonder iets te wijzigen"
+    ]
+  }
+}

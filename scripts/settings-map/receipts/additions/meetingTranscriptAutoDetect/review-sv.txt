@@ -1,0 +1,1 @@
+{"language":"sv","title":"identifiera språk automatiskt","words":[],"phrases":["slå på automatisk språkidentifiering för mötestranskriptet","stäng av automatisk språkidentifiering för mötestranskriptet"]}

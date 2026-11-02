@@ -1,0 +1,1 @@
+{"language":"fi","title":"tunnista kieli automaattisesti","words":[],"phrases":["tunnista kokouksen litteroinnin kieli automaattisesti","kokouksen jälkeisen litteroinnin automaattinen kielentunnistus"]}

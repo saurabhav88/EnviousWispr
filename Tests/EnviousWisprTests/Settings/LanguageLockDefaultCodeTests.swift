@@ -18,8 +18,8 @@ struct LanguageLockDefaultCodeTests {
 
   @Test("An unsupported legacy code is NOT resurrected by the toggle")
   func unsupportedLegacyCodeIsNotResurrected() {
-    let code = SpeechEngineSettingsView.defaultLockCode(
-      currentMode: .auto, migratedCode: "ja", lockableCodes: Self.fastEngine)
+    let code = LanguageLockOptions.defaultLockCode(
+      current: .auto, candidate: "ja", lockable: Self.fastEngine)
     #expect(code == "en", "Japanese is not lockable on this engine, so it must not be chosen")
   }
 
@@ -27,22 +27,22 @@ struct LanguageLockDefaultCodeTests {
   func unsupportedCurrentLockIsNotCarriedForward() {
     // Reachable by locking Japanese on the multilingual engine, switching to the
     // fast one, toggling Auto on and then off again.
-    let code = SpeechEngineSettingsView.defaultLockCode(
-      currentMode: .locked("ja"), migratedCode: "ja", lockableCodes: Self.fastEngine)
+    let code = LanguageLockOptions.defaultLockCode(
+      current: .locked("ja"), candidate: "ja", lockable: Self.fastEngine)
     #expect(code == "en")
   }
 
   @Test("A supported legacy code IS honoured — the fix must not discard valid choices")
   func supportedLegacyCodeIsHonoured() {
-    let code = SpeechEngineSettingsView.defaultLockCode(
-      currentMode: .auto, migratedCode: "de", lockableCodes: Self.fastEngine)
+    let code = LanguageLockOptions.defaultLockCode(
+      current: .auto, candidate: "de", lockable: Self.fastEngine)
     #expect(code == "de")
   }
 
   @Test("A supported current lock is preserved")
   func supportedCurrentLockIsPreserved() {
-    let code = SpeechEngineSettingsView.defaultLockCode(
-      currentMode: .locked("fr"), migratedCode: "de", lockableCodes: Self.fastEngine)
+    let code = LanguageLockOptions.defaultLockCode(
+      current: .locked("fr"), candidate: "de", lockable: Self.fastEngine)
     #expect(code == "fr")
   }
 
@@ -53,21 +53,21 @@ struct LanguageLockDefaultCodeTests {
   @Test("With no restriction, behaviour is unchanged from before the fix")
   func noRestrictionPreservesOldBehaviour() {
     #expect(
-      SpeechEngineSettingsView.defaultLockCode(
-        currentMode: .auto, migratedCode: "ja", lockableCodes: nil) == "ja")
+      LanguageLockOptions.defaultLockCode(
+        current: .auto, candidate: "ja", lockable: nil) == "ja")
     #expect(
-      SpeechEngineSettingsView.defaultLockCode(
-        currentMode: .locked("ja"), migratedCode: "en", lockableCodes: nil) == "ja")
+      LanguageLockOptions.defaultLockCode(
+        current: .locked("ja"), candidate: "en", lockable: nil) == "ja")
   }
 
   @Test("A migrated code that is not a real language falls back to English")
   func malformedMigratedCodeFallsBack() {
     #expect(
-      SpeechEngineSettingsView.defaultLockCode(
-        currentMode: .auto, migratedCode: "", lockableCodes: Self.fastEngine) == "en")
+      LanguageLockOptions.defaultLockCode(
+        current: .auto, candidate: "", lockable: Self.fastEngine) == "en")
     #expect(
-      SpeechEngineSettingsView.defaultLockCode(
-        currentMode: .auto, migratedCode: "not-a-language", lockableCodes: nil) == "en")
+      LanguageLockOptions.defaultLockCode(
+        current: .auto, candidate: "not-a-language", lockable: nil) == "en")
   }
 
   /// Whatever this returns must itself be lockable, or the toggle creates the
@@ -76,8 +76,8 @@ struct LanguageLockDefaultCodeTests {
   func everyResultIsHonourable() {
     for migrated in ["ja", "de", "", "zh", "not-a-language", "en"] {
       for mode in [LanguageMode.auto, .locked("ja"), .locked("de")] {
-        let code = SpeechEngineSettingsView.defaultLockCode(
-          currentMode: mode, migratedCode: migrated, lockableCodes: Self.fastEngine)
+        let code = LanguageLockOptions.defaultLockCode(
+          current: mode, candidate: migrated, lockable: Self.fastEngine)
         #expect(
           Self.fastEngine.contains(code),
           "toggle produced '\(code)', which this engine cannot lock to")

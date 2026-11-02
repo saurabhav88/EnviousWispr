@@ -65,17 +65,17 @@
   {
    "id": "meetingLiveWords",
    "review": "additions/meetingLiveWords.json",
-   "reviewSHA256": "3eb620286630bd0c0284f52668e5d7ceaec4ca523c8d8876803708933091ae8b"
+   "reviewSHA256": "74b8c724ca10165c205a73d2273158021401f414481bde73fe95a732d39ad9df"
   },
   {
    "id": "meetingLiveWords.apple",
    "review": "additions/meetingLiveWords.apple.json",
-   "reviewSHA256": "81de242355b96aec4a980a0f5dfe9a8d4dae8d0a7deaa4d7b6cf507b2b301594"
+   "reviewSHA256": "f97a494907ce885807d7bc19f871ddc715855154079239f194c9de6c9be939a1"
   },
   {
    "id": "meetingLiveWords.universal",
    "review": "additions/meetingLiveWords.universal.json",
-   "reviewSHA256": "34dc9b4b9f299f0bd3abd042ce92bff7132b28d1c470747fa296b20b601d00d0"
+   "reviewSHA256": "72d656caeb2c37dcac60e4fa45bfe57dab9a264e8c3a72e7a099e921c5d5a778"
   },
   {
    "id": "meetingTranscriptLanguage",
@@ -124,8 +124,8 @@
   },
   {
    "id": "meetingSummaryEngine.egOne",
-   "review": "additions/meetingSummaryEngine.egOne-4319.json",
-   "reviewSHA256": "af7a48095b617ac1885a6099d19f54150ba3ebe463fffde6545a8d707ad82903"
+   "review": "additions/meetingSummaryEngine.egOne.json",
+   "reviewSHA256": "98306e91ca1b757c49a90a54a31a0a57896607f5fdb529ee06ff7244cdddc3ab"
   },
   {
    "id": "meetingSummaryEngine.ollama",
@@ -155,12 +155,12 @@
   {
    "id": "meetingLiveWords.change",
    "review": "additions/meetingLiveWords.change.json",
-   "reviewSHA256": "a63f6f01af713d7adab8d8a533eb50c6076c4c51178a554e46bed3edd38bd54f"
+   "reviewSHA256": "817dd6dd3bf2535122a958ce6156e151a99aaa4716604f25cf8f7e6b314ae102"
   },
   {
    "id": "meetingLiveWords.keepCurrent",
    "review": "additions/meetingLiveWords.keepCurrent.json",
-   "reviewSHA256": "37074778dff356323afee3c32e1df7cb25988a4590dc5d34a04abf5d6f289584"
+   "reviewSHA256": "95d2558ec63bb17444c1ab9023011d96861360474eace75ba416f5d34d744a31"
   },
   {
    "id": "meetingTranscriptEngine.change",
@@ -181,13 +181,28 @@
    "id": "meetingFollowsCallMute",
    "review": "additions/meetingFollowsCallMute.json",
    "reviewSHA256": "79235760e2a31a06ec47f0bb764e4ae8c1b9fa158e62ed2f84f66365df40c3cc"
+  },
+  {
+   "id": "meetingLiveWordsLanguage",
+   "review": "additions/meetingLiveWordsLanguage.json",
+   "reviewSHA256": "4142b554ce55b2bec56170ca91fd0ac017fef3b69a6be00fcf0b9e920390e6c3"
+  },
+  {
+   "id": "meetingTranscriptAutoDetect",
+   "review": "additions/meetingTranscriptAutoDetect.json",
+   "reviewSHA256": "d2e457687b41a4fc5b70eee30251ddc283aa1a1364e05953ac127454854a56e5"
+  },
+  {
+   "id": "meetingSummaryEngine.egOne",
+   "review": "additions/meetingSummaryEngine.egOne-4319.json",
+   "reviewSHA256": "af7a48095b617ac1885a6099d19f54150ba3ebe463fffde6545a8d707ad82903"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "10cc53bce374d10eafca49c1d901228421ecfa31559534696792f083e9ba9551",
-  "bytes": 1794540
+  "sha256": "01f63261e01077041f88573647ff9eda5533a54ffe751848c58e53916f22762e",
+  "bytes": 1809597
  },
  "sources": [
   {
@@ -471,7 +486,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "49fe03eaf5404e8110f0fb55976bc42014eabc89be04a160ced81ebae8c41d6f",
+   "contentSHA256": "8f7cecf036c431b89484d64109f47197ec3cd5609e9762dea0ec53d07b66172e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1330,6 +1345,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-ar.txt",
+      "sha256": "4e52ac9be3833629a608532c2571f3fd13a11d81a6f38cb617ca7a097d97f38a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-ar.txt",
+      "sha256": "9f8a7e71d6c83fd132277d324d9f9e65c9666bf1baa602b194a0e4cf8454f616"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ar.txt",
+      "sha256": "dbc4a22e5619bf31a184ff03a80d58dadd9c24878099776563262dbe74fc956d"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ar.txt",
+      "sha256": "a41a39b90b3c0aae6c4411fc7ec389c206d2c99030338b45b20d83825b22c86c"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -1352,7 +1452,7 @@
   },
   {
    "language": "bg",
-   "contentSHA256": "699db1c5fe393652ee5e28e84f5ea2aa0eeb23d3e0aa6ba5c0a82ec322eaff65",
+   "contentSHA256": "a32fe38603b9459ad000424b688fde9838f0d88734dcb6f9c2b520f55b8ca519",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2202,6 +2302,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-bg.txt",
+      "sha256": "b3416e025a0095802cb0488a05e664a085d779f05edc6b488b762ecbbe6c155b"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-bg.txt",
+      "sha256": "fba2033876064caec036a361b10b385aa1684e9554b7cec1b25a064524de1f12"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-bg.txt",
+      "sha256": "57cbbc946f9216c915b9b4185bcd65e8417bd7cc9574a1c6fe39974445b9a3e7"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-bg.txt",
+      "sha256": "110ea68617a384beda95b082b4ec7b9c8a2c86f556c1b1d2ed2aa051c409f8e4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -2224,7 +2409,7 @@
   },
   {
    "language": "cs",
-   "contentSHA256": "b70293740e4cb75eb608daf607ea1c15b89591031ff8bf6c8f735c09a981c1fc",
+   "contentSHA256": "78863f1e292a680efe8f63ef5cbdb8b6469291ded6b058c887b632a29510fc9f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3074,6 +3259,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-cs.txt",
+      "sha256": "1a910a032e70902832e474d440973f3e466105964704c64415978d7b7c6f1101"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-cs.txt",
+      "sha256": "6d49feb8558b46606804530ee2a96dfd44d16d616dcae6c5446102b520154a44"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-cs.txt",
+      "sha256": "5b8e51e31997abc3fab63d67a45595bc9afec4fe1faf251a3f037f33802e77f4"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-cs.txt",
+      "sha256": "8f92eaac614918c38e24952d795eef343d589cbc6090a4b933e9dec130d6bd1a"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -3096,7 +3366,7 @@
   },
   {
    "language": "da",
-   "contentSHA256": "77809b14263abae20ba181e6c4e2b8ada1c6ca78212e243a7f00a95686a92a21",
+   "contentSHA256": "9dfc68bb896f240a9a2536398af9ac9f95d191c11f3e34a23d170f620f00c94b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3946,6 +4216,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-da.txt",
+      "sha256": "10ed4beed3681d923ca7df7f777755ebc525ac1352db220514a031246ad39ec3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-da.txt",
+      "sha256": "54520579df3809bdc3059c0c3d12a9ee8194ec741275fe54de6f5d2473888e60"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-da.txt",
+      "sha256": "9c5e6c8412ed3549b2265e53f37a4236720df79879ff8c1c40beff542adca322"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-da.txt",
+      "sha256": "6ae33f36343b53b6015f33dc315de97ba9b49b15a36aa66da4a45193f30965d4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -3968,7 +4323,7 @@
   },
   {
    "language": "de",
-   "contentSHA256": "09b639a3cec059e645cf8d21bd00f6f609e139ad45568c260ce5b79764827648",
+   "contentSHA256": "5f6b988c4ff8517e35af5b978542792d632a69b75d9c9ebc27f5793243bf1fb6",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4984,6 +5339,99 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-de.txt",
+      "sha256": "a860c762260851fb1d20b26d57d33b40ee6e2b9e6b800cfcf71d0985659144f7"
+     },
+     "disposition": "German council round 1 (run-1793575577-c77124af, GPT gpt-6-sol on Azure and Gemini gemini-3.8-flash; founder approved the Gemini spend 2026-11-01): merged block, see additions/meetingLiveWordsLanguage/council-de-digest.md"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-de.txt",
+      "sha256": "515dc8933935f0ac8023501f2da67af3e0d1a05b750daddb9e5ace952e0d05f7"
+     },
+     "disposition": "German council round 1 (run-1793575577-c77124af, GPT gpt-6-sol on Azure and Gemini gemini-3.8-flash; founder approved the Gemini spend 2026-11-01): merged block, see additions/meetingTranscriptAutoDetect/council-de-digest.md"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change",
+      "meetingLiveWords.apple",
+      "meetingLiveWords.universal"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7 (\"Live-Transkript\" becomes \"Live-Vorschau\"); German council round 2, GPT gpt-6-sol on Azure and Gemini gemini-3.8-flash, run-1793577315-8e3e1449 (founder approved the Gemini spend 2026-11-01)",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/council-de-prompt-2.txt",
+      "sha256": "8e3e1449a6d14a35b0995642a67a9f2e5a15fabbb728276eb275177c7a41a2c0"
+     },
+     "digest": {
+      "path": "additions/meetingLiveWords-rename/council-de-digest.md",
+      "sha256": "02b9741a383ee4e886ca2c045e04a3b45a27d76fcf57b698c72ce25364f9353e"
+     },
+     "disposition": "blocks rewritten for the new name with \"Live-Transkript\" kept as a word; see the digest"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change",
+      "meetingLiveWords.apple",
+      "meetingLiveWords.universal"
+     ],
+     "date": "2026-11-01",
+     "method": "narrowing only: the old name \"Live-Transkript\" removed from the four controls' German words so the card owns it; nothing added",
+     "note": {
+      "path": "additions/meetingLiveWords-rename/old-name-on-card-only.md",
+      "sha256": "be90990a427e1e66e1800641fff1c1e2082e6cd0a87d4957dd497c25e20fa636"
+     },
+     "disposition": "the card meetingLiveWords keeps \"Live-Transkript\"; see the note"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-de.txt",
+      "sha256": "e1564ba7008ba92663b9cc3906c06c3eb875920eed91a68c5c47d34c8aeb6b00"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-de.txt",
+      "sha256": "3e437228b6f8d5cb5a585b6f58fe15c1083ee09d07cade8aba36e05ed3b4579a"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -5010,7 +5458,7 @@
   },
   {
    "language": "el",
-   "contentSHA256": "863398520c5e27e4efdc035748fe293f610ed8587db061383912ba37aba7978a",
+   "contentSHA256": "6439f91fc9ad4bcbebf5edce09d3b6e7220dcf0137eae69d127708ab89791b73",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5869,6 +6317,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-el.txt",
+      "sha256": "bdd777a9b2acd1a8f29b206b8a1fba7377be843e90031471eeed1848cd517eed"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-el.txt",
+      "sha256": "9f48e920ddf4fd1bf0e51c35690cd7cda6d0a96a2c6822f72be846009e48e89e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-el.txt",
+      "sha256": "0b620662efa1f4f1655637feb47a278aa173301d304582b596bb4319b27da0b3"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-el.txt",
+      "sha256": "c3ec67923009d75245ffc4475d6bcb03343a99dc8ac63cfc0cf17f56ef203b6b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -5891,7 +6424,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "f21b9fac3782a7a995ce7317bf3f76a92e1c686c4163c20cf120a9d2217f81b3",
+   "contentSHA256": "eec6e7931f53d4d850d2cc06facdbd22796c9fb923c419fb04ba10e67aa92979",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6742,6 +7275,71 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-en.txt",
+      "sha256": "edc54991fae6dd8f79804e5ab880c5dfa6d56d6ecbd36e794efe90354ed38432"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-en.txt",
+      "sha256": "804717746296b4a67dbb8bbc193fb4aba64d4800f992f41ee38017d3688aa637"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: the meeting feature \"Live words\" is renamed \"Live Preview\"",
+     "disposition": "the English phrase \"open the live words engine choices in EnviousMeet\" now says \"open the Live Preview engine choices in EnviousMeet\"; nothing else changed"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-en.txt",
+      "sha256": "15b652e59e82987c911d2704309c5b9dc8cad79414f4f71abf03dd3296fbd9bb"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-en.txt",
+      "sha256": "ef9bc1ff4251c66b7d588f62300cc0704baf602dde6f211a054558eb44f75a01"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -6764,7 +7362,7 @@
   },
   {
    "language": "es",
-   "contentSHA256": "a9d4eb3d2d911fa39fd3e093893fdbe2aa065609c6a88a15cfe765ba559b51ad",
+   "contentSHA256": "724c2ec1eb517ec8e08cc4881f691c0b5e6f7df954808cafdf1c7c8eccb6c825",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7623,6 +8221,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-es.txt",
+      "sha256": "ce1d3edc31f5cacff761e08e4dd7e14a3bac73b94929914209872f76ea81a048"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-es.txt",
+      "sha256": "ffe4b459a610ff23a2369ad22c3e6951ef0885055ba6ff30517debff61a152d2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-es.txt",
+      "sha256": "a06b54cbd786fe321503faa0652e87d1b2668fceb7994cfebb70fdc5230c2b76"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-es.txt",
+      "sha256": "777c3e86396de9022e239aa6ebb87c579a2a2547bf66c7a9f9f1e7a613ec9f81"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -7645,7 +8328,7 @@
   },
   {
    "language": "et",
-   "contentSHA256": "bff70864e1b7500cf2ceb83d17171f655170db445c013bc4dd5a0a4b222808a2",
+   "contentSHA256": "8f30ff7068bd0c59099333ef2b7d6b91537c2eb5fe4f64c8aa1557392f20a677",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8495,6 +9178,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-et.txt",
+      "sha256": "65efd58aa14873a28fbd2e5bc84573d004c131a3d5198bd32fde7c4a842e4768"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-et.txt",
+      "sha256": "ad7f55b4e54fc7e0f4e8a715aacfe44ee1406f64e11dd8a59b2ac72b7167698d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-et.txt",
+      "sha256": "3f905dbdaab53cfa91996044bf36f1b9efee666375932e6fb9bb682beb8e9bbe"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-et.txt",
+      "sha256": "5048f138ad6239100a0524455b9625c5720145f8e5f34117ea46be23302b819d"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -8517,7 +9285,7 @@
   },
   {
    "language": "fi",
-   "contentSHA256": "a9eb0c5cd68cc166aeecfa562f159260c7040fbea68605b39ac717d1c1bb847e",
+   "contentSHA256": "a3831b70ab63824bf07520423675cd139ec9c326c51c6f60919ef7ef96e7aa44",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9367,6 +10135,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-fi.txt",
+      "sha256": "6e9929445832540f280165331c94f2c3324fb2d15a8ddbbda509847a34d22884"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-fi.txt",
+      "sha256": "56a8982fa73948cffff6a5cd48250077e6d7156414c9602daededa236031c0cd"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-fi.txt",
+      "sha256": "f735dfe39190abaf4235f84f5c3c674fb7202b9abd1b2c5ed1d8102db7d704b1"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-fi.txt",
+      "sha256": "ac08972896d9e2fa1e06629c0fe653caf0a45a3a3d5aa19ddd8db63dfaa35c74"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -9389,7 +10242,7 @@
   },
   {
    "language": "fr",
-   "contentSHA256": "5a122fab42c96c24ec4dfb3d46f34d48247098f8aa339777892f66c1a7468381",
+   "contentSHA256": "749daf03e0e722b7fb13373969b16abd5f29cbac13487bcd9c9c810864a43460",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10239,6 +11092,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-fr.txt",
+      "sha256": "d974970d881539c7bd27f0beda119fd9942ce26443d302fb49ddecf26029aeee"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-fr.txt",
+      "sha256": "3917674c089841615c4545dcee75939d603be678cebfb4f02b76b3f62a7363bc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-fr.txt",
+      "sha256": "55a841a64099e697b20c7289771f61626551c5d2d3a07c95b838a89c8e483b9d"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-fr.txt",
+      "sha256": "3aff0c218dbc6cd59a72e9483ade4a7521c42a64a46772ba48fd110e219200ff"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -10261,7 +11199,7 @@
   },
   {
    "language": "hi",
-   "contentSHA256": "dfc6902e6814b104f68506cddba06147ebc00000b9a3924fb7a43d4214dda114",
+   "contentSHA256": "8c8903342e4f5e5485a64e3ec6a16583e7ac2c050da45b908fb05f4d32af3d0e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11111,6 +12049,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-hi.txt",
+      "sha256": "3151b6b9d3c6a15551d0373b7e747e7e81c69e9f73ff29d0926f66ea0bc9ebaa"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-hi.txt",
+      "sha256": "04870eef052a3a0b94a3016da5d471ec25343ea7b2ef195c94647ec420f58aaa"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hi.txt",
+      "sha256": "8c401651cc1c7447b02a1953aca32de1eb76a9b973a8c268e8168ad56db8ecac"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hi.txt",
+      "sha256": "a8f258e1655608e8e5806033940c1db28062a8e6b3831d60948e84e6a99dedc3"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -11133,7 +12156,7 @@
   },
   {
    "language": "hr",
-   "contentSHA256": "0cb1b5868ca664612fc5fa0348930c464fd442b601da0722e040417d19c9ecc0",
+   "contentSHA256": "6004f12f65a1c238661e578f9f8729df5a1de77c8e537dcc9735eb274585f784",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11983,6 +13006,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-hr.txt",
+      "sha256": "7bfb6209cf53092f50d52a20a8253c5748b1572f679ca61bb207aec939417e4d"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-hr.txt",
+      "sha256": "47b27bebbced05b69c5e45ac5cd281ccd15715e9a8ae8d95e7c7ad2516f9e6fd"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hr.txt",
+      "sha256": "0207aa036b067b76e4c3f843151dbacdbbf2c205c37e6e2fc7fdc59853bdc37a"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hr.txt",
+      "sha256": "788303a06ac5d9869cd3afaa39946067b01c61474975d1fd0c511ee5e589a9c5"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -12005,7 +13113,7 @@
   },
   {
    "language": "hu",
-   "contentSHA256": "68e366dd67c26d35f93636884f4460bfd4fb33202af89101e5343fef08753ada",
+   "contentSHA256": "5ff7bb41a88f5fbfeb79cd972adf65be8be1ec1d6258fa05b7441cfc45cc3ca4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12855,6 +13963,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-hu.txt",
+      "sha256": "2f7e579b88f1eae39b9893d0807bfa12786ecb5fec5b38e85dab49d7fec377c3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-hu.txt",
+      "sha256": "609ab223fd6d6e037c7157e7c01fd9887f1085113d6616b5c205f760532c186f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hu.txt",
+      "sha256": "2079811c6dd3830db8c2391b38df1ee039bfc02070b883fd50a7f05f9e2f4c11"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hu.txt",
+      "sha256": "637ea1f8d16d09d350c39d6f705c8d8f892f8ef869179b4ce5ac3d3ce3e18f1d"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -12877,7 +14070,7 @@
   },
   {
    "language": "it",
-   "contentSHA256": "aefcdb926475216779baa032a30d994200a43a097322f25ef84f18cf3565e4b0",
+   "contentSHA256": "0d8fca0698f63844c1afc39d58dc348c4cf3f45c62778822f7367c067a142131",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13736,6 +14929,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-it.txt",
+      "sha256": "0385b868b9a50eb21549db6700bc4c11da9a5fa54b2d751260c82af9fae90fd3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-it.txt",
+      "sha256": "ee209cf0632d5716847ecd75065896d09be393455a3941039f2bafe32428a048"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-it.txt",
+      "sha256": "c5bed8e8d15c1a8913c7599c023af8b56b726ff3a7490cbadbc6c031e334c112"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-it.txt",
+      "sha256": "660eac77e5939efd9aedbe2b4574ade2d4bac864a37dc2361319f97cf46dca5b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -13758,7 +15036,7 @@
   },
   {
    "language": "ja",
-   "contentSHA256": "44be447379fa774d12db853ba7db007cf91eab37684d9c7b872e2845ca7ba30a",
+   "contentSHA256": "1bafd40126d1733289564b35e66e7a6aab4c8abde017de47564fe3075bc427d1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14608,6 +15886,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-ja.txt",
+      "sha256": "5316d217158c826a8a48e794b0ef5234193c495759380fe5a295695a8e2c0add"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-ja.txt",
+      "sha256": "4015cb4e580a71db9cafa939c3cc8b79f4320e44e2e58669b5c7d1bdfbba9a48"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ja.txt",
+      "sha256": "f3e93ca47ec21a9cb99398c7e52c8d8a5557e143ffdc3729ab7b529377d754ca"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ja.txt",
+      "sha256": "70896f5e5682e3cf861b6e4762de98f04ee66340acd665877b0b285555060344"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -14630,7 +15993,7 @@
   },
   {
    "language": "ko",
-   "contentSHA256": "c376386f2cca2dc8ea132b7d02e149c5a1674637eb636027954f0c2e7f5d3548",
+   "contentSHA256": "2b676dc8b50c8db8799aed60356b097f317c28ee2c15b494b265b5a7dc3c313a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15480,6 +16843,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-ko.txt",
+      "sha256": "c079dcc217e14298720c981cdaf6e8413b1f8762e97623bcc20e0d3f81072811"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-ko.txt",
+      "sha256": "b885b4d86242ccf70c22f18e1399b114e878035bcdd5b53529c8cab0fa8d95e5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ko.txt",
+      "sha256": "ea885992040f7231aa5220c06a503929167c9ccaa33a1e1fce9f81de1fe1ac9f"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ko.txt",
+      "sha256": "d48588b847b8b315f8dbffb6538bbdc8808af0c64756bb009fa2675fa5d2582f"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -15502,7 +16950,7 @@
   },
   {
    "language": "lt",
-   "contentSHA256": "105c7d6cbe988d2a3ac3b624c4abd779c10b5f3951a915e5dba74ef9ce5eefdf",
+   "contentSHA256": "1a74ca1711fe2d86a6c75387a271378538ae41300b2a496886efb834b30d8053",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16361,6 +17809,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-lt.txt",
+      "sha256": "ecb9a1bf0b36a8236bc2ac9a55c4386209b072881cf13bbf88cdfd2832bb9966"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-lt.txt",
+      "sha256": "952acc8560dbb45c15b85c21f2c738a2ef6a46a2d280d649eeadb9c19a5cb269"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-lt.txt",
+      "sha256": "37f27edcc695f155d1d13fa8ecfacde03903cbca2dc5660228292876b6d4c6af"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-lt.txt",
+      "sha256": "48f6f56862cc63072d10a1a1a2278481b6ce1b8273a695cb4b665566b90e5894"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -16383,7 +17916,7 @@
   },
   {
    "language": "lv",
-   "contentSHA256": "b119b9b4f7f67e93e0bdef5920968f946601bdc706dfdbd7c550dbb542882f91",
+   "contentSHA256": "178cd52565624f6dd41f14ee673f056d36fa451da6776b2d59fb5859276ed130",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17233,6 +18766,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-lv.txt",
+      "sha256": "1f5562865c138723ee20541d92c9509605401ebbb350176eb9c29aaac3c92fac"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-lv.txt",
+      "sha256": "979852cf63d59252629a378c144c93418783fcf772732a4580d6fa41e0fe83fb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-lv.txt",
+      "sha256": "7fee987756a2f1d3ed99cf5b984e0c394cd3371a570071df97d465f483b96231"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-lv.txt",
+      "sha256": "9afb784e1a3b1b81261c81e3bb8cd899cf0d53356cba2e12ede6929041b54a63"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -17255,7 +18873,7 @@
   },
   {
    "language": "mt",
-   "contentSHA256": "8e0209433430c4b7b03fff536f1ef41574c1df4be3865e45bb93a83bf829fb9d",
+   "contentSHA256": "5e4379b73d6d11f12494bf6b0bc12eb8dc1aacb2a2d203e9126e886b95a92df9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18114,6 +19732,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-mt.txt",
+      "sha256": "f155cb71e9e14076efbbcc70b390b54127b20ce318b695f087d17904e3dc6e0e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-mt.txt",
+      "sha256": "78b7b0e5d72626570f19d86c009cdc39c1979226eb2927407621ee660f7436c9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-mt.txt",
+      "sha256": "9741522a5dd4df433b9cd7030dff2714efe686712f36bd7d324bf8e8b4535233"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-mt.txt",
+      "sha256": "774fcfd8e4a030516f96b4679dac1a2138eaec47cbb3118bac6f1ddab49b7746"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -18136,7 +19839,7 @@
   },
   {
    "language": "nl",
-   "contentSHA256": "cab1b61db733e0b90264931c3f72df33d8dd2f35622432b0b54cac66422fa665",
+   "contentSHA256": "35fbc0245ded38d5dde17a51300726cf7a179f7df29ef1f3e1ba23efe1232998",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18986,6 +20689,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-nl.txt",
+      "sha256": "d32680c04b2569fcc2730843af3b9b0e3780f44516b395c2dd0fe7253b2304bf"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-nl.txt",
+      "sha256": "be45d3a9eb332781e375c1b68467b5bd6d73a2b40d8d11084b84e854204fab29"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-nl.txt",
+      "sha256": "4d2ac329158606eb1eefad2ffa47b279952c53f625d7deafca8e3a9aba0309de"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-nl.txt",
+      "sha256": "5e4918e12d5704958a13064ffa58c714c819085b01626ac19308f95e9c4b67f7"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -19008,7 +20796,7 @@
   },
   {
    "language": "pl",
-   "contentSHA256": "2cfbce0a7239b57e1c7ff5567231e82f979c76398e94eee6b842650946a38aec",
+   "contentSHA256": "8f8df7d5b96dcdea683dad6bf26471e070c7e489a21b108d5d88a9f4ba5b4887",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19858,6 +21646,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-pl.txt",
+      "sha256": "6fca261e0773c25388b403fc7079c83287505f6a08efd5387d46798b252e6f20"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-pl.txt",
+      "sha256": "336261292df6832fb6b22d8f2ef1054576fcc26af736b2db2780ba9b5bffc804"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-pl.txt",
+      "sha256": "3d1c282c6dea2c4faa6695755fdd5fdc0fe122e07d7568713ebdd8fc3fcd4dbf"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-pl.txt",
+      "sha256": "7d57f80de31b60e61fd3ca29ca3c334e38e76545ea1d979a8002aa47596fdace"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -19880,7 +21753,7 @@
   },
   {
    "language": "pt",
-   "contentSHA256": "d6ba0db1ff2f5c04fea08424b3fa8ffc3f2d608129cdb7de74ed22166634bcd8",
+   "contentSHA256": "53d18f2e3f429086bb8f9b59422610079fa3ac1aed2da5a2d1f4472563c6e7ad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20738,6 +22611,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-pt.txt",
+      "sha256": "b43b51095e3d48da1ff80b49c4f1b4b604ed5480a15f4f540c729a2d0e3724e9"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-pt.txt",
+      "sha256": "4185c06d867ad569acb23b1d02a72702d25dfcc2b88baf64bcf740f6991a97ea"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-pt.txt",
+      "sha256": "dd25f573191fa07d856072e1f2ac469de08de9b8d4f923056e43b569f7f1a2e6"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-pt.txt",
+      "sha256": "5bd8a9bcc4b388cb098ac6bcbef245f46de01b4f7a542f96be0c1335e9ed0c1b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -20760,7 +22718,7 @@
   },
   {
    "language": "ro",
-   "contentSHA256": "5742bfec0fd639d82a47d96954e50b2f399b3ba17e03366ed114a3bab6e4d18f",
+   "contentSHA256": "34b6920121989f27cb8adf4e62138e66926ee7fdd4bb6ff221e84eb75cbeb9ab",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21610,6 +23568,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-ro.txt",
+      "sha256": "3f79930c4995be0079b06e56247f3a58937b2cba1845c6594053c1ef25e58576"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-ro.txt",
+      "sha256": "75c7a7782cc794a62b471c8770fac1297d6a39ac2ab4db43f0fdea9d0f6aae60"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ro.txt",
+      "sha256": "7a823702f1ec50a035f4de6a83cccaf34addb792f463b5d91cd74da6862215d3"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ro.txt",
+      "sha256": "30dc80d776c2ce6a3764ff405894c53d36a9d19dfa55a82779d24725cc6ab6d4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -21632,7 +23675,7 @@
   },
   {
    "language": "ru",
-   "contentSHA256": "7186ea3f5a2fdc1941f93a8f606b56b607197cc0a86fc7973baa7becc6edf724",
+   "contentSHA256": "3307da6e9f65e5c02fe00f80e4b0f35e72efbe5e298ade1e1dd942ac10b9e016",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22482,6 +24525,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-ru.txt",
+      "sha256": "c2f62ae8bd6e6eec2500d9c67e8855782287c5b272d8c403c904e4e684fac194"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-ru.txt",
+      "sha256": "3560fe24427ebd8bc4107bd9a6f13eac46d031cc26b023624f2cf4406add56a4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ru.txt",
+      "sha256": "b2aedcb4be145e6f756fbe74130197dd804aa3bef278b371d127915a8e7c7482"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ru.txt",
+      "sha256": "c5868da4177cf33cb22416995338f2bbed9fdf5910c75bca4580aff8fdd1f926"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -22504,7 +24632,7 @@
   },
   {
    "language": "sk",
-   "contentSHA256": "8ef716c883a05f853c7b0f24afc65f165d91eb2d9cbf216fc5cf72fe63a5ae2e",
+   "contentSHA256": "00070b2bf8492e0ec72dfa8baf58a6e5249c9bd2fdc0f70bb59408e72f251ca2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23354,6 +25482,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-sk.txt",
+      "sha256": "9be8ef5e97639cee031352e3d5a8647a629274c1295c5b210c93be74dc6e4d2f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-sk.txt",
+      "sha256": "74a0d188e18c9de928994cbb1405c13e93ec213e10d519281b41b2228fc09e36"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sk.txt",
+      "sha256": "f260c4c3df7b97a129736ee44eaec284102059edd76dfca1a262f73d649ade38"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sk.txt",
+      "sha256": "db49171247d012625db43795d28cf9f1b82bf09dbc31e954da728f84d3625297"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -23376,7 +25589,7 @@
   },
   {
    "language": "sl",
-   "contentSHA256": "1d33d0b95a76125bf92a65db1bed55c083df6fff5c3d53688c04f6dc73c1fbda",
+   "contentSHA256": "a5ae23f2c7d3e6c1bc1e69a9c64eae2b1205dc0497f3c220527e2ce10875718d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24235,6 +26448,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-sl.txt",
+      "sha256": "6e957ec2207628b9c5f8924e0e21b45796aaefc76e2f16f89954d83214e906ad"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-sl.txt",
+      "sha256": "1909552359acb5097f4301744b32a3ba751e834d8c200092b066efdac227f087"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sl.txt",
+      "sha256": "834a6520b79c71fcbe862a746669bd31a143bece1dd77dad63d3dc28177e24d8"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sl.txt",
+      "sha256": "a76ce5306d1c87b3b63bb03f34d36e163e4b094115d3ccb060b2da78b8141e14"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -24257,7 +26555,7 @@
   },
   {
    "language": "sv",
-   "contentSHA256": "7c60985fb863407b06c7ac9b7467a464944998a9c9856236c352e10e79ba1cc2",
+   "contentSHA256": "249e8d9d5b337effbd58772a4d1c6093613b3428f3a27e10eb4c041e16a5b694",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25107,6 +27405,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-sv.txt",
+      "sha256": "91f7d5db3fb2f50f9cdd5d7518e8a0806646d4f5bfd2a82ac2e41b657a967762"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-sv.txt",
+      "sha256": "8c38d2892e1b4e88033998f8cc50219435c7045956cafd604059d435ae48d9e2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sv.txt",
+      "sha256": "8a6e880054d4c306d1e34119175b4ea1261b7cb544f889cd6106272154ea1b5b"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sv.txt",
+      "sha256": "8500a578f94cdf015550e5109edd689c1a82a3feff0cb4011e59b2975e59824b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -25129,7 +27512,7 @@
   },
   {
    "language": "tr",
-   "contentSHA256": "c345b528ea6e2ba9bf474252c73b726c53094ea0d5db24c257ee683f8c984375",
+   "contentSHA256": "0d6bda1df9fe18462bd64b119f355a3ee7faabe720a8ac951b449ded6f4c0817",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25979,6 +28362,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-tr.txt",
+      "sha256": "7eb74af66b60bbaf8927f8aaa57b3da91a8b4549a1bb1675f9793553301c4f7f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-tr.txt",
+      "sha256": "00865e3330a516f308ea4f407f4a105a0c94c6b358f561f69f47b4e0f8df93cb"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-tr.txt",
+      "sha256": "3ccbc45748815ea47b0a4a5e4e3953005c82c6f9fd6052995cc6f2e32f9365fc"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-tr.txt",
+      "sha256": "e8581e438e4b1eb151d417b25102bcec5302ab3aa170a0edafb0ae668716162f"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -26001,7 +28469,7 @@
   },
   {
    "language": "uk",
-   "contentSHA256": "c46a2a2d1094f7831fc9178e3c8542ba0609e67cce4281ed2f771ebb58567307",
+   "contentSHA256": "bb30a62e37b24204d1bb55326dcac1bd1876f2fb82eef2a42d10e75ad865ace3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26860,6 +29328,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-uk.txt",
+      "sha256": "030d4b74437165dbe540a0efe1c89d24fef7469e4b194a80ebe7a129a42c2446"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-uk.txt",
+      "sha256": "4349cc8d2980c020a893ef817f2617b56d99034ad3fcaf2aa6f392834119e828"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-uk.txt",
+      "sha256": "1a70c6f9c838f564d4f028f14beb2b7b78b384c127b4e9409e9536da111ab252"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-uk.txt",
+      "sha256": "a8f2ed003ff1f99f1eebd534579d4dc18c8a5834981dc4b0e6342a8285138358"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -26882,7 +29435,7 @@
   },
   {
    "language": "vi",
-   "contentSHA256": "9b8e60ec2819cd334b285396cec0dba2c818919b17d3ea0c99396b1f7ff57b72",
+   "contentSHA256": "1d59f2a668f6666d1e266f55f5b2272e27720f45f2bf128275285f2b9da962af",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27732,6 +30285,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-vi.txt",
+      "sha256": "f7b6fde6449bb309ac873bc7edcac25dd2d8627fdfa3a6c9ffbeacf538686540"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-vi.txt",
+      "sha256": "135d8cfbddd231a495c558ff5329fc9d4a6b1b2feca78aeac0267bda5d6514b5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-vi.txt",
+      "sha256": "08ad5e92155b1acfcec020f608b54930a672f389e7eefd87dcb1773a9dc3d496"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-vi.txt",
+      "sha256": "5fb3a8430ab0dc7f706c57cfaf1ed8273ff9db53620108ef2587465bc6181197"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -27754,7 +30392,7 @@
   },
   {
    "language": "zh",
-   "contentSHA256": "335085a50bd796b5b0974b496f80fa3ac9e7885bf9b8de7b052113366c669a28",
+   "contentSHA256": "e9ffd09090abfef4d31d912849ea9af21dbda5499d91dffda2bb0ab1f967fd21",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28604,6 +31242,91 @@
     },
     {
      "kind": "addition-content",
+     "id": "meetingLiveWordsLanguage",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the live engine card, Transcript language, dictation's Live Preview language and locked dictation language); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingLiveWordsLanguage/draft.json",
+      "sha256": "3569fd1535de011475afec4da8375c8af9bbabd8289b185998e2227696f0b3a2"
+     },
+     "prompt": {
+      "path": "additions/meetingLiveWordsLanguage/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingLiveWordsLanguage/review-zh.txt",
+      "sha256": "a58767472c628482e1b6474a1ef15e027a49cfec5d3b22f8ee27d4645113a9e1"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingLiveWordsLanguage.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingTranscriptAutoDetect",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Auto-detect language, Transcript language, Transcript engine and the live engine card); first draft by scripts/settings-map/draft-vocabulary.sh in one isolated session for all languages",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingTranscriptAutoDetect/draft.json",
+      "sha256": "c927b9277de62e650c122cccc6aec41f870b4fd3344aa693ce2af863ad4eb480"
+     },
+     "prompt": {
+      "path": "additions/meetingTranscriptAutoDetect/review-driver.py.txt",
+      "sha256": "c21c2846a7a33bca374cd5f2b39437f40f9996a3c7a6f4c2a3d8f579555b330a"
+     },
+     "output": {
+      "path": "additions/meetingTranscriptAutoDetect/review-zh.txt",
+      "sha256": "ee9e666e05a199198b4a487c0faa8b77aa90c183f14902aeeef2d09d84bc5078"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-zh.txt",
+      "sha256": "f51e18af6bc7c10728ca885304ae1c12e8b31bd98ab5847e9d16fd5a21f2eb0e"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-zh.txt",
+      "sha256": "cb175cdea5107928446db3558d4388451577055d45b6366231dc40e4a3b24e60"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
+    },
+    {
+     "kind": "addition-content",
      "id": "meetingSummaryEngine.egOne",
      "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
      "date": "2026-11-01",
@@ -28725,11 +31448,13 @@
   "meetingCallApps": "eb11e2f297db44ad67d311a6f01032ebc6301374dc95cddc41ffb59d04e2a289",
   "meetingCallDetection": "7ae4896de9da439337589120b6338cb98aef3d7953ab527c12f3e3c7f85f3420",
   "meetingCaptureCallSound": "0db6ed871c23b54df99053c09432e3f68be6e1cf1ca3e52644d9dc2a190768ec",
-  "meetingLiveWords": "9e915d19a4086e95aef2223ab2f4d302a1877fbfda1b62c1f6c8c8d28b12716a",
+  "meetingFollowsCallMute": "24803fad4615bc95fe0b2e6620b4b8ff3cef6781e6f31751b57d0cd17b166e96",
+  "meetingLiveWords": "0ac83eccb954a1c6faf57390e6fb2208e9812f86bab8247cf20d2dcfed01cffe",
   "meetingLiveWords.apple": "f0c4896f86584c8eb2002ee647d666324d0cfce50440b66b2fc92e317bd713a8",
   "meetingLiveWords.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
-  "meetingLiveWords.keepCurrent": "5f38f83a493176ba89e7907bf4adb36497758b069a88a2f2e025943d386f36b1",
+  "meetingLiveWords.keepCurrent": "284df1fa1b783db5f51ecf0e302045d22e19fe57ecddd7e6f96406e5b50325a8",
   "meetingLiveWords.universal": "c1acb29da84332b353c621c52d433c95655b48cfc27b5dedcd0832d5a7642028",
+  "meetingLiveWordsLanguage": "77c308e505fe0f714e82151342dc2dd27b4cea356418b1c3e424ed5a4590f54c",
   "meetingSummaryEngine": "a3e8025b87c7365d0648535e036b67256175573bc95b22dec330e897d6498cd1",
   "meetingSummaryEngine.appleIntelligence": "edd6d793908512b37d4e975095884986eb2a2f29e7caaa96f307310151d79c46",
   "meetingSummaryEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
@@ -28739,6 +31464,7 @@
   "meetingSummaryEngine.keepCurrent": "e64c09cde6619aea0bbea790c3b8a01c9d614d2adcefa92469f420c04c35a04a",
   "meetingSummaryEngine.ollama": "c90bf53e67a856572f80cfe51b2944ae8af037e922191d4e3b72e149064ee9e8",
   "meetingSummaryEngine.openAI": "97d5ec2f6af3da423c995619307d0fcc81bbeafc8f214153c2c0f8d24b2a95b0",
+  "meetingTranscriptAutoDetect": "ae4d80aeca2c3acbaed28e1eeab1b16876224090a7ac994dfc2f566dbcc80a67",
   "meetingTranscriptEngine": "264c21ee1f140d4a93209a0695218755e505f68e1bb373c30878b0f8fe429160",
   "meetingTranscriptEngine.apple": "f0c4896f86584c8eb2002ee647d666324d0cfce50440b66b2fc92e317bd713a8",
   "meetingTranscriptEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
@@ -28906,8 +31632,7 @@
   "yourWords.export": "d28e07ce3afffe4cb87d63ae1280d03854e7c90d3da8c047b593b356f77121ef",
   "yourWords.import": "9d9c4a63e66f3bb7799bdd48927c19066f99dab2b41c973d15eebcf19ec1b136",
   "yourWords.massEdit": "a3f4fe070d5e6fc8cf78e3122bc299db26a3c139c8b7b0ad6aff1bbae9d5ce03",
-  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0",
-  "meetingFollowsCallMute": "24803fad4615bc95fe0b2e6620b4b8ff3cef6781e6f31751b57d0cd17b166e96"
+  "yourWords.search": "e2edb884f10d397e3e04823d498a44c3c820f9115d7192febdf86633014248e0"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

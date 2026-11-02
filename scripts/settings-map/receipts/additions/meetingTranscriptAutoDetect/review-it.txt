@@ -1,0 +1,9 @@
+{
+  "language": "it",
+  "title": "rileva automaticamente la lingua",
+  "words": [],
+  "phrases": [
+    "riconoscere automaticamente la lingua per la trascrizione dopo la riunione",
+    "trascrivere la riunione senza scegliere la lingua"
+  ]
+}

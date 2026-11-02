@@ -1,0 +1,69 @@
+{
+  "meetingLiveWords": {
+    "title": "mostrar palabras mientras hablas en EnviousMeet",
+    "words": [
+      "texto en directo de reuniones"
+    ],
+    "phrases": [
+      "elegir el motor de la vista previa de EnviousMeet",
+      "usar Apple o Universal para mostrar texto provisional durante una reunión"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "mantener el motor actual de «Mostrar palabras mientras hablas» en EnviousMeet",
+    "words": [],
+    "phrases": [
+      "cerrar las opciones sin cambiar el motor de la vista previa de EnviousMeet"
+    ]
+  },
+  "livePreview": {
+    "language": "es",
+    "title": "Mostrar palabras mientras hablas",
+    "words": [
+      "texto en vivo",
+      "tiempo real",
+      "texto provisional"
+    ],
+    "phrases": [
+      "activar o desactivar el texto que aparece mientras hablo"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "es",
+    "title": "Vista previa en vivo",
+    "words": [
+      "pestaña Live Preview",
+      "ajustes de vista previa"
+    ],
+    "phrases": [
+      "abrir la pestaña de vista previa en vivo"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "es",
+    "title": "idioma de la vista previa en directo",
+    "words": [],
+    "phrases": [
+      "cambiar el idioma de la vista previa en directo de la reunión"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "es",
+    "title": "idioma de la transcripción",
+    "words": [],
+    "phrases": [
+      "cambiar el idioma de la transcripción completa de la reunión",
+      "detectar automáticamente el idioma de la transcripción final de la reunión",
+      "idioma de la transcripción que se genera al terminar la reunión"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "es",
+    "title": "motor de transcripción de reuniones",
+    "words": [],
+    "phrases": [
+      "elegir motor para la transcripción completa de la reunión",
+      "cambiar el motor que transcribe después de la reunión"
+    ]
+  }
+}

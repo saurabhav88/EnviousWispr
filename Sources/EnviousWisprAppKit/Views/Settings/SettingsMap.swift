@@ -722,6 +722,13 @@ enum SettingsMap {
       description: nil,
       parent: .meetingLiveWords, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .engineChoicesExpanded, target: .meetingLiveWords, fallbacks: []),
+    // #4320: the Live Preview language row under the live engine card (founder decision 2).
+    SettingsMapNode(
+      id: .meetingLiveWordsLanguage, structure: .item, item: .setting,
+      title: .resource(MeetingsCopy.liveLanguageTitle),
+      description: .resource(MeetingsCopy.liveLanguageShort),
+      parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingLiveWordsLanguage, fallbacks: [.meetingLiveWords]),
     // #3973 C3: the engine that writes the meeting transcript; its choices are the cards'
     // (#4287 PR 2), Apple's Coming soon card included. Download, Resume and Cancel are actions
     // of the card's status, like Live words'.
@@ -743,6 +750,14 @@ enum SettingsMap {
       description: nil,
       parent: .meetingTranscriptEngine, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .engineChoicesExpanded, target: .meetingTranscriptEngine, fallbacks: []),
+    // #4320: the transcript Auto-detect switch (founder decision 3). Its short line names the
+    // engine's coverage, so it is a runtime line.
+    SettingsMapNode(
+      id: .meetingTranscriptAutoDetect, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Engine.autoDetectTitle),
+      description: .runtime,
+      parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingTranscriptAutoDetect, fallbacks: [.meetingTranscriptLanguage]),
     SettingsMapNode(
       id: .meetingTranscriptLanguage, structure: .item, item: .setting,
       title: .resource(MeetingsCopy.transcriptLanguageTitle),

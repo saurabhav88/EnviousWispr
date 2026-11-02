@@ -1,0 +1,1 @@
+{"language":"sk","title":"jazyk živého náhľadu","words":[],"phrases":["zmeniť jazyk živého náhľadu počas nahrávania stretnutia"]}

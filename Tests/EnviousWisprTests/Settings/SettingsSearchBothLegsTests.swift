@@ -76,14 +76,26 @@ struct SettingsSearchBothLegsTests {
     }
   }
 
-  /// #4105: the EnviousMeet Live words and Transcript language rows, by their names in English
-  /// and German, through the shipped search with both legs.
-  @Test("Live words and Transcript language are found first by their names in English and German")
+  /// #4105 / #4320: the EnviousMeet Live Preview and Transcript language rows, by their names in
+  /// English and German, through the shipped search with both legs. #4320 founder decision 9: a
+  /// search for "Live Preview" shows both dictation's and EnviousMeet's Live Preview, told apart
+  /// by their page breadcrumbs; the old meeting name still finds the meeting card.
+  @Test("Live Preview finds both dictation's and EnviousMeet's, and Transcript language is found first")
   func meetingLanguageRowsAreFound() async throws {
     let english = try Self.model("en")
     let german = try Self.model("de")
+    for (model, query) in [(english, "live preview"), (german, "Live-Vorschau")] {
+      let ids = Array(await Self.search(model, query).prefix(5))
+      #expect(
+        !Set(ids).isDisjoint(with: ["livePreview", "dictation.tab.livePreview", "section.livePreview"]),
+        "\(query): dictation's Live Preview in \(ids)")
+      #expect(ids.contains("meetingLiveWords"), "\(query): EnviousMeet's Live Preview in \(ids)")
+    }
+    #expect(
+      SettingsSearchPresentation.breadcrumb(of: .livePreview)
+        != SettingsSearchPresentation.breadcrumb(of: .meetingLiveWords),
+      "the two Live Preview results show different pages")
     let rows: [(SettingsSearchModel, String, String)] = [
-      (english, "live words", "meetingLiveWords"),
       (german, "Live-Transkript", "meetingLiveWords"),
       (english, "transcript language", "meetingTranscriptLanguage"),
       (german, "Transkriptsprache", "meetingTranscriptLanguage"),
@@ -93,9 +105,9 @@ struct SettingsSearchBothLegsTests {
       #expect(ids.first == expected, "\(query): \(Array(ids.prefix(5)))")
     }
     // The engine choices are found under their row.
-    let apple = await Self.search(english, "apple live words in meetings")
+    let apple = await Self.search(english, "apple live preview in meetings")
     #expect(apple.prefix(5).contains("meetingLiveWords.apple"), "apple: \(Array(apple.prefix(5)))")
-    let universal = await Self.search(german, "Universal für das Live-Transkript im Meeting")
+    let universal = await Self.search(german, "Universal für die Live-Vorschau im Meeting")
     #expect(
       universal.prefix(5).contains("meetingLiveWords.universal"),
       "universal: \(Array(universal.prefix(5)))")

@@ -1,0 +1,8 @@
+{
+  "language": "sv",
+  "title": "språk för mötets liveförhandsvisning",
+  "words": [],
+  "phrases": [
+    "ändra språk för texten som visas medan mötet spelas in"
+  ]
+}

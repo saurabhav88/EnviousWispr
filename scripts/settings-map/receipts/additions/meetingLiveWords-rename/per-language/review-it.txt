@@ -1,0 +1,26 @@
+{
+  "meetingLiveWords": {
+    "title": "anteprima in tempo reale di EnviousMeet",
+    "words": [
+      "mostra le parole mentre parli"
+    ],
+    "phrases": [
+      "impostazioni dell’anteprima in tempo reale delle riunioni",
+      "motore e lingua dell’anteprima in tempo reale di EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "title": "cambia motore dell’anteprima in tempo reale di EnviousMeet",
+    "words": [],
+    "phrases": [
+      "aprire la scelta del motore dell’anteprima in tempo reale di EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "mantieni il motore attuale dell’anteprima in tempo reale di EnviousMeet",
+    "words": [],
+    "phrases": [
+      "chiudere la scelta del motore dell’anteprima in tempo reale di EnviousMeet senza cambiare nulla"
+    ]
+  }
+}

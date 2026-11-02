@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "näytä sanat puhuessasi EnviousMeetissä",
+    "words": [
+      "kokouksen reaaliaikainen litterointi"
+    ],
+    "phrases": [
+      "valitse kokouksen aikana näkyvän esikatselutekstin moottori",
+      "vaihda EnviousMeetin esikatselun moottoria"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "säilytä EnviousMeetin ”näytä sanat puhuessasi” -toiminnon nykyinen moottori",
+    "words": [],
+    "phrases": [
+      "sulje kokouksen esikatselun moottorivalinta muuttamatta asetusta"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "meetingLiveWords": {
+    "title": "vis ord mens du taler i EnviousMeet",
+    "words": [
+      "livetekst til møder",
+      "livetransskription af møder"
+    ],
+    "phrases": [
+      "indstillinger for livevisning i EnviousMeet",
+      "motor og sprog til mødets livevisning"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "title": "skift motor til “vis ord mens du taler” i EnviousMeet",
+    "words": [],
+    "phrases": [
+      "åbn motorvalget til livevisning i EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "behold den nuværende motor til “vis ord mens du taler” i EnviousMeet",
+    "words": [],
+    "phrases": [
+      "luk motorvalget til livevisning i EnviousMeet uden at ændre noget"
+    ]
+  }
+}

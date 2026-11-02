@@ -1,0 +1,8 @@
+{
+  "meetingLiveWords.change": {
+    "words": [],
+    "phrases": [
+      "open the Live Preview engine choices in EnviousMeet"
+    ]
+  }
+}

@@ -1,0 +1,261 @@
+{
+ "id": "meetingLiveWordsLanguage",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "لغة المعاينة المباشرة",
+   "words": [],
+   "phrases": [
+    "تغيير لغة التعرف على الكلام في المعاينة المباشرة للاجتماع"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "език на прегледа на живо",
+   "words": [],
+   "phrases": [
+    "смяна на езика за разпознаване на реч в прегледа на живо по време на среща"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "jazyk živého náhledu",
+   "words": [],
+   "phrases": [
+    "změnit jazyk rozpoznávání řeči v živém náhledu schůzky"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "sprog for livevisning",
+   "words": [],
+   "phrases": [
+    "skift sproget for talegenkendelse i mødets livevisning"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "Sprache für die Spracherkennung in der Live-Vorschau ändern",
+    "welche Sprache hört die Live-Vorschau im Meeting"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "γλώσσα ζωντανής προεπισκόπησης",
+   "words": [],
+   "phrases": [
+    "αλλαγή γλώσσας αναγνώρισης ομιλίας στη ζωντανή προεπισκόπηση της σύσκεψης"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "change the spoken language for the meeting live preview",
+    "what language does live preview listen for"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "idioma de la vista previa en directo",
+   "words": [],
+   "phrases": [
+    "cambiar el idioma que reconoce la vista previa de la reunión"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "reaalajas eelvaate keel",
+   "words": [],
+   "phrases": [
+    "muuda koosoleku reaalajas eelvaate kõnetuvastuse keelt"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "reaaliaikaisen esikatselun kieli",
+   "words": [],
+   "phrases": [
+    "vaihda kokouksen reaaliaikaisen esikatselun puheentunnistuksen kieli"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "langue de l’aperçu en direct",
+   "words": [],
+   "phrases": [
+    "changer la langue reconnue dans l’aperçu en direct de la réunion"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "लाइव प्रीव्यू की भाषा",
+   "words": [],
+   "phrases": [
+    "मीटिंग के लाइव प्रीव्यू में पहचानी जाने वाली भाषा बदलें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "jezik pretpregleda uživo",
+   "words": [],
+   "phrases": [
+    "promijeni jezik prepoznavanja govora u pretpregledu sastanka uživo"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "élő előnézet nyelve",
+   "words": [],
+   "phrases": [
+    "beszédfelismerés nyelvének módosítása a megbeszélés élő előnézetében"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "lingua dell’anteprima in tempo reale",
+   "words": [],
+   "phrases": [
+    "cambiare la lingua riconosciuta nell’anteprima in tempo reale della riunione"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "ライブプレビューの言語",
+   "words": [],
+   "phrases": [
+    "会議のライブプレビューで認識する言語を変える"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "실시간 미리보기 언어",
+   "words": [],
+   "phrases": [
+    "회의 실시간 미리보기에서 인식하는 언어 바꾸기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "tiesioginės peržiūros kalba",
+   "words": [],
+   "phrases": [
+    "pakeisti susitikimo tiesioginės peržiūros kalbos atpažinimo kalbą"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "reāllaika priekšskatījuma valoda",
+   "words": [],
+   "phrases": [
+    "mainīt runas atpazīšanas valodu sapulces reāllaika priekšskatījumā"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "lingwa tal-previżjoni diretta",
+   "words": [],
+   "phrases": [
+    "ibdel il-lingwa li tagħraf il-previżjoni diretta waqt laqgħa"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "taal van het livevoorbeeld",
+   "words": [],
+   "phrases": [
+    "taal voor spraakherkenning in het livevoorbeeld van de vergadering wijzigen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "język podglądu na żywo",
+   "words": [],
+   "phrases": [
+    "zmień język rozpoznawania mowy w podglądzie spotkania na żywo"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "idioma da pré-visualização em tempo real",
+   "words": [],
+   "phrases": [
+    "mudar o idioma reconhecido na pré-visualização da reunião em tempo real"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "limba previzualizării în timp real",
+   "words": [],
+   "phrases": [
+    "schimbă limba recunoscută în previzualizarea în timp real a întâlnirii"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "язык предпросмотра в реальном времени",
+   "words": [],
+   "phrases": [
+    "изменить язык распознавания речи в предпросмотре встречи"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "jazyk živého náhľadu",
+   "words": [],
+   "phrases": [
+    "zmeniť jazyk rozpoznávania reči v živom náhľade stretnutia"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "jezik predogleda v živo",
+   "words": [],
+   "phrases": [
+    "spremeni jezik prepoznavanja govora v predogledu sestanka v živo"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "språk för liveförhandsvisning",
+   "words": [],
+   "phrases": [
+    "ändra språk för taligenkänning i mötets liveförhandsvisning"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "canlı önizleme dili",
+   "words": [],
+   "phrases": [
+    "toplantının canlı önizlemesinde tanınan dili değiştir"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "мова попереднього перегляду в реальному часі",
+   "words": [],
+   "phrases": [
+    "змінити мову розпізнавання мовлення в попередньому перегляді зустрічі"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ngôn ngữ xem trước trực tiếp",
+   "words": [],
+   "phrases": [
+    "đổi ngôn ngữ nhận dạng giọng nói trong phần xem trước trực tiếp của cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "实时预览语言",
+   "words": [],
+   "phrases": [
+    "更改会议实时预览识别的语言"
+   ]
+  }
+ ]
+}

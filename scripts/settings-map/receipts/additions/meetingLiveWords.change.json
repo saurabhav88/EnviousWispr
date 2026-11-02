@@ -2,17 +2,18 @@
  "id": "meetingLiveWords.change",
  "blocks": {
   "ar": {
-   "title": "تغيير محرك النص المباشر للاجتماع",
+   "title": "تغيير محرك ميزة «إظهار الكلمات أثناء الكلام» في EnviousMeet",
    "words": [],
    "phrases": [
-    "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+    "فتح خيارات محرك إظهار الكلمات أثناء الكلام في EnviousMeet"
    ]
   },
   "bg": {
-   "title": "смяна на модела за текста на срещата в реално време",
+   "title": "смяна на модела за „показване на думите, докато говорите“ в EnviousMeet",
    "words": [],
    "phrases": [
-    "отвори моделите за текста на срещата в реално време в EnviousMeet"
+    "отвори избора на модел за текста на живо в EnviousMeet",
+    "избор между Apple и Universal за текста по време на запис на среща"
    ]
   },
   "cs": {
@@ -23,16 +24,16 @@
    ]
   },
   "da": {
-   "title": "skift motor til livetransskription af møder",
+   "title": "skift motor til “vis ord mens du taler” i EnviousMeet",
    "words": [],
    "phrases": [
-    "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+    "åbn motorvalget til livevisning i EnviousMeet"
    ]
   },
   "de": {
    "words": [],
    "phrases": [
-    "Engine für das Live-Transkript ändern"
+    "Engine für die Live-Vorschau im Meeting ändern"
    ]
   },
   "el": {
@@ -45,7 +46,7 @@
   "en": {
    "words": [],
    "phrases": [
-    "open the live words engine choices in EnviousMeet"
+    "open the Live Preview engine choices in EnviousMeet"
    ]
   },
   "es": {
@@ -98,10 +99,10 @@
    ]
   },
   "it": {
-   "title": "cambia motore di trascrizione in tempo reale",
+   "title": "cambia motore dell’anteprima in tempo reale di EnviousMeet",
    "words": [],
    "phrases": [
-    "aprire le schede dei motori per il testo mostrato in tempo reale durante le riunioni in EnviousMeet"
+    "aprire la scelta del motore dell’anteprima in tempo reale di EnviousMeet"
    ]
   },
   "ja": {
@@ -112,10 +113,10 @@
    ]
   },
   "ko": {
-   "title": "실시간 회의 텍스트 엔진 변경",
+   "title": "EnviousMeet 실시간 미리보기 엔진 변경",
    "words": [],
    "phrases": [
-    "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+    "회의 실시간 미리보기 엔진 선택 창 열기"
    ]
   },
   "lt": {
@@ -210,17 +211,19 @@
    ]
   },
   "vi": {
-   "title": "đổi công cụ chép lời trực tiếp cuộc họp",
+   "title": "đổi công cụ cho “hiện chữ khi đang nói” trong EnviousMeet",
    "words": [],
    "phrases": [
-    "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+    "chọn Apple hoặc Universal để hiện chữ khi đang ghi âm cuộc họp",
+    "mở danh sách công cụ hiện chữ khi đang nói trong EnviousMeet"
    ]
   },
   "zh": {
-   "title": "更换会议实时转写引擎",
+   "title": "更换 EnviousMeet 会议实时预览引擎",
    "words": [],
    "phrases": [
-    "打开会议实时转写引擎选择列表"
+    "打开会议实时预览的引擎选项",
+    "为会议实时预览选择 Apple 或 Universal 引擎"
    ]
   }
  }

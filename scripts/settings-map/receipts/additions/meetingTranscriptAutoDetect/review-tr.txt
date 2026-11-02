@@ -1,0 +1,1 @@
+{"language":"tr","title":"dili otomatik algıla","words":[],"phrases":["toplantı dökümü için konuşulan dili otomatik algıla","toplantı sonrası dökümün dilini kendisi bulsun"]}
