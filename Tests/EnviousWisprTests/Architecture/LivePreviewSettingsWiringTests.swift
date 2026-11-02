@@ -98,11 +98,16 @@ struct LivePreviewSettingsWiringTests {
     #expect(shape.helpInsideButton == 1)
   }
 
-  @Test("choosing an engine writes the choice and closes the cards, and starts nothing")
-  func selectionOnlyWrites() throws {
+  /// #4325 (founder 2026-11-02): picking Universal now starts its download, so the card no longer
+  /// "starts nothing". What this guarded, a pick that silently kicks off work, now lives in ONE
+  /// tested decision, `LivePreviewSettingsView.choose(_:settings:modelDelivery:)` (covered by
+  /// `ModelDeliveryHomeTests` "picking Universal on the dictation page downloads it even with
+  /// Live Preview off"); this pins that the card goes through it and does nothing else.
+  @Test("choosing an engine goes through the one selection decision and closes the cards")
+  func selectionGoesThroughTheDecision() throws {
     let statements = Self.closureStatements(label: "onSelect", in: try Self.tree())
     #expect(
-      statements == ["settings.livePreviewEngine = choice", "showPreviewEngineChoices = false"],
+      statements == ["choose(choice)", "showPreviewEngineChoices = false"],
       "onSelect does: \(statements)")
   }
 
