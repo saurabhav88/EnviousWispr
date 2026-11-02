@@ -1,0 +1,17 @@
+{
+  "meetingLiveWords": {
+    "title": "aperçu en direct des réunions dans EnviousMeet",
+    "words": [],
+    "phrases": [
+      "choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet",
+      "régler le moteur et la langue du texte affiché pendant une réunion"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "conserver le moteur actuel de l’aperçu en direct dans EnviousMeet",
+    "words": [],
+    "phrases": [
+      "fermer le choix des moteurs sans changer le moteur de l’aperçu en direct des réunions dans EnviousMeet"
+    ]
+  }
+}

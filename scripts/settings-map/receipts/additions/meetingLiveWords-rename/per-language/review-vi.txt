@@ -1,0 +1,28 @@
+{
+  "meetingLiveWords": {
+    "title": "hiện chữ khi đang nói trong EnviousMeet",
+    "words": [
+      "chép lời trực tiếp cuộc họp"
+    ],
+    "phrases": [
+      "cài đặt hiện chữ khi đang ghi âm cuộc họp",
+      "công cụ và ngôn ngữ hiện chữ khi đang nói trong EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "title": "đổi công cụ cho “hiện chữ khi đang nói” trong EnviousMeet",
+    "words": [],
+    "phrases": [
+      "chọn Apple hoặc Universal để hiện chữ khi đang ghi âm cuộc họp",
+      "mở danh sách công cụ hiện chữ khi đang nói trong EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "giữ công cụ hiện tại cho “hiện chữ khi đang nói” trong EnviousMeet",
+    "words": [],
+    "phrases": [
+      "giữ nguyên công cụ hiện chữ khi đang ghi âm cuộc họp",
+      "đóng danh sách công cụ hiện chữ trong EnviousMeet mà không thay đổi"
+    ]
+  }
+}

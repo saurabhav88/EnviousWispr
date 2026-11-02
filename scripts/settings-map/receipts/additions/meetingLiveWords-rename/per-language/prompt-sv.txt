@@ -1,0 +1,93 @@
+You are reviewing the search vocabulary blocks for a few places in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "sv".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+Context: EnviousMeet's on-screen meeting text was renamed from "Live words" to "Live Preview" (German: from "Live-Transkript" to "Live-Vorschau"). Dictation already has its own, separate Live Preview setting. The blocks below are the final blocks after a first rename pass; review them as they are now.
+
+The places (English titles and descriptions are the source of truth):
+- meetingLiveWords: The live engine card on the Models tab of the EnviousMeet (meeting recorder) page. English title "Live Preview" (German "Live-Vorschau"); English description "The engine and language for words shown while a meeting records." It chooses which engine (Apple or Universal) shows a rough draft of the words on screen while a meeting records, and holds the row for that live text's language. The feature was called "Live words" in English and "Live-Transkript" in German before; it is now named Live Preview, the same name the app uses for dictation's on-screen words, but it is a SEPARATE setting from dictation's Live Preview. It does NOT change the full transcript written after the meeting.
+- meetingLiveWords.keepCurrent: The button that closes the meeting Live Preview engine choices without changing them (English title "Keep current Live Preview engine").
+
+Review each block for language "sv" below:
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: a block must not fit a sibling place equally well. Each block must make clear it is about meetings/EnviousMeet, not dictation's Live Preview. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "sv" would really type or see in an app's settings. For a title: how an app in that language would label this place, naming the feature the way this app names Live Preview in that language. Keep product names (EnviousMeet, EnviousWispr, Apple, Universal, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form. An old name kept as a search word on the card (meetingLiveWords) is intentional, so people who remember it still find the card; do not add the old name to the other places.
+
+Blocks to review (id -> block):
+{
+ "meetingLiveWords": {
+  "title": "Visa ord medan du pratar i EnviousMeet",
+  "words": [
+   "mötestext i realtid"
+  ],
+  "phrases": [
+   "ändra språk för mötets transkribering i realtid",
+   "välj motor för mötets transkribering i realtid"
+  ]
+ },
+ "meetingLiveWords.keepCurrent": {
+  "title": "behåll nuvarande motor för ”Visa ord medan du pratar” i EnviousMeet",
+  "words": [],
+  "phrases": [
+   "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+  ]
+ }
+}
+
+Sibling blocks in "sv" (id -> block):
+{
+ "livePreview": {
+  "language": "sv",
+  "title": "Visa ord medan du pratar",
+  "words": [
+   "realtidstext",
+   "livetext",
+   "live preview"
+  ],
+  "phrases": [
+   "visa orden medan jag pratar",
+   "slå på eller av textvisningen medan jag dikterar"
+  ]
+ },
+ "dictation.tab.livePreview": {
+  "language": "sv",
+  "title": "Förhandsvisning i realtid",
+  "words": [
+   "förhandsvisningsflik",
+   "förhandsvisningsinställningar"
+  ],
+  "phrases": [
+   "öppna fliken för förhandsvisning i realtid"
+  ]
+ },
+ "meetingLiveWordsLanguage": {
+  "language": "sv",
+  "title": "språk för mötets liveförhandsvisning",
+  "words": [],
+  "phrases": [
+   "ändra språk för texten som visas medan mötet spelas in"
+  ]
+ },
+ "meetingTranscriptLanguage": {
+  "language": "sv",
+  "title": "språk för mötestranskript",
+  "words": [
+   "transkriptspråk"
+  ],
+  "phrases": [
+   "ändra språk för hela transkriptet efter mötet",
+   "identifiera språket automatiskt för mötestranskriptet"
+  ]
+ },
+ "meetingTranscriptEngine": {
+  "language": "sv",
+  "title": "motor för mötestranskript",
+  "words": [],
+  "phrases": [
+   "välj motor för att transkribera hela mötet",
+   "byt motor för transkribering efter mötet"
+  ]
+ }
+}
+
+Output: one JSON object only, no commentary, no code fence, mapping EVERY id above to its corrected block in exactly the shape given (keep "language"; omit "title" for en and de). If a block is already right, return it unchanged. After the JSON add nothing.

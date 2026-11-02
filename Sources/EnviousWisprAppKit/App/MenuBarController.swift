@@ -936,7 +936,7 @@ final class MenuBarController: NSObject {
     }
   }
 
-  /// #3972 R34: Show Live Transcript / Show in History open History on that meeting.
+  /// #3972 R34, #4320: Show Live Preview / Show in History open History on that meeting.
   @objc private func showMeetingAction(_ sender: NSMenuItem) {
     guard let meetingID = sender.representedObject as? UUID else { return }
     actions.showMeeting(meetingID)

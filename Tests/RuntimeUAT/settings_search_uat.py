@@ -78,19 +78,25 @@ PROBES = [
      "query": "enviousmeet permissions", "title": "Permissions", "row_has": "EnviousMeet",
      "entry": "meetings.tab.permissions", "dest_page": "EnviousMeet", "dest_tab": "Permissions",
      "landings": {("target", "meetings.tab.permissions")}},
-    # #4105: the Live words and Transcript language rows, and an engine choice, which lands
-    # on its row (the choice's target is its parent control).
-    {"name": "live-words-from-keybinds", "page": "Keybinds", "tab": None,
-     "query": "live words", "title": "Live words", "row_has": None,
-     "entry": "meetingLiveWords", "dest_page": "EnviousMeet", "dest_tab": "General",
+    # #4105 / #4320: the Live Preview (formerly Live words) and Transcript language rows, and an
+    # engine choice, which lands on its row (the choice's target is its parent control). #4320
+    # founder decision 9: "live preview" shows both dictation's and EnviousMeet's; each probe
+    # names its own row (EnviousMeet's by its breadcrumb) so one cannot pass on the other's.
+    {"name": "live-preview-meeting-from-keybinds", "page": "Keybinds", "tab": None,
+     "query": "live preview", "title": "Live Preview", "row_has": "EnviousMeet",
+     "entry": "meetingLiveWords", "dest_page": "EnviousMeet", "dest_tab": "Models",
      "landings": {("target", "meetingLiveWords")}},
+    {"name": "live-preview-dictation-from-keybinds", "page": "Keybinds", "tab": None,
+     "query": "live preview", "title": "Show words while you speak", "row_has": None,
+     "entry": "livePreview", "dest_page": "Dictation Settings", "dest_tab": "Live Preview",
+     "landings": {("target", "livePreview")}},
     {"name": "transcript-language-from-meet-call-apps", "page": "EnviousMeet", "tab": "Call Apps",
      "query": "transcript language", "title": "Transcript language", "row_has": None,
-     "entry": "meetingTranscriptLanguage", "dest_page": "EnviousMeet", "dest_tab": "General",
+     "entry": "meetingTranscriptLanguage", "dest_page": "EnviousMeet", "dest_tab": "Models",
      "landings": {("target", "meetingTranscriptLanguage")}},
-    {"name": "live-words-universal-from-engine", "page": "Dictation Settings", "tab": "Engine",
-     "query": "universal live words", "title": "Universal", "row_has": "Live words",
-     "entry": "meetingLiveWords.universal", "dest_page": "EnviousMeet", "dest_tab": "General",
+    {"name": "live-preview-universal-from-engine", "page": "Dictation Settings", "tab": "Engine",
+     "query": "universal live preview meeting", "title": "Universal", "row_has": "EnviousMeet",
+     "entry": "meetingLiveWords.universal", "dest_page": "EnviousMeet", "dest_tab": "Models",
      "landings": {("target", "meetingLiveWords")}},
 ]
 
@@ -280,7 +286,7 @@ def _self_test():
           verdict(save, True, [("section", "aiPolish.providerSection", False)], "AI Polish", None)[0] == "PASS")
     check("Save: an undeclared landing fails",
           verdict(save, True, [("landing", "page.aiPolish", False)], "AI Polish", None)[0] == "FAIL")
-    check("thirteen probes with unique names", len(PROBES) == 13 and len({p["name"] for p in PROBES}) == 13)
+    check("fourteen probes with unique names", len(PROBES) == 14 and len({p["name"] for p in PROBES}) == 14)
     print("self-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
 

@@ -1,0 +1,20 @@
+{
+  "meetingLiveWords": {
+    "title": "zobrazovat slova během mluvení v EnviousMeet",
+    "words": [
+      "živý přepis schůzky"
+    ],
+    "phrases": [
+      "vybrat modul pro zobrazování slov během nahrávání schůzky",
+      "nastavit Apple nebo Universal pro živý náhled v EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "ponechat současný modul pro zobrazování slov během mluvení v EnviousMeet",
+    "words": [],
+    "phrases": [
+      "ponechat současný modul živého náhledu schůzky",
+      "zavřít výběr modulu živého náhledu v EnviousMeet beze změny"
+    ]
+  }
+}

@@ -1,0 +1,107 @@
+You are reviewing the search vocabulary blocks for a few places in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). It also has EnviousMeet, a meeting recorder on its own page. The language you review is "zh".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+Context: EnviousMeet's on-screen meeting text was renamed from "Live words" to "Live Preview" (German: from "Live-Transkript" to "Live-Vorschau"). Dictation already has its own, separate Live Preview setting. The blocks below are the final blocks after a first rename pass; review them as they are now.
+
+The places (English titles and descriptions are the source of truth):
+- meetingLiveWords: The live engine card on the Models tab of the EnviousMeet (meeting recorder) page. English title "Live Preview" (German "Live-Vorschau"); English description "The engine and language for words shown while a meeting records." It chooses which engine (Apple or Universal) shows a rough draft of the words on screen while a meeting records, and holds the row for that live text's language. The feature was called "Live words" in English and "Live-Transkript" in German before; it is now named Live Preview, the same name the app uses for dictation's on-screen words, but it is a SEPARATE setting from dictation's Live Preview. It does NOT change the full transcript written after the meeting.
+- meetingLiveWords.change: The Change button on the meeting Live Preview engine card (English title "Change"). It opens the engine choices (Apple, Universal) for EnviousMeet's Live Preview.
+- meetingLiveWords.keepCurrent: The button that closes the meeting Live Preview engine choices without changing them (English title "Keep current Live Preview engine").
+
+Review each block for language "zh" below:
+1. Accuracy: remove or rewrite anything the place does not do.
+2. Collisions: a block must not fit a sibling place equally well. Each block must make clear it is about meetings/EnviousMeet, not dictation's Live Preview. The siblings' current blocks in this language are listed below.
+3. Naturalness: wording a native speaker of "zh" would really type or see in an app's settings. For a title: how an app in that language would label this place, naming the feature the way this app names Live Preview in that language. Keep product names (EnviousMeet, EnviousWispr, Apple, Universal, macOS, Mac) unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form. An old name kept as a search word on the card (meetingLiveWords) is intentional, so people who remember it still find the card; do not add the old name to the other places.
+
+Blocks to review (id -> block):
+{
+ "meetingLiveWords": {
+  "title": "EnviousMeet 的“说话时显示文字”",
+  "words": [
+   "会议实时文字",
+   "会议实时转录"
+  ],
+  "phrases": [
+   "更改会议实时转写的语言",
+   "选择会议实时转写引擎"
+  ]
+ },
+ "meetingLiveWords.change": {
+  "title": "更换 EnviousMeet“说话时显示文字”的引擎",
+  "words": [],
+  "phrases": [
+   "打开会议实时转写引擎选择列表"
+  ]
+ },
+ "meetingLiveWords.keepCurrent": {
+  "title": "保留 EnviousMeet“说话时显示文字”的当前引擎",
+  "words": [],
+  "phrases": [
+   "关闭选择列表并保留当前会议实时转写引擎"
+  ]
+ }
+}
+
+Sibling blocks in "zh" (id -> block):
+{
+ "livePreview": {
+  "language": "zh",
+  "title": "说话时显示文字",
+  "words": [
+   "边说边显示",
+   "实时出字",
+   "边说边看",
+   "即时文字"
+  ],
+  "phrases": [
+   "还没说完就能看到文字",
+   "打开或关闭说话时的文字预览"
+  ]
+ },
+ "dictation.tab.livePreview": {
+  "language": "zh",
+  "title": "实时预览设置",
+  "words": [
+   "预览设置",
+   "实时预览页"
+  ],
+  "phrases": [
+   "打开实时预览设置页面"
+  ]
+ },
+ "meetingLiveWordsLanguage": {
+  "language": "zh",
+  "title": "会议实时预览语言",
+  "words": [],
+  "phrases": [
+   "更改会议实时预览文字的语言"
+  ]
+ },
+ "meetingTranscriptLanguage": {
+  "language": "zh",
+  "title": "会后转写语言",
+  "words": [
+   "会后转写",
+   "会后逐字稿"
+  ],
+  "phrases": [
+   "更改会后完整逐字稿的语言",
+   "自动识别会后转写文本的语言"
+  ]
+ },
+ "meetingTranscriptEngine": {
+  "language": "zh",
+  "title": "会后转写引擎",
+  "words": [
+   "会议转写引擎",
+   "会议转写模型"
+  ],
+  "phrases": [
+   "选择转写整场会议的模型",
+   "更改会后生成完整文字稿的引擎"
+  ]
+ }
+}
+
+Output: one JSON object only, no commentary, no code fence, mapping EVERY id above to its corrected block in exactly the shape given (keep "language"; omit "title" for en and de). If a block is already right, return it unchanged. After the JSON add nothing.

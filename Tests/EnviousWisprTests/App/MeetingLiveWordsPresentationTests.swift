@@ -14,9 +14,9 @@ struct MeetingLiveWordsPresentationTests {
   typealias P = MeetingsPresentation
   typealias Status = MeetingLiveWords.Status
 
-  static let intro = "Live words, as people speak. The full transcript comes after the meeting."
-  static let removal = "Live words stopped while the Universal engine is being removed."
-  static let skipped = "Some live words were skipped. The full transcript comes after the meeting."
+  static let intro = "Live Preview, as people speak. The full transcript comes after the meeting."
+  static let removal = "Live Preview stopped while the Universal engine is being removed."
+  static let skipped = "Some Live Preview text was skipped. The full transcript comes after the meeting."
   static let echo = "Echo is hidden when the meeting ends."
 
   static func live(
@@ -44,26 +44,26 @@ struct MeetingLiveWordsPresentationTests {
       (.off(.notCaptured), nil),
       (
         .off(.notSetUp),
-        "Live words are not set up. Choose an engine in EnviousMeet settings, Models, Live words."
+        "Live Preview is not set up. Choose an engine in EnviousMeet settings, Models, Live Preview."
       ),
       (
         .off(.engineNotDownloaded(engine: .universal, languageName: "German")),
-        "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words."
+        "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview."
       ),
       (
         .off(.engineNotDownloaded(engine: .apple, languageName: "German")),
-        "Live words need Apple's German model. Download it in EnviousMeet settings, Models, Live words."
+        "Live Preview needs Apple's German model. Download it in EnviousMeet settings, Models, Live Preview."
       ),
       (
         .off(.previousStillClosing),
-        "Live words are off for this meeting while the last one finishes closing."
+        "Live Preview is off for this meeting while the last one finishes closing."
       ),
-      (.off(.couldNotStart), "Live words are not available for this meeting."),
-      (.off(.unavailable), "Live words are not available for this meeting."),
+      (.off(.couldNotStart), "Live Preview is not available for this meeting."),
+      (.off(.unavailable), "Live Preview is not available for this meeting."),
       (.off(.modelBeingRemoved), Self.removal),
-      (.stopped(.engineFailed), "Live words stopped for You. The recording continues."),
-      (.stopped(.restartTimedOut), "Live words stopped for You. The recording continues."),
-      (.stopped(.restartFailed), "Live words stopped for You. The recording continues."),
+      (.stopped(.engineFailed), "Live Preview stopped for You. The recording continues."),
+      (.stopped(.restartTimedOut), "Live Preview stopped for You. The recording continues."),
+      (.stopped(.restartFailed), "Live Preview stopped for You. The recording continues."),
       (.stopped(.modelRemoved), Self.removal),
     ]
     for (status, expected) in cases {
@@ -71,7 +71,7 @@ struct MeetingLiveWordsPresentationTests {
     }
     #expect(
       P.trackLine(.callSound, .stopped(.engineFailed))
-        == "Live words stopped for Call. The recording continues.")
+        == "Live Preview stopped for Call. The recording continues.")
   }
 
   @Test("the status lines across mixed tracks, dropped audio and echo, each said once")
@@ -94,7 +94,7 @@ struct MeetingLiveWordsPresentationTests {
         callSoundRecorded: true)
         == [
           Self.intro,
-          "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words.",
+          "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview.",
           Self.echo,
         ])
     // Different outcomes per track: each said, microphone first.
@@ -103,7 +103,7 @@ struct MeetingLiveWordsPresentationTests {
         Self.live(.stopped(.engineFailed), .running, dropped: [.callSound]),
         callSoundRecorded: true)
         == [
-          Self.intro, "Live words stopped for You. The recording continues.", Self.skipped,
+          Self.intro, "Live Preview stopped for You. The recording continues.", Self.skipped,
           Self.echo,
         ])
     // Dropped audio on both tracks: one note.
@@ -116,7 +116,7 @@ struct MeetingLiveWordsPresentationTests {
 
   static let noWordsYet = "No words yet."
   static let endedIntro =
-    "Live words from the recording. The full transcript replaces them when it is ready."
+    "Live Preview text from the recording. The full transcript replaces it when it is ready."
 
   @Test("No words yet shows only while recording and a track can still bring words")
   func waitingForWords() {
@@ -137,10 +137,10 @@ struct MeetingLiveWordsPresentationTests {
     #expect(ended(Self.live(.starting, .starting), false) == [Self.endedIntro])
     #expect(
       P.emptyLiveWords(Self.live(.running, .running), recordingEnded: true)
-        == "No live words were heard.")
+        == "Live Preview heard no words.")
     #expect(
       P.emptyLiveWords(Self.live(.starting, .off(.notCaptured)), recordingEnded: true)
-        == "No live words were heard.")
+        == "Live Preview heard no words.")
     // Words kept: no empty note.
     #expect(
       P.emptyLiveWords(Self.live(.running, .running, lines: [Self.line]), recordingEnded: true)
@@ -149,27 +149,27 @@ struct MeetingLiveWordsPresentationTests {
     #expect(
       ended(Self.live(.stopped(.engineFailed), .running, dropped: [.microphone]), true)
         == [
-          Self.endedIntro, "Live words stopped for You before the recording ended.", Self.skipped,
+          Self.endedIntro, "Live Preview stopped for You before the recording ended.", Self.skipped,
           "Echo is hidden in the full transcript.",
         ])
     #expect(
       ended(Self.live(.stopped(.modelRemoved), .off(.modelBeingRemoved)), false)
-        == [Self.endedIntro, "Live words stopped while the Universal engine was being removed."])
+        == [Self.endedIntro, "Live Preview stopped while the Universal engine was being removed."])
     #expect(
       ended(Self.live(.off(.previousStillClosing), .off(.previousStillClosing)), false)
-        == [Self.endedIntro, "Live words were not available for this meeting."])
+        == [Self.endedIntro, "Live Preview was not available for this meeting."])
     #expect(
       ended(Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.notCaptured)), false)
         == [
           Self.endedIntro,
-          "Live words needed the Universal engine, which was not downloaded.",
+          "Live Preview needed the Universal engine, which was not downloaded.",
         ])
     #expect(
       ended(Self.live(.off(.engineNotDownloaded(engine: .apple, languageName: "German")), .off(.notCaptured)), false)
-        == [Self.endedIntro, "Live words needed Apple's German model, which was not downloaded."])
+        == [Self.endedIntro, "Live Preview needed Apple's German model, which was not downloaded."])
     #expect(
       ended(Self.live(.off(.notSetUp), .off(.notCaptured)), false)
-        == [Self.endedIntro, "Live words were not set up for this meeting."])
+        == [Self.endedIntro, "Live Preview was not set up for this meeting."])
     // No sentence after Stop speaks of a recording that goes on or words still to come.
     let every: [MeetingLiveWords.Status] = [
       .starting, .running, .off(.notCaptured), .off(.notSetUp), .off(.engineNotDownloaded(engine: .universal, languageName: "German")),

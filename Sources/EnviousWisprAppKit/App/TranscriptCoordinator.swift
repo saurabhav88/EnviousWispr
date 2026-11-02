@@ -1252,7 +1252,7 @@ final class TranscriptCoordinator {
   #endif
 
   /// Shows the Meetings tab with no search and selects `meetingID` when given (#3972 R45): the menu's
-  /// "Show Live Transcript" and "Show in History", and the EnviousMeet page's "Show
+  /// "Show Live Preview" and "Show in History", and the EnviousMeet page's "Show
   /// recordings". The caller brings History forward.
   func showRecordings(meetingID: UUID? = nil) {
     searchQuery = ""

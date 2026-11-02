@@ -1,0 +1,20 @@
+{
+  "meetingLiveWords": {
+    "title": "„rodyti žodžius kalbant“ programoje EnviousMeet",
+    "words": [
+      "susitikimo transkripcija realiuoju laiku"
+    ],
+    "phrases": [
+      "pasirinkti susitikimo tiesioginės peržiūros variklį",
+      "pakeisti susitikimo metu rodomo teksto variklį"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "palikti dabartinį „rodyti žodžius kalbant“ variklį programoje EnviousMeet",
+    "words": [],
+    "phrases": [
+      "palikti dabartinį susitikimo tiesioginės peržiūros variklį",
+      "uždaryti susitikimo peržiūros variklių pasirinkimą nieko nekeičiant"
+    ]
+  }
+}

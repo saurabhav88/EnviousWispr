@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "EnviousMeet canlı önizleme",
+    "words": [
+      "canlı toplantı dökümü"
+    ],
+    "phrases": [
+      "toplantı sırasında ekranda görünen metin için motor seç",
+      "EnviousMeet canlı önizleme motorunu değiştir"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "EnviousMeet canlı önizlemesinin mevcut motorunu koru",
+    "words": [],
+    "phrases": [
+      "EnviousMeet canlı önizleme motorunu değiştirmeden seçenekleri kapat"
+    ]
+  }
+}

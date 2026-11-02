@@ -1,0 +1,91 @@
+{
+  "meetingLiveWords": {
+    "words": [
+      "Live-Vorschau",
+      "Live-Transkript",
+      "Engine"
+    ],
+    "phrases": [
+      "Engine für die Live-Vorschau im Meeting wählen",
+      "Live-Vorschau für Meetings einrichten"
+    ]
+  },
+  "meetingLiveWords.apple": {
+    "words": [
+      "Apple"
+    ],
+    "phrases": [
+      "verwende Apple für die Live-Vorschau im Meeting"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "words": [],
+    "phrases": [
+      "Engine für die Live-Vorschau im Meeting ändern"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "words": [],
+    "phrases": [
+      "bisherige Engine für die Live-Vorschau im Meeting behalten"
+    ]
+  },
+  "meetingLiveWords.universal": {
+    "words": [
+      "Universal"
+    ],
+    "phrases": [
+      "nutze Universal für die Live-Vorschau im Meeting"
+    ]
+  },
+  "livePreview": {
+    "language": "de",
+    "words": [
+      "Echtzeit",
+      "mitlesen",
+      "Zwischentext"
+    ],
+    "phrases": [
+      "zeig mir meinen Text, bevor ich fertig diktiert habe",
+      "ich möchte meine Wörter beim Sprechen mitlesen",
+      "schalte die Live-Vorschau ein oder aus"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "öffne den Tab für die Live-Vorschau",
+      "zeig mir die Einstellungsseite für die Live-Vorschau"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "de",
+    "words": [
+      "Sprache",
+      "Live-Vorschau",
+      "Live-Text",
+      "Meeting"
+    ],
+    "phrases": [
+      "Sprache der Live-Vorschau ändern",
+      "Sprache für Live-Text im Meeting"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "ändere die Sprache für das vollständige Transkript nach dem Meeting",
+      "in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "de",
+    "words": [],
+    "phrases": [
+      "Modell für das vollständige Meetingtranskript auswählen",
+      "Engine für die Transkription nach dem Meeting ändern"
+    ]
+  }
+}

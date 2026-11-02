@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "pokazuj słowa podczas mówienia w EnviousMeet",
+    "words": [
+      "tekst spotkania na żywo"
+    ],
+    "phrases": [
+      "wybierz silnik podglądu na żywo w EnviousMeet",
+      "zmień silnik wyświetlający słowa podczas nagrywania spotkania"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "zachowaj obecny silnik funkcji „pokazuj słowa podczas mówienia” w EnviousMeet",
+    "words": [],
+    "phrases": [
+      "zamknij wybór silnika podglądu na żywo w EnviousMeet bez zmian"
+    ]
+  }
+}

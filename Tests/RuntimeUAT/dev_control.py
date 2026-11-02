@@ -317,8 +317,8 @@ and the visible projection; --include-text adds the stored text up to 256 KB.
 meeting notes-set types and saves a meeting's notes (--text) as the Notes tab does;
 notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
 (--replace confirms replacing an edited summary); it returns at the start, so poll
-summary-get. meeting live prints the recording meeting's live words (memory only);
-meeting live-words-status prints the live words engine and language a meeting would use
+summary-get. meeting live prints the recording meeting's Live Preview text (memory only);
+meeting live-words-status prints the Live Preview engine and language a meeting would use
 now, without saving a guess. meeting start --live-engine apple|universal forces that engine
 for one meeting.
 call simulate fakes call apps holding the microphone (--holders JSON list of {bundleID,

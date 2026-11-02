@@ -11332,57 +11332,63 @@
   "meetingLiveWords": {
    "blocks": {
     "ar": {
-     "title": "النص المباشر",
+     "title": "إظهار الكلمات أثناء الكلام في EnviousMeet",
      "words": [
       "نص الاجتماع المباشر"
      ],
      "phrases": [
-      "تغيير لغة النص المباشر للاجتماع",
-      "اختيار محرك النص المباشر للاجتماع",
-      "تنزيل نموذج لغة للنص المباشر للاجتماع"
+      "إعدادات إظهار الكلمات أثناء الكلام في EnviousMeet",
+      "إعدادات المحرك واللغة لعرض الكلمات أثناء تسجيل الاجتماع"
      ]
     },
     "bg": {
-     "title": "текст на срещата в реално време",
+     "title": "„показване на думите, докато говорите“ в EnviousMeet",
      "words": [],
      "phrases": [
-      "език на текста, който се показва по време на срещата",
-      "избор на модел за текста на срещата в реално време",
-      "изтегляне на модел за текста на срещата в реално време"
+      "настройки за показване на текста по време на запис на среща",
+      "модел и език за текста на живо в EnviousMeet"
      ]
     },
     "cs": {
-     "title": "živý přepis",
-     "words": [],
+     "title": "zobrazovat slova během mluvení v EnviousMeet",
+     "words": [
+      "živý přepis schůzky"
+     ],
      "phrases": [
-      "změnit jazyk živého přepisu schůzky",
-      "vybrat rozpoznávání řeči pro živý přepis schůzky"
+      "vybrat modul pro zobrazování slov během nahrávání schůzky",
+      "nastavit Apple nebo Universal pro živý náhled v EnviousMeet"
      ]
     },
     "da": {
-     "title": "livetransskription",
+     "title": "vis ord mens du taler i EnviousMeet",
      "words": [
-      "livetekst til møder"
+      "livetekst til møder",
+      "livetransskription af møder"
      ],
      "phrases": [
-      "skift sprog for livetransskription af møder",
-      "vælg motor til livetransskription af møder"
+      "indstillinger for livevisning i EnviousMeet",
+      "motor og sprog til mødets livevisning"
      ]
     },
     "de": {
-     "words": [],
+     "words": [
+      "Live-Vorschau",
+      "Live-Transkript",
+      "Engine"
+     ],
      "phrases": [
-      "ändere die Sprache für das Live-Transkript während der Meetingaufnahme",
-      "wähle die Engine für das Live-Transkript im Meeting",
-      "ändere die Sprache der Mitschrift während des Meetings"
+      "Engine für die Live-Vorschau im Meeting wählen",
+      "Live-Vorschau für Meetings einrichten"
      ]
     },
     "el": {
-     "title": "ζωντανή απομαγνητοφώνηση",
-     "words": [],
+     "title": "εμφάνιση λέξεων όσο μιλάτε στο EnviousMeet",
+     "words": [
+      "ζωντανή απομαγνητοφώνηση συνάντησης"
+     ],
      "phrases": [
-      "αλλαγή γλώσσας για το ζωντανό κείμενο της συνάντησης",
-      "επιλογή μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+      "επιλογή μηχανής για τη ζωντανή προεπισκόπηση της συνάντησης",
+      "ρυθμίσεις μηχανής και γλώσσας για τη ζωντανή προεπισκόπηση στο EnviousMeet"
      ]
     },
     "en": {
@@ -11396,235 +11402,247 @@
      ]
     },
     "es": {
-     "title": "transcripción en directo",
+     "title": "mostrar palabras mientras hablas en EnviousMeet",
      "words": [
       "texto en directo de reuniones"
      ],
      "phrases": [
-      "cambiar el idioma del texto en directo de la reunión",
-      "elegir motor para transcribir la reunión en directo"
+      "elegir el motor de la vista previa de EnviousMeet",
+      "usar Apple o Universal para mostrar texto provisional durante una reunión"
      ]
     },
     "et": {
-     "title": "reaalajas tekst",
+     "title": "koosoleku reaalajas eelvaade",
      "words": [],
      "phrases": [
-      "muuda koosoleku reaalajas teksti keelt",
-      "vali koosoleku reaalajas teksti mootor"
+      "vali koosoleku reaalajas eelvaate mootor",
+      "muuda koosoleku reaalajas eelvaate mootorit ja keelt"
      ]
     },
     "fi": {
-     "title": "reaaliaikainen litterointi",
-     "words": [],
+     "title": "näytä sanat puhuessasi EnviousMeetissä",
+     "words": [
+      "kokouksen reaaliaikainen litterointi"
+     ],
      "phrases": [
-      "vaihda kokouksen reaaliaikaisen litteroinnin kieli",
-      "valitse kokouksen reaaliaikaisen litteroinnin moottori"
+      "valitse kokouksen aikana näkyvän esikatselutekstin moottori",
+      "vaihda EnviousMeetin esikatselun moottoria"
      ]
     },
     "fr": {
-     "title": "transcription en direct",
+     "title": "aperçu en direct des réunions dans EnviousMeet",
      "words": [],
      "phrases": [
-      "changer la langue du texte affiché pendant l’enregistrement d’une réunion",
-      "choisir le moteur de transcription en direct des réunions"
+      "choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet",
+      "régler le moteur et la langue du texte affiché pendant une réunion"
      ]
     },
     "hi": {
-     "title": "लाइव ट्रांसक्रिप्शन",
+     "title": "EnviousMeet का लाइव प्रीव्यू",
      "words": [
       "मीटिंग का लाइव टेक्स्ट"
      ],
      "phrases": [
-      "मीटिंग के दौरान दिखने वाले शब्दों की भाषा बदलें",
-      "मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन चुनें"
+      "मीटिंग के लाइव प्रीव्यू का इंजन चुनें",
+      "मीटिंग के दौरान टेक्स्ट दिखाने के लिए Apple या Universal चुनें"
      ]
     },
     "hr": {
-     "title": "prijepis uživo",
-     "words": [],
+     "title": "„prikazuj riječi dok govorim” u aplikaciji EnviousMeet",
+     "words": [
+      "prijepis sastanka uživo"
+     ],
      "phrases": [
-      "promijeni jezik prijepisa sastanka uživo",
-      "odaberi mehanizam za prijepis sastanka uživo"
+      "promijeni mehanizam za prikaz riječi tijekom snimanja sastanka",
+      "postavke prikaza teksta uživo u aplikaciji EnviousMeet"
      ]
     },
     "hu": {
-     "title": "élő átirat",
-     "words": [],
+     "title": "élő előnézet az EnviousMeetben",
+     "words": [
+      "megbeszélés élő átirata"
+     ],
      "phrases": [
-      "megbeszélés élő átiratának nyelvét módosítanám",
-      "motort választanék a megbeszélés élő átírásához",
-      "nyelvi modellt töltenék le a megbeszélés élő átírásához"
+      "motort választanék a megbeszélés élő előnézetéhez",
+      "az EnviousMeet élő előnézetének motorját és nyelvét állítanám be"
      ]
     },
     "it": {
-     "title": "trascrizione in tempo reale",
-     "words": [],
+     "title": "anteprima in tempo reale di EnviousMeet",
+     "words": [
+      "mostra le parole mentre parli"
+     ],
      "phrases": [
-      "cambiare la lingua del testo mostrato durante la riunione",
-      "scegliere il motore per la trascrizione in tempo reale della riunione"
+      "impostazioni dell’anteprima in tempo reale delle riunioni",
+      "motore e lingua dell’anteprima in tempo reale di EnviousMeet"
      ]
     },
     "ja": {
-     "title": "リアルタイム文字起こし",
+     "title": "EnviousMeetのライブプレビュー",
      "words": [
       "会議のライブ文字起こし"
      ],
      "phrases": [
-      "会議のリアルタイム文字起こしの言語を変える",
-      "会議のリアルタイム文字起こしのエンジンを選ぶ"
+      "会議のライブプレビューのエンジンを選ぶ",
+      "会議中の文字表示にAppleかUniversalを使う"
      ]
     },
     "ko": {
-     "title": "실시간 회의 텍스트",
-     "words": [],
+     "title": "EnviousMeet 실시간 미리보기",
+     "words": [
+      "회의 실시간 텍스트"
+     ],
      "phrases": [
-      "회의 중 표시되는 실시간 텍스트 언어 바꾸기",
-      "회의 실시간 텍스트 엔진 선택",
-      "회의 실시간 텍스트용 언어 모델 다운로드"
+      "회의 실시간 미리보기 엔진 설정",
+      "회의 중 표시되는 텍스트의 엔진과 언어 설정"
      ]
     },
     "lt": {
-     "title": "transkripcija realiuoju laiku",
-     "words": [],
+     "title": "„rodyti žodžius kalbant“ programoje EnviousMeet",
+     "words": [
+      "susitikimo transkripcija realiuoju laiku"
+     ],
      "phrases": [
-      "pakeisti susitikimo transkripcijos realiuoju laiku kalbą",
-      "pasirinkti susitikimo transkripcijos realiuoju laiku variklį"
+      "pasirinkti susitikimo tiesioginės peržiūros variklį",
+      "pakeisti susitikimo metu rodomo teksto variklį"
      ]
     },
     "lv": {
-     "title": "sapulces teksts reāllaikā",
+     "title": "rādīt vārdus, kamēr runājat lietotnē EnviousMeet",
      "words": [],
      "phrases": [
-      "mainīt sapulces reāllaika teksta valodu",
-      "izvēlēties dzini sapulces tekstam reāllaikā",
-      "lejupielādēt valodas modeli sapulces tekstam reāllaikā"
+      "mainīt sapulces reāllaika teksta dzini",
+      "izvēlēties Apple vai Universal sapulces teksta priekšskatījumam"
      ]
     },
     "mt": {
-     "title": "traskrizzjoni diretta",
+     "title": "“uri l-kliem waqt li titkellem” għal-laqgħat f'EnviousMeet",
      "words": [
       "traskrizzjoni diretta tal-laqgħa"
      ],
      "phrases": [
-      "ibdel il-lingwa tat-traskrizzjoni diretta tal-laqgħa",
-      "agħżel il-magna għat-traskrizzjoni diretta tal-laqgħa"
+      "agħżel il-magna li turi l-kliem waqt laqgħa f'EnviousMeet",
+      "agħżel Apple jew Universal għall-preview dirett tal-laqgħa"
      ]
     },
     "nl": {
-     "title": "live transcriptie",
+     "title": "toon woorden terwijl je spreekt in EnviousMeet",
      "words": [],
      "phrases": [
-      "taal van live transcriptie bij vergaderingen wijzigen",
+      "engine en taal kiezen voor live tekst tijdens vergaderingen",
       "engine voor live transcriptie van vergaderingen kiezen"
      ]
     },
     "pl": {
-     "title": "transkrypcja na żywo",
+     "title": "pokazuj słowa podczas mówienia w EnviousMeet",
      "words": [
       "tekst spotkania na żywo"
      ],
      "phrases": [
-      "zmień język transkrypcji spotkania na żywo",
-      "wybierz silnik transkrypcji spotkania na żywo"
+      "wybierz silnik podglądu na żywo w EnviousMeet",
+      "zmień silnik wyświetlający słowa podczas nagrywania spotkania"
      ]
     },
     "pt": {
-     "title": "transcrição em tempo real",
+     "title": "mostrar palavras enquanto você fala no EnviousMeet",
      "words": [
       "transcrição ao vivo da reunião"
      ],
      "phrases": [
-      "mudar o idioma da transcrição da reunião em tempo real",
-      "escolher o motor de transcrição em tempo real da reunião"
+      "escolher o motor que mostra o texto ao vivo durante a reunião",
+      "usar Apple ou Universal para mostrar palavras durante a reunião no EnviousMeet"
      ]
     },
     "ro": {
-     "title": "transcriere în timp real",
+     "title": "previzualizare în timp real în EnviousMeet",
      "words": [],
      "phrases": [
-      "schimbă limba transcrierii în timp real a întâlnirii",
-      "alege motorul pentru transcrierea în timp real a întâlnirii"
+      "alege motorul pentru previzualizarea în timp real a întâlnirii",
+      "schimbă motorul pentru textul afișat în timpul înregistrării întâlnirii"
      ]
     },
     "ru": {
-     "title": "расшифровка встречи в реальном времени",
+     "title": "показывать слова во время речи в EnviousMeet",
      "words": [
       "текст во время записи встречи"
      ],
      "phrases": [
-      "изменить язык текста, который появляется во время записи встречи",
-      "выбрать движок для расшифровки встречи в реальном времени"
+      "выбрать движок для показа текста во время записи встречи",
+      "выбрать Apple или Universal для предпросмотра встречи в EnviousMeet"
      ]
     },
     "sk": {
-     "title": "živý prepis",
+     "title": "živý náhľad v EnviousMeet",
      "words": [
       "živý prepis stretnutia"
      ],
      "phrases": [
-      "zmeniť jazyk živého prepisu stretnutia",
-      "vybrať engine pre živý prepis stretnutia"
+      "vybrať model živého náhľadu počas nahrávania stretnutia",
+      "vybrať Apple alebo Universal pre živý náhľad v EnviousMeet"
      ]
     },
     "sl": {
-     "title": "prepis v živo",
-     "words": [],
+     "title": "sprotni predogled v EnviousMeet",
+     "words": [
+      "prepis sestanka v živo"
+     ],
      "phrases": [
-      "spremeni jezik prepisa sestanka v živo",
-      "izberi pogon za prepis sestanka v živo"
+      "izberi pogon za sprotni predogled sestanka",
+      "nastavitve sprotnega predogleda v EnviousMeet"
      ]
     },
     "sv": {
-     "title": "transkribering i realtid",
+     "title": "visa ord medan du pratar i EnviousMeet",
      "words": [
       "mötestext i realtid"
      ],
      "phrases": [
-      "ändra språk för mötets transkribering i realtid",
-      "välj motor för mötets transkribering i realtid"
+      "välj motor för texten som visas medan mötet spelas in",
+      "ändra motor för mötets liveförhandsvisning"
      ]
     },
     "tr": {
-     "title": "canlı transkripsiyon",
+     "title": "EnviousMeet canlı önizleme",
      "words": [
       "canlı toplantı dökümü"
      ],
      "phrases": [
-      "toplantı sırasında gösterilen metnin dilini değiştir",
-      "toplantının canlı transkripsiyon motorunu seç"
+      "toplantı sırasında ekranda görünen metin için motor seç",
+      "EnviousMeet canlı önizleme motorunu değiştir"
      ]
     },
     "uk": {
-     "title": "текст зустрічі наживо",
+     "title": "показувати слова, поки ви говорите в EnviousMeet",
      "words": [],
      "phrases": [
-      "змінити мову тексту під час запису зустрічі",
-      "вибрати рушій розпізнавання мовлення для тексту зустрічі наживо",
-      "завантажити модель мови для тексту зустрічі наживо"
+      "вибрати рушій для показу тексту під час запису зустрічі",
+      "вибрати Apple або Universal для попереднього перегляду тексту зустрічі в EnviousMeet"
      ]
     },
     "vi": {
-     "title": "chép lời trực tiếp",
-     "words": [],
+     "title": "hiện chữ khi đang nói trong EnviousMeet",
+     "words": [
+      "chép lời trực tiếp cuộc họp"
+     ],
      "phrases": [
-      "đổi ngôn ngữ chép lời trực tiếp của cuộc họp",
-      "chọn công cụ chép lời trực tiếp cho cuộc họp"
+      "cài đặt hiện chữ khi đang ghi âm cuộc họp",
+      "công cụ và ngôn ngữ hiện chữ khi đang nói trong EnviousMeet"
      ]
     },
     "zh": {
-     "title": "会议实时转写",
+     "title": "EnviousMeet 会议实时预览",
      "words": [
       "会议实时文字",
       "会议实时转录"
      ],
      "phrases": [
-      "更改会议实时转写的语言",
-      "选择会议实时转写引擎"
+      "设置会议实时预览的引擎和语言",
+      "设置录制会议时显示的文字预览"
      ]
     }
    },
    "review": "additions/meetingLiveWords.json",
-   "reviewSHA256": "3eb620286630bd0c0284f52668e5d7ceaec4ca523c8d8876803708933091ae8b"
+   "reviewSHA256": "7c75a0712cb75a58cd70b54adfb212e1194f55b5a6fc9aca81a1de7c043b264b"
   },
   "meetingLiveWords.apple": {
    "blocks": {
@@ -11657,9 +11675,11 @@
      ]
     },
     "de": {
-     "words": [],
+     "words": [
+      "Apple"
+     ],
      "phrases": [
-      "verwende Apple für das Live-Transkript im Meeting"
+      "verwende Apple für die Live-Vorschau im Meeting"
      ]
     },
     "el": {
@@ -11852,7 +11872,7 @@
     }
    },
    "review": "additions/meetingLiveWords.apple.json",
-   "reviewSHA256": "81de242355b96aec4a980a0f5dfe9a8d4dae8d0a7deaa4d7b6cf507b2b301594"
+   "reviewSHA256": "52e51a044831e74ee100a4d21e75f3626ed7e48951380327a9154c8d8884eb90"
   },
   "meetingLiveWords.universal": {
    "blocks": {
@@ -11885,9 +11905,11 @@
      ]
     },
     "de": {
-     "words": [],
+     "words": [
+      "Universal"
+     ],
      "phrases": [
-      "nutze Universal für das Live-Transkript im Meeting"
+      "nutze Universal für die Live-Vorschau im Meeting"
      ]
     },
     "el": {
@@ -12080,7 +12102,7 @@
     }
    },
    "review": "additions/meetingLiveWords.universal.json",
-   "reviewSHA256": "34dc9b4b9f299f0bd3abd042ce92bff7132b28d1c470747fa296b20b601d00d0"
+   "reviewSHA256": "c29277ca5751451f111e20c5a17de463c18eb3341c46544aba5632986c03ffef"
   },
   "meetingTranscriptLanguage": {
    "blocks": {
@@ -15777,17 +15799,18 @@
   "meetingLiveWords.change": {
    "blocks": {
     "ar": {
-     "title": "تغيير محرك النص المباشر للاجتماع",
+     "title": "تغيير محرك ميزة «إظهار الكلمات أثناء الكلام» في EnviousMeet",
      "words": [],
      "phrases": [
-      "فتح خيارات محرك النص المباشر للاجتماع في EnviousMeet"
+      "فتح خيارات محرك إظهار الكلمات أثناء الكلام في EnviousMeet"
      ]
     },
     "bg": {
-     "title": "смяна на модела за текста на срещата в реално време",
+     "title": "смяна на модела за „показване на думите, докато говорите“ в EnviousMeet",
      "words": [],
      "phrases": [
-      "отвори моделите за текста на срещата в реално време в EnviousMeet"
+      "отвори избора на модел за текста на живо в EnviousMeet",
+      "избор между Apple и Universal за текста по време на запис на среща"
      ]
     },
     "cs": {
@@ -15798,16 +15821,16 @@
      ]
     },
     "da": {
-     "title": "skift motor til livetransskription af møder",
+     "title": "skift motor til “vis ord mens du taler” i EnviousMeet",
      "words": [],
      "phrases": [
-      "vis valgmulighederne for motor til livetransskription i EnviousMeet"
+      "åbn motorvalget til livevisning i EnviousMeet"
      ]
     },
     "de": {
      "words": [],
      "phrases": [
-      "Engine für das Live-Transkript ändern"
+      "Engine für die Live-Vorschau im Meeting ändern"
      ]
     },
     "el": {
@@ -15820,7 +15843,7 @@
     "en": {
      "words": [],
      "phrases": [
-      "open the live words engine choices in EnviousMeet"
+      "open the Live Preview engine choices in EnviousMeet"
      ]
     },
     "es": {
@@ -15873,10 +15896,10 @@
      ]
     },
     "it": {
-     "title": "cambia motore di trascrizione in tempo reale",
+     "title": "cambia motore dell’anteprima in tempo reale di EnviousMeet",
      "words": [],
      "phrases": [
-      "aprire le schede dei motori per il testo mostrato in tempo reale durante le riunioni in EnviousMeet"
+      "aprire la scelta del motore dell’anteprima in tempo reale di EnviousMeet"
      ]
     },
     "ja": {
@@ -15887,10 +15910,10 @@
      ]
     },
     "ko": {
-     "title": "실시간 회의 텍스트 엔진 변경",
+     "title": "EnviousMeet 실시간 미리보기 엔진 변경",
      "words": [],
      "phrases": [
-      "회의 실시간 텍스트 엔진을 바꾸는 선택 카드 열기"
+      "회의 실시간 미리보기 엔진 선택 창 열기"
      ]
     },
     "lt": {
@@ -15985,68 +16008,70 @@
      ]
     },
     "vi": {
-     "title": "đổi công cụ chép lời trực tiếp cuộc họp",
+     "title": "đổi công cụ cho “hiện chữ khi đang nói” trong EnviousMeet",
      "words": [],
      "phrases": [
-      "mở danh sách công cụ chép lời trực tiếp cuộc họp trong EnviousMeet"
+      "chọn Apple hoặc Universal để hiện chữ khi đang ghi âm cuộc họp",
+      "mở danh sách công cụ hiện chữ khi đang nói trong EnviousMeet"
      ]
     },
     "zh": {
-     "title": "更换会议实时转写引擎",
+     "title": "更换 EnviousMeet 会议实时预览引擎",
      "words": [],
      "phrases": [
-      "打开会议实时转写引擎选择列表"
+      "打开会议实时预览的引擎选项",
+      "为会议实时预览选择 Apple 或 Universal 引擎"
      ]
     }
    },
    "review": "additions/meetingLiveWords.change.json",
-   "reviewSHA256": "a63f6f01af713d7adab8d8a533eb50c6076c4c51178a554e46bed3edd38bd54f"
+   "reviewSHA256": "3a3a6f255eb435c8c54ac3cdf8a2ee0c89cc444403c9fbd0190e1306800c900c"
   },
   "meetingLiveWords.keepCurrent": {
    "blocks": {
     "ar": {
-     "title": "الإبقاء على محرك النص المباشر للاجتماع الحالي",
+     "title": "الإبقاء على المحرك الحالي لميزة «إظهار الكلمات أثناء الكلام» في EnviousMeet",
      "words": [],
      "phrases": [
-      "إبقاء محرك النص المباشر للاجتماع كما هو",
-      "إغلاق خيارات محرك النص المباشر للاجتماع دون تغيير"
+      "الإبقاء على محرك عرض الكلمات أثناء تسجيل الاجتماع كما هو",
+      "إغلاق خيارات محرك إظهار الكلمات أثناء الكلام في EnviousMeet دون تغيير"
      ]
     },
     "bg": {
-     "title": "запази текущия модел за текста на срещата в реално време",
+     "title": "запази текущия модел за „показване на думите, докато говорите“ в EnviousMeet",
      "words": [],
      "phrases": [
-      "остави същия модел за текста на срещата в реално време в EnviousMeet",
-      "затвори избора на модел за текста на срещата в реално време без промяна"
+      "остави същия модел за текста на живо в EnviousMeet",
+      "затвори избора на модел за текста на живо в EnviousMeet без промяна"
      ]
     },
     "cs": {
-     "title": "ponechat současný modul živého přepisu schůzky",
+     "title": "ponechat současný modul pro zobrazování slov během mluvení v EnviousMeet",
      "words": [],
      "phrases": [
-      "ponechat současný modul pro živý přepis schůzky v EnviousMeet",
-      "zavřít výběr modulu živého přepisu schůzky beze změny"
+      "ponechat současný modul živého náhledu schůzky",
+      "zavřít výběr modulu živého náhledu v EnviousMeet beze změny"
      ]
     },
     "da": {
-     "title": "behold den nuværende motor til livetransskription af møder",
+     "title": "behold den nuværende motor til “vis ord mens du taler” i EnviousMeet",
      "words": [],
      "phrases": [
-      "luk motorvalget til livetransskription i EnviousMeet uden at ændre noget"
+      "luk motorvalget til livevisning i EnviousMeet uden at ændre noget"
      ]
     },
     "de": {
      "words": [],
      "phrases": [
-      "bisherige Engine für das Live-Transkript behalten"
+      "bisherige Engine für die Live-Vorschau im Meeting behalten"
      ]
     },
     "el": {
-     "title": "διατήρηση της τρέχουσας μηχανής ζωντανής απομαγνητοφώνησης",
+     "title": "διατήρηση της τρέχουσας μηχανής εμφάνισης λέξεων όσο μιλάτε στο EnviousMeet",
      "words": [],
      "phrases": [
-      "κράτα την ίδια μηχανή για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet",
-      "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή ζωντανής απομαγνητοφώνησης της συνάντησης"
+      "κράτα την ίδια μηχανή για τη ζωντανή προεπισκόπηση στο EnviousMeet",
+      "κλείσε τις επιλογές χωρίς να αλλάξεις τη μηχανή ζωντανής προεπισκόπησης της συνάντησης"
      ]
     },
     "en": {
@@ -16056,87 +16081,88 @@
      ]
     },
     "es": {
-     "title": "mantener el motor actual de transcripción en directo",
+     "title": "mantener el motor actual de «Mostrar palabras mientras hablas» en EnviousMeet",
      "words": [],
      "phrases": [
-      "cerrar las opciones sin cambiar el motor de transcripción en directo de reuniones en EnviousMeet"
+      "cerrar las opciones sin cambiar el motor de la vista previa de EnviousMeet"
      ]
     },
     "et": {
-     "title": "säilita praegune reaalajas teksti mootor",
+     "title": "säilita koosoleku reaalajas eelvaate praegune mootor",
      "words": [],
      "phrases": [
-      "jäta koosoleku reaalajas teksti mootor samaks",
-      "sulge koosoleku reaalajas teksti mootorite valik muudatusteta"
+      "jäta koosoleku reaalajas eelvaate mootor samaks",
+      "sulge koosoleku reaalajas eelvaate mootorite valik muudatusteta"
      ]
     },
     "fi": {
-     "title": "säilytä nykyinen reaaliaikaisen litteroinnin moottori",
+     "title": "säilytä EnviousMeetin ”näytä sanat puhuessasi” -toiminnon nykyinen moottori",
      "words": [],
      "phrases": [
-      "käytä edelleen samaa moottoria kokouksen reaaliaikaiseen litterointiin"
+      "sulje kokouksen esikatselun moottorivalinta muuttamatta asetusta"
      ]
     },
     "fr": {
-     "title": "conserver le moteur actuel de transcription en direct",
+     "title": "conserver le moteur actuel de l’aperçu en direct dans EnviousMeet",
      "words": [],
      "phrases": [
-      "fermer le choix des moteurs sans changer la transcription en direct des réunions dans EnviousMeet"
+      "fermer le choix des moteurs sans changer le moteur de l’aperçu en direct des réunions dans EnviousMeet"
      ]
     },
     "hi": {
-     "title": "लाइव ट्रांसक्रिप्शन का मौजूदा इंजन रखें",
+     "title": "EnviousMeet के लाइव प्रीव्यू का मौजूदा इंजन रखें",
      "words": [],
      "phrases": [
-      "EnviousMeet में मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन बदले बिना विकल्प बंद करें"
+      "मीटिंग के लाइव प्रीव्यू का इंजन बदले बिना विकल्प बंद करें"
      ]
     },
     "hr": {
-     "title": "zadrži trenutačni model za prijepis uživo",
+     "title": "zadrži trenutačni mehanizam za „prikazuj riječi dok govorim” u aplikaciji EnviousMeet",
      "words": [],
      "phrases": [
-      "zadrži isti model za prijepis sastanka uživo",
-      "zatvori odabir bez promjene modela za prijepis sastanka uživo"
+      "zadrži isti mehanizam za prikaz teksta tijekom snimanja sastanka",
+      "zatvori odabir mehanizma za prikaz teksta uživo u aplikaciji EnviousMeet bez promjena"
      ]
     },
     "hu": {
-     "title": "a megbeszélés élő átírásához használt motor megtartása",
+     "title": "az EnviousMeet élő előnézeti motorjának megtartása",
      "words": [],
      "phrases": [
-      "maradjon ugyanaz a motor a megbeszélés élő átírásához",
-      "az EnviousMeet élő átírási motorválasztójának bezárása módosítás nélkül"
+      "maradjon a jelenlegi motor a megbeszélés élő előnézetéhez",
+      "az EnviousMeet élő előnézetének motorválasztóját bezárnám módosítás nélkül"
      ]
     },
     "it": {
-     "title": "mantieni il motore attuale di trascrizione in tempo reale",
+     "title": "mantieni il motore attuale dell’anteprima in tempo reale di EnviousMeet",
      "words": [],
      "phrases": [
-      "chiudere la scelta del motore per la trascrizione in tempo reale delle riunioni in EnviousMeet senza cambiarlo"
+      "chiudere la scelta del motore dell’anteprima in tempo reale di EnviousMeet senza cambiare nulla"
      ]
     },
     "ja": {
-     "title": "現在のリアルタイム文字起こしエンジンを使う",
+     "title": "EnviousMeetのライブプレビューで現在のエンジンを使う",
      "words": [],
      "phrases": [
-      "会議のリアルタイム文字起こしエンジンを変えずに閉じる"
+      "会議のライブプレビューのエンジンを変えずに閉じる"
      ]
     },
     "ko": {
-     "title": "현재 실시간 회의 텍스트 엔진 유지",
+     "title": "EnviousMeet 실시간 미리보기의 현재 엔진 유지",
      "words": [],
      "phrases": [
-      "회의 실시간 텍스트 엔진을 바꾸지 않고 닫기"
+      "회의 실시간 미리보기 엔진을 바꾸지 않고 닫기"
      ]
     },
     "lt": {
-     "title": "palikti dabartinį susitikimo transkripcijos realiuoju laiku variklį",
+     "title": "palikti dabartinį „rodyti žodžius kalbant“ variklį programoje EnviousMeet",
      "words": [],
      "phrases": [
-      "uždaryti variklių pasirinkimą nekeičiant susitikimo transkripcijos realiuoju laiku variklio"
+      "palikti dabartinį susitikimo tiesioginės peržiūros variklį",
+      "uždaryti susitikimo peržiūros variklių pasirinkimą nieko nekeičiant"
      ]
     },
     "lv": {
-     "title": "paturēt pašreizējo sapulces reāllaika teksta dzini",
+     "title": "paturēt pašreizējo funkcijas “rādīt vārdus, kamēr runājat” dzini lietotnē EnviousMeet",
      "words": [],
      "phrases": [
       "atstāt sapulces reāllaika teksta dzini nemainītu",
@@ -16144,78 +16170,79 @@
      ]
     },
     "mt": {
-     "title": "żomm il-magna attwali tat-traskrizzjoni diretta",
+     "title": "żomm il-magna attwali għal “uri l-kliem waqt li titkellem” f'EnviousMeet",
      "words": [],
      "phrases": [
-      "agħlaq l-għażliet mingħajr ma tibdel il-magna tat-traskrizzjoni diretta tal-laqgħa f'EnviousMeet"
+      "agħlaq l-għażliet mingħajr ma tibdel il-magna tal-preview dirett tal-laqgħa f'EnviousMeet"
      ]
     },
     "nl": {
-     "title": "huidige engine voor live transcriptie behouden",
+     "title": "huidige engine voor ‘toon woorden terwijl je spreekt’ in EnviousMeet behouden",
      "words": [],
      "phrases": [
-      "huidige engine voor live transcriptie in EnviousMeet behouden",
-      "enginekeuze voor live transcriptie van vergaderingen sluiten zonder iets te wijzigen"
+      "huidige engine voor live tekst in EnviousMeet behouden",
+      "enginekeuze voor live tekst tijdens vergaderingen sluiten zonder iets te wijzigen"
      ]
     },
     "pl": {
-     "title": "zachowaj obecny silnik transkrypcji spotkań na żywo",
+     "title": "zachowaj obecny silnik funkcji „pokazuj słowa podczas mówienia” w EnviousMeet",
      "words": [],
      "phrases": [
-      "zamknij wybór silnika transkrypcji spotkania na żywo bez zmian"
+      "zamknij wybór silnika podglądu na żywo w EnviousMeet bez zmian"
      ]
     },
     "pt": {
-     "title": "manter o motor atual de transcrição em tempo real",
+     "title": "manter o motor atual de “mostrar palavras enquanto você fala” no EnviousMeet",
      "words": [],
      "phrases": [
-      "fechar as opções sem mudar o motor da transcrição em tempo real das reuniões no EnviousMeet"
+      "fechar as opções sem mudar o motor do texto ao vivo da reunião no EnviousMeet"
      ]
     },
     "ro": {
-     "title": "păstrează motorul actual de transcriere în timp real",
+     "title": "păstrează motorul actual pentru previzualizarea în timp real în EnviousMeet",
      "words": [],
      "phrases": [
-      "închide opțiunile fără să schimbi motorul de transcriere în timp real a întâlnirii în EnviousMeet"
+      "închide opțiunile fără să schimbi motorul pentru previzualizarea în timp real a întâlnirii"
      ]
     },
     "ru": {
-     "title": "оставить текущий движок расшифровки встречи в реальном времени",
+     "title": "оставить текущий движок функции «Показывать слова во время речи» в EnviousMeet",
      "words": [],
      "phrases": [
-      "закрыть выбор движка для расшифровки встречи в реальном времени в EnviousMeet без изменений"
+      "закрыть выбор движка предпросмотра встречи в EnviousMeet без изменений"
      ]
     },
     "sk": {
-     "title": "ponechať aktuálny model živého prepisu stretnutia",
+     "title": "ponechať aktuálny model živého náhľadu v EnviousMeet",
      "words": [],
      "phrases": [
-      "zavrieť výber modelu pre živý prepis stretnutia v EnviousMeet bez zmeny"
+      "zavrieť výber modelu živého náhľadu v EnviousMeet bez zmeny"
      ]
     },
     "sl": {
-     "title": "ohrani trenutni pogon za prepis sestanka v živo",
+     "title": "ohrani trenutni pogon za sprotni predogled v EnviousMeet",
      "words": [],
      "phrases": [
-      "zapri izbiro pogona za prepis sestanka v živo brez sprememb"
+      "ohrani trenutni pogon za sprotni predogled sestanka",
+      "zapri izbiro pogona za sprotni predogled v EnviousMeet brez sprememb"
      ]
     },
     "sv": {
-     "title": "behåll nuvarande motor för mötets transkribering i realtid",
+     "title": "behåll nuvarande motor för ”visa ord medan du pratar” i EnviousMeet",
      "words": [],
      "phrases": [
-      "stäng motorvalen och behåll samma motor för transkribering i realtid i EnviousMeet"
+      "stäng motorvalet utan att ändra motorn för mötets liveförhandsvisning"
      ]
     },
     "tr": {
-     "title": "mevcut canlı transkripsiyon motorunu koru",
+     "title": "EnviousMeet canlı önizlemesinin mevcut motorunu koru",
      "words": [],
      "phrases": [
-      "EnviousMeet'te toplantının canlı metin motorunu değiştirmeden seçenekleri kapat"
+      "EnviousMeet canlı önizleme motorunu değiştirmeden seçenekleri kapat"
      ]
     },
     "uk": {
-     "title": "залишити поточний рушій для тексту зустрічі наживо",
+     "title": "залишити поточний рушій функції «Показувати слова, поки ви говорите» в EnviousMeet",
      "words": [],
      "phrases": [
       "залишити поточний рушій для тексту зустрічі наживо в EnviousMeet",
@@ -16223,23 +16250,23 @@
      ]
     },
     "vi": {
-     "title": "giữ công cụ chép lời trực tiếp cuộc họp hiện tại",
+     "title": "giữ công cụ hiện tại cho “hiện chữ khi đang nói” trong EnviousMeet",
      "words": [],
      "phrases": [
-      "giữ nguyên công cụ chép lời trực tiếp cuộc họp trong EnviousMeet",
-      "đóng danh sách công cụ chép lời trực tiếp cuộc họp mà không thay đổi"
+      "giữ nguyên công cụ hiện chữ khi đang ghi âm cuộc họp",
+      "đóng danh sách công cụ hiện chữ trong EnviousMeet mà không thay đổi"
      ]
     },
     "zh": {
-     "title": "保留当前会议实时转写引擎",
+     "title": "保留 EnviousMeet 会议实时预览的当前引擎",
      "words": [],
      "phrases": [
-      "关闭选择列表并保留当前会议实时转写引擎"
+      "关闭引擎选项并保留当前会议实时预览引擎"
      ]
     }
    },
    "review": "additions/meetingLiveWords.keepCurrent.json",
-   "reviewSHA256": "37074778dff356323afee3c32e1df7cb25988a4590dc5d34a04abf5d6f289584"
+   "reviewSHA256": "76591a90510b8db879966d4517c10b77aac124c2dd884637024cf079757e400c"
   },
   "meetingTranscriptEngine.change": {
    "blocks": {

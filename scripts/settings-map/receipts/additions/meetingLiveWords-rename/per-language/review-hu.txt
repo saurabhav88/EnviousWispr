@@ -1,0 +1,71 @@
+{
+  "meetingLiveWords": {
+    "title": "élő előnézet az EnviousMeetben",
+    "words": [
+      "megbeszélés élő átirata"
+    ],
+    "phrases": [
+      "motort választanék a megbeszélés élő előnézetéhez",
+      "az EnviousMeet élő előnézetének motorját és nyelvét állítanám be"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "az EnviousMeet élő előnézeti motorjának megtartása",
+    "words": [],
+    "phrases": [
+      "maradjon a jelenlegi motor a megbeszélés élő előnézetéhez",
+      "az EnviousMeet élő előnézetének motorválasztóját bezárnám módosítás nélkül"
+    ]
+  },
+  "livePreview": {
+    "language": "hu",
+    "title": "Szöveg megjelenítése beszéd közben",
+    "words": [
+      "élő szöveg",
+      "valós idejű szöveg",
+      "realtime"
+    ],
+    "phrases": [
+      "kapcsolja be a szöveg megjelenítését beszéd közben",
+      "már a diktálás vége előtt mutassa a szavaimat"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "hu",
+    "title": "Élő előnézet",
+    "words": [
+      "előnézet lap",
+      "preview lap"
+    ],
+    "phrases": [
+      "nyisd meg az élő előnézet beállításainak lapját"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "hu",
+    "title": "élő előnézet nyelve",
+    "words": [],
+    "phrases": [
+      "más nyelvet választanék a megbeszélés élő előnézetéhez",
+      "a megbeszélés közben megjelenő élő szöveg nyelvét módosítanám"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "hu",
+    "title": "átirat nyelve",
+    "words": [],
+    "phrases": [
+      "megbeszélés után készülő teljes átirat nyelvét módosítanám",
+      "a megbeszélés teljes átiratához automatikus nyelvfelismerést szeretnék"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "hu",
+    "title": "átírási motor",
+    "words": [],
+    "phrases": [
+      "modell kiválasztása a megbeszélés teljes átiratához",
+      "megbeszélés utáni átírás motorjának módosítása"
+    ]
+  }
+}

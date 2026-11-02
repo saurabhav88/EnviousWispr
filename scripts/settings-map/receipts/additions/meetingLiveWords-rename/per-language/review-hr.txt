@@ -1,0 +1,20 @@
+{
+  "meetingLiveWords": {
+    "title": "„prikazuj riječi dok govorim” u aplikaciji EnviousMeet",
+    "words": [
+      "prijepis sastanka uživo"
+    ],
+    "phrases": [
+      "promijeni mehanizam za prikaz riječi tijekom snimanja sastanka",
+      "postavke prikaza teksta uživo u aplikaciji EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "zadrži trenutačni mehanizam za „prikazuj riječi dok govorim” u aplikaciji EnviousMeet",
+    "words": [],
+    "phrases": [
+      "zadrži isti mehanizam za prikaz teksta tijekom snimanja sastanka",
+      "zatvori odabir mehanizma za prikaz teksta uživo u aplikaciji EnviousMeet bez promjena"
+    ]
+  }
+}

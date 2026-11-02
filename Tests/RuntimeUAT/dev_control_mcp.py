@@ -352,7 +352,7 @@ def build_server():
 
     @server.tool()
     def ew_meeting_live() -> CallToolResult:
-        """The recording meeting's live words (memory only), or null."""
+        """The recording meeting's Live Preview text (memory only), or null."""
         return call("meeting", "live")
 
     @server.tool()

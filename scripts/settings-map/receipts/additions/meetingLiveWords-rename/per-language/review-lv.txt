@@ -1,0 +1,70 @@
+{
+  "meetingLiveWords": {
+    "title": "rādīt vārdus, kamēr runājat lietotnē EnviousMeet",
+    "words": [],
+    "phrases": [
+      "mainīt sapulces reāllaika teksta dzini",
+      "izvēlēties Apple vai Universal sapulces teksta priekšskatījumam"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "paturēt pašreizējo funkcijas “rādīt vārdus, kamēr runājat” dzini lietotnē EnviousMeet",
+    "words": [],
+    "phrases": [
+      "atstāt sapulces reāllaika teksta dzini nemainītu",
+      "aizvērt sapulces reāllaika teksta dziņu izvēli bez izmaiņām"
+    ]
+  },
+  "livePreview": {
+    "language": "lv",
+    "title": "Rādīt vārdus, kamēr runājat",
+    "words": [
+      "teksts reāllaikā",
+      "vārdi runājot",
+      "live teksts"
+    ],
+    "phrases": [
+      "rādīt tekstu, kamēr runāju",
+      "ieslēgt teksta rādīšanu pirms diktēšanas beigām"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "lv",
+    "title": "Teksta priekšskatījums",
+    "words": [
+      "priekšskatījuma cilne",
+      "priekšskatījuma iestatījumi"
+    ],
+    "phrases": [
+      "atvērt teksta priekšskatījuma sadaļu"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "lv",
+    "title": "sapulces reāllaika priekšskatījuma valoda",
+    "words": [],
+    "phrases": [
+      "mainīt valodu sapulces reāllaika priekšskatījumā"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "lv",
+    "title": "sapulces atšifrējuma valoda",
+    "words": [
+      "pilnā atšifrējuma valoda"
+    ],
+    "phrases": [
+      "mainīt pēc sapulces veidotā atšifrējuma valodu",
+      "automātiski noteikt pilnā sapulces atšifrējuma valodu"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "lv",
+    "title": "sapulces atšifrējuma dzinis",
+    "words": [],
+    "phrases": [
+      "izvēlēties dzini pilnam sapulces atšifrējumam",
+      "mainīt dzini atšifrējuma veidošanai pēc sapulces"
+    ]
+  }
+}

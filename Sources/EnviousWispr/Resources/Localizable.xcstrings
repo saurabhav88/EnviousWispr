@@ -404,7 +404,7 @@
       }
     },
     "%@ is not downloaded." : {
-      "comment" : "EnviousMeet page, Live words: the chosen language's model is not on this Mac. The placeholder is a language name.",
+      "comment" : "EnviousMeet page, Live Preview: the chosen language's model is not on this Mac. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3339,7 +3339,7 @@
       }
     },
     "Apple (not on this Mac)" : {
-      "comment" : "EnviousMeet page, Live words: the Apple engine in the engine menu when this Mac cannot run it (macOS 26 needed). Apple is a product name.",
+      "comment" : "EnviousMeet page, Live Preview: the Apple engine in the engine menu when this Mac cannot run it (macOS 26 needed). Apple is a product name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3713,7 +3713,7 @@
       }
     },
     "Apple's meeting speech is not available on this Mac. Choose Universal." : {
-      "comment" : "EnviousMeet page, Live words: Apple was chosen but this Mac cannot run it (macOS 26 needed).",
+      "comment" : "EnviousMeet page, Live Preview: Apple was chosen but this Mac cannot run it (macOS 26 needed).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4063,7 +4063,7 @@
       }
     },
     "Available after the meeting." : {
-      "comment" : "EnviousMeet settings, Live words row: why Download is unavailable while a meeting records or is being transcribed.",
+      "comment" : "EnviousMeet settings, Live Preview row: why Download is unavailable while a meeting records or is being transcribed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4565,7 +4565,7 @@
       }
     },
     "Call" : {
-      "comment" : "History, live words of a recording meeting: words heard in the sound the Mac plays.",
+      "comment" : "History, Live Preview of a recording meeting: words heard in the sound the Mac plays.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4802,6 +4802,17 @@
         }
       }
     },
+    "Change Live Preview engine" : {
+      "comment" : "EnviousMeet Models tab: VoiceOver name of the Change button for the Live Preview engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau-Engine ändern"
+          }
+        }
+      }
+    },
     "Change dictation language" : {
       "comment" : "Speech engine settings: VoiceOver name of the Change button for the locked language.",
       "localizations" : {
@@ -4825,17 +4836,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktiersprache ändern: %1$@, %2$@"
-          }
-        }
-      }
-    },
-    "Change live words engine" : {
-      "comment" : "EnviousMeet Models tab: VoiceOver name of the Change button for the live words engine.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live-Transkript-Engine ändern"
           }
         }
       }
@@ -5026,7 +5026,7 @@
       }
     },
     "Checking" : {
-      "comment" : "AI Polish provider status chip.\nEnviousMeet page, Live words: while the app reads which languages this Mac has.\nLive Preview settings: status checking label.\nTranscribe a File, Polish step: the line under an engine's name.",
+      "comment" : "AI Polish provider status chip.\nEnviousMeet page, Live Preview: while the app reads which languages this Mac has.\nLive Preview settings: status checking label.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5267,7 +5267,7 @@
       }
     },
     "Choose a language" : {
-      "comment" : "EnviousMeet page, Live words: the language menu before a language is chosen.",
+      "comment" : "EnviousMeet page, Live Preview: the language menu before a language is chosen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5333,7 +5333,7 @@
       }
     },
     "Choose an engine" : {
-      "comment" : "EnviousMeet page, Live words: the engine menu before an engine is chosen.",
+      "comment" : "EnviousMeet page, Live Preview: the engine menu before an engine is chosen.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7452,7 +7452,7 @@
       }
     },
     "Download is not available right now." : {
-      "comment" : "EnviousMeet page, Live words: the Universal engine download could not start (it is turned off for this version).",
+      "comment" : "EnviousMeet page, Live Preview: the Universal engine download could not start (it is turned off for this version).",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7584,7 +7584,7 @@
       }
     },
     "Downloading %@" : {
-      "comment" : "EnviousMeet page, Live words: the chosen language's model is downloading. The placeholder is a language name.",
+      "comment" : "EnviousMeet page, Live Preview: the chosen language's model is downloading. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10539,6 +10539,17 @@
         }
       }
     },
+    "Keep current Live Preview engine" : {
+      "comment" : "EnviousMeet Models tab: closes the Live Preview engine choices without changing the engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Live-Vorschau-Engine beibehalten"
+          }
+        }
+      }
+    },
     "Keep current engine" : {
       "comment" : "Speech engine settings: closes the engine choices without changing the engine.",
       "localizations" : {
@@ -10546,17 +10557,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktuelle Engine beibehalten"
-          }
-        }
-      }
-    },
-    "Keep current live words engine" : {
-      "comment" : "EnviousMeet Models tab: closes the live words engine choices without changing the engine.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktuelle Live-Transkript-Engine beibehalten"
           }
         }
       }
@@ -11459,12 +11459,67 @@
       }
     },
     "Live Preview" : {
-      "comment" : "Dictation Settings: tab name.\nLive Preview settings: section header.",
+      "comment" : "Dictation Settings: tab name.\nEnviousMeet page: row that picks the engine and language for the words shown while a meeting records. German: Live-Vorschau.\nLive Preview settings: section header.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live-Vorschau"
+          }
+        }
+      }
+    },
+    "Live Preview and the transcript use different languages." : {
+      "comment" : "EnviousMeet page: note under Transcript language when its language is not the Live Preview language. It does not block either choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau und das vollständige Transkript verwenden unterschiedliche Sprachen."
+          }
+        }
+      }
+    },
+    "Live Preview heard no words." : {
+      "comment" : "History, a stopped meeting: the Live Preview had no lines.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In der Live-Vorschau wurden keine Wörter erkannt."
+          }
+        }
+      }
+    },
+    "Live Preview is not available for this meeting." : {
+      "comment" : "History, a recording meeting: Live Preview could not start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting ist keine Live-Vorschau verfügbar."
+          }
+        }
+      }
+    },
+    "Live Preview is not set up. Choose an engine in EnviousMeet settings, Models, Live Preview." : {
+      "comment" : "History, a recording meeting: no Live Preview engine and language are chosen yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ eine Engine."
+          }
+        }
+      }
+    },
+    "Live Preview is off for this meeting while the last one finishes closing." : {
+      "comment" : "History, a recording meeting: the previous meeting's Live Preview are still closing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau ist für dieses Meeting deaktiviert, während das vorherige Meeting noch abgeschlossen wird."
           }
         }
       }
@@ -11480,200 +11535,145 @@
         }
       }
     },
-    "Live words" : {
-      "comment" : "EnviousMeet page: row that picks the engine and language for the words shown while a meeting records. German: Live-Transkript.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live-Transkript"
-          }
-        }
-      }
-    },
-    "Live words and the transcript use different languages." : {
-      "comment" : "EnviousMeet page: note under Transcript language when its language is not the live words language. It does not block either choice.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Live-Transkript und das vollständige Transkript verwenden unterschiedliche Sprachen."
-          }
-        }
-      }
-    },
-    "Live words are not available for this meeting." : {
-      "comment" : "History, a recording meeting: live words could not start.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für dieses Meeting ist kein Live-Transkript verfügbar."
-          }
-        }
-      }
-    },
-    "Live words are not set up. Choose an engine in EnviousMeet settings, Models, Live words." : {
-      "comment" : "History, a recording meeting: no live words engine and language are chosen yet.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Live-Transkript ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ eine Engine."
-          }
-        }
-      }
-    },
-    "Live words are off for this meeting while the last one finishes closing." : {
-      "comment" : "History, a recording meeting: the previous meeting's live words are still closing.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Live-Transkript ist für dieses Meeting deaktiviert, während das vorherige Meeting noch abgeschlossen wird."
-          }
-        }
-      }
-    },
-    "Live words from the recording. The full transcript replaces them when it is ready." : {
-      "comment" : "History, a stopped meeting: the live words kept until its transcript is ready.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Live-Transkript der Aufnahme. Das vollständige Transkript ersetzt es, sobald es fertig ist."
-          }
-        }
-      }
-    },
-    "Live words need Apple's %@ model. Download it in EnviousMeet settings, Models, Live words." : {
-      "comment" : "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für das Live-Transkript wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ herunter."
-          }
-        }
-      }
-    },
-    "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words." : {
-      "comment" : "History, a recording meeting: the Universal engine chosen for live words is not downloaded.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für das Live-Transkript wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Transkript“ herunter."
-          }
-        }
-      }
-    },
-    "Live words needed Apple's %@ model, which was not downloaded." : {
+    "Live Preview needed Apple's %@ model, which was not downloaded." : {
       "comment" : "History, a stopped meeting: Apple's meeting speech model for the chosen language was missing. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wurde Apples Modell für %@ benötigt, das nicht heruntergeladen war."
+            "value" : "Für die Live-Vorschau wurde Apples Modell für %@ benötigt, das nicht heruntergeladen war."
           }
         }
       }
     },
-    "Live words needed the Universal engine, which was not downloaded." : {
-      "comment" : "History, a stopped meeting: the Universal engine chosen for live words was not downloaded.",
+    "Live Preview needed the Universal engine, which was not downloaded." : {
+      "comment" : "History, a stopped meeting: the Universal engine chosen for Live Preview was not downloaded.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für das Live-Transkript wurde die Engine „Universal“ benötigt, die nicht heruntergeladen war."
+            "value" : "Für die Live-Vorschau wurde die Engine „Universal“ benötigt, die nicht heruntergeladen war."
           }
         }
       }
     },
-    "Live words show what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and Download here is off while a meeting records or is being transcribed. The full transcript is written after the meeting and does not depend on live words." : {
-      "comment" : "EnviousMeet page: help for Live words.",
+    "Live Preview needs Apple's %@ model. Download it in EnviousMeet settings, Models, Live Preview." : {
+      "comment" : "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Live-Transkript zeigt während einer Meeting-Aufnahme, was über dein Mikrofon und im Anruf gesagt wird. Apple nutzt die Spracherkennung dieses Macs und benötigt macOS 26 sowie einen Download pro Sprache. Universal funktioniert auf jedem unterstützten Mac und benötigt nur einen Download. Erst wenn du auf „Laden“ klickst, wird etwas heruntergeladen; solange ein Meeting aufgenommen oder transkribiert wird, ist „Laden“ hier nicht verfügbar. Das vollständige Transkript wird nach dem Meeting erstellt und hängt nicht vom Live-Transkript ab."
+            "value" : "Für die Live-Vorschau wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ herunter."
           }
         }
       }
     },
-    "Live words stopped for %@ before the recording ended." : {
-      "comment" : "History, a stopped meeting: one track's live words stopped early; the placeholder is You or Call.",
+    "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview." : {
+      "comment" : "History, a recording meeting: the Universal engine chosen for Live Preview is not downloaded.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Transkript („%@“) vor dem Ende der Aufnahme gestoppt."
+            "value" : "Für die Live-Vorschau wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ herunter."
           }
         }
       }
     },
-    "Live words stopped for %@. The recording continues." : {
-      "comment" : "History, a recording meeting: one track's live words stopped; the placeholder is You or Call.",
+    "Live Preview shows what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and Download here is off while a meeting records or is being transcribed. The full transcript is written after the meeting and does not depend on Live Preview." : {
+      "comment" : "EnviousMeet page: help for Live Preview.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Transkript („%@“) gestoppt. Die Aufnahme läuft weiter."
+            "value" : "Die Live-Vorschau zeigt während einer Meeting-Aufnahme, was über dein Mikrofon und im Anruf gesagt wird. Apple nutzt die Spracherkennung dieses Macs und benötigt macOS 26 sowie einen Download pro Sprache. Universal funktioniert auf jedem unterstützten Mac und benötigt nur einen Download. Erst wenn du auf „Laden“ klickst, wird etwas heruntergeladen; solange ein Meeting aufgenommen oder transkribiert wird, ist „Laden“ hier nicht verfügbar. Das vollständige Transkript wird nach dem Meeting erstellt und hängt nicht von der Live-Vorschau ab."
           }
         }
       }
     },
-    "Live words stopped while the Universal engine is being removed." : {
-      "comment" : "History, a recording meeting: live words stopped because the Universal engine is being removed in Dictation Settings.",
+    "Live Preview stopped for %@ before the recording ended." : {
+      "comment" : "History, a stopped meeting: one track's Live Preview stopped early; the placeholder is You or Call.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Live-Transkript wurde gestoppt, während die Engine „Universal“ entfernt wird."
+            "value" : "Die Live-Vorschau für %@ wurde vor dem Ende der Aufnahme gestoppt."
           }
         }
       }
     },
-    "Live words stopped while the Universal engine was being removed." : {
-      "comment" : "History, a stopped meeting: live words stopped because the Universal engine was being removed in Dictation Settings.",
+    "Live Preview stopped for %@. The recording continues." : {
+      "comment" : "History, a recording meeting: one track's Live Preview stopped; the placeholder is You or Call.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Live-Transkript wurde gestoppt, während die Engine „Universal“ entfernt wurde."
+            "value" : "Die Live-Vorschau für %@ wurde gestoppt. Die Aufnahme läuft weiter."
           }
         }
       }
     },
-    "Live words were not available for this meeting." : {
-      "comment" : "History, a stopped meeting: live words did not run for it.",
+    "Live Preview stopped while the Universal engine is being removed." : {
+      "comment" : "History, a recording meeting: Live Preview stopped because the Universal engine is being removed in Dictation Settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für dieses Meeting war kein Live-Transkript verfügbar."
+            "value" : "Die Live-Vorschau wurde gestoppt, während die Engine „Universal“ entfernt wird."
           }
         }
       }
     },
-    "Live words were not set up for this meeting." : {
-      "comment" : "History, a stopped meeting: no live words engine was chosen when it started.",
+    "Live Preview stopped while the Universal engine was being removed." : {
+      "comment" : "History, a stopped meeting: Live Preview stopped because the Universal engine was being removed in Dictation Settings.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für dieses Meeting war kein Live-Transkript eingerichtet."
+            "value" : "Die Live-Vorschau wurde gestoppt, während die Engine „Universal“ entfernt wurde."
           }
         }
       }
     },
-    "Live words, as people speak. The full transcript comes after the meeting." : {
-      "comment" : "History, a recording meeting: what the live words are.",
+    "Live Preview text from the recording. The full transcript replaces it when it is ready." : {
+      "comment" : "History, a stopped meeting: the Live Preview kept until its transcript is ready.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Transkript, während gesprochen wird. Das vollständige Transkript folgt nach dem Meeting."
+            "value" : "Text der Live-Vorschau aus der Aufnahme. Das vollständige Transkript ersetzt ihn, sobald es fertig ist."
+          }
+        }
+      }
+    },
+    "Live Preview was not available for this meeting." : {
+      "comment" : "History, a stopped meeting: Live Preview did not run for it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting war keine Live-Vorschau verfügbar."
+          }
+        }
+      }
+    },
+    "Live Preview was not set up for this meeting." : {
+      "comment" : "History, a stopped meeting: no Live Preview engine was chosen when it started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Meeting war keine Live-Vorschau eingerichtet."
+          }
+        }
+      }
+    },
+    "Live Preview, as people speak. The full transcript comes after the meeting." : {
+      "comment" : "History, a recording meeting: what the Live Preview are.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau, während gesprochen wird. Das vollständige Transkript folgt nach dem Meeting."
           }
         }
       }
@@ -13168,17 +13168,6 @@
         }
       }
     },
-    "No live words were heard." : {
-      "comment" : "History, a stopped meeting: the live words had no lines.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Live-Transkript wurden keine Wörter erkannt."
-          }
-        }
-      }
-    },
     "No local model handled other languages well in our tests." : {
       "comment" : "AI Polish, Ollama: caveat above the local model list and in the Why use Ollama paragraph.",
       "localizations" : {
@@ -13508,7 +13497,7 @@
       }
     },
     "No words yet." : {
-      "comment" : "History, a recording meeting: no live words have been heard yet.",
+      "comment" : "History, a recording meeting: no Live Preview have been heard yet.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13848,7 +13837,7 @@
       }
     },
     "Not on this Mac. Needs macOS 26." : {
-      "comment" : "EnviousMeet Models tab, Live words: the Apple engine card when this Mac cannot run it.",
+      "comment" : "EnviousMeet Models tab, Live Preview: the Apple engine card when this Mac cannot run it.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13947,7 +13936,7 @@
       }
     },
     "Not set up yet. Download %@ to start." : {
-      "comment" : "EnviousMeet page, Live words: nothing chosen yet; the placeholder is the language the app suggests from dictation's language.",
+      "comment" : "EnviousMeet page, Live Preview: nothing chosen yet; the placeholder is the language the app suggests from dictation's language.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18262,13 +18251,13 @@
         }
       }
     },
-    "Show Live Transcript" : {
+    "Show Live Preview" : {
       "comment" : "Menu bar menu: opens History on the meeting that is recording now.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Transkript anzeigen"
+            "value" : "Live-Vorschau anzeigen"
           }
         }
       }
@@ -18708,6 +18697,17 @@
         }
       }
     },
+    "Some Live Preview text was skipped. The full transcript comes after the meeting." : {
+      "comment" : "History, a meeting: some audio did not reach the Live Preview.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In der Live-Vorschau fehlen einige Wörter. Das vollständige Transkript folgt nach dem Meeting."
+          }
+        }
+      }
+    },
     "Some apps will not tell other apps what you have highlighted. In those, adding a word from your selection briefly copies it and then puts your clipboard back." : {
       "comment" : "Clipboard settings, Quick Add: explains Read selections through the clipboard.",
       "localizations" : {
@@ -18715,17 +18715,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Manche Apps teilen anderen Apps nicht mit, was du markiert hast. Wenn du dort ein Wort aus der Auswahl hinzufügst, wird es kurz kopiert. Danach wird deine Zwischenablage wiederhergestellt."
-          }
-        }
-      }
-    },
-    "Some live words were skipped. The full transcript comes after the meeting." : {
-      "comment" : "History, a meeting: some audio did not reach the live words.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Live-Transkript fehlen einige Wörter. Das vollständige Transkript folgt nach dem Meeting."
           }
         }
       }
@@ -20488,7 +20477,7 @@
       }
     },
     "The download did not finish." : {
-      "comment" : "EnviousMeet page, Live words: the last download of the chosen language failed; Try Again is beside it.\nLive Preview settings, preview engine: download failed.",
+      "comment" : "EnviousMeet page, Live Preview: the last download of the chosen language failed; Try Again is beside it.\nLive Preview settings, preview engine: download failed.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20576,12 +20565,12 @@
       }
     },
     "The engine and language for words shown while a meeting records." : {
-      "comment" : "EnviousMeet page: the short line under Live words.",
+      "comment" : "EnviousMeet page: the short line under Live Preview.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Engine und Sprache für das Live-Transkript während einer Meeting-Aufnahme."
+            "value" : "Engine und Sprache für die Live-Vorschau während einer Meeting-Aufnahme."
           }
         }
       }
@@ -22864,7 +22853,7 @@
       }
     },
     "Uses Apple's speech recognition. Some languages need an Apple language download. Needs macOS 26." : {
-      "comment" : "EnviousMeet Models tab, Live words: the Apple engine card's line. Apple is a product name.",
+      "comment" : "EnviousMeet Models tab, Live Preview: the Apple engine card's line. Apple is a product name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23841,7 +23830,7 @@
       }
     },
     "Works on macOS 14 and later, in more languages. Needs a download before first use." : {
-      "comment" : "EnviousMeet Models tab, Live words: the Universal engine card's line. Universal is the engine's name.",
+      "comment" : "EnviousMeet Models tab, Live Preview: the Universal engine card's line. Universal is the engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -1,0 +1,17 @@
+{
+  "meetingLiveWords": {
+    "title": "previzualizare în timp real în EnviousMeet",
+    "words": [],
+    "phrases": [
+      "alege motorul pentru previzualizarea în timp real a întâlnirii",
+      "schimbă motorul pentru textul afișat în timpul înregistrării întâlnirii"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "păstrează motorul actual pentru previzualizarea în timp real în EnviousMeet",
+    "words": [],
+    "phrases": [
+      "închide opțiunile fără să schimbi motorul pentru previzualizarea în timp real a întâlnirii"
+    ]
+  }
+}

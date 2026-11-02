@@ -1,0 +1,19 @@
+{
+  "meetingLiveWords": {
+    "title": "EnviousMeetのライブプレビュー",
+    "words": [
+      "会議のライブ文字起こし"
+    ],
+    "phrases": [
+      "会議のライブプレビューのエンジンを選ぶ",
+      "会議中の文字表示にAppleかUniversalを使う"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "EnviousMeetのライブプレビューで現在のエンジンを使う",
+    "words": [],
+    "phrases": [
+      "会議のライブプレビューのエンジンを変えずに閉じる"
+    ]
+  }
+}

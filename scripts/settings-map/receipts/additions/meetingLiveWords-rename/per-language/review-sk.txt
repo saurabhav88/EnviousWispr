@@ -1,0 +1,73 @@
+{
+  "meetingLiveWords": {
+    "title": "živý náhľad v EnviousMeet",
+    "words": [
+      "živý prepis stretnutia"
+    ],
+    "phrases": [
+      "vybrať model živého náhľadu počas nahrávania stretnutia",
+      "vybrať Apple alebo Universal pre živý náhľad v EnviousMeet"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "ponechať aktuálny model živého náhľadu v EnviousMeet",
+    "words": [],
+    "phrases": [
+      "zavrieť výber modelu živého náhľadu v EnviousMeet bez zmeny"
+    ]
+  },
+  "livePreview": {
+    "language": "sk",
+    "title": "Zobrazovať slová počas hovorenia",
+    "words": [
+      "priebežný text",
+      "text naživo",
+      "realtime text"
+    ],
+    "phrases": [
+      "ukazuj text, kým hovorím",
+      "zapni alebo vypni zobrazovanie slov pred dokončením diktovania"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "sk",
+    "title": "Živý náhľad",
+    "words": [
+      "nastavenia náhľadu",
+      "karta náhľadu"
+    ],
+    "phrases": [
+      "otvor kartu živého náhľadu"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "sk",
+    "title": "jazyk živého náhľadu",
+    "words": [],
+    "phrases": [
+      "zmeniť jazyk živého náhľadu počas nahrávania stretnutia"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "sk",
+    "title": "jazyk prepisu",
+    "words": [
+      "jazyk úplného prepisu"
+    ],
+    "phrases": [
+      "zmeniť jazyk úplného prepisu stretnutia",
+      "jazyk prepisu vytvoreného po skončení stretnutia"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "sk",
+    "title": "model prepisu stretnutí",
+    "words": [
+      "model prepisu stretnutí"
+    ],
+    "phrases": [
+      "vybrať model na úplný prepis stretnutia",
+      "zmeniť model na prepis po skončení stretnutia"
+    ]
+  }
+}

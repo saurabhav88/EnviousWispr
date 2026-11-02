@@ -65,17 +65,17 @@
   {
    "id": "meetingLiveWords",
    "review": "additions/meetingLiveWords.json",
-   "reviewSHA256": "3eb620286630bd0c0284f52668e5d7ceaec4ca523c8d8876803708933091ae8b"
+   "reviewSHA256": "74b8c724ca10165c205a73d2273158021401f414481bde73fe95a732d39ad9df"
   },
   {
    "id": "meetingLiveWords.apple",
    "review": "additions/meetingLiveWords.apple.json",
-   "reviewSHA256": "81de242355b96aec4a980a0f5dfe9a8d4dae8d0a7deaa4d7b6cf507b2b301594"
+   "reviewSHA256": "f97a494907ce885807d7bc19f871ddc715855154079239f194c9de6c9be939a1"
   },
   {
    "id": "meetingLiveWords.universal",
    "review": "additions/meetingLiveWords.universal.json",
-   "reviewSHA256": "34dc9b4b9f299f0bd3abd042ce92bff7132b28d1c470747fa296b20b601d00d0"
+   "reviewSHA256": "72d656caeb2c37dcac60e4fa45bfe57dab9a264e8c3a72e7a099e921c5d5a778"
   },
   {
    "id": "meetingTranscriptLanguage",
@@ -155,12 +155,12 @@
   {
    "id": "meetingLiveWords.change",
    "review": "additions/meetingLiveWords.change.json",
-   "reviewSHA256": "a63f6f01af713d7adab8d8a533eb50c6076c4c51178a554e46bed3edd38bd54f"
+   "reviewSHA256": "817dd6dd3bf2535122a958ce6156e151a99aaa4716604f25cf8f7e6b314ae102"
   },
   {
    "id": "meetingLiveWords.keepCurrent",
    "review": "additions/meetingLiveWords.keepCurrent.json",
-   "reviewSHA256": "37074778dff356323afee3c32e1df7cb25988a4590dc5d34a04abf5d6f289584"
+   "reviewSHA256": "95d2558ec63bb17444c1ab9023011d96861360474eace75ba416f5d34d744a31"
   },
   {
    "id": "meetingTranscriptEngine.change",
@@ -196,8 +196,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "f2a753c764f3f19fa814c68e7799e3c266f8d375e934a2bd41533c3694787e81",
-  "bytes": 1809138
+  "sha256": "25440e549c14def5af6e59e99f2ff2e889ab859f3ff76dc447e0d964598a1426",
+  "bytes": 1810881
  },
  "sources": [
   {
@@ -481,7 +481,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "67b507748a2e232b8eb3722c01509563811e34e8b9c6d876be1434171445ac08",
+   "contentSHA256": "c9fafbd65f3a60ac4bd8f6940ec08a60ee76e7315fc573e18cd9acbc87def63a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1375,13 +1375,60 @@
       "sha256": "9f8a7e71d6c83fd132277d324d9f9e65c9666bf1baa602b194a0e4cf8454f616"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ar.txt",
+      "sha256": "dbc4a22e5619bf31a184ff03a80d58dadd9c24878099776563262dbe74fc956d"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ar.txt",
+      "sha256": "a41a39b90b3c0aae6c4411fc7ec389c206d2c99030338b45b20d83825b22c86c"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "dba4f0e6945d1efd1eca9cd693fe7dac64ea7aa096ba9130dc8e33a2eb988f47",
+   "contentSHA256": "b9be88b64cc933386030930f4b7c43cb40724a46df17ef10e218ac0e8fa5b3b9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2266,13 +2313,60 @@
       "sha256": "fba2033876064caec036a361b10b385aa1684e9554b7cec1b25a064524de1f12"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-bg.txt",
+      "sha256": "57cbbc946f9216c915b9b4185bcd65e8417bd7cc9574a1c6fe39974445b9a3e7"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-bg.txt",
+      "sha256": "110ea68617a384beda95b082b4ec7b9c8a2c86f556c1b1d2ed2aa051c409f8e4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "a491e525d8fa1b0fcdbd641bbd3686e3cb647f612410d13896b40800260ae724",
+   "contentSHA256": "674e4e40baa05d63138f07a4c404ad06962dc5ac223d38aad4337e0d28498b1c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3157,13 +3251,60 @@
       "sha256": "6d49feb8558b46606804530ee2a96dfd44d16d616dcae6c5446102b520154a44"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-cs.txt",
+      "sha256": "5b8e51e31997abc3fab63d67a45595bc9afec4fe1faf251a3f037f33802e77f4"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-cs.txt",
+      "sha256": "8f92eaac614918c38e24952d795eef343d589cbc6090a4b933e9dec130d6bd1a"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "fc4f56d81f88d2d631ec8ccf9b8c9811956f2c86942d00f501c57890837a859c",
+   "contentSHA256": "8ac5352d121115cb7d7428ef1c7c5653eca96004bba14403c0f674f4e6d1065b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4048,13 +4189,60 @@
       "sha256": "54520579df3809bdc3059c0c3d12a9ee8194ec741275fe54de6f5d2473888e60"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-da.txt",
+      "sha256": "9c5e6c8412ed3549b2265e53f37a4236720df79879ff8c1c40beff542adca322"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-da.txt",
+      "sha256": "6ae33f36343b53b6015f33dc315de97ba9b49b15a36aa66da4a45193f30965d4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "2858cda79e57ed24de254c1719091cb8bf45079aa233511573858a0c7399dbe8",
+   "contentSHA256": "1dbef42e20704527b99627d639d2afe34b68050a79c0084431f45f67665722f2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5105,13 +5293,68 @@
       "sha256": "515dc8933935f0ac8023501f2da67af3e0d1a05b750daddb9e5ace952e0d05f7"
      },
      "disposition": "German council round 1 (run-1793575577-c77124af, GPT gpt-6-sol on Azure and Gemini gemini-3.8-flash; founder approved the Gemini spend 2026-11-01): merged block, see additions/meetingTranscriptAutoDetect/council-de-digest.md"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change",
+      "meetingLiveWords.apple",
+      "meetingLiveWords.universal"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7 (\"Live-Transkript\" becomes \"Live-Vorschau\"); German council round 2, GPT gpt-6-sol on Azure and Gemini gemini-3.8-flash, run-1793577315-8e3e1449 (founder approved the Gemini spend 2026-11-01)",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/council-de-prompt-2.txt",
+      "sha256": "8e3e1449a6d14a35b0995642a67a9f2e5a15fabbb728276eb275177c7a41a2c0"
+     },
+     "digest": {
+      "path": "additions/meetingLiveWords-rename/council-de-digest.md",
+      "sha256": "02b9741a383ee4e886ca2c045e04a3b45a27d76fcf57b698c72ce25364f9353e"
+     },
+     "disposition": "blocks rewritten for the new name with \"Live-Transkript\" kept as a word; see the digest"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change",
+      "meetingLiveWords.apple",
+      "meetingLiveWords.universal"
+     ],
+     "date": "2026-11-01",
+     "method": "narrowing only: the old name \"Live-Transkript\" removed from the four controls' German words so the card owns it; nothing added",
+     "note": {
+      "path": "additions/meetingLiveWords-rename/old-name-on-card-only.md",
+      "sha256": "be90990a427e1e66e1800641fff1c1e2082e6cd0a87d4957dd497c25e20fa636"
+     },
+     "disposition": "the card meetingLiveWords keeps \"Live-Transkript\"; see the note"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-de.txt",
+      "sha256": "e1564ba7008ba92663b9cc3906c06c3eb875920eed91a68c5c47d34c8aeb6b00"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-de.txt",
+      "sha256": "3e437228b6f8d5cb5a585b6f58fe15c1083ee09d07cade8aba36e05ed3b4579a"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "fe7a827b7b71e33c17e4ed4e0e9e5d3111268e1321bca59c64503f840a78910d",
+   "contentSHA256": "b30de17607117df80a02e120d66a41dab64b92d12ab975aaf0acf291f363a593",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6005,13 +6248,60 @@
       "sha256": "9f48e920ddf4fd1bf0e51c35690cd7cda6d0a96a2c6822f72be846009e48e89e"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-el.txt",
+      "sha256": "0b620662efa1f4f1655637feb47a278aa173301d304582b596bb4319b27da0b3"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-el.txt",
+      "sha256": "c3ec67923009d75245ffc4475d6bcb03343a99dc8ac63cfc0cf17f56ef203b6b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "488b297f720047ba970ebb0e9ff3993e7844d98b18dbb454a900e9ad97328cd1",
+   "contentSHA256": "a7df7bc617087751902645f6da105a7d2b1e878f5d49bd9fde6155ffc2e4a625",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6897,13 +7187,40 @@
       "sha256": "804717746296b4a67dbb8bbc193fb4aba64d4800f992f41ee38017d3688aa637"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: the meeting feature \"Live words\" is renamed \"Live Preview\"",
+     "disposition": "the English phrase \"open the live words engine choices in EnviousMeet\" now says \"open the Live Preview engine choices in EnviousMeet\"; nothing else changed"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-en.txt",
+      "sha256": "15b652e59e82987c911d2704309c5b9dc8cad79414f4f71abf03dd3296fbd9bb"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-en.txt",
+      "sha256": "ef9bc1ff4251c66b7d588f62300cc0704baf602dde6f211a054558eb44f75a01"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "821f46aecb6be4d384e865391bf607b982434568836b13438e2f588fa88c0da9",
+   "contentSHA256": "d79f79c3c5e9ca3781c55c7968d73aef0819a1717d1dcccaa8a793051374cc35",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7797,13 +8114,60 @@
       "sha256": "ffe4b459a610ff23a2369ad22c3e6951ef0885055ba6ff30517debff61a152d2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-es.txt",
+      "sha256": "a06b54cbd786fe321503faa0652e87d1b2668fceb7994cfebb70fdc5230c2b76"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-es.txt",
+      "sha256": "777c3e86396de9022e239aa6ebb87c579a2a2547bf66c7a9f9f1e7a613ec9f81"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "3e47217784f56c545edd7babb784710844b3534a5cfc9726b42f04d6209539a4",
+   "contentSHA256": "e66094d59d23674ad434916270d758d611c0b275c9ee1710961bc09fc9263599",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8688,13 +9052,60 @@
       "sha256": "ad7f55b4e54fc7e0f4e8a715aacfe44ee1406f64e11dd8a59b2ac72b7167698d"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-et.txt",
+      "sha256": "3f905dbdaab53cfa91996044bf36f1b9efee666375932e6fb9bb682beb8e9bbe"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-et.txt",
+      "sha256": "5048f138ad6239100a0524455b9625c5720145f8e5f34117ea46be23302b819d"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "44f1cfa0bd9f483c7c6449dcc62d902a6b241f26e6d3fe5eed292b0b92c16a7c",
+   "contentSHA256": "4dd54fecc1ec43bcfd7d4d941e982683349e1d55c6d9389f34dc6cd224356179",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9579,13 +9990,60 @@
       "sha256": "56a8982fa73948cffff6a5cd48250077e6d7156414c9602daededa236031c0cd"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-fi.txt",
+      "sha256": "f735dfe39190abaf4235f84f5c3c674fb7202b9abd1b2c5ed1d8102db7d704b1"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-fi.txt",
+      "sha256": "ac08972896d9e2fa1e06629c0fe653caf0a45a3a3d5aa19ddd8db63dfaa35c74"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "19fcdab961fbc519f3f3955809b8a1c7e4a38d8dca75a56cb8cfd52ba3b613cd",
+   "contentSHA256": "af46a4a96b9ae5a6ba8249c6405b888aa23b106aea24ea9fb92285a123773b30",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10470,13 +10928,60 @@
       "sha256": "3917674c089841615c4545dcee75939d603be678cebfb4f02b76b3f62a7363bc"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-fr.txt",
+      "sha256": "55a841a64099e697b20c7289771f61626551c5d2d3a07c95b838a89c8e483b9d"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-fr.txt",
+      "sha256": "3aff0c218dbc6cd59a72e9483ade4a7521c42a64a46772ba48fd110e219200ff"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "4fdd4b604c2c2441576fcd61436e64ba651c087db95248b0d783a938234ade64",
+   "contentSHA256": "8234837956a241eeefbf9bc48b290ac3f637560ae146fb1006b4b75e36a9cafd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11361,13 +11866,60 @@
       "sha256": "04870eef052a3a0b94a3016da5d471ec25343ea7b2ef195c94647ec420f58aaa"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hi.txt",
+      "sha256": "8c401651cc1c7447b02a1953aca32de1eb76a9b973a8c268e8168ad56db8ecac"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hi.txt",
+      "sha256": "a8f258e1655608e8e5806033940c1db28062a8e6b3831d60948e84e6a99dedc3"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "ad4cf6996d62849413f6c4cc470908b37c74ba04495ed2daf484013deb2a1d2e",
+   "contentSHA256": "e8328433014d6c467b6475f79559719de97abdd31264fcd37069c5ce6eb3417f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12252,13 +12804,60 @@
       "sha256": "47b27bebbced05b69c5e45ac5cd281ccd15715e9a8ae8d95e7c7ad2516f9e6fd"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hr.txt",
+      "sha256": "0207aa036b067b76e4c3f843151dbacdbbf2c205c37e6e2fc7fdc59853bdc37a"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hr.txt",
+      "sha256": "788303a06ac5d9869cd3afaa39946067b01c61474975d1fd0c511ee5e589a9c5"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "a8427b4a6d51c76a45ed497ce31d8d3d67bfd8d73410fff1edf4198992ca6a30",
+   "contentSHA256": "4247e01a761b2d017429d64749c5c281670ee9021449072840f2726a506df7f5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13143,13 +13742,60 @@
       "sha256": "609ab223fd6d6e037c7157e7c01fd9887f1085113d6616b5c205f760532c186f"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-hu.txt",
+      "sha256": "2079811c6dd3830db8c2391b38df1ee039bfc02070b883fd50a7f05f9e2f4c11"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-hu.txt",
+      "sha256": "637ea1f8d16d09d350c39d6f705c8d8f892f8ef869179b4ce5ac3d3ce3e18f1d"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "a1a11b2578833a6c4ae5095baf311a2010a81489cc466e234f288f3943cc5b7f",
+   "contentSHA256": "8c4ce7624af878a0d857afa0bb248de2c72e0b058c41f8cdec970d98cf309b6f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14043,13 +14689,60 @@
       "sha256": "ee209cf0632d5716847ecd75065896d09be393455a3941039f2bafe32428a048"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-it.txt",
+      "sha256": "c5bed8e8d15c1a8913c7599c023af8b56b726ff3a7490cbadbc6c031e334c112"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-it.txt",
+      "sha256": "660eac77e5939efd9aedbe2b4574ade2d4bac864a37dc2361319f97cf46dca5b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "4a0f31a86c2eaf8bea8ce24c1f14616d664f641f3a1f257ec0007a91a4fe39e8",
+   "contentSHA256": "5c44177088408588a83d6644214e4b58af0e40b496188b673c336c362a877057",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14934,13 +15627,60 @@
       "sha256": "4015cb4e580a71db9cafa939c3cc8b79f4320e44e2e58669b5c7d1bdfbba9a48"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ja.txt",
+      "sha256": "f3e93ca47ec21a9cb99398c7e52c8d8a5557e143ffdc3729ab7b529377d754ca"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ja.txt",
+      "sha256": "70896f5e5682e3cf861b6e4762de98f04ee66340acd665877b0b285555060344"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "62cb91a024621a7ece4a3b2aed5bfbde8548f3953b9613bbce5599d3bc68046b",
+   "contentSHA256": "e90fae78d44b45a3e8d48e2f8f4da444a8a7ab7fbc4ddc9e1875a52d4b6faf03",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15825,13 +16565,60 @@
       "sha256": "b885b4d86242ccf70c22f18e1399b114e878035bcdd5b53529c8cab0fa8d95e5"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ko.txt",
+      "sha256": "ea885992040f7231aa5220c06a503929167c9ccaa33a1e1fce9f81de1fe1ac9f"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ko.txt",
+      "sha256": "d48588b847b8b315f8dbffb6538bbdc8808af0c64756bb009fa2675fa5d2582f"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "9ce3883445505e9f4b863a2331b37b4ffbadc5147f1590c82ab311ec8da7123c",
+   "contentSHA256": "0c872c472db22b4ace187f049b87496c1633c703f46043cceffd3b7a73066032",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16725,13 +17512,60 @@
       "sha256": "952acc8560dbb45c15b85c21f2c738a2ef6a46a2d280d649eeadb9c19a5cb269"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-lt.txt",
+      "sha256": "37f27edcc695f155d1d13fa8ecfacde03903cbca2dc5660228292876b6d4c6af"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-lt.txt",
+      "sha256": "48f6f56862cc63072d10a1a1a2278481b6ce1b8273a695cb4b665566b90e5894"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "402e718bf4efaeb88d4c82ca5c48f673d1b2259f49a4aba614f8b88a66622ada",
+   "contentSHA256": "ba18c9be8c4d4b64ac4176b78a50d1439f960ce8692babece6a8fdabf071a5da",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17616,13 +18450,60 @@
       "sha256": "979852cf63d59252629a378c144c93418783fcf772732a4580d6fa41e0fe83fb"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-lv.txt",
+      "sha256": "7fee987756a2f1d3ed99cf5b984e0c394cd3371a570071df97d465f483b96231"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-lv.txt",
+      "sha256": "9afb784e1a3b1b81261c81e3bb8cd899cf0d53356cba2e12ede6929041b54a63"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "a373882d1f9eca518ffc01fb70a03a12684bac39aea3f1853ee775d3a1606d75",
+   "contentSHA256": "bd06c92b6896608b598149489d700298d26a903235c762a62141d3bc972c8232",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18516,13 +19397,60 @@
       "sha256": "78b7b0e5d72626570f19d86c009cdc39c1979226eb2927407621ee660f7436c9"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-mt.txt",
+      "sha256": "9741522a5dd4df433b9cd7030dff2714efe686712f36bd7d324bf8e8b4535233"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-mt.txt",
+      "sha256": "774fcfd8e4a030516f96b4679dac1a2138eaec47cbb3118bac6f1ddab49b7746"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "a0768444a4713f6d83536e435c3161dbcaba0329bbbe9b4ea3e50b37bb1bafc2",
+   "contentSHA256": "f46bc1bb9154affcfede82560a163acd80fe39b3e2343142ebd9f937fff47906",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19407,13 +20335,60 @@
       "sha256": "be45d3a9eb332781e375c1b68467b5bd6d73a2b40d8d11084b84e854204fab29"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-nl.txt",
+      "sha256": "4d2ac329158606eb1eefad2ffa47b279952c53f625d7deafca8e3a9aba0309de"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-nl.txt",
+      "sha256": "5e4918e12d5704958a13064ffa58c714c819085b01626ac19308f95e9c4b67f7"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "959a31f6868e22e213a317157384a6a2dae413e190ba78813c1112991bd43b09",
+   "contentSHA256": "a0f65393f98830614666d3ba0480cc43d2ca67cb2aeaed888972034b2396cac0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20298,13 +21273,60 @@
       "sha256": "336261292df6832fb6b22d8f2ef1054576fcc26af736b2db2780ba9b5bffc804"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-pl.txt",
+      "sha256": "3d1c282c6dea2c4faa6695755fdd5fdc0fe122e07d7568713ebdd8fc3fcd4dbf"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-pl.txt",
+      "sha256": "7d57f80de31b60e61fd3ca29ca3c334e38e76545ea1d979a8002aa47596fdace"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "7a243668ffcdb9601666d33cd3e0f285c1aeb38455f204b4b69464539d2a056a",
+   "contentSHA256": "f80769f15cee6236cc7853a50c17e9c1d5274483141ca449721f96688846a2b9",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21197,13 +22219,60 @@
       "sha256": "4185c06d867ad569acb23b1d02a72702d25dfcc2b88baf64bcf740f6991a97ea"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-pt.txt",
+      "sha256": "dd25f573191fa07d856072e1f2ac469de08de9b8d4f923056e43b569f7f1a2e6"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-pt.txt",
+      "sha256": "5bd8a9bcc4b388cb098ac6bcbef245f46de01b4f7a542f96be0c1335e9ed0c1b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "3ff2f949f53a6db6648031f3b2d9440a0e0a6b780114f213c738fec36fa90983",
+   "contentSHA256": "6f8134fa4a901f9dd4df6cd5dbabe49f26906ce5dc59797ba01303bd4a3572a2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22088,13 +23157,60 @@
       "sha256": "75c7a7782cc794a62b471c8770fac1297d6a39ac2ab4db43f0fdea9d0f6aae60"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ro.txt",
+      "sha256": "7a823702f1ec50a035f4de6a83cccaf34addb792f463b5d91cd74da6862215d3"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ro.txt",
+      "sha256": "30dc80d776c2ce6a3764ff405894c53d36a9d19dfa55a82779d24725cc6ab6d4"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "22c1cbfd462bae8ae997da899cd12dfe8b7fa1d3f49d13c380248f7b62cfc424",
+   "contentSHA256": "2a88d99c5a4dc3912314350752503b5a2ea93a0fcb983c30bc6203b89e499013",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22979,13 +24095,60 @@
       "sha256": "3560fe24427ebd8bc4107bd9a6f13eac46d031cc26b023624f2cf4406add56a4"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-ru.txt",
+      "sha256": "b2aedcb4be145e6f756fbe74130197dd804aa3bef278b371d127915a8e7c7482"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-ru.txt",
+      "sha256": "c5868da4177cf33cb22416995338f2bbed9fdf5910c75bca4580aff8fdd1f926"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "eed46213ebc789a43a686c14c1e6a55fc7177a8ef47cb36085fee9f9c978b2ea",
+   "contentSHA256": "ed1d2f62ee35bcbe405c4c975137585b9da87ada6018047c725e9012f7bfb99b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23870,13 +25033,60 @@
       "sha256": "74a0d188e18c9de928994cbb1405c13e93ec213e10d519281b41b2228fc09e36"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sk.txt",
+      "sha256": "f260c4c3df7b97a129736ee44eaec284102059edd76dfca1a262f73d649ade38"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sk.txt",
+      "sha256": "db49171247d012625db43795d28cf9f1b82bf09dbc31e954da728f84d3625297"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "693ccb5a1e8350a920f88eee00f87cc4c61a0847775e936401dc7e62c59caf27",
+   "contentSHA256": "cc7105dc73c3fa7fb2801d0bb22bc7521e675392fca4faa48abf67d539ae5612",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24770,13 +25980,60 @@
       "sha256": "1909552359acb5097f4301744b32a3ba751e834d8c200092b066efdac227f087"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sl.txt",
+      "sha256": "834a6520b79c71fcbe862a746669bd31a143bece1dd77dad63d3dc28177e24d8"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sl.txt",
+      "sha256": "a76ce5306d1c87b3b63bb03f34d36e163e4b094115d3ccb060b2da78b8141e14"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "98d4901d7510731ae3293a2f88130733d17c4ed660de03c054f64d001569c5bf",
+   "contentSHA256": "099b8a677fe0b8ec615481a33e0dc981e9ec337bd2aa6cb748f1faafd0c9046b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25661,13 +26918,60 @@
       "sha256": "8c38d2892e1b4e88033998f8cc50219435c7045956cafd604059d435ae48d9e2"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-sv.txt",
+      "sha256": "8a6e880054d4c306d1e34119175b4ea1261b7cb544f889cd6106272154ea1b5b"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-sv.txt",
+      "sha256": "8500a578f94cdf015550e5109edd689c1a82a3feff0cb4011e59b2975e59824b"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "c7d705151773b119585cd3b3f71288a79bcbbd74755568a69c087db31a4520ca",
+   "contentSHA256": "ec1400446d2e78f23d774b64a2f1264af584ad2335bd3d6cccd9dc3cdc2aa1aa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26552,13 +27856,60 @@
       "sha256": "00865e3330a516f308ea4f407f4a105a0c94c6b358f561f69f47b4e0f8df93cb"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-tr.txt",
+      "sha256": "3ccbc45748815ea47b0a4a5e4e3953005c82c6f9fd6052995cc6f2e32f9365fc"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-tr.txt",
+      "sha256": "e8581e438e4b1eb151d417b25102bcec5302ab3aa170a0edafb0ae668716162f"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "6d5c907a3891babd8cd528eb11061d42e1ceded65bedc1b7fc359254844f253b",
+   "contentSHA256": "4a618fc171b3df42f3b93ca4d921338f0f9e66d349ba20d05fe933a58e6d7992",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27452,13 +28803,60 @@
       "sha256": "4349cc8d2980c020a893ef817f2617b56d99034ad3fcaf2aa6f392834119e828"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-uk.txt",
+      "sha256": "1a70c6f9c838f564d4f028f14beb2b7b78b384c127b4e9409e9536da111ab252"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-uk.txt",
+      "sha256": "a8f2ed003ff1f99f1eebd534579d4dc18c8a5834981dc4b0e6342a8285138358"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "f1731a8d331e63fd3a3902b219dc9dc996165078df92150310979af7823cde35",
+   "contentSHA256": "398d47144ebdf5c7ddf9cd3079f54f07526f649fd6e7b44ec497301ee92c8c31",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28343,13 +29741,60 @@
       "sha256": "135d8cfbddd231a495c558ff5329fc9d4a6b1b2feca78aeac0267bda5d6514b5"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-vi.txt",
+      "sha256": "08ad5e92155b1acfcec020f608b54930a672f389e7eefd87dcb1773a9dc3d496"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-vi.txt",
+      "sha256": "5fb3a8430ab0dc7f706c57cfaf1ed8273ff9db53620108ef2587465bc6181197"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "e2f83967fb95a114efa2ffb3debb58da37d3643513dc428582fa2b3b537a8998",
+   "contentSHA256": "9f483ac0117e641380cee59bfe058bc1e5f0989c9ce7a1948a6f67b2b00fa5f1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29234,6 +30679,53 @@
       "sha256": "ee9e666e05a199198b4a487c0faa8b77aa90c183f14902aeeef2d09d84bc5078"
      },
      "disposition": "adopted as returned by the review (additions/meetingTranscriptAutoDetect.json)"
+    },
+    {
+     "kind": "rename-content",
+     "ids": [
+      "meetingLiveWords",
+      "meetingLiveWords.keepCurrent",
+      "meetingLiveWords.change"
+     ],
+     "date": "2026-11-01",
+     "method": "#4320 founder decision 7: \"Live words\" renamed \"Live Preview\"; one fresh isolated Codex session re-reviewed all 30 languages against the new English and this app's dictation Live Preview title, then one fresh isolated session removed dashes from its answer",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/rereview-prompt.txt",
+      "sha256": "469d131635fdd23627c30a28cfd2e7768abb8a46d59b61b4787178cc930833e2"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/rereview.txt",
+      "sha256": "b0bd24d106808fcaaee109a0a33862edc65d5211779a79526423c70cd997059e"
+     },
+     "dashFix": {
+      "prompt": {
+       "path": "additions/meetingLiveWords-rename/dash-fix-prompt.txt",
+       "sha256": "ec2316f48a2eecb7bba0bb23a1021d4f651b60bcf2ba37afb880063f42729a1c"
+      },
+      "output": {
+       "path": "additions/meetingLiveWords-rename/dash-fix.txt",
+       "sha256": "2111b08377d21ddbe56fd1fe9dae8b94de5bed6f64d6461b8e5330b4b43f697d"
+      }
+     },
+     "disposition": "adopted as the dash-free answer returned it"
+    },
+    {
+     "kind": "rename-content",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with dictation's Live Preview and the meeting language places), final blocks of the ids changed since 554f1470",
+     "date": "2026-11-01",
+     "prompt": {
+      "path": "additions/meetingLiveWords-rename/per-language/prompt-zh.txt",
+      "sha256": "f51e18af6bc7c10728ca885304ae1c12e8b31bd98ab5847e9d16fd5a21f2eb0e"
+     },
+     "driver": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-driver.py.txt",
+      "sha256": "afaa9318bc903342d4d18b5991a6e2de6835f21f492c3e08086702d8819317da"
+     },
+     "output": {
+      "path": "additions/meetingLiveWords-rename/per-language/review-zh.txt",
+      "sha256": "cb175cdea5107928446db3558d4388451577055d45b6366231dc40e4a3b24e60"
+     },
+     "disposition": "adopted in full; see additions/meetingLiveWords-rename/per-language/disposition.md"
     }
    ],
    "phraseExemptions": []
@@ -29340,10 +30832,10 @@
   "meetingCallDetection": "7ae4896de9da439337589120b6338cb98aef3d7953ab527c12f3e3c7f85f3420",
   "meetingCaptureCallSound": "0db6ed871c23b54df99053c09432e3f68be6e1cf1ca3e52644d9dc2a190768ec",
   "meetingFollowsCallMute": "24803fad4615bc95fe0b2e6620b4b8ff3cef6781e6f31751b57d0cd17b166e96",
-  "meetingLiveWords": "9e915d19a4086e95aef2223ab2f4d302a1877fbfda1b62c1f6c8c8d28b12716a",
+  "meetingLiveWords": "0ac83eccb954a1c6faf57390e6fb2208e9812f86bab8247cf20d2dcfed01cffe",
   "meetingLiveWords.apple": "f0c4896f86584c8eb2002ee647d666324d0cfce50440b66b2fc92e317bd713a8",
   "meetingLiveWords.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",
-  "meetingLiveWords.keepCurrent": "5f38f83a493176ba89e7907bf4adb36497758b069a88a2f2e025943d386f36b1",
+  "meetingLiveWords.keepCurrent": "284df1fa1b783db5f51ecf0e302045d22e19fe57ecddd7e6f96406e5b50325a8",
   "meetingLiveWords.universal": "c1acb29da84332b353c621c52d433c95655b48cfc27b5dedcd0832d5a7642028",
   "meetingLiveWordsLanguage": "77c308e505fe0f714e82151342dc2dd27b4cea356418b1c3e424ed5a4590f54c",
   "meetingSummaryEngine": "a3e8025b87c7365d0648535e036b67256175573bc95b22dec330e897d6498cd1",

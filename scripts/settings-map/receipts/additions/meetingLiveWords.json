@@ -2,57 +2,63 @@
  "id": "meetingLiveWords",
  "blocks": {
   "ar": {
-   "title": "النص المباشر",
+   "title": "إظهار الكلمات أثناء الكلام في EnviousMeet",
    "words": [
     "نص الاجتماع المباشر"
    ],
    "phrases": [
-    "تغيير لغة النص المباشر للاجتماع",
-    "اختيار محرك النص المباشر للاجتماع",
-    "تنزيل نموذج لغة للنص المباشر للاجتماع"
+    "إعدادات إظهار الكلمات أثناء الكلام في EnviousMeet",
+    "إعدادات المحرك واللغة لعرض الكلمات أثناء تسجيل الاجتماع"
    ]
   },
   "bg": {
-   "title": "текст на срещата в реално време",
+   "title": "„показване на думите, докато говорите“ в EnviousMeet",
    "words": [],
    "phrases": [
-    "език на текста, който се показва по време на срещата",
-    "избор на модел за текста на срещата в реално време",
-    "изтегляне на модел за текста на срещата в реално време"
+    "настройки за показване на текста по време на запис на среща",
+    "модел и език за текста на живо в EnviousMeet"
    ]
   },
   "cs": {
-   "title": "živý přepis",
-   "words": [],
+   "title": "zobrazovat slova během mluvení v EnviousMeet",
+   "words": [
+    "živý přepis schůzky"
+   ],
    "phrases": [
-    "změnit jazyk živého přepisu schůzky",
-    "vybrat rozpoznávání řeči pro živý přepis schůzky"
+    "vybrat modul pro zobrazování slov během nahrávání schůzky",
+    "nastavit Apple nebo Universal pro živý náhled v EnviousMeet"
    ]
   },
   "da": {
-   "title": "livetransskription",
+   "title": "vis ord mens du taler i EnviousMeet",
    "words": [
-    "livetekst til møder"
+    "livetekst til møder",
+    "livetransskription af møder"
    ],
    "phrases": [
-    "skift sprog for livetransskription af møder",
-    "vælg motor til livetransskription af møder"
+    "indstillinger for livevisning i EnviousMeet",
+    "motor og sprog til mødets livevisning"
    ]
   },
   "de": {
-   "words": [],
+   "words": [
+    "Live-Vorschau",
+    "Live-Transkript",
+    "Engine"
+   ],
    "phrases": [
-    "ändere die Sprache für das Live-Transkript während der Meetingaufnahme",
-    "wähle die Engine für das Live-Transkript im Meeting",
-    "ändere die Sprache der Mitschrift während des Meetings"
+    "Engine für die Live-Vorschau im Meeting wählen",
+    "Live-Vorschau für Meetings einrichten"
    ]
   },
   "el": {
-   "title": "ζωντανή απομαγνητοφώνηση",
-   "words": [],
+   "title": "εμφάνιση λέξεων όσο μιλάτε στο EnviousMeet",
+   "words": [
+    "ζωντανή απομαγνητοφώνηση συνάντησης"
+   ],
    "phrases": [
-    "αλλαγή γλώσσας για το ζωντανό κείμενο της συνάντησης",
-    "επιλογή μηχανής για τη ζωντανή απομαγνητοφώνηση στο EnviousMeet"
+    "επιλογή μηχανής για τη ζωντανή προεπισκόπηση της συνάντησης",
+    "ρυθμίσεις μηχανής και γλώσσας για τη ζωντανή προεπισκόπηση στο EnviousMeet"
    ]
   },
   "en": {
@@ -66,230 +72,242 @@
    ]
   },
   "es": {
-   "title": "transcripción en directo",
+   "title": "mostrar palabras mientras hablas en EnviousMeet",
    "words": [
     "texto en directo de reuniones"
    ],
    "phrases": [
-    "cambiar el idioma del texto en directo de la reunión",
-    "elegir motor para transcribir la reunión en directo"
+    "elegir el motor de la vista previa de EnviousMeet",
+    "usar Apple o Universal para mostrar texto provisional durante una reunión"
    ]
   },
   "et": {
-   "title": "reaalajas tekst",
+   "title": "koosoleku reaalajas eelvaade",
    "words": [],
    "phrases": [
-    "muuda koosoleku reaalajas teksti keelt",
-    "vali koosoleku reaalajas teksti mootor"
+    "vali koosoleku reaalajas eelvaate mootor",
+    "muuda koosoleku reaalajas eelvaate mootorit ja keelt"
    ]
   },
   "fi": {
-   "title": "reaaliaikainen litterointi",
-   "words": [],
+   "title": "näytä sanat puhuessasi EnviousMeetissä",
+   "words": [
+    "kokouksen reaaliaikainen litterointi"
+   ],
    "phrases": [
-    "vaihda kokouksen reaaliaikaisen litteroinnin kieli",
-    "valitse kokouksen reaaliaikaisen litteroinnin moottori"
+    "valitse kokouksen aikana näkyvän esikatselutekstin moottori",
+    "vaihda EnviousMeetin esikatselun moottoria"
    ]
   },
   "fr": {
-   "title": "transcription en direct",
+   "title": "aperçu en direct des réunions dans EnviousMeet",
    "words": [],
    "phrases": [
-    "changer la langue du texte affiché pendant l’enregistrement d’une réunion",
-    "choisir le moteur de transcription en direct des réunions"
+    "choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet",
+    "régler le moteur et la langue du texte affiché pendant une réunion"
    ]
   },
   "hi": {
-   "title": "लाइव ट्रांसक्रिप्शन",
+   "title": "EnviousMeet का लाइव प्रीव्यू",
    "words": [
     "मीटिंग का लाइव टेक्स्ट"
    ],
    "phrases": [
-    "मीटिंग के दौरान दिखने वाले शब्दों की भाषा बदलें",
-    "मीटिंग के लाइव ट्रांसक्रिप्शन का इंजन चुनें"
+    "मीटिंग के लाइव प्रीव्यू का इंजन चुनें",
+    "मीटिंग के दौरान टेक्स्ट दिखाने के लिए Apple या Universal चुनें"
    ]
   },
   "hr": {
-   "title": "prijepis uživo",
-   "words": [],
+   "title": "„prikazuj riječi dok govorim” u aplikaciji EnviousMeet",
+   "words": [
+    "prijepis sastanka uživo"
+   ],
    "phrases": [
-    "promijeni jezik prijepisa sastanka uživo",
-    "odaberi mehanizam za prijepis sastanka uživo"
+    "promijeni mehanizam za prikaz riječi tijekom snimanja sastanka",
+    "postavke prikaza teksta uživo u aplikaciji EnviousMeet"
    ]
   },
   "hu": {
-   "title": "élő átirat",
-   "words": [],
+   "title": "élő előnézet az EnviousMeetben",
+   "words": [
+    "megbeszélés élő átirata"
+   ],
    "phrases": [
-    "megbeszélés élő átiratának nyelvét módosítanám",
-    "motort választanék a megbeszélés élő átírásához",
-    "nyelvi modellt töltenék le a megbeszélés élő átírásához"
+    "motort választanék a megbeszélés élő előnézetéhez",
+    "az EnviousMeet élő előnézetének motorját és nyelvét állítanám be"
    ]
   },
   "it": {
-   "title": "trascrizione in tempo reale",
-   "words": [],
+   "title": "anteprima in tempo reale di EnviousMeet",
+   "words": [
+    "mostra le parole mentre parli"
+   ],
    "phrases": [
-    "cambiare la lingua del testo mostrato durante la riunione",
-    "scegliere il motore per la trascrizione in tempo reale della riunione"
+    "impostazioni dell’anteprima in tempo reale delle riunioni",
+    "motore e lingua dell’anteprima in tempo reale di EnviousMeet"
    ]
   },
   "ja": {
-   "title": "リアルタイム文字起こし",
+   "title": "EnviousMeetのライブプレビュー",
    "words": [
     "会議のライブ文字起こし"
    ],
    "phrases": [
-    "会議のリアルタイム文字起こしの言語を変える",
-    "会議のリアルタイム文字起こしのエンジンを選ぶ"
+    "会議のライブプレビューのエンジンを選ぶ",
+    "会議中の文字表示にAppleかUniversalを使う"
    ]
   },
   "ko": {
-   "title": "실시간 회의 텍스트",
-   "words": [],
+   "title": "EnviousMeet 실시간 미리보기",
+   "words": [
+    "회의 실시간 텍스트"
+   ],
    "phrases": [
-    "회의 중 표시되는 실시간 텍스트 언어 바꾸기",
-    "회의 실시간 텍스트 엔진 선택",
-    "회의 실시간 텍스트용 언어 모델 다운로드"
+    "회의 실시간 미리보기 엔진 설정",
+    "회의 중 표시되는 텍스트의 엔진과 언어 설정"
    ]
   },
   "lt": {
-   "title": "transkripcija realiuoju laiku",
-   "words": [],
+   "title": "„rodyti žodžius kalbant“ programoje EnviousMeet",
+   "words": [
+    "susitikimo transkripcija realiuoju laiku"
+   ],
    "phrases": [
-    "pakeisti susitikimo transkripcijos realiuoju laiku kalbą",
-    "pasirinkti susitikimo transkripcijos realiuoju laiku variklį"
+    "pasirinkti susitikimo tiesioginės peržiūros variklį",
+    "pakeisti susitikimo metu rodomo teksto variklį"
    ]
   },
   "lv": {
-   "title": "sapulces teksts reāllaikā",
+   "title": "rādīt vārdus, kamēr runājat lietotnē EnviousMeet",
    "words": [],
    "phrases": [
-    "mainīt sapulces reāllaika teksta valodu",
-    "izvēlēties dzini sapulces tekstam reāllaikā",
-    "lejupielādēt valodas modeli sapulces tekstam reāllaikā"
+    "mainīt sapulces reāllaika teksta dzini",
+    "izvēlēties Apple vai Universal sapulces teksta priekšskatījumam"
    ]
   },
   "mt": {
-   "title": "traskrizzjoni diretta",
+   "title": "“uri l-kliem waqt li titkellem” għal-laqgħat f'EnviousMeet",
    "words": [
     "traskrizzjoni diretta tal-laqgħa"
    ],
    "phrases": [
-    "ibdel il-lingwa tat-traskrizzjoni diretta tal-laqgħa",
-    "agħżel il-magna għat-traskrizzjoni diretta tal-laqgħa"
+    "agħżel il-magna li turi l-kliem waqt laqgħa f'EnviousMeet",
+    "agħżel Apple jew Universal għall-preview dirett tal-laqgħa"
    ]
   },
   "nl": {
-   "title": "live transcriptie",
+   "title": "toon woorden terwijl je spreekt in EnviousMeet",
    "words": [],
    "phrases": [
-    "taal van live transcriptie bij vergaderingen wijzigen",
+    "engine en taal kiezen voor live tekst tijdens vergaderingen",
     "engine voor live transcriptie van vergaderingen kiezen"
    ]
   },
   "pl": {
-   "title": "transkrypcja na żywo",
+   "title": "pokazuj słowa podczas mówienia w EnviousMeet",
    "words": [
     "tekst spotkania na żywo"
    ],
    "phrases": [
-    "zmień język transkrypcji spotkania na żywo",
-    "wybierz silnik transkrypcji spotkania na żywo"
+    "wybierz silnik podglądu na żywo w EnviousMeet",
+    "zmień silnik wyświetlający słowa podczas nagrywania spotkania"
    ]
   },
   "pt": {
-   "title": "transcrição em tempo real",
+   "title": "mostrar palavras enquanto você fala no EnviousMeet",
    "words": [
     "transcrição ao vivo da reunião"
    ],
    "phrases": [
-    "mudar o idioma da transcrição da reunião em tempo real",
-    "escolher o motor de transcrição em tempo real da reunião"
+    "escolher o motor que mostra o texto ao vivo durante a reunião",
+    "usar Apple ou Universal para mostrar palavras durante a reunião no EnviousMeet"
    ]
   },
   "ro": {
-   "title": "transcriere în timp real",
+   "title": "previzualizare în timp real în EnviousMeet",
    "words": [],
    "phrases": [
-    "schimbă limba transcrierii în timp real a întâlnirii",
-    "alege motorul pentru transcrierea în timp real a întâlnirii"
+    "alege motorul pentru previzualizarea în timp real a întâlnirii",
+    "schimbă motorul pentru textul afișat în timpul înregistrării întâlnirii"
    ]
   },
   "ru": {
-   "title": "расшифровка встречи в реальном времени",
+   "title": "показывать слова во время речи в EnviousMeet",
    "words": [
     "текст во время записи встречи"
    ],
    "phrases": [
-    "изменить язык текста, который появляется во время записи встречи",
-    "выбрать движок для расшифровки встречи в реальном времени"
+    "выбрать движок для показа текста во время записи встречи",
+    "выбрать Apple или Universal для предпросмотра встречи в EnviousMeet"
    ]
   },
   "sk": {
-   "title": "živý prepis",
+   "title": "živý náhľad v EnviousMeet",
    "words": [
     "živý prepis stretnutia"
    ],
    "phrases": [
-    "zmeniť jazyk živého prepisu stretnutia",
-    "vybrať engine pre živý prepis stretnutia"
+    "vybrať model živého náhľadu počas nahrávania stretnutia",
+    "vybrať Apple alebo Universal pre živý náhľad v EnviousMeet"
    ]
   },
   "sl": {
-   "title": "prepis v živo",
-   "words": [],
+   "title": "sprotni predogled v EnviousMeet",
+   "words": [
+    "prepis sestanka v živo"
+   ],
    "phrases": [
-    "spremeni jezik prepisa sestanka v živo",
-    "izberi pogon za prepis sestanka v živo"
+    "izberi pogon za sprotni predogled sestanka",
+    "nastavitve sprotnega predogleda v EnviousMeet"
    ]
   },
   "sv": {
-   "title": "transkribering i realtid",
+   "title": "visa ord medan du pratar i EnviousMeet",
    "words": [
     "mötestext i realtid"
    ],
    "phrases": [
-    "ändra språk för mötets transkribering i realtid",
-    "välj motor för mötets transkribering i realtid"
+    "välj motor för texten som visas medan mötet spelas in",
+    "ändra motor för mötets liveförhandsvisning"
    ]
   },
   "tr": {
-   "title": "canlı transkripsiyon",
+   "title": "EnviousMeet canlı önizleme",
    "words": [
     "canlı toplantı dökümü"
    ],
    "phrases": [
-    "toplantı sırasında gösterilen metnin dilini değiştir",
-    "toplantının canlı transkripsiyon motorunu seç"
+    "toplantı sırasında ekranda görünen metin için motor seç",
+    "EnviousMeet canlı önizleme motorunu değiştir"
    ]
   },
   "uk": {
-   "title": "текст зустрічі наживо",
+   "title": "показувати слова, поки ви говорите в EnviousMeet",
    "words": [],
    "phrases": [
-    "змінити мову тексту під час запису зустрічі",
-    "вибрати рушій розпізнавання мовлення для тексту зустрічі наживо",
-    "завантажити модель мови для тексту зустрічі наживо"
+    "вибрати рушій для показу тексту під час запису зустрічі",
+    "вибрати Apple або Universal для попереднього перегляду тексту зустрічі в EnviousMeet"
    ]
   },
   "vi": {
-   "title": "chép lời trực tiếp",
-   "words": [],
+   "title": "hiện chữ khi đang nói trong EnviousMeet",
+   "words": [
+    "chép lời trực tiếp cuộc họp"
+   ],
    "phrases": [
-    "đổi ngôn ngữ chép lời trực tiếp của cuộc họp",
-    "chọn công cụ chép lời trực tiếp cho cuộc họp"
+    "cài đặt hiện chữ khi đang ghi âm cuộc họp",
+    "công cụ và ngôn ngữ hiện chữ khi đang nói trong EnviousMeet"
    ]
   },
   "zh": {
-   "title": "会议实时转写",
+   "title": "EnviousMeet 会议实时预览",
    "words": [
     "会议实时文字",
     "会议实时转录"
    ],
    "phrases": [
-    "更改会议实时转写的语言",
-    "选择会议实时转写引擎"
+    "设置会议实时预览的引擎和语言",
+    "设置录制会议时显示的文字预览"
    ]
   }
  }

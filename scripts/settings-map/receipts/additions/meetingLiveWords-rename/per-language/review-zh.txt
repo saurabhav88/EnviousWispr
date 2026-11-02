@@ -1,0 +1,85 @@
+{
+  "meetingLiveWords": {
+    "title": "EnviousMeet 会议实时预览",
+    "words": [
+      "会议实时文字",
+      "会议实时转录"
+    ],
+    "phrases": [
+      "设置会议实时预览的引擎和语言",
+      "设置录制会议时显示的文字预览"
+    ]
+  },
+  "meetingLiveWords.change": {
+    "title": "更换 EnviousMeet 会议实时预览引擎",
+    "words": [],
+    "phrases": [
+      "打开会议实时预览的引擎选项",
+      "为会议实时预览选择 Apple 或 Universal 引擎"
+    ]
+  },
+  "meetingLiveWords.keepCurrent": {
+    "title": "保留 EnviousMeet 会议实时预览的当前引擎",
+    "words": [],
+    "phrases": [
+      "关闭引擎选项并保留当前会议实时预览引擎"
+    ]
+  },
+  "livePreview": {
+    "language": "zh",
+    "title": "说话时显示文字",
+    "words": [
+      "边说边显示",
+      "实时出字",
+      "边说边看",
+      "即时文字"
+    ],
+    "phrases": [
+      "还没说完就能看到文字",
+      "打开或关闭说话时的文字预览"
+    ]
+  },
+  "dictation.tab.livePreview": {
+    "language": "zh",
+    "title": "实时预览设置",
+    "words": [
+      "预览设置",
+      "实时预览页"
+    ],
+    "phrases": [
+      "打开实时预览设置页面"
+    ]
+  },
+  "meetingLiveWordsLanguage": {
+    "language": "zh",
+    "title": "会议实时预览语言",
+    "words": [],
+    "phrases": [
+      "更改会议实时预览文字的语言"
+    ]
+  },
+  "meetingTranscriptLanguage": {
+    "language": "zh",
+    "title": "会后转写语言",
+    "words": [
+      "会后转写",
+      "会后逐字稿"
+    ],
+    "phrases": [
+      "更改会后完整逐字稿的语言",
+      "自动识别会后转写文本的语言"
+    ]
+  },
+  "meetingTranscriptEngine": {
+    "language": "zh",
+    "title": "会后转写引擎",
+    "words": [
+      "会议转写引擎",
+      "会议转写模型"
+    ],
+    "phrases": [
+      "选择转写整场会议的模型",
+      "更改会后生成完整文字稿的引擎"
+    ]
+  }
+}

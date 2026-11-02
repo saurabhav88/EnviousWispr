@@ -45,7 +45,7 @@ enum MeetingsPresentation {
     case .callSound:
       return String(
         localized: "Call",
-        comment: "History, live words of a recording meeting: words heard in the sound the Mac plays.")
+        comment: "History, Live Preview of a recording meeting: words heard in the sound the Mac plays.")
     }
   }
 
@@ -61,11 +61,11 @@ enum MeetingsPresentation {
     var lines = [
       recordingEnded
         ? String(
-          localized: "Live words from the recording. The full transcript replaces them when it is ready.",
-          comment: "History, a stopped meeting: the live words kept until its transcript is ready.")
+          localized: "Live Preview text from the recording. The full transcript replaces it when it is ready.",
+          comment: "History, a stopped meeting: the Live Preview kept until its transcript is ready.")
         : String(
-          localized: "Live words, as people speak. The full transcript comes after the meeting.",
-          comment: "History, a recording meeting: what the live words are.")
+          localized: "Live Preview, as people speak. The full transcript comes after the meeting.",
+          comment: "History, a recording meeting: what the Live Preview are.")
     ]
     for track in MeetingTrackKind.allCases {
       guard let state = live.tracks[track],
@@ -77,8 +77,8 @@ enum MeetingsPresentation {
     if live.tracks.values.contains(where: \.droppedAudio) {
       lines.append(
         String(
-          localized: "Some live words were skipped. The full transcript comes after the meeting.",
-          comment: "History, a meeting: some audio did not reach the live words."))
+          localized: "Some Live Preview text was skipped. The full transcript comes after the meeting.",
+          comment: "History, a meeting: some audio did not reach the Live Preview."))
     }
     if callSoundRecorded {
       lines.append(
@@ -102,14 +102,14 @@ enum MeetingsPresentation {
     guard live.lines.isEmpty else { return nil }
     if recordingEnded {
       return String(
-        localized: "No live words were heard.",
-        comment: "History, a stopped meeting: the live words had no lines.")
+        localized: "Live Preview heard no words.",
+        comment: "History, a stopped meeting: the Live Preview had no lines.")
     }
     guard live.tracks.values.contains(where: { $0.status == .starting || $0.status == .running })
     else { return nil }
     return String(
       localized: "No words yet.",
-      comment: "History, a recording meeting: no live words have been heard yet.")
+      comment: "History, a recording meeting: no Live Preview have been heard yet.")
   }
 
   /// Why a track shows no live words, or nil when it is starting or running (or, after Stop,
@@ -123,59 +123,59 @@ enum MeetingsPresentation {
       return nil
     case .off(.notSetUp) where recordingEnded:
       return String(
-        localized: "Live words were not set up for this meeting.",
-        comment: "History, a stopped meeting: no live words engine was chosen when it started.")
+        localized: "Live Preview was not set up for this meeting.",
+        comment: "History, a stopped meeting: no Live Preview engine was chosen when it started.")
     case .off(.notSetUp):
       return String(
         localized:
-          "Live words are not set up. Choose an engine in EnviousMeet settings, Models, Live words.",
-        comment: "History, a recording meeting: no live words engine and language are chosen yet.")
+          "Live Preview is not set up. Choose an engine in EnviousMeet settings, Models, Live Preview.",
+        comment: "History, a recording meeting: no Live Preview engine and language are chosen yet.")
     case .off(.engineNotDownloaded(.apple, let language)) where recordingEnded:
       return String(
-        localized: "Live words needed Apple's \(language) model, which was not downloaded.",
+        localized: "Live Preview needed Apple's \(language) model, which was not downloaded.",
         comment: "History, a stopped meeting: Apple's meeting speech model for the chosen language was missing. The placeholder is a language name.")
     case .off(.engineNotDownloaded(.apple, let language)):
       return String(
         localized:
-          "Live words need Apple's \(language) model. Download it in EnviousMeet settings, Models, Live words.",
+          "Live Preview needs Apple's \(language) model. Download it in EnviousMeet settings, Models, Live Preview.",
         comment: "History, a recording meeting: Apple's meeting speech model for the chosen language is not downloaded. The placeholder is a language name.")
     case .off(.engineNotDownloaded(.universal, _)) where recordingEnded:
       return String(
-        localized: "Live words needed the Universal engine, which was not downloaded.",
-        comment: "History, a stopped meeting: the Universal engine chosen for live words was not downloaded.")
+        localized: "Live Preview needed the Universal engine, which was not downloaded.",
+        comment: "History, a stopped meeting: the Universal engine chosen for Live Preview was not downloaded.")
     case .off(.engineNotDownloaded(.universal, _)):
       return String(
         localized:
-          "Live words need the Universal engine. Download it in EnviousMeet settings, Models, Live words.",
-        comment: "History, a recording meeting: the Universal engine chosen for live words is not downloaded.")
+          "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview.",
+        comment: "History, a recording meeting: the Universal engine chosen for Live Preview is not downloaded.")
     case .off(.previousStillClosing) where recordingEnded:
       return String(
-        localized: "Live words were not available for this meeting.",
-        comment: "History, a stopped meeting: live words did not run for it.")
+        localized: "Live Preview was not available for this meeting.",
+        comment: "History, a stopped meeting: Live Preview did not run for it.")
     case .off(.previousStillClosing):
       return String(
-        localized: "Live words are off for this meeting while the last one finishes closing.",
-        comment: "History, a recording meeting: the previous meeting's live words are still closing.")
+        localized: "Live Preview is off for this meeting while the last one finishes closing.",
+        comment: "History, a recording meeting: the previous meeting's Live Preview are still closing.")
     case .off(.couldNotStart), .off(.unavailable):
       return String(
-        localized: "Live words are not available for this meeting.",
-        comment: "History, a recording meeting: live words could not start.")
+        localized: "Live Preview is not available for this meeting.",
+        comment: "History, a recording meeting: Live Preview could not start.")
     case .off(.modelBeingRemoved), .stopped(.modelRemoved):
       return recordingEnded
         ? String(
-          localized: "Live words stopped while the Universal engine was being removed.",
-          comment: "History, a stopped meeting: live words stopped because the Universal engine was being removed in Dictation Settings.")
+          localized: "Live Preview stopped while the Universal engine was being removed.",
+          comment: "History, a stopped meeting: Live Preview stopped because the Universal engine was being removed in Dictation Settings.")
         : String(
-          localized: "Live words stopped while the Universal engine is being removed.",
-          comment: "History, a recording meeting: live words stopped because the Universal engine is being removed in Dictation Settings.")
+          localized: "Live Preview stopped while the Universal engine is being removed.",
+          comment: "History, a recording meeting: Live Preview stopped because the Universal engine is being removed in Dictation Settings.")
     case .stopped:
       return recordingEnded
         ? String(
-          localized: "Live words stopped for \(name) before the recording ended.",
-          comment: "History, a stopped meeting: one track's live words stopped early; the placeholder is You or Call.")
+          localized: "Live Preview stopped for \(name) before the recording ended.",
+          comment: "History, a stopped meeting: one track's Live Preview stopped early; the placeholder is You or Call.")
         : String(
-          localized: "Live words stopped for \(name). The recording continues.",
-          comment: "History, a recording meeting: one track's live words stopped; the placeholder is You or Call.")
+          localized: "Live Preview stopped for \(name). The recording continues.",
+          comment: "History, a recording meeting: one track's Live Preview stopped; the placeholder is You or Call.")
     }
   }
 
@@ -572,7 +572,7 @@ enum MeetingsPresentation {
         MenuItem(
           kind: .showLive,
           title: String(
-            localized: "Show Live Transcript",
+            localized: "Show Live Preview",
             comment: "Menu bar menu: opens History on the meeting that is recording now."),
           action: .show(meetingID), isEnabled: true))
     }

@@ -1,0 +1,36 @@
+{
+ "meetingLiveWords": {
+  "words": [
+   "Live-Vorschau",
+   "Live-Transkript"
+  ],
+  "phrases": [
+   "wähle die Engine für die Live-Vorschau im Meeting",
+   "ändere die Sprache der Mitschrift während des Meetings"
+  ]
+ },
+ "meetingLiveWords.keepCurrent": {
+  "words": [],
+  "phrases": [
+   "bisherige Engine für die Live-Vorschau behalten"
+  ]
+ },
+ "meetingLiveWords.change": {
+  "words": [],
+  "phrases": [
+   "Engine für die Live-Vorschau ändern"
+  ]
+ },
+ "meetingLiveWords.apple": {
+  "words": [],
+  "phrases": [
+   "verwende Apple für die Live-Vorschau im Meeting"
+  ]
+ },
+ "meetingLiveWords.universal": {
+  "words": [],
+  "phrases": [
+   "nutze Universal für die Live-Vorschau im Meeting"
+  ]
+ }
+}

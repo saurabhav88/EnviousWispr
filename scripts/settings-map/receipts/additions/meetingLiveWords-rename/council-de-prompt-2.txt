@@ -1,0 +1,32 @@
+Round 2, same app and rules as round 1. The meeting feature that shows words on screen while a meeting records was renamed from "Live words" (German "Live-Transkript", neuter) to "Live Preview" (German "Live-Vorschau", feminine, the name the app already uses for dictation). Check each German text below for correct grammar after the gender change (articles, pronouns such as "sie" for die Live-Vorschau), natural app German, du-form and no dashes. In search blocks, "Live-Transkript" is deliberately kept as an extra search word so people who know the old name still find the place.
+
+1. English "Change Live Preview engine". German "Live-Vorschau-Engine ändern"
+2. English "Keep current Live Preview engine". German "Aktuelle Live-Vorschau-Engine beibehalten"
+3. English "Live Preview and the transcript use different languages.". German "Die Live-Vorschau und das vollständige Transkript verwenden unterschiedliche Sprachen."
+4. English "Live Preview heard no words.". German "In der Live-Vorschau wurden keine Wörter erkannt."
+5. English "Live Preview is not available for this meeting.". German "Für dieses Meeting ist keine Live-Vorschau verfügbar."
+6. English "Live Preview is not set up. Choose an engine in EnviousMeet settings, Models, Live Preview.". German "Die Live-Vorschau ist nicht eingerichtet. Wähle in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ eine Engine."
+7. English "Live Preview is off for this meeting while the last one finishes closing.". German "Die Live-Vorschau ist für dieses Meeting deaktiviert, während das vorherige Meeting noch abgeschlossen wird."
+8. English "Live Preview needed Apple's %@ model, which was not downloaded.". German "Für die Live-Vorschau wurde Apples Modell für %@ benötigt, das nicht heruntergeladen war."
+9. English "Live Preview needed the Universal engine, which was not downloaded.". German "Für die Live-Vorschau wurde die Engine „Universal“ benötigt, die nicht heruntergeladen war."
+10. English "Live Preview needs Apple's %@ model. Download it in EnviousMeet settings, Models, Live Preview.". German "Für die Live-Vorschau wird Apples Modell für %@ benötigt. Lade es in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ herunter."
+11. English "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview.". German "Für die Live-Vorschau wird die Engine „Universal“ benötigt. Lade sie in den EnviousMeet-Einstellungen unter „Modelle“ im Bereich „Live-Vorschau“ herunter."
+12. English "Live Preview shows what is said into your microphone and in the call while a meeting records. Apple uses this Mac's speech recognition and needs macOS 26 and a download for each language. Universal works on any supported Mac and needs one download. Nothing downloads until you press Download, and Download here is off while a meeting records or is being transcribed. The full transcript is written after the meeting and does not depend on Live Preview.". German "Die Live-Vorschau zeigt während einer Meeting-Aufnahme, was über dein Mikrofon und im Anruf gesagt wird. Apple nutzt die Spracherkennung dieses Macs und benötigt macOS 26 sowie einen Download pro Sprache. Universal funktioniert auf jedem unterstützten Mac und benötigt nur einen Download. Erst wenn du auf „Laden“ klickst, wird etwas heruntergeladen; solange ein Meeting aufgenommen oder transkribiert wird, ist „Laden“ hier nicht verfügbar. Das vollständige Transkript wird nach dem Meeting erstellt und hängt nicht von der Live-Vorschau ab."
+13. English "Live Preview stopped for %@ before the recording ended.". German "Live-Vorschau („%@“) vor dem Ende der Aufnahme gestoppt."
+14. English "Live Preview stopped for %@. The recording continues.". German "Live-Vorschau („%@“) gestoppt. Die Aufnahme läuft weiter."
+15. English "Live Preview stopped while the Universal engine is being removed.". German "Die Live-Vorschau wurde gestoppt, während die Engine „Universal“ entfernt wird."
+16. English "Live Preview stopped while the Universal engine was being removed.". German "Die Live-Vorschau wurde gestoppt, während die Engine „Universal“ entfernt wurde."
+17. English "Live Preview text from the recording. The full transcript replaces it when it is ready.". German "Live-Vorschau der Aufnahme. Das vollständige Transkript ersetzt sie, sobald es fertig ist."
+18. English "Live Preview was not available for this meeting.". German "Für dieses Meeting war keine Live-Vorschau verfügbar."
+19. English "Live Preview was not set up for this meeting.". German "Für dieses Meeting war keine Live-Vorschau eingerichtet."
+20. English "Live Preview, as people speak. The full transcript comes after the meeting.". German "Live-Vorschau, während gesprochen wird. Das vollständige Transkript folgt nach dem Meeting."
+21. English "Show Live Preview". German "Live-Vorschau anzeigen"
+22. English "Some Live Preview text was skipped. The full transcript comes after the meeting.". German "In der Live-Vorschau fehlen einige Wörter. Das vollständige Transkript folgt nach dem Meeting."
+23. English "The engine and language for words shown while a meeting records.". German "Engine und Sprache für die Live-Vorschau während einer Meeting-Aufnahme."
+24. Search block for meetingLiveWords (the meeting Live Preview engine card): {"words": ["Live-Vorschau", "Live-Transkript"], "phrases": ["wähle die Engine für die Live-Vorschau im Meeting", "ändere die Sprache der Mitschrift während des Meetings"]}
+25. Search block for meetingLiveWords.keepCurrent (the meeting Live Preview engine card: its Keep current button): {"words": [], "phrases": ["bisherige Engine für die Live-Vorschau behalten"]}
+26. Search block for meetingLiveWords.change (the meeting Live Preview engine card: its Change button): {"words": [], "phrases": ["Engine für die Live-Vorschau ändern"]}
+27. Search block for meetingLiveWords.apple (the meeting Live Preview engine card: its Apple engine choice): {"words": [], "phrases": ["verwende Apple für die Live-Vorschau im Meeting"]}
+28. Search block for meetingLiveWords.universal (the meeting Live Preview engine card: its Universal engine choice): {"words": [], "phrases": ["nutze Universal für die Live-Vorschau im Meeting"]}
+
+For each item answer "N. OK" or "N. <corrected German>" (for search blocks, a corrected JSON block) plus a one-sentence reason. Keep placeholders (%@) exactly.
