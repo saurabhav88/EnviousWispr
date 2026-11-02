@@ -103,7 +103,7 @@ struct MeetingDocumentsOwnerTests {
       !documents.hasUnsavedNotes(meetingID) && !documents.hasPendingWork
     }
     #expect(Self.notesOnDisk(harness, meetingID) == "Budget")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("typed notes hold a relaunch: during the first read, the debounce and the write")
@@ -114,7 +114,7 @@ struct MeetingDocumentsOwnerTests {
     let coordinator = Self.coordinator(harness, gate: gate)
     await coordinator.start(from: .menu)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && !coordinator.isWorkInFlight
     }
@@ -146,7 +146,7 @@ struct MeetingDocumentsOwnerTests {
     let meetingID = try #require(coordinator.meetings.first?.id)
     // No load first: Stop must read, then save.
     coordinator.documents.setNotes(meetingID, "Decisions: ship Friday")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(Self.notesOnDisk(harness, meetingID) == "Decisions: ship Friday")
     #expect(coordinator.documents.hasUnsavedNotes(meetingID) == false)
   }
@@ -159,7 +159,7 @@ struct MeetingDocumentsOwnerTests {
     let coordinator = Self.coordinator(harness, gate: gate)
     await coordinator.start(from: .menu)
     let first = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.eventually("ready") {
       coordinator.record(id: first)?.state == .ready
     }
@@ -200,7 +200,7 @@ struct MeetingDocumentsOwnerTests {
       coordinator.documents.manifest(meetingID)?.notes?.revision == 5
     }
     #expect(Self.notesOnDisk(harness, meetingID) == "new")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("a read that failed never lets a draft replace notes it did not see")
@@ -224,7 +224,7 @@ struct MeetingDocumentsOwnerTests {
     #expect(await coordinator.documents.flush(meetingID))
     #expect(Self.notesOnDisk(harness, meetingID) == "typed")
     #expect(try harness.store.loadDocuments(meeting: meetingID).manifest.notes?.revision ?? 0 > 2)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("deleting a meeting during a held read or debounce leaves nothing behind")

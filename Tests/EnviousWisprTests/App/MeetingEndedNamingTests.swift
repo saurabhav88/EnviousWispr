@@ -115,7 +115,7 @@ struct MeetingEndedNamingTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     try harness.store.saveCallSpeakers(try CallSpeakerTestLog.meet(), meeting: meetingID)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("History save parked") { save.parked }
     return meetingID
   }
@@ -174,7 +174,7 @@ struct MeetingEndedNamingTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     try harness.store.saveCallSpeakers(try CallSpeakerTestLog.meet(), meeting: meetingID)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("sent") { harness.ended.count == 1 && coordinator.processing == nil }
     let row = try #require(harness.ended.first)
     #expect(row.outcome == .ready)
@@ -219,7 +219,7 @@ struct MeetingEndedNamingTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("first row") { harness.ended.count == 1 && coordinator.processing == nil }
     #expect(harness.ended.first?.autoNamedCount == 0, "no evidence: a known zero")
     #expect(harness.ended.first?.speakerNamesOutcome == nil)

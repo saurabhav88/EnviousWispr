@@ -86,7 +86,7 @@ struct MeetingLivePanel: View {
             comment: "EnviousMeet: the button that stops the meeting recording."),
           isEnabled: true, emphasis: .destructive, size: .medium, systemImage: "stop.circle"
         ) {
-          Task { await meetings.stop() }
+          Task { await meetings.stop(reason: .user) }
         }
         .accessibilityIdentifier("meetings.stop")
       }

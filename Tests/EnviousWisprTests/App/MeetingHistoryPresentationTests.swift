@@ -470,7 +470,7 @@ struct MeetingHistoryPresentationTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(
       await Task.detached { MeetingCoordinatorTests.waitBlocking(gate.entered) }.value == .success)
     // The ready record is still being written: no row yet, and no facts.
@@ -494,7 +494,7 @@ struct MeetingHistoryPresentationTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("pass over") {
       coordinator.processing == nil && !coordinator.hasFinalPassWork
     }
@@ -512,7 +512,7 @@ struct MeetingHistoryPresentationTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     // Retry is refused while the first pass is still clearing its progress: wait for both.
     await eventually("first ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
@@ -563,7 +563,7 @@ struct MeetingHistoryPresentationTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("first ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -598,7 +598,7 @@ struct MeetingHistoryPresentationTests {
     }
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("stalled") {
       coordinator.processing == nil && !coordinator.hasFinalPassWork
         && coordinator.record(id: meetingID)?.state == .processing

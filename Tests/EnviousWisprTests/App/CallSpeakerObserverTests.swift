@@ -351,7 +351,7 @@ import os
       await eventually("snapshot landed") { coordinator.muteState == .checking }
       #expect(coordinator.muteCallApp == .googleMeet, "the muted line names the bound call")
       let stepsBeforeStop = recorder.steps.count
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       #expect(recorder.steps.count > stepsBeforeStop, "Stop sent the end step")
       #expect(recorder.events.last == "stop", "nothing is sent after the recorder stops")
       #expect(recorder.mutedMeter.last == false)
@@ -375,7 +375,7 @@ import os
       #expect(recorder.steps.count >= 2, "switched on, then bound, at once")
       recorder.runSteps(now: mach_absolute_time())
       await eventually("snapshot landed") { coordinator.muteState == .checking }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
     }
 
     @Test("switching mute following off then on mid-recording reaches the writer each time")
@@ -403,7 +403,7 @@ import os
       #expect(recorder.steps.count >= beforeOn + 2, "switched on and bound, at once")
       recorder.runSteps(now: mach_absolute_time())
       await eventually("checking again") { coordinator.muteState == .checking }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       #expect(recorder.mutedMeter.last == false)
     }
 
@@ -439,7 +439,7 @@ import os
       }
       #expect(coordinator.muteCallApp == .teams, "the older Meet snapshot was refused")
       #expect(coordinator.muteState == .checking)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
     }
 
     @Test("mute reading starts before the rules arrive; naming attaches to the same capture")
@@ -458,7 +458,7 @@ import os
       await eventually("copies after the rules") {
         capture.calls.withLock { $0 } >= copiesBeforeRules + 2
       }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await MeetingCoordinatorTests.livePassFinished(coordinator, recorder.configuration.meetingID)
       guard case .usable(let log)? = harness.jobs.last?.receivedCallSpeakers.first else {
         Issue.record("naming did not attach after the rules arrived")
@@ -478,7 +478,7 @@ import os
       let recorder = try #require(harness.recorders.first)
       #expect(outcome == .recording(meetingID: meetingID))
       await eventually("mute bound before rules") { recorder.steps.count >= 1 }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       let copiesAtStop = capture.calls.withLock { $0 }
       gate.continuation.yield()
       await eventually("ready") {
@@ -499,7 +499,7 @@ import os
       _ = await coordinator.start(from: .detected, callApp: .googleMeet)
       let meetingID = try #require(harness.recorders.first).configuration.meetingID
       await eventually("copies taken") { capture.calls.withLock { $0 } >= 2 }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await eventually("ready") {
         coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
       }
@@ -529,7 +529,7 @@ import os
       let meetingID = try #require(harness.recorders.first).configuration.meetingID
       await eventually("copies taken") { capture.calls.withLock { $0 } >= 2 }
       #expect(sources.demand == 1, "discovery is kept watching while it records")
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await eventually("ready") {
         coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
       }
@@ -556,7 +556,7 @@ import os
       #expect(capture.calls.withLock { $0 } == 0, "no call: nothing is read")
       sources.answer = Self.meetCall
       await eventually("the late call is read") { capture.calls.withLock { $0 } >= 2 }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await eventually("ready") {
         coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
       }
@@ -596,7 +596,7 @@ import os
       let outcome = await coordinator.start(from: .detected, callApp: .googleMeet)
       let meetingID = try #require(harness.recorders.first).configuration.meetingID
       #expect(outcome == .recording(meetingID: meetingID), "Start does not wait for the rules")
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       gate.continuation.yield()
       await eventually("ready") {
         coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
@@ -618,7 +618,7 @@ import os
       // A folder where the file goes makes every save of it fail.
       let url = harness.store.callSpeakersURL(for: meetingID)
       try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await eventually("ready") {
         coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
       }

@@ -273,8 +273,8 @@ public struct CallDetectionPolicy: Sendable {
     /// The user's own Start (Start recording on the failed-switch card): the manual route.
     case startByUser(operation: Int, family: CallAppFamily)
     /// Stop `meetingID` if it is still the meeting recording; `.stopFinished(operation:)`
-    /// follows either way.
-    case stop(operation: Int, meetingID: UUID)
+    /// follows either way. `reason` is the route that stopped it (#4249, `meeting.ended`).
+    case stop(operation: Int, meetingID: UUID, reason: MeetingEndedTelemetry.StopReason)
     case emit(family: CallAppFamily, answer: MeetingCallPromptTelemetry.Answer)
     case countNo(switchID: String)
     case markFirstTipShown
@@ -438,6 +438,27 @@ public struct CallDetectionPolicy: Sendable {
     var lastWordsAt: Date?
   }
   private var silence: Silence?
+  /// #4249: per recording, what `meeting.ended` reports about its call (link, last countdown
+  /// trigger, Keep presses). Read by the coordinator; bounded to the newest few recordings.
+  package struct CallFacts: Sendable, Equatable {
+    package var link: MeetingEndedTelemetry.CallLink?
+    package var endTrigger: MeetingEndedTelemetry.EndTrigger?
+    package var keepCount = 0
+  }
+  private var callFacts: [UUID: CallFacts] = [:]
+  private var callFactsOrder: [UUID] = []
+
+  package func callFacts(for meetingID: UUID) -> CallFacts { callFacts[meetingID] ?? CallFacts() }
+
+  private mutating func updateFacts(_ meetingID: UUID, _ change: (inout CallFacts) -> Void) {
+    if callFacts[meetingID] == nil {
+      callFactsOrder.append(meetingID)
+      if callFactsOrder.count > 8 { callFacts[callFactsOrder.removeFirst()] = nil }
+    }
+    var facts = callFacts[meetingID] ?? CallFacts()
+    change(&facts)
+    callFacts[meetingID] = facts
+  }
   private var latestAcceptedGeneration = 0
 
   /// #4249: why a hand-started recording (menu bar or History) was or was not linked to a call,
@@ -810,6 +831,16 @@ public struct CallDetectionPolicy: Sendable {
     }
     pendingManual = nil
     guard let recordingID else { return refuse(.notStarted) }
+    // #4249: the hand start's link outcome, decided by the checks below.
+    defer {
+      let outcome: MeetingEndedTelemetry.CallLink =
+        switch manualLink?.reason {
+        case .linked?: .manual
+        case .noCall?: .noCall
+        default: .unlinked
+        }
+      updateFacts(recordingID) { $0.link = $0.link ?? outcome }
+    }
     guard association?.recordingID != recordingID else { return refuse(.alreadyDecided) }
     association = .rejected(recordingID)
     guard c.setUp, c.mode != .off, c.meeting == .recording(meetingID: recordingID) else {
@@ -1204,6 +1235,7 @@ public struct CallDetectionPolicy: Sendable {
   }
 
   private mutating func startCountdown(_ index: Int, _ m: UUID, origin: EndOrigin, _ c: Context) {
+    updateFacts(m) { $0.endTrigger = origin == .release ? .micRelease : .window }
     let deadline = c.now.addingTimeInterval(Self.countdownLength)
     episodes[index].phase = .ending(meetingID: m, deadline: deadline)
     episodes[index].endOrigin = origin
@@ -1224,7 +1256,7 @@ public struct CallDetectionPolicy: Sendable {
       operations[id] = .stopForEnd(episode: episode.id, family: episode.family, meetingID: m)
       episodes[index].phase = .stopping(operation: id)
       if case .countdown(episode.id, _) = interaction { set(.none) }
-      out.append(.stop(operation: id, meetingID: m))
+      out.append(.stop(operation: id, meetingID: m, reason: .callCountdown))
     }
   }
 
@@ -1594,7 +1626,7 @@ public struct CallDetectionPolicy: Sendable {
         let id = newID()
         operations[id] = .switchTo(episode: e, family: family, from: from)
         setPhase(e, .starting(operation: id))
-        out.append(.stop(operation: id, meetingID: from))
+        out.append(.stop(operation: id, meetingID: from, reason: .callSwitch))
       case .recording(let m):
         set(.switchCall(episode: e, family: family, from: m, since: c.now))
       case .idle:
@@ -1624,18 +1656,19 @@ public struct CallDetectionPolicy: Sendable {
       operations[id] = .stopAfterConfirmation(episode: e, family: family, meetingID: m)
       episodes[index].phase = .stopping(operation: id)
       set(.none)
-      out.append(.stop(operation: id, meetingID: m))
+      out.append(.stop(operation: id, meetingID: m, reason: .callEndConfirmed))
     case (.endConfirmation(let e, _), .keepRecording), (.endConfirmation(let e, _), .close):
       guard let index = episodes.firstIndex(where: { $0.id == e }),
         case .confirmingEnd(let m) = episodes[index].phase,
         c.meeting == .recording(meetingID: m) else { return }
-      keepAfterCard(index, m)
+      // x keeps recording here too, but only the Keep button counts as a Keep (#4249 telemetry).
+      keepAfterCard(index, m, counted: button == .keepRecording)
     case (.countdown(let e, _), .keepRecording):
       // #4249: restored. The meeting stays linked; the next real release asks again.
       guard let index = episodes.firstIndex(where: { $0.id == e }),
         case .ending(let m, _) = episodes[index].phase, c.meeting == .recording(meetingID: m)
       else { return }
-      keepAfterCard(index, m)
+      keepAfterCard(index, m, counted: true)
     case (.countdown(let e, _), .endRecording):
       // #4232: End recording stops now, exactly as the countdown's deadline would.
       guard let index = episodes.firstIndex(where: { $0.id == e }),
@@ -1645,14 +1678,15 @@ public struct CallDetectionPolicy: Sendable {
       operations[id] = .stopForEnd(episode: e, family: episodes[index].family, meetingID: m)
       episodes[index].phase = .stopping(operation: id)
       set(.none)
-      out.append(.stop(operation: id, meetingID: m))
+      out.append(.stop(operation: id, meetingID: m, reason: .callEndButton))
     case (.stillInMeeting(let m, _), .keepRecording):
       guard c.meeting == .recording(meetingID: m) else { return }
+      updateFacts(m) { $0.keepCount += 1 }
       silence?.accrued = 0
       set(.none)
     case (.stillInMeeting(let m, _), .endRecording):
       guard c.meeting == .recording(meetingID: m) else { return }
-      stopForSilence(m, &out)
+      stopForSilence(m, reason: .silenceEndButton, &out)
     case (.switchNotConfirmed(let family, _), .startNewRecording):
       set(.none)
       let id = newID()
@@ -1668,7 +1702,8 @@ public struct CallDetectionPolicy: Sendable {
 
   /// #4249: a card Keep keeps the call's link (no permanent `.kept`), consumes the current proof
   /// and blocks both automatic end paths until the app's microphone is active again.
-  private mutating func keepAfterCard(_ index: Int, _ m: UUID) {
+  private mutating func keepAfterCard(_ index: Int, _ m: UUID, counted: Bool) {
+    if counted { updateFacts(m) { $0.keepCount += 1 } }
     episodes[index].phase = .recording(meetingID: m)
     episodes[index].endOrigin = nil
     episodes[index].countdownStartedAt = nil
@@ -1680,12 +1715,14 @@ public struct CallDetectionPolicy: Sendable {
     set(.none)
   }
 
-  private mutating func stopForSilence(_ m: UUID, _ out: inout [Command]) {
+  private mutating func stopForSilence(
+    _ m: UUID, reason: MeetingEndedTelemetry.StopReason, _ out: inout [Command]
+  ) {
     let id = newID()
     operations[id] = .stopForSilence(meetingID: m)
     silence?.accrued = 0
     set(.none)
-    out.append(.stop(operation: id, meetingID: m))
+    out.append(.stop(operation: id, meetingID: m, reason: reason))
   }
 
   /// #4249 silence backstop, a copy of Wispr Flow `tickSilence`: healthy steps with no new words
@@ -1715,7 +1752,7 @@ public struct CallDetectionPolicy: Sendable {
         set(.none)
       } else if c.now >= deadline {
         silence = state
-        stopForSilence(m, &out)
+        stopForSilence(m, reason: .silenceTimeout, &out)
         state.accrued = 0
       }
       return
@@ -1770,6 +1807,7 @@ public struct CallDetectionPolicy: Sendable {
       switch result {
       case .recording(let m):
         linkRecording(e, m, c)
+        updateFacts(m) { $0.link = $0.link ?? (byItself ? .auto : .prompt) }
         // auto_started only once it records (review r18 F4).
         if byItself { out.append(.emit(family: family, answer: .autoStarted)) }
       case .needsAttention:

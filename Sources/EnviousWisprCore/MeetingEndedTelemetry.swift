@@ -102,6 +102,73 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   /// #4248: the recording's mute following, frozen at capture stop; nil when the attempt has no
   /// summary (a Start that failed, an attempt recovered after a relaunch). A Retry inherits it.
   public let muteFollow: MuteFollowSummary?
+  /// #4249: how the recording ended and how it related to a call, frozen at its stop. Nil when
+  /// not known (an attempt recovered after a relaunch, a Start that never recorded).
+  public let provenance: Provenance?
+
+  /// #4249: why the recording stopped (closed values, diagnostic only).
+  public enum StopReason: String, Sendable, CaseIterable, Equatable {
+    /// Stop from the menu bar, History, the meeting page or deletion.
+    case user
+    /// The call-end countdown ran out.
+    case callCountdown = "call_countdown"
+    /// End recording on the call-end countdown.
+    case callEndButton = "call_end_button"
+    /// Stop recording on "Did your call end?".
+    case callEndConfirmed = "call_end_confirmed"
+    /// Yes to a new call: the old recording stopped for the switch.
+    case callSwitch = "call_switch"
+    /// "Still in a meeting?" ran out.
+    case silenceTimeout = "silence_timeout"
+    /// End recording on "Still in a meeting?".
+    case silenceEndButton = "silence_end_button"
+    /// The low-disk floor.
+    case disk
+    /// App quit.
+    case quit
+    /// The microphone failed, or a detected Start was withdrawn after capture began.
+    case failed
+  }
+
+  /// #4249: how the recording was linked to a call.
+  public enum CallLink: String, Sendable, CaseIterable, Equatable {
+    /// Yes on the call prompt (or on a switch question).
+    case prompt
+    /// Started by itself for a detected call.
+    case auto
+    /// A menu or History start linked to the live call.
+    case manual
+    /// A hand start that a call existed for but was not linked.
+    case unlinked
+    /// A hand start with no call.
+    case noCall = "no_call"
+  }
+
+  /// #4249: what started a call-end countdown.
+  public enum EndTrigger: String, Sendable, CaseIterable, Equatable {
+    case micRelease = "mic_release"
+    case window
+  }
+
+  /// #4249: the recording's stop provenance; each part nil when not known.
+  public struct Provenance: Equatable, Sendable {
+    public var stopReason: StopReason?
+    public var callLink: CallLink?
+    /// The last countdown's trigger; nil when no countdown started.
+    public var endTrigger: EndTrigger?
+    /// Keep recording presses on the countdown, "Did your call end?" and "Still in a meeting?".
+    public var keepCount: Int?
+
+    public init(
+      stopReason: StopReason? = nil, callLink: CallLink? = nil, endTrigger: EndTrigger? = nil,
+      keepCount: Int? = nil
+    ) {
+      self.stopReason = stopReason
+      self.callLink = callLink
+      self.endTrigger = endTrigger
+      self.keepCount = keepCount
+    }
+  }
 
   /// The summary decision taken when the meeting ends (R48, R54).
   public enum SummaryPlan: String, Sendable, CaseIterable {
@@ -125,7 +192,8 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     engine: MeetingEngineChoice?, speakerCount: Int, processingSeconds: Double,
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
     summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil,
-    speakerNaming: SpeakerNamingSummary? = nil, muteFollow: MuteFollowSummary? = nil
+    speakerNaming: SpeakerNamingSummary? = nil, muteFollow: MuteFollowSummary? = nil,
+    provenance: Provenance? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -150,6 +218,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.speakerNamesOutcome = speakerNaming?.outcome
     self.autoNamedCount = speakerNaming?.autoNamedCount
     self.muteFollow = muteFollow
+    self.provenance = provenance
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a

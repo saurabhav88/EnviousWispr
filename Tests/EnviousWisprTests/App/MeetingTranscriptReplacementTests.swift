@@ -38,7 +38,7 @@ struct MeetingTranscriptReplacementTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("first ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }

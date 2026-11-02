@@ -16,7 +16,8 @@ final class CallDetectionCoordinator {
   struct Dependencies {
     var settings: SettingsManager
     var meetingPhase: @MainActor () -> MeetingCoordinator.Phase
-    var stopMeeting: @MainActor () async -> Void
+    /// `MeetingCoordinator.stop(reason:)`: the policy names the route (#4249).
+    var stopMeeting: @MainActor (MeetingEndedTelemetry.StopReason) async -> Void
     /// A Start for a call (`MeetingStartFlow.requestStart(from: .detected, callApp:)`).
     var requestStart: @MainActor (CallAppFamily?) async -> MeetingStartFlow.Outcome
     /// The user's own Start from the panel (Start recording on the failed-switch card): the manual route, which
@@ -58,6 +59,8 @@ final class CallDetectionCoordinator {
     /// #4249: the wall clock `MeetingCoordinator.Phase.recording(startedAt:)` is stamped with;
     /// only its difference to `startedAt` is used, mapped into `now`'s clock.
     var wallNow: @MainActor () -> Date = { Date() }
+    /// #4249: `MeetingCoordinator.noteCallFacts`, for `meeting.ended`.
+    var noteCallFacts: @MainActor (UUID, CallDetectionPolicy.CallFacts) -> Void = { _, _ in }
   }
 
   /// #4232 card lifetimes: the writing card's cap, the ready card, the menu-bar start card.
@@ -143,6 +146,8 @@ final class CallDetectionCoordinator {
     var anyWordsAt: Date?
   }
   private var callWords: CallWords?
+  /// #4249: the call facts last handed to the meeting, so only a change is sent.
+  private var reportedFacts: (meetingID: UUID, facts: CallDetectionPolicy.CallFacts)?
 
   init(dependencies: Dependencies, discovery: CallSourceDiscovery? = nil) {
     deps = dependencies
@@ -271,6 +276,8 @@ final class CallDetectionCoordinator {
     }
     let commands = policy.settledStart(request, recordingID: matching, current)
     logManualLink(request)
+    // #4249: the link outcome is known now; a menu Stop before the next tick must carry it.
+    reportCallFacts(current)
     // The failed-switch card's own Start recording rides the menu route but is no menu-bar
     // start; the flow marks it, also across the call-sound explainer.
     if request.route == .menu, !request.fromCallPanel, let matching {
@@ -374,6 +381,7 @@ final class CallDetectionCoordinator {
     let current = context()
     let commands = policy.step(current)
     logDecision(current, commands)
+    reportCallFacts(current)
     draw()
     run(commands)
     discovery.pruneTrackedCalls()
@@ -385,6 +393,7 @@ final class CallDetectionCoordinator {
     let current = context(forPress: press)
     let commands = policy.handle(event, current)
     logDecision(current, commands)
+    reportCallFacts(current)
     draw()
     run(commands)
   }
@@ -413,6 +422,16 @@ final class CallDetectionCoordinator {
     }
   }
 
+  /// #4249: hands the recording's call facts to the meeting when they change, before any stop
+  /// can freeze its `meeting.ended` row.
+  private func reportCallFacts(_ current: CallDetectionPolicy.Context) {
+    guard case .recording(let meetingID) = current.meeting else { return }
+    let facts = policy.callFacts(for: meetingID)
+    if let reportedFacts, reportedFacts.meetingID == meetingID, reportedFacts.facts == facts { return }
+    reportedFacts = (meetingID, facts)
+    deps.noteCallFacts(meetingID, facts)
+  }
+
   /// #4249: one content-free line per hand start (menu bar or History) naming the check that
   /// linked it to a call or refused to. An unlinked recording is never stopped by its call ending.
   private func logManualLink(_ request: CallDetectionPolicy.AcceptedStart) {
@@ -437,7 +456,7 @@ final class CallDetectionCoordinator {
           let outcome = await self.deps.startByUser(family)
           self.deliver(.startFinished(operation: operation, Self.result(outcome)))
         }
-      case .stop(let operation, let meetingID):
+      case .stop(let operation, let meetingID, let reason):
         let target = refreshRequest(policy.refreshTarget(operation: operation))
         // #4232: frozen before the stop can suspend, so the notes card follows this recording's
         // attempt and never one that replaced it meanwhile.
@@ -446,7 +465,9 @@ final class CallDetectionCoordinator {
           // Only the recording the policy meant: one started since (from the menu) is never
           // stopped by a late command.
           if case .recording(meetingID, _) = self.deps.meetingPhase() {
-            await self.deps.stopMeeting()
+            // The facts first: a Keep in the same step must reach the row this stop freezes.
+            self.reportCallFacts(self.context())
+            await self.deps.stopMeeting(reason)
           }
           // Fresh readings first: a switch checks the new call against them.
           await self.refreshNow(target)

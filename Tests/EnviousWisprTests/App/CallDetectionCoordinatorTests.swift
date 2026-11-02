@@ -43,6 +43,9 @@
       var phase: MeetingCoordinator.Phase = .idle
       var starts: [CallAppFamily?] = []
       var stops = 0
+      /// #4249: the reason each stop carried, and the call facts reported to the meeting.
+      var stopReasons: [MeetingEndedTelemetry.StopReason] = []
+      var reportedFacts: [(UUID, CallDetectionPolicy.CallFacts)] = []
       var pageShown = 0
       var events: [MeetingCallPromptTelemetry] = []
       var clock = Date(timeIntervalSince1970: 3_000_000)
@@ -114,9 +117,10 @@
           dependencies: .init(
             settings: settings,
             meetingPhase: { [weak self] in self?.phase ?? .idle },
-            stopMeeting: { [weak self] in
+            stopMeeting: { [weak self] reason in
               guard let self else { return }
               self.stops += 1
+              self.stopReasons.append(reason)
               self.phase = .idle
               self.onStop?()
             },
@@ -175,7 +179,8 @@
               return self.callSound
             },
             liveTranscript: { [weak self] in self?.transcript },
-            wallNow: { [weak self] in self?.clock ?? Date() }))
+            wallNow: { [weak self] in self?.clock ?? Date() },
+            noteCallFacts: { [weak self] in self?.reportedFacts.append(($0, $1)) }))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -1963,6 +1968,32 @@
       .init(meetingID: meeting,
         lines: [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: endMs, text: "x")],
         tracks: [.callSound: .init(status: .running)])
+    }
+
+    @Test("#4249: a hand start's link outcome reaches the meeting at settlement, before any tick",
+      arguments: [true, false])
+    func handStartFactsReportedAtSettlement(withCall: Bool) async throws {
+      let rig = try Rig()
+      if withCall { await rig.ongoingZoom() }
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      let facts = try #require(rig.reportedFacts.last { $0.0 == rig.manualMeetingID }?.1)
+      #expect(facts.link == (withCall ? .manual : .noCall))
+    }
+
+    @Test("#4249: the countdown's stop carries its reason; Keep reached the meeting before it")
+    func stopReasonAndFactsReachTheMeeting() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      await releaseZoom(rig)
+      #expect(rig.press("keepRecording"))
+      await rig.proof(.unknown, input: .active)
+      await releaseZoom(rig)
+      rig.advance(CallDetectionPolicy.countdownLength)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(await settleUntilObserved { rig.stops == 1 })
+      #expect(rig.stopReasons == [.callCountdown])
+      let last = try #require(rig.reportedFacts.last { $0.0 == meeting }?.1)
+      #expect(last.link == .prompt && last.endTrigger == .micRelease && last.keepCount == 1)
     }
 
     @Test("#4249: Zoom releasing the microphone shows the countdown with Keep; Keep keeps recording")

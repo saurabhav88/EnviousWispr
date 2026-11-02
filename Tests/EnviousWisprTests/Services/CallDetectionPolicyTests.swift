@@ -710,7 +710,7 @@ struct CallDetectionPolicyTests {
     #expect(isCountdown(s.interaction), "only scoped Zoom end, not foreign-family uncertainty, owns its end")
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
     #expect(s.stops == 1)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
   }
 
   @Test("An old Stop cannot regain presentation after a newer recording has come and gone",
@@ -822,7 +822,7 @@ struct CallDetectionPolicyTests {
     end(&s, [Self.zoom(.inactive)], call: call, sourceObservation: (replacement, owner))
     #expect(isCountdown(s.interaction), "the replacement's real ownership supports the matching manual fallback")
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, recording) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, recording, _) = $0 { true } else { false } })
     #expect(s.starts.isEmpty)
   }
 
@@ -919,7 +919,7 @@ struct CallDetectionPolicyTests {
     end(&s)
     #expect(isCountdown(s.interaction))
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.starts.isEmpty)
   }
 
@@ -1034,7 +1034,7 @@ struct CallDetectionPolicyTests {
     end(&s)
     #expect(isCountdown(s.interaction))
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.stops == 1 && s.starts.isEmpty)
   }
 
@@ -1110,7 +1110,7 @@ struct CallDetectionPolicyTests {
     s.ready([zoom, meet])
     #expect(isSwitch(s.interaction))
     s.press(.yes)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.answers == [.switchYes], "adoption itself added no Yes or autoStarted")
   }
 
@@ -1365,7 +1365,7 @@ struct CallDetectionPolicyTests {
     }
 
     var lastStop: Int? {
-      for command in commands.reversed() { if case .stop(let id, _) = command { return id } }
+      for command in commands.reversed() { if case .stop(let id, _, _) = command { return id } }
       return nil
     }
 
@@ -2225,6 +2225,76 @@ struct CallDetectionPolicyTests {
     #expect(t.followed.isEmpty)
   }
 
+  // MARK: - Stop provenance (#4249)
+
+  func lastStopReason(_ s: Story) -> MeetingEndedTelemetry.StopReason? {
+    for command in s.commands.reversed() { if case .stop(_, _, let reason) = command { return reason } }
+    return nil
+  }
+
+  @Test("#4249: every automatic stop names its route",
+    arguments: ["deadline", "end", "confirmed", "switch", "silence", "silenceEnd"])
+  func stopReasons(route: String) {
+    switch route {
+    case "deadline", "end":
+      var s = recordingZoom()
+      end(&s)
+      if route == "end" { s.press(.endRecording) } else { s.hold([Self.zoom(.inactive)], for: Policy.countdownLength) }
+      #expect(lastStopReason(s) == (route == "end" ? .callEndButton : .callCountdown))
+    case "confirmed":
+      var s = recordingBrowser()
+      let call = Self.chrome(.active, url: Self.meetA)
+      end(&s, [call], call: call)
+      s.press(.stopRecording)
+      #expect(lastStopReason(s) == .callEndConfirmed)
+    case "switch":
+      var s = recordingZoom()
+      s.wait(Policy.questionInterval)
+      s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+      s.press(.yes)
+      #expect(lastStopReason(s) == .callSwitch)
+    default:
+      var s = quietRecording()
+      quiet(&s, for: Policy.silenceAsk)
+      if route == "silenceEnd" { s.press(.endRecording) } else { quiet(&s, for: Policy.silenceAnswer) }
+      #expect(lastStopReason(s) == (route == "silenceEnd" ? .silenceEndButton : .silenceTimeout))
+    }
+  }
+
+  @Test("#4249: Keep on Did your call end? counts once; its x keeps recording but does not count",
+    arguments: [Policy.Button.keepRecording, .close])
+  func endConfirmationKeepCount(button: Policy.Button) {
+    var s = recordingBrowser()
+    guard case .recording(let m) = s.meeting else { Issue.record("not recording"); return }
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    s.press(button)
+    #expect(s.interaction == .none)
+    #expect(s.policy.callFacts(for: m).keepCount == (button == .keepRecording ? 1 : 0))
+  }
+
+  @Test("#4249: call facts: prompt or auto link, the countdown trigger and every card's Keep")
+  func callFactsRecorded() {
+    var s = armedZoom()
+    guard case .recording(let m) = s.meeting else { Issue.record("not recording"); return }
+    #expect(s.policy.callFacts(for: m).link == .prompt)
+    release(&s)
+    s.press(.keepRecording)
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    s.hold([Self.zoom(.active)], for: Policy.silenceAsk + 2)
+    #expect(isStillInMeeting(s.interaction))
+    s.press(.keepRecording)
+    let facts = s.policy.callFacts(for: m)
+    #expect(facts.endTrigger == .micRelease && facts.keepCount == 2)
+    var auto = Story()
+    auto.mode = .startByItself
+    auto.ongoing(Self.zoom(.active))
+    auto.startFinished(.recording(meetingID: UUID()))
+    guard case .recording(let a) = auto.meeting else { return }
+    #expect(auto.policy.callFacts(for: a).link == .auto)
+  }
+
   // MARK: - Silence backstop (#4249, Wispr Flow tickSilence)
 
   /// A recording with no call (hand-started), healthy live words, words heard just now.
@@ -2750,7 +2820,7 @@ struct CallDetectionPolicyTests {
     s.startFinished(.recording(meetingID: m))
     end(&s)
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, m) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, m, _) = $0 { true } else { false } })
   }
 
   @Test("a Yes pressed in time is never lost to the timeout while it is checked")
