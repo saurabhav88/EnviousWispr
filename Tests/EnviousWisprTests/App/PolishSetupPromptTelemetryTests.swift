@@ -217,7 +217,8 @@ import Testing
       defer { monitor.stop() }
       let request = try #require(
         PolishSetupLeaveGuard.request(
-          for: .sidebar(.history), from: .aiPolish, monitor: monitor, previousProvider: nil,
+          for: .sidebar(.history), from: PolishSetupScope.dictation.guardedState,
+          scope: .dictation, monitor: monitor, previousProvider: nil,
           currentProvider: world.provider, keyNotSaved: false))
       #expect(request.promptSubject == Self.openAIKeyMissing)
       // The model changes before the answer (here: to one that is set up).

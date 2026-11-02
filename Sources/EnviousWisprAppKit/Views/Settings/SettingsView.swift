@@ -149,7 +149,7 @@ struct UnifiedWindowView: View {
       return
     }
     if let request = PolishSetupLeaveGuard.request(
-      for: intent, from: navigationState.selectedPage, monitor: polishSetupMonitor,
+      for: intent, from: navigationState, scope: .dictation, monitor: polishSetupMonitor,
       previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
       keyNotSaved: hasUnsavedKeyDraft)
     {
@@ -214,9 +214,9 @@ struct UnifiedWindowView: View {
       // Validated as fully set up a moment ago; if that is somehow no longer true, stay rather
       // than raise a second alert over this one's dismissal.
       if PolishSetupLeaveGuard.request(
-        for: intent, from: .aiPolish, monitor: polishSetupMonitor,
-        previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
-        keyNotSaved: hasUnsavedKeyDraft) == nil
+        for: intent, from: request.scope.guardedState, scope: request.scope,
+        monitor: polishSetupMonitor, previousProvider: providerWhenVisitBegan,
+        currentProvider: settings.llmProvider, keyNotSaved: hasUnsavedKeyDraft) == nil
       {
         leave(to: intent)
       }
