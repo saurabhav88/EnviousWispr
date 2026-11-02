@@ -38,13 +38,6 @@
       "reason": "Microsoft's 14B model with strong instruction following, for Macs with 16 GB of memory."
     },
     {
-      "name": "llama3.2:3b",
-      "displayName": "Llama 3.2 (3B)",
-      "parameterCount": "3B",
-      "sizeBytes": 2019392628,
-      "reason": "Small Meta chat model that runs comfortably on an 8 GB Mac, a lightweight option below the 8B sizes."
-    },
-    {
       "name": "gemma3:12b",
       "displayName": "Gemma 3 (12B)",
       "parameterCount": "12B",
