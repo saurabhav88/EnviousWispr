@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-10-30",
+  "updated": "2026-11-02",
   "models": [
     {
       "name": "gemma4:e4b",
@@ -36,6 +36,20 @@
       "parameterCount": "14B",
       "sizeBytes": 9053115905,
       "reason": "Microsoft's 14B model with strong instruction following, for Macs with 16 GB of memory."
+    },
+    {
+      "name": "gemma3:12b",
+      "displayName": "Gemma 3 (12B)",
+      "parameterCount": "12B",
+      "sizeBytes": 8164039587,
+      "reason": "Google's proven Gemma 3 chat model at a 12B size for 16 GB Macs, a size of this family not yet offered."
+    },
+    {
+      "name": "qwen3.5:4b",
+      "displayName": "Qwen 3.5 (4B)",
+      "parameterCount": "4B",
+      "sizeBytes": 3324173757,
+      "reason": "Compact Qwen 3.5 size that fits an 8 GB Mac, complementing the 9B already offered."
     }
   ]
 }
