@@ -1465,7 +1465,12 @@ extension EGOneAdapterLifecycleTests {
 }
 
 #if DEBUG
-  extension EGOneAdapterLifecycleTests {
+  /// #4319: when these fail, the DEBUG `meeting eg1-slots` reader used in Live UAT reports the
+  /// wrong server, leaks request content, or turns an error into an idle slot.
+  @Suite("EG-1 DEBUG slot reader (#4319)", .tags(.harnessContract))
+  struct EGOneSlotObservationTests {
+    fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
+
     static let processingSlots = Data(
       """
       [{"id":0,"is_processing":false,"n_ctx":4096,"speculative":false},
