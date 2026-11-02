@@ -264,6 +264,7 @@ final class CallDetectionCoordinator {
     let current = context()
     guard !readStopped else { return }
     let commands = policy.acceptedStart(request, current)
+    consumeLaterLinks()
     draw()
     run(commands)
   }
@@ -288,6 +289,7 @@ final class CallDetectionCoordinator {
         recordingID: matching, call: policy.linkedCall(matching).map(CallAppIdentity.init),
         until: current.now.addingTimeInterval(Self.manualStartLength), generation: ownGeneration)
     }
+    consumeLaterLinks()
     draw()
     run(commands)
   }
@@ -389,6 +391,7 @@ final class CallDetectionCoordinator {
     let commands = policy.step(current)
     logDecision(current, commands)
     reportCallFacts(current)
+    consumeLaterLinks()
     draw()
     run(commands)
     discovery.pruneTrackedCalls()
@@ -401,6 +404,7 @@ final class CallDetectionCoordinator {
     let commands = policy.handle(event, current)
     logDecision(current, commands)
     reportCallFacts(current)
+    consumeLaterLinks()
     draw()
     run(commands)
   }
@@ -447,6 +451,22 @@ final class CallDetectionCoordinator {
     else { return }
     let line = "manual_link route=\(request.route.rawValue) outcome=\(link.reason.rawValue)"
     Task { await AppLogger.shared.log(line, level: .info, category: "CallDetection") }
+  }
+
+  /// #4342: a hand-started recording the policy linked to a call after its start. The start card
+  /// names that call once and the link is logged once; a recording that already stopped gets
+  /// neither.
+  private func consumeLaterLinks() {
+    for link in policy.drainLaterLinks() {
+      guard case .recording(link.recordingID, _) = deps.meetingPhase() else { continue }
+      ownGeneration += 1
+      manualCard = ManualCard(
+        recordingID: link.recordingID, call: policy.linkedCall(link.recordingID).map(CallAppIdentity.init),
+        until: deps.now().addingTimeInterval(Self.manualStartLength), generation: ownGeneration)
+      let reason = CallDetectionPolicy.ManualLinkReason.linkedLater.rawValue
+      let line = "manual_link route=\(link.route.rawValue) outcome=\(reason)"
+      Task { await AppLogger.shared.log(line, level: .info, category: "CallDetection") }
+    }
   }
 
   private func run(_ commands: [CallDetectionPolicy.Command]) {
