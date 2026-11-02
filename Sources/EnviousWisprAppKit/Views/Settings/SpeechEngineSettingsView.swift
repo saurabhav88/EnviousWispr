@@ -542,11 +542,7 @@ struct SpeechEngineSettingsView: View {
             // can flip the state to error/not-downloaded, and the notice
             // must survive that flip (Codex 2c-r1 P2).
             if let notice = setup.whisperSetup.removeNotice {
-              Text(
-                notice == .refusedDictationInFlight
-                  ? "Finish your current dictation first, then try again."
-                  : "The model could not be removed. Please try again."
-              )
+              Text(Self.removeNoticeText(notice))
               .font(.stHelper)
               .foregroundStyle(.stWarning)
               .fixedSize(horizontal: false, vertical: true)
@@ -1130,6 +1126,21 @@ struct SpeechEngineSettingsView: View {
         .font(.stHelper)
         .foregroundStyle(Color.stTextSecondary)
       content()
+    }
+  }
+}
+
+extension SpeechEngineSettingsView {
+  /// The inline line under the Whisper setup after a Remove press that did not remove. Shared by
+  /// dictation's Engine tab and EnviousMeet's Transcript engine card (#4325).
+  static func removeNoticeText(_ notice: WhisperRemoveNotice) -> String {
+    switch notice {
+    case .refusedDictationInFlight:
+      String(localized: "Finish your current dictation first, then try again.")
+    case .refusedMeetingActive:
+      MeetingDownloadAdmission.refusal
+    case .failed:
+      String(localized: "The model could not be removed. Please try again.")
     }
   }
 }

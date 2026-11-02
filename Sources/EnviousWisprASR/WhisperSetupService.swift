@@ -20,6 +20,10 @@ public enum WhisperRemoveNotice: Equatable {
   /// Founder ruling 2.5.4: Remove REFUSES during a dictation — no defer, no
   /// queue; the user presses again after the dictation ends.
   case refusedDictationInFlight
+  /// #4325: Remove REFUSES while a meeting is active (recording, stopping, or its final pass
+  /// running or queued): the meeting's transcript may still need this model. Same shape as the
+  /// dictation refusal: nothing else changes; the user presses again after the meeting.
+  case refusedMeetingActive
   case failed
 }
 
@@ -202,6 +206,11 @@ public final class WhisperSetupService {
   /// Remove that cannot prove no dictation is running does not run.
   public var isDictationInFlight: (@MainActor () -> Bool)?
 
+  /// #4325: whether a meeting is active, wired by the composition root from the meeting
+  /// coordinator. nil means no meeting wiring (a build or test without EnviousMeet): no meeting
+  /// can be active, so Remove is not refused on its account.
+  public var isMeetingActive: (@MainActor () -> Bool)?
+
   /// The user pressed Remove. The refusal check and L1 ordering live behind
   /// the injected action (wiring -> coordinator); this method only renders:
   /// success re-detects to Download, refusal/failure shows the inline notice
@@ -221,6 +230,12 @@ public final class WhisperSetupService {
     // milliseconds window no human can aim at.
     if isDictationInFlight?() != false {
       removeNotice = .refusedDictationInFlight
+      return
+    }
+    // #4325: the same synchronous refusal for an active meeting, before any removal work is
+    // scheduled, from either Settings page.
+    if isMeetingActive?() == true {
+      removeNotice = .refusedMeetingActive
       return
     }
     guard !isRemoving else { return }
