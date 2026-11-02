@@ -69,6 +69,7 @@
  },
  "aiPolish.egOne.installed": {
   "exempt": {
+   "bundledModelRemove": 1,
    "statusLine": 1
   },
   "mapped": [
@@ -1040,7 +1041,7 @@
  },
  "meetings.summaries.egOne.installed": {
   "exempt": {
-   "meetingSummarySetup": 2
+   "meetingSummarySetup": 3
   },
   "mapped": [
    "meetingSummaryEngine",
