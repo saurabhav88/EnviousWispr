@@ -879,7 +879,8 @@ extension PolishSetupMonitorTests {
     #expect(monitor.readiness(for: .openAI) == .problem(.cloudKeyRejected(.openAI)))
     let request = try #require(
       PolishSetupLeaveGuard.request(
-        for: .sidebar(.history), from: .aiPolish, monitor: monitor, previousProvider: .openAI,
+        for: .sidebar(.history), from: PolishSetupScope.dictation.guardedState,
+        scope: .dictation, monitor: monitor, previousProvider: .openAI,
         currentProvider: .egOne, keyNotSaved: false))
     #expect(request.goBackProvider == nil, "offered a way back to a key known to be rejected")
   }

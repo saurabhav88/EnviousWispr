@@ -78,6 +78,10 @@ struct MeetingSummariesTab: View {
       }
     }
     .modifier(ProviderSetupLifecycle(model: setupModel, surface: .meetingSummary))
+    // #4321: the Summaries leave dialog says "key not saved yet" when a typed key for the
+    // summary engine was not saved. Only this yes/no leaves the tab; the draft stays here.
+    .preference(
+      key: PolishSetupUnsavedKeyDraftKey.self, value: setupModel.hasUnsavedKeyDraft(for: provider))
   }
 
   @ViewBuilder

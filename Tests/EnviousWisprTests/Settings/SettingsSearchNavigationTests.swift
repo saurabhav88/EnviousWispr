@@ -257,7 +257,7 @@ struct SettingsSearchLeaveGuardTests {
     monitor: PolishSetupMonitor
   ) -> PolishSetupLeaveRequest? {
     PolishSetupLeaveGuard.request(
-      for: intent, from: state.selectedPage, monitor: monitor, previousProvider: nil,
+      for: intent, from: state, scope: .dictation, monitor: monitor, previousProvider: nil,
       currentProvider: world.provider, keyNotSaved: false)
   }
 

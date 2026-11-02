@@ -55,6 +55,30 @@ import Testing
         ])
     }
 
+    @Test("#4321: a Summaries leave row carries its own surface and the same closed fields")
+    func summaryLeavePayload() throws {
+      let box = EventBox()
+      TelemetryService.shared.testEventHook = { box.events.append($0) }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let subject = PolishSetupPromptSubject(problem: .cloudKeyMissing(.claude), provider: .claude)
+      PolishSetupPromptEvent(
+        surface: .summaryLeaveDialog, action: .shown, subject: subject, takeID: nil
+      ).send()
+      PolishSetupPromptEvent(
+        surface: .summaryLeaveDialog, action: .leaveAnyway, subject: subject, takeID: nil
+      ).send()
+      #expect(box.events.count == 2)
+      #expect(box.events.map(\.name) == ["polish_setup.prompt", "polish_setup.prompt"])
+      #expect(
+        box.events[0].stringProps == [
+          "surface": "summary_leave_dialog", "action": "shown", "problem": "cloud_key_missing",
+          "provider": "claude",
+        ])
+      #expect(box.events[1].stringProps["action"] == "leave_anyway")
+      #expect(box.events[1].stringProps["surface"] == "summary_leave_dialog")
+      #expect(box.events.allSatisfy { $0.intProps.isEmpty && $0.doubleProps.isEmpty })
+    }
+
     @Test("#3988: an outside-stop card row says which notice it was; setup rows never do")
     func noticeVariant() throws {
       let box = EventBox()
@@ -90,6 +114,8 @@ import Testing
       #expect(
         Set(PolishSetupPromptEvent.Surface.allCases.map(\.rawValue)) == [
           "leave_dialog", "card", "banner", "menu",
+          // #4321 (plan §17 F6, approved at Gate 2): the Summaries tab's leave dialog.
+          "summary_leave_dialog",
         ])
       #expect(
         Set(PolishSetupPromptEvent.Action.allCases.map(\.rawValue)) == [
@@ -217,7 +243,8 @@ import Testing
       defer { monitor.stop() }
       let request = try #require(
         PolishSetupLeaveGuard.request(
-          for: .sidebar(.history), from: .aiPolish, monitor: monitor, previousProvider: nil,
+          for: .sidebar(.history), from: PolishSetupScope.dictation.guardedState,
+          scope: .dictation, monitor: monitor, previousProvider: nil,
           currentProvider: world.provider, keyNotSaved: false))
       #expect(request.promptSubject == Self.openAIKeyMissing)
       // The model changes before the answer (here: to one that is set up).

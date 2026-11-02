@@ -54,9 +54,28 @@ struct PolishSetupLeaveGuardTests {
     world: World, monitor: PolishSetupMonitor, previous: LLMProvider? = nil,
     keyNotSaved: Bool = false
   ) -> PolishSetupLeaveRequest? {
+    var state = SettingsNavigationState()
+    state.perform(.sidebar(page))
+    return request(
+      intent, state: state, scope: .dictation, world: world, monitor: monitor,
+      previous: previous, keyNotSaved: keyNotSaved)
+  }
+
+  private static func request(
+    _ intent: SettingsNavigationIntent, state: SettingsNavigationState, scope: PolishSetupScope,
+    world: World, monitor: PolishSetupMonitor, previous: LLMProvider? = nil,
+    keyNotSaved: Bool = false
+  ) -> PolishSetupLeaveRequest? {
     PolishSetupLeaveGuard.request(
-      for: intent, from: page, monitor: monitor, previousProvider: previous,
+      for: intent, from: state, scope: scope, monitor: monitor, previousProvider: previous,
       currentProvider: world.provider, keyNotSaved: keyNotSaved)
+  }
+
+  /// The window on EnviousMeet's Summaries tab.
+  private static var onSummaries: SettingsNavigationState {
+    var state = SettingsNavigationState()
+    state.perform(.destination(.meetings(.summaries)))
+    return state
   }
 
   // MARK: - When it asks
@@ -238,5 +257,149 @@ struct PolishSetupLeaveGuardTests {
         .ok, request: asked, monitor: monitor, previousProvider: nil,
         currentProvider: world.provider, keyNotSaved: false) == .navigate(.sidebar(.history)))
     #expect(Self.request(.sidebar(.history), world: world, monitor: monitor) == nil)
+  }
+
+  // MARK: - EnviousMeet Summaries (#4321)
+
+  @Test("Summaries: leaving the tab or the page asks; arriving, staying or other places do not")
+  func summaryScopeAsksOnlyWhenLeavingSummaries() throws {
+    let world = World()
+    let monitor = Self.monitor(world)
+    defer { monitor.stop() }
+    let summaries = Self.onSummaries
+    func ask(_ intent: SettingsNavigationIntent, from state: SettingsNavigationState)
+      -> PolishSetupLeaveRequest?
+    {
+      Self.request(intent, state: state, scope: .meetingSummary, world: world, monitor: monitor)
+    }
+    // Arriving at Summaries from elsewhere, or staying on it, never asks.
+    var general = SettingsNavigationState()
+    general.perform(.destination(.meetings(.general)))
+    #expect(ask(.destination(.meetings(.summaries)), from: general) == nil)
+    #expect(ask(.destination(.meetings(.summaries)), from: summaries) == nil)
+    // A sidebar click on Meetings keeps the remembered tab, which is Summaries: staying.
+    #expect(ask(.sidebar(.meetings), from: summaries) == nil)
+    // Another Meetings tab, or the AI Polish page, is outside the summary scope.
+    #expect(ask(.sidebar(.history), from: general) == nil)
+    var aiPolish = SettingsNavigationState()
+    aiPolish.perform(.sidebar(.aiPolish))
+    #expect(ask(.sidebar(.history), from: aiPolish) == nil)
+
+    // Leaving by another tab, a sidebar page, a link or a search result asks, keeping its kind.
+    let tab = try #require(ask(.destination(.meetings(.general)), from: summaries))
+    #expect(tab.scope == .meetingSummary)
+    #expect(tab.intent == .destination(.meetings(.general)))
+    #expect(tab.problem == .cloudKeyMissing(.openAI))
+    #expect(ask(.sidebar(.history), from: summaries)?.intent == .sidebar(.history))
+    #expect(ask(.destination(.aiPolish), from: summaries) != nil)
+    let search = try #require(SettingsSearchRequest(entryID: "selfLearningDictionary"))
+    #expect(ask(.search(search), from: summaries)?.intent == .search(search))
+  }
+
+  @Test("the dictation scope ignores Summaries, and projection leaves the window state alone")
+  func scopesAreDisjoint() throws {
+    let world = World()
+    let monitor = Self.monitor(world)
+    defer { monitor.stop() }
+    let summaries = Self.onSummaries
+    let before = summaries
+    #expect(
+      Self.request(
+        .sidebar(.history), state: summaries, scope: .dictation, world: world, monitor: monitor)
+        == nil)
+    _ = Self.request(
+      .sidebar(.history), state: summaries, scope: .meetingSummary, world: world,
+      monitor: monitor)
+    #expect(summaries == before)
+    #expect(PolishSetupScope.dictation.contains(PolishSetupScope.dictation.guardedState))
+    #expect(PolishSetupScope.meetingSummary.contains(PolishSetupScope.meetingSummary.guardedState))
+    #expect(
+      PolishSetupScope.dictation.contains(PolishSetupScope.meetingSummary.guardedState) == false)
+    #expect(
+      PolishSetupScope.meetingSummary.contains(PolishSetupScope.dictation.guardedState) == false)
+  }
+
+  @Test("Summaries: answers are judged live in the summary scope, and go back stays scoped")
+  func summaryScopeResolves() throws {
+    let world = World()
+    let monitor = Self.monitor(world)
+    defer { monitor.stop() }
+    let asked = try #require(
+      Self.request(
+        .destination(.meetings(.callApps)), state: Self.onSummaries, scope: .meetingSummary,
+        world: world, monitor: monitor, previous: .egOne))
+    #expect(asked.goBackProvider == .egOne)
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .goBack(.egOne), request: asked, monitor: monitor, previousProvider: .egOne,
+        currentProvider: world.provider, keyNotSaved: false)
+        == .restoreProvider(.egOne, then: .destination(.meetings(.callApps))))
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .finishSetup, request: asked, monitor: monitor, previousProvider: .egOne,
+        currentProvider: world.provider, keyNotSaved: false) == .stay)
+    // A pending question keeps its scope when a later request replaces its destination.
+    let replaced = PolishSetupLeaveGuard.replacingPendingDestination(
+      of: asked, with: .sidebar(.history))
+    #expect(replaced.scope == .meetingSummary)
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .leaveAnyway, request: replaced, monitor: monitor, previousProvider: .egOne,
+        currentProvider: world.provider, keyNotSaved: false) == .navigate(.sidebar(.history)))
+    #expect(
+      Self.request(
+        .sidebar(.history), state: Self.onSummaries, scope: .meetingSummary, world: world,
+        monitor: monitor) == nil)
+    // Repaired while open: the answer goes without acknowledging.
+    world.openAIKeySaved = true
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .leaveAnyway, request: asked, monitor: monitor, previousProvider: nil,
+        currentProvider: world.provider, keyNotSaved: false)
+        == .navigate(.destination(.meetings(.callApps))))
+  }
+
+  @Test("Leave anyway on Summaries does not silence AI Polish, and the reverse")
+  func scopesKeepTheirOwnAnswers() throws {
+    let dictationWorld = World()
+    let summaryWorld = World()
+    let dictation = Self.monitor(dictationWorld)
+    let summary = Self.monitor(summaryWorld)
+    defer {
+      dictation.stop()
+      summary.stop()
+    }
+    let summaryAsk = try #require(
+      Self.request(
+        .sidebar(.history), state: Self.onSummaries, scope: .meetingSummary,
+        world: summaryWorld, monitor: summary))
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .leaveAnyway, request: summaryAsk, monitor: summary, previousProvider: nil,
+        currentProvider: summaryWorld.provider, keyNotSaved: false)
+        == .navigate(.sidebar(.history)))
+    // AI Polish still asks about its own unfinished setup.
+    let dictationAsk = try #require(
+      Self.request(.sidebar(.history), world: dictationWorld, monitor: dictation))
+    #expect(dictationAsk.scope == .dictation)
+    #expect(
+      PolishSetupLeaveGuard.resolve(
+        .leaveAnyway, request: dictationAsk, monitor: dictation, previousProvider: nil,
+        currentProvider: dictationWorld.provider, keyNotSaved: false)
+        == .navigate(.sidebar(.history)))
+    // Answered in both; each stays answered for its own episode.
+    #expect(Self.request(.sidebar(.history), world: dictationWorld, monitor: dictation) == nil)
+    #expect(
+      Self.request(
+        .sidebar(.history), state: Self.onSummaries, scope: .meetingSummary,
+        world: summaryWorld, monitor: summary) == nil)
+    // A configuration change on the summary engine starts a new summary episode only.
+    summaryWorld.provider = .egOne
+    summaryWorld.egOneInstall = .notInstalled
+    #expect(
+      Self.request(
+        .sidebar(.history), state: Self.onSummaries, scope: .meetingSummary,
+        world: summaryWorld, monitor: summary) != nil)
+    #expect(Self.request(.sidebar(.history), world: dictationWorld, monitor: dictation) == nil)
   }
 }

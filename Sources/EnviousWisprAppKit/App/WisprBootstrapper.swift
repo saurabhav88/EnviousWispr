@@ -1207,8 +1207,9 @@ package final class WisprBootstrapper {
     // #1480: late-binding bridge so this early-assigned onChange closure can
     // forward setting-change facts to the (later-constructed) presenter.
     let bluetoothAwarenessPresenterHolder = BluetoothAwarenessPresenterHolder()
-    // #3438: the same late binding for the setup-warning monitor, built further down. Its
-    // configuration and eligibility move here, synchronously, never only by later observation.
+    // #3438: the same late binding for the setup-warning monitors (dictation's and, #4321, the
+    // summary engine's), built further down. Their configuration and eligibility move here,
+    // synchronously, never only by later observation.
     let polishSetupMonitorHolder = PolishSetupMonitorHolder()
     let menuBarControllerHolder = MenuBarControllerHolder()
     // #3289 §8b: the same late binding for the idle-memory observer, built further down; a usage
@@ -1226,11 +1227,8 @@ package final class WisprBootstrapper {
       guard let settingsSync, let settings else { return }
       settingsSync.handleSettingChanged(key, settings: settings)
       if key == .shareUsageMetrics { idleMemoryObserverForSettings?.usageMetricsChanged() }
-      switch key {
-      case .llmProvider, .llmModel, .ollamaModel, .onboardingState:
-        polishSetupMonitorHolder.monitor?.configurationOrEligibilityChanged()
-      default: break
-      }
+      // #3438, #4321: dictation's and the summary engine's setup monitors.
+      polishSetupMonitorHolder.settingChanged(key)
       // #1173: emit coalesced settings.changed deltas (fire-and-forget, never
       // throws/awaits into the setter path).
       settingsChangeTelemetry?.handle(key)
@@ -2855,7 +2853,7 @@ package final class WisprBootstrapper {
         PolishSetupInputs.live(
           settings: settings, localPolishRuntimes: localPolishRuntimes,
           aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
-          savedKeyPresence: savedKeyPresence)
+          savedKeyPresence: savedKeyPresence, scope: .dictation)
       },
       ollamaRefresh: OllamaOffPageRefresh(
         requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
@@ -2868,10 +2866,21 @@ package final class WisprBootstrapper {
       // #3988: the notice history lives in THIS build's own defaults domain, never the unified
       // settings suite, so the dev build and the shipped app never share a day or a quiet.
       noticeStore: OutsideStopNoticeStore(defaults: .standard))
+    // #4321: the summary engine's own monitor. No refresh hooks (dictation's monitor owns the
+    // Ollama and Apple refreshes, and both read the same facts), no take ingestion, no card.
+    let summarySetupMonitor = PolishSetupMonitor(
+      readInputs: {
+        [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
+        PolishSetupInputs.live(
+          settings: settings, localPolishRuntimes: localPolishRuntimes,
+          aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
+          savedKeyPresence: savedKeyPresence, scope: .meetingSummary)
+      })
     polishSetupMonitorHolder.monitor = polishSetupMonitor
+    polishSetupMonitorHolder.summaryMonitor = summarySetupMonitor
     menuBarControllerHolder.controller = menuBarController
-    savedKeyPresence.onChange = { [weak polishSetupMonitor] in
-      polishSetupMonitor?.configurationOrEligibilityChanged()
+    savedKeyPresence.onChange = { [polishSetupMonitorHolder] in
+      polishSetupMonitorHolder.savedKeysChanged()
     }
     // #3438 chunk 6: the card after a dictation, offered for a take the monitor took in, and
     // withdrawn in the same turn its episode stops applying.
@@ -2906,7 +2915,8 @@ package final class WisprBootstrapper {
     kernelDriver.polishSetupHooks = polishSetupTakeHooks
     whisperKernelDriver.polishSetupHooks = polishSetupTakeHooks
     self.polishSetup = PolishSetupWiring(
-      savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard)
+      savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard,
+      summary: SummarySetupMonitorHolder(monitor: summarySetupMonitor))
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
@@ -3092,8 +3102,9 @@ package final class WisprBootstrapper {
     appWindowCoordinator.finishLaunch()
     // #2381.
     quickAdd.install()
-    // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not.
-    polishSetup.monitor.start()
+    // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
+    // #4321: the summary engine's monitor watches its own.
+    polishSetup.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
@@ -3177,9 +3188,8 @@ package final class WisprBootstrapper {
     callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
     meetingMemoryPressure.stop()
-    // #3438: stop observing before the owners it reads are torn down.
-    polishSetup.card.stop()
-    polishSetup.monitor.stop()
+    // #3438, #4321: stop observing before the owners they read are torn down.
+    polishSetup.stop()
     // #3269: best effort; the process may exit first, and every outbox write is atomic anyway.
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
@@ -3334,6 +3344,7 @@ private struct MainWindowRoot: View {
       .environment(b.llmDiscovery)
       .environment(b.polishSetup.savedKeyPresence)
       .environment(b.polishSetup.monitor)
+      .environment(b.polishSetup.summary)
       .environment(b.vocabularyPackManager)
       // #996: the Learning row's enabled state (auto-learn, 2026-09-21 plan).
       .environment(b.learnFromEdits.availability)
@@ -3391,6 +3402,7 @@ private struct OnboardingWindowRoot: View {
     .environment(b.llmDiscovery)
     .environment(b.polishSetup.savedKeyPresence)
     .environment(b.polishSetup.monitor)
+    .environment(b.polishSetup.summary)
     .environment(\.asrManager, b.asrManager)
     .environment(\.activeEngine, b.activeEngine)
     .environment(\.keychainManager, b.keychainManager)
