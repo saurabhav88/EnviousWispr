@@ -368,6 +368,47 @@ public struct CallDetectionPolicy: Sendable {
   private var association: Association?
   private var latestAcceptedGeneration = 0
 
+  /// #4249: why a hand-started recording (menu bar or History) was or was not linked to a call,
+  /// so a call whose end never stopped such a recording can be diagnosed from `app.log`. Closed
+  /// values only: each names the one check that decided. Diagnostics only; nothing reads it to
+  /// decide anything.
+  package enum ManualLinkReason: String, Sendable, Equatable {
+    // At acceptance (the call is frozen here or never).
+    case notReady = "not_ready"
+    case noCall = "no_call"
+    case severalCalls = "several_calls"
+    case noSource = "no_source"
+    case noEvidence = "no_evidence"
+    case staleEvidence = "stale_evidence"
+    case otherAppRun = "other_app_run"
+    case callEnded = "call_ended"
+    case evidenceUnknown = "evidence_unknown"
+    case candidate
+    // At settlement (the frozen call is only checked for invalidation).
+    case superseded
+    /// The pending start was cleared before it finished (wake, call detection switched off, a
+    /// replaced read lifetime), so its frozen call was dropped.
+    case invalidated
+    case notStarted = "not_started"
+    case alreadyDecided = "already_decided"
+    case meetingChanged = "meeting_changed"
+    case appOff = "app_off"
+    case episodeGone = "episode_gone"
+    case overridden
+    case callChanged = "call_changed"
+    case noEvidenceAtSettle = "no_evidence_at_settle"
+    case staleAtSettle = "stale_at_settle"
+    case otherAppRunAtSettle = "other_app_run_at_settle"
+    case sourceNotFrozen = "source_not_frozen"
+    case endedAtSettle = "ended_at_settle"
+    case otherCall = "other_call"
+    case phaseClosed = "phase_closed"
+    case linked
+  }
+
+  /// The latest hand start's decision, keyed by its acceptance generation.
+  package private(set) var manualLink: (generation: Int, reason: ManualLinkReason)?
+
   public init() {}
 
   /// Whether any call is known: the watcher keeps polling while one is.
@@ -562,38 +603,65 @@ public struct CallDetectionPolicy: Sendable {
       if episode(e)?.phase == .starting(operation: id) { setPhase(e, .offered) }
     }
     guard c.setUp, c.mode != .off, c.meeting == .idle, request.acceptedAt <= c.now
-    else { return [] }
+    else {
+      manualLink = (request.generation, .notReady)
+      return []
+    }
     followMeeting(c)
-    let plausible = episodes.filter { episode in
-      guard !inHoldoff(c), episode.establishedAt <= request.acceptedAt, episode.owner != nil,
-        !episode.ownershipOverridden,
-        !c.appsOff.contains(CallAppCatalog.switchID(for: episode.rule)) else { return false }
-      switch episode.phase { case .waiting, .offered: break; default: return false }
-      let ongoing = (reading?.continuity ?? []).contains {
-        guard $0.completedAt <= request.acceptedAt, fresh($0, c) else { return false }
-        if case .ongoing? = state($0, for: episode) { return true }
-        return false
+    func plausibleCalls(countingOverridden: Bool) -> [Episode] {
+      episodes.filter { episode in
+        guard !inHoldoff(c), episode.establishedAt <= request.acceptedAt, episode.owner != nil,
+          countingOverridden || !episode.ownershipOverridden,
+          !c.appsOff.contains(CallAppCatalog.switchID(for: episode.rule)) else { return false }
+        switch episode.phase { case .waiting, .offered: break; default: return false }
+        let ongoing = (reading?.continuity ?? []).contains {
+          guard $0.completedAt <= request.acceptedAt, fresh($0, c) else { return false }
+          if case .ongoing? = state($0, for: episode) { return true }
+          return false
+        }
+        return ongoing || isKnownLive(episode, c)
       }
-      return ongoing || isKnownLive(episode, c)
     }
+    let plausible = plausibleCalls(countingOverridden: false)
     var candidate: ManualCandidate?
-    if plausible.count == 1, let episode = plausible.first, let owner = episode.owner,
-      !episode.sources.isEmpty,
-      let latest = reading?.continuity.filter({ state($0, for: episode) != nil })
-        .max(by: { $0.id < $1.id }),
-      latest.completedAt <= request.acceptedAt, fresh(latest, c), latest.owner == owner
-    {
-      let qualifies: Bool
-      switch state(latest, for: episode) {
-      case .ongoing?: qualifies = true
-      case .unknown?: qualifies = Self.isNative(episode.rule) && isKnownLive(episode, c)
-      case .ended?, nil: qualifies = false
+    // Same conditions as before #4249, checked one at a time so the deciding one is named.
+    let reason: ManualLinkReason
+    if plausible.isEmpty {
+      // Diagnostics only: a call left out solely because the user stopped its earlier
+      // recording by hand is named, since that is by design and no defect.
+      reason = plausibleCalls(countingOverridden: true).isEmpty ? .noCall : .overridden
+    } else if plausible.count > 1 {
+      reason = .severalCalls
+    } else if let episode = plausible.first, let owner = episode.owner, !episode.sources.isEmpty {
+      if let latest = reading?.continuity.filter({ state($0, for: episode) != nil })
+        .max(by: { $0.id < $1.id })
+      {
+        if latest.completedAt > request.acceptedAt || !fresh(latest, c) {
+          reason = .staleEvidence
+        } else if latest.owner != owner {
+          reason = .otherAppRun
+        } else {
+          switch state(latest, for: episode) {
+          case .ongoing?:
+            reason = .candidate
+          case .unknown?:
+            reason =
+              Self.isNative(episode.rule) && isKnownLive(episode, c) ? .candidate : .evidenceUnknown
+          case .ended?, nil:
+            reason = .callEnded
+          }
+          if reason == .candidate {
+            candidate = .init(episode: episode.id, owner: owner, sources: episode.sources,
+              room: episode.room, family: episode.family, rule: episode.rule)
+          }
+        }
+      } else {
+        reason = .noEvidence
       }
-      if qualifies {
-        candidate = .init(episode: episode.id, owner: owner, sources: episode.sources,
-          room: episode.room, family: episode.family, rule: episode.rule)
-      }
+    } else {
+      reason = .noSource
     }
+    manualLink = (request.generation, reason)
     pendingManual = .init(request: request, candidate: candidate)
     // A user-accepted recording is already starting; an old consent question cannot start it
     // again. Keep its offered suppression and invalidate its button token immediately.
@@ -628,36 +696,71 @@ public struct CallDetectionPolicy: Sendable {
   package mutating func settledStart(
     _ request: AcceptedStart, recordingID: UUID?, _ c: Context
   ) -> [Command] {
+    // #4249: each refusal names itself in `manualLink`. The checks and their order are the same
+    // as before; they are split only so the deciding one is known.
+    func refuse(_ reason: ManualLinkReason) -> [Command] {
+      manualLink = (request.generation, reason)
+      return []
+    }
     guard let pending = pendingManual, pending.request == request,
-      request.generation == latestAcceptedGeneration else { return [] }
+      request.generation == latestAcceptedGeneration
+    else {
+      // A request refused at acceptance keeps that reason; a hand start that was replaced says
+      // so. A detected call's own start never had a manual decision.
+      if request.route == .menu || request.route == .history {
+        if manualLink?.generation != request.generation {
+          manualLink = (request.generation, .superseded)
+        } else if manualLink?.reason == .candidate {
+          manualLink = (request.generation, .invalidated)
+        }
+      }
+      return []
+    }
     pendingManual = nil
-    guard let recordingID else { return [] }
-    guard association?.recordingID != recordingID else { return [] }
+    guard let recordingID else { return refuse(.notStarted) }
+    guard association?.recordingID != recordingID else { return refuse(.alreadyDecided) }
     association = .rejected(recordingID)
-    guard c.setUp, c.mode != .off, c.meeting == .recording(meetingID: recordingID),
-      let frozen = pending.candidate,
-      !c.appsOff.contains(CallAppCatalog.switchID(for: frozen.rule)),
-      let index = episodes.firstIndex(where: { $0.id == frozen.episode }),
-      !episodes[index].ownershipOverridden,
-      episodes[index].owner == frozen.owner, episodes[index].sources == frozen.sources,
+    guard c.setUp, c.mode != .off, c.meeting == .recording(meetingID: recordingID) else {
+      return refuse(.meetingChanged)
+    }
+    // No frozen call: the acceptance reason already says why.
+    guard let frozen = pending.candidate else { return [] }
+    guard !c.appsOff.contains(CallAppCatalog.switchID(for: frozen.rule)) else {
+      return refuse(.appOff)
+    }
+    guard let index = episodes.firstIndex(where: { $0.id == frozen.episode }) else {
+      return refuse(.episodeGone)
+    }
+    guard !episodes[index].ownershipOverridden else { return refuse(.overridden) }
+    guard episodes[index].owner == frozen.owner, episodes[index].sources == frozen.sources,
       episodes[index].room == frozen.room, episodes[index].family == frozen.family,
-      episodes[index].rule == frozen.rule,
-      let latest = reading?.continuity.filter({ state($0, for: episodes[index]) != nil })
-        .max(by: { $0.id < $1.id }), fresh(latest, c), latest.owner == frozen.owner,
-      frozen.sources.contains(latest.source)
-    else { return [] }
+      episodes[index].rule == frozen.rule
+    else { return refuse(.callChanged) }
+    guard let latest = reading?.continuity.filter({ state($0, for: episodes[index]) != nil })
+      .max(by: { $0.id < $1.id })
+    else { return refuse(.noEvidenceAtSettle) }
+    guard fresh(latest, c) else { return refuse(.staleAtSettle) }
+    guard latest.owner == frozen.owner else { return refuse(.otherAppRunAtSettle) }
+    guard frozen.sources.contains(latest.source) else { return refuse(.sourceNotFrozen) }
     if Self.isNative(frozen.rule) {
-      if case .ended? = state(latest, for: episodes[index]) { return [] }
+      if case .ended? = state(latest, for: episodes[index]) { return refuse(.endedAtSettle) }
     } else if case .ended(let family, let room) = latest.value {
-      guard family == frozen.family, room == frozen.room else { return [] }
+      guard family == frozen.family, room == frozen.room else { return refuse(.otherCall) }
     }
     if case .ongoing(let family, let room) = latest.value,
-      family != frozen.family || (!Self.isNative(frozen.rule) && room != frozen.room) { return [] }
+      family != frozen.family || (!Self.isNative(frozen.rule) && room != frozen.room)
+    {
+      return refuse(.otherCall)
+    }
     // Historical eligibility is not recomputed here; only the frozen episode/run/source/room
     // is checked for invalidation. Another candidate cannot replace it at completion.
-    switch episodes[index].phase { case .waiting, .offered: break; default: return [] }
+    switch episodes[index].phase {
+    case .waiting, .offered: break
+    default: return refuse(.phaseClosed)
+    }
     setPhase(frozen.episode, .recording(meetingID: recordingID))
     association = .linked(recordingID, episode: frozen.episode)
+    manualLink = (request.generation, .linked)
     return step(c)
   }
 
