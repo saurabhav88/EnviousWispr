@@ -21,11 +21,16 @@ struct UnifiedWindowView: View {
   /// only this visit's state: the pending question, the provider chosen when the AI Polish
   /// visit began, whether a typed key is unsaved (yes/no only), and sidebar focus.
   @Environment(PolishSetupMonitor.self) private var polishSetupMonitor
+  /// #4321: the same guard for the EnviousMeet Summaries tab, over the summary engine's own
+  /// monitor.
+  @Environment(SummarySetupMonitorHolder.self) private var summarySetup
   @Environment(SettingsManager.self) private var settings
   /// The question on screen and its identity; a dismissal clears only the one it belongs to.
   @State private var pendingLeave: PolishSetupLeaveRequest?
   @State private var pendingLeaveID: UInt64 = 0
   @State private var providerWhenVisitBegan: LLMProvider?
+  /// #4321: the summary engine chosen when this visit to Meetings > Summaries began.
+  @State private var summaryProviderWhenVisitBegan: LLMProvider?
   @State private var hasUnsavedKeyDraft = false
   @FocusState private var focusedSidebarPage: SettingsPage?
   /// #3482: this window's Settings search, and whether its field has keyboard focus.
@@ -140,29 +145,110 @@ struct UnifiedWindowView: View {
   }
 
   /// Every way of changing page comes through here: a sidebar row, an in-page link, and a
-  /// request from the menu or elsewhere. Leaving AI Polish while the chosen model is not set up
-  /// asks first; while that question is open, the latest request replaces the pending one.
+  /// request from the menu or elsewhere. Leaving AI Polish, or EnviousMeet's Summaries tab
+  /// (#4321), while its chosen engine is not set up asks first; while that question is open, the
+  /// latest request replaces the pending one.
   private func navigate(_ intent: SettingsNavigationIntent) {
-    if let pending = pendingLeave {
-      // The latest request wins; the question on screen keeps its identity.
-      pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
-      return
-    }
-    if let request = PolishSetupLeaveGuard.request(
-      for: intent, from: navigationState, scope: .dictation, monitor: polishSetupMonitor,
-      previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
-      keyNotSaved: hasUnsavedKeyDraft)
-    {
-      pendingLeaveID &+= 1
-      pendingLeave = request
-      polishSetupMonitor.recordPrompt(.leaveDialog, .shown, subject: request.promptSubject)
-      return
-    }
+    guard !askedBeforeLeaving(for: intent) else { return }
     commit(intent)
   }
 
+  /// Whether `intent` is held by a leave question: an open one (the latest request replaces its
+  /// destination) or a new one raised now. At most one scope applies, since their guarded places
+  /// do not overlap.
+  private func askedBeforeLeaving(for intent: SettingsNavigationIntent) -> Bool {
+    if let pending = pendingLeave {
+      // The latest request wins; the question on screen keeps its identity.
+      pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
+      return true
+    }
+    for scope in [PolishSetupScope.dictation, .meetingSummary] {
+      if let request = leaveRequest(for: intent, scope: scope, from: navigationState) {
+        pendingLeaveID &+= 1
+        pendingLeave = request
+        reportPrompt(.shown, for: request)
+        return true
+      }
+    }
+    return false
+  }
+
+  private func leaveRequest(
+    for intent: SettingsNavigationIntent, scope: PolishSetupScope,
+    from state: SettingsNavigationState
+  ) -> PolishSetupLeaveRequest? {
+    PolishSetupLeaveGuard.request(
+      for: intent, from: state, scope: scope, monitor: monitor(for: scope),
+      previousProvider: previousProvider(for: scope), currentProvider: currentProvider(for: scope),
+      keyNotSaved: hasUnsavedKeyDraft)
+  }
+
+  private func monitor(for scope: PolishSetupScope) -> PolishSetupMonitor {
+    switch scope {
+    case .dictation: polishSetupMonitor
+    case .meetingSummary: summarySetup.monitor
+    }
+  }
+
+  private func previousProvider(for scope: PolishSetupScope) -> LLMProvider? {
+    switch scope {
+    case .dictation: providerWhenVisitBegan
+    case .meetingSummary: summaryProviderWhenVisitBegan
+    }
+  }
+
+  private func currentProvider(for scope: PolishSetupScope) -> LLMProvider {
+    switch scope {
+    case .dictation: settings.llmProvider
+    case .meetingSummary: settings.effectiveMeetingSummaryLLMProvider
+    }
+  }
+
+  /// A `polish_setup.prompt` row for the question `request`, from its own scope's monitor.
+  private func reportPrompt(
+    _ action: PolishSetupPromptEvent.Action, for request: PolishSetupLeaveRequest
+  ) {
+    switch request.scope {
+    case .dictation:
+      polishSetupMonitor.recordPrompt(.leaveDialog, action, subject: request.promptSubject)
+    case .meetingSummary:
+      // Its own surface value, so `leave_dialog` keeps meaning dictation's question.
+      summarySetup.monitor.recordPrompt(
+        .summaryLeaveDialog, action, subject: request.promptSubject)
+    }
+  }
+
+  /// A new visit to a guarded place begins: remember what was chosen before the person changes
+  /// it. Judged on the committed window state, so staying, a declined leave or a replaced
+  /// pending destination never records it again.
+  private func noteVisitStarts(from before: SettingsNavigationState) {
+    if PolishSetupScope.dictation.entered(from: before, to: navigationState) {
+      providerWhenVisitBegan = settings.llmProvider
+    }
+    if PolishSetupScope.meetingSummary.entered(from: before, to: navigationState) {
+      summaryProviderWhenVisitBegan = settings.effectiveMeetingSummaryLLMProvider
+    }
+  }
+
+  /// The Meetings page's tab strip (#4321). A tab change that leaves Summaries with an
+  /// unfinished summary engine asks first, like a sidebar click; the strip keeps showing the
+  /// committed tab while the question is open. Otherwise the tab changes directly, as before, so
+  /// a tab click never ends a Settings search or moves sidebar focus.
+  private var guardedMeetingsTab: Binding<MeetingsTab> {
+    Binding(
+      get: { navigationState.meetingsTab },
+      set: { tab in
+        guard tab != navigationState.meetingsTab,
+          !askedBeforeLeaving(for: .destination(.meetings(tab)))
+        else { return }
+        let before = navigationState
+        navigationState.meetingsTab = tab
+        noteVisitStarts(from: before)
+      })
+  }
+
   private func commit(_ intent: SettingsNavigationIntent) {
-    let wasOnAIPolish = navigationState.selectedPage == .aiPolish
+    let stateBefore = navigationState
     let pageBefore = navigationState.selectedPage
     navigationState.perform(intent)
     // #4101: only a committed navigation reaches here (a declined leave does not); History Paste
@@ -180,8 +266,7 @@ struct UnifiedWindowView: View {
       search.finish(endedBy: .externalDestination)
     }
     search.reset()
-    // A new AI Polish visit begins: remember what was chosen before the person changes it.
-    if intent.page == .aiPolish, !wasOnAIPolish { providerWhenVisitBegan = settings.llmProvider }
+    noteVisitStarts(from: stateBefore)
   }
 
   /// A button on the question `id`. The question's latest destination is read now; the
@@ -194,10 +279,11 @@ struct UnifiedWindowView: View {
     pendingLeave = nil
     // Reported as pressed (Escape as `closed`), before the guard judges it against the live
     // state.
-    polishSetupMonitor.recordPrompt(.leaveDialog, reported, subject: request.promptSubject)
+    reportPrompt(reported, for: request)
+    let scope = request.scope
     switch PolishSetupLeaveGuard.resolve(
-      action, request: request, monitor: polishSetupMonitor,
-      previousProvider: providerWhenVisitBegan, currentProvider: settings.llmProvider,
+      action, request: request, monitor: monitor(for: scope),
+      previousProvider: previousProvider(for: scope), currentProvider: currentProvider(for: scope),
       keyNotSaved: hasUnsavedKeyDraft)
     {
     case .stay:
@@ -209,15 +295,11 @@ struct UnifiedWindowView: View {
     case .navigate(let intent):
       leave(to: intent)
     case .restoreProvider(let provider, let intent):
-      // The normal setter: the same path as choosing it in the dropdown.
-      settings.llmProvider = provider
+      // The scope's normal setter: the same path as choosing it in that page's picker.
+      PolishSetupLeaveGuard.restore(provider, scope: scope, in: settings)
       // Validated as fully set up a moment ago; if that is somehow no longer true, stay rather
       // than raise a second alert over this one's dismissal.
-      if PolishSetupLeaveGuard.request(
-        for: intent, from: request.scope.guardedState, scope: request.scope,
-        monitor: polishSetupMonitor, previousProvider: providerWhenVisitBegan,
-        currentProvider: settings.llmProvider, keyNotSaved: hasUnsavedKeyDraft) == nil
-      {
+      if leaveRequest(for: intent, scope: scope, from: scope.guardedState) == nil {
         leave(to: intent)
       }
     }
@@ -354,7 +436,7 @@ struct UnifiedWindowView: View {
       // History owns its own list/detail split layout, no page header.
       HistoryContentView()
     case .meetings:
-      page(.meetings) { MeetingsView(selection: $navigationState.meetingsTab) }
+      page(.meetings) { MeetingsView(selection: guardedMeetingsTab) }
     case .dictation:
       page(.dictation) {
         DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)

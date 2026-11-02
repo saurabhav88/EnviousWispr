@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprServices
 import Foundation
 import SwiftUI
 
@@ -46,6 +47,12 @@ enum PolishSetupScope: Equatable {
     case .dictation: state.selectedPage == .aiPolish
     case .meetingSummary: state.selectedPage == .meetings && state.meetingsTab == .summaries
     }
+  }
+
+  /// Whether the window moved into the guarded place: a new visit begins, and the window records
+  /// the engine chosen at that moment for "Go back to".
+  func entered(from before: SettingsNavigationState, to after: SettingsNavigationState) -> Bool {
+    !contains(before) && contains(after)
   }
 
   /// A window state inside the guarded place, for judging an answer against the live state:
@@ -507,6 +514,18 @@ enum PolishSetupLeaveGuard {
       goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved)
   }
 
+  /// "Go back to" for `scope`: the previous engine through that scope's normal setter. The
+  /// summary engine's never touches dictation's model, and dictation's never the summary
+  /// engine (#4321 §17 F3).
+  static func restore(
+    _ provider: LLMProvider, scope: PolishSetupScope, in settings: SettingsManager
+  ) {
+    switch scope {
+    case .dictation: settings.llmProvider = provider
+    case .meetingSummary: settings.meetingSummaryLLMProvider = provider
+    }
+  }
+
   /// Another request arriving while a question is open: the latest destination replaces the
   /// pending one's, and the question keeps its episode, problem and offers. The window shell and
   /// the tests both go through here, so neither can drift from the other.
@@ -570,11 +589,26 @@ enum PolishSetupLeaveGuard {
   }
 }
 
-/// Whether the AI Polish page holds a typed, unsaved key for the chosen provider (#3438).
-/// Content-free: only the yes/no reaches the window shell.
+/// Whether the page on screen (AI Polish, #3438, or EnviousMeet Summaries, #4321) holds a typed,
+/// unsaved key for its chosen provider. Content-free: only the yes/no reaches the window shell.
+/// Only one of the two pages is on screen at a time, so one value serves both.
 struct PolishSetupUnsavedKeyDraftKey: PreferenceKey {
   static let defaultValue = false
   static func reduce(value: inout Bool, nextValue: () -> Bool) {
     value = value || nextValue()
+  }
+}
+
+extension ProviderSetupModel {
+  /// A key typed for `provider` and not saved: the field differs from what was last loaded or
+  /// saved, and is not empty. A key loaded from the Keychain is not a draft, and a local engine
+  /// has no key. One rule for the AI Polish page and the Summaries tab (#4321 §17 F5).
+  func hasUnsavedKeyDraft(for provider: LLMProvider) -> Bool {
+    switch provider {
+    case .openAI: return openAIKeyEdited && !openAIKey.isEmpty
+    case .gemini: return geminiKeyEdited && !geminiKey.isEmpty
+    case .claude: return claudeKeyEdited && !claudeKey.isEmpty
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
   }
 }
