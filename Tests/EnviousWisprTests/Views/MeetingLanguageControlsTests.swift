@@ -21,7 +21,9 @@ struct MeetingLanguageControlsTests {
   /// Records an observed change of one value (subject-side signal, bounded by the hang net).
   static func onChange(_ read: @escaping @MainActor () -> Void) -> FastAdmissionReadSignals {
     let signal = FastAdmissionReadSignals()
-    withObservationTracking { read() } onChange: {
+    withObservationTracking {
+      read()
+    } onChange: {
       Task { @MainActor in signal.record(nil) }
     }
     return signal
@@ -43,7 +45,9 @@ struct MeetingLanguageControlsTests {
 
   // MARK: - Live Preview language
 
-  @Test("the live window lists Apple's exact tags, two regions as two rows, and ticks only the saved one")
+  @Test(
+    "the live window lists Apple's exact tags, two regions as two rows, and ticks only the saved one"
+  )
   func liveRows() async throws {
     let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
     settings.commitMeetingLiveWordsChoice(engine: .apple, language: "en-US")
@@ -56,7 +60,15 @@ struct MeetingLanguageControlsTests {
     #expect(Set(content.rows.map(\.id)).count == 3, "each region is its own row")
     #expect(content.rows.filter(\.isSelected).map(\.code) == ["en-US"], "only the saved region")
     #expect(content.autoRow == nil && content.recents.isEmpty, "no Automatic, no Recent")
-    #expect(LanguagePickerContent.meetingLive(model: model, query: "en-gb") {}.rows.map(\.code) == ["en-GB"])
+    // Voice Control: the spoken name includes the native name the row shows.
+    let german = try #require(content.rows.first { $0.code == "de-DE" })
+    #expect(
+      german.accessibilityLabel.contains(german.nativeName),
+      "\(german.accessibilityLabel) names \(german.nativeName)")
+    #expect(
+      LanguagePickerContent.meetingLive(model: model, query: "en-gb") {}.rows.map(\.code) == [
+        "en-GB"
+      ])
     #expect(LanguagePickerContent.meetingLive(model: model, query: "zzzz") {}.rows.isEmpty)
   }
 
@@ -71,7 +83,10 @@ struct MeetingLanguageControlsTests {
       LanguagePickerContent.meetingLive(model: model, query: "") {}.rows.first { $0.code == "de" })
     try #require(
       !german.displayName.lowercased().contains("deutsch"), "the search must reach the native name")
-    #expect(LanguagePickerContent.meetingLive(model: model, query: "Deutsch") {}.rows.map(\.code) == ["de"])
+    #expect(
+      LanguagePickerContent.meetingLive(model: model, query: "Deutsch") {}.rows.map(\.code) == [
+        "de"
+      ])
   }
 
   @Test("a live choice saves only the meeting's live language and closes the window")
@@ -98,14 +113,18 @@ struct MeetingLanguageControlsTests {
 
   // MARK: - Transcript language
 
-  @Test("the transcript window lists the engine's languages, ticks the lock, and locks only the transcript")
+  @Test(
+    "the transcript window lists the engine's languages, ticks the lock, and locks only the transcript"
+  )
   func transcriptRows() throws {
     let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
     settings.meetingLanguageMode = .locked("de")
     settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
     let model = MeetingLiveWordsRowModel.renderFixture(settings: settings)
     let closed = Closed()
-    let parakeet = LanguagePickerContent.meetingTranscript(model: model, engine: .parakeet, query: "") {
+    let parakeet = LanguagePickerContent.meetingTranscript(
+      model: model, engine: .parakeet, query: ""
+    ) {
       closed.count += 1
     }
     let lockable = try #require(LanguageLockOptions.lockableCodes(for: .parakeet))
@@ -114,7 +133,8 @@ struct MeetingLanguageControlsTests {
     #expect(!parakeet.rows.contains { $0.id == LanguageCatalog.englishUK.code }, "no English (UK)")
     #expect(parakeet.rows.filter(\.isSelected).map(\.code) == ["de"])
     #expect(parakeet.autoRow == nil, "the section's switch owns Auto")
-    let whisper = LanguagePickerContent.meetingTranscript(model: model, engine: .whisper, query: "") {}
+    let whisper = LanguagePickerContent.meetingTranscript(model: model, engine: .whisper, query: "")
+    {}
     #expect(whisper.rows.count > parakeet.rows.count)
 
     let before = Languages(settings)
@@ -136,15 +156,20 @@ struct MeetingLanguageControlsTests {
     let before = Languages(settings)
     #expect(!MeetingTranscriptLanguageSection.isAuto(model), "Change is on while locked")
 
-    MeetingTranscriptLanguageSection.setAuto(true, model: model, engine: .parakeet, systemLanguage: "fr")
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: "fr")
     #expect(settings.meetingLanguageMode == .auto)
     #expect(MeetingTranscriptLanguageSection.isAuto(model), "Change is off on Auto")
 
-    MeetingTranscriptLanguageSection.setAuto(false, model: model, engine: .parakeet, systemLanguage: "fr")
-    #expect(settings.meetingLanguageMode == .locked("fr"), "the Mac's language, which Parakeet writes")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: "fr")
+    #expect(
+      settings.meetingLanguageMode == .locked("fr"), "the Mac's language, which Parakeet writes")
 
-    MeetingTranscriptLanguageSection.setAuto(true, model: model, engine: .parakeet, systemLanguage: "ja")
-    MeetingTranscriptLanguageSection.setAuto(false, model: model, engine: .parakeet, systemLanguage: "ja")
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: "ja")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: "ja")
     #expect(settings.meetingLanguageMode == .locked("en"), "Parakeet cannot write Japanese")
 
     let after = Languages(settings)

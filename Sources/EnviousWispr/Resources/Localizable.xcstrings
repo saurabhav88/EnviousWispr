@@ -888,7 +888,7 @@
       }
     },
     "%@, native %@" : {
-      "comment" : "Dictation language picker, VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language.",
+      "comment" : "Language picker (dictation and EnviousMeet), VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language.",
       "localizations" : {
         "en" : {
           "stringUnit" : {

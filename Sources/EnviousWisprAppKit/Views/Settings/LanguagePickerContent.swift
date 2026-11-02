@@ -110,17 +110,23 @@ extension LanguagePickerContent {
   /// #3124: the two English rows differ only by spelling, so VoiceOver says which.
   static func accessibilityLabel(for entry: LanguageCatalog.Entry) -> String {
     entry.spelling == nil
-      ? String(
-        localized: "\(entry.displayName), native \(entry.nativeName)",
-        comment:
-          "Dictation language picker, VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language."
-      )
+      ? accessibilityLabel(displayName: entry.displayName, nativeName: entry.nativeName)
       : String(
         localized: "language.picker.spellingAccessibility",
         defaultValue: "\(entry.displayName), \(LanguageCatalog.pickerSubtitle(for: entry))",
         comment:
           "Dictation language picker, VoiceOver: an English spelling row. The first %@ is the row's name, the second says which spelling it uses."
       )
+  }
+
+  /// A language row's VoiceOver and Voice Control name: its name in the interface language and the
+  /// native name the row shows, so a spoken "click Deutsch" finds the row in either window.
+  static func accessibilityLabel(displayName: String, nativeName: String) -> String {
+    String(
+      localized: "\(displayName), native \(nativeName)",
+      comment:
+        "Language picker (dictation and EnviousMeet), VoiceOver: a language row. The first %@ is the language's name, the second its name in its own language."
+    )
   }
 
   /// The Recent entries: `SessionLanguageMemory.usage24h` (written by the detector stack in W2),
@@ -203,7 +209,8 @@ extension LanguagePickerContent {
       return LanguagePickerRow(
         id: option.code, code: option.code, nativeName: names.native, englishName: names.english,
         displayName: option.name, subtitle: option.code,
-        isSelected: option.code == model.selectedLanguage, accessibilityLabel: option.name
+        isSelected: option.code == model.selectedLanguage,
+        accessibilityLabel: accessibilityLabel(displayName: option.name, nativeName: names.native)
       ) {
         Task { await model.selectLanguage(option.code) }
         dismiss()
