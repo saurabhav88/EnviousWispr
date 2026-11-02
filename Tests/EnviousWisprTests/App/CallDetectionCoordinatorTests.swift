@@ -7,6 +7,7 @@
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprAudio
   @testable import EnviousWisprCore
+  @testable import EnviousWisprLivePreview
   @testable import EnviousWisprServices
 
   /// #4012: what the call panel shows and what its answers do. When these fail, Yes records
@@ -42,6 +43,9 @@
       var phase: MeetingCoordinator.Phase = .idle
       var starts: [CallAppFamily?] = []
       var stops = 0
+      /// #4249: the reason each stop carried, and the call facts reported to the meeting.
+      var stopReasons: [MeetingEndedTelemetry.StopReason] = []
+      var reportedFacts: [(UUID, CallDetectionPolicy.CallFacts)] = []
       var pageShown = 0
       var events: [MeetingCallPromptTelemetry] = []
       var clock = Date(timeIntervalSince1970: 3_000_000)
@@ -53,6 +57,8 @@
       var followedAttempts: [UUID] = []
       var openedMeetings: [UUID] = []
       var callSound = false
+      /// #4249: the recording's live words, as `MeetingCoordinator.liveTranscript` reports them.
+      var transcript: MeetingLiveWords.Transcript?
       /// The panel's own Start goes through the real manual flow (route .menu) when true.
       var userStartsViaFlow = false
       /// The real flow stops at the call-sound explainer while true.
@@ -111,9 +117,10 @@
           dependencies: .init(
             settings: settings,
             meetingPhase: { [weak self] in self?.phase ?? .idle },
-            stopMeeting: { [weak self] in
+            stopMeeting: { [weak self] reason in
               guard let self else { return }
               self.stops += 1
+              self.stopReasons.append(reason)
               self.phase = .idle
               self.onStop?()
             },
@@ -170,7 +177,10 @@
             callSoundCaptured: { [weak self] in
               guard let self, self.recordingID == $0 else { return false }
               return self.callSound
-            }))
+            },
+            liveTranscript: { [weak self] in self?.transcript },
+            wallNow: { [weak self] in self?.clock ?? Date() },
+            noteCallFacts: { [weak self] in self?.reportedFacts.append(($0, $1)) }))
       }
 
       /// One faked Zoom process with its meeting window open, the microphone `input`.
@@ -1935,6 +1945,215 @@
       #expect(rig.userStarts.count == 1 && rig.starts.isEmpty)
     }
 
+    /// #4249: a recording linked to Zoom whose app used the microphone after linking, old enough
+    /// for a release to count.
+    func armedRecording(_ rig: Rig) async throws -> UUID {
+      await rig.ongoingZoom()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.starts == [.zoom] })
+      let meeting = try #require(rig.recordingID)
+      rig.advance(CallDetectionPolicy.minRecordingAge)
+      await rig.proof(.unknown, input: .active)
+      return meeting
+    }
+
+    func releaseZoom(_ rig: Rig) async {
+      rig.advance(1)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(2)
+      await rig.proof(.unknown, input: .inactive)
+    }
+
+    func callWords(_ meeting: UUID, endMs: Int) -> MeetingLiveWords.Transcript {
+      .init(meetingID: meeting,
+        lines: [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: endMs, text: "x")],
+        tracks: [.callSound: .init(status: .running)])
+    }
+
+    @Test("#4249: a hand start's link outcome reaches the meeting at settlement, before any tick",
+      arguments: [true, false])
+    func handStartFactsReportedAtSettlement(withCall: Bool) async throws {
+      let rig = try Rig()
+      if withCall { await rig.ongoingZoom() }
+      #expect(await rig.manualFlow.requestStart(from: .menu) == .started(.recording(meetingID: rig.manualMeetingID)))
+      let facts = try #require(rig.reportedFacts.last { $0.0 == rig.manualMeetingID }?.1)
+      #expect(facts.link == (withCall ? .manual : .noCall))
+    }
+
+    @Test("#4249: the countdown's stop carries its reason; Keep reached the meeting before it")
+    func stopReasonAndFactsReachTheMeeting() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      await releaseZoom(rig)
+      #expect(rig.press("keepRecording"))
+      await rig.proof(.unknown, input: .active)
+      await releaseZoom(rig)
+      rig.advance(CallDetectionPolicy.countdownLength)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(await settleUntilObserved { rig.stops == 1 })
+      #expect(rig.stopReasons == [.callCountdown])
+      let last = try #require(rig.reportedFacts.last { $0.0 == meeting }?.1)
+      #expect(last.link == .prompt && last.endTrigger == .micRelease && last.keepCount == 1)
+    }
+
+    @Test("#4249: Zoom releasing the microphone shows the countdown with Keep; Keep keeps recording")
+    func releaseCountdownKeep() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      #expect(rig.press("keepRecording"))
+      #expect(!rig.panel.isShowing)
+      rig.advance(CallDetectionPolicy.countdownLength + 2)
+      await rig.proof(.unknown, input: .inactive)
+      await settleStarts()
+      #expect(rig.stops == 0 && rig.recordingID == meeting)
+      // The next real release shows a visible countdown again.
+      await rig.proof(.unknown, input: .active)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+    }
+
+    @Test("#4249: the call track's advancing live words hold the release countdown; text-only edits do not")
+    func callWordsHoldReleaseCountdown() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = callWords(meeting, endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      rig.advance(1)
+      rig.transcript = callWords(meeting, endMs: 2_000)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(2)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(!rig.panel.isShowing, "words advanced 2 s ago: held")
+      rig.advance(4)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(rig.panel.content.testName == "countdown:10", "quiet for 6 s: the countdown starts")
+      // Same furthest word end, new text: not activity.
+      var edited = callWords(meeting, endMs: 2_000)
+      edited.lines = [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: 2_000, text: "y")]
+      rig.transcript = edited
+      rig.advance(1)
+      rig.coordinator.stepForTesting()
+      #expect(rig.panel.content.testName == "countdown:9", "a text-only edit does not pause it")
+    }
+
+    @Test("#4249: a countdown hidden with × stays hidden through a far-side pause and resume")
+    func hiddenCountdownSurvivesPause() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = callWords(meeting, endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      #expect(rig.press("close"))
+      rig.advance(2)
+      rig.transcript = callWords(meeting, endMs: 3_000)
+      await rig.proof(.unknown, input: .inactive)
+      rig.advance(6)
+      await rig.proof(.unknown, input: .inactive)
+      rig.coordinator.tickForTesting()
+      #expect(!rig.panel.isShowing, "resumed, still hidden")
+      rig.advance(9)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(await settleUntilObserved { rig.stops == 1 }, "the resumed countdown still stops")
+    }
+
+    @Test("#4249: the first call words after an empty transcript pause the countdown and keep its time")
+    func firstWordsAfterEmptyTranscriptPause() async throws {
+      let rig = try Rig()
+      let meeting = try await armedRecording(rig)
+      rig.transcript = .init(meetingID: meeting, tracks: [.callSound: .init(status: .running)])
+      rig.coordinator.stepForTesting()
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+      rig.advance(3)
+      rig.transcript = callWords(meeting, endMs: 800)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(!rig.panel.isShowing, "paused by the first words")
+      rig.advance(6)
+      await rig.proof(.unknown, input: .inactive)
+      #expect(rig.panel.content.testName == "countdown:7", "resumed with the 7 s that were left")
+    }
+
+    @Test("#4249: a hand-started recording with healthy live words asks after 10 quiet minutes; × only hides it")
+    func silenceBackstopThroughCoordinator() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      rig.attempts[meeting] = UUID()
+      rig.transcript = .init(meetingID: meeting,
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+        tracks: [.microphone: .init(status: .running)])
+      rig.coordinator.stepForTesting()
+      for _ in 0..<300 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(rig.panel.content.testName == "stillInMeeting:30")
+      #expect(rig.press("close"))
+      #expect(!rig.panel.isShowing)
+      for _ in 0..<15 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(await settleUntilObserved { rig.stops == 1 }, "hidden, the 30 s still ran out")
+    }
+
+    @Test("#4249: a stopped call-sound track keeps the silence question away while the mic track runs")
+    func silenceBackstopNeedsEveryCapturedTrack() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      rig.transcript = .init(meetingID: meeting,
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+        tracks: [.microphone: .init(status: .running), .callSound: .init(status: .stopped(.engineFailed))])
+      rig.coordinator.stepForTesting()
+      for _ in 0..<310 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(!rig.panel.isShowing && rig.stops == 0)
+      // A track that is not recorded at all does not count against health.
+      rig.transcript?.tracks[.callSound] = .init(status: .off(.notCaptured))
+      for _ in 0..<301 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))
+    }
+
+    @Test("#4249 Live UAT: a provisional line that keeps growing and an old dropped-audio mark do not stop the question")
+    func silenceIgnoresProvisionalAndDropLatch() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      let confirmed = LiveWordsAssembler.Line(
+        id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")
+      rig.transcript = .init(meetingID: meeting, lines: [confirmed],
+        tracks: [.microphone: .init(status: .running, droppedAudio: true)])
+      rig.coordinator.stepForTesting()
+      for tick in 0..<301 {
+        rig.advance(2)
+        // A lone provisional "." whose end keeps moving, as Apple speech showed in silence.
+        rig.transcript?.lines = [confirmed,
+          .init(id: "p", track: .microphone, kind: .provisional, startMs: 600, endMs: 1_000 + tick * 2_000, text: ".")]
+        rig.coordinator.tickForTesting()
+      }
+      #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))
+    }
+
+    @Test("#4249: another recording's live words never hold this recording's countdown")
+    func otherMeetingWordsIgnored() async throws {
+      let rig = try Rig()
+      _ = try await armedRecording(rig)
+      rig.transcript = callWords(UUID(), endMs: 1_000)
+      rig.coordinator.stepForTesting()
+      rig.transcript = callWords(UUID(), endMs: 5_000)
+      await releaseZoom(rig)
+      #expect(rig.panel.content.testName == "countdown:10")
+    }
+
     @Test("× hides the countdown; ticks never redraw it and the recording still stops on time")
     func closeHidesCountdown() async throws {
       let rig = try Rig()
@@ -1944,7 +2163,6 @@
       await rig.endedZoom()
       rig.advance(1.6)
       await rig.endedZoom()
-      #expect(!rig.press("keepRecording"), "#4232: the countdown has no Keep")
       #expect(rig.press("close"))
       #expect(!rig.panel.isShowing)
       for _ in 0..<4 {
@@ -2638,6 +2856,7 @@
       case .couldNotStart: "couldNotStart"
       case .firstTip: "firstTip"
       case .lastTip(let app): "lastTip:\(app)"
+      case .stillInMeeting(let seconds): "stillInMeeting:\(seconds)"
       }
     }
   }

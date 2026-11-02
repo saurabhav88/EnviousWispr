@@ -57,6 +57,9 @@
         content: .switchNotConfirmed(.app(.zoom, bundleID: nil))),
       .init(id: "needsAttention", title: "Needs your attention", content: .needsAttention),
       .init(id: "couldNotStart", title: "Could not start recording", content: .couldNotStart),
+      .init(
+        id: "stillInMeeting", title: "Still in a meeting? (10 quiet minutes)",
+        content: .stillInMeeting(secondsLeft: 30)),
     ]
 
     /// A fixed id for the preview's ready card; Open on a preview never opens anything.
@@ -72,6 +75,7 @@
       switch content {
       case .ask, .switchMeeting: CallDetectionPolicy.promptTimeout
       case .countdown: CallDetectionPolicy.countdownLength
+      case .stillInMeeting: CallDetectionPolicy.silenceAnswer
       case .switchNotConfirmed: CallDetectionPolicy.stoppedOffer
       case .notesWriting: CallDetectionCoordinator.notesWritingCap
       case .notesReady: CallDetectionCoordinator.notesReadyLength
@@ -171,16 +175,22 @@
       }
       guard let deadline = current.deadline else { return }
       let left = deadline.timeIntervalSince(now())
-      if case .countdown(let identity, _) = current.content {
+      if current.content.hasTimer {
         if left > 0 {
           // Same rounding as `CallDetectionCoordinator`.
-          let next = CallPromptContent.countdown(identity, secondsLeft: max(1, Int(ceil(left))))
+          let seconds = max(1, Int(ceil(left)))
+          let next: CallPromptContent =
+            if case .countdown(let identity, _) = current.content {
+              .countdown(identity, secondsLeft: seconds)
+            } else {
+              .stillInMeeting(secondsLeft: seconds)
+            }
           if next != current.content {
             playing?.content = next
             presenter.show(next, actions: actions(generation: current.generation, content: next))
           }
         } else {
-          // A real call end hands the countdown over to the notes cards.
+          // A real timer end hands the card over to the notes cards (#4232, #4249).
           show(current.entry, content: .notesWriting, chained: true)
         }
         return

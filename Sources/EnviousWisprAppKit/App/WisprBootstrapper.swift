@@ -1865,7 +1865,7 @@ package final class WisprBootstrapper {
         requestMeetingStart: { [meetingBox] in
           await meetingBox.startFlow?.requestStart(from: .menu)
         },
-        stopMeeting: { [meetingBox] in await meetingBox.coordinator?.stop() },
+        stopMeeting: { [meetingBox] in await meetingBox.coordinator?.stop(reason: .user) },
         meetingMenuFacts: { [meetingBox] in
           guard let coordinator = meetingBox.coordinator else { return nil }
           return MeetingsPresentation.MenuFacts(
@@ -2789,7 +2789,9 @@ package final class WisprBootstrapper {
       dependencies: .init(
         settings: settings,
         meetingPhase: { [weak meetingCoordinator] in meetingCoordinator?.phase ?? .idle },
-        stopMeeting: { [weak meetingCoordinator] in await meetingCoordinator?.stop() },
+        stopMeeting: { [weak meetingCoordinator] reason in
+          await meetingCoordinator?.stop(reason: reason)
+        },
         requestStart: { [weak meetingStartFlow] family in
           await meetingStartFlow?.requestStart(from: .detected, callApp: family) ?? .notIdle
         },
@@ -2830,6 +2832,14 @@ package final class WisprBootstrapper {
         },
         callSoundCaptured: { [weak meetingCoordinator] in
           meetingCoordinator?.callSoundCaptured(meetingID: $0) ?? false
+        },
+        // #4249: far-side live words hold a microphone-release countdown.
+        liveTranscript: { [weak meetingCoordinator] in meetingCoordinator?.liveTranscript },
+        // #4249: call link, countdown trigger and Keep count for `meeting.ended`.
+        noteCallFacts: { [weak meetingCoordinator] meetingID, facts in
+          meetingCoordinator?.noteCallFacts(
+            meetingID: meetingID, link: facts.link, endTrigger: facts.endTrigger,
+            keepCount: facts.keepCount)
         }),
       discovery: callSources)
     meetingBox.callDetection = callDetection

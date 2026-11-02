@@ -70,6 +70,7 @@
       case .couldNotStart: "couldNotStart"
       case .firstTip: "firstTip"
       case .lastTip: "lastTip"
+      case .stillInMeeting: "stillInMeeting"
       }
     }
 
@@ -80,7 +81,7 @@
         Set(names) == [
           "ask", "switchMeeting", "countdown", "endConfirmation", "switchNotConfirmed",
           "notesWriting", "notesReady", "manualStart", "needsAttention", "couldNotStart",
-          "firstTip", "lastTip",
+          "firstTip", "lastTip", "stillInMeeting",
         ])
       let ids = CallPopupPreviewCatalog.all.map(\.id)
       #expect(Set(ids).count == ids.count)
@@ -111,6 +112,17 @@
       rig.advance(0.5)
       #expect(!rig.panel.isShowing)
       #expect(rig.controller.outcome == .notShown("a real call pop-up appeared"))
+    }
+
+    @Test("#4249: Still in a meeting? ticks down from 30 and hands over to Writing your notes")
+    func stillInMeetingTicksDown() {
+      let rig = Rig()
+      rig.play("stillInMeeting")
+      #expect(rig.panel.content == .stillInMeeting(secondsLeft: 30))
+      rig.advance(1.2)
+      #expect(rig.panel.content == .stillInMeeting(secondsLeft: 29))
+      rig.advance(28.8)
+      #expect(rig.panel.content == .notesWriting)
     }
 
     @Test("the countdown ticks down, hands over to Writing your notes, then Your notes are ready")
@@ -194,7 +206,8 @@
       arguments: [
         ("askTeams", "yes", "Start recording"), ("switchMeeting", "yes", "Start recording"),
         ("switchMeeting", "no", "Not now"), ("endConfirmation", "keepRecording", "Keep recording"),
-        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "endRecording", "End recording"),
+        ("endConfirmation", "stopRecording", "Stop recording"), ("countdown", "endRecording", "End recording"), ("countdown", "keepRecording", "Keep recording"),
+        ("stillInMeeting", "keepRecording", "Keep recording"), ("stillInMeeting", "endRecording", "End recording"),
         ("switchNotConfirmed", "startNewRecording", "Start recording"), ("switchNotConfirmed", "no", "Not now"),
         ("notesReady", "open", "Open"), ("needsAttention", "openSettings", "Open settings"),
       ])

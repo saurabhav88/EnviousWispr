@@ -891,7 +891,7 @@ struct MeetingSummaryOwnerTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
     coordinator.documents.setNotes(meetingID, "Ask Priya")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     let ended = try #require(harness.ended.last)
     #expect(ended.summaryPlan == .scheduled)
@@ -914,7 +914,7 @@ struct MeetingSummaryOwnerTests {
     rig.world.holdCalls = true
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("old call") { rig.world.callsWaiting == 1 }
     let previous: UUID
     do {
@@ -958,7 +958,7 @@ struct MeetingSummaryOwnerTests {
     coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(rig.world.finished.isEmpty, "no summary without a published row")
     #expect(try harness.store.loadDocuments(meeting: meetingID).manifest.summaryPending == true)
@@ -1004,11 +1004,11 @@ struct MeetingSummaryOwnerTests {
     }
     await coordinator.start(from: .history)
     let first = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.livePassFinished(coordinator, first)
     await coordinator.start(from: .history)
     let second = try #require(coordinator.meetings.first(where: { $0.id != first })?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.livePassFinished(coordinator, second)
     await Self.eventually("both waiting") { rig.lane.summaryWaiting == 2 }
 
@@ -1049,7 +1049,7 @@ struct MeetingSummaryOwnerTests {
     coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(harness.ended.last?.summaryPlan == .off)
     #expect(harness.ended.last?.hasNotes == false)
@@ -1066,7 +1066,7 @@ struct MeetingSummaryOwnerTests {
     coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
     await coordinator.start(from: .history)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
     await coordinator.delete(meetingID: meetingID)
     await Self.eventually("cancelled") { rig.world.finished.count == 1 }
@@ -1219,7 +1219,7 @@ struct MeetingSummaryOwnerTests {
     // Settled in the same turn as the ready row: read at that moment.
     var rowsAtEnd: [MeetingSummaryFinishedTelemetry]?
     harness.onEnded = { _ in rowsAtEnd = rig.world.finished }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     // #4198: the mark settles after the History publication that follows `.ready`.
     await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
     #expect(harness.ended.last?.summaryPlan == .scheduled)

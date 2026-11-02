@@ -16,7 +16,8 @@ final class CallDetectionCoordinator {
   struct Dependencies {
     var settings: SettingsManager
     var meetingPhase: @MainActor () -> MeetingCoordinator.Phase
-    var stopMeeting: @MainActor () async -> Void
+    /// `MeetingCoordinator.stop(reason:)`: the policy names the route (#4249).
+    var stopMeeting: @MainActor (MeetingEndedTelemetry.StopReason) async -> Void
     /// A Start for a call (`MeetingStartFlow.requestStart(from: .detected, callApp:)`).
     var requestStart: @MainActor (CallAppFamily?) async -> MeetingStartFlow.Outcome
     /// The user's own Start from the panel (Start recording on the failed-switch card): the manual route, which
@@ -52,6 +53,14 @@ final class CallDetectionCoordinator {
     var showMeeting: @MainActor (UUID) -> Void = { _ in }
     /// #4232: whether the Mac's sound is being captured for this recording now.
     var callSoundCaptured: @MainActor (UUID) -> Bool = { _ in false }
+    /// #4249: the recording's live words (`MeetingCoordinator.liveTranscript`), read to hold a
+    /// microphone-release countdown while the far side still speaks.
+    var liveTranscript: @MainActor () -> MeetingLiveWords.Transcript? = { nil }
+    /// #4249: the wall clock `MeetingCoordinator.Phase.recording(startedAt:)` is stamped with;
+    /// only its difference to `startedAt` is used, mapped into `now`'s clock.
+    var wallNow: @MainActor () -> Date = { Date() }
+    /// #4249: `MeetingCoordinator.noteCallFacts`, for `meeting.ended`.
+    var noteCallFacts: @MainActor (UUID, CallDetectionPolicy.CallFacts) -> Void = { _, _ in }
   }
 
   /// #4232 card lifetimes: the writing card's cap, the ready card, the menu-bar start card.
@@ -122,6 +131,23 @@ final class CallDetectionCoordinator {
   }
   private var manualCard: ManualCard?
   private var ownGeneration = 0
+  /// #4249: the call track's live-word progress for one recording: the furthest word end seen
+  /// and when (in `now`'s clock) it last advanced. Reset when the recording changes.
+  private struct CallWords {
+    let meetingID: UUID
+    /// The first running snapshot (even an empty one) only sets the baseline.
+    var baselineSet = false
+    var maxEndMs: Int?
+    var advancedAt: Date?
+    /// Any track, for the silence backstop: the furthest word end and when words last
+    /// advanced (or, at the first sighting, when existing words were first seen).
+    var anyBaselineSet = false
+    var anyMaxEndMs: Int?
+    var anyWordsAt: Date?
+  }
+  private var callWords: CallWords?
+  /// #4249: the call facts last handed to the meeting, so only a change is sent.
+  private var reportedFacts: (meetingID: UUID, facts: CallDetectionPolicy.CallFacts)?
 
   init(dependencies: Dependencies, discovery: CallSourceDiscovery? = nil) {
     deps = dependencies
@@ -250,6 +276,8 @@ final class CallDetectionCoordinator {
     }
     let commands = policy.settledStart(request, recordingID: matching, current)
     logManualLink(request)
+    // #4249: the link outcome is known now; a menu Stop before the next tick must carry it.
+    reportCallFacts(current)
     // The failed-switch card's own Start recording rides the menu route but is no menu-bar
     // start; the flow marks it, also across the call-sound explainer.
     if request.route == .menu, !request.fromCallPanel, let matching {
@@ -283,12 +311,75 @@ final class CallDetectionCoordinator {
     let settings = deps.settings
     var switchAnswered = false
     if forPress, case .switchCall = policy.interaction { switchAnswered = true }
+    var recordingSince: Date?
+    if case .recording(_, let startedAt) = deps.meetingPhase() {
+      // Wall-clock age, placed on `now`'s (uptime) clock.
+      recordingSince = now.addingTimeInterval(-max(0, deps.wallNow().timeIntervalSince(startedAt)))
+    }
     return .init(
       now: now, meeting: meeting, dictationActive: deps.dictationActive(), mode: mode,
       appsOff: appsOff, setUp: settings.meetingOnboardingComplete,
       startBlocked: switchAnswered && deps.detectedStartIsBlocked(),
       firstTipShown: settings.meetingCallFirstTipShown,
-      noCounts: Self.counts(settings.meetingCallNoCounts))
+      noCounts: Self.counts(settings.meetingCallNoCounts),
+      callWordsAt: projectCallWords(meeting, now), recordingSince: recordingSince,
+      anyWordsAt: callWords?.anyWordsAt, wordsHealthy: wordsHealthy(meeting))
+  }
+
+  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`, a CURRENT state): live words
+  /// run on EVERY captured track. One dead track (the call sound's live words stopped while the
+  /// far side talks) must not let a quiet microphone read as silence. `droppedAudio` is a latch
+  /// (once any audio was ever dropped) and says nothing about now, so it is not used: in Live UAT
+  /// 2026-11-02 both tracks latched it early and the question could never come.
+  private func wordsHealthy(_ meeting: CallDetectionPolicy.Meeting) -> Bool {
+    guard case .recording(let meetingID) = meeting, let transcript = deps.liveTranscript(),
+      transcript.meetingID == meetingID
+    else { return false }
+    let captured = transcript.tracks.values.filter { $0.status != .off(.notCaptured) }
+    return !captured.isEmpty && captured.allSatisfy { $0.status == .running }
+  }
+
+  /// #4249: when the call track's live words last advanced for the current recording, or nil
+  /// when that track's live words do not run. Advancing means the furthest word end moved
+  /// forward (a new or extended line); a text-only correction does not count. The first sighting
+  /// of a recording only sets the baseline.
+  private func projectCallWords(_ meeting: CallDetectionPolicy.Meeting, _ now: Date) -> Date? {
+    guard case .recording(let meetingID) = meeting else {
+      callWords = nil
+      return nil
+    }
+    if callWords?.meetingID != meetingID { callWords = CallWords(meetingID: meetingID) }
+    guard let transcript = deps.liveTranscript(), transcript.meetingID == meetingID else { return nil }
+    if var words = callWords {
+      // Any track (silence backstop): new or extended CONFIRMED words (Wispr Flow counts finals);
+      // never a text-only edit, and never a provisional line, which in Live UAT kept extending a
+      // lone "." through ten minutes of silence.
+      let furthest = transcript.lines.filter { $0.kind == .confirmed }.map(\.endMs).max()
+      if !words.anyBaselineSet {
+        words.anyBaselineSet = true
+        words.anyMaxEndMs = furthest
+        if furthest != nil { words.anyWordsAt = now }
+      } else if let furthest, furthest > (words.anyMaxEndMs ?? Int.min) {
+        words.anyMaxEndMs = furthest
+        words.anyWordsAt = now
+      }
+      callWords = words
+    }
+    guard transcript.tracks[.callSound]?.status == .running else { return nil }
+    let furthest = transcript.lines.filter { $0.track == .callSound && $0.kind == .confirmed }
+      .map(\.endMs).max()
+    if var words = callWords {
+      if !words.baselineSet {
+        words.baselineSet = true
+        words.maxEndMs = furthest
+      } else if let furthest, furthest > (words.maxEndMs ?? Int.min) {
+        // Includes an empty snapshot's first words.
+        words.maxEndMs = furthest
+        words.advancedAt = now
+      }
+      callWords = words
+    }
+    return callWords?.advancedAt
   }
 
   private func step() {
@@ -297,6 +388,7 @@ final class CallDetectionCoordinator {
     let current = context()
     let commands = policy.step(current)
     logDecision(current, commands)
+    reportCallFacts(current)
     draw()
     run(commands)
     discovery.pruneTrackedCalls()
@@ -308,6 +400,7 @@ final class CallDetectionCoordinator {
     let current = context(forPress: press)
     let commands = policy.handle(event, current)
     logDecision(current, commands)
+    reportCallFacts(current)
     draw()
     run(commands)
   }
@@ -336,6 +429,16 @@ final class CallDetectionCoordinator {
     }
   }
 
+  /// #4249: hands the recording's call facts to the meeting when they change, before any stop
+  /// can freeze its `meeting.ended` row.
+  private func reportCallFacts(_ current: CallDetectionPolicy.Context) {
+    guard case .recording(let meetingID) = current.meeting else { return }
+    let facts = policy.callFacts(for: meetingID)
+    if let reportedFacts, reportedFacts.meetingID == meetingID, reportedFacts.facts == facts { return }
+    reportedFacts = (meetingID, facts)
+    deps.noteCallFacts(meetingID, facts)
+  }
+
   /// #4249: one content-free line per hand start (menu bar or History) naming the check that
   /// linked it to a call or refused to. An unlinked recording is never stopped by its call ending.
   private func logManualLink(_ request: CallDetectionPolicy.AcceptedStart) {
@@ -360,7 +463,7 @@ final class CallDetectionCoordinator {
           let outcome = await self.deps.startByUser(family)
           self.deliver(.startFinished(operation: operation, Self.result(outcome)))
         }
-      case .stop(let operation, let meetingID):
+      case .stop(let operation, let meetingID, let reason):
         let target = refreshRequest(policy.refreshTarget(operation: operation))
         // #4232: frozen before the stop can suspend, so the notes card follows this recording's
         // attempt and never one that replaced it meanwhile.
@@ -369,7 +472,9 @@ final class CallDetectionCoordinator {
           // Only the recording the policy meant: one started since (from the menu) is never
           // stopped by a late command.
           if case .recording(meetingID, _) = self.deps.meetingPhase() {
-            await self.deps.stopMeeting()
+            // The facts first: a Keep in the same step must reach the row this stop freezes.
+            self.reportCallFacts(self.context())
+            await self.deps.stopMeeting(reason)
           }
           // Fresh readings first: a switch checks the new call against them.
           await self.refreshNow(target)
@@ -555,6 +660,8 @@ final class CallDetectionCoordinator {
       }
     case .note(.needsAttention, _): .needsAttention
     case .note(.couldNotStart, _): .couldNotStart
+    case .stillInMeeting(_, let deadline):
+      .stillInMeeting(secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
     }
   }
 
@@ -567,8 +674,8 @@ final class CallDetectionCoordinator {
       keepRecording: press(.keepRecording), endRecording: press(.endRecording),
       startNewRecording: press(.startNewRecording), openSettings: press(.openSettings),
       dismiss: press(.close))
-    if case .countdown = content {
-      // #4232: × hides the countdown and changes nothing else; the recording still stops.
+    if content.hasTimer {
+      // #4232, #4249: × hides a timer card and changes nothing else; the recording still stops.
       actions.dismiss = { [weak self] in
         guard let self, self.policy.token == token else { return }
         self.hiddenToken = token

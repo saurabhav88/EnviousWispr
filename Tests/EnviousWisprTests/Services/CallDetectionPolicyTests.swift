@@ -225,8 +225,10 @@ struct CallDetectionPolicyTests {
     #expect(s.answers == [.yes])
   }
 
-  @Test("Microphone inactivity or disappearance alone never ends a policy-owned recording",
-    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"), arguments: [true, false])
+  // #4249 superseded #4142's "microphone loss is not call end" for OWNED episodes (see the
+  // release tests under Ending). An episode with no verified app run still never ends on it.
+  @Test("Microphone loss never ends a recording whose call has no verified app run",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"), arguments: [true, false])
   func microphoneLossIsNotCallEnd(missing: Bool) throws {
     var story = Story()
     story.mode = .startByItself
@@ -238,7 +240,7 @@ struct CallDetectionPolicyTests {
     story.hold(holders, for: 2)
     if case .countdown = story.interaction { Issue.record("microphone loss is not ended proof") }
     story.hold(holders, for: 20)
-    #expect(story.lastStop == nil, "no independent ended observation was supplied")
+    #expect(story.lastStop == nil, "an unowned episode's release is unknown, never an end")
   }
 
   @Test("Two completed scoped end reads cross microphone polls; a cached ID and ticks cannot confirm")
@@ -478,8 +480,10 @@ struct CallDetectionPolicyTests {
     #expect(!isCountdown(s.interaction), "the new run has only one ended observation")
   }
 
+  // #4249: the `.inactive` row moved to `browserReleaseStartsCountdown`: a browser that releases
+  // the microphone now ends its linked call by founder decision. Unknown input keeps this contract.
   @Test("An old same-room browser page end never stops a recording without an answer",
-    arguments: [Policy.Input.active, .inactive])
+    arguments: [Policy.Input.active, .unknown])
   func unansweredBrowserPageEndNeverStopsRecording(microphone: Policy.Input) {
     var s = Story()
     let call = Self.chrome(.active, url: Self.meetA)
@@ -598,7 +602,9 @@ struct CallDetectionPolicyTests {
     end(&s, [call], call: call)
     s.wait(Policy.questionInterval)
     s.observeCall(.unknown, holder: call)
-    s.ready([Self.zoom(.active)])
+    // #4249: the browser stays listed with its microphone on; a browser gone from the complete
+    // listing would now be a release.
+    s.ready([Self.zoom(.active), call])
     #expect(isSwitch(s.interaction))
     s.press(.stopRecording)
     #expect(s.stops == 0)
@@ -704,7 +710,7 @@ struct CallDetectionPolicyTests {
     #expect(isCountdown(s.interaction), "only scoped Zoom end, not foreign-family uncertainty, owns its end")
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
     #expect(s.stops == 1)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
   }
 
   @Test("An old Stop cannot regain presentation after a newer recording has come and gone",
@@ -816,7 +822,7 @@ struct CallDetectionPolicyTests {
     end(&s, [Self.zoom(.inactive)], call: call, sourceObservation: (replacement, owner))
     #expect(isCountdown(s.interaction), "the replacement's real ownership supports the matching manual fallback")
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, recording) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, recording, _) = $0 { true } else { false } })
     #expect(s.starts.isEmpty)
   }
 
@@ -913,7 +919,7 @@ struct CallDetectionPolicyTests {
     end(&s)
     #expect(isCountdown(s.interaction))
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.starts.isEmpty)
   }
 
@@ -1028,7 +1034,7 @@ struct CallDetectionPolicyTests {
     end(&s)
     #expect(isCountdown(s.interaction))
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.stops == 1 && s.starts.isEmpty)
   }
 
@@ -1104,7 +1110,7 @@ struct CallDetectionPolicyTests {
     s.ready([zoom, meet])
     #expect(isSwitch(s.interaction))
     s.press(.yes)
-    #expect(s.commands.contains { if case .stop(_, id) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, id, _) = $0 { true } else { false } })
     #expect(s.answers == [.switchYes], "adoption itself added no Yes or autoStarted")
   }
 
@@ -1240,6 +1246,10 @@ struct CallDetectionPolicyTests {
     var pending: [Policy.Source] = []
     var observations: [Policy.ContinuityObservation] = []
     var nextObservation = 1
+    var callWordsAt: Date?
+    var recordingSince: Date?
+    var anyWordsAt: Date?
+    var wordsHealthy = false
 
     /// Explicit test facts, never inferred from microphone state or absent windows.
     mutating func observeCall(_ value: CallEvidenceReader.Continuity, holder: Policy.Holder,
@@ -1284,7 +1294,8 @@ struct CallDetectionPolicyTests {
       .init(
         now: now, meeting: meeting, dictationActive: dictation, mode: mode, appsOff: appsOff,
         setUp: setUp, startBlocked: startBlocked, firstTipShown: firstTipShown,
-        noCounts: noCounts)
+        noCounts: noCounts, callWordsAt: callWordsAt, recordingSince: recordingSince,
+        anyWordsAt: anyWordsAt, wordsHealthy: wordsHealthy)
     }
 
     var interaction: Policy.Interaction { policy.interaction }
@@ -1354,7 +1365,7 @@ struct CallDetectionPolicyTests {
     }
 
     var lastStop: Int? {
-      for command in commands.reversed() { if case .stop(let id, _) = command { return id } }
+      for command in commands.reversed() { if case .stop(let id, _, _) = command { return id } }
       return nil
     }
 
@@ -1729,6 +1740,308 @@ struct CallDetectionPolicyTests {
 
   // MARK: - Ending
 
+  /// #4249: a Zoom recording whose app was seen using the microphone after linking, old enough
+  /// that a release may start the countdown.
+  func armedZoom() -> Story {
+    var s = recordingZoom()
+    s.hold([Self.zoom(.active)], for: Policy.minRecordingAge)
+    return s
+  }
+
+  /// Two microphone readings with Zoom released, `seconds` apart.
+  func release(_ s: inout Story, after seconds: TimeInterval = 2, _ holders: [Policy.Holder] = [zoom(.inactive)]) {
+    s.wait(1)
+    s.read(holders)
+    s.wait(seconds)
+    s.read(holders)
+  }
+
+  @Test("#4249: a confirmed microphone release starts the countdown and the deadline stops once",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"), arguments: [false, true])
+  func releaseStartsCountdown(missing: Bool) {
+    var s = armedZoom()
+    let holders = missing ? [] : [Self.zoom(.inactive)]
+    release(&s, holders)
+    #expect(isCountdown(s.interaction), "inactive or gone from the complete listing is released")
+    s.hold(holders, for: Policy.countdownLength)
+    #expect(s.stops == 1)
+    s.hold(holders, for: 4)
+    #expect(s.stops == 1, "the deadline stops exactly once")
+    s.stopFinished()
+    #expect(s.followed == [.zoom])
+  }
+
+  @Test("#4249: a browser that releases the microphone ends its linked call like a native app")
+  func browserReleaseStartsCountdown() {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    s.hold([call], for: Policy.minRecordingAge)
+    release(&s, [Self.chrome(.inactive, url: Self.meetA)])
+    #expect(isCountdown(s.interaction))
+    s.hold([Self.chrome(.inactive, url: Self.meetA)], for: Policy.countdownLength)
+    #expect(s.stops == 1)
+  }
+
+  @Test("#4249: a release that comes back before confirmation shows nothing")
+  func quickReleaseShowsNothing() {
+    var s = armedZoom()
+    s.read([Self.zoom(.inactive)])
+    s.wait(1.4)
+    s.read([Self.zoom(.inactive)])
+    #expect(!isCountdown(s.interaction), "1.4 s is under the 1.5 s confirmation")
+    s.wait(0.5)
+    s.read([Self.zoom(.active)])
+    s.hold([Self.zoom(.active)], for: 6)
+    #expect(s.interaction == .none && s.stops == 0)
+  }
+
+  @Test("#4249: unknown input, a partial or ambiguous reading never confirms a release",
+    arguments: [0, 1, 2])
+  func uncertainReadingsNeverRelease(kind: Int) {
+    var s = armedZoom()
+    for _ in 0..<6 {
+      s.wait(2)
+      switch kind {
+      case 0: s.read([Self.zoom(.unknown)])
+      case 1: s.read([Self.zoom(.inactive)], complete: false)
+      default: s.read([Self.zoom(.inactive)], ambiguous: true)
+      }
+    }
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+  }
+
+  @Test("#4249: presentation ticks cannot confirm a release; a later microphone reading must")
+  func ticksCannotConfirmRelease() {
+    var s = armedZoom()
+    s.read([Self.zoom(.inactive)])
+    s.wait(3)
+    s.step()
+    s.step()
+    #expect(!isCountdown(s.interaction), "no newer reading confirmed the interval")
+    s.read([Self.zoom(.inactive)])
+    #expect(isCountdown(s.interaction))
+  }
+
+  @Test("#4249: a release before the app used the microphone again after linking never arms")
+  func linkBoundaryArmsOnlyOnNewerActiveReading() {
+    var s = recordingZoom()
+    s.hold([Self.zoom(.inactive)], for: Policy.minRecordingAge + 6)
+    #expect(!isCountdown(s.interaction), "the active readings before linking cannot arm")
+    s.read([Self.zoom(.active)])
+    release(&s)
+    #expect(isCountdown(s.interaction))
+  }
+
+  @Test("#4249: a release in the first 15 s of a recording waits for exactly that age")
+  func minimumRecordingAge() {
+    var s = recordingZoom()
+    let start = s.now
+    s.recordingSince = start
+    s.wait(1)
+    s.read([Self.zoom(.active)])
+    for second in stride(from: 2.0, through: 14.0, by: 2.0) {
+      s.now = start.addingTimeInterval(second)
+      s.read([Self.zoom(.inactive)])
+      #expect(!isCountdown(s.interaction), "age \(second) s")
+    }
+    s.now = start.addingTimeInterval(Policy.minRecordingAge)
+    s.read([Self.zoom(.inactive)])
+    #expect(isCountdown(s.interaction), "the confirming reading at age 15 s starts it")
+  }
+
+  @Test("#4249: unknown or stale window evidence does not cancel a release countdown; ongoing does",
+    arguments: [0, 1, 2])
+  func releaseCountdownSurvivesWindowUncertainty(kind: Int) {
+    var s = armedZoom()
+    release(&s)
+    #expect(isCountdown(s.interaction))
+    switch kind {
+    case 0: s.observeCall(.unknown, holder: Self.zoom(.active))
+    case 1: s.wait(Policy.staleAfter)
+    default: s.observeCall(.ongoing(family: .zoom, room: "w"), holder: Self.zoom(.active))
+    }
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
+    if kind == 2 {
+      #expect(s.stops == 0, "fresh ongoing evidence cancels the countdown")
+    } else {
+      #expect(s.stops == 1)
+    }
+  }
+
+  @Test("#4249: the app taking the microphone back cancels a release countdown")
+  func activeReadCancelsReleaseCountdown() {
+    var s = armedZoom()
+    release(&s)
+    #expect(isCountdown(s.interaction))
+    s.wait(2)
+    s.read([Self.zoom(.active)])
+    #expect(s.interaction == .none)
+    s.hold([Self.zoom(.active)], for: Policy.countdownLength)
+    #expect(s.stops == 0)
+  }
+
+  @Test("#4249: far-side words hold the release countdown, at most 25 s after the release")
+  func farSideHold() {
+    var s = armedZoom()
+    s.callWordsAt = s.now
+    s.wait(1)
+    s.read([Self.zoom(.inactive)])
+    let released = s.now
+    for _ in 0..<6 {
+      s.callWordsAt = s.now
+      s.wait(2)
+      s.read([Self.zoom(.inactive)])
+    }
+    #expect(!isCountdown(s.interaction), "words within 5 s hold it")
+    while s.now.timeIntervalSince(released) < Policy.farSideHoldCap {
+      s.callWordsAt = s.now
+      s.wait(2)
+      s.read([Self.zoom(.inactive)])
+    }
+    #expect(isCountdown(s.interaction), "the hold ends 25 s after the release began")
+  }
+
+  @Test("#4249: far-side words during a release countdown pause it and keep its remaining time")
+  func farSidePausePreservesRemainingTime() {
+    var t = armedZoom()
+    release(&t)
+    #expect(isCountdown(t.interaction))
+    t.wait(4)
+    t.callWordsAt = t.now
+    t.read([Self.zoom(.inactive)])
+    #expect(t.interaction == .none && t.stops == 0, "paused with about 6 s left; the card hides")
+    t.hold([Self.zoom(.inactive)], for: 6)
+    #expect(isCountdown(t.interaction), "resumed once the far side was quiet for 5 s")
+    guard case .countdown(_, let deadline) = t.interaction else { return }
+    #expect(abs(deadline.timeIntervalSince(t.now) - 6) < 0.01, "the remaining time is kept")
+    t.hold([Self.zoom(.inactive)], for: 4)
+    #expect(t.stops == 0)
+    t.hold([Self.zoom(.inactive)], for: 2)
+    #expect(t.stops == 1)
+  }
+
+  @Test("#4249: a paused countdown resumes through unknown readings; speech pauses it during unknown",
+    arguments: [true, false])
+  func pauseFollowsWordsThroughUnknown(pausedFirst: Bool) {
+    var t = armedZoom()
+    release(&t)
+    #expect(isCountdown(t.interaction))
+    let hiddenToken = t.policy.token
+    if pausedFirst {
+      t.wait(2)
+      t.callWordsAt = t.now
+      t.read([Self.zoom(.inactive)])
+      #expect(t.interaction == .none)
+      t.hold([Self.zoom(.unknown)], for: 6)
+      #expect(isCountdown(t.interaction), "resumed although the microphone reads unknown")
+      #expect(t.policy.token == hiddenToken, "the same countdown keeps its token, so a hidden card stays hidden")
+      t.hold([Self.zoom(.unknown)], for: 8)
+      #expect(t.stops == 1)
+    } else {
+      t.wait(2)
+      t.callWordsAt = t.now
+      t.read([Self.zoom(.unknown)])
+      #expect(t.interaction == .none && t.stops == 0, "speech pauses it while the microphone is unknown")
+    }
+  }
+
+  @Test("#4249: the app's known microphone use wins over another process's unknown input")
+  func activeEpisodeInputWinsOverUnknown() {
+    var s = armedZoom()
+    release(&s)
+    #expect(isCountdown(s.interaction))
+    s.wait(2)
+    s.read([Self.zoom(.active), Self.zoom(.unknown, evidence: nil, pid: 101)])
+    #expect(s.interaction == .none, "the call came back")
+    s.hold([Self.zoom(.active), Self.zoom(.unknown, evidence: nil, pid: 101)], for: Policy.countdownLength)
+    #expect(s.stops == 0)
+  }
+
+  @Test("#4249: an unresolved helper or a changed source identity cannot prove a release",
+    arguments: [false, true])
+  func unresolvedSourcesNeverRelease(changedIdentity: Bool) {
+    var s = armedZoom()
+    var holders = [Self.zoom(.inactive)]
+    if changedIdentity {
+      s.sources.append(Policy.Source(id: 999, pid: 100, rule: .callWindow(.zoom)))
+    } else {
+      holders.append(Self.zoom(.active, evidence: nil, pid: 101))
+    }
+    s.hold(holders, for: 20)
+    #expect(!isCountdown(s.interaction) && s.stops == 0)
+  }
+
+  @Test("#4249: a release returning before the 15 s age never shows a card")
+  func releaseReturningBeforeMinimumAge() {
+    var s = recordingZoom()
+    s.recordingSince = s.now
+    s.wait(1)
+    s.read([Self.zoom(.active)])
+    release(&s)
+    s.wait(2)
+    s.read([Self.zoom(.active)])
+    s.hold([Self.zoom(.active)], for: Policy.minRecordingAge + 4)
+    #expect(s.interaction == .none && s.stops == 0)
+  }
+
+  @Test("#4249: taking the microphone back after releasing it cancels a window countdown")
+  func windowCountdownCancelledByReacquisition() {
+    var s = recordingZoom()
+    end(&s)
+    #expect(isCountdown(s.interaction), "window proof with the microphone released")
+    s.wait(1)
+    s.read([Self.zoom(.active)])
+    #expect(s.interaction == .none)
+    s.hold([Self.zoom(.active)], for: Policy.countdownLength + 2)
+    #expect(s.stops == 0, "old window proof was consumed")
+  }
+
+  @Test("#4249: Keep or × on Did your call end? re-arms on the next real release",
+    arguments: [Policy.Button.keepRecording, .close])
+  func endConfirmationKeepRearms(button: Policy.Button) {
+    var s = recordingBrowser()
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    #expect(isEndConfirmation(s.interaction))
+    s.press(button)
+    #expect(s.interaction == .none)
+    s.hold([call], for: Policy.minRecordingAge)
+    release(&s, [Self.chrome(.inactive, url: Self.meetA)])
+    #expect(isCountdown(s.interaction), "a new active-then-release cycle")
+  }
+
+  @Test("#4249: Keep on a release countdown keeps the meeting and re-arms on the next real release",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"))
+  func releaseKeepRearms() {
+    var s = armedZoom()
+    release(&s)
+    let firstToken = s.policy.token
+    s.press(.keepRecording)
+    #expect(s.interaction == .none && s.stops == 0)
+    s.hold([Self.zoom(.inactive)], for: 20)
+    #expect(!isCountdown(s.interaction), "no new active reading: disarmed")
+    end(&s)
+    #expect(!isCountdown(s.interaction), "Keep blocks the window path too")
+    s.wait(2)
+    s.read([Self.zoom(.active)])
+    release(&s)
+    #expect(isCountdown(s.interaction), "a new active-then-release cycle asks again")
+    #expect(s.policy.token != firstToken)
+    s.press(.endRecording)
+    #expect(s.stops == 1)
+  }
+
+  @Test("#4249: wake holdoff clears a release in progress")
+  func wakeClearsRelease() {
+    var s = armedZoom()
+    s.read([Self.zoom(.inactive)])
+    s.policy.noteWakeOrRestart(at: s.now)
+    s.hold([Self.zoom(.inactive)], for: Policy.wakeHoldoff - 2)
+    #expect(!isCountdown(s.interaction))
+    s.hold([Self.zoom(.inactive)], for: 4)
+    #expect(isCountdown(s.interaction), "after the holdoff a fresh release counts")
+  }
+
   @Test("a detected meeting counts down after the call ends, then stops and follows its notes")
   func countdownThenStop() {
     var s = recordingZoom()
@@ -1840,14 +2153,18 @@ struct CallDetectionPolicyTests {
     #expect(s.followed == [.zoom] && s.interaction == .none)
   }
 
-  @Test("the countdown has no Keep: the old button does nothing and the deadline still stops")
-  func countdownHasNoKeep() {
+  @Test("#4249: Keep on a window countdown keeps the meeting; old window proof cannot restart it",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"))
+  func countdownKeepKeepsRecording() {
     var s = recordingZoom()
     end(&s)
-    s.press(.keepRecording)
     #expect(isCountdown(s.interaction))
-    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.stops == 1)
+    s.press(.keepRecording)
+    #expect(s.interaction == .none)
+    s.hold([Self.zoom(.inactive)], for: Policy.countdownLength + 4)
+    end(&s)
+    #expect(!isCountdown(s.interaction) && s.stops == 0,
+      "window proof waits for a new active-then-release cycle")
   }
 
   @Test("a failed switch's Not now only closes: no No answer and no refusal count")
@@ -1906,6 +2223,232 @@ struct CallDetectionPolicyTests {
     t.stopFinished()
     #expect(isAsk(t.interaction, .googleMeet), "the newer question keeps the panel")
     #expect(t.followed.isEmpty)
+  }
+
+  // MARK: - Stop provenance (#4249)
+
+  func lastStopReason(_ s: Story) -> MeetingEndedTelemetry.StopReason? {
+    for command in s.commands.reversed() { if case .stop(_, _, let reason) = command { return reason } }
+    return nil
+  }
+
+  @Test("#4249: every automatic stop names its route",
+    arguments: ["deadline", "end", "confirmed", "switch", "silence", "silenceEnd"])
+  func stopReasons(route: String) {
+    switch route {
+    case "deadline", "end":
+      var s = recordingZoom()
+      end(&s)
+      if route == "end" { s.press(.endRecording) } else { s.hold([Self.zoom(.inactive)], for: Policy.countdownLength) }
+      #expect(lastStopReason(s) == (route == "end" ? .callEndButton : .callCountdown))
+    case "confirmed":
+      var s = recordingBrowser()
+      let call = Self.chrome(.active, url: Self.meetA)
+      end(&s, [call], call: call)
+      s.press(.stopRecording)
+      #expect(lastStopReason(s) == .callEndConfirmed)
+    case "switch":
+      var s = recordingZoom()
+      s.wait(Policy.questionInterval)
+      s.ready([Self.zoom(.active), Self.chrome(.active, url: Self.meetA)])
+      s.press(.yes)
+      #expect(lastStopReason(s) == .callSwitch)
+    default:
+      var s = quietRecording()
+      quiet(&s, for: Policy.silenceAsk)
+      if route == "silenceEnd" { s.press(.endRecording) } else { quiet(&s, for: Policy.silenceAnswer) }
+      #expect(lastStopReason(s) == (route == "silenceEnd" ? .silenceEndButton : .silenceTimeout))
+    }
+  }
+
+  @Test("#4249: Keep on Did your call end? counts once; its x keeps recording but does not count",
+    arguments: [Policy.Button.keepRecording, .close])
+  func endConfirmationKeepCount(button: Policy.Button) {
+    var s = recordingBrowser()
+    guard case .recording(let m) = s.meeting else { Issue.record("not recording"); return }
+    let call = Self.chrome(.active, url: Self.meetA)
+    end(&s, [call], call: call)
+    s.press(button)
+    #expect(s.interaction == .none)
+    #expect(s.policy.callFacts(for: m).keepCount == (button == .keepRecording ? 1 : 0))
+  }
+
+  @Test("#4249: call facts: prompt or auto link, the countdown trigger and every card's Keep")
+  func callFactsRecorded() {
+    var s = armedZoom()
+    guard case .recording(let m) = s.meeting else { Issue.record("not recording"); return }
+    #expect(s.policy.callFacts(for: m).link == .prompt)
+    release(&s)
+    s.press(.keepRecording)
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    s.hold([Self.zoom(.active)], for: Policy.silenceAsk + 2)
+    #expect(isStillInMeeting(s.interaction))
+    s.press(.keepRecording)
+    let facts = s.policy.callFacts(for: m)
+    #expect(facts.endTrigger == .micRelease && facts.keepCount == 2)
+    var auto = Story()
+    auto.mode = .startByItself
+    auto.ongoing(Self.zoom(.active))
+    auto.startFinished(.recording(meetingID: UUID()))
+    guard case .recording(let a) = auto.meeting else { return }
+    #expect(auto.policy.callFacts(for: a).link == .auto)
+  }
+
+  // MARK: - Silence backstop (#4249, Wispr Flow tickSilence)
+
+  /// A recording with no call (hand-started), healthy live words, words heard just now.
+  func quietRecording() -> Story {
+    var s = Story()
+    s.meeting = .recording(meetingID: UUID())
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    s.step()
+    return s
+  }
+
+  /// Presentation ticks every 2 s for `seconds`, nothing heard.
+  func quiet(_ s: inout Story, for seconds: TimeInterval) {
+    var left = seconds
+    while left > 0 {
+      s.wait(min(2, left))
+      left -= 2
+      s.step()
+    }
+  }
+
+  func isStillInMeeting(_ i: Policy.Interaction) -> Bool {
+    if case .stillInMeeting = i { return true }
+    return false
+  }
+
+  @Test("#4249: 10 quiet healthy minutes ask Still in a meeting?; 30 s later the recording stops once",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"))
+  func silenceAsksThenStops() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk - 2)
+    #expect(s.interaction == .none, "598 s")
+    quiet(&s, for: 2)
+    #expect(isStillInMeeting(s.interaction), "600 s")
+    quiet(&s, for: Policy.silenceAnswer - 2)
+    #expect(s.stops == 0)
+    quiet(&s, for: 2)
+    #expect(s.stops == 1 && s.interaction == .none)
+    quiet(&s, for: 4)
+    #expect(s.stops == 1, "exactly once")
+    s.stopFinished()
+    #expect(s.commands.contains { if case .followNotes(_, nil) = $0 { true } else { false } },
+      "the notes card follows a recording with no call")
+  }
+
+  @Test("#4249: never asks before any words were heard, or while live words are unhealthy",
+    arguments: [false, true])
+  func silenceNeedsWordsAndHealth(unhealthy: Bool) {
+    var s = Story()
+    s.meeting = .recording(meetingID: UUID())
+    s.wordsHealthy = !unhealthy
+    s.anyWordsAt = unhealthy ? s.now : nil
+    s.step()
+    quiet(&s, for: Policy.silenceAsk + 20)
+    #expect(s.interaction == .none)
+  }
+
+  @Test("#4249: an unhealthy moment, new words or a long gap restart or limit the silence count",
+    arguments: ["unhealthy", "words", "gap"])
+  func silenceResets(kind: String) {
+    var s = quietRecording()
+    quiet(&s, for: 500)
+    switch kind {
+    case "unhealthy":
+      s.wordsHealthy = false
+      s.wait(2)
+      s.step()
+      s.wordsHealthy = true
+    case "words":
+      s.anyWordsAt = s.now
+      s.step()
+    default:
+      s.wait(3_600) // a sleep: one step counts at most 2 s
+      s.step()
+    }
+    quiet(&s, for: kind == "gap" ? 96 : 110)
+    #expect(s.interaction == .none, "the count restarted (or the gap added at most 2 s)")
+    if kind == "gap" {
+      quiet(&s, for: 2)
+      #expect(isStillInMeeting(s.interaction), "500 + 2 + 98 s")
+    }
+  }
+
+  @Test("#4249: new words withdraw the question; Keep restarts the 10 minutes; End stops now",
+    arguments: ["words", "keep", "end"])
+  func silenceAnswers(kind: String) {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+    switch kind {
+    case "words":
+      s.anyWordsAt = s.now
+      s.step()
+    case "keep": s.press(.keepRecording)
+    default: s.press(.endRecording)
+    }
+    if kind == "end" {
+      #expect(s.stops == 1)
+      return
+    }
+    #expect(s.interaction == .none && s.stops == 0)
+    quiet(&s, for: Policy.silenceAsk - 2)
+    #expect(s.interaction == .none, "a fresh 10 minutes")
+    quiet(&s, for: 2)
+    #expect(isStillInMeeting(s.interaction))
+  }
+
+  @Test("#4249: a call countdown replaces the Still in a meeting? question")
+  func silencePrecedence() {
+    var s = recordingZoom()
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    // The first step sees the words arrive (count 0), then 300 quiet 2 s steps.
+    s.hold([Self.zoom(.active)], for: Policy.silenceAsk + 2)
+    #expect(isStillInMeeting(s.interaction))
+    end(&s, [Self.zoom(.active)])
+    #expect(isCountdown(s.interaction), "the call's end outranks the silence question")
+  }
+
+  @Test("#4249: a replaced recording withdraws the question; an old stop never follows the new one")
+  func silenceReplacementFence() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+    s.meeting = .recording(meetingID: UUID())
+    s.step()
+    #expect(s.interaction == .none, "another recording now")
+    var t = quietRecording()
+    quiet(&t, for: Policy.silenceAsk + Policy.silenceAnswer)
+    #expect(t.stops == 1)
+    t.stopFinished(meetingAfter: .recording(meetingID: UUID()))
+    #expect(!t.commands.contains { if case .followNotes = $0 { true } else { false } })
+  }
+
+  @Test("#4249: turning call detection Off and On again starts the silence count over")
+  func silenceRestartsAfterDetectionOff() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk - 2)
+    s.mode = .off
+    s.step()
+    s.mode = .ask
+    quiet(&s, for: 4)
+    #expect(s.interaction == .none, "a fresh 10 minutes, as Wispr Flow does when auto-end is off")
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+  }
+
+  @Test("#4249: with call detection Off there is no silence question (today's behavior)")
+  func silenceOffWhenDetectionOff() {
+    var s = quietRecording()
+    s.mode = .off
+    quiet(&s, for: Policy.silenceAsk + 40)
+    #expect(s.interaction == .none && s.stops == 0)
   }
 
   // MARK: - Starts and switches
@@ -2114,7 +2657,8 @@ struct CallDetectionPolicyTests {
     #expect(s.interaction == .none)
     s.read([Self.chromeUnknown(.active)])
     #expect(s.interaction == .none, "an unreadable page changes nothing")
-    end(&s, [Self.chromeUnknown(.inactive)], call: Self.chrome(.active, url: Self.meetA))
+    // #4249: microphone still on, so this is the page-end consent path, not a release.
+    end(&s, [Self.chromeUnknown(.active)], call: Self.chrome(.active, url: Self.meetA))
     #expect(isEndConfirmation(s.interaction), "scoped page-end proof asks while another tab is selected")
     #expect(s.stops == 0)
     s.press(.stopRecording)
@@ -2276,7 +2820,7 @@ struct CallDetectionPolicyTests {
     s.startFinished(.recording(meetingID: m))
     end(&s)
     s.hold([Self.zoom(.inactive)], for: Policy.countdownLength)
-    #expect(s.commands.contains { if case .stop(_, m) = $0 { true } else { false } })
+    #expect(s.commands.contains { if case .stop(_, m, _) = $0 { true } else { false } })
   }
 
   @Test("a Yes pressed in time is never lost to the timeout while it is checked")

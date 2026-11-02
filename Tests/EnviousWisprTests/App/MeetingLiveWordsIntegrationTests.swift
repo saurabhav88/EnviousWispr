@@ -224,7 +224,7 @@ struct MeetingLiveWordsIntegrationTests {
     // Recorded while the live work stays held.
     rig.speak(Array(mic[1_600...]))
     rig.play(Array(call[1_600...]))
-    await Self.bounded("Stop", gate: gate) { await rig.coordinator.stop() }
+    await Self.bounded("Stop", gate: gate) { await rig.coordinator.stop(reason: .user) }
     if held == .end {
       await PreviewWait.within("an end held", onExpiry: gate.open) { await gate.reached(1) }
     }
@@ -264,7 +264,7 @@ struct MeetingLiveWordsIntegrationTests {
     #expect(world.languages == [.locked("ja-JP")])
     #expect(MeetingLiveWordsTests.status(rig.owner, .callSound) == .off(.notCaptured))
     #expect(world.appleEngines.count == 1, "no recognizer for the call sound it did not record")
-    await rig.coordinator.stop()
+    await rig.coordinator.stop(reason: .user)
     #expect(await rig.owner.waitForCleanups(seconds: 10))
   }
 
@@ -305,7 +305,7 @@ struct MeetingLiveWordsIntegrationTests {
       ($0.transcript?.lines.map(\.text) ?? []) == ["Live line."]
     }
     rig.speak(Self.micPattern(16_000))  // a second of audio, so the pass has something to read
-    await rig.coordinator.stop()
+    await rig.coordinator.stop(reason: .user)
     await PreviewWait.within("the pass", onExpiry: passGate.open) { await passGate.reached(1) }
     #expect(rig.coordinator.liveTranscript?.lines.map(\.text) == ["Live line."], "kept meanwhile")
     passGate.open()
@@ -339,7 +339,7 @@ struct MeetingLiveWordsIntegrationTests {
       ($0.transcript?.lines.map(\.text) ?? []) == ["Live line."]
     }
     rig.speak(Self.micPattern(16_000))
-    await rig.coordinator.stop()
+    await rig.coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.eventually("the pass failed") {
       rig.coordinator.record(id: meetingID)?.state == .failed
     }

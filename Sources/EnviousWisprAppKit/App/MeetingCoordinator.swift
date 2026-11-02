@@ -631,7 +631,7 @@ final class MeetingCoordinator {
         audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
-        speakerNaming: speakerNaming, muteFollow: facts.muteFollow)
+        speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance)
     }
   }
 
@@ -644,6 +644,9 @@ final class MeetingCoordinator {
     var muteFollow: MuteFollowSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
+    /// #4249: the stop reason (first accepted stop wins) and the call facts call detection
+    /// reported for this recording. Nil until either is known.
+    var provenance: MeetingEndedTelemetry.Provenance?
   }
   /// Meetings whose files a timed-out close still owns this session (only `stopForQuit` can time
   /// out; a normal stop awaits the physical close). Nothing reads, promotes or removes them
@@ -1137,7 +1140,7 @@ final class MeetingCoordinator {
     guard isCurrentStart(generation) else { return .superseded(meetingID: meetingID) }
     if !wantedAfterCapture {
       // Still `.starting` with this meeting active: Stop closes its recorder.
-      await stop()
+      await stop(reason: .failed)
       await delete(meetingID: meetingID)
       return .superseded(meetingID: nil)
     }
@@ -1329,8 +1332,34 @@ final class MeetingCoordinator {
     startQueueIfNeeded()
   }
 
-  /// Stops the recording (also while it is still starting) and queues its pass.
-  func stop() async {
+  /// #4249: call detection's facts about this recording (link, last countdown trigger, Keep
+  /// count), kept on its open attempt for `meeting.ended`. A meeting that is not this attempt's
+  /// is ignored.
+  func noteCallFacts(
+    meetingID: UUID, link: MeetingEndedTelemetry.CallLink?,
+    endTrigger: MeetingEndedTelemetry.EndTrigger?, keepCount: Int
+  ) {
+    guard openAttempts[meetingID] != nil else { return }
+    var provenance = openAttempts[meetingID]?.provenance ?? .init()
+    provenance.callLink = link ?? provenance.callLink
+    provenance.endTrigger = endTrigger ?? provenance.endTrigger
+    provenance.keepCount = keepCount
+    openAttempts[meetingID]?.provenance = provenance
+  }
+
+  /// #4249: the first accepted stop's reason is frozen on the attempt; a later stop or a late
+  /// completion cannot replace it.
+  private func freezeStopReason(_ reason: MeetingEndedTelemetry.StopReason, for meetingID: UUID) {
+    guard openAttempts[meetingID] != nil, openAttempts[meetingID]?.provenance?.stopReason == nil
+    else { return }
+    var provenance = openAttempts[meetingID]?.provenance ?? .init()
+    provenance.stopReason = reason
+    openAttempts[meetingID]?.provenance = provenance
+  }
+
+  /// Stops the recording (also while it is still starting) and queues its pass. `reason` says
+  /// which route stopped it (#4249); every caller names one.
+  func stop(reason: MeetingEndedTelemetry.StopReason) async {
     let meetingID: UUID
     switch phase {
     case .recording(let id, _): meetingID = id
@@ -1345,6 +1374,7 @@ final class MeetingCoordinator {
       meetingID = id
     case .idle, .stopping: return
     }
+    freezeStopReason(reason, for: meetingID)
     startGeneration += 1
     phase = .stopping(meetingID: meetingID)
     // #4013 chunk 13A: speaker capture closes now; its final save lands before the pass reads it.
@@ -1481,7 +1511,7 @@ final class MeetingCoordinator {
     {
       notice = .stoppedLowDisk
       openAttempts[meetingID]?.diskStopped = true
-      await stop()
+      await stop(reason: .disk)
     }
   }
 
@@ -1497,7 +1527,7 @@ final class MeetingCoordinator {
       notice = .callSoundFailed
     }
     await persist(record)
-    if track == .microphone, meetingID == activeMeetingID { await stop() }
+    if track == .microphone, meetingID == activeMeetingID { await stop(reason: .failed) }
   }
 
   private func endActivity() {
@@ -2180,8 +2210,8 @@ final class MeetingCoordinator {
     // A summary being written ends, and has physically ended before the folder is removed.
     await summaries?.cancelAndWait(meetingID)
     switch phase {
-    case .recording(let id, _) where id == meetingID: await stop()
-    case .starting where activeMeetingID == meetingID: await stop()
+    case .recording(let id, _) where id == meetingID: await stop(reason: .user)
+    case .starting where activeMeetingID == meetingID: await stop(reason: .user)
     case .stopping(let id) where id == meetingID:
       // Its files are still closing: wait for the Stop to finish before removing them.
       await MeetingWorkAdmission.waitUntil { [weak self] in
@@ -2384,6 +2414,7 @@ final class MeetingCoordinator {
     // Also a recorder whose Stop is still closing its files: that Stop's continuation returns
     // without writing once `quitting` is set.
     self.recorder = nil
+    freezeStopReason(.quit, for: meetingID)
     let report = recorder.stopForQuit(deadline: deadline)
     adoptCallSoundSummary(report, for: meetingID)
     adoptMuteSummary(for: meetingID, health: recorder.microphoneHealth)

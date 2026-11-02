@@ -4173,7 +4173,24 @@ public final class TelemetryService {
       if let share = mute.silencedShare { props["mute_silenced_share_bucket"] = meetingShareBucket(share) }
       if let share = mute.unknownShare { props["mute_unknown_share_bucket"] = meetingShareBucket(share) }
     }
+    // #4249: stop provenance; each key only when known (a recovered attempt has none).
+    if let provenance = event.provenance {
+      if let reason = provenance.stopReason { props["stop_reason"] = reason.rawValue }
+      if let link = provenance.callLink { props["call_link"] = link.rawValue }
+      if let trigger = provenance.endTrigger { props["end_trigger"] = trigger.rawValue }
+      if let keeps = provenance.keepCount { props["keep_count_bucket"] = meetingKeepCountBucket(keeps) }
+    }
     return props
+  }
+
+  /// #4249: Keep recording presses in one recording: `0`, `1`, `2`, `3+`.
+  static func meetingKeepCountBucket(_ count: Int) -> String {
+    switch count {
+    case ...0: return "0"
+    case 1: return "1"
+    case 2: return "2"
+    default: return "3+"
+    }
   }
 
   /// #4248: a share of eligible time: `0`, `<5%`, `5-25%`, `25-50%`, `50-75%`, `75%+`.

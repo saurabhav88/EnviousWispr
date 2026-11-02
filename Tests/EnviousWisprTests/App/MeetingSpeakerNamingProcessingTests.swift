@@ -73,7 +73,7 @@ struct MeetingSpeakerNamingProcessingTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     try beforeStop(meetingID)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -138,7 +138,7 @@ struct MeetingSpeakerNamingProcessingTests {
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
     try harness.store.saveCallSpeakers(try CallSpeakerTestLog.meet(), meeting: meetingID)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("pass parked") { gate.parked }
     try harness.store.saveCallSpeakers(
       try CallSpeakerTestLog.meet(talking: "Priya Shah"), meeting: meetingID)

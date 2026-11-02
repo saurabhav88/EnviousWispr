@@ -661,7 +661,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("save in flight") { saving.parked }
     #expect(coordinator.record(id: meetingID)?.state == .ready)
     #expect(coordinator.processing?.meetingID == meetingID)
@@ -699,7 +699,7 @@ struct MeetingCoordinatorTests {
     #expect(harness.activitiesBegun == 1)
     let meetingID = try onlyMeeting(harness).id
 
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.livePassFinished(coordinator, meetingID)
 
     #expect(harness.recorders.first?.stopCalls == 1)
@@ -734,7 +734,7 @@ struct MeetingCoordinatorTests {
         harness.freeBytes = 0
         harness.writeGate.failNext(failedSaves)
 
-        await coordinator.stop()
+        await coordinator.stop(reason: .user)
 
         let record = try #require(coordinator.liveRecordForTesting(meetingID))
         #expect(record.state != .recording)
@@ -772,7 +772,7 @@ struct MeetingCoordinatorTests {
       gate.failNext(1)
       defer { gate.release.signal() }
 
-      let stopping = Task { await coordinator.stop() }
+      let stopping = Task { await coordinator.stop(reason: .user) }
       // The semaphore must wait off the main actor so Stop and rename can enter while held.
       try #require(
         await Task.detached { Self.waitBlocking(gate.entered) }.value == .success,
@@ -806,7 +806,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     // #4218: the pass ends with its publication failed; completion is not publication.
     await Self.livePassFinished(coordinator, meetingID)
     #expect(harness.saved.isEmpty)
@@ -851,7 +851,7 @@ struct MeetingCoordinatorTests {
     #expect(held.coordinator.phase == .starting)
     #expect(box.refusesDictation(turnedOff: true))
     #expect(box.refusesDictation(turnedOff: false) == false, "the switch is off")
-    await held.coordinator.stop()
+    await held.coordinator.stop(reason: .user)
     await starting.value
     #expect(box.refusesDictation(turnedOff: true) == false, "idle after a Stop during start")
 
@@ -867,7 +867,7 @@ struct MeetingCoordinatorTests {
     #expect(box.refusesDictation(turnedOff: true))
     let closing = Gate()
     try #require(harness.recorders.first).stopGate = closing
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     await Self.eventually("stopping") { closing.parked }
     guard case .stopping = coordinator.phase else {
       Issue.record("expected stopping, got \(coordinator.phase)")
@@ -889,7 +889,7 @@ struct MeetingCoordinatorTests {
     await Self.eventually("start parked") { harness.recorders.first?.startParked == true }
     #expect(coordinator.phase == .starting)
 
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await starting.value
 
     #expect(harness.recorders.count == 1)
@@ -947,7 +947,7 @@ struct MeetingCoordinatorTests {
     // The lookup and the record use one start time.
     #expect(harness.calendarLookups == [meeting.createdAt])
     #expect(try harness.store.load(id: meeting.id).title == "Customer sync: Acme")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   /// #4286: a calendar event with these invitees (Dana organizes) for the Start lookup to return.
@@ -981,7 +981,7 @@ struct MeetingCoordinatorTests {
     #expect(saved.calendarEvents.map(\.title) == ["Acme renewal"])
     #expect(saved.attendees.map(\.name) == ["Dana Lee", "Li Wu"])
     #expect(saved.facts.allSatisfy { $0.capturedAt == meeting.createdAt && $0.source == "calendar.eventkit" })
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(harness.store.loadContext(meeting: meeting.id) == .loaded(saved), "a Stop keeps them")
   }
 
@@ -991,7 +991,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .menu)
     let meeting = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("idle") { !coordinator.isWorkInFlight }
     #expect(harness.store.loadContext(meeting: meeting.id) == .absent)
     #expect(coordinator.documents.context(meeting.id) == nil)
@@ -1004,7 +1004,7 @@ struct MeetingCoordinatorTests {
     harness.calendar = Self.calendarEvent("First", invitees: ["Ana"])
     await coordinator.start(from: .menu)
     let first = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     harness.calendar = Self.calendarEvent("Second", invitees: ["Bo"])
     await coordinator.start(from: .menu)
     let second = try #require(coordinator.meetings.map(\.id).first { $0 != first })
@@ -1014,7 +1014,7 @@ struct MeetingCoordinatorTests {
     }
     #expect(coordinator.documents.context(first)?.attendees.map(\.name) == ["Ana"])
     #expect(coordinator.documents.context(second)?.attendees.map(\.name) == ["Bo"])
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("deleting a meeting whose facts are being saved leaves no facts and no folder")
@@ -1024,7 +1024,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .menu)
     let meetingID = try #require(coordinator.meetings.first?.id)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await coordinator.delete(meetingID: meetingID)
     await Self.eventually("nothing pending") {
       !coordinator.documents.hasPendingWork && coordinator.queuedFileOperations == 0
@@ -1040,7 +1040,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .menu)
     #expect(try onlyMeeting(harness).title == nil)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("a Stop during the calendar lookup creates nothing, and its late name is dropped")
@@ -1052,7 +1052,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let starting = Task { await coordinator.start(from: .menu) }
     await Self.eventually("lookup parked") { gate.parked }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     gate.open()
     let outcome = await starting.value
     #expect(outcome == .superseded(meetingID: nil))
@@ -1085,7 +1085,7 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     #expect(coordinator.isRecording)
     #expect(harness.recorders.count == 1)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("a file whose close timed out is never read now; launch recovery takes it")
@@ -1096,7 +1096,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try onlyMeeting(harness).id
     try #require(harness.recorders.first).report = MeetingRecorder.StopReport(
       microphone: .timedOut, callSound: nil)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
 
     let record = try harness.store.load(id: meetingID)
     #expect(record.state == .interrupted)
@@ -1132,7 +1132,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try onlyMeeting(harness).id
     try #require(harness.recorders.first).report = MeetingRecorder.StopReport(
       microphone: .timedOut, callSound: nil)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(harness.jobs.isEmpty)
 
     // Next launch: recovered from the files on disk and processed.
@@ -1159,7 +1159,7 @@ struct MeetingCoordinatorTests {
       return
     }
     #expect(coordinator.isMeetingActive, "recording")
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("processing") { hold.parked }
     #expect(coordinator.isMeetingActive, "its final pass runs")
     hold.open()
@@ -1199,7 +1199,7 @@ struct MeetingCoordinatorTests {
     }
     #expect(relaunched.jobs.flatMap(\.receivedLanguages) == ["de"])
 
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     _ = await starting.value
   }
 
@@ -1217,7 +1217,7 @@ struct MeetingCoordinatorTests {
     }
     // Meeting A (Auto) is processing and held; meeting B (German) waits in the queue.
     await coordinator.start(from: .history)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("A processing") { hold.parked }
     harness.language = .locked("de")
     guard case .recording(let meetingB) = await coordinator.start(from: .history) else {
@@ -1225,7 +1225,7 @@ struct MeetingCoordinatorTests {
       hold.open()
       return
     }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(coordinator.record(id: meetingB)?.state == .queued)
     harness.language = .locked("fr")
     hold.open()
@@ -1266,7 +1266,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try onlyMeeting(harness).id
     try #require(harness.recorders.first).report = MeetingRecorder.StopReport(
       microphone: .failed, callSound: nil)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(try harness.store.load(id: meetingID).trackStatus[.microphone] == .failed)
   }
@@ -1345,7 +1345,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let record = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("pass parked") { gate.parked }
     #expect(coordinator.isMeetingModelWorkActive == false)
 
@@ -1390,7 +1390,7 @@ struct MeetingCoordinatorTests {
     let record = try onlyMeeting(harness)
     let closing = Gate()
     try #require(harness.recorders.first).stopGate = closing
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     await Self.eventually("stopping") { closing.parked }
     let deletion = Task { await coordinator.delete(meetingID: record.id) }
     await Self.eventually("marked") { coordinator.record(id: record.id)?.deletionRequested == true }
@@ -1412,7 +1412,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.livePassFinished(coordinator, meetingID)
 
     #expect(await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]))
@@ -1437,7 +1437,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -1468,7 +1468,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -1493,7 +1493,7 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     // Stop ends by saving the notes, which queue behind the held save: it runs on its own.
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     // The `.processing` save is held: the pass already owns the meeting (#3994).
     #expect(coordinator.processing?.meetingID == meetingID)
@@ -1519,12 +1519,12 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
     harness.freeBytes = 10
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     harness.freeBytes = 50_000_000_000
     await coordinator.start(from: .history)
     let otherID = try #require(coordinator.meetings.first { $0.id != meetingID }?.id)
     harness.freeBytes = 10
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("waits for space") {
       coordinator.queueWaitsForSpace && coordinator.record(id: otherID)?.state == .queued
     }
@@ -1554,7 +1554,7 @@ struct MeetingCoordinatorTests {
     harness.writeGate.failWrites(inState: .processing)
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("queue stopped") {
       coordinator.processing == nil && !coordinator.hasFinalPassWork
     }
@@ -1572,7 +1572,7 @@ struct MeetingCoordinatorTests {
     gate.holdNext { $0.state == .processing }
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     #expect(coordinator.playbackSource(meetingID: meetingID) != nil, "not yet being deleted")
     let deleting = Task { await coordinator.delete(meetingID: meetingID) }
@@ -1597,7 +1597,7 @@ struct MeetingCoordinatorTests {
     gate.holdNext { $0.state == .processing }
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     coordinator.prepareForTermination(deadline: .now() + 0.5)
     gate.release.signal()
@@ -1614,7 +1614,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -1704,7 +1704,7 @@ struct MeetingCoordinatorTests {
 
     // Low disk keeps the queue from starting the pass, whose folder scan would replace the list.
     harness.freeBytes = 0
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.drainMeetingFiles()
     let writes = harness.writeGate.written.withLock { Array($0.dropFirst(before)) }
     let recording = writes.filter { $0.state == .recording }
@@ -1950,7 +1950,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let first = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") { coordinator.record(id: first)?.state == .ready }
 
     harness.jobBehavior = { _ in
@@ -1958,7 +1958,7 @@ struct MeetingCoordinatorTests {
       throw MeetingTranscriptionJob.JobError.cancelled
     }
     await coordinator.start(from: .history)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("second pass parked") { gate.parked }
     coordinator.prepareForTermination()
     #expect(harness.jobs.last?.cancelled == true)
@@ -1977,7 +1977,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try onlyMeeting(harness).id
     let closing = Gate()
     try #require(harness.recorders.first).stopGate = closing
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     await Self.eventually("stopping") { closing.parked }
     let deadline = DispatchTime.now() + 1
     coordinator.prepareForTermination(deadline: deadline)
@@ -2024,7 +2024,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let record = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("save in flight") { saving.parked }
     // The main actor is free during the write: this test body runs.
     #expect(coordinator.isWorkInFlight)
@@ -2068,7 +2068,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let record = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     // MainActor must stay free here; this blocking waiter runs independently. Task inherits
     // MainActor, a task group does not offload blocking work, and an @concurrent helper is
     // unnecessary for one wait.
@@ -2142,7 +2142,7 @@ struct MeetingCoordinatorTests {
     #expect(busy() == false)
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     // Recovery is held on its worker thread. The claim (`processing`) comes before the read is
     // counted, so the wait is on the read itself (#4031).
     let recoverySignal = harness.recoveryEntered
@@ -2182,7 +2182,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.phase == .starting, "the newer Start is untouched")
     let firstID = try #require(harness.recorders.first).configuration.meetingID
     await Self.eventually("first processed") { coordinator.record(id: firstID)?.state == .ready }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await second.value
     #expect(harness.recorders.last?.stopCalls == 1)
   }
@@ -2197,7 +2197,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let record = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("save in flight") { saving.parked }
     let deletion = Task { await coordinator.delete(meetingID: record.id) }
     await Self.eventually("marked") { coordinator.record(id: record.id)?.deletionRequested == true }
@@ -2218,7 +2218,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("save in flight") { saving.parked }
     await coordinator.rename(meetingID: meetingID, title: "Board sync")
     saving.open()
@@ -2261,7 +2261,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     let detected = Task { await coordinator.start(from: .detected, callApp: .zoom) }
     await Self.eventually("check parked") { gate.parked }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     harness.detectedGate = nil
     #expect(await coordinator.start(from: .history) != .superseded(meetingID: nil))
     guard case .recording(let newer, _) = coordinator.phase else {
@@ -2295,7 +2295,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.livePassFinished(coordinator, meetingID)
     await coordinator.assignAITitle(meetingID: meetingID, title: "Launch plan")
     #expect(try harness.store.load(id: meetingID).title == "Launch plan")
@@ -2356,7 +2356,7 @@ struct MeetingCoordinatorTests {
     await Self.eventually("published") {
       coordinator.record(id: meetingID)?.segments[.microphone]?.count == 1
     }
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
   }
 
   @Test("ready is shown only once its write succeeded; a pending write blocks a relaunch")
@@ -2373,7 +2373,7 @@ struct MeetingCoordinatorTests {
       isRecovering: { false }, isMinting: { false }, meetings: coordinator)
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     #expect(coordinator.record(id: meetingID)?.state == .processing)
     #expect(busy())
@@ -2398,7 +2398,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready write failed") {
       coordinator.notice == .storageFailed && coordinator.processing == nil
     }
@@ -2456,7 +2456,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("stalled") {
       coordinator.notice == .storageFailed && coordinator.processing == nil
         && !coordinator.hasFinalPassWork
@@ -2516,7 +2516,7 @@ struct MeetingCoordinatorTests {
     }
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("queue ended without it") {
       coordinator.processing == nil && !coordinator.hasFinalPassWork
     }
@@ -2570,12 +2570,12 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let first = try onlyMeeting(harness).id
     harness.freeBytes = 10
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     harness.freeBytes = 50_000_000_000
     await coordinator.start(from: .history)
     let second = try #require(coordinator.meetings.first { $0.id != first }?.id)
     harness.freeBytes = 10
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("both wait") {
       coordinator.queueWaitsForSpace && coordinator.record(id: second)?.state == .queued
     }
@@ -2649,7 +2649,7 @@ struct MeetingCoordinatorTests {
     let gate = harness.writeGate
     // The queued-state write of the Stop.
     gate.arm()
-    let stopping = Task { await coordinator.stop() }
+    let stopping = Task { await coordinator.stop(reason: .user) }
     #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
     #expect(busy())
     gate.release.signal()
@@ -2744,7 +2744,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2779,7 +2779,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2810,7 +2810,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2890,7 +2890,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2920,7 +2920,7 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .history)
     let meeting = try onlyMeeting(harness)
     let meetingID = meeting.id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -2975,7 +2975,7 @@ struct MeetingCoordinatorTests {
       await coordinator.start(from: .history)
       let id = try #require(coordinator.meetings.first { !ids.contains($0.id) }?.id)
       ids.append(id)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await Self.eventually("ready") {
         coordinator.record(id: id)?.state == .ready && coordinator.processing == nil
       }
@@ -3026,7 +3026,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -3054,7 +3054,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meeting = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meeting.id)?.state == .ready && coordinator.processing == nil
     }
@@ -3083,7 +3083,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
@@ -3123,7 +3123,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meeting = try onlyMeeting(harness)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("ready") {
       coordinator.record(id: meeting.id)?.state == .ready && coordinator.processing == nil
     }
@@ -3213,7 +3213,7 @@ struct MeetingCoordinatorTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("pass running") { job.parked }
     await Self.drainMeetingFiles()
     let gate = harness.writeGate
@@ -3260,7 +3260,7 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.isCapturing)
     #expect(coordinator.isWorkInFlight)
     let meetingID = try onlyMeeting(harness).id
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("unit running") { gate.parked }
     #expect(coordinator.isMeetingModelWorkActive)
     #expect(coordinator.isWorkInFlight)
@@ -3300,7 +3300,7 @@ struct MeetingCoordinatorTests {
     let meetingID = try #require(coordinator.meetings.first?.id)
     // The disk fills during the recording: after Stop the meeting is queued and waits.
     harness.freeBytes = 10
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await Self.eventually("waits for space") { coordinator.queueWaitsForSpace }
     let queued = try #require(coordinator.record(id: meetingID))
     #expect(queued.state == .queued)

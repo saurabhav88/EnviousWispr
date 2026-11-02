@@ -41,7 +41,7 @@ import Testing
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
       echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
       engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil,
-      muteFollow: MuteFollowSummary? = nil
+      muteFollow: MuteFollowSummary? = nil, provenance: MeetingEndedTelemetry.Provenance? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
@@ -49,7 +49,34 @@ import Testing
         processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
         summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
-        speakerNaming: speakerNaming, muteFollow: muteFollow)
+        speakerNaming: speakerNaming, muteFollow: muteFollow, provenance: provenance)
+    }
+
+    @Test("#4249: stop provenance adds four closed strings; Keep presses travel as a bucket",
+      arguments: [(0, "0"), (1, "1"), (2, "2"), (3, "3+"), (9, "3+")])
+    func provenanceFields(keeps: Int, bucket: String) throws {
+      let row = try #require(
+        capture(
+          event(
+            provenance: .init(
+              stopReason: .callCountdown, callLink: .prompt, endTrigger: .micRelease,
+              keepCount: keeps))))
+      #expect(row.stringProps["stop_reason"] == "call_countdown")
+      #expect(row.stringProps["call_link"] == "prompt")
+      #expect(row.stringProps["end_trigger"] == "mic_release")
+      #expect(row.stringProps["keep_count_bucket"] == bucket)
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(["stop_reason", "call_link", "end_trigger", "keep_count_bucket"]))
+    }
+
+    @Test("#4249: unknown provenance sends none of the four keys; a known part sends only itself")
+    func provenanceOmitted() throws {
+      let none = try #require(capture(event()))
+      #expect(Set(none.stringProps.keys).isDisjoint(with: ["stop_reason", "call_link", "end_trigger", "keep_count_bucket"]))
+      let partial = try #require(capture(event(provenance: .init(stopReason: .user))))
+      #expect(partial.stringProps["stop_reason"] == "user")
+      #expect(partial.stringProps["call_link"] == nil && partial.stringProps["keep_count_bucket"] == nil)
     }
 
     private static let speakerNameKeys: Set<String> = [

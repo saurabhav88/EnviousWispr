@@ -37,7 +37,9 @@ struct MeetingIdleObserverTests {
       let deadline = Task { @MainActor [weak self] in
         // deadline-fallback: fail loudly and release a missing-signal wait.
         try? await Task.sleep(for: .seconds(5))
-        guard let self, let (_, c) = self.waiting else { return }
+        // #4343: a cancelled sleep returns at once; without this the stale deadline would
+        // fail and release the NEXT wait.
+        guard !Task.isCancelled, let self, let (_, c) = self.waiting else { return }
         Issue.record("read #\(n) never happened", sourceLocation: sourceLocation)
         self.waiting = nil
         c.resume()

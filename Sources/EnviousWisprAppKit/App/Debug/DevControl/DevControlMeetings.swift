@@ -113,7 +113,7 @@
       guard case .recording(let recording, _) = coordinator.phase, recording == meetingID else {
         return .failure(.notRecording, "that meeting is not the one recording")
       }
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       guard let record = coordinator.record(id: meetingID) else {
         return .ok(["meetingID": meetingID.uuidString, "stopped": true, "state": NSNull()])
       }

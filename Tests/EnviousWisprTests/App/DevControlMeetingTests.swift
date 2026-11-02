@@ -187,7 +187,7 @@
       let coordinator = rig.harness.coordinator
       await coordinator.start(from: .menu)
       let meetingID = try #require(coordinator.meetings.first?.id)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
       let saved = try #require(rig.harness.saved.first)
       try await rig.history.coordinator.saveAndShowDurably(saved)
@@ -235,7 +235,7 @@
       let meetingID = try #require(coordinator.meetings.first?.id).uuidString
       let busy = await rig.call("meeting.deleteAudio", ["meetingID": meetingID])
       #expect(Self.code(busy) == "busy")
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       // Ready is published a moment before the pass ends; the door refuses while it runs.
       await MeetingCoordinatorTests.eventually("ready") {
         coordinator.record(id: UUID(uuidString: meetingID)!)?.state == .ready
@@ -262,7 +262,7 @@
       let coordinator = rig.harness.coordinator
       await coordinator.start(from: .menu)
       let meetingID = try #require(coordinator.meetings.first?.id)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       // #4218: the History row is published after `.ready`; the pass ends after it.
       await MeetingCoordinatorTests.livePassFinished(coordinator, meetingID)
       return meetingID
@@ -283,7 +283,7 @@
       }
       await coordinator.start(from: .history)
       let meetingID = try #require(coordinator.meetings.first?.id)
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
       await MeetingCoordinatorTests.eventually("stalled") {
         coordinator.processing == nil && !coordinator.hasFinalPassWork
           && coordinator.record(id: meetingID)?.state == .processing
@@ -453,7 +453,7 @@
       #expect(detection["pendingCycles"] as? Int == 0)
       #expect(detection["completedDecodes"] as? Int == 4)
       #expect(countedTracks["callSound"]?["detection"] is NSNull)
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
@@ -482,7 +482,7 @@
       }
       let reading = Task { await live.owner.detectionReports() }
       await hold.reached(1)
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       hold.open()
       let reports = await reading.value
       #expect(reports.isEmpty, "a recording that ended during the reads reports nothing: \(reports.keys)")
@@ -587,7 +587,7 @@
       }
       #expect(world.forcings == [.apple])
       #expect(world.appleEngines.count == 1 && world.shared.isEmpty)
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
@@ -616,7 +616,7 @@
       }
       #expect(world.forcings == [.apple])
       #expect(world.appleEngines.count == 1 && world.shared.isEmpty)
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
 
       // A Start the flow refuses never reaches capture; its override is cleared anyway.
@@ -633,7 +633,7 @@
       }
       #expect(world.forcings == [.apple, nil])
       #expect(world.shared.count == 1)
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
 
@@ -653,7 +653,7 @@
       #expect(forced["engine"] as? String == "universal")
       #expect(world.shared.count == 1 && world.appleEngines.isEmpty)
       #expect(live.owner.debugEngineOverrideNextRecording == nil, "consumed by that recording")
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
       await live.coordinator.start(from: .menu)
       await MeetingLiveWordsTests.until("Apple running", live.owner) {
@@ -661,7 +661,7 @@
       }
       let next = try #require(Self.ok(await meetings.live([:]))?["live"] as? [String: Any])
       #expect(next["engine"] as? String == "apple")
-      await live.coordinator.stop()
+      await live.coordinator.stop(reason: .user)
       #expect(await live.owner.waitForCleanups(seconds: 10))
     }
   }

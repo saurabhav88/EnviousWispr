@@ -283,7 +283,7 @@ struct MeetingsPresentationTests {
       let expected = admitted ?? !flipTo
       let recorder = try #require(harness.recorders.first)
       #expect(recorder.configuration.captureCallSound == expected, "\(String(describing: admitted))")
-      await coordinator.stop()
+      await coordinator.stop(reason: .user)
     }
   }
 
@@ -307,7 +307,7 @@ struct MeetingsPresentationTests {
     }
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await MeetingCoordinatorTests.eventually("pass parked") { gate.parked }
     let job = try #require(harness.jobs.last)
     job.onWaitingForDictation?(true)

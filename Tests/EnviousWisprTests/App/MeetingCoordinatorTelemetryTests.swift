@@ -24,7 +24,7 @@ struct MeetingCoordinatorTelemetryTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: entry)
     let meetingID = try #require(harness.recorders.last).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("ended") { harness.ended.count >= 1 && coordinator.processing == nil }
     return meetingID
   }
@@ -113,7 +113,7 @@ struct MeetingCoordinatorTelemetryTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     #expect(
       await Task.detached { MeetingCoordinatorTests.waitBlocking(gate.entered) }.value == .success)
     let deletion = Task { await coordinator.delete(meetingID: meetingID) }
@@ -140,6 +140,30 @@ struct MeetingCoordinatorTelemetryTests {
     return true
   }
 
+  @Test("#4249: the first stop's reason and the call facts reach the row; a later stop changes nothing")
+  func stopProvenanceReachesTheRow() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .detected)
+    let meetingID = try #require(harness.recorders.last).configuration.meetingID
+    coordinator.noteCallFacts(meetingID: UUID(), link: .manual, endTrigger: .window, keepCount: 5)
+    coordinator.noteCallFacts(meetingID: meetingID, link: .prompt, endTrigger: .micRelease, keepCount: 2)
+    await coordinator.stop(reason: .callCountdown)
+    await coordinator.stop(reason: .user)
+    await eventually("ended") { harness.ended.count >= 1 && coordinator.processing == nil }
+    #expect(
+      harness.ended.first?.provenance
+        == .init(stopReason: .callCountdown, callLink: .prompt, endTrigger: .micRelease, keepCount: 2),
+      "another meeting's facts are ignored; the first stop's reason is kept")
+  }
+
+  @Test("#4249: a menu Stop is reported as user, with no call facts when detection reported none")
+  func userStopReason() async throws {
+    let harness = try Harness()
+    _ = try await recordAndFinish(harness, from: .menu)
+    #expect(harness.ended.first?.provenance == .init(stopReason: .user))
+  }
+
   @Test("an attempt interrupted by a quit ends once, after the relaunch, as interrupted_ready")
   func interruptedAfterRelaunch() async throws {
     let harness = try Harness()
@@ -151,6 +175,7 @@ struct MeetingCoordinatorTelemetryTests {
     await eventually("ended") { harness.ended.count == 1 }
     #expect(harness.ended.first?.outcome == .interruptedReady)
     #expect(harness.ended.first?.entryPoint == nil)
+    #expect(harness.ended.first?.provenance == nil, "#4249: a recovered attempt has no provenance")
   }
 
   @Test("Start refusals each send start_failed with the real microphone status")
@@ -197,7 +222,7 @@ struct MeetingCoordinatorTelemetryTests {
     let coordinator = harness.coordinator
     await coordinator.start(from: .history)
     let meetingID = try #require(harness.recorders.first).configuration.meetingID
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("pass parked") { gate.parked }
     let deletion = Task { await coordinator.delete(meetingID: meetingID) }
     await eventually("cancelled") { harness.jobs.first?.cancelled == true }
@@ -243,7 +268,7 @@ struct MeetingCoordinatorTelemetryTests {
     let recorder = try #require(harness.recorders.last)
     let meetingID = recorder.configuration.meetingID
     recorder.report.callSoundSummary = Self.bluetooth
-    await harness.coordinator.stop()
+    await harness.coordinator.stop(reason: .user)
     await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
     harness.receiptError.withLock { $0 = nil }
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
@@ -267,7 +292,7 @@ struct MeetingCoordinatorTelemetryTests {
     var health = MeetingTrackWriter.Health()
     health.silencedFrames = Int(MeetingAudioFormat.sampleRate) * 3
     recorder.microphoneHealth = health
-    await harness.coordinator.stop()
+    await harness.coordinator.stop(reason: .user)
     await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
     harness.receiptError.withLock { $0 = nil }
     #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
@@ -332,7 +357,7 @@ struct MeetingCoordinatorTelemetryTests {
     #expect(harness.ended.isEmpty, "the first attempt is still queued while the second records")
     try #require(harness.recorders.last).report.callSoundSummary = CallSoundSummary(
       outputTransport: "usb", configuredRateHz: 44_100, rebuilds: 0, omittedReports: 2)
-    await coordinator.stop()
+    await coordinator.stop(reason: .user)
     await eventually("both ended") { harness.ended.count == 2 && coordinator.processing == nil }
     // The queue takes the older meeting first.
     #expect(harness.ended.map(\.entryPoint) == [.menu, .history])

@@ -9836,6 +9836,17 @@
         }
       }
     },
+    "Hide" : {
+      "comment" : "EnviousMeet: VoiceOver name of the x on a card with a running timer; it only hides the card and the timer goes on.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausblenden"
+          }
+        }
+      }
+    },
     "Hide dictations from clipboard manager apps" : {
       "comment" : "Clipboard settings: switch title.",
       "localizations" : {
@@ -19309,6 +19320,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schritt %lld, %@"
+          }
+        }
+      }
+    },
+    "Still in a meeting?" : {
+      "comment" : "EnviousMeet: no words were heard for 10 minutes; the recording stops soon unless the user keeps it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch im Meeting?"
           }
         }
       }
