@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import EnviousWisprAppKit
@@ -37,6 +38,17 @@ struct MeetingSummariesTabTests {
     for provider in [LLMProvider.appleIntelligence, .ollama, .openAI, .gemini, .claude] {
       #expect(MeetingSummaryEngineChoices.isSelectable(provider), "\(provider)")
     }
+  }
+
+  @Test("an installed EG-1 offers Remove on AI Polish and import, never on the Summaries tab (#4319)")
+  func noRemoveOnSummaries() {
+    let installed = EGOneRowPresentation.forState(.installed(version: "1"), engine: "EG-1")
+    #expect(installed.showsRemove, "control: the installed state offers Remove elsewhere")
+    #expect(
+      LocalEngineStatusCard<EmptyView>.showsRemoveRow(installed, isMeetingSummarySurface: false))
+    #expect(
+      LocalEngineStatusCard<EmptyView>.showsRemoveRow(installed, isMeetingSummarySurface: true)
+        == false)
   }
 
   @Test("every engine choice has its own Summaries map identity")

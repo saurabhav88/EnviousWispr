@@ -1,0 +1,259 @@
+{
+ "id": "meetingSummaryEngine.egOne",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "استخدام EG-1 لتلخيص الاجتماعات"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "използвай EG-1 за обобщения на срещи"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "použít EG-1 pro shrnutí schůzek"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "brug EG-1 til mødereferater"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [],
+   "phrases": [
+    "nutze EG-1 für deine Meeting-Zusammenfassungen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "χρήση του EG-1 για περιλήψεις συναντήσεων"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [],
+   "phrases": [
+    "use EG-1 for meeting summaries"
+   ]
+  },
+  {
+   "language": "es",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "usar EG-1 para resumir reuniones"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "kasuta EG-1 koosolekute kokkuvõtete jaoks"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "käytä EG-1:tä kokousten yhteenvetoihin"
+   ]
+  },
+  {
+   "language": "fr",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "utiliser EG-1 pour résumer les réunions"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "मीटिंग का सारांश बनाने के लिए EG-1 चुनें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "koristi EG-1 za sažetke sastanaka"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "EG-1 használata megbeszélések összefoglalásához"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "usare EG-1 per riassumere le riunioni"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "会議の要約にEG-1を使う"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "회의 요약에 EG-1 사용"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "naudoti EG-1 susitikimų santraukoms"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "izmantot EG-1 sapulču kopsavilkumiem"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "uża EG-1 għas-sommarji tal-laqgħat"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "EG-1 gebruiken voor vergadersamenvattingen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "użyj EG-1 do podsumowań spotkań"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "usar EG-1 para resumir reuniões"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "folosește EG-1 pentru rezumatele ședințelor"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "использовать EG-1 для итогов встреч"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "použiť EG-1 na zhrnutia stretnutí"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "uporabi EG-1 za povzetke sestankov"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "använd EG-1 för mötessammanfattningar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "toplantı özetleri için EG-1 kullan"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "використовувати EG-1 для підсумків зустрічей"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "dùng EG-1 để tóm tắt cuộc họp"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "EG-1",
+   "words": [],
+   "phrases": [
+    "用EG-1生成会议摘要"
+   ]
+  }
+ ]
+}

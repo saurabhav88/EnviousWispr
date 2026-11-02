@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "sl",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "uporabi EG-1 za povzetke sestankov"
+    ]
+  }
+}

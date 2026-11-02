@@ -124,8 +124,8 @@
   },
   {
    "id": "meetingSummaryEngine.egOne",
-   "review": "additions/meetingSummaryEngine.egOne.json",
-   "reviewSHA256": "98306e91ca1b757c49a90a54a31a0a57896607f5fdb529ee06ff7244cdddc3ab"
+   "review": "additions/meetingSummaryEngine.egOne-4319.json",
+   "reviewSHA256": "af7a48095b617ac1885a6099d19f54150ba3ebe463fffde6545a8d707ad82903"
   },
   {
    "id": "meetingSummaryEngine.ollama",
@@ -186,8 +186,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3",
-  "bytes": 1795824
+  "sha256": "10cc53bce374d10eafca49c1d901228421ecfa31559534696792f083e9ba9551",
+  "bytes": 1794540
  },
  "sources": [
   {
@@ -471,7 +471,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "2e9089156d27aff171a6d82ff48de25da53e9bcfdf1a574103bbd5d2a64212a2",
+   "contentSHA256": "49fe03eaf5404e8110f0fb55976bc42014eabc89be04a160ced81ebae8c41d6f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1327,13 +1327,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-ar.txt",
+      "sha256": "6b8c13fa6402ae377b2a447c1949c184cb4d417bcc4be089b1f19175919032bd"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "84d854f84452b0a91a868284ab98c9594739d1fde65d53c95de15a6aee8b27ea",
+   "contentSHA256": "699db1c5fe393652ee5e28e84f5ea2aa0eeb23d3e0aa6ba5c0a82ec322eaff65",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2180,13 +2199,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-bg.txt",
+      "sha256": "a23313d3ffa83d84bae6eeb51c42910079597672ac3183f9ffc55dea7a5a88ca"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "8cec0efc5ed6fa3a3bf2187064924820c67dd8ad02cdff071bb9253c1050e436",
+   "contentSHA256": "b70293740e4cb75eb608daf607ea1c15b89591031ff8bf6c8f735c09a981c1fc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3033,13 +3071,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-cs.txt",
+      "sha256": "e665222cc2e84c36bdfd6188623112d82a2529338fef4e6a391753c57c300d50"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "7f521270997029cfb4a40feb7e46725ad887ced6e29a462112b61a21cb021ae2",
+   "contentSHA256": "77809b14263abae20ba181e6c4e2b8ada1c6ca78212e243a7f00a95686a92a21",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3886,13 +3943,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-da.txt",
+      "sha256": "fe559a9cd59cf4af116ee1f504a951b605937f342a5147d7b785de697659d0b2"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "113942612bbcec9e88e1d59b20f4e174eafdaabcc7a89cb8ba6b1e4c1cbcf6c0",
+   "contentSHA256": "09b639a3cec059e645cf8d21bd00f6f609e139ad45568c260ce5b79764827648",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4905,13 +4981,36 @@
        "run-1793538525-cd287be7"
       ]
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-de.txt",
+      "sha256": "c61fe9fba50239e55c08b4888913ddef125f011de310a85c93e4666c7a4b9652"
+     },
+     "disposition": "adopted with the GPT+Gemini council's correction (council-de.json: GPT OK, Gemini aligned the phrase with the sibling summary engines: 'EG-1 für Meetingzusammenfassungen auswählen'), see additions/meetingSummaryEngine.egOne-4319.json",
+     "council": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/council-de.json",
+      "sha256": "7c93edf5c736401d16d98dfa8445858724e6033b77834cf495f99e1cbc3315bd"
+     }
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "0f1955fee550ad40a749e398a63b70880b81a70c35661b9bdbaef8a714299e0c",
+   "contentSHA256": "863398520c5e27e4efdc035748fe293f610ed8587db061383912ba37aba7978a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5767,13 +5866,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-el.txt",
+      "sha256": "285385ee633f4ea2bb5cd8cefe8d691acf22563dba651f52a9b1664b7e685649"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "1695fe52afddce755a7428391e9c45de6cd4c791bc14937c420794cdadca5af4",
+   "contentSHA256": "f21b9fac3782a7a995ce7317bf3f76a92e1c686c4163c20cf120a9d2217f81b3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6621,13 +6739,32 @@
       "sha256": "085ee88a8d43af57311062f5c5244cb97a8da82ff57a74e02dbd2b6ce4f5edf2"
      },
      "disposition": "adopted as returned by the review (additions/meetingFollowsCallMute.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-en.txt",
+      "sha256": "0fd8c0024fc95a89baba93590569fc74359a5949bebb95c56cbf2a59d7fc62c5"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "1e8468fbc97fa149b9ac0c1254a8f9297df468b0bc5e6cd24323e27f7a340f3d",
+   "contentSHA256": "a9d4eb3d2d911fa39fd3e093893fdbe2aa065609c6a88a15cfe765ba559b51ad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7483,13 +7620,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-es.txt",
+      "sha256": "ebc96741704ae5adef15735b53d884c699630b9973e0984bc1d4398bac4abff0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "397a3a9bb8ffbada05c48ac359b3f7689376e89f4d47ed4658c68eb1d8fe2983",
+   "contentSHA256": "bff70864e1b7500cf2ceb83d17171f655170db445c013bc4dd5a0a4b222808a2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8336,13 +8492,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-et.txt",
+      "sha256": "20153a8a7eab9c6763bf76afadced3d1754c6adc79d3113ddb8519bb094f8587"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "9344158e73f55bb76347e6d63945ba941572317dc1b516311dd91a5292a19faa",
+   "contentSHA256": "a9eb0c5cd68cc166aeecfa562f159260c7040fbea68605b39ac717d1c1bb847e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9189,13 +9364,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-fi.txt",
+      "sha256": "2ca6f6022b25237160d9c75437423e0b5ecea727084ccb6053dee1317cd5be6f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "2364f426ea7e666876c070ebdec9688d17a2b4fef634070e6553e48ba3ed064d",
+   "contentSHA256": "5a122fab42c96c24ec4dfb3d46f34d48247098f8aa339777892f66c1a7468381",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10042,13 +10236,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-fr.txt",
+      "sha256": "75b2b5eb3d9a0f469d569cdbe82936828e4fb41d0bf94dfde034e29a5d8929fc"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "05e164f838798bc1529941fbbeab24442767f20312b6744d06a54a25853c5562",
+   "contentSHA256": "dfc6902e6814b104f68506cddba06147ebc00000b9a3924fb7a43d4214dda114",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10895,13 +11108,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-hi.txt",
+      "sha256": "03c9914d2ad1d15e149542d7e026723d6f5a1cd4ccec71584e428c167b5d929e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "3df2d7c0143dd10c01359cc74dcc679a42aa0e23649007641b80f82c90c2be13",
+   "contentSHA256": "0cb1b5868ca664612fc5fa0348930c464fd442b601da0722e040417d19c9ecc0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11748,13 +11980,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-hr.txt",
+      "sha256": "f531f0b37486ce12a9f7d3eea9254b85de6b2176dfb86479aa1e679d81aaf26c"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "ff4e2cb79e1d25513b84fd8ba8dc433b51604382c85e31450d8ec323d69ce96e",
+   "contentSHA256": "68e366dd67c26d35f93636884f4460bfd4fb33202af89101e5343fef08753ada",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12601,13 +12852,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-hu.txt",
+      "sha256": "49a51b4c6369213e340d9851fdeb936fa2e6693c0bc5f3a5c4324db1a25fdec0"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "0f04720d96d48c06efdef02d5b3a2c9f6d566fce33fec678331cf557be053242",
+   "contentSHA256": "aefcdb926475216779baa032a30d994200a43a097322f25ef84f18cf3565e4b0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13463,13 +13733,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-it.txt",
+      "sha256": "e3dadd9bfe8dd1c01c9bb8b7a4ff67c88ed573310cfd94ba4c333ae8d0242b1f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "5604fad75c1a87dde4da78064284179344656a4701b9d1aa0b90da583764d960",
+   "contentSHA256": "44be447379fa774d12db853ba7db007cf91eab37684d9c7b872e2845ca7ba30a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14316,13 +14605,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-ja.txt",
+      "sha256": "75d8e716cc33dcac77cea36163b378005ef36fba9e54cde63189f9652a977c01"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "540c75f7b3cdb98fd99822dcd593db647219ea84e227e676fd272feb7ed72268",
+   "contentSHA256": "c376386f2cca2dc8ea132b7d02e149c5a1674637eb636027954f0c2e7f5d3548",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15169,13 +15477,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-ko.txt",
+      "sha256": "3b1a1bd31817c91659183283beb4cf16e08fe021f81056ddec8644074a37bfbf"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "9465ad94d803adf73dc40df0ac56574326bbf06bdac20d6b25b5091a9582786a",
+   "contentSHA256": "105c7d6cbe988d2a3ac3b624c4abd779c10b5f3951a915e5dba74ef9ce5eefdf",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16031,13 +16358,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-lt.txt",
+      "sha256": "81412571100243fdd563db46229b43b41d0f87a0a8cc30bf3f52f4acb50b2805"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "3e485ab8040f6fd870e83e7f61c3f8ad7191049a7ff0d7fafc6886206ebf303b",
+   "contentSHA256": "b119b9b4f7f67e93e0bdef5920968f946601bdc706dfdbd7c550dbb542882f91",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16884,13 +17230,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-lv.txt",
+      "sha256": "c9e8ee9340caf8dab263dd39d48e97a0121f6dca090968b98ce6865d2d7498af"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "9283acd270a22910f60ff727ef01cccc1c4998b5adbf8b76e239469de23ea511",
+   "contentSHA256": "8e0209433430c4b7b03fff536f1ef41574c1df4be3865e45bb93a83bf829fb9d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17746,13 +18111,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-mt.txt",
+      "sha256": "ecae0e27b81f8b689969e229548bef30921073371d8fe9dc5b11ef2a018d3e0e"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "5224cff0dc381e8ba40f0000fd38d221e0a2c76f397455962bae224f333b1882",
+   "contentSHA256": "cab1b61db733e0b90264931c3f72df33d8dd2f35622432b0b54cac66422fa665",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18599,13 +18983,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-nl.txt",
+      "sha256": "e968e6278b02e84c31f75f12d7b61e715524924f98c67b7c1a7e9aed12e67d08"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "bfe1f08f4e6484827f9b07560c33bd7656ee0fc27440adac9a1bdeb11402d6d7",
+   "contentSHA256": "2cfbce0a7239b57e1c7ff5567231e82f979c76398e94eee6b842650946a38aec",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19452,13 +19855,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-pl.txt",
+      "sha256": "8ef2305ddd7d0727cd30139dfd4d8732624ed723cc5d28b040ac0d9e8169e942"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "e32cfb5c67d13d295016920c1993e78d10099b2e4e8092730071b4903da24dd7",
+   "contentSHA256": "d6ba0db1ff2f5c04fea08424b3fa8ffc3f2d608129cdb7de74ed22166634bcd8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20313,13 +20735,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-pt.txt",
+      "sha256": "be3443c7c78676bb7e172ebec88a52a5b2cbe29622cffcd4906b0fb989d66aa3"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "ed8cb10d8b0b0a72e3721b0e4db982fe88f3a205cea59cb0c7d43e806620fe61",
+   "contentSHA256": "5742bfec0fd639d82a47d96954e50b2f399b3ba17e03366ed114a3bab6e4d18f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21166,13 +21607,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-ro.txt",
+      "sha256": "f9c45a48bfff41bcfd8340e691d440a0fa28d3e1a3ef2d29c1fe666a645bf5ad"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "78c81f3827a254472df520a9533d3c01d1e0d6b0dddea3e9e6b697b97c842ce6",
+   "contentSHA256": "7186ea3f5a2fdc1941f93a8f606b56b607197cc0a86fc7973baa7becc6edf724",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22019,13 +22479,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-ru.txt",
+      "sha256": "17c065a57d3abf12a2ad664b1c1efc29ab813e5a43f724d952a98a9e4932ff97"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "804aa7406bbe9f450f400255a0b3b9bf684f853a1d42355699960125abeb53b0",
+   "contentSHA256": "8ef716c883a05f853c7b0f24afc65f165d91eb2d9cbf216fc5cf72fe63a5ae2e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22872,13 +23351,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-sk.txt",
+      "sha256": "9c5e46c97a262416a9a66d49e87e4a7f377e2e43ca310bbf2b3dcc2441fcd70a"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "4bcff6934a97943d5b847a3af7a4fa4bb612d12ec2381883ab10dc2dfb31080b",
+   "contentSHA256": "1d33d0b95a76125bf92a65db1bed55c083df6fff5c3d53688c04f6dc73c1fbda",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23734,13 +24232,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-sl.txt",
+      "sha256": "2422bf69afcdac0b552c07f132ed87e4aea43a13c3487f0e780e1928a58fa2a6"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "711eda5565295bfff7c13355f80e7fa13fef1d01f01b2628e35ae773dd1bc361",
+   "contentSHA256": "7c60985fb863407b06c7ac9b7467a464944998a9c9856236c352e10e79ba1cc2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24587,13 +25104,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-sv.txt",
+      "sha256": "7ed02beda0e2997b6a37f1a375e69a113608fda89e5e86416cb91068a2992668"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "c28201edff631aea187a46d0c3ed0a9aa6bc64cc338fd8453cc12e71e66c2386",
+   "contentSHA256": "c345b528ea6e2ba9bf474252c73b726c53094ea0d5db24c257ee683f8c984375",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25440,13 +25976,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-tr.txt",
+      "sha256": "4d2c11135fe6f686ac408fdb1e37407d806347e61b104c02be76619b9a30138f"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "7a761e5f8637e0bb10e4f2dfa83c1aaa2ee144115f29ae2cbdfaf42f7fea4bad",
+   "contentSHA256": "c46a2a2d1094f7831fc9178e3c8542ba0609e67cce4281ed2f771ebb58567307",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26302,13 +26857,32 @@
       },
       "disposition": "removed the phrase that asked to record the voice while muted (contradicts the setting)"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-uk.txt",
+      "sha256": "f97d70d9febdf3da83b75580ca73a4bb2d02143b5da96e82a1d9a73092fe5918"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "8a8b97c0d00d975cc3388d3f01fe3e204b11c50f3d3c18cc69cc3f51ec901c7c",
+   "contentSHA256": "9b8e60ec2819cd334b285396cec0dba2c818919b17d3ea0c99396b1f7ff57b72",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27155,13 +27729,32 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-vi.txt",
+      "sha256": "abdfa16d7706ca53dfd6befb391be0a8f8af3d82c42b08762a6ba02dc7ad5623"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "0d3db30bf247bfef8764fcd652b9a11f7a41e580c4cd3af10c3659449f3a034f",
+   "contentSHA256": "335085a50bd796b5b0974b496f80fa3ac9e7885bf9b8de7b052113366c669a28",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28008,6 +28601,25 @@
       },
       "disposition": "OK, unchanged"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSummaryEngine.egOne",
+     "method": "Codex, one fresh isolated session for this language reviewing the redrafted EG-1 summary engine block now that EG-1 writes meeting summaries (accuracy, naturalness, collisions with the AI Polish EG-1 choice and the other summary engines); first draft by scripts/settings-map/draft-vocabulary.sh (#4319)",
+     "date": "2026-11-01",
+     "draft": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/draft.json",
+      "sha256": "95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a"
+     },
+     "prompt": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-driver.py.txt",
+      "sha256": "fbb9bf09e11d3ece03f16e03549aa35d83c5dab2f1b3bacb7897d9082cfd7f02"
+     },
+     "output": {
+      "path": "additions/meetingSummaryEngine.egOne-4319/review-zh.txt",
+      "sha256": "b444723105c539e60bbb41d289681cb93217a3cef54853f48947cfe45140feb4"
+     },
+     "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
     }
    ],
    "phraseExemptions": []

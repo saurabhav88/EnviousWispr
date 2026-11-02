@@ -1,0 +1,10 @@
+status: UNREVIEWED draft. Review it, then adopt it through scripts/settings-map/README.md.
+id: meetingSummaryEngine.egOne
+repository HEAD: bd4d2334db845b94bc812eb41c8b844a0aafad71
+brief sha256: 0e2aac70a8e6484ec2e2fce555d6b6ba175b3e0a47b3059fa0a8439fd2067f55
+export sha256: 1e36ca7dad2631461cd4769743b6664f933e284c514d8199d51a512f7b3802d9
+prompt sha256: ca902cf67902b3aa8d45732777f103ac5ad6a1c2470cdbcd638241005c91860b
+answer sha256: afb1de8bcf9ca1bda14b905f80a05e182173d4339c207b0c51ea49ffd4eccb63
+draft sha256: 95d626e5e29b909880323a9cd85e8dcf22c5ae7f404383a4045f82be2f4e219a
+launch: codex-run exec, read-only sandbox, web search off, --ignore-rules, --ephemeral
+isolation: working folder outside every repository; CODEX_HOME held only auth.json

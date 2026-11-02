@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "ru",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "использовать EG-1 для итогов встреч"
+    ]
+  }
+}

@@ -79,6 +79,10 @@ struct LocalEngineStatusCard<Middle: View>: View {
   /// unaffected, and the run itself starts and awaits the server through `prepareLocalPolish`.
   /// Found by the cloud review of PR #2786.
   var allowsRuntimeActivation: Bool = true
+  /// #4319: on the EnviousMeet Summaries tab the card offers no Remove (removing the model
+  /// would also move dictation and file import off it) and says the installed model is ready
+  /// for meeting summaries. Every other surface keeps Remove and its own wording.
+  var isMeetingSummarySurface: Bool = false
   /// Removing a model is not just a delete: the caller owns the provider
   /// selection and must move the user off the engine being removed. Passed in
   /// rather than done here, because this view has no business writing settings.
@@ -86,6 +90,13 @@ struct LocalEngineStatusCard<Middle: View>: View {
   /// Rows the host places between the install row and the remove row (S1-mini's
   /// writing-style dials, #3385).
   @ViewBuilder let middle: () -> Middle
+
+  /// #4319: the Remove row shows where the install state offers it, except on the Summaries tab.
+  static func showsRemoveRow(
+    _ presentation: EGOneRowPresentation, isMeetingSummarySurface: Bool
+  ) -> Bool {
+    presentation.showsRemove && !isMeetingSummarySurface
+  }
 
   private var isLowMemoryMac: Bool {
     ProcessInfo.processInfo.physicalMemory <= (8 << 30)
@@ -252,14 +263,26 @@ struct LocalEngineStatusCard<Middle: View>: View {
           // Installed and ready to be used BY A RUN. Deliberately not a health reading: this
           // card is not allowed to start the server, so it cannot know, and a stale green
           // light is worse than none.
-          Text("Ready for import")
-            .font(.stHelper)
-            .foregroundStyle(Color.stTextSecondary)
+          Group {
+            if isMeetingSummarySurface {
+              Text(
+                "Ready for meeting summaries",
+                comment:
+                  "EnviousMeet Summaries tab, local model card: the model is downloaded and will be loaded when a meeting summary is written."
+              )
+            } else {
+              Text("Ready for import")
+            }
+          }
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
         }
       }
     }
     middle()
-    if presentation.showsRemove { removeRow }
+    if Self.showsRemoveRow(presentation, isMeetingSummarySurface: isMeetingSummarySurface) {
+      removeRow
+    }
     if engine.showsLowMemoryNote, isLowMemoryMac {
       PolishRowDivider()
       PolishRow(

@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "mt",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "uża EG-1 għas-sommarji tal-laqgħat"
+    ]
+  }
+}

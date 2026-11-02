@@ -1,0 +1,40 @@
+{
+  "run_id": "run-1793576997-fcdea311",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793576997-fcdea311",
+  "providers": {
+    "openai": {
+      "content": "OK\nDie Phrase f\u00fchrt zur EG-1-Karte f\u00fcr Meetingzusammenfassungen und verwechselt sie nicht mit der Diktatkorrektur.",
+      "latest_response_id": "resp_047f9f0e92f7df95006ae7d025a68081968b4571d9c08f3ed7",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4319-de-vocab-egone-2026-11-01-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 245,
+        "cost_usd": 0.001245,
+        "latency_ms": 3103,
+        "prompt_tokens": 265,
+        "reasoning_tokens": 208,
+        "total_tokens": 510
+      }
+    },
+    "gemini": {
+      "content": "```json\n{\"words\": [], \"phrases\": [\"EG-1 f\u00fcr Meetingzusammenfassungen ausw\u00e4hlen\"]}\n```\nMatches the phrasing pattern of the sibling summary engine cards and adopts the closed spelling of Meetingzusammenfassungen.",
+      "latest_interaction_id": "v1_ChdKZERuYXBYdkk1ZmF5dE1QLVo3TnVBMBIXSmREbmFwWHZJNWZheXRNUC1aN051QTA",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4319-de-vocab-egone-2026-11-01-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 260,
+        "completion_tokens": 48,
+        "reasoning_tokens": 2903,
+        "total_tokens": 3211,
+        "cost_usd": 0.0225225,
+        "latency_ms": 19908
+      }
+    }
+  }
+}
+
+[exited with code 0]

@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "nl",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "EG-1 gebruiken voor vergadersamenvattingen"
+    ]
+  }
+}

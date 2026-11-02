@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "ko",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "회의 요약에 EG-1 사용"
+    ]
+  }
+}
