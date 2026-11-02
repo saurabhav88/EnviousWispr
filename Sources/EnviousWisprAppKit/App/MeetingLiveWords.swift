@@ -96,6 +96,9 @@ final class MeetingLiveWords {
     let meetingID: UUID
     var lines: [LiveWordsAssembler.Line] = []
     var tracks: [MeetingTrackKind: TrackState] = [:]
+    /// #4325: Universal was chosen but not downloaded, so Apple shows this meeting's live words
+    /// (the meeting page says so). The saved choice stays Universal.
+    var appleStandingIn = false
   }
 
   /// The recording meeting's live words, kept after Stop until its transcript is ready.
@@ -127,6 +130,11 @@ final class MeetingLiveWords {
     /// (`ApplePreviewEngineResolver.resolveMeeting`).
     var resolveApple: @Sendable (String) async -> LivePreviewEngineResolution
     var resolveUniversal: @Sendable (LanguageMode) async -> UniversalResolution
+    /// #4325: for a Universal language code whose model is not downloaded, the INSTALLED Apple
+    /// meeting tag that can stand in (this Mac's region first), or nil. The bootstrapper answers
+    /// from the choice owner's inventory and Apple's equivalence; nil (no wiring) means no
+    /// stand-in, which is the pre-#4325 behavior.
+    var resolveAppleStandIn: @Sendable (String) async -> String? = { _ in nil }
     /// True while dictation's engine decodes continuously: each Universal decode then waits its
     /// turn (a temporary refusal the engine retries), never the meeting's readiness.
     var isHeartStreaming: @Sendable () async -> Bool
@@ -466,7 +474,7 @@ final class MeetingLiveWords {
     // #4105: the choice is frozen here, once, for both tracks and every restart of this recording.
     let frozen = await deps.resolveChoice(forcing)
     guard isCurrent(gen) else { return leftovers }
-    let choice = await resolve(frozen)
+    let choice = await resolve(frozen, generation: gen)
     guard isCurrent(gen), let current = recording else { return leftovers }
     switch choice {
     case .off(let reason):
@@ -550,10 +558,23 @@ final class MeetingLiveWords {
   /// #4105: the frozen choice's engine, or off with the reason the note names. The chosen engine
   /// only: a choice that cannot run here leaves live words off (the recording continues), never
   /// another engine and never Apple's dictation module (founder, decisions file item 18).
-  private func resolve(_ frozen: MeetingLiveWordsChoice.Resolution) async -> Choice {
+  ///
+  /// #4325 (founder 2026-11-02) supersedes item 18 for ONE case: Universal chosen and its model
+  /// not downloaded. Apple's MEETING module then stands in for the frozen Universal language when
+  /// an installed Apple tag exists for it, and the meeting page says so; otherwise the old off
+  /// reason stays. Never Apple's dictation module, never a download, never a settings write.
+  private func resolve(_ frozen: MeetingLiveWordsChoice.Resolution, generation gen: Int) async
+    -> Choice
+  {
     switch frozen {
     case .notSetUp:
       return .off(.notSetUp)
+    case .notDownloaded(.universal, let language):
+      if let standIn = await appleStandIn(forUniversal: language, generation: gen) {
+        return standIn
+      }
+      return .off(
+        .engineNotDownloaded(engine: .universal, languageName: Self.languageName(language)))
     case .notDownloaded(let engine, let language):
       return .off(
         .engineNotDownloaded(engine: Self.kind(engine), languageName: Self.languageName(language)))
@@ -573,12 +594,36 @@ final class MeetingLiveWords {
       switch await deps.resolveUniversal(.locked(code)) {
       case .ready(let makeEngine): return .universal(makeEngine)
       case .blocked(.modelNotInstalled):
+        if let standIn = await appleStandIn(forUniversal: code, generation: gen) {
+          return standIn
+        }
         return .off(
           .engineNotDownloaded(engine: .universal, languageName: Self.languageName(code)))
       case .blocked:
         return .off(.unavailable)
       }
     }
+  }
+
+  /// #4325: Apple's meeting engine for a Universal language whose model is not downloaded, or nil
+  /// when no installed Apple tag serves it or Apple refuses. On success the recording runs in the
+  /// Apple tag and the transcript records the stand-in for the meeting page.
+  ///
+  /// Both lookups suspend, and a Stop or a new recording can land meanwhile (Codex chunk 4
+  /// review): the requesting `generation` is re-checked after EACH await, and the metadata is
+  /// written only right after a passing check, with no suspension between, so a late answer never
+  /// touches a newer meeting and is not logged as serving it.
+  private func appleStandIn(forUniversal code: String, generation gen: Int) async -> Choice? {
+    guard let tag = await deps.resolveAppleStandIn(code), isCurrent(gen) else { return nil }
+    guard case .ready(let candidate) = await deps.resolveApple(tag), isCurrent(gen) else {
+      return nil
+    }
+    recording?.language = tag
+    transcript?.appleStandingIn = true
+    await AppLogger.shared.log(
+      "MEETING_LIVE_WORDS universal not installed, Apple standing in tag=\(tag)",
+      category: "Meetings")
+    return .apple(candidate)
   }
 
   private static func kind(_ engine: LivePreviewEngineChoice) -> EngineKind {

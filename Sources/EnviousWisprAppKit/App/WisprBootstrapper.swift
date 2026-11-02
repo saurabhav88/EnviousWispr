@@ -2544,6 +2544,12 @@ package final class WisprBootstrapper {
         resolveApple: { tag in await ApplePreviewEngineResolver.resolveMeeting(languageTag: tag) },
         resolveUniversal: WhisperPreviewDeliveryWiring.makeMeetingResolver(
           modelDelivery: modelDelivery, settings: settings),
+        // #4325: the installed Apple meeting tag that stands in for a Universal language whose
+        // model is not downloaded, read from the same inventory and equivalence Start uses.
+        resolveAppleStandIn: { [meetingLiveWordsChoice] code in
+          await MeetingLiveWordsChoice.installedAppleStandIn(
+            forUniversal: code, owner: meetingLiveWordsChoice)
+        },
         isHeartStreaming: { [settings, liveRecordingState] in
           await MainActor.run {
             WhisperPreviewDeliveryWiring.meetingDecodeMustWait(

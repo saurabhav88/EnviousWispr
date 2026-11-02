@@ -35,6 +35,28 @@ struct MeetingLiveWordsChoiceTests {
       appleEquivalent: Self.equivalent)
   }
 
+  /// #4325: the Apple tag a meeting may use while Universal is not downloaded must already be on
+  /// this Mac; a supported-but-missing region would start a meeting with no live words.
+  @Test("The Apple stand-in for a Universal language is an installed tag, or none")
+  func appleStandInIsInstalled() async {
+    var inventory = Self.inventory
+    inventory.macRegion = "CA"
+    #expect(
+      await Choice.installedAppleStandIn(
+        forUniversal: "fr", inventory: inventory, appleEquivalent: Self.equivalent) == "fr-CA")
+    #expect(
+      await Choice.installedAppleStandIn(
+        forUniversal: "en", inventory: Self.inventory, appleEquivalent: Self.equivalent)
+        == "en-US")
+    #expect(
+      await Choice.installedAppleStandIn(
+        forUniversal: "de", inventory: Self.inventory, appleEquivalent: Self.equivalent) == nil,
+      "German is supported but not installed")
+    #expect(
+      await Choice.installedAppleStandIn(
+        forUniversal: "nl", inventory: Self.inventory, appleEquivalent: Self.equivalent) == nil)
+  }
+
   @Test("A stored choice is used exactly, and never swapped for another engine or language")
   func storedChoiceIsExact() async {
     #expect(await resolve(.apple, "en-US") == .ready(engine: .apple, language: "en-US"))
