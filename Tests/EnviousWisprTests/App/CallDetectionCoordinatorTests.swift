@@ -2100,6 +2100,29 @@
       #expect(await settleUntilObserved { rig.stops == 1 }, "hidden, the 30 s still ran out")
     }
 
+    @Test("#4249: a stopped call-sound track keeps the silence question away while the mic track runs")
+    func silenceBackstopNeedsEveryCapturedTrack() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      rig.transcript = .init(meetingID: meeting,
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+        tracks: [.microphone: .init(status: .running), .callSound: .init(status: .stopped(.engineFailed))])
+      rig.coordinator.stepForTesting()
+      for _ in 0..<310 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(!rig.panel.isShowing && rig.stops == 0)
+      // A track that is not recorded at all does not count against health.
+      rig.transcript?.tracks[.callSound] = .init(status: .off(.notCaptured))
+      for _ in 0..<301 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))
+    }
+
     @Test("#4249: dropped live audio keeps the silence question away")
     func silenceBackstopNeedsHealthyWords() async throws {
       let rig = try Rig()

@@ -326,13 +326,15 @@ final class CallDetectionCoordinator {
       anyWordsAt: callWords?.anyWordsAt, wordsHealthy: wordsHealthy(meeting))
   }
 
-  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`): the recording's live words
-  /// run on at least one captured track with no reported dropped audio.
+  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`): live words run, with no
+  /// reported dropped audio, on EVERY captured track. One dead track (the call sound's live words
+  /// stopped while the far side talks) must not let a quiet microphone read as silence.
   private func wordsHealthy(_ meeting: CallDetectionPolicy.Meeting) -> Bool {
     guard case .recording(let meetingID) = meeting, let transcript = deps.liveTranscript(),
       transcript.meetingID == meetingID
     else { return false }
-    return transcript.tracks.values.contains { $0.status == .running && !$0.droppedAudio }
+    let captured = transcript.tracks.values.filter { $0.status != .off(.notCaptured) }
+    return !captured.isEmpty && captured.allSatisfy { $0.status == .running && !$0.droppedAudio }
   }
 
   /// #4249: when the call track's live words last advanced for the current recording, or nil
