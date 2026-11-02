@@ -92,8 +92,10 @@ enum LivePreviewEnginePresentation {
     let title = LivePreviewEngineCopy.universalTitle
     let description = LivePreviewEngineCopy.universalDescription
     // #4325: what Live Preview does while Universal is not ready, on the chosen engine only.
-    // Nothing is promised while the preview is paused for Faster Transcription: the resolver
-    // refuses before it asks about the model, and the status line says paused (Codex chunk 5).
+    // Nothing is promised while the preview would not run anyway: paused for Faster
+    // Transcription (the resolver refuses before it asks about the model; Codex chunk 5) or
+    // Live Preview switched off (the status says off; Codex whole-diff review). The caller
+    // passes both as `previewPaused`.
     let meanwhile: String? =
       isSelected && !previewPaused
       ? (appleCanStandIn

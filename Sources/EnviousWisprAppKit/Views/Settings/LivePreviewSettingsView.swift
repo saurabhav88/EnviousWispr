@@ -553,7 +553,7 @@ struct LivePreviewSettingsView: View {
       state: universalState,
       queued: modelDelivery?.previewDownloadQueued ?? false,
       appleCanStandIn: appleCanStandIn,
-      previewPaused: heartIsStreaming)
+      previewPaused: heartIsStreaming || !isPreviewOn)
     let selected = isUsingApple ? apple : universal
 
     return VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {

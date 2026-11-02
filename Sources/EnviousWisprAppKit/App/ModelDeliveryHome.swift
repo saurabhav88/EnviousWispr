@@ -1295,9 +1295,13 @@ final class ModelDeliveryHome {
   /// the same read the page shows.
   @discardableResult
   func requestPreviewDownload(meetingActive: Bool) -> PreviewDownloadRequestOutcome {
+    // Deduplicated on OUR scheduled request only, never on a busy delivery state: the launch
+    // probe publishes `.preparing` while it checks an incomplete cache and never fetches, so a
+    // pick then must still schedule a download (Codex whole-diff review). A fetch already running
+    // is joined by the controller's own single flight.
     if meetingActive {
       if whisperPreviewState == .admitted { return .alreadyAvailable }
-      if previewScheduledEpoch != nil || previewTransferIsActive { return .started }
+      if previewScheduledEpoch != nil { return .started }
       previewDownloadQueued = true
       Task {
         await AppLogger.shared.log(
@@ -1310,7 +1314,7 @@ final class ModelDeliveryHome {
     // click, then the idle signal must download once).
     previewDownloadQueued = false
     if whisperPreviewState == .admitted { return .alreadyAvailable }
-    if previewScheduledEpoch != nil || previewTransferIsActive { return .started }
+    if previewScheduledEpoch != nil { return .started }
     return startPreviewDownload() ? .started : .refused
   }
 

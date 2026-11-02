@@ -1640,6 +1640,21 @@ extension ModelDeliveryHomeTests {
     #expect(switchedOff.previewDownloadIsPending == false)
   }
 
+  @Test("a pick while the launch probe checks an incomplete cache still schedules a download")
+  func pickDuringTheProbeSchedules() async throws {
+    let home = try universalHome()
+    let commands = PreviewCommandRecorder()
+    commands.bind(home)
+    let probed = SubjectSignal()
+    home.onPreviewLaunchProbeFinished = { probed.fire() }
+    await probed.wait("the preview launch probe")
+    home.applyPreviewStateForTests(.preparing(validatingExistingCache: true))
+    #expect(home.requestPreviewDownload(meetingActive: false) == .started)
+    let task = try #require(home.previewDownloadTaskForTests, "a busy state is not our request")
+    try await Self.awaitBounded(task)
+    #expect(commands.downloads == 1)
+  }
+
   @Test("Universal then Apple before the download runs: no fetch, decline recorded")
   func switchingBackBeforeDispatchFetchesNothing() async throws {
     let home = try universalHome()
