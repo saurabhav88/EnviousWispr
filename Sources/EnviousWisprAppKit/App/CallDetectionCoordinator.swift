@@ -249,6 +249,7 @@ final class CallDetectionCoordinator {
       current.meeting == .recording(meetingID: id) ? id : nil
     }
     let commands = policy.settledStart(request, recordingID: matching, current)
+    logManualLink(request)
     // The failed-switch card's own Start recording rides the menu route but is no menu-bar
     // start; the flow marks it, also across the call-sound explainer.
     if request.route == .menu, !request.fromCallPanel, let matching {
@@ -333,6 +334,16 @@ final class CallDetectionCoordinator {
     Task {
       for line in lines { await AppLogger.shared.log(line, level: .info, category: "CallDetection") }
     }
+  }
+
+  /// #4249: one content-free line per hand start (menu bar or History) naming the check that
+  /// linked it to a call or refused to. An unlinked recording is never stopped by its call ending.
+  private func logManualLink(_ request: CallDetectionPolicy.AcceptedStart) {
+    guard request.route == .menu || request.route == .history,
+      let link = policy.manualLink, link.generation == request.generation
+    else { return }
+    let line = "manual_link route=\(request.route.rawValue) outcome=\(link.reason.rawValue)"
+    Task { await AppLogger.shared.log(line, level: .info, category: "CallDetection") }
   }
 
   private func run(_ commands: [CallDetectionPolicy.Command]) {
