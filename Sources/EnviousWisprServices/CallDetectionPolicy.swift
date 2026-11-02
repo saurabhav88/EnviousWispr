@@ -7,8 +7,9 @@ import Foundation
 ///
 /// Two owners, nothing else (`docs/audits/2026-10-24-4012-leak-enumeration.md`):
 /// - **Episodes.** A call is an `Episode` with its own id. It begins only from known positive
-///   start evidence in a complete reading. Only independently attributed, fresh call-ended
-///   observations can confirm its end; microphone inactivity never owns that decision.
+///   start evidence in a complete reading. Two inputs can confirm its end: independently
+///   attributed, fresh call-ended observations, or (#4249, reversing #4142 by founder decision)
+///   a confirmed microphone release by the episode's own verified app run.
 /// - **The interaction.** What the panel shows is `interaction`, and `token` changes with it. A
 ///   button press carries the token it was shown with; an old token does nothing. A start or a
 ///   stop is an `Operation` with its own id: its result always settles its episode, whatever
@@ -179,11 +180,18 @@ public struct CallDetectionPolicy: Sendable {
     /// D6, read when No is answered.
     public var firstTipShown: Bool
     public var noCounts: [String: Int]
+    /// #4249: when the recording's call-track live words last advanced; nil when live words
+    /// do not run on that track. Only holds a microphone-release countdown; never proves silence.
+    public var callWordsAt: Date?
+    /// #4249: when the current meeting recording began, for the minimum recording age before a
+    /// microphone release can start the countdown. Nil falls back to when the call was linked.
+    public var recordingSince: Date?
 
     public init(
       now: Date, meeting: Meeting, dictationActive: Bool = false, mode: Mode = .ask,
       appsOff: Set<String> = [], setUp: Bool = true, startBlocked: Bool = false,
-      firstTipShown: Bool = false, noCounts: [String: Int] = [:]
+      firstTipShown: Bool = false, noCounts: [String: Int] = [:], callWordsAt: Date? = nil,
+      recordingSince: Date? = nil
     ) {
       self.now = now
       self.meeting = meeting
@@ -194,6 +202,8 @@ public struct CallDetectionPolicy: Sendable {
       self.startBlocked = startBlocked
       self.firstTipShown = firstTipShown
       self.noCounts = noCounts
+      self.callWordsAt = callWordsAt
+      self.recordingSince = recordingSince
     }
   }
 
@@ -212,8 +222,9 @@ public struct CallDetectionPolicy: Sendable {
     case ask(episode: Int, family: CallAppFamily, since: Date)
     /// D10: a new call while `from` records.
     case switchCall(episode: Int, family: CallAppFamily, from: UUID, since: Date)
-    /// D3, #4232: "Recording stops in N seconds" with End recording. A call that comes back
-    /// cancels it (`resetEnd`), so it has no Keep button.
+    /// D3, #4232, #4249: "Recording stops in N seconds" with End recording and Keep recording.
+    /// A call that comes back cancels it; Keep is restored because a microphone release can also
+    /// happen inside a live call (Leave computer audio, a slow device switch).
     case countdown(episode: Int, deadline: Date)
     /// A browser page ended, but the recording continues until explicit consent.
     case endConfirmation(episode: Int, family: CallAppFamily)
@@ -270,6 +281,17 @@ public struct CallDetectionPolicy: Sendable {
   public static let endReadingsRequired = 2
   public static let wakeHoldoff: TimeInterval = 10
   public static let countdownLength: TimeInterval = 10
+  /// #4249: the call app's microphone release starts the countdown after this much continuous
+  /// release, confirmed by a later microphone reading (Wispr Flow `absenceConfirmMs:1500`,
+  /// the same value as `endConfirm`).
+  public static let releaseConfirm: TimeInterval = 1.5
+  /// #4249: call-track words newer than this hold the release countdown (Wispr Flow `graceMs:5e3`).
+  public static let farSideQuiet: TimeInterval = 5
+  /// #4249: the far-side hold ends this long after the release began (Wispr Flow `C3=25e3`).
+  public static let farSideHoldCap: TimeInterval = 25
+  /// #4249: a release in a recording's first seconds (waiting room, joining audio) never starts
+  /// the countdown before this age (Wispr Flow `minSessionAgeMs:15e3`).
+  public static let minRecordingAge: TimeInterval = 15
   public static let questionReadiness: TimeInterval = 2
   public static let questionInterval: TimeInterval = 120
   public static let promptTimeout: TimeInterval = 120
@@ -313,7 +335,30 @@ public struct CallDetectionPolicy: Sendable {
     var endReadings = 0
     var lastEndedReadAt: Date?
     var lastObservationID = 0
+    /// #4249 microphone-release end. Release tracking arms only on an active reading strictly
+    /// newer than `armBoundary` (the reading at link or at the last card Keep).
+    var armBoundary = 0
+    var releaseArmed = false
+    /// First released reading's time and sequence; a later reading must confirm the interval.
+    var releaseSince: Date?
+    var releaseFirstSequence: Int?
+    /// When this episode was linked to its recording (fallback for `Context.recordingSince`).
+    var linkedAt: Date?
+    /// A card Keep blocks both automatic end paths until a new active-then-release cycle.
+    var keptUntilRearm = false
+    /// What started the current countdown.
+    var endOrigin: EndOrigin?
+    var countdownStartedAt: Date?
+    /// A release countdown paused by far-side words keeps its remaining time here (#4249).
+    var pausedRemaining: TimeInterval?
+    /// A window-origin countdown saw the app release the microphone; taking it back cancels.
+    /// (#4142: input can stay on after a real call end, so active input alone does not.)
+    var releasedDuringWindowCountdown = false
   }
+
+  enum EndOrigin: Sendable, Equatable { case release, window }
+
+  private enum ReleaseState { case active, released, unknown }
 
   enum Operation: Sendable, Equatable {
     case start(episode: Int, family: CallAppFamily, byItself: Bool)
@@ -325,7 +370,8 @@ public struct CallDetectionPolicy: Sendable {
   }
 
   public private(set) var interaction: Interaction = .none
-  /// Changes every time `interaction` does.
+  /// Changes every time `interaction` does, except across a release countdown's far-side pause
+  /// and resume (#4249, `setKeepingToken`).
   public private(set) var token = 0
   /// A Yes pressed on this token is being checked on fresh readings: the question does not
   /// time out meanwhile. Anything that changes the panel ends the claim.
@@ -477,6 +523,7 @@ public struct CallDetectionPolicy: Sendable {
     for index in episodes.indices {
       episodes[index].lastObservationID = max(episodes[index].lastObservationID, consumed)
       resetEnd(index)
+      clearRelease(index)
     }
   }
 
@@ -581,6 +628,9 @@ public struct CallDetectionPolicy: Sendable {
     expire(c, &out)
     trackEnds(c, &out)
     noticeCalls(c)
+    // After owner and helper adoption, so release judges the episode's current sources.
+    trackReleases(c)
+    expireEndings(c, &out)
     noticeQuestionOpportunity(c)
     offer(c, &out)
     offerEndConfirmation(c)
@@ -758,7 +808,7 @@ public struct CallDetectionPolicy: Sendable {
     case .waiting, .offered: break
     default: return refuse(.phaseClosed)
     }
-    setPhase(frozen.episode, .recording(meetingID: recordingID))
+    linkRecording(frozen.episode, recordingID, c)
     association = .linked(recordingID, episode: frozen.episode)
     manualLink = (request.generation, .linked)
     return step(c)
@@ -974,14 +1024,47 @@ public struct CallDetectionPolicy: Sendable {
     }
   }
 
+  /// Clears accumulated window end proof and cancels a running countdown.
   private mutating func resetEnd(_ index: Int) {
+    clearEndProof(index)
+    cancelCountdown(index)
+  }
+
+  private mutating func clearEndProof(_ index: Int) {
     episodes[index].endSince = nil
     episodes[index].endReadings = 0
     episodes[index].lastEndedReadAt = nil
+  }
+
+  private mutating func cancelCountdown(_ index: Int) {
     if case .ending(let m, _) = episodes[index].phase {
       episodes[index].phase = .recording(meetingID: m)
+      episodes[index].endOrigin = nil
+      episodes[index].countdownStartedAt = nil
+      episodes[index].pausedRemaining = nil
+      episodes[index].releasedDuringWindowCountdown = false
       if case .countdown(episodes[index].id, _) = interaction { set(.none) }
     }
+  }
+
+  private mutating func clearRelease(_ index: Int) {
+    episodes[index].releaseSince = nil
+    episodes[index].releaseFirstSequence = nil
+  }
+
+  /// #4249: link admission (and a card Keep) sets the boundary a newer active reading must cross.
+  private mutating func disarmRelease(_ index: Int) {
+    episodes[index].armBoundary = reading?.sequence ?? 0
+    episodes[index].releaseArmed = false
+    clearRelease(index)
+  }
+
+  private mutating func linkRecording(_ e: Int, _ m: UUID, _ c: Context) {
+    setPhase(e, .recording(meetingID: m))
+    guard let index = episodes.firstIndex(where: { $0.id == e }) else { return }
+    disarmRelease(index)
+    episodes[index].keptUntilRearm = false
+    episodes[index].linkedAt = c.now
   }
 
   /// Only new, scoped completed UI observations confirm end. Cached IDs and microphone
@@ -1022,18 +1105,24 @@ public struct CallDetectionPolicy: Sendable {
         episodes[index].phase = .recording(meetingID: m)
         if case .endConfirmation(episodes[index].id, _) = interaction { set(.none) }
       }
+      // #4249: a release countdown is not window proof, so missing, unknown or stale window
+      // evidence only clears window proof; fresh ongoing evidence still cancels it.
+      let releaseCountdown = episodes[index].endOrigin == .release && !ongoing
       guard !ongoing, let latest = applicable.last, fresh(latest, c),
         case .ended? = state(latest, for: episodes[index])
       else {
         episodes[index].lastObservationID = max(episodes[index].lastObservationID, latestID)
-        resetEnd(index)
+        if releaseCountdown { clearEndProof(index) } else { resetEnd(index) }
         continue
       }
       for observation in applicable where observation.id > episodes[index].lastObservationID {
         episodes[index].lastObservationID = observation.id
         guard fresh(observation, c), observation.beganAt >= episodes[index].establishedAt,
           case .ended? = state(observation, for: episodes[index])
-        else { resetEnd(index); continue }
+        else {
+          if releaseCountdown { clearEndProof(index) } else { resetEnd(index) }
+          continue
+        }
         if episodes[index].endSince == nil { episodes[index].endSince = observation.completedAt }
         episodes[index].endReadings += 1
         episodes[index].lastEndedReadAt = observation.beganAt
@@ -1051,20 +1140,16 @@ public struct CallDetectionPolicy: Sendable {
       case .kept:
         if Self.isNative(episode.rule) { ended.append(episode.id) }
       case .recording(let m):
+        // #4249: after a card Keep, window proof waits for a new active-then-release cycle.
+        if episode.keptUntilRearm { continue }
         if !Self.isNative(episode.rule) {
           episodes[index].phase = .confirmingEnd(meetingID: m)
           continue
         }
-        let deadline = c.now.addingTimeInterval(Self.countdownLength)
-        episodes[index].phase = .ending(meetingID: m, deadline: deadline)
-        set(.countdown(episode: episode.id, deadline: deadline))
-      case .ending(let m, let deadline):
-        guard c.now >= deadline else { continue }
-        let id = newID()
-        operations[id] = .stopForEnd(episode: episode.id, family: episode.family, meetingID: m)
-        episodes[index].phase = .stopping(operation: id)
-        if case .countdown(episode.id, _) = interaction { set(.none) }
-        out.append(.stop(operation: id, meetingID: m))
+        startCountdown(index, m, origin: .window, c)
+      case .ending:
+        // The deadline is handled by `expireEndings`, independent of window confirmation.
+        continue
       case .starting:
         // Proven native end cancels the running Start. A browser page end cannot prove
         // that the call ended, so its admitted Start remains wanted until settlement.
@@ -1074,6 +1159,184 @@ public struct CallDetectionPolicy: Sendable {
       }
     }
     for id in ended { remove(episode: id) }
+  }
+
+  private mutating func startCountdown(_ index: Int, _ m: UUID, origin: EndOrigin, _ c: Context) {
+    let deadline = c.now.addingTimeInterval(Self.countdownLength)
+    episodes[index].phase = .ending(meetingID: m, deadline: deadline)
+    episodes[index].endOrigin = origin
+    episodes[index].countdownStartedAt = c.now
+    episodes[index].pausedRemaining = nil
+    episodes[index].releasedDuringWindowCountdown = false
+    set(.countdown(episode: episodes[index].id, deadline: deadline))
+  }
+
+  /// A countdown's deadline stops the meeting, whichever path started it (#4249).
+  private mutating func expireEndings(_ c: Context, _ out: inout [Command]) {
+    for index in episodes.indices {
+      guard case .ending(let m, let deadline) = episodes[index].phase, c.now >= deadline,
+        episodes[index].pausedRemaining == nil
+      else { continue }
+      let episode = episodes[index]
+      let id = newID()
+      operations[id] = .stopForEnd(episode: episode.id, family: episode.family, meetingID: m)
+      episodes[index].phase = .stopping(operation: id)
+      if case .countdown(episode.id, _) = interaction { set(.none) }
+      out.append(.stop(operation: id, meetingID: m))
+    }
+  }
+
+  /// #4249: how this episode's own app run uses the microphone in the current reading. Only a
+  /// fresh, complete, unambiguous reading of an owned episode with exact source identity can say
+  /// `released`; anything uncertain is `unknown`, which never ends a recording.
+  private func releaseState(of episode: Episode, _ c: Context) -> ReleaseState {
+    guard isFresh(c), let reading, !reading.ambiguous, let owner = episode.owner,
+      !episode.sources.isEmpty
+    else { return .unknown }
+    // Known activity of the episode's app run wins over any uncertainty elsewhere (§3.2).
+    var active = false
+    var uncertain = false
+    for source in episode.sources {
+      // The same process now projected under another source identity: unresolved.
+      if reading.sources.contains(where: { $0.pid == source.pid && $0.rule == source.rule && $0.id != source.id }) {
+        uncertain = true
+        continue
+      }
+      // Absent from the complete candidate listing (which lists inactive holders too): released.
+      guard let holder = reading.holders.first(where: { $0.pid == source.pid && $0.rule == source.rule })
+      else { continue }
+      switch holder.input {
+      case .active: active = true
+      case .unknown: uncertain = true
+      case .inactive: break
+      }
+    }
+    // Other processes of the same app (helpers, a relaunch) that still use the microphone.
+    for holder in members(of: episode) where holder.input != .inactive {
+      guard !episode.sources.contains(where: { $0.pid == holder.pid && $0.rule == holder.rule }) else { continue }
+      guard let observedOwner = attribution(for: holder, c).1?.owner else {
+        uncertain = true
+        continue
+      }
+      guard observedOwner == owner else { continue } // another app run says nothing about this call
+      if holder.input == .unknown { uncertain = true } else { active = true }
+    }
+    if active { return .active }
+    return uncertain ? .unknown : .released
+  }
+
+  /// Fresh window evidence that the call is still going on (the same test `trackEnds` uses).
+  private func windowOngoing(_ episode: Episode, _ c: Context) -> Bool {
+    (reading?.continuity ?? []).contains { observation in
+      guard fresh(observation, c), case .ongoing? = state(observation, for: episode) else { return false }
+      return true
+    }
+  }
+
+  private func farSideHeld(_ episode: Episode, _ c: Context) -> Bool {
+    guard let words = c.callWordsAt, let since = episode.releaseSince else { return false }
+    return c.now.timeIntervalSince(words) < Self.farSideQuiet
+      && c.now.timeIntervalSince(since) < Self.farSideHoldCap
+  }
+
+  /// #4249: the call app releasing the microphone ends a linked recording's call, like every
+  /// competitor does; reverses #4142's "inactive input is not end proof" by founder decision
+  /// (Gate 1, 2026-11-02). Leave computer audio is the accepted false case; Keep recovers it.
+  private mutating func trackReleases(_ c: Context) {
+    var questionShown = false
+    switch interaction {
+    case .ask, .switchCall: questionShown = true
+    default: break
+    }
+    for index in episodes.indices {
+      let phase = episodes[index].phase
+      let meetingID: UUID
+      switch phase {
+      case .recording(let m), .confirmingEnd(let m), .ending(let m, _): meetingID = m
+      default:
+        clearRelease(index)
+        continue
+      }
+      if inHoldoff(c) || questionShown {
+        clearRelease(index)
+        continue
+      }
+      guard let reading else { continue }
+      let counting: Bool
+      if case .ending = phase { counting = true } else { counting = false }
+      let state = releaseState(of: episodes[index], c)
+      // A window-origin countdown only listens for the app taking the microphone back after
+      // releasing it during the countdown (a reacquisition, §3.2).
+      if counting, episodes[index].endOrigin != .release {
+        if state == .released { episodes[index].releasedDuringWindowCountdown = true }
+        if state == .active, episodes[index].releasedDuringWindowCountdown {
+          episodes[index].lastObservationID = max(
+            episodes[index].lastObservationID, reading.continuity.map(\.id).max() ?? 0)
+          resetEnd(index)
+        }
+        continue
+      }
+      switch state {
+      case .active:
+        // The call came back (or never left): a release countdown is cancelled.
+        if counting { cancelCountdown(index) }
+        clearRelease(index)
+        if reading.sequence > episodes[index].armBoundary { episodes[index].releaseArmed = true }
+      case .unknown:
+        // Unknown never counts toward a release; it does not cancel a running countdown, whose
+        // far-side pause still follows the words (a paused countdown must be able to resume).
+        if counting {
+          pauseOrResume(index, meetingID, held: farSideHeld(episodes[index], c), c)
+        } else {
+          clearRelease(index)
+        }
+      case .released:
+        guard episodes[index].releaseArmed else { continue }
+        // A new active-then-release cycle after a card Keep: window proof may count again.
+        episodes[index].keptUntilRearm = false
+        if episodes[index].releaseSince == nil {
+          episodes[index].releaseSince = reading.takenAt
+          episodes[index].releaseFirstSequence = reading.sequence
+        }
+        let held = farSideHeld(episodes[index], c)
+        if counting {
+          pauseOrResume(index, meetingID, held: held, c)
+          continue
+        }
+        guard let since = episodes[index].releaseSince,
+          let first = episodes[index].releaseFirstSequence, reading.sequence > first,
+          reading.takenAt.timeIntervalSince(since) >= Self.releaseConfirm, !held,
+          // Fresh window proof that the call goes on (#4142: Leave computer audio keeps the
+          // call window) outranks the release, as it cancels a running countdown in `trackEnds`.
+          !windowOngoing(episodes[index], c)
+        else { continue }
+        let recordingStart = c.recordingSince ?? episodes[index].linkedAt ?? c.now
+        guard c.now.timeIntervalSince(recordingStart) >= Self.minRecordingAge else { continue }
+        clearEndProof(index)
+        startCountdown(index, meetingID, origin: .release, c)
+      }
+    }
+  }
+
+  /// #4249 §3.2: far-side words that advance during a release countdown pause it (the card
+  /// hides) and keep its remaining time; it resumes with that time when the hold lapses.
+  private mutating func pauseOrResume(_ index: Int, _ m: UUID, held: Bool, _ c: Context) {
+    guard case .ending(_, let deadline) = episodes[index].phase else { return }
+    if let remaining = episodes[index].pausedRemaining {
+      guard !held else { return }
+      let resumed = c.now.addingTimeInterval(remaining)
+      episodes[index].pausedRemaining = nil
+      episodes[index].phase = .ending(meetingID: m, deadline: resumed)
+      episodes[index].countdownStartedAt = c.now
+      // The same countdown continues: same token, so a card hidden with × stays hidden.
+      if interaction == .none { setKeepingToken(.countdown(episode: episodes[index].id, deadline: resumed)) }
+      return
+    }
+    guard held, let started = episodes[index].countdownStartedAt, let words = c.callWordsAt,
+      words > started
+    else { return }
+    episodes[index].pausedRemaining = max(0, deadline.timeIntervalSince(c.now))
+    if case .countdown(episodes[index].id, _) = interaction { setKeepingToken(.none) }
   }
 
   /// New calls: a process with its microphone on showing known call evidence in a fresh
@@ -1324,11 +1587,13 @@ public struct CallDetectionPolicy: Sendable {
       guard let index = episodes.firstIndex(where: { $0.id == e }),
         case .confirmingEnd(let m) = episodes[index].phase,
         c.meeting == .recording(meetingID: m) else { return }
-      episodes[index].phase = .kept(meetingID: m)
-      episodes[index].ownershipOverridden = true
-      association = .overridden(m)
-      resetEnd(index)
-      set(.none)
+      keepAfterCard(index, m)
+    case (.countdown(let e, _), .keepRecording):
+      // #4249: restored. The meeting stays linked; the next real release asks again.
+      guard let index = episodes.firstIndex(where: { $0.id == e }),
+        case .ending(let m, _) = episodes[index].phase, c.meeting == .recording(meetingID: m)
+      else { return }
+      keepAfterCard(index, m)
     case (.countdown(let e, _), .endRecording):
       // #4232: End recording stops now, exactly as the countdown's deadline would.
       guard let index = episodes.firstIndex(where: { $0.id == e }),
@@ -1350,6 +1615,20 @@ public struct CallDetectionPolicy: Sendable {
     default:
       break
     }
+  }
+
+  /// #4249: a card Keep keeps the call's link (no permanent `.kept`), consumes the current proof
+  /// and blocks both automatic end paths until the app's microphone is active again.
+  private mutating func keepAfterCard(_ index: Int, _ m: UUID) {
+    episodes[index].phase = .recording(meetingID: m)
+    episodes[index].endOrigin = nil
+    episodes[index].countdownStartedAt = nil
+    clearEndProof(index)
+    episodes[index].lastObservationID = max(
+      episodes[index].lastObservationID, reading?.continuity.map(\.id).max() ?? 0)
+    disarmRelease(index)
+    episodes[index].keptUntilRearm = true
+    set(.none)
   }
 
   private mutating func start(episode e: Int, family: CallAppFamily, _ out: inout [Command]) {
@@ -1392,7 +1671,7 @@ public struct CallDetectionPolicy: Sendable {
       if case .start(_, _, true) = operation { byItself = true }
       switch result {
       case .recording(let m):
-        setPhase(e, .recording(meetingID: m))
+        linkRecording(e, m, c)
         // auto_started only once it records (review r18 F4).
         if byItself { out.append(.emit(family: family, answer: .autoStarted)) }
       case .needsAttention:
@@ -1501,6 +1780,14 @@ public struct CallDetectionPolicy: Sendable {
     }
     interaction = new
     token += 1
+    claimedToken = nil
+  }
+
+  /// #4249: the one exception to "the token changes with the interaction": a release countdown's
+  /// far-side pause and resume are the same countdown, so the coordinator's × hide (keyed by
+  /// token) survives them. Any other interaction change in between takes a new token as usual.
+  private mutating func setKeepingToken(_ new: Interaction) {
+    interaction = new
     claimedToken = nil
   }
 
