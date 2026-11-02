@@ -162,7 +162,7 @@ enum MeetingLiveWordsChoice {
       }
       if let installed = ApplePreviewEngineResolver.satisfyingTag(
         requestedCode: base, resolvedTag: resolved ?? base,
-        installedTags: inventory.appleInstalledTags)
+        installedTags: inventory.appleInstalledTags, macRegion: inventory.macRegion)
       {
         return installed
       }

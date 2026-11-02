@@ -7,6 +7,9 @@ public struct AppleIntelligenceSetupCopy: Sendable {
   public let availabilityMessage: String
   public let onboardingMessage: String
   public let leaveMessage: String
+  /// The EnviousMeet Summaries tab's leave dialog (#4321): the same condition, naming what a
+  /// summary engine loses instead of AI polish.
+  public let summaryLeaveMessage: String
 
   public static var current: Self {
     forOSMajorVersion(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)
@@ -26,7 +29,10 @@ public struct AppleIntelligenceSetupCopy: Sendable {
           comment: "Onboarding Apple Intelligence notice on macOS 27 or later. The Open System Settings button is not a guaranteed remedy."),
         leaveMessage: String(
           localized: "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without AI polish. System Settings may not offer a fix.",
-          comment: "Apple Intelligence leave-page dialog on macOS 27 or later. Leave means navigating away from the page."))
+          comment: "Apple Intelligence leave-page dialog on macOS 27 or later. Leave means navigating away from the page."),
+        summaryLeaveMessage: String(
+          localized: "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without meeting summaries. System Settings may not offer a fix.",
+          comment: "EnviousMeet Summaries tab leave dialog on macOS 27 or later, when Apple Intelligence is the summary engine. Leave means navigating away from the tab."))
     }
     // Preserve the macOS 26 remedy; older supported systems use the existing unsupported-OS path.
     return Self(
@@ -40,6 +46,10 @@ public struct AppleIntelligenceSetupCopy: Sendable {
         localized: "Turn it on to enable free, on-device AI polish. Dictation works fine without it.",
         comment: "Apple Intelligence onboarding instruction on macOS 26."),
       leaveMessage: String(
+        localized: "Turn it on in System Settings, or pick another model.",
+        comment: "Apple Intelligence leave-page instruction on macOS 26."),
+      // The macOS 26 sentence names no lost feature, so the Summaries tab uses it as is.
+      summaryLeaveMessage: String(
         localized: "Turn it on in System Settings, or pick another model.",
         comment: "Apple Intelligence leave-page instruction on macOS 26."))
   }

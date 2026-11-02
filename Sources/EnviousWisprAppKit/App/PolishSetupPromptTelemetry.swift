@@ -20,6 +20,9 @@ struct PolishSetupPromptEvent: Equatable {
   /// The surfaces that report. The sidebar tag is not a prompt and has no button.
   enum Surface: String, CaseIterable {
     case leaveDialog = "leave_dialog"
+    /// #4321: the EnviousMeet Summaries tab's leave dialog, about the summary engine. Its own
+    /// value, so `leave_dialog` keeps meaning dictation's AI Polish question.
+    case summaryLeaveDialog = "summary_leave_dialog"
     case card
     case banner
     case menu

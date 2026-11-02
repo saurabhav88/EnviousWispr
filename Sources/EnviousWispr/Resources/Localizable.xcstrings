@@ -2616,6 +2616,17 @@
         }
       }
     },
+    "Add your %@ API key to write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up reason. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge deinen %@-API-Schlüssel hinzu, um Meeting-Zusammenfassungen zu erstellen."
+          }
+        }
+      }
+    },
     "Add your first snippet" : {
       "localizations" : {
         "de" : {
@@ -3653,6 +3664,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bei der letzten Prüfung war Apple Intelligence nicht aktiviert. Wähle ein anderes Modell oder verlasse die Ansicht ohne KI-Nachbearbeitung. In den Systemeinstellungen lässt sich das Problem möglicherweise nicht beheben."
+          }
+        }
+      }
+    },
+    "Apple Intelligence wasn't enabled at the last check. Pick another model, or leave without meeting summaries. System Settings may not offer a fix." : {
+      "comment" : "EnviousMeet Summaries tab leave dialog on macOS 27 or later, when Apple Intelligence is the summary engine. Leave means navigating away from the tab.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei der letzten Prüfung war Apple Intelligence nicht aktiviert. Wähle ein anderes Modell oder verlasse die Ansicht ohne Meeting-Zusammenfassungen. In den Systemeinstellungen lässt sich das Problem möglicherweise nicht beheben."
           }
         }
       }
@@ -5372,6 +5394,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle ein Ollama-Modell, um die KI-Nachbearbeitung zu nutzen."
+          }
+        }
+      }
+    },
+    "Choose an Ollama model to write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Ollama-Modell, um Meeting-Zusammenfassungen zu erstellen."
           }
         }
       }
@@ -8905,6 +8938,17 @@
         }
       }
     },
+    "Finish summary setup" : {
+      "comment" : "EnviousMeet Summaries tab, pop-up when leaving the tab while the chosen summary engine is not set up.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen fertig einrichten"
+          }
+        }
+      }
+    },
     "Finish upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button.",
       "localizations" : {
@@ -10339,6 +10383,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Installiere Ollama, um die KI-Nachbearbeitung zu nutzen."
+          }
+        }
+      }
+    },
+    "Install Ollama to write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiere Ollama, um Meeting-Zusammenfassungen zu erstellen."
           }
         }
       }
@@ -12303,6 +12358,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting aufgenommen"
+          }
+        }
+      }
+    },
+    "Meeting summaries with Apple Intelligence require macOS 26 or later. Pick another model." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up. Apple Intelligence and macOS are product names.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Zusammenfassungen mit Apple Intelligence erfordern macOS 26 oder neuer. Wähle ein anderes Modell."
           }
         }
       }
@@ -16960,13 +17026,13 @@
         }
       }
     },
-    "Removing frees %@. Polish switches to Apple Intelligence." : {
-      "comment" : "AI Polish, local model: what Remove Model does. %@ is the model's size, such as 2.9 GB.",
+    "Removing frees %@. Dictation, Transcribe a File and meeting summaries that use it switch to Apple Intelligence." : {
+      "comment" : "AI Polish and EnviousMeet Summaries, local model: what Remove Model does. The model is shared, so every feature using it moves. %@ is the model's size, such as 2.9 GB.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entfernen gibt %@ frei. Polish wechselt zu Apple Intelligence."
+            "value" : "Entfernen gibt %@ frei. Diktat, Datei transkribieren und Meeting-Zusammenfassungen, die es verwenden, wechseln zu Apple Intelligence."
           }
         }
       }
@@ -19034,6 +19100,17 @@
         }
       }
     },
+    "Start Ollama to write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up reason. Ollama is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starte Ollama, um Meeting-Zusammenfassungen zu erstellen."
+          }
+        }
+      }
+    },
     "Start Recording" : {
       "comment" : "Menu bar menu: starts a dictation.",
       "localizations" : {
@@ -20571,6 +20648,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Download hat die Überprüfung nicht bestanden und wurde verworfen. Versuche es erneut."
+          }
+        }
+      }
+    },
+    "The download is still in progress. Until setup finishes, EnviousMeet can't write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, notice when leaving the tab during a download. EnviousMeet is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download läuft noch. Bis die Einrichtung fertig ist, kann EnviousMeet keine Meeting-Zusammenfassungen erstellen."
           }
         }
       }
@@ -22560,6 +22648,17 @@
         }
       }
     },
+    "Until it is ready, EnviousMeet can't write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, notice when leaving the tab while Apple Intelligence is not ready. EnviousMeet is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis Apple Intelligence bereit ist, kann EnviousMeet keine Meeting-Zusammenfassungen erstellen."
+          }
+        }
+      }
+    },
     "Until it is ready, text is pasted without AI polish." : {
       "comment" : "AI Polish, notice when leaving the page while Apple Intelligence is not ready.",
       "localizations" : {
@@ -22571,6 +22670,17 @@
         }
       }
     },
+    "Until then, EnviousMeet can't write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, leave pop-up: the sentence after the reason. EnviousMeet is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis dahin kann EnviousMeet keine Meeting-Zusammenfassungen erstellen."
+          }
+        }
+      }
+    },
     "Until then, text is pasted without AI polish." : {
       "comment" : "AI Polish, leave pop-up: the sentence after the reason.",
       "localizations" : {
@@ -22578,6 +22688,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bis dahin wird Text ohne KI-Nachbearbeitung eingefügt."
+          }
+        }
+      }
+    },
+    "Until this check finishes, EnviousMeet can't write meeting summaries." : {
+      "comment" : "EnviousMeet Summaries tab, notice when leaving the tab while a download is checked. EnviousMeet is a product name; keep it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis diese Prüfung fertig ist, kann EnviousMeet keine Meeting-Zusammenfassungen erstellen."
           }
         }
       }

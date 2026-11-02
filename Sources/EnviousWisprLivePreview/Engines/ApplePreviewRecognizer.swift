@@ -792,7 +792,8 @@ package enum ApplePreviewEngineResolver {
     }
     guard
       let readyTag = satisfyingTag(
-        requestedCode: code, resolvedTag: tag, installedTags: installedTags)
+        requestedCode: code, resolvedTag: tag, installedTags: installedTags,
+        macRegion: Locale.current.region?.identifier)
     else {
       // Name the LANGUAGE for a locked code and the exact REGION for a full one, matching what
       // the user actually has to go and install.
@@ -835,7 +836,7 @@ package enum ApplePreviewEngineResolver {
     guard
       let readyTag = satisfyingTag(
         requestedCode: languageTag, resolvedTag: locale.identifier(.bcp47),
-        installedTags: installedTags)
+        installedTags: installedTags, macRegion: Locale.current.region?.identifier)
     else {
       let name = ApplePackCatalog.localizedName(for: locale.identifier(.bcp47))
       await log("meeting model not installed for \(locale.identifier(.bcp47))")
@@ -876,10 +877,17 @@ package enum ApplePreviewEngineResolver {
   /// region's model, and the real fix is regional rows in the 100-code catalogue, which changes
   /// a user-visible list and the paste engines too (FACT: not-done). It restores the property
   /// that installing the language once is enough.
+  ///
+  /// #4326: among the installed variants of a bare code, one in this Mac's region (`macRegion`,
+  /// for example `US`) wins, before the sorted pick. Without it a US Mac locked to English with
+  /// en-AU, en-GB and en-US installed previewed in en-AU, the alphabetically first. `resolvedTag`
+  /// is deliberately not preferred: for a bare code it is the random draw described above. The
+  /// region match reads each tag's region, so a script-bearing tag (`zh-Hant-TW`) matches too.
   package static func satisfyingTag(
     requestedCode: String,
     resolvedTag: String,
-    installedTags: [String]
+    installedTags: [String],
+    macRegion: String?
   ) -> String? {
     guard Locale(identifier: requestedCode).region == nil else {
       return installedTags.first { $0 == resolvedTag }
@@ -887,11 +895,16 @@ package enum ApplePreviewEngineResolver {
     let language = Locale(identifier: resolvedTag).language.languageCode?.identifier
     // Sorted so the same inputs always yield the same locale. An unstable choice here would
     // reintroduce the churn this exists to remove, just one level further in.
-    return
+    let siblings =
       installedTags
       .filter { Locale(identifier: $0).language.languageCode?.identifier == language }
       .sorted()
-      .first
+    if let macRegion,
+      let local = siblings.first(where: { Locale(identifier: $0).region?.identifier == macRegion })
+    {
+      return local
+    }
+    return siblings.first
   }
 
   /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked

@@ -1028,27 +1028,75 @@ final class PolishSetupMonitor {
 }
 
 /// The AI polish setup warnings' app-lifetime owners, held by the composition root as one
-/// slot: the saved-key record, the warning monitor, and the card after a dictation.
+/// slot: the saved-key record, the warning monitor, the card after a dictation, and the
+/// EnviousMeet summary engine's own monitor (#4321).
 @MainActor
 final class PolishSetupWiring {
   let savedKeyPresence: SavedKeyPresence
   let monitor: PolishSetupMonitor
   let card: PolishSetupCardPresenter
+  let summary: SummarySetupMonitorHolder
 
   init(
     savedKeyPresence: SavedKeyPresence, monitor: PolishSetupMonitor,
-    card: PolishSetupCardPresenter
+    card: PolishSetupCardPresenter, summary: SummarySetupMonitorHolder
   ) {
     self.savedKeyPresence = savedKeyPresence
     self.monitor = monitor
     self.card = card
+    self.summary = summary
+  }
+
+  /// Starts both monitors; each watches its own chosen engine from launch.
+  func start() {
+    monitor.start()
+    summary.monitor.start()
+  }
+
+  /// Stops both monitors before the owners they read are torn down.
+  func stop() {
+    card.stop()
+    monitor.stop()
+    summary.monitor.stop()
   }
 }
 
-/// Late binding for the settings change hook, which is installed before the monitor exists.
+/// The EnviousMeet summary engine's setup monitor (#4321): the same `PolishSetupMonitor` type
+/// over the summary engine's inputs, with no take ingestion, card, banner, menu line or refresh
+/// hooks (dictation's monitor owns those). Its own type, so SwiftUI's type-keyed environment can
+/// carry it beside dictation's monitor.
+@MainActor @Observable
+final class SummarySetupMonitorHolder {
+  let monitor: PolishSetupMonitor
+  init(monitor: PolishSetupMonitor) { self.monitor = monitor }
+}
+
+/// Late binding for the settings change hook, which is installed before the monitors exist.
 @MainActor
 final class PolishSetupMonitorHolder {
   weak var monitor: PolishSetupMonitor?
+  weak var summaryMonitor: PolishSetupMonitor?
+
+  /// A settings change reaches the monitor whose chosen engine it describes, synchronously.
+  /// Onboarding finishing makes both eligible.
+  func settingChanged(_ key: SettingsManager.SettingKey) {
+    switch key {
+    case .llmProvider, .llmModel, .ollamaModel:
+      monitor?.configurationOrEligibilityChanged()
+    case .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
+      summaryMonitor?.configurationOrEligibilityChanged()
+    case .onboardingState:
+      monitor?.configurationOrEligibilityChanged()
+      summaryMonitor?.configurationOrEligibilityChanged()
+    default: break
+    }
+  }
+
+  /// The one saved-key callback, fanned out to both monitors: a key serves both engines.
+  func savedKeysChanged() {
+    monitor?.configurationOrEligibilityChanged()
+    summaryMonitor?.configurationOrEligibilityChanged()
+  }
 }
 
 /// The one off-page Ollama probe on app activation (#3438), owned by `SetupCoordinator` so the
@@ -1060,34 +1108,80 @@ struct OllamaOffPageRefresh {
 }
 
 extension PolishSetupInputs {
-  /// The inputs composed from the live app-level owners, for DICTATION's chosen model: the
-  /// import's provider, an unsaved editor draft and another provider's verdict never count.
+  /// The inputs composed from the live app-level owners, for one scope's chosen engine:
+  /// DICTATION's AI polish model, or EnviousMeet's summary engine (#4321). The import's provider,
+  /// an unsaved editor draft and another provider's verdict never count.
   @MainActor
   static func live(
     settings: SettingsManager, localPolishRuntimes: LocalPolishRuntimeSet,
     aiAvailability: AIAvailabilityCoordinator, setup: SetupCoordinator,
-    llmDiscovery: LLMModelDiscoveryCoordinator, savedKeyPresence: SavedKeyPresence
+    llmDiscovery: LLMModelDiscoveryCoordinator, savedKeyPresence: SavedKeyPresence,
+    scope: PolishSetupScope = .dictation
   ) -> PolishSetupInputs {
-    let provider = settings.llmProvider
+    let engine = PolishSetupEngineSelection(settings: settings, scope: scope)
+    let provider = engine.provider
     let revision: UInt64?
     switch provider {
     case .openAI, .gemini, .claude: revision = savedKeyPresence.revision(for: provider)
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: revision = nil
     }
+    let validation = engine.validation(
+      stateProvider: llmDiscovery.stateProvider, state: llmDiscovery.keyValidationState)
     return PolishSetupInputs(
       onboardingComplete: settings.onboardingState == .completed,
       configuration: PolishSetupConfiguration(
-        provider: provider, model: settings.effectiveLLMModel, credentialRevision: revision),
+        provider: provider, model: engine.model, credentialRevision: revision),
       facts: .live(
         localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
-        validationProvider: llmDiscovery.stateProvider,
-        cloudValidation: llmDiscovery.keyValidationState,
+        validationProvider: validation.provider,
+        cloudValidation: validation.state,
         openAIKeySaved: savedKeyPresence.savedFlag(for: .openAI),
         geminiKeySaved: savedKeyPresence.savedFlag(for: .gemini),
         claudeKeySaved: savedKeyPresence.savedFlag(for: .claude),
         savedKeyPresence: savedKeyPresence,
         cloudVerdicts: llmDiscovery.cloudVerdicts,
-        ollamaModel: settings.ollamaModel),
+        ollamaModel: engine.ollamaModel),
       ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt)
+  }
+}
+
+/// One scope's chosen engine, read from settings in one place (#4321): provider, model and Ollama
+/// model together, so a snapshot never pairs the summary engine with dictation's model.
+struct PolishSetupEngineSelection: Equatable {
+  let scope: PolishSetupScope
+  let provider: LLMProvider
+  let model: String
+  let ollamaModel: String
+
+  @MainActor
+  init(settings: SettingsManager, scope: PolishSetupScope) {
+    self.scope = scope
+    switch scope {
+    case .dictation:
+      provider = settings.llmProvider
+      model = settings.effectiveLLMModel
+      ollamaModel = settings.ollamaModel
+    case .meetingSummary:
+      let selection = settings.meetingSummarySelection
+      provider = selection.provider
+      model = selection.model
+      ollamaModel = settings.meetingSummaryOllamaModel
+    }
+  }
+
+  /// The shared key-check state belongs to whichever provider was checked last. Dictation gets
+  /// it as is (`PolishSetupFacts` judges it against its own provider, unchanged since #3438);
+  /// the summary engine gets it only when it is about the summary provider, as the Summaries
+  /// card reads it (`MeetingSummariesTab.statusFacts`).
+  func validation(
+    stateProvider: LLMProvider?, state: LLMModelDiscoveryCoordinator.KeyValidationState
+  )
+    -> (provider: LLMProvider?, state: LLMModelDiscoveryCoordinator.KeyValidationState)
+  {
+    switch scope {
+    case .dictation: return (stateProvider, state)
+    case .meetingSummary:
+      return stateProvider == provider ? (stateProvider, state) : (nil, .idle)
+    }
   }
 }
