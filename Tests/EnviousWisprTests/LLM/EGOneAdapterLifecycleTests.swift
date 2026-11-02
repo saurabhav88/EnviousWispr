@@ -348,6 +348,58 @@ struct EGOneAdapterLifecycleTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 
+  fileprivate static func s1Target(_ fixture: Fixture) -> LocalPolishTarget {
+    var configuration = fixture.configuration()
+    configuration.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    return LocalPolishTarget(provider: .s1Mini, configuration: configuration)
+  }
+
+  /// An EG-1 summary holding a running EG-1, with dictation's S1-mini deferred behind it.
+  fileprivate static func summaryWithDeferredS1(
+    _ fixture: Fixture, _ coordinator: LocalPolishServerCoordinator
+  ) async throws -> LocalPolishSummaryReservation {
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
+      throw CancellationError()
+    }
+    await coordinator.transition(to: .run(s1Target(fixture)), intent: coordinator.claimIntent())
+    #expect(await coordinator.residentModelForTesting == .egOne, "S1-mini waits for the summary")
+    return reservation
+  }
+
+  @Test("a summary's release does not wait for dictation's engine to become ready (#4319)")
+  func summaryReleaseDoesNotWaitForDeferredReadiness() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    let reservation = try await Self.summaryWithDeferredS1(fixture, coordinator)
+    try Data().write(to: fixture.root.appendingPathComponent("hold_ready"))
+    // S1-mini's readiness stays parked until the release has returned.
+    await coordinator.releaseSummaryReservation(reservation)
+    #expect(await coordinator.isReservedForSummary() == false)
+    try Data().write(to: fixture.root.appendingPathComponent("release_ready"))
+    await coordinator.awaitSelectionAfterSummaryForTesting()
+    #expect(await coordinator.endpoint(for: .s1Mini) != nil, "dictation's engine came back")
+    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+  }
+
+  @Test("a summary ending during app quit starts no engine (#4319)")
+  func summaryEndingDuringQuitStartsNothing() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    let reservation = try await Self.summaryWithDeferredS1(fixture, coordinator)
+    coordinator.terminateForAppQuit()
+    await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
+    await coordinator.transition(to: .run(Self.s1Target(fixture)), intent: coordinator.claimIntent())
+    #expect(try fixture.launches().count == 1, "only the summary's EG-1 ever launched")
+    #expect(await coordinator.endpoint(for: .s1Mini) == nil)
+    #expect(await coordinator.reserveForSummary(.egOne) == .cancelled)
+  }
+
   @Test("switching to S1 and back boots EG-1 with the latest adapter set")
   func switchToS1AndBack() async throws {
     let fixture = try Fixture()

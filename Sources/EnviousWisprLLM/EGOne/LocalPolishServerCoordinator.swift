@@ -146,6 +146,12 @@ public actor LocalPolishServerCoordinator {
   private var leases: [UUID: (provider: LLMProvider, purpose: LocalPolishLeasePurpose)] = [:]
   /// #4319: the summary holding the server, if any, and the waits for its drain.
   private var summaryReservation: LocalPolishSummaryReservation?
+  /// #4319: the process change deferred behind a summary, run after its release returns, so
+  /// the summary's cleanup never waits for dictation's engine to become ready.
+  private var selectionAfterSummary: Task<Void, Never>?
+  /// #4319: set synchronously at app quit. No server starts after it, so a summary ending
+  /// during quit cannot replay a deferred start the quit kill would never see.
+  private nonisolated let closedForQuit = OSAllocatedUnfairLock(initialState: false)
   private var probesInFlight = 0
   private var drainWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
   private var drainWaitWatchersForTesting: [(id: UUID, continuation: CheckedContinuation<Void, Never>)] = []
@@ -253,7 +259,7 @@ public actor LocalPolishServerCoordinator {
   /// preparation before this hold exists). Cancelled while waiting: the reservation is
   /// removed and admission reopens.
   public func reserveForSummary(_ provider: LLMProvider) async -> LocalPolishReservationOutcome {
-    guard Task.isCancelled == false else { return .cancelled }
+    guard Task.isCancelled == false, !closedForQuit.withLock({ $0 }) else { return .cancelled }
     guard summaryReservation == nil,
       !leases.values.contains(where: { $0.purpose == .residency })
     else { return .retryLater }
@@ -301,12 +307,25 @@ public actor LocalPolishServerCoordinator {
   }
 
   /// Releases only the reservation it names; a stale or repeated release changes nothing.
-  /// Then admission reopens and a process change deferred behind it runs.
+  /// Admission reopens before this returns. A process change deferred behind the summary
+  /// runs afterwards in its own task: the summary's cleanup must not wait for that engine's
+  /// readiness (plan R9), and none runs once the app is quitting.
   public func releaseSummaryReservation(_ reservation: LocalPolishSummaryReservation) async {
     guard summaryReservation == reservation else { return }
     summaryReservation = nil
     wakeRemovalWaiters()
-    if leases.isEmpty { await retryDeferredReconfiguration() }
+    guard leases.isEmpty, deferredRequest != nil, selectionAfterSummary == nil,
+      !closedForQuit.withLock({ $0 })
+    else { return }
+    selectionAfterSummary = Task {
+      await self.retryDeferredReconfiguration()
+      self.selectionAfterSummary = nil
+    }
+  }
+
+  /// Tests: waits for the deferred change a summary release started, if any.
+  func awaitSelectionAfterSummaryForTesting() async {
+    await selectionAfterSummary?.value
   }
 
   /// Whether a summary holds the server now.
@@ -392,6 +411,8 @@ public actor LocalPolishServerCoordinator {
       guard summaryReservation == reservation else { return }
     }
     let ownsReservation = reservation != nil
+    // #4319: nothing starts once the app is quitting; the quit kill has already run.
+    if case .run = request, closedForQuit.withLock({ $0 }) { return }
     // A stamp older than one already honoured describes a world the user has
     // moved on from. Obeying it is exactly the defect this replaced.
     guard ownsReservation || intent >= honouredIntent else { return }
@@ -471,6 +492,12 @@ public actor LocalPolishServerCoordinator {
       changing = false
       wakeRemovalWaiters()
       await retryDeferredReconfiguration()
+      return
+    }
+    // #4319: the quit may have landed while the outgoing model stopped.
+    guard !closedForQuit.withLock({ $0 }) else {
+      changing = false
+      wakeRemovalWaiters()
       return
     }
     setResident(target.provider)
@@ -668,6 +695,7 @@ public actor LocalPolishServerCoordinator {
   /// App quit. Synchronous by necessity: `applicationWillTerminate` cannot await
   /// into an actor, and a `Process` child is NOT killed when its parent exits.
   public nonisolated func terminateForAppQuit() {
+    closedForQuit.withLock { $0 = true }
     manager.terminateImmediately()
   }
 

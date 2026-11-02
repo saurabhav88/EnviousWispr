@@ -158,6 +158,7 @@ struct LocalPolishSummaryReservationTests {
     await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == .egOne, "the summary keeps its model")
     await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
     #expect(await coordinator.residentModelForTesting == .s1Mini, "dictation's engine comes back")
   }
 
@@ -168,6 +169,7 @@ struct LocalPolishSummaryReservationTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == .egOne)
     await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
     #expect(await coordinator.residentModelForTesting == nil)
   }
 
@@ -178,6 +180,7 @@ struct LocalPolishSummaryReservationTests {
     await coordinator.transition(to: Self.run(.s1Mini, "s1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == nil)
     await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
     #expect(await coordinator.residentModelForTesting == .s1Mini)
   }
 
@@ -238,6 +241,7 @@ struct LocalPolishSummaryReservationTests {
       to: Self.run(.egOne, "eg1"), intent: ownerIntent, reservation: reservation)
     #expect(await coordinator.residentModelForTesting == .egOne)
     await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
     #expect(await coordinator.residentModelForTesting == .s1Mini, "the newer selection ran at release")
   }
 
@@ -258,6 +262,7 @@ struct LocalPolishSummaryReservationTests {
     await coordinator.transition(to: Self.run(.egOne, "eg1"), intent: coordinator.claimIntent())
     #expect(await coordinator.residentModelForTesting == nil)
     await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
     #expect(await coordinator.residentModelForTesting == .egOne, "the deferred start runs at release")
   }
 

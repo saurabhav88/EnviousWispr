@@ -3,15 +3,17 @@ import Foundation
 
 /// #4287 PR 3 (founder decision 19, interpretation A): while an EnviousMeet summary call runs on
 /// a local engine, a dictation that would polish with the SAME local engine skips AI polish and
-/// says so; recording, transcription and paste are untouched. Different engines never clash.
+/// says so; recording, transcription and paste are untouched. Otherwise different engines never
+/// clash.
 ///
 /// The one rule for "the same local engine": Apple Intelligence with Apple Intelligence, EG-1
 /// with EG-1, and Ollama with Ollama when both run on this Mac (any two models: one Ollama
 /// server, shared memory). A hosted Ollama model is not local. #4319: an EG-1 summary also
 /// clashes with S1-mini dictation, because both bundled models share one server process and the
 /// summary holds it; the busy engine named is then the summary's, EG-1. The summary side only ever
-/// reports a local call (`MeetingSummaryOwner` records the running call only for local
-/// execution), so its locality is already settled when it reaches here.
+/// reports a local engine (`MeetingSummaryOwner` records the running call only for local
+/// execution; for EG-1 the whole borrowing attempt, gaps between calls included), so its
+/// locality is already settled when it reaches here.
 public enum SummaryEngineClash {
   /// The engine both requests would use, or nil when this dictation may polish.
   /// - Parameters:
