@@ -136,6 +136,11 @@ final class CallDetectionCoordinator {
     var baselineSet = false
     var maxEndMs: Int?
     var advancedAt: Date?
+    /// Any track, for the silence backstop: the furthest word end and when words last
+    /// advanced (or, at the first sighting, when existing words were first seen).
+    var anyBaselineSet = false
+    var anyMaxEndMs: Int?
+    var anyWordsAt: Date?
   }
   private var callWords: CallWords?
 
@@ -310,7 +315,17 @@ final class CallDetectionCoordinator {
       startBlocked: switchAnswered && deps.detectedStartIsBlocked(),
       firstTipShown: settings.meetingCallFirstTipShown,
       noCounts: Self.counts(settings.meetingCallNoCounts),
-      callWordsAt: projectCallWords(meeting, now), recordingSince: recordingSince)
+      callWordsAt: projectCallWords(meeting, now), recordingSince: recordingSince,
+      anyWordsAt: callWords?.anyWordsAt, wordsHealthy: wordsHealthy(meeting))
+  }
+
+  /// #4249 silence backstop health (Wispr Flow `isPipelineHealthy`): the recording's live words
+  /// run on at least one captured track with no reported dropped audio.
+  private func wordsHealthy(_ meeting: CallDetectionPolicy.Meeting) -> Bool {
+    guard case .recording(let meetingID) = meeting, let transcript = deps.liveTranscript(),
+      transcript.meetingID == meetingID
+    else { return false }
+    return transcript.tracks.values.contains { $0.status == .running && !$0.droppedAudio }
   }
 
   /// #4249: when the call track's live words last advanced for the current recording, or nil
@@ -323,9 +338,21 @@ final class CallDetectionCoordinator {
       return nil
     }
     if callWords?.meetingID != meetingID { callWords = CallWords(meetingID: meetingID) }
-    guard let transcript = deps.liveTranscript(), transcript.meetingID == meetingID,
-      transcript.tracks[.callSound]?.status == .running
-    else { return nil }
+    guard let transcript = deps.liveTranscript(), transcript.meetingID == meetingID else { return nil }
+    if var words = callWords {
+      // Any track (silence backstop): new or extended words, never a text-only edit.
+      let furthest = transcript.lines.map(\.endMs).max()
+      if !words.anyBaselineSet {
+        words.anyBaselineSet = true
+        words.anyMaxEndMs = furthest
+        if furthest != nil { words.anyWordsAt = now }
+      } else if let furthest, furthest > (words.anyMaxEndMs ?? Int.min) {
+        words.anyMaxEndMs = furthest
+        words.anyWordsAt = now
+      }
+      callWords = words
+    }
+    guard transcript.tracks[.callSound]?.status == .running else { return nil }
     let furthest = transcript.lines.filter { $0.track == .callSound }.map(\.endMs).max()
     if var words = callWords {
       if !words.baselineSet {
@@ -605,6 +632,8 @@ final class CallDetectionCoordinator {
       }
     case .note(.needsAttention, _): .needsAttention
     case .note(.couldNotStart, _): .couldNotStart
+    case .stillInMeeting(_, let deadline):
+      .stillInMeeting(secondsLeft: max(1, Int(ceil(deadline.timeIntervalSince(deps.now())))))
     }
   }
 
@@ -617,8 +646,8 @@ final class CallDetectionCoordinator {
       keepRecording: press(.keepRecording), endRecording: press(.endRecording),
       startNewRecording: press(.startNewRecording), openSettings: press(.openSettings),
       dismiss: press(.close))
-    if case .countdown = content {
-      // #4232: × hides the countdown and changes nothing else; the recording still stops.
+    if content.hasTimer {
+      // #4232, #4249: × hides a timer card and changes nothing else; the recording still stops.
       actions.dismiss = { [weak self] in
         guard let self, self.policy.token == token else { return }
         self.hiddenToken = token

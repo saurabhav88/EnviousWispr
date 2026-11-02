@@ -23,11 +23,23 @@ enum CallPromptContent: Equatable {
   case couldNotStart
   case firstTip
   case lastTip(appName: String)
+  /// #4249 silence backstop: no new words for 10 minutes; the recording stops when the seconds
+  /// run out unless the user keeps it.
+  case stillInMeeting(secondsLeft: Int)
 
   /// A countdown's ticks update copy, not the lifetime of its presentation.
   var presentationIdentity: Self {
     if case .countdown(let identity, _) = self { return .countdown(identity, secondsLeft: 0) }
+    if case .stillInMeeting = self { return .stillInMeeting(secondsLeft: 0) }
     return self
+  }
+
+  /// A card whose timer stops the recording: × only hides it (#4232, #4249).
+  var hasTimer: Bool {
+    switch self {
+    case .countdown, .stillInMeeting: true
+    default: false
+    }
   }
 
   /// The two-second menu-bar card has no buttons and no close button.
@@ -57,9 +69,11 @@ extension CallPromptActions {
     switch (name, content) {
     case ("yes", .ask), ("yes", .switchMeeting): yes
     case ("no", .ask), ("no", .switchMeeting), ("no", .switchNotConfirmed): no
-    case ("keepRecording", .endConfirmation), ("keepRecording", .countdown): keepRecording
+    case ("keepRecording", .endConfirmation), ("keepRecording", .countdown),
+      ("keepRecording", .stillInMeeting):
+      keepRecording
     case ("stopRecording", .endConfirmation): stopRecording
-    case ("endRecording", .countdown): endRecording
+    case ("endRecording", .countdown), ("endRecording", .stillInMeeting): endRecording
     case ("startNewRecording", .switchNotConfirmed): startNewRecording
     case ("openSettings", .needsAttention), ("openSettings", .couldNotStart),
       ("openSettings", .firstTip), ("openSettings", .lastTip):

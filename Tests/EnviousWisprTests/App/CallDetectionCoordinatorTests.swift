@@ -2045,6 +2045,46 @@
       #expect(rig.panel.content.testName == "countdown:7", "resumed with the 7 s that were left")
     }
 
+    @Test("#4249: a hand-started recording with healthy live words asks after 10 quiet minutes; × only hides it")
+    func silenceBackstopThroughCoordinator() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      rig.attempts[meeting] = UUID()
+      rig.transcript = .init(meetingID: meeting,
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+        tracks: [.microphone: .init(status: .running)])
+      rig.coordinator.stepForTesting()
+      for _ in 0..<300 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(rig.panel.content.testName == "stillInMeeting:30")
+      #expect(rig.press("close"))
+      #expect(!rig.panel.isShowing)
+      for _ in 0..<15 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(await settleUntilObserved { rig.stops == 1 }, "hidden, the 30 s still ran out")
+    }
+
+    @Test("#4249: dropped live audio keeps the silence question away")
+    func silenceBackstopNeedsHealthyWords() async throws {
+      let rig = try Rig()
+      let meeting = UUID()
+      rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
+      rig.transcript = .init(meetingID: meeting,
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x")],
+        tracks: [.microphone: .init(status: .running, droppedAudio: true)])
+      rig.coordinator.stepForTesting()
+      for _ in 0..<310 {
+        rig.advance(2)
+        rig.coordinator.tickForTesting()
+      }
+      #expect(!rig.panel.isShowing && rig.stops == 0)
+    }
+
     @Test("#4249: another recording's live words never hold this recording's countdown")
     func otherMeetingWordsIgnored() async throws {
       let rig = try Rig()
@@ -2758,6 +2798,7 @@
       case .couldNotStart: "couldNotStart"
       case .firstTip: "firstTip"
       case .lastTip(let app): "lastTip:\(app)"
+      case .stillInMeeting(let seconds): "stillInMeeting:\(seconds)"
       }
     }
   }

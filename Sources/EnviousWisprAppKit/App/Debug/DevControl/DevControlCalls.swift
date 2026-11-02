@@ -160,6 +160,9 @@
       case .lastTip(let app):
         reply["panel"] = "lastTip"
         reply["panelApp"] = app
+      case .stillInMeeting(let seconds):
+        reply["panel"] = "stillInMeeting"
+        reply["secondsLeft"] = seconds
       }
       return reply
     }

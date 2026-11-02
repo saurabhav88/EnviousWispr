@@ -186,12 +186,16 @@ public struct CallDetectionPolicy: Sendable {
     /// #4249: when the current meeting recording began, for the minimum recording age before a
     /// microphone release can start the countdown. Nil falls back to when the call was linked.
     public var recordingSince: Date?
+    /// #4249 silence backstop: when any track's live words last advanced (or first appeared),
+    /// nil while none were heard; and whether the live words run without reported drops.
+    public var anyWordsAt: Date?
+    public var wordsHealthy: Bool
 
     public init(
       now: Date, meeting: Meeting, dictationActive: Bool = false, mode: Mode = .ask,
       appsOff: Set<String> = [], setUp: Bool = true, startBlocked: Bool = false,
       firstTipShown: Bool = false, noCounts: [String: Int] = [:], callWordsAt: Date? = nil,
-      recordingSince: Date? = nil
+      recordingSince: Date? = nil, anyWordsAt: Date? = nil, wordsHealthy: Bool = false
     ) {
       self.now = now
       self.meeting = meeting
@@ -204,6 +208,8 @@ public struct CallDetectionPolicy: Sendable {
       self.noCounts = noCounts
       self.callWordsAt = callWordsAt
       self.recordingSince = recordingSince
+      self.anyWordsAt = anyWordsAt
+      self.wordsHealthy = wordsHealthy
     }
   }
 
@@ -232,6 +238,9 @@ public struct CallDetectionPolicy: Sendable {
     /// own Start is offered, never a silent nothing (review r16 F1, r18 F3).
     case switchNotConfirmed(family: CallAppFamily, until: Date)
     case note(Note, until: Date)
+    /// #4249 silence backstop (Wispr Flow `tickSilence`): "Still in a meeting?" after 10 healthy
+    /// minutes with no new words; with no answer the meeting stops at `deadline`.
+    case stillInMeeting(meetingID: UUID, deadline: Date)
   }
 
   public enum Button: String, Sendable, CaseIterable {
@@ -271,8 +280,9 @@ public struct CallDetectionPolicy: Sendable {
     case markFirstTipShown
     case openMeetingPage
     /// #4232: the call flow stopped `meetingID` (countdown, End recording, Stop recording); the
-    /// panel follows its notes. The coordinator holds the attempt it froze for that stop.
-    case followNotes(meetingID: UUID, family: CallAppFamily)
+    /// panel follows its notes. The coordinator holds the attempt it froze for that stop. Nil
+    /// family: the silence backstop stopped a recording with no call (#4249).
+    case followNotes(meetingID: UUID, family: CallAppFamily?)
   }
 
   // Independent call-end confirmation retains the established 1.5 s minimum and two reads.
@@ -292,6 +302,12 @@ public struct CallDetectionPolicy: Sendable {
   /// #4249: a release in a recording's first seconds (waiting room, joining audio) never starts
   /// the countdown before this age (Wispr Flow `minSessionAgeMs:15e3`).
   public static let minRecordingAge: TimeInterval = 15
+  /// #4249 silence backstop, copied from Wispr Flow `tickSilence`: ask after this much healthy
+  /// time with no new words (`6e5`), answer within `silenceAnswer` (`oG=3e4`, default end), and
+  /// count at most `silenceTickCap` per step (`maxGapMs 2e3`, so sleep never counts).
+  public static let silenceAsk: TimeInterval = 600
+  public static let silenceAnswer: TimeInterval = 30
+  public static let silenceTickCap: TimeInterval = 2
   public static let questionReadiness: TimeInterval = 2
   public static let questionInterval: TimeInterval = 120
   public static let promptTimeout: TimeInterval = 120
@@ -367,6 +383,8 @@ public struct CallDetectionPolicy: Sendable {
     case stopForEnd(episode: Int, family: CallAppFamily, meetingID: UUID)
     case stopAfterConfirmation(episode: Int, family: CallAppFamily, meetingID: UUID)
     case userStart
+    /// #4249: the silence backstop's stop; no call episode needed.
+    case stopForSilence(meetingID: UUID)
   }
 
   public private(set) var interaction: Interaction = .none
@@ -412,6 +430,14 @@ public struct CallDetectionPolicy: Sendable {
   }
   private var pendingManual: PendingManual?
   private var association: Association?
+  /// #4249 silence backstop state for the current recording (Wispr Flow `silenceAccruedMs`).
+  private struct Silence {
+    let meetingID: UUID
+    var accrued: TimeInterval = 0
+    var lastStepAt: Date?
+    var lastWordsAt: Date?
+  }
+  private var silence: Silence?
   private var latestAcceptedGeneration = 0
 
   /// #4249: why a hand-started recording (menu bar or History) was or was not linked to a call,
@@ -603,6 +629,7 @@ public struct CallDetectionPolicy: Sendable {
     case .endConfirmation: "end_confirmation"
     case .switchNotConfirmed: "switch_not_confirmed"
     case .note: "note"
+    case .stillInMeeting: "still_in_meeting"
     }
   }
 
@@ -633,6 +660,8 @@ public struct CallDetectionPolicy: Sendable {
         lastQuestionReadingSequence = max(lastQuestionReadingSequence ?? sequence, sequence)
       }
       if case .recording(let id) = c.meeting { association = .rejected(id) }
+      // Wispr Flow `tickSilence` with auto-end off: the silence count starts over (#4249).
+      silence = nil
       set(.none)
       return out
     }
@@ -643,6 +672,7 @@ public struct CallDetectionPolicy: Sendable {
     // After owner and helper adoption, so release judges the episode's current sources.
     trackReleases(c)
     expireEndings(c, &out)
+    trackSilence(c, &out)
     noticeQuestionOpportunity(c)
     offer(c, &out)
     offerEndConfirmation(c)
@@ -855,7 +885,7 @@ public struct CallDetectionPolicy: Sendable {
     let episodeID: Int
     switch operation {
     case .start(let e, _, _), .switchTo(let e, _, _): episodeID = e
-    case .stopForEnd, .stopAfterConfirmation, .userStart: return false
+    case .stopForEnd, .stopAfterConfirmation, .userStart, .stopForSilence: return false
     }
     guard let episode = episodes.first(where: { $0.id == episodeID }), !episode.endedWhileStarting
     else { return false }
@@ -1616,6 +1646,13 @@ public struct CallDetectionPolicy: Sendable {
       episodes[index].phase = .stopping(operation: id)
       set(.none)
       out.append(.stop(operation: id, meetingID: m))
+    case (.stillInMeeting(let m, _), .keepRecording):
+      guard c.meeting == .recording(meetingID: m) else { return }
+      silence?.accrued = 0
+      set(.none)
+    case (.stillInMeeting(let m, _), .endRecording):
+      guard c.meeting == .recording(meetingID: m) else { return }
+      stopForSilence(m, &out)
     case (.switchNotConfirmed(let family, _), .startNewRecording):
       set(.none)
       let id = newID()
@@ -1641,6 +1678,55 @@ public struct CallDetectionPolicy: Sendable {
     disarmRelease(index)
     episodes[index].keptUntilRearm = true
     set(.none)
+  }
+
+  private mutating func stopForSilence(_ m: UUID, _ out: inout [Command]) {
+    let id = newID()
+    operations[id] = .stopForSilence(meetingID: m)
+    silence?.accrued = 0
+    set(.none)
+    out.append(.stop(operation: id, meetingID: m))
+  }
+
+  /// #4249 silence backstop, a copy of Wispr Flow `tickSilence`: healthy steps with no new words
+  /// accrue (each capped at 2 s); new words or unhealthy live words reset it to zero; after
+  /// 10 minutes, and only once some words were heard, "Still in a meeting?" asks for 30 s with
+  /// End as the default. New words withdraw the question; Keep restarts the clock. Covers every
+  /// recording, linked to a call or not, while call detection runs.
+  private mutating func trackSilence(_ c: Context, _ out: inout [Command]) {
+    guard case .recording(let m) = c.meeting else {
+      silence = nil
+      if case .stillInMeeting = interaction { set(.none) }
+      return
+    }
+    if silence?.meetingID != m {
+      silence = Silence(meetingID: m, lastWordsAt: c.anyWordsAt)
+      if case .stillInMeeting = interaction { set(.none) }
+    }
+    guard var state = silence else { return }
+    let wordsNow = c.anyWordsAt != nil && c.anyWordsAt != state.lastWordsAt
+    if wordsNow { state.lastWordsAt = c.anyWordsAt }
+    let step = state.lastStepAt.map { min(max(0, c.now.timeIntervalSince($0)), Self.silenceTickCap) } ?? 0
+    state.lastStepAt = c.now
+    defer { silence = state }
+    if case .stillInMeeting(m, let deadline) = interaction {
+      if wordsNow {
+        state.accrued = 0
+        set(.none)
+      } else if c.now >= deadline {
+        silence = state
+        stopForSilence(m, &out)
+        state.accrued = 0
+      }
+      return
+    }
+    if !c.wordsHealthy || wordsNow { state.accrued = 0 } else { state.accrued += step }
+    guard state.accrued >= Self.silenceAsk, state.lastWordsAt != nil else { return }
+    switch interaction {
+    case .none, .note: break
+    default: return
+    }
+    set(.stillInMeeting(meetingID: m, deadline: c.now.addingTimeInterval(Self.silenceAnswer)))
   }
 
   private mutating func start(episode e: Int, family: CallAppFamily, _ out: inout [Command]) {
@@ -1701,7 +1787,7 @@ public struct CallDetectionPolicy: Sendable {
       case .notStarted:
         setPhase(e, .offered)
       }
-    case .stopForEnd, .stopAfterConfirmation:
+    case .stopForEnd, .stopAfterConfirmation, .stopForSilence:
       break
     }
   }
@@ -1740,6 +1826,12 @@ public struct CallDetectionPolicy: Sendable {
       if c.meeting == .idle, interaction == .none {
         set(.switchNotConfirmed(family: family, until: c.now.addingTimeInterval(Self.stoppedOffer)))
       }
+    case .stopForSilence(let m):
+      operations[id] = nil
+      // A newer recording or a newer question keeps the panel, as for a call end.
+      if c.meeting == .idle, interaction == .none {
+        out.append(.followNotes(meetingID: m, family: nil))
+      }
     case .start, .userStart:
       break
     }
@@ -1752,7 +1844,7 @@ public struct CallDetectionPolicy: Sendable {
     operations.values.contains { operation in
       switch operation {
       case .start, .switchTo: true
-      case .stopForEnd, .stopAfterConfirmation, .userStart: false
+      case .stopForEnd, .stopAfterConfirmation, .userStart, .stopForSilence: false
       }
     }
   }
@@ -1806,7 +1898,7 @@ public struct CallDetectionPolicy: Sendable {
   /// A tip or a "could not start" never covers a question or a countdown (review r8 F2).
   private mutating func showNote(_ note: Note, _ c: Context) {
     switch interaction {
-    case .ask, .switchCall, .countdown, .endConfirmation: return
+    case .ask, .switchCall, .countdown, .endConfirmation, .stillInMeeting: return
     default: set(.note(note, until: c.now.addingTimeInterval(Self.noteTimeout)))
     }
   }

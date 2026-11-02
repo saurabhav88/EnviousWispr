@@ -90,7 +90,14 @@ private struct CallPromptCard: View {
       .buttonStyle(.plain)
       .accessibilityLabel(
         Text(
-          resource(LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."))
+          resource(
+            content.hasTimer
+              ? LocalizedStringResource(
+                "Hide",
+                comment:
+                  "EnviousMeet: VoiceOver name of the x on a card with a running timer; it only hides the card and the timer goes on."
+              )
+              : LocalizedStringResource("Close", comment: "EnviousMeet: closes the call panel."))
         ))
   }
 
@@ -103,7 +110,7 @@ private struct CallPromptCard: View {
     case .ask(let identity), .switchMeeting(let identity), .endConfirmation(let identity),
       .switchNotConfirmed(let identity), .manualStart(let identity), .countdown(let identity?, _):
       CallAppIdentityTile(identity: identity, size: 40)
-    case .countdown(nil, _), .needsAttention, .couldNotStart, .firstTip, .lastTip:
+    case .countdown(nil, _), .needsAttention, .couldNotStart, .firstTip, .lastTip, .stillInMeeting:
       CallNotesLips(size: 40, animated: false)
     }
   }
@@ -204,6 +211,11 @@ private struct CallPromptCard: View {
       LocalizedStringResource(
         "You said No to \(app) a few times. Last reminder: you can turn off \(app) in EnviousMeet settings.",
         comment: "EnviousMeet: shown once after the third No for one app; the app's name twice.")
+    case .stillInMeeting:
+      LocalizedStringResource(
+        "Still in a meeting?",
+        comment:
+          "EnviousMeet: no words were heard for 10 minutes; the recording stops soon unless the user keeps it.")
     }
   }
 
@@ -215,6 +227,10 @@ private struct CallPromptCard: View {
         comment:
           "EnviousMeet: uncertain browser ending only, never the native countdown. No answer or Keep recording continues recording."
       )
+    case .stillInMeeting(let seconds):
+      LocalizedStringResource(
+        "Recording stops in \(seconds) seconds",
+        comment: "EnviousMeet: the call ended; the recording stops after this many seconds.")
     case .notesWriting:
       LocalizedStringResource(
         "Writing your notes…",
@@ -252,7 +268,7 @@ private struct CallPromptCard: View {
             comment: "EnviousMeet: keep recording after an uncertain browser ending."),
           primary: true, action: actions.keepRecording)
       }
-    case .countdown:
+    case .countdown, .stillInMeeting:
       // #4249: Keep recording is back, since a microphone release can happen inside a live call.
       HStack(spacing: 8) {
         button(

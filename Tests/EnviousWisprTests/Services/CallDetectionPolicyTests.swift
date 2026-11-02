@@ -1248,6 +1248,8 @@ struct CallDetectionPolicyTests {
     var nextObservation = 1
     var callWordsAt: Date?
     var recordingSince: Date?
+    var anyWordsAt: Date?
+    var wordsHealthy = false
 
     /// Explicit test facts, never inferred from microphone state or absent windows.
     mutating func observeCall(_ value: CallEvidenceReader.Continuity, holder: Policy.Holder,
@@ -1292,7 +1294,8 @@ struct CallDetectionPolicyTests {
       .init(
         now: now, meeting: meeting, dictationActive: dictation, mode: mode, appsOff: appsOff,
         setUp: setUp, startBlocked: startBlocked, firstTipShown: firstTipShown,
-        noCounts: noCounts, callWordsAt: callWordsAt, recordingSince: recordingSince)
+        noCounts: noCounts, callWordsAt: callWordsAt, recordingSince: recordingSince,
+        anyWordsAt: anyWordsAt, wordsHealthy: wordsHealthy)
     }
 
     var interaction: Policy.Interaction { policy.interaction }
@@ -2220,6 +2223,162 @@ struct CallDetectionPolicyTests {
     t.stopFinished()
     #expect(isAsk(t.interaction, .googleMeet), "the newer question keeps the panel")
     #expect(t.followed.isEmpty)
+  }
+
+  // MARK: - Silence backstop (#4249, Wispr Flow tickSilence)
+
+  /// A recording with no call (hand-started), healthy live words, words heard just now.
+  func quietRecording() -> Story {
+    var s = Story()
+    s.meeting = .recording(meetingID: UUID())
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    s.step()
+    return s
+  }
+
+  /// Presentation ticks every 2 s for `seconds`, nothing heard.
+  func quiet(_ s: inout Story, for seconds: TimeInterval) {
+    var left = seconds
+    while left > 0 {
+      s.wait(min(2, left))
+      left -= 2
+      s.step()
+    }
+  }
+
+  func isStillInMeeting(_ i: Policy.Interaction) -> Bool {
+    if case .stillInMeeting = i { return true }
+    return false
+  }
+
+  @Test("#4249: 10 quiet healthy minutes ask Still in a meeting?; 30 s later the recording stops once",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4249"))
+  func silenceAsksThenStops() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk - 2)
+    #expect(s.interaction == .none, "598 s")
+    quiet(&s, for: 2)
+    #expect(isStillInMeeting(s.interaction), "600 s")
+    quiet(&s, for: Policy.silenceAnswer - 2)
+    #expect(s.stops == 0)
+    quiet(&s, for: 2)
+    #expect(s.stops == 1 && s.interaction == .none)
+    quiet(&s, for: 4)
+    #expect(s.stops == 1, "exactly once")
+    s.stopFinished()
+    #expect(s.commands.contains { if case .followNotes(_, nil) = $0 { true } else { false } },
+      "the notes card follows a recording with no call")
+  }
+
+  @Test("#4249: never asks before any words were heard, or while live words are unhealthy",
+    arguments: [false, true])
+  func silenceNeedsWordsAndHealth(unhealthy: Bool) {
+    var s = Story()
+    s.meeting = .recording(meetingID: UUID())
+    s.wordsHealthy = !unhealthy
+    s.anyWordsAt = unhealthy ? s.now : nil
+    s.step()
+    quiet(&s, for: Policy.silenceAsk + 20)
+    #expect(s.interaction == .none)
+  }
+
+  @Test("#4249: an unhealthy moment, new words or a long gap restart or limit the silence count",
+    arguments: ["unhealthy", "words", "gap"])
+  func silenceResets(kind: String) {
+    var s = quietRecording()
+    quiet(&s, for: 500)
+    switch kind {
+    case "unhealthy":
+      s.wordsHealthy = false
+      s.wait(2)
+      s.step()
+      s.wordsHealthy = true
+    case "words":
+      s.anyWordsAt = s.now
+      s.step()
+    default:
+      s.wait(3_600) // a sleep: one step counts at most 2 s
+      s.step()
+    }
+    quiet(&s, for: kind == "gap" ? 96 : 110)
+    #expect(s.interaction == .none, "the count restarted (or the gap added at most 2 s)")
+    if kind == "gap" {
+      quiet(&s, for: 2)
+      #expect(isStillInMeeting(s.interaction), "500 + 2 + 98 s")
+    }
+  }
+
+  @Test("#4249: new words withdraw the question; Keep restarts the 10 minutes; End stops now",
+    arguments: ["words", "keep", "end"])
+  func silenceAnswers(kind: String) {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+    switch kind {
+    case "words":
+      s.anyWordsAt = s.now
+      s.step()
+    case "keep": s.press(.keepRecording)
+    default: s.press(.endRecording)
+    }
+    if kind == "end" {
+      #expect(s.stops == 1)
+      return
+    }
+    #expect(s.interaction == .none && s.stops == 0)
+    quiet(&s, for: Policy.silenceAsk - 2)
+    #expect(s.interaction == .none, "a fresh 10 minutes")
+    quiet(&s, for: 2)
+    #expect(isStillInMeeting(s.interaction))
+  }
+
+  @Test("#4249: a call countdown replaces the Still in a meeting? question")
+  func silencePrecedence() {
+    var s = recordingZoom()
+    s.wordsHealthy = true
+    s.anyWordsAt = s.now
+    // The first step sees the words arrive (count 0), then 300 quiet 2 s steps.
+    s.hold([Self.zoom(.active)], for: Policy.silenceAsk + 2)
+    #expect(isStillInMeeting(s.interaction))
+    end(&s, [Self.zoom(.active)])
+    #expect(isCountdown(s.interaction), "the call's end outranks the silence question")
+  }
+
+  @Test("#4249: a replaced recording withdraws the question; an old stop never follows the new one")
+  func silenceReplacementFence() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+    s.meeting = .recording(meetingID: UUID())
+    s.step()
+    #expect(s.interaction == .none, "another recording now")
+    var t = quietRecording()
+    quiet(&t, for: Policy.silenceAsk + Policy.silenceAnswer)
+    #expect(t.stops == 1)
+    t.stopFinished(meetingAfter: .recording(meetingID: UUID()))
+    #expect(!t.commands.contains { if case .followNotes = $0 { true } else { false } })
+  }
+
+  @Test("#4249: turning call detection Off and On again starts the silence count over")
+  func silenceRestartsAfterDetectionOff() {
+    var s = quietRecording()
+    quiet(&s, for: Policy.silenceAsk - 2)
+    s.mode = .off
+    s.step()
+    s.mode = .ask
+    quiet(&s, for: 4)
+    #expect(s.interaction == .none, "a fresh 10 minutes, as Wispr Flow does when auto-end is off")
+    quiet(&s, for: Policy.silenceAsk)
+    #expect(isStillInMeeting(s.interaction))
+  }
+
+  @Test("#4249: with call detection Off there is no silence question (today's behavior)")
+  func silenceOffWhenDetectionOff() {
+    var s = quietRecording()
+    s.mode = .off
+    quiet(&s, for: Policy.silenceAsk + 40)
+    #expect(s.interaction == .none && s.stops == 0)
   }
 
   // MARK: - Starts and switches
