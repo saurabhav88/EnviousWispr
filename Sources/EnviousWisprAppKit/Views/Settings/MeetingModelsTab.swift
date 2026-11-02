@@ -288,10 +288,15 @@ struct MeetingLiveWordsCard: View {
         // selection button, never a child. Waits for an active meeting.
         if engine == .universal, model.universalInstalled {
           VStack(alignment: .leading, spacing: 6) {
-            Button(String(localized: SettingsItemCopy.LivePreview.universalRemove)) {
+            // Drawn exactly as dictation's Universal Remove (`LivePreviewSettingsView`), so the
+            // shared model looks the same on both pages.
+            SettingsActionButton(
+              verbatimTitle: String(localized: SettingsItemCopy.LivePreview.universalRemove),
+              isEnabled: model.downloadRefusalForRemove == nil,
+              emphasis: .quiet, shape: .roundedRect, size: .medium
+            ) {
               model.removeUniversal()
             }
-            .disabled(model.downloadRefusalForRemove != nil)
             if let refusal = model.downloadRefusalForRemove { meetingStatusText(refusal) }
           }
           .padding([.horizontal, .bottom], 16)
@@ -664,9 +669,16 @@ struct MeetingTranscriptEngineCard: View {
             if model.isRemovingWhisper {
               meetingStatusText(String(localized: "Removing model..."))
             } else if model.isWhisperReady {
-              Button(String(localized: SettingsItemCopy.Engine.whisperRemove)) {
+              // Drawn exactly as dictation's Whisper Remove Model (`SpeechEngineSettingsView`).
+              Button {
                 model.removeWhisper()
+              } label: {
+                Text(SettingsItemCopy.Engine.whisperRemove).font(.stHelper)
+                  .settingsHoverQuiet(tint: .stError)
               }
+              .controlSize(.small)
+              .buttonStyle(.borderless)
+              .foregroundStyle(.stError)
               .disabled(model.removeWaitsForMeeting)
               if model.removeWaitsForMeeting {
                 meetingStatusText(MeetingDownloadAdmission.refusal)
