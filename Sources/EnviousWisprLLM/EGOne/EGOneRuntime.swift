@@ -1135,6 +1135,13 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     await server.acquireLease(for: provider, purpose: .residency)
   }
 
+  #if DEBUG
+    /// #4319 DEBUG: this engine's server slots (Live UAT evidence only).
+    public func observeServerSlotsForDebug() async -> EGOneSlotObservation {
+      await server.observeSlotsForDebug(for: provider)
+    }
+  #endif
+
   // MARK: - #4319: lending the server to an EnviousMeet summary
 
   /// Closes the shared server to every other request and waits for admitted ones to finish.

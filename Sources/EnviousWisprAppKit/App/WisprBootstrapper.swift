@@ -2488,7 +2488,10 @@ package final class WisprBootstrapper {
             sources: DevControlMeetings.Sources(
               coordinator: { [meetingBox] in meetingBox.coordinator },
               startFlow: { [meetingBox] in meetingBox.startFlow },
-              transcripts: { [transcriptCoordinator] in transcriptCoordinator })),
+              transcripts: { [transcriptCoordinator] in transcriptCoordinator },
+              egOneSlots: { [localPolishRuntimes] in
+                await localPolishRuntimes.egOne.observeServerSlotsForDebug()
+              })),
           calls: DevControlCalls(
             sources: DevControlCalls.Sources(
               coordinator: { [meetingBox] in meetingBox.callDetection }))))

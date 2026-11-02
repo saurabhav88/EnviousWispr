@@ -5,6 +5,7 @@
 
   @testable import EnviousWisprAppKit
   @testable import EnviousWisprCore
+  @testable import EnviousWisprLLM
   @testable import EnviousWisprLivePreview
   @testable import EnviousWisprServices
 
@@ -98,10 +99,11 @@
       #expect(Self.code(await unwired.summaryWrite(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.live([:])) == "notWired")
       #expect(Self.code(await unwired.liveWordsStatus([:])) == "notWired")
+      #expect(Self.code(await unwired.egOneSlots([:])) == "notWired")
       let meetingCommands = DevControlDispatcher.Command.allCases.filter {
         $0.rawValue.hasPrefix("meeting.")
       }
-      #expect(meetingCommands.count == 14)
+      #expect(meetingCommands.count == 15)
     }
 
     @Test("malformed arguments are refused before any owner is called")
@@ -364,6 +366,37 @@
       let refused = await rig.call("meeting.summary.write", ["meetingID": id])
       #expect(Self.code(refused) == "rejected")
       #expect(summaryRig.world.finished.count == 2)
+    }
+
+    @Test("meeting.egOneSlots maps the slot reader's answer, takes no arguments, and refuses unwired (#4319)")
+    func egOneSlots() async throws {
+      let snapshot = EGOneSlotSnapshot(
+        launchGeneration: 3,
+        slots: [
+          .init(id: 0, isProcessing: false, taskID: nil, decodedTokens: nil, remainingTokens: nil),
+          .init(id: 1, isProcessing: true, taskID: 7, decodedTokens: 399, remainingTokens: 1101),
+        ])
+      var answer = EGOneSlotObservation.observed(snapshot)
+      let meetings = DevControlMeetings(
+        sources: .init(
+          coordinator: { nil }, startFlow: { nil }, transcripts: { nil },
+          egOneSlots: { answer }))
+      let reply = try #require(Self.ok(await meetings.egOneSlots([:])))
+      #expect(reply["state"] as? String == "observed")
+      #expect(reply["launchGeneration"] as? Int == 3)
+      let slots = try #require(reply["slots"] as? [[String: Any]])
+      #expect(slots.count == 2)
+      #expect(slots[1]["isProcessing"] as? Bool == true)
+      #expect(slots[1]["decodedTokens"] as? Int == 399)
+      #expect(slots[0]["taskID"] is NSNull)
+      #expect(Set(slots[1].keys) == ["id", "isProcessing", "taskID", "decodedTokens", "remainingTokens"])
+      answer = .unavailable
+      #expect(Self.ok(await meetings.egOneSlots([:]))?["state"] as? String == "unavailable")
+      answer = .httpStatus(500)
+      #expect(Self.ok(await meetings.egOneSlots([:]))?["status"] as? Int == 500)
+      #expect(Self.code(await meetings.egOneSlots(["port": 1])) == "badArgs")
+      let unwired = DevControlMeetings.unwired()
+      #expect(Self.code(await unwired.egOneSlots([:])) == "notWired")
     }
 
     @Test("live is null with nothing recording, and reads the live words while one records")

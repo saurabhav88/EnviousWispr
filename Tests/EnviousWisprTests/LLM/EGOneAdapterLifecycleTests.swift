@@ -61,6 +61,21 @@ struct EGOneAdapterLifecycleTests {
         port = int(args[args.index('--port') + 1])
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                # #4319: /slots answers from slots.json when the test wrote one, and only with
+                # the launch's bearer.
+                slots = os.path.join(root, 'slots.json')
+                if self.path == '/slots' and os.path.exists(slots):
+                    token = args[args.index('--api-key') + 1] if '--api-key' in args else None
+                    if token and self.headers.get('Authorization') != f'Bearer {token}':
+                        self.send_response(401)
+                        self.end_headers()
+                        return
+                    body = open(slots, 'rb').read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 self.send_response(200 if self.path == '/health' else 404)
                 self.end_headers()
             def log_message(self, *args):
@@ -1396,3 +1411,81 @@ extension EGOneAdapterLifecycleTests {
     #expect(await coordinator.residentModelForTesting == nil)
   }
 }
+
+#if DEBUG
+  extension EGOneAdapterLifecycleTests {
+    static let processingSlots = Data(
+      """
+      [{"id":0,"is_processing":false,"n_ctx":4096,"speculative":false},
+       {"id":1,"id_task":7,"is_processing":true,"n_ctx":4096,"speculative":false,
+        "params":{"prompt":"SECRET TRANSCRIPT TEXT"},
+        "next_token":[{"has_next_token":true,"n_remain":1101,"n_decoded":399}]}]
+      """.utf8)
+
+    @Test("the DEBUG slot reader reads only whitelisted fields from the owned server, with its bearer (#4319)")
+    func slotObservationReadsOwnedServer() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      try Self.processingSlots.write(to: fixture.root.appendingPathComponent("slots.json"))
+      let coordinator = LocalPolishServerCoordinator()
+      await coordinator.transition(
+        to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+        intent: coordinator.claimIntent())
+      guard case .observed(let snapshot) = await coordinator.observeSlotsForDebug(for: .egOne)
+      else {
+        Issue.record("the owned server's slots were not observed")
+        return
+      }
+      #expect(snapshot.slots.count == 2)
+      #expect(snapshot.slots[0] == .init(id: 0, isProcessing: false, taskID: nil, decodedTokens: nil, remainingTokens: nil))
+      #expect(snapshot.slots[1] == .init(id: 1, isProcessing: true, taskID: 7, decodedTokens: 399, remainingTokens: 1101))
+      #expect(String(describing: snapshot).contains("SECRET") == false, "no request content")
+      // Another model's slots are not this model's.
+      #expect(await coordinator.observeSlotsForDebug(for: .s1Mini) == .unavailable)
+      // A control request: still answered while a summary holds the server, and admits nothing.
+      guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
+        Issue.record("reservation refused")
+        return
+      }
+      guard case .observed = await coordinator.observeSlotsForDebug(for: .egOne) else {
+        Issue.record("the slot reader was held back by the summary")
+        return
+      }
+      #expect(await coordinator.hasLease(for: .egOne) == false)
+      await coordinator.releaseSummaryReservation(reservation)
+      try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("slots.json"))
+      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unsupported)
+      await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unavailable)
+    }
+
+    @Test("a slot answer from a replaced server is never reported, and errors stay errors (#4319)")
+    func slotObservationFailuresStayHonest() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      let manager = EGOneServerManager()
+      #expect(await manager.observeSlotsForDebug() == .unavailable, "no server is not idle")
+      await manager.start(configuration: fixture.configuration())
+      let replaced = await manager.observeSlotsForDebug { request in
+        #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
+        #expect(request.url?.path == "/slots")
+        await manager.stop()
+        let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (Self.processingSlots, ok)
+      }
+      #expect(replaced == .replaced)
+      await manager.start(configuration: fixture.configuration())
+      #expect(
+        await manager.observeSlotsForDebug { _ in throw URLError(.timedOut) } == .transportFailed)
+      #expect(
+        await manager.observeSlotsForDebug { request in
+          (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        } == .malformed)
+      #expect(
+        await manager.observeSlotsForDebug { request in
+          (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+        } == .httpStatus(500))
+      await manager.stop()
+    }
+  }
+#endif

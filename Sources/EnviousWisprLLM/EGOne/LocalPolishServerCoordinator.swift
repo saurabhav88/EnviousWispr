@@ -671,6 +671,17 @@ public actor LocalPolishServerCoordinator {
     manager.terminateImmediately()
   }
 
+  #if DEBUG
+    /// #4319 DEBUG: `provider`'s server slots, through the manager's own endpoint. A control
+    /// request: no lease, no reservation check, available while a summary holds the server.
+    public func observeSlotsForDebug(for provider: LLMProvider) async -> EGOneSlotObservation {
+      guard resident == provider else { return .unavailable }
+      let observation = await manager.observeSlotsForDebug()
+      guard resident == provider else { return .replaced }
+      return observation
+    }
+  #endif
+
   /// Test seam (#4319): true once a summary's reservation is waiting for earlier requests to
   /// drain, so a test can act inside that window; false at the deadline, so a broken setup
   /// fails by name instead of hanging.
