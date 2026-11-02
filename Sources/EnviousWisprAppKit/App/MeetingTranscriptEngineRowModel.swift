@@ -30,6 +30,14 @@ final class MeetingTranscriptEngineRowModel {
 
   var isWhisperReady: Bool { whisperState == .ready }
 
+  /// #4325: the shared Whisper Remove, the same as dictation's Engine tab (one model for both).
+  /// Refused while a meeting is active by `WhisperSetupService` itself.
+  func removeWhisper() { environment.whisperSetup.removeModel() }
+  var isRemovingWhisper: Bool { environment.whisperSetup.isRemoving }
+  var whisperRemoveNotice: WhisperRemoveNotice? { environment.whisperSetup.removeNotice }
+  /// #4325: the page shows "Available after the meeting." instead of an enabled Remove.
+  var removeWaitsForMeeting: Bool { environment.isMeetingActive() }
+
   /// Refreshes the Whisper state when the row appears.
   func appear() async {
     await environment.whisperSetup.detectState()

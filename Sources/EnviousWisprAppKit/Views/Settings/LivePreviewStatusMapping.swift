@@ -116,8 +116,14 @@ enum LivePreviewStatusMapping {
         anInstallIsInFlight: anInstallIsInFlight,
         activeDescribesAnotherLanguage: activeDescribesAnotherLanguage)
     case .universal:
+      // #4325: Apple stands in only when its own preview would run here: supported, the
+      // language resolved ready, and that answer is current.
+      var appleReady = false
+      if case .ready? = active { appleReady = true }
       return universal(
-        exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming)
+        exists: universalExists, state: universalState, heartIsStreaming: heartIsStreaming,
+        appleCanStandIn: appleSupported && appleReady && !anInstallIsInFlight
+          && !activeDescribesAnotherLanguage)
     }
   }
 
@@ -243,7 +249,7 @@ enum LivePreviewStatusMapping {
   // MARK: - Universal
 
   private static func universal(
-    exists: Bool, state: DeliveryState, heartIsStreaming: Bool
+    exists: Bool, state: DeliveryState, heartIsStreaming: Bool, appleCanStandIn: Bool
   ) -> Summary {
     // A build shipped without the engine's manifest or tokenizer. Checked first
     // because every delivery state below is meaningless when nothing is
@@ -287,7 +293,8 @@ enum LivePreviewStatusMapping {
         kind: .gettingReady,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup),
-        detail: LivePreviewSettingsCopy.statusGettingReadyDetail)
+        detail: appleCanStandIn
+          ? LivePreviewEngineCopy.appleMeanwhile : LivePreviewSettingsCopy.statusGettingReadyDetail)
 
     // **The REASON decides the remedy, and a generic one is wrong for most of
     // them.** An earlier draft said "check your connection and try again" for
@@ -313,7 +320,9 @@ enum LivePreviewStatusMapping {
         kind: .needsDownload,
         chip: ProviderStatus(
           label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup),
-        detail: LivePreviewSettingsCopy.statusNeedsDownloadDetail)
+        detail: appleCanStandIn
+          ? LivePreviewSettingsCopy.statusNeedsDownloadAppleMeanwhile
+          : LivePreviewSettingsCopy.statusNeedsDownloadDetail)
     }
   }
 

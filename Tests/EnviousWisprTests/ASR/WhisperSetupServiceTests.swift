@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprASR
+@testable import EnviousWisprAppKit
 
 /// #1386 PR-2b. The Settings-row presenter over the injected delivery actions.
 @Suite(.tags(.productOutcome)) @MainActor struct WhisperSetupServiceTests {
@@ -156,6 +157,53 @@ import Testing
 
     #expect(service.removeNotice == .refusedDictationInFlight)
     #expect(box.actionCalls == 0, "a refusal reaches NOTHING downstream")
+  }
+
+  /// #4325: when this fails, removing the Whisper model from either Settings page during a
+  /// meeting deletes the model a pending meeting transcript still needs.
+  @Test("Remove during an active meeting refuses and starts no removal work")
+  func removeDuringAMeetingRefuses() {
+    let service = WhisperSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
+      readAvailability: { .ready },
+      removeModelAction: { nil })
+    service.isDictationInFlight = { false }
+    var meetingActive = true
+    service.isMeetingActive = { meetingActive }
+
+    service.removeModel()
+    #expect(service.removeNotice == .refusedMeetingActive)
+    #expect(service.isRemoving == false, "no removal work was scheduled")
+
+    meetingActive = false
+    service.removeModel()
+    #expect(service.removeNotice == nil, "control: after the meeting the press proceeds")
+    #expect(service.isRemoving == true)
+  }
+
+  @Test("a refused Remove says why: the dictation, the meeting, or a failure")
+  func removeNoticeWording() {
+    #expect(
+      SpeechEngineSettingsView.removeNoticeText(.refusedMeetingActive)
+        == String(localized: "Available after the meeting."))
+    #expect(
+      SpeechEngineSettingsView.removeNoticeText(.refusedDictationInFlight)
+        == String(localized: "Finish your current dictation first, then try again."))
+    #expect(
+      SpeechEngineSettingsView.removeNoticeText(.failed)
+        == String(localized: "The model could not be removed. Please try again."))
+  }
+
+  @Test("with no meeting wiring, Remove is not refused on a meeting's account")
+  func removeWithoutMeetingWiringProceeds() {
+    let service = WhisperSetupService(
+      engineMutationScope: .alwaysAllowedForTesting,
+      readAvailability: { .ready },
+      removeModelAction: { nil })
+    service.isDictationInFlight = { false }
+    service.removeModel()
+    #expect(service.removeNotice == nil)
+    #expect(service.isRemoving == true)
   }
 
   @Test func endingTheDictationQueuesNoDeferredDeletion() async throws {

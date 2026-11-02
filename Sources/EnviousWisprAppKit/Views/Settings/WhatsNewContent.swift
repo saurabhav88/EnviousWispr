@@ -68,6 +68,19 @@ enum WhatsNewContent {
         "Say \"full stop\" instead of \"period\"? Open Configure beside Spoken punctuation and turn \"period\" off. It stays a normal word, and \"full stop\" still makes a dot.",
       version: "2.5.6"
     ),
+    // #4325 (founder grill 2026-11-02): picking the Universal Live Preview engine starts its
+    // shared download (LivePreviewSettingsView.choose -> ModelDeliveryHome.requestPreviewDownload);
+    // while it is not downloaded, Apple's preview stands in only where Apple's preview runs
+    // (macOS 26 with the language installed: LivePreviewInstaller.appleStandingIn). EnviousMeet
+    // is left out of the copy until it ships to users.
+    Entry(
+      id: "picking-universal-downloads-it",
+      icon: "arrow.down.circle",
+      title: "Picking Universal Downloads It",
+      description:
+        "Choose Universal for Live Preview and its download starts right away. Until it finishes, Apple shows your words where your Mac supports it.",
+      version: "2.5.6"
+    ),
 
     // MARK: - v2.5.5
 

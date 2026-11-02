@@ -29,8 +29,8 @@ private func previewRoute(
   _ resolve: @escaping LivePreviewEngineResolver
 ) -> () -> LivePreviewEngineRoute {
   {
-    LivePreviewEngineRoute(
-      telemetryEngineID: "universal", isSupportedOnThisSystem: { supported }, resolve: resolve)
+    LivePreviewEngineRoute(telemetryEngineID: "universal",
+      isSupportedOnThisSystem: { supported }, resolve: resolve)
   }
 }
 
@@ -161,7 +161,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "universal", commitment: ""),
             makeEngine: { StuckEngine(stuck: stuck) }))
       }
@@ -261,7 +261,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "universal", commitment: ""),
             makeEngine: { SlowOpenEngine(gate: openingGate) }))
       }
@@ -327,7 +327,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "universal", commitment: ""),
             makeEngine: { CountingEngine(opens: opens) }))
       }
@@ -399,8 +399,7 @@ struct LivePreviewCoordinatorTests {
         isDictionaryOn: { true },
         languageMode: { .locked("en") },
         selectedRoute: {
-          LivePreviewEngineRoute(
-            telemetryEngineID: "universal",
+          LivePreviewEngineRoute(telemetryEngineID: "universal",
             isSupportedOnThisSystem: { true },
             resolve: { _ in .blocked(.modelNotInstalled) })
         }
@@ -454,7 +453,7 @@ struct LivePreviewCoordinatorTests {
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
-            LivePreviewEngineCandidate(
+            LivePreviewEngineCandidate(telemetryEngine: .universal,
               key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
               makeEngine: { ReadyEngine() }))
         }
@@ -549,7 +548,7 @@ struct LivePreviewCoordinatorTests {
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
-            LivePreviewEngineCandidate(
+            LivePreviewEngineCandidate(telemetryEngine: .universal,
               key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
               makeEngine: { SlowOpenEngine(gate: opening) }))
         }
@@ -600,7 +599,7 @@ struct LivePreviewCoordinatorTests {
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
-            LivePreviewEngineCandidate(
+            LivePreviewEngineCandidate(telemetryEngine: .universal,
               key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
               makeEngine: { FailingEngine() }))
         }
@@ -645,7 +644,7 @@ struct LivePreviewCoordinatorTests {
         languageMode: { .locked("en") },
         selectedRoute: previewRoute { _ in
           .ready(
-            LivePreviewEngineCandidate(
+            LivePreviewEngineCandidate(telemetryEngine: .universal,
               key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
               makeEngine: { OpenFailsEngine() }))
         }
@@ -669,21 +668,19 @@ struct LivePreviewCoordinatorTests {
   /// capture and a delivery home.
   @Test("the chosen engine is the one that answers, and a missing one never becomes Apple")
   func routeSelectionNeverSubstitutesApple() async {
-    let apple = LivePreviewEngineRoute(
-      telemetryEngineID: "apple",
+    let apple = LivePreviewEngineRoute(telemetryEngineID: "apple",
       isSupportedOnThisSystem: { true },
       resolve: { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .apple,
             key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
             makeEngine: { fatalError("not built in this test") }))
       })
-    let universal = LivePreviewEngineRoute(
-      telemetryEngineID: "universal",
+    let universal = LivePreviewEngineRoute(telemetryEngineID: "universal",
       isSupportedOnThisSystem: { true },
       resolve: { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "universal", commitment: ""),
             makeEngine: { fatalError("not built in this test") }))
       })
@@ -750,7 +747,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .apple,
             key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
             makeEngine: { ReadyEngine() }))
       }
@@ -798,7 +795,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .apple,
             key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
             makeEngine: { ReadyEngine() }))
       }
@@ -908,7 +905,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .apple,
             key: LivePreviewEngineKey(engine: "apple", commitment: "en"),
             makeEngine: { CountingEngine(opens: opens) }))
       }
@@ -965,8 +962,7 @@ struct LivePreviewCoordinatorTests {
         // A DIFFERENT route object each read, exactly as the real provider will
         // behave once it switches on a setting.
         let id = choice.current
-        return LivePreviewEngineRoute(
-          telemetryEngineID: "universal",
+        return LivePreviewEngineRoute(telemetryEngineID: "universal",
           isSupportedOnThisSystem: { true },
           resolve: { _ in
             seen.record(id)
@@ -1245,7 +1241,7 @@ struct LivePreviewCoordinatorTests {
       selectedRoute: previewRoute { _ in
         let nth = await resolutions.next()
         return .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: keys[min(nth, keys.count - 1)],
             makeEngine: { FakePreviewEngine(probe: probe) }))
       }
@@ -1363,7 +1359,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: key, makeEngine: { FakePreviewEngine(probe: probe) }))
       }
     )
@@ -1602,7 +1598,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { ReadyEngine() }))
       }
@@ -1716,7 +1712,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { GatedEngine(gate: gate, opens: opens) }))
       }
@@ -1854,7 +1850,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: {
               let ordinal = counts.recordEngine()
@@ -1981,7 +1977,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: {
               let ordinal = counts.recordEngine()
@@ -2059,7 +2055,7 @@ struct LivePreviewCoordinatorTests {
       selectedRoute: previewRoute { _ in
         if box.blocked { return .blocked(.heartIsStreaming) }
         return .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { ReadyEngine() }))
       }
@@ -2122,7 +2118,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
       }
@@ -2179,7 +2175,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { ReadyEngine(onPrepared: { box.prepared = true }) }))
       }
@@ -2233,7 +2229,7 @@ struct LivePreviewCoordinatorTests {
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
         .ready(
-          LivePreviewEngineCandidate(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
             key: LivePreviewEngineKey(engine: "test", commitment: "en"),
             makeEngine: { ReleasableEngine(onPrepared: { box.prepared = true }) }))
       }
@@ -2278,7 +2274,7 @@ struct LivePreviewCoordinatorTests {
       isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
-        .ready(LivePreviewEngineCandidate(
+        .ready(LivePreviewEngineCandidate(telemetryEngine: .universal,
           key: LivePreviewEngineKey(engine: "test", commitment: "en"),
           makeEngine: { engine }))
       })
@@ -2361,7 +2357,7 @@ struct LivePreviewCoordinatorTests {
       isDictionaryOn: { true },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
-        .ready(LivePreviewEngineCandidate(
+        .ready(LivePreviewEngineCandidate(telemetryEngine: .universal,
           key: LivePreviewEngineKey(engine: "test", commitment: "en"),
           makeEngine: { engine }))
       })
@@ -2392,7 +2388,7 @@ struct LivePreviewCoordinatorTests {
       isDictionaryOn: { dictionaryOn },
       languageMode: { .locked("en") },
       selectedRoute: previewRoute { _ in
-        .ready(LivePreviewEngineCandidate(
+        .ready(LivePreviewEngineCandidate(telemetryEngine: .universal,
           key: LivePreviewEngineKey(engine: "test", commitment: "en"),
           makeEngine: { engine }))
       })
@@ -2589,4 +2585,208 @@ private final class CountingAudioCapture: AudioCaptureInterface {
     return ([], 0)
   }
   func getVADSegments() async -> [SpeechSegment] { [] }
+}
+
+// MARK: - #4325: Apple stands in while the Universal model downloads
+
+/// #4325: when these fail, a dictation with Universal chosen but not downloaded shows no live
+/// words even though Apple could, Apple replaces Universal for a refusal it must not cover (the
+/// heart streaming), or usage counts credit Universal for words Apple produced.
+@MainActor
+@Suite("Live Preview: Apple stands in while Universal downloads (#4325)", .tags(.productOutcome))
+struct LivePreviewAppleStandInTests {
+  @MainActor
+  final class Calls {
+    var appleModes: [LanguageMode] = []
+    var universalModes: [LanguageMode] = []
+    var universalInstalled = false
+    var universalBlock: LivePreviewUnavailability = .modelNotInstalled
+    var appleReady = true
+  }
+
+  final class IdleEngine: LivePreviewEngine, @unchecked Sendable {
+    let prepareFails: Bool
+    let openFails: Bool
+    init(prepareFails: Bool = false, openFails: Bool = false) {
+      self.prepareFails = prepareFails
+      self.openFails = openFails
+    }
+    struct Refused: Error {}
+    func openTranscriptSession(
+      vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
+    ) async throws -> any LivePreviewEngineSession {
+      throw displayOnlyTranscriptOpen(Self.self)
+    }
+    func prepare() async throws { if prepareFails { throw Refused() } }
+    func openSession(
+      vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
+    ) async throws -> any LivePreviewEngineSession {
+      if openFails { throw Refused() }
+      struct Idle: LivePreviewEngineSession {
+        func feed(_ samples: [Float]) async {}
+        func end() async {}
+      }
+      return Idle()
+    }
+  }
+
+  /// Real factories' shape: Apple's candidate says `apple`, Universal's says `universal`.
+  static func routes(_ calls: Calls, engine: @escaping @Sendable () -> any LivePreviewEngine = {
+    IdleEngine()
+  }) -> (apple: LivePreviewEngineRoute, universal: LivePreviewEngineRoute) {
+    let apple = LivePreviewEngineRoute(telemetryEngineID: "apple",
+      isSupportedOnThisSystem: { true },
+      resolve: { mode in
+        await MainActor.run { calls.appleModes.append(mode) }
+        guard await MainActor.run(body: { calls.appleReady }) else {
+          return .blocked(.installRequired(languageName: "English"))
+        }
+        return .ready(
+          LivePreviewEngineCandidate(telemetryEngine: .apple,
+            key: LivePreviewEngineKey(engine: "apple", commitment: "en-US"),
+            makeEngine: engine))
+      })
+    let universal = LivePreviewEngineRoute(telemetryEngineID: "universal",
+      isSupportedOnThisSystem: { true },
+      resolve: { mode in
+        await MainActor.run { calls.universalModes.append(mode) }
+        let (installed, block) = await MainActor.run { (calls.universalInstalled, calls.universalBlock) }
+        guard installed else { return .blocked(block) }
+        return .ready(
+          LivePreviewEngineCandidate(telemetryEngine: .universal,
+            key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
+            makeEngine: engine))
+      })
+    return (apple, universal)
+  }
+
+  static func answer(_ route: LivePreviewEngineRoute) async -> (key: String?, block: LivePreviewUnavailability?) {
+    switch await route.resolve(.locked("en")) {
+    case .ready(let candidate): return (candidate.key.engine, nil)
+    case .blocked(let reason): return (nil, reason)
+    }
+  }
+
+  @Test("Universal not downloaded and Apple ready: Apple answers, asked with the same language")
+  func appleStandsIn() async {
+    let calls = Calls()
+    let (apple, universal) = Self.routes(calls)
+    let route = LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal)
+    let answer = await Self.answer(route)
+    #expect(answer.key == "apple")
+    #expect(calls.universalModes == [.locked("en")])
+    #expect(calls.appleModes == [.locked("en")], "Apple got the same language setting")
+  }
+
+  @Test("Universal not downloaded and Apple blocked: Universal's own reason stays")
+  func blockedAppleKeepsUniversalsReason() async {
+    let calls = Calls()
+    calls.appleReady = false
+    let (apple, universal) = Self.routes(calls)
+    let route = LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal)
+    let answer = await Self.answer(route)
+    #expect(answer.block == .modelNotInstalled, "the pill still says to download the model")
+  }
+
+  @Test("Universal downloaded: Universal answers and Apple is never asked")
+  func installedUniversalAnswers() async {
+    let calls = Calls()
+    calls.universalInstalled = true
+    let (apple, universal) = Self.routes(calls)
+    let route = LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal)
+    let answer = await Self.answer(route)
+    #expect(answer.key == "whisper_preview#abc123")
+    #expect(calls.appleModes.isEmpty)
+  }
+
+  @Test("any other Universal refusal is returned unchanged and Apple is never asked")
+  func otherRefusalsAreNotCovered() async {
+    let calls = Calls()
+    calls.universalBlock = .heartIsStreaming
+    let (apple, universal) = Self.routes(calls)
+    let route = LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal)
+    let answer = await Self.answer(route)
+    #expect(answer.block == .heartIsStreaming)
+    #expect(calls.appleModes.isEmpty)
+
+    let broken = LivePreviewInstaller.route(for: .universal, apple: apple, universal: nil)
+    #expect(await Self.answer(broken).block == .engineUnavailableInThisBuild)
+    #expect(calls.appleModes.isEmpty, "the build defect never borrows Apple")
+  }
+
+  // `testEventHook` is a DEBUG-only seam.
+  #if DEBUG
+    func coordinator(_ route: LivePreviewEngineRoute) -> LivePreviewCoordinator {
+      LivePreviewCoordinator(
+        readSamples: { _ in ([], 0) }, isPreviewOn: { true }, isDictionaryOn: { true },
+        languageMode: { .locked("en") }, selectedRoute: { route })
+    }
+
+    @Test(
+      "Apple standing in is counted as Apple for started, prepare_failed and open_failed",
+      arguments: [("started", false, false), ("prepare_failed", true, false), ("open_failed", false, true)])
+    func standInIsCountedAsApple(outcome: String, prepareFails: Bool, openFails: Bool) async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let calls = Calls()
+      let (apple, universal) = Self.routes(calls) {
+        IdleEngine(prepareFails: prepareFails, openFails: openFails)
+      }
+      let preview = coordinator(
+        LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal))
+      preview.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+      #expect(event.stringProps["outcome"] == outcome)
+      #expect(event.stringProps["engine"] == "apple", "Apple produced the words, not Universal")
+      preview.setRecording(false)
+    }
+
+    @Test("a blocked stand-in is still reported as Universal's refusal")
+    func blockedStandInIsUniversal() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let calls = Calls()
+      calls.appleReady = false
+      let (apple, universal) = Self.routes(calls)
+      let preview = coordinator(
+        LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal))
+      preview.setRecording(true)
+      let event = try await waiter.waitForEvent(named: "live_preview.outcome")
+      #expect(event.stringProps["outcome"] == "blocked")
+      #expect(event.stringProps["engine"] == "universal")
+      preview.setRecording(false)
+    }
+
+    @Test("once Universal is downloaded, the next recording uses it")
+    func nextRecordingHandsOffToUniversal() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      let calls = Calls()
+      let (apple, universal) = Self.routes(calls)
+      let preview = coordinator(
+        LivePreviewInstaller.route(for: .universal, apple: apple, universal: universal))
+
+      preview.setRecording(true)
+      try await waiter.waitForEvent(
+        matching: { $0.name == "live_preview.outcome" && $0.stringProps["engine"] == "apple" },
+        describedAs: "Apple started")
+      calls.universalInstalled = true
+      preview.setRecording(false)
+      preview.setRecording(true)
+      let next = try await waiter.waitForEvent(
+        matching: { $0.name == "live_preview.outcome" && $0.stringProps["engine"] == "universal" },
+        describedAs: "Universal started")
+      #expect(next.stringProps["outcome"] == "started")
+      preview.setRecording(false)
+    }
+  #endif
 }

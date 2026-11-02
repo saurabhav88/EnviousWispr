@@ -276,6 +276,18 @@ struct MeetingLiveWordsTests {
       return .ready(engine: .universal, language: liveLanguage)
     }
     var universalBlocked: LivePreviewUnavailability?
+    /// #4325: the installed Apple tag that stands in for a Universal language, or nil.
+    var standInTag: String?
+    /// Each stand-in lookup passes it before answering (held: the answer waits).
+    var standInGate = Gate(open: true)
+    /// Passed once a stand-in lookup has answered.
+    let standInAnswered = Gate(open: true)
+    private var _standInAsks: [String] = []
+    var standInAsks: [String] { lock.withLock { _standInAsks } }
+    func standIn(_ code: String) -> String? {
+      lock.withLock { _standInAsks.append(code) }
+      return standInTag
+    }
     var universalPrepareFails = false
     /// The Universal engine's first prepares fail as "dictation holds the executor".
     var universalBusyPrepares = 0
@@ -311,7 +323,7 @@ struct MeetingLiveWordsTests {
     func noteLanguage(_ mode: LanguageMode) { lock.withLock { _languages.append(mode) } }
 
     func appleCandidate() -> LivePreviewEngineCandidate {
-      LivePreviewEngineCandidate(key: .init(engine: "apple", commitment: "en-US")) {
+      LivePreviewEngineCandidate(telemetryEngine: .apple, key: .init(engine: "apple", commitment: "en-US")) {
         let engine = FakeEngine(self.nextGates())
         self.lock.withLock {
           engine.failOpen = self.appleOpenFails.contains(self._appleEngines.count)
@@ -352,6 +364,12 @@ struct MeetingLiveWordsTests {
           await world.universalResolveGate.pass()
           if let blocked = world.universalBlocked { return .blocked(blocked) }
           return .ready(makeEngine: { _ in world.makeShared() })
+        },
+        resolveAppleStandIn: { code in
+          await world.standInGate.pass()
+          let tag = world.standIn(code)
+          await world.standInAnswered.pass()
+          return tag
         },
         isHeartStreaming: { false },
         makePump: { MeetingLiveAudioPump(cadence: .milliseconds(1)) },
@@ -450,7 +468,7 @@ struct MeetingLiveWordsTests {
       #expect(world.languages == [.locked("de")])
       owner.stop()
     }
-    // Universal chosen, model gone at Start: off; Apple is never used instead.
+    // Universal chosen, model gone at Start, no installed Apple language to stand in: off.
     do {
       let world = World()
       world.choice = .ready(engine: .universal, language: "de")
@@ -506,6 +524,79 @@ struct MeetingLiveWordsTests {
       }
       owner.stop()
     }
+  }
+
+  /// #4325: when this fails, a meeting with Universal chosen but not downloaded shows no live
+  /// words even though Apple's meeting module has the language, or Apple fills in without the
+  /// meeting page saying so.
+  @Test("Universal not downloaded: Apple's meeting engine stands in for an installed language")
+  func appleStandsInForAMissingUniversal() async {
+    // Found missing at Start (resolver) and known before Start (frozen choice): both stand in.
+    for knownBeforeStart in [false, true] {
+      let world = World()
+      world.choice =
+        knownBeforeStart
+        ? .notDownloaded(engine: .universal, language: "de")
+        : .ready(engine: .universal, language: "de")
+      world.universalBlocked = .modelNotInstalled
+      world.apple = .ready(world.appleCandidate())
+      world.standInTag = "de-DE"
+      let owner = Self.owner(world)
+      Self.record(owner)
+      await Self.until("both running on Apple standing in", owner) { Self.bothRunning($0) }
+      #expect(world.standInAsks == ["de"], "asked for the frozen Universal language")
+      #expect(world.languages.contains(.locked("de-DE")), "Apple ran in the installed tag")
+      #expect(world.appleEngines.count == 2 && world.shared.isEmpty)
+      #expect(owner.transcript?.appleStandingIn == true, "the meeting page can say so")
+      owner.stop()
+    }
+    // No installed Apple language for it: off, as before, and the page claims no stand-in.
+    let world = World()
+    world.choice = .ready(engine: .universal, language: "de")
+    world.universalBlocked = .modelNotInstalled
+    world.apple = .ready(world.appleCandidate())
+    world.standInTag = nil
+    let owner = Self.owner(world)
+    Self.record(owner)
+    await Self.until("off: download the Universal engine", owner) {
+      if case .off(.engineNotDownloaded(.universal, _)) = Self.status($0, .microphone) { return true }
+      return false
+    }
+    #expect(world.appleEngines.isEmpty)
+    #expect(owner.transcript?.appleStandingIn == false)
+    owner.stop()
+  }
+
+  @Test("a stand-in lookup answering after its meeting was replaced leaves the new meeting alone")
+  func staleStandInLeavesTheNewMeetingAlone() async {
+    let world = World()
+    world.choice = .notDownloaded(engine: .universal, language: "de")
+    world.apple = .ready(world.appleCandidate())
+    world.standInTag = "de-DE"
+    let held = Gate()
+    world.standInGate = held
+    let owner = Self.owner(world)
+    Self.record(owner)
+    await PreviewWait.within("the stand-in lookup held", onExpiry: held.open) {
+      await held.reached(1)
+    }
+    // A new meeting replaces it, on Apple in its own language, with no stand-in.
+    world.choice = .ready(engine: .apple, language: "fr-CA")
+    let second = UUID()
+    Self.record(owner, second)
+    await Self.until("the second meeting running on Apple", owner) { Self.bothRunning($0) }
+    held.open()
+    await PreviewWait.within("the stale lookup answered", onExpiry: {}) {
+      await world.standInAnswered.reached(1)
+    }
+    owner.stop()
+    #expect(await owner.waitForCleanups(seconds: 10))
+    #expect(owner.transcript?.meetingID == second)
+    #expect(owner.transcript?.appleStandingIn == false, "the late answer did not claim a stand-in")
+    #expect(
+      world.languages.contains(.locked("de-DE")) == false,
+      "the late answer asked Apple for nothing on the new meeting's behalf")
+    #expect(world.appleEngines.count == 2, "only the new meeting's recognizers")
   }
 
   @Test("a choice lookup still running when its recording stops or is replaced opens nothing")

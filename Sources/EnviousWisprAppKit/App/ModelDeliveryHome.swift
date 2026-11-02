@@ -418,6 +418,12 @@ final class ModelDeliveryHome {
   /// exit path, this is a claim by the SUBJECT about the subject.
   package private(set) var previewLaunchProbeDidFinishForTests = false
 
+  /// #4325: the preview launch probe finished (same replaying contract as the word check's): set
+  /// late, it fires at once; set early, it fires on the probe's exit path.
+  var onPreviewLaunchProbeFinished: (@MainActor () -> Void)? {
+    didSet { if previewLaunchProbeDidFinishForTests { onPreviewLaunchProbeFinished?() } }
+  }
+
   /// How many times the Parakeet Resume door has REFUSED on the family kill
   /// switch, from EITHER of its two checks. A test seam, and specifically a
   /// POSITIVE one: without it the flag-OFF arm could only assert two absences —
@@ -684,6 +690,7 @@ final class ModelDeliveryHome {
         await previewHome.recordFirstRunBaseline(for: registration)
         _ = await previewHome.controller.admitIfComplete(registration)
         previewHome.previewLaunchProbeDidFinishForTests = true
+        previewHome.onPreviewLaunchProbeFinished?()
       }
     } catch {
       Task {
@@ -1231,6 +1238,105 @@ final class ModelDeliveryHome {
     }
   }
 
+  /// #4325: what a request for the Universal preview model did. Both Settings pages (dictation's
+  /// Live Preview and EnviousMeet's Models tab) ask through `requestPreviewDownload`, so picking
+  /// Universal and pressing Download are one door with one answer.
+  enum PreviewDownloadRequestOutcome: Equatable {
+    /// Already on this Mac; nothing to fetch.
+    case alreadyAvailable
+    /// A download was scheduled now, or one is already scheduled or transferring.
+    case started
+    /// A meeting is active; the download starts by itself when it ends (`meetingBecameIdle`).
+    case queuedUntilMeetingEnds
+    /// Refused before any work (no delivery, unbound record, kill switch off).
+    case refused
+  }
+
+  /// #4325: what a Remove press for the Universal preview model did.
+  enum PreviewRemovalOutcome: Equatable {
+    case started
+    /// A meeting is active; nothing was recorded, drained or deleted.
+    case refusedMeetingActive
+    /// No delivery, a removal already running, or the decline record could not be written.
+    case refused
+  }
+
+  /// #4325: a Universal request made while a meeting was active, waiting for it to end. In memory
+  /// only: a quit drops it and the card shows the model as not downloaded on the next launch,
+  /// which never starts a download the user cannot see.
+  private(set) var previewDownloadQueued = false
+
+  /// #4325: the intent epoch of a download that was scheduled and has not finished. Reserved
+  /// SYNCHRONOUSLY before its task exists, so a page that switches back to Apple right after
+  /// picking Universal sees the request as pending and cancels it before it records owed or
+  /// fetches (Codex grounded review round 2). Cleared only by its own task or an accepted Cancel
+  /// or Remove, never by a newer request's.
+  private var previewScheduledEpoch: Int?
+
+  /// #4325: whether a meeting is active (recording, stopping, or its final pass running or
+  /// queued). Bound by the bootstrapper to `MeetingCoordinator.isMeetingActive`; removal reads it.
+  var isMeetingActive: @MainActor () -> Bool = { false }
+
+  private var previewTransferIsActive: Bool {
+    switch whisperPreviewState {
+    case .preparing, .downloading, .verifying: true
+    case .notReady, .admitted, .cancelled, .failed: false
+    }
+  }
+
+  /// #4325: a Universal download the user asked for has not finished: scheduled, transferring,
+  /// or waiting for the meeting to end.
+  var previewDownloadIsPending: Bool {
+    previewScheduledEpoch != nil || previewTransferIsActive || previewDownloadQueued
+  }
+
+  /// #4325: the one door for "the user wants Universal", from picking the card or pressing
+  /// Download, on either page. `meetingActive` is passed by the caller so the decision is made on
+  /// the same read the page shows.
+  @discardableResult
+  func requestPreviewDownload(meetingActive: Bool) -> PreviewDownloadRequestOutcome {
+    // Deduplicated on OUR scheduled request only, never on a busy delivery state: the launch
+    // probe publishes `.preparing` while it checks an incomplete cache and never fetches, so a
+    // pick then must still schedule a download (Codex whole-diff review). A fetch already running
+    // is joined by the controller's own single flight.
+    if meetingActive {
+      if whisperPreviewState == .admitted { return .alreadyAvailable }
+      if previewScheduledEpoch != nil { return .started }
+      previewDownloadQueued = true
+      Task {
+        await AppLogger.shared.log(
+          "PREVIEW_DOWNLOAD queued until meeting ends", level: .info, category: "Delivery")
+      }
+      return .queuedUntilMeetingEnds
+    }
+    // Not in a meeting: this request also answers any queued one, so the meeting-ended signal
+    // that may arrive next finds nothing left to start (Codex chunk 1 review: queued, then a
+    // click, then the idle signal must download once).
+    previewDownloadQueued = false
+    if whisperPreviewState == .admitted { return .alreadyAvailable }
+    if previewScheduledEpoch != nil { return .started }
+    return startPreviewDownload() ? .started : .refused
+  }
+
+  /// #4325: the meeting is no longer active. Starts a queued request exactly once.
+  func meetingBecameIdle() {
+    guard previewDownloadQueued else { return }
+    let outcome = requestPreviewDownload(meetingActive: false)
+    Task {
+      await AppLogger.shared.log(
+        "PREVIEW_DOWNLOAD meeting ended, queued request outcome=\(outcome)", level: .info,
+        category: "Delivery")
+    }
+  }
+
+  /// #4325: a page's Live Preview engine changed. When NEITHER page still wants Universal, a
+  /// pending download stops (founder decision 7); when the other page still wants it, it keeps
+  /// going.
+  func previewChoiceChanged(dictationWantsUniversal: Bool, meetingWantsUniversal: Bool) {
+    guard !dictationWantsUniversal, !meetingWantsUniversal, previewDownloadIsPending else { return }
+    cancelPreviewDownload()
+  }
+
   /// The last preview Download press was refused, now or once its work ran (no delivery, an
   /// unbound or unwritable replacement record, the kill switch off). Cleared by the next press
   /// that is scheduled, so a retry after the cause is fixed works (#4105: the Live words row says
@@ -1264,14 +1370,23 @@ final class ModelDeliveryHome {
     }
     previewDownloadRefused = false
     let epoch = previewDownloadIntentEpoch
+    previewScheduledEpoch = epoch
     previewDownloadTaskForTests = Task { [weak self] in
-      guard let self, self.previewDownloadIntentEpoch == epoch else { return }
+      guard let self else { return }
+      defer { if self.previewScheduledEpoch == epoch { self.previewScheduledEpoch = nil } }
+      guard self.previewDownloadIntentEpoch == epoch else { return }
       if await previewReplacement.download() == false {
         self.logPreviewRefusal("download")
         self.previewDownloadRefused = true
       }
     }
     return true
+  }
+
+  /// #4325: sets the preview mirror the way the delivery observer does, for tests that need a
+  /// state the fake commands cannot produce (admitted). Call after the launch probe finished.
+  package func applyPreviewStateForTests(_ state: DeliveryState) {
+    whisperPreviewState = state
   }
 
   /// The last Download press's work, so a test can wait for it to end.
@@ -1346,21 +1461,33 @@ final class ModelDeliveryHome {
   /// substitute this. Cloud review caught the regression.
   package var deletePreviewModelOverrideForTests: (() async -> Void)?
 
-  func removePreviewModel() {
-    guard let handle = whisperPreviewHandle else { return }
+  @discardableResult
+  func removePreviewModel() -> PreviewRemovalOutcome {
+    // #4325: refused while a meeting is active, BEFORE the decline record or any other change,
+    // from either page: removal would stop the meeting's live words mid-recording.
+    guard !isMeetingActive() else {
+      Task {
+        await AppLogger.shared.log(
+          "Preview removal refused: a meeting is active", level: .info, category: "Delivery")
+      }
+      return .refusedMeetingActive
+    }
+    guard let handle = whisperPreviewHandle else { return .refused }
     // **Single-flight the WHOLE operation, not just the drain.** Guarding only
     // the coordinator's drain let two presses share it and then run two deletes
     // and two finish callbacks — and one finish lifts the suppression while the
     // other removal is still going, reopening the window it exists to close.
     // The button stays on screen throughout, so a second press is ordinary.
-    guard removalTask == nil else { return }
+    guard removalTask == nil else { return .refused }
     // #3735: the decline is recorded BEFORE anything is drained or deleted, and a failed
     // record refuses the whole removal, so the next launch never fetches a model the user
     // removed.
     guard let previewReplacement, previewReplacement.decline() else {
       logPreviewRefusal("removal")
-      return
+      return .refused
     }
+    previewDownloadQueued = false
+    previewScheduledEpoch = nil
     previewDownloadIntentEpoch += 1
     removalStepsForTests = []
     let task = Task { [weak self] in
@@ -1402,6 +1529,7 @@ final class ModelDeliveryHome {
       self?.removalTask = nil
     }
     removalTask = task
+    return .started
   }
 
   /// Stop a download in flight. Safe when nothing is running: the controller
@@ -1413,6 +1541,9 @@ final class ModelDeliveryHome {
       logPreviewRefusal("cancel")
       return
     }
+    // #4325: only after the decline is recorded, so a refused Cancel leaves the request as it was.
+    previewDownloadQueued = false
+    previewScheduledEpoch = nil
     previewDownloadIntentEpoch += 1
     Task { await handle.cancelActiveFetch() }
   }

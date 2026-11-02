@@ -67,6 +67,16 @@ enum MeetingsPresentation {
           localized: "Live Preview, as people speak. The full transcript comes after the meeting.",
           comment: "History, a recording meeting: what the Live Preview are.")
     ]
+    if live.appleStandingIn {
+      lines.append(
+        recordingEnded
+          ? String(
+            localized: "Apple showed Live Preview because the Universal engine was not downloaded yet.",
+            comment: "History, a stopped meeting: Universal was chosen for Live Preview but not downloaded, so Apple's speech recognition showed the words instead.")
+          : String(
+            localized: "Apple is showing Live Preview until the Universal engine is downloaded.",
+            comment: "History, a recording meeting: Universal is chosen for Live Preview but not downloaded yet, so Apple's speech recognition shows the words meanwhile."))
+    }
     for track in MeetingTrackKind.allCases {
       guard let state = live.tracks[track],
         let line = trackLine(track, state.status, recordingEnded: recordingEnded),

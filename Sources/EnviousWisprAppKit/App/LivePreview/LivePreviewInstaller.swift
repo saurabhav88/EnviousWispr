@@ -147,6 +147,13 @@ enum LivePreviewInstaller {
   /// also silently restore the dead end this engine was added to fix: Apple's
   /// route refuses there, so they would see "needs a newer macOS" after choosing
   /// the engine that has no such requirement.
+  ///
+  /// #4325 (founder 2026-11-02): ONE deliberate exception, distinct from the build defect above.
+  /// When the Universal model is not downloaded yet (exactly `.modelNotInstalled`), Apple shows
+  /// live words in the meantime if it can; Universal takes over at the next recording once it is
+  /// admitted. Every other Universal refusal (the heart streaming, the build defect) is returned
+  /// unchanged, and a blocked Apple keeps Universal's own reason, so the pill still says what the
+  /// user can do.
   static func route(
     for choice: LivePreviewEngineChoice,
     apple: LivePreviewEngineRoute,
@@ -154,8 +161,29 @@ enum LivePreviewInstaller {
   ) -> LivePreviewEngineRoute {
     switch choice {
     case .apple: return apple
-    case .universal: return universal ?? unavailableInThisBuild
+    case .universal:
+      guard let universal else { return unavailableInThisBuild }
+      return appleStandingIn(for: universal, apple: apple)
     }
+  }
+
+  /// The Universal route with Apple standing in while Universal's model is not downloaded. Same
+  /// language setting for both; starts no download and writes no setting.
+  static func appleStandingIn(
+    for universal: LivePreviewEngineRoute, apple: LivePreviewEngineRoute
+  ) -> LivePreviewEngineRoute {
+    LivePreviewEngineRoute(
+      telemetryEngineID: universal.telemetryEngineID,
+      isSupportedOnThisSystem: universal.isSupportedOnThisSystem,
+      resolve: { mode in
+        let resolution = await universal.resolve(mode)
+        guard case .blocked(.modelNotInstalled) = resolution else { return resolution }
+        guard case .ready(let candidate) = await apple.resolve(mode) else { return resolution }
+        await AppLogger.shared.log(
+          "LIVE_PREVIEW universal not installed, Apple standing in tag=\(candidate.key.commitment)",
+          level: .info, category: "LivePreview")
+        return .ready(candidate)
+      })
   }
 
   /// The honest stand-in when an engine cannot be composed at all.

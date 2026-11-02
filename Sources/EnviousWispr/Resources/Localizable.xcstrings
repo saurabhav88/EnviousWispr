@@ -3712,6 +3712,17 @@
         }
       }
     },
+    "Apple is showing Live Preview until the Universal engine is downloaded." : {
+      "comment" : "History, a recording meeting: Universal is chosen for Live Preview but not downloaded yet, so Apple's speech recognition shows the words meanwhile.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple zeigt die Live-Vorschau an, bis die Engine „Universal“ heruntergeladen ist."
+          }
+        }
+      }
+    },
     "Apple provides the speech for the on-screen preview. Your Mac already has some languages; the rest are about 140 MB each and download only when you ask. Nothing downloads on its own." : {
       "comment" : "Live Preview settings: packs description.",
       "localizations" : {
@@ -3719,6 +3730,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apple stellt die Spracherkennung für die Vorschau auf dem Bildschirm bereit. Einige Sprachen sind bereits auf deinem Mac. Weitere Sprachpakete sind jeweils etwa 140 MB groß und werden nur auf deinen Wunsch heruntergeladen. Es wird nichts automatisch heruntergeladen."
+          }
+        }
+      }
+    },
+    "Apple showed Live Preview because the Universal engine was not downloaded yet." : {
+      "comment" : "History, a stopped meeting: Universal was chosen for Live Preview but not downloaded, so Apple's speech recognition showed the words instead.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple hat die Live-Vorschau angezeigt, weil die Engine „Universal“ noch nicht heruntergeladen war."
+          }
+        }
+      }
+    },
+    "Apple shows Live Preview in your Live Preview language until Universal is downloaded." : {
+      "comment" : "Live Preview settings: status detail when Universal is chosen but not downloaded and Apple's speech recognition shows the live words meanwhile, in the language chosen for Live Preview. Apple and Universal are engine names.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple zeigt die Live-Vorschau in deiner Live-Vorschau-Sprache an, bis die Engine „Universal“ heruntergeladen ist."
+          }
+        }
+      }
+    },
+    "Apple shows Live Preview in your Live Preview language until Universal is ready." : {
+      "comment" : "Live Preview settings, Universal engine downloading: Apple's speech recognition shows the live words, in the language chosen for Live Preview, until the Universal download finishes. Apple and Universal are engine names.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple zeigt die Live-Vorschau in deiner Live-Vorschau-Sprache an, bis die Engine „Universal“ bereit ist."
           }
         }
       }
@@ -11645,6 +11689,17 @@
         }
       }
     },
+    "Live Preview starts when the download finishes." : {
+      "comment" : "Live Preview settings, Universal engine downloading on a Mac without Apple's preview: live words begin once the download is done.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau startet, sobald der Download abgeschlossen ist."
+          }
+        }
+      }
+    },
     "Live Preview stopped for %@ before the recording ended." : {
       "comment" : "History, a stopped meeting: one track's Live Preview stopped early; the placeholder is You or Call.",
       "localizations" : {
@@ -13789,6 +13844,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch nicht heruntergeladen."
+          }
+        }
+      }
+    },
+    "Not downloaded yet. Picking it starts the download." : {
+      "comment" : "Live Preview settings, Universal engine card: the model is not downloaded, and choosing this engine starts its download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht heruntergeladen. Wenn du sie auswählst, startet der Download."
           }
         }
       }
@@ -22832,6 +22898,17 @@
         }
       }
     },
+    "Use Apple instead" : {
+      "comment" : "Live Preview settings, Universal engine: button after a failed download that switches Live Preview to the Apple engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen Apple verwenden"
+          }
+        }
+      }
+    },
     "Use Browse downloads below to get it and start the preview." : {
       "comment" : "Live Preview settings: status needs language detail.",
       "localizations" : {
@@ -23248,6 +23325,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wartet auf freien Speicherplatz. Gib Speicherplatz frei und wähle dann „Erneut transkribieren“."
+          }
+        }
+      }
+    },
+    "Waiting for the meeting to end. The download starts by itself when it stops." : {
+      "comment" : "Live Preview settings, Universal engine: the download was asked for during an EnviousMeet meeting and starts automatically when the meeting ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartet auf das Ende des Meetings. Der Download startet automatisch, sobald das Meeting beendet ist."
           }
         }
       }
@@ -27656,6 +27744,42 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du sagst „full stop“ statt „period“? Öffne „Einrichten“ neben „Gesprochene Satzzeichen“ und schalte „period“ aus. Es bleibt ein normales Wort, und „full stop“ setzt weiterhin einen Punkt."
+          }
+        }
+      }
+    },
+    "whatsNew.picking-universal-downloads-it.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry picking-universal-downloads-it).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Picking Universal Downloads It"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Auswahl der Engine „Universal“ startet den Download"
+          }
+        }
+      }
+    },
+    "whatsNew.picking-universal-downloads-it.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry picking-universal-downloads-it).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Universal for Live Preview and its download starts right away. Until it finishes, Apple shows your words where your Mac supports it."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die Engine „Universal“ für die Live-Vorschau aus, und der Download startet sofort. Bis er abgeschlossen ist, zeigt Apple deine Wörter an, sofern dein Mac das unterstützt."
           }
         }
       }

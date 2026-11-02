@@ -806,6 +806,7 @@ package enum ApplePreviewEngineResolver {
     let readyLocale = Locale(identifier: readyTag)
     return .ready(
       LivePreviewEngineCandidate(
+        telemetryEngine: .apple,
         key: LivePreviewEngineKey(engine: engineID, commitment: readyTag),
         makeEngine: { ApplePreviewRecognizer(locale: readyLocale) }
       ))
@@ -844,6 +845,7 @@ package enum ApplePreviewEngineResolver {
     let readyLocale = Locale(identifier: readyTag)
     return .ready(
       LivePreviewEngineCandidate(
+        telemetryEngine: .apple,
         key: LivePreviewEngineKey(engine: meetingEngineID, commitment: readyTag),
         makeEngine: { ApplePreviewRecognizer(locale: readyLocale, kind: .meeting) }
       ))

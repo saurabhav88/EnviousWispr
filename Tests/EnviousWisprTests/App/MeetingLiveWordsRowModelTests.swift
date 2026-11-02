@@ -75,6 +75,11 @@ struct MeetingLiveWordsRowModelTests {
     var refused = false
     var starts = 0
     var cancels = 0
+    /// #4325
+    var queued = false
+    var choiceChanges = 0
+    var removes = 0
+    var removeAccepted = true
   }
 
   private actor TagBox {
@@ -140,7 +145,13 @@ struct MeetingLiveWordsRowModelTests {
             return universal.scheduled
           },
           universalDownloadRefused: { universal.refused },
-          cancelUniversalDownload: { universal.cancels += 1 }))
+          cancelUniversalDownload: { universal.cancels += 1 },
+          universalDownloadQueued: { universal.queued },
+          previewChoiceChanged: { universal.choiceChanges += 1 },
+          removeUniversal: {
+            universal.removes += 1
+            return universal.removeAccepted
+          }))
     }
   }
 
@@ -271,7 +282,9 @@ struct MeetingLiveWordsRowModelTests {
 
   // MARK: - Downloading
 
-  @Test("Download during a meeting starts nothing and says why")
+  /// #4325: Apple's installer still waits for the meeting; a Universal Download press goes to
+  /// the shared door, which queues it until the meeting ends (covered in ModelDeliveryHomeTests).
+  @Test("During a meeting Apple's download waits; Universal's goes to the shared door")
   func downloadRefusedDuringMeeting() async throws {
     let activity = Activity()
     activity.active = true
@@ -279,15 +292,15 @@ struct MeetingLiveWordsRowModelTests {
     await rig.model.appear()
     #expect(rig.model.downloadRefusal == "Available after the meeting.")
     #expect(rig.model.download() == .refusedDuringMeeting)
+    #expect(rig.mac.installCalls.isEmpty)
     rig.settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
     await rig.model.refresh()
-    #expect(rig.model.download() == .refusedDuringMeeting)
-    #expect(rig.mac.installCalls.isEmpty)
-    #expect(rig.universal.starts == 0)
-    activity.active = false
-    #expect(rig.model.downloadRefusal == nil)
+    #expect(rig.model.downloadRefusal == nil, "Universal offers Download during the meeting")
     #expect(rig.model.download() == .started)
-    #expect(rig.universal.starts == 1)
+    #expect(rig.universal.starts == 1, "the shared door decides whether to queue")
+    activity.active = false
+    #expect(rig.model.download() == .started)
+    #expect(rig.universal.starts == 2)
   }
 
   @Test(
@@ -472,6 +485,57 @@ struct MeetingLiveWordsRowModelTests {
     // A refusal that arrives once the scheduled work ran (an unwritable replacement record).
     rig.universal.refused = true
     #expect(rig.model.universalDownloadUnavailable)
+  }
+
+  /// #4325: when this fails, picking Universal in EnviousMeet saves a choice that never downloads,
+  /// picking Apple leaves a download nobody wants running, or a queued download cannot be
+  /// cancelled from the card.
+  @Test("picking Universal asks for its download; picking Apple reports the change")
+  func pickingUniversalRequestsTheDownload() async throws {
+    let rig = Rig(dictation: .locked("de"))
+    await rig.model.appear()
+    await rig.model.selectEngine(.universal)
+    #expect(rig.universal.starts == 1, "the pick went to the shared door")
+    #expect(rig.universal.choiceChanges == 0)
+    await rig.model.selectEngine(.apple)
+    #expect(rig.universal.choiceChanges == 1, "the door decides whether anything stops")
+    #expect(rig.universal.starts == 1)
+  }
+
+  @Test("a queued Universal download shows as waiting and Cancel clears it")
+  func queuedDownloadCancels() async throws {
+    let rig = Rig(dictation: .locked("de"))
+    await rig.model.appear()
+    rig.settings.commitMeetingLiveWordsChoice(engine: .universal, language: "de")
+    await rig.model.refresh()
+    rig.universal.queued = true
+    #expect(rig.model.universalDownloadQueued == true)
+    rig.model.cancelDownload()
+    #expect(rig.universal.cancels == 1)
+  }
+
+  @Test("Universal Remove shows once installed and waits for an active meeting")
+  func universalRemove() async throws {
+    let activity = Activity()
+    let rig = Rig(dictation: .locked("de"), meetingActive: { activity.active })
+    await rig.model.appear()
+    #expect(rig.model.universalInstalled == false)
+    rig.universal.state = .admitted
+    #expect(rig.model.universalInstalled == true)
+    #expect(rig.model.downloadRefusalForRemove == nil)
+    #expect(rig.model.removeUniversal() == true)
+    #expect(rig.universal.removes == 1)
+    activity.active = true
+    #expect(rig.model.downloadRefusalForRemove == "Available after the meeting.")
+  }
+
+  @Test("Apple fills in for a Universal language only where an installed Apple tag has it")
+  func appleStandInAvailability() async throws {
+    let rig = Rig(dictation: .locked("de"))
+    rig.mac.lock.withLock { rig.mac.installed = ["en-US"] }
+    await rig.model.appear()
+    #expect(rig.model.appleCanStandIn(forUniversal: "en") == (rig.model.isAppleAvailable))
+    #expect(rig.model.appleCanStandIn(forUniversal: "de") == false)
   }
 
   @Test("Universal Download and Cancel go to the existing delivery commands")

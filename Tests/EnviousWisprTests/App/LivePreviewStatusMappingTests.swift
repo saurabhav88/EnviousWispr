@@ -497,4 +497,28 @@ struct LivePreviewStatusMappingTests {
   // in `LivePreviewStatusBarPresentationTests`: `chipNeverPromisesOutput` asserts the
   // chip contains no readiness vocabulary in any reachable state, which fails for a
   // wider class of change than agreement ever did.
+
+  /// #4325: when this fails, the status says only "get the Universal engine" while Apple is in
+  /// fact showing live words, or claims Apple fills in on a Mac where it cannot.
+  @Test("Universal not ready: the detail says Apple fills in only where Apple's preview runs")
+  func universalNotReadySaysAppleFillsIn() {
+    for state: DeliveryState in [.notReady, .cancelled(resumable: false)] {
+      let standIn = summary(engine: .universal, universalState: state)
+      #expect(standIn.kind == .needsDownload)
+      #expect(standIn.detail == LivePreviewSettingsCopy.statusNeedsDownloadAppleMeanwhile)
+      let noApple = summary(engine: .universal, appleSupported: false, universalState: state)
+      #expect(noApple.detail == LivePreviewSettingsCopy.statusNeedsDownloadDetail)
+      let unresolved = summary(engine: .universal, universalState: state, active: nil)
+      #expect(unresolved.detail == LivePreviewSettingsCopy.statusNeedsDownloadDetail)
+    }
+    let downloading = summary(
+      engine: .universal,
+      universalState: .downloading(fractionCompleted: 0.4, bytesWritten: 4, totalBytes: 10))
+    #expect(downloading.detail == LivePreviewEngineCopy.appleMeanwhile)
+    let downloadingNoApple = summary(
+      engine: .universal, appleSupported: false,
+      universalState: .downloading(fractionCompleted: 0.4, bytesWritten: 4, totalBytes: 10))
+    #expect(downloadingNoApple.detail == LivePreviewSettingsCopy.statusGettingReadyDetail)
+  }
+
 }

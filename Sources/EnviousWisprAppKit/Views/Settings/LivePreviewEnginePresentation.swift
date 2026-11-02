@@ -71,7 +71,10 @@ enum LivePreviewEnginePresentation {
   static func universalCard(
     isSelected: Bool,
     routeExists: Bool,
-    state: DeliveryState
+    state: DeliveryState,
+    queued: Bool = false,
+    appleCanStandIn: Bool = false,
+    previewPaused: Bool = false
   ) -> Card {
     guard routeExists else {
       return Card(
@@ -88,6 +91,24 @@ enum LivePreviewEnginePresentation {
 
     let title = LivePreviewEngineCopy.universalTitle
     let description = LivePreviewEngineCopy.universalDescription
+    // #4325: what Live Preview does while Universal is not ready, on the chosen engine only.
+    // Nothing is promised while the preview would not run anyway: paused for Faster
+    // Transcription (the resolver refuses before it asks about the model; Codex chunk 5) or
+    // Live Preview switched off (the status says off; Codex whole-diff review). The caller
+    // passes both as `previewPaused`.
+    let meanwhile: String? =
+      isSelected && !previewPaused
+      ? (appleCanStandIn
+        ? LivePreviewEngineCopy.appleMeanwhile : LivePreviewEngineCopy.startsWhenDownloaded)
+      : nil
+
+    // #4325: a request made during a meeting waits; Cancel clears it.
+    if queued, state != .admitted {
+      return Card(
+        title: title, description: description,
+        unavailability: LivePreviewEngineCopy.waitingForMeeting,
+        action: .cancelDownload, progress: nil, isSelected: isSelected)
+    }
 
     switch state {
     case .admitted:
@@ -97,7 +118,7 @@ enum LivePreviewEnginePresentation {
 
     case .downloading(let fraction, _, _):
       return Card(
-        title: title, description: description, unavailability: nil,
+        title: title, description: description, unavailability: meanwhile,
         action: .cancelDownload, progress: Self.renderableProgress(fraction),
         isSelected: isSelected)
 
@@ -106,11 +127,11 @@ enum LivePreviewEnginePresentation {
     // either ever needs its own sentence.
     case .preparing:
       return Card(
-        title: title, description: description, unavailability: nil,
+        title: title, description: description, unavailability: meanwhile,
         action: .cancelDownload, progress: nil, isSelected: isSelected)
     case .verifying:
       return Card(
-        title: title, description: description, unavailability: nil,
+        title: title, description: description, unavailability: meanwhile,
         action: .cancelDownload, progress: nil, isSelected: isSelected)
 
     case .failed:
@@ -140,7 +161,8 @@ enum LivePreviewEnginePresentation {
     case .notReady:
       return Card(
         title: title, description: description,
-        unavailability: LivePreviewEngineCopy.notDownloadedYet,
+        unavailability: isSelected
+          ? LivePreviewEngineCopy.notDownloadedYet : LivePreviewEngineCopy.pickingStartsDownload,
         action: .download, progress: nil, isSelected: isSelected)
     }
   }
@@ -223,6 +245,28 @@ enum LivePreviewEngineCopy {
   static let notDownloadedYet = String(
     localized: "Not downloaded yet.",
     comment: "Live Preview settings, preview engine: not downloaded yet.")
+  /// #4325: on a card the user has not picked yet. Picking it starts the shared download.
+  static let pickingStartsDownload = String(
+    localized: "Not downloaded yet. Picking it starts the download.",
+    comment: "Live Preview settings, Universal engine card: the model is not downloaded, and choosing this engine starts its download.")
+  /// #4325: a Universal request made during a meeting waits for the meeting to end.
+  static let waitingForMeeting = String(
+    localized: "Waiting for the meeting to end. The download starts by itself when it stops.",
+    comment: "Live Preview settings, Universal engine: the download was asked for during an EnviousMeet meeting and starts automatically when the meeting ends.")
+  /// #4325: while Universal downloads and Apple's preview works on this Mac.
+  /// Names the language too (plan 3.8): Universal detects the language itself, while Apple
+  /// stands in with the Live Preview language setting.
+  static let appleMeanwhile = String(
+    localized: "Apple shows Live Preview in your Live Preview language until Universal is ready.",
+    comment: "Live Preview settings, Universal engine downloading: Apple's speech recognition shows the live words, in the language chosen for Live Preview, until the Universal download finishes. Apple and Universal are engine names.")
+  /// #4325: while Universal downloads on a Mac where Apple's preview cannot run.
+  static let startsWhenDownloaded = String(
+    localized: "Live Preview starts when the download finishes.",
+    comment: "Live Preview settings, Universal engine downloading on a Mac without Apple's preview: live words begin once the download is done.")
+  /// #4325: beside Try again after a failed Universal download.
+  static let useAppleInstead = String(
+    localized: "Use Apple instead",
+    comment: "Live Preview settings, Universal engine: button after a failed download that switches Live Preview to the Apple engine.")
   static let downloadFailed = String(
     localized: "The download did not finish.",
     comment: "Live Preview settings, preview engine: download failed.")

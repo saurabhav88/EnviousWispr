@@ -36,6 +36,22 @@ struct MeetingLiveWordsPresentationTests {
   static let line = LiveWordsAssembler.Line(
     id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 900, text: "Hello there.")
 
+  /// #4325: when this fails, Apple shows a meeting's live words for a Universal choice and the
+  /// page does not say why, so the user thinks Universal is running.
+  @Test("Apple standing in for Universal is said, during and after the meeting")
+  func appleStandInLine() {
+    var standIn = Self.live(.running, .running)
+    standIn.appleStandingIn = true
+    #expect(
+      P.liveStatusLines(standIn, callSoundRecorded: false) == [
+        Self.intro, "Apple is showing Live Preview until the Universal engine is downloaded.",
+      ])
+    #expect(
+      P.liveStatusLines(standIn, callSoundRecorded: false, recordingEnded: true).contains(
+        "Apple showed Live Preview because the Universal engine was not downloaded yet."))
+    #expect(P.liveStatusLines(Self.live(.running, .running), callSoundRecorded: false) == [Self.intro])
+  }
+
   @Test("every track status says the approved sentence, or nothing while words can come")
   func everyStatus() {
     let cases: [(Status, String?)] = [

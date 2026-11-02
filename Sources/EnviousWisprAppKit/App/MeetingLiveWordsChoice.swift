@@ -112,6 +112,28 @@ enum MeetingLiveWordsChoice {
     }
   }
 
+  /// #4325: the INSTALLED Apple meeting tag that can stand in for a Universal language whose
+  /// model is not downloaded (this Mac's region first, then Apple's equivalent, then any installed
+  /// region), or nil. Never a download target: a tag Apple supports but this Mac lacks is nil.
+  static func installedAppleStandIn(
+    forUniversal code: String, inventory: Inventory,
+    appleEquivalent: @Sendable (String) async -> String?
+  ) async -> String? {
+    guard
+      let tag = await language(
+        for: .apple, from: code, inventory: inventory, appleEquivalent: appleEquivalent),
+      inventory.appleInstalledTags.contains(tag)
+    else { return nil }
+    return tag
+  }
+
+  /// #4325: the same, read from the choice owner Start resolves with.
+  @MainActor
+  static func installedAppleStandIn(forUniversal code: String, owner: Initializer) async -> String? {
+    await installedAppleStandIn(
+      forUniversal: code, inventory: await owner.inventory(), appleEquivalent: owner.appleEquivalent)
+  }
+
   /// The language `engine` would use for `code`, or nil when it has none. The policy for both
   /// guessing and switching engines (plan R2.2):
   /// - Apple, from a bare language or another engine's code: an installed region first: this

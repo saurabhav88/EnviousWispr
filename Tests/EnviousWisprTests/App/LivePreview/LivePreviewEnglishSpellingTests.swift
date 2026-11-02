@@ -92,12 +92,12 @@ struct LivePreviewEnglishSpellingTests {
         languageMode: mode,
         englishSpelling: spelling,
         selectedRoute: {
-          LivePreviewEngineRoute(
-            telemetryEngineID: "universal", isSupportedOnThisSystem: { true },
+          LivePreviewEngineRoute(telemetryEngineID: "universal",
+            isSupportedOnThisSystem: { true },
             resolve: { requested in
               asked.mode = requested
               return .ready(
-                LivePreviewEngineCandidate(
+                LivePreviewEngineCandidate(telemetryEngine: .universal,
                   key: LivePreviewEngineKey(engine: "test#1", commitment: ""),
                   makeEngine: {
                     if let heard { return SpeakingEngine(heard: heard) }
