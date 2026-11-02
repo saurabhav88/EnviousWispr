@@ -92,7 +92,28 @@ struct MeetingLiveWordsChoiceTests {
         picks.insert(language)
       }
     }
-    #expect(picks == ["fr-CA"], "sorted installed tags, the existing satisfyingTag policy")
+    #expect(picks == ["fr-FR"], "Apple's equivalent is installed, so it wins every time")
+  }
+
+  /// #4320 (founder report): switching from Universal ("en") back to Apple on a US Mac gave
+  /// English (Australia), the alphabetically first installed English.
+  @Test("Switching back to Apple keeps the Mac's region, then Apple's own region")
+  func switchingBackKeepsTheMacRegion() async {
+    var installed = Self.inventory
+    installed.appleSupportedTags = ["en-AU", "en-GB", "en-US", "fr-CA", "fr-FR"]
+    installed.appleInstalledTags = ["en-AU", "en-GB", "en-US", "fr-CA"]
+    func switched(_ current: String, region: String?) async -> String? {
+      var inventory = installed
+      inventory.macRegion = region
+      return await Choice.switchedLanguage(
+        to: .apple, from: current, inventory: inventory, appleEquivalent: Self.equivalent)
+    }
+    #expect(await switched("en", region: "US") == "en-US", "the Mac's region")
+    #expect(await switched("en", region: "GB") == "en-GB", "the Mac's region, not Apple's")
+    #expect(await switched("en", region: nil) == "en-US", "Apple's own equivalent, installed")
+    #expect(await switched("en", region: "IN") == "en-US", "no en-IN installed: Apple's equivalent")
+    // fr-FR (Apple's equivalent) is not installed: the installed fr-CA, not a download.
+    #expect(await switched("fr", region: "US") == "fr-CA")
   }
 
   @Test("Partial choices keep what the user stored")
