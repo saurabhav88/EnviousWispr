@@ -923,7 +923,7 @@ struct CallDetectionPolicyTests {
     #expect(s.starts.isEmpty)
   }
 
-  @Test("A browser fallback needs pre-acceptance independent room proof, not just its URL", arguments: [true, false])
+  @Test("A browser hand start links on independent room proof, never on its URL alone", arguments: [true, false])
   func browserManualProofRequired(ongoing: Bool) {
     var s = Story()
     let call = Self.chrome(.active, url: Self.meetA)
@@ -933,13 +933,17 @@ struct CallDetectionPolicyTests {
     let id = UUID()
     s.meeting = .recording(meetingID: id)
     s.settleManual(request, recordingID: id)
-    // Stronger proof after settlement cannot promote a URL-only rejected request.
+    // A URL-only request is not linked at settlement (#4142).
+    let linkedAtSettle = s.policy.episodes.contains { $0.phase == .recording(meetingID: id) }
+    #expect(linkedAtSettle == ongoing)
+    // #4342 D1 (founder 2026-11-02) replaced "stronger proof after settlement cannot promote a
+    // URL-only rejected request": the hand-started recording follows the room once independent
+    // room proof arrives. The URL alone still never links it.
     s.observeCall(.ongoing(family: .googleMeet, room: "abc-defg-hij"), holder: call)
     s.read([call])
     end(&s, [Self.chrome(.inactive, url: Self.meetA)], call: call)
-    #expect(isEndConfirmation(s.interaction) == ongoing)
+    #expect(isEndConfirmation(s.interaction))
     #expect(s.starts.isEmpty)
-    if !ongoing { #expect(s.meeting == .recording(meetingID: id) && s.stops == 0) }
   }
 
   @Test("A call or browser room identified after acceptance cannot borrow earlier microphone activity",
