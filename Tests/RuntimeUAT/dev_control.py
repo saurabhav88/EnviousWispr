@@ -318,6 +318,8 @@ meeting notes-set types and saves a meeting's notes (--text) as the Notes tab do
 notes-get reads them back. summary-write is the Summary tab's Write summary / Write again
 (--replace confirms replacing an edited summary); it returns at the start, so poll
 summary-get. meeting live prints the recording meeting's live words (memory only);
+meeting eg1-slots prints what EG-1's bundled server slots are doing (slot ids, busy, tokens decoded;
+no text, no key), for checking that a cancelled EG-1 summary frees its slot (#4319).
 meeting live-words-status prints the live words engine and language a meeting would use
 now, without saving a guess. meeting start --live-engine apple|universal forces that engine
 for one meeting.
@@ -463,6 +465,7 @@ def build_parser():
     summary_write.add_argument("--replace", action="store_true")
     meeting.add_parser("live")
     meeting.add_parser("live-words-status")
+    meeting.add_parser("eg1-slots")
 
     call = sub.add_parser("call", help="EnviousMeet call detection (simulated)").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -592,6 +595,8 @@ def route(args):
         return "meeting.live", {}, False
     if key == ("meeting", "live-words-status"):
         return "meeting.liveWordsStatus", {}, False
+    if key == ("meeting", "eg1-slots"):
+        return "meeting.egOneSlots", {}, False
     if key == ("call", "simulate"):
         if args.clear:
             return "call.simulate", {"clear": True}, True

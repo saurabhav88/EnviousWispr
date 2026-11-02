@@ -76,7 +76,8 @@ struct MeetingSummaryTests {
       of(.ollama, "llama3.2", remote: nil) == local,
       "an Ollama model of unknown location waits for dictation like a local one")
     #expect(of(.appleIntelligence) == local)
-    #expect(of(.egOne) == .notForSummaries)
+    // #4319: native EG-1 writes summaries on the bundled server the app lends to the attempt.
+    #expect(of(.egOne) == local)
     #expect(of(.s1Mini) == .notForSummaries)
     #expect(of(.none) == .noProvider)
     // The cleanup models picked through Ollama, with any tag or case.
@@ -504,6 +505,20 @@ struct MeetingSummaryTests {
     #expect(a != b)
     #expect(a != c)
     #expect(a == MeetingSummary.configurationFingerprint(provider: .openAI, model: "gpt-4o-mini"))
+    // #4319: EG-1's model name is fixed, so its weights' revision is part of the identity; a nil
+    // revision leaves every other provider's fingerprint byte-for-byte as before.
+    let egOld = MeetingSummary.configurationFingerprint(
+      provider: .egOne, model: "eg-1", artifactRevision: "eg1-1.2-c003")
+    let egNew = MeetingSummary.configurationFingerprint(
+      provider: .egOne, model: "eg-1", artifactRevision: "eg1-1.3-c001")
+    #expect(egOld != egNew)
+    #expect(
+      egOld
+        == MeetingSummary.configurationFingerprint(
+          provider: .egOne, model: "eg-1", artifactRevision: "eg1-1.2-c003"))
+    #expect(
+      a == MeetingSummary.configurationFingerprint(
+        provider: .openAI, model: "gpt-4o-mini", artifactRevision: nil))
     #expect(a.count == 64)
   }
 
@@ -587,7 +602,7 @@ struct MeetingSummaryTests {
       ollamaExecutor: { try await ollama.execute($0) })
   }
 
-  @Test("cleanup models and no provider are refused before Ollama is asked or called")
+  @Test("cleanup models, native EG-1 here and no provider are refused before Ollama is asked or called")
   func refusedProviders() async {
     let cases: [(LLMProvider, String)] = [
       (.egOne, ""), (.s1Mini, ""), (.none, ""), (.ollama, "eg-1:q4"),

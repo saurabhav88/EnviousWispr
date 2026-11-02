@@ -898,6 +898,9 @@ package final class WisprBootstrapper {
       },
       ollamaRemotenessLookup: ollamaRemoteness,
       importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
+      summaryPinnedLocalProvider: { [localPolishRuntimes] in
+        localPolishRuntimes.summaryHeldProvider
+      },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
       outputClassifierHolder: outputClassifierHolder,
@@ -2044,13 +2047,17 @@ package final class WisprBootstrapper {
     // that can occupy it takes this claim. `isBusy` had no production reader
     // when the lease shipped; file import is what made the gap live, so it is
     // wired here rather than deferred again. Codex confirming round.
-    egOneRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
-    s1MiniRuntime.isSharedEngineBusy = { [weak engineLease] in engineLease?.isBusy ?? false }
-    egOneRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
-      engineLease?.admissionEpoch ?? 0
-    }
-    s1MiniRuntime.sharedEngineAdmissionEpoch = { [weak engineLease] in
-      engineLease?.admissionEpoch ?? 0
+    // #4319: an EnviousMeet summary holding the bundled server also makes it busy, and its
+    // start moves the epoch, so a probe measured across it is discarded. The coordinator's
+    // reservation already refuses a probe; this keeps a verdict from a probe admitted just
+    // before from being published.
+    for runtime in [egOneRuntime, s1MiniRuntime] {
+      runtime.isSharedEngineBusy = { [weak engineLease, localPolishRuntimes] in
+        (engineLease?.isBusy ?? false) || localPolishRuntimes.summaryHeldProvider != nil
+      }
+      runtime.sharedEngineAdmissionEpoch = { [weak engineLease, localPolishRuntimes] in
+        (engineLease?.admissionEpoch ?? 0) &+ localPolishRuntimes.summaryAdmissionEpoch
+      }
     }
 
     // #4052: one readiness drive and one unload-timer pair for the two workloads that borrow the
@@ -2481,7 +2488,10 @@ package final class WisprBootstrapper {
             sources: DevControlMeetings.Sources(
               coordinator: { [meetingBox] in meetingBox.coordinator },
               startFlow: { [meetingBox] in meetingBox.startFlow },
-              transcripts: { [transcriptCoordinator] in transcriptCoordinator })),
+              transcripts: { [transcriptCoordinator] in transcriptCoordinator },
+              egOneSlots: { [localPolishRuntimes] in
+                await localPolishRuntimes.egOne.observeServerSlotsForDebug()
+              })),
           calls: DevControlCalls(
             sources: DevControlCalls.Sources(
               coordinator: { [meetingBox] in meetingBox.callDetection }))))
@@ -2611,6 +2621,17 @@ package final class WisprBootstrapper {
         meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
     meetingInputs.liveWords = meetingLiveWords
+    // #4319: an EG-1 summary waits while a file import holds a bundled server.
+    meetingInputs.importPinnedLocalProvider = {
+      fileImportCoordinatorForGates?.pinnedLocalPolishProvider
+    }
+    // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
+    // through the same forced reconcile a file import uses.
+    meetingInputs.egOneSummaryEngine = EGOneSummaryEngine(
+      runtimes: localPolishRuntimes, manifest: { egOneManifest },
+      restoreSelection: { [weak settingsSync, settings] in
+        settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
+      })
     let refreshTalkerRules: @Sendable () -> Void = {
       Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
     }
@@ -2658,8 +2679,10 @@ package final class WisprBootstrapper {
     // the same local engine. File import, re-polish and recovery build their own steps and
     // keep the default (never skip).
     for polishStep in [kernelDriver.llmPolish, whisperKernelDriver.llmPolish] {
-      polishStep.runningLocalSummary = { [weak summaries = meetingCoordinator.summaries] in
-        summaries?.runningLocalSummaryProvider
+      // #4319: an EG-1 summary holds the server for its whole attempt, between calls too.
+      polishStep.runningLocalSummary = {
+        [weak summaries = meetingCoordinator.summaries, localPolishRuntimes] in
+        localPolishRuntimes.summaryHeldProvider ?? summaries?.runningLocalSummaryProvider
       }
     }
     meetingBox.coordinator = meetingCoordinator
@@ -2915,9 +2938,9 @@ package final class WisprBootstrapper {
     // | seam | who answers | import covered by |
     // |---|---|---|
     // | `EngineCoordinator` gate 5 / 6 / 6b | recording, recovery, import | `isFileImportRunning` → `isEngineHeld` |
-    // | `egOneRuntime.isPinnedInFlight` (+ S1-mini) | `pinnedLocalProvider()` | `importPinnedLocalProvider` |
+    // | `egOneRuntime.isPinnedInFlight` (+ S1-mini) | `pinnedLocalProvider()` | `importPinnedLocalProvider` (summary: `summaryPinnedLocalProvider`, #4319) |
     // | `isBlockedByOtherPinnedSession` (+ S1-mini) | `pinnedLocalProvider()` | same |
-    // | `isSharedEngineBusy` (+ S1-mini) | `EngineLease.isBusy` | the lease itself |
+    // | `isSharedEngineBusy` (+ S1-mini) | `EngineLease.isBusy` | the lease itself (summary: `summaryHeldProvider` + `summaryAdmissionEpoch`, #4319) |
     // | `isOllamaModelPinnedInFlight` | the two session configs | `importPinnedOllamaModel` |
     // | the ASR idle-unload timer | `cancelIdleTimer` / `noteTranscriptionComplete` | bracketed around the hold |
     // | THIS one, Whisper Remove | dictation config + minting flag | the lease term below |

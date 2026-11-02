@@ -1,5 +1,6 @@
 #if DEBUG
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprLivePreview
   import EnviousWisprPipeline
   import Foundation
@@ -20,6 +21,8 @@
       let startFlow: @MainActor () -> MeetingStartFlow?
       let transcripts: @MainActor () -> TranscriptCoordinator?
       var now: @MainActor () -> Date = { Date() }
+      /// #4319: EG-1's bundled server slots (read only); nil when not wired.
+      var egOneSlots: (@MainActor () async -> EGOneSlotObservation)?
     }
 
     /// Rows `meeting.list` returns when the request names no limit, and the most it may ask.
@@ -523,6 +526,36 @@
           "meetingID": meetingID.uuidString, "outcome": "refused",
           "activity": summaries.activity[meetingID].map { Self.name($0) as Any } ?? NSNull(),
         ])
+      }
+    }
+
+    /// #4319 `meeting.egOneSlots`: what EG-1's bundled server slots are doing, content-free, so
+    /// a Live UAT can see a cancelled summary stop generating and free its slot. Read only:
+    /// it starts, loads and changes nothing, and works while a summary holds the server.
+    func egOneSlots(_ args: [String: Any]) async -> Result {
+      guard args.isEmpty else {
+        return .failure(.badArgs, "meeting.egOneSlots takes no arguments")
+      }
+      guard let observe = sources.egOneSlots else { return unwiredResult }
+      switch await observe() {
+      case .observed(let snapshot):
+        return .ok([
+          "state": "observed", "launchGeneration": snapshot.launchGeneration,
+          "slots": snapshot.slots.map { slot -> [String: Any] in
+            [
+              "id": slot.id, "isProcessing": slot.isProcessing,
+              "taskID": slot.taskID as Any? ?? NSNull(),
+              "decodedTokens": slot.decodedTokens as Any? ?? NSNull(),
+              "remainingTokens": slot.remainingTokens as Any? ?? NSNull(),
+            ]
+          },
+        ])
+      case .unavailable: return .ok(["state": "unavailable"])
+      case .unsupported: return .ok(["state": "unsupported"])
+      case .httpStatus(let code): return .ok(["state": "httpStatus", "status": code])
+      case .transportFailed: return .ok(["state": "transportFailed"])
+      case .malformed: return .ok(["state": "malformed"])
+      case .replaced: return .ok(["state": "replaced"])
       }
     }
 

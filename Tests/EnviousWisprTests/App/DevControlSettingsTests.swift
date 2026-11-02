@@ -1239,10 +1239,13 @@
           .meetingSummaryLLMProvider, value: try Self.wire(json), force: false,
           context: Self.context(catalog: .init(provider: .openAI, models: [])), to: settings)
       }
-      for refused in ["\"s1Mini\"", "\"egOne\"", "\"none\""] {
+      for refused in ["\"s1Mini\"", "\"none\""] {
         #expect(try write(refused).code == "checkFailed", "\(refused)")
       }
       #expect(settings.meetingSummaryLLMProvider == .openAI, "a refusal writes nothing")
+      // #4319: EG-1 writes summaries now, so the tab offers it and the door takes it.
+      #expect(try write("\"egOne\"") == .written(forced: false))
+      #expect(settings.meetingSummaryLLMProvider == .egOne)
       #expect(try write("\"claude\"") == .written(forced: false))
       #expect(settings.meetingSummaryLLMProvider == .claude)
     }

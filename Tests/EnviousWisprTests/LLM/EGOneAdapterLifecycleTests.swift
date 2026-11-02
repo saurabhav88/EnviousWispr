@@ -61,6 +61,21 @@ struct EGOneAdapterLifecycleTests {
         port = int(args[args.index('--port') + 1])
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                # #4319: /slots answers from slots.json when the test wrote one, and only with
+                # the launch's bearer.
+                slots = os.path.join(root, 'slots.json')
+                if self.path == '/slots' and os.path.exists(slots):
+                    token = args[args.index('--api-key') + 1] if '--api-key' in args else None
+                    if token and self.headers.get('Authorization') != f'Bearer {token}':
+                        self.send_response(401)
+                        self.end_headers()
+                        return
+                    body = open(slots, 'rb').read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 self.send_response(200 if self.path == '/health' else 404)
                 self.end_headers()
             def log_message(self, *args):
@@ -295,7 +310,7 @@ struct EGOneAdapterLifecycleTests {
     init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
     func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
-      await coordinator.acquireLease(for: .egOne)
+      await coordinator.acquireLease(for: .egOne, purpose: .inference)
     }
     func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {
       await coordinator.releaseLease(lease)
@@ -331,6 +346,58 @@ struct EGOneAdapterLifecycleTests {
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
     #expect(try fixture.launches().count == 2)
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+  }
+
+  fileprivate static func s1Target(_ fixture: Fixture) -> LocalPolishTarget {
+    var configuration = fixture.configuration()
+    configuration.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    return LocalPolishTarget(provider: .s1Mini, configuration: configuration)
+  }
+
+  /// An EG-1 summary holding a running EG-1, with dictation's S1-mini deferred behind it.
+  fileprivate static func summaryWithDeferredS1(
+    _ fixture: Fixture, _ coordinator: LocalPolishServerCoordinator
+  ) async throws -> LocalPolishSummaryReservation {
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
+      throw CancellationError()
+    }
+    await coordinator.transition(to: .run(s1Target(fixture)), intent: coordinator.claimIntent())
+    #expect(await coordinator.residentModelForTesting == .egOne, "S1-mini waits for the summary")
+    return reservation
+  }
+
+  @Test("a summary's release does not wait for dictation's engine to become ready (#4319)")
+  func summaryReleaseDoesNotWaitForDeferredReadiness() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    let reservation = try await Self.summaryWithDeferredS1(fixture, coordinator)
+    try Data().write(to: fixture.root.appendingPathComponent("hold_ready"))
+    // S1-mini's readiness stays parked until the release has returned.
+    await coordinator.releaseSummaryReservation(reservation)
+    #expect(await coordinator.isReservedForSummary() == false)
+    try Data().write(to: fixture.root.appendingPathComponent("release_ready"))
+    await coordinator.awaitSelectionAfterSummaryForTesting()
+    #expect(await coordinator.endpoint(for: .s1Mini) != nil, "dictation's engine came back")
+    await coordinator.transition(to: .idle(.s1Mini), intent: coordinator.claimIntent())
+  }
+
+  @Test("a summary ending during app quit starts no engine (#4319)")
+  func summaryEndingDuringQuitStartsNothing() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    let reservation = try await Self.summaryWithDeferredS1(fixture, coordinator)
+    coordinator.terminateForAppQuit()
+    await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.awaitSelectionAfterSummaryForTesting()
+    await coordinator.transition(to: .run(Self.s1Target(fixture)), intent: coordinator.claimIntent())
+    #expect(try fixture.launches().count == 1, "only the summary's EG-1 ever launched")
+    #expect(await coordinator.endpoint(for: .s1Mini) == nil)
+    #expect(await coordinator.reserveForSummary(.egOne) == .cancelled)
   }
 
   @Test("switching to S1 and back boots EG-1 with the latest adapter set")
@@ -1249,3 +1316,233 @@ struct EGOneRecordingRecoveryTests {
     #expect(none == nil)
   }
 }
+
+// MARK: - #4319: a summary's reservation waits for a health probe already running
+
+/// A probe connector that parks until the test lets it answer, and says when it has started.
+private actor ParkedProbe {
+  private var started: CheckedContinuation<Void, Never>?
+  private var hasStarted = false
+  private var release: CheckedContinuation<Void, Never>?
+  private var released = false
+
+  func enter() async {
+    hasStarted = true
+    started?.resume()
+    started = nil
+    guard !released else { return }
+    await withCheckedContinuation { release = $0 }
+  }
+
+  /// True once the probe has started, false at the deadline.
+  func waitUntilStarted() async -> Bool {
+    guard !hasStarted else { return true }
+    await withCheckedContinuation { continuation in
+      started = continuation
+      Task {
+        // deadline-fallback: give up so the test fails by name instead of hanging
+        try? await Task.sleep(for: .seconds(20))
+        await self.expireStartWait()
+      }
+    }
+    return hasStarted
+  }
+
+  private func expireStartWait() {
+    started?.resume()
+    started = nil
+  }
+
+  func letAnswer() {
+    released = true
+    release?.resume()
+    release = nil
+  }
+}
+
+private struct ParkedProbePolisher: TranscriptPolisher {
+  let gate: ParkedProbe
+  func polish(
+    text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    await gate.enter()
+    return LLMResult(polishedText: "Move the meeting to Friday.")
+  }
+  func polish(
+    envelope: PromptEnvelope, config: LLMProviderConfig, onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    await gate.enter()
+    return LLMResult(polishedText: "Move the meeting to Friday.")
+  }
+}
+
+extension EGOneAdapterLifecycleTests {
+  @Test("a summary's reservation waits for a health probe that is already running (#4319)")
+  func reservationDrainsAdmittedProbe() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    let gate = ParkedProbe()
+    let spec = EGOneServerManager.ProbeSpec(
+      provider: .egOne, modelID: "eg-1", makeConnector: { _ in ParkedProbePolisher(gate: gate) })
+    let probing = Task {
+      await coordinator.probeHealth(.egOne, promptFamily: .egOneEnvelope, spec: spec)
+    }
+    defer { probing.cancel() }
+    guard await gate.waitUntilStarted() else {
+      await gate.letAnswer()
+      Issue.record("the health probe never reached the server")
+      await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+      return
+    }
+    let reserving = Task { await coordinator.reserveForSummary(.egOne) }
+    let waiting = await coordinator.awaitDrainWaitForTesting()
+    #expect(waiting, "the reservation waits for the running probe")
+    #expect(await coordinator.isReservedForSummary(), "admission closed while the probe runs")
+    await gate.letAnswer()
+    _ = await probing.value
+    guard case .granted(let reservation) = await reserving.value else {
+      Issue.record("the reservation was not granted after the probe finished")
+      return
+    }
+    await coordinator.releaseSummaryReservation(reservation)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+  }
+}
+
+extension EGOneAdapterLifecycleTests {
+  @MainActor
+  @Test("activateForSummary loads EG-1 for the summary's reservation and hands back its endpoint (#4319)")
+  func activateForSummaryLoadsOwnedServer() async throws {
+    let fixture = try Fixture()
+    let suite = "eg1-summary-activation-\(UUID().uuidString)"
+    let store = try #require(TestDefaults.suite(suite))
+    defer {
+      store.removePersistentDomain(forName: suite)
+      fixture.cleanup()
+    }
+    let install = fixture.root.appendingPathComponent("base-install", isDirectory: true)
+    let metadata = fixture.root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
+      install: install, metadata: metadata)
+    try Data(count: 1000).write(to: install.appendingPathComponent("eg-1-00001-of-00002.gguf"))
+    try Data(count: 2000).write(to: install.appendingPathComponent("eg-1-00002-of-00002.gguf"))
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
+    let delivery = EGOneDeliveryAdapter(
+      controller: controller, registration: registration, version: nil, defaults: store)
+    let manifest = EGOneManifest(
+      modelName: LLMProvider.egOneModelName, version: "v2-sharded",
+      contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
+      downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
+    let coordinator = LocalPolishServerCoordinator()
+    let runtime = EGOneRuntime(
+      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      defaults: store, coordinator: coordinator)
+
+    guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
+      Issue.record("an idle server refused the summary's reservation")
+      return
+    }
+    let endpoint = await runtime.activateForSummary(reservation)
+    #expect(endpoint != nil, "the summary's load came up")
+    #expect(await coordinator.residentModelForTesting == .egOne)
+    #expect(await runtime.activeEndpoint() == endpoint, "the endpoint is the server it owns")
+    // Anyone else's admission is still refused while the summary holds it.
+    guard case .changing = await runtime.acquireLocalServerLease() else {
+      Issue.record("a word check was admitted during the summary")
+      return
+    }
+    await runtime.releaseServerReservation(reservation)
+    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+    #expect(await coordinator.residentModelForTesting == nil)
+  }
+}
+
+#if DEBUG
+  /// #4319: when these fail, the DEBUG `meeting eg1-slots` reader used in Live UAT reports the
+  /// wrong server, leaks request content, or turns an error into an idle slot.
+  @Suite("EG-1 DEBUG slot reader (#4319)", .tags(.harnessContract))
+  struct EGOneSlotObservationTests {
+    fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
+
+    static let processingSlots = Data(
+      """
+      [{"id":0,"is_processing":false,"n_ctx":4096,"speculative":false},
+       {"id":1,"id_task":7,"is_processing":true,"n_ctx":4096,"speculative":false,
+        "params":{"prompt":"SECRET TRANSCRIPT TEXT"},
+        "next_token":[{"has_next_token":true,"n_remain":1101,"n_decoded":399}]}]
+      """.utf8)
+
+    @Test("the DEBUG slot reader reads only whitelisted fields from the owned server, with its bearer (#4319)")
+    func slotObservationReadsOwnedServer() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      try Self.processingSlots.write(to: fixture.root.appendingPathComponent("slots.json"))
+      let coordinator = LocalPolishServerCoordinator()
+      await coordinator.transition(
+        to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+        intent: coordinator.claimIntent())
+      guard case .observed(let snapshot) = await coordinator.observeSlotsForDebug(for: .egOne)
+      else {
+        Issue.record("the owned server's slots were not observed")
+        return
+      }
+      #expect(snapshot.slots.count == 2)
+      #expect(snapshot.slots[0] == .init(id: 0, isProcessing: false, taskID: nil, decodedTokens: nil, remainingTokens: nil))
+      #expect(snapshot.slots[1] == .init(id: 1, isProcessing: true, taskID: 7, decodedTokens: 399, remainingTokens: 1101))
+      #expect(String(describing: snapshot).contains("SECRET") == false, "no request content")
+      // Another model's slots are not this model's.
+      #expect(await coordinator.observeSlotsForDebug(for: .s1Mini) == .unavailable)
+      // A control request: still answered while a summary holds the server, and admits nothing.
+      guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
+        Issue.record("reservation refused")
+        return
+      }
+      guard case .observed = await coordinator.observeSlotsForDebug(for: .egOne) else {
+        Issue.record("the slot reader was held back by the summary")
+        return
+      }
+      #expect(await coordinator.hasLease(for: .egOne) == false)
+      await coordinator.releaseSummaryReservation(reservation)
+      try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("slots.json"))
+      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unsupported)
+      await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unavailable)
+    }
+
+    @Test("a slot answer from a replaced server is never reported, and errors stay errors (#4319)")
+    func slotObservationFailuresStayHonest() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      let manager = EGOneServerManager()
+      #expect(await manager.observeSlotsForDebug() == .unavailable, "no server is not idle")
+      await manager.start(configuration: fixture.configuration())
+      let replaced = await manager.observeSlotsForDebug { request in
+        #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
+        #expect(request.url?.path == "/slots")
+        await manager.stop()
+        let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (Self.processingSlots, ok)
+      }
+      #expect(replaced == .replaced)
+      await manager.start(configuration: fixture.configuration())
+      #expect(
+        await manager.observeSlotsForDebug { _ in throw URLError(.timedOut) } == .transportFailed)
+      #expect(
+        await manager.observeSlotsForDebug { request in
+          (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        } == .malformed)
+      #expect(
+        await manager.observeSlotsForDebug { request in
+          (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+        } == .httpStatus(500))
+      await manager.stop()
+    }
+  }
+#endif

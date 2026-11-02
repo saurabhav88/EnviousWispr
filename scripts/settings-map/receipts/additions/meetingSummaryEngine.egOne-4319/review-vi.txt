@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "vi",
+    "title": "EG-1 cho tóm tắt cuộc họp",
+    "words": [],
+    "phrases": [
+      "dùng EG-1 để tóm tắt cuộc họp"
+    ]
+  }
+}

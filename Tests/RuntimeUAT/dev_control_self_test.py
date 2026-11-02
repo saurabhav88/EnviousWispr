@@ -374,6 +374,7 @@ def routes_and_values(r, tree):
          {"meetingID": word_id, "replace": True}),
         (["meeting", "live"], "meeting.live", {}),
         (["meeting", "live-words-status"], "meeting.liveWordsStatus", {}),
+        (["meeting", "eg1-slots"], "meeting.egOneSlots", {}),
         (["meeting", "start", "--live-engine", "apple"], "meeting.start",
          {"entryPoint": "menu", "liveEngine": "apple"}),
         (["call", "simulate"], "call.simulate", {}),

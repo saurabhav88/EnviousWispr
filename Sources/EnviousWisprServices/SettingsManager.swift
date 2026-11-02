@@ -607,8 +607,7 @@ public final class SettingsManager {
     }
     switch source {
     case .appleIntelligence: return .appleIntelligence
-    // Until EG-1 can write summaries the Summaries tab shows it as Coming soon; the release
-    // waits for that work (founder 2026-10-31).
+    // EG-1 writes summaries, loaded only while one is written (#4319).
     case .egOne: return .egOne
     // Decision 14 taken literally (plan I5): an Ollama user keeps provider AND model, even an
     // EG-1/S1 Ollama model that cannot summarize; capability reports that, never migration.

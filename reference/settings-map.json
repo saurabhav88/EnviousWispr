@@ -6,9 +6,9 @@
   },
   "fingerprints" : {
     "mapSHA256" : "8ad8dff4a6e6a89d7f5fefd517d45667255f03e4b917cb7b9109f7e46dbc967e",
-    "uiCatalogSHA256" : "5b0a3ffcc00f60585515789d3e241a5e29fdfa5b18f7c2851b921d1a3b098db3",
+    "uiCatalogSHA256" : "13a1c6ed6647d0d96880e6aa1b4801c2d20886d9e9086652449264219b0b72c9",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "e630e07f81c22290d6f1d70325b77e10ba843f1eea4edea7563911b0dbfcd8d3"
+    "vocabularySHA256" : "10cc53bce374d10eafca49c1d901228421ecfa31559534696792f083e9ba9551"
   },
   "interfaceLanguages" : [
     "en",
@@ -85422,8 +85422,7 @@
       "vocabulary" : {
         "ar" : {
           "phrases" : [
-            "EG-1 لتلخيص الاجتماعات قريبًا",
-            "متى يتوفر EG-1 لتلخيص الاجتماعات"
+            "استخدام EG-1 لتلخيص الاجتماعات"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85432,8 +85431,7 @@
         },
         "bg" : {
           "phrases" : [
-            "EG-1 за обобщения на срещи",
-            "кога ще е достъпен EG-1 за обобщения на срещи"
+            "използвай EG-1 за обобщения на срещи"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85442,7 +85440,7 @@
         },
         "cs" : {
           "phrases" : [
-            "kdy bude EG-1 dostupný pro shrnutí schůzek"
+            "použít EG-1 pro shrnutí schůzek"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85451,7 +85449,7 @@
         },
         "da" : {
           "phrases" : [
-            "EG-1 til mødeopsummeringer kommer snart"
+            "brug EG-1 til mødereferater"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85460,8 +85458,7 @@
         },
         "de" : {
           "phrases" : [
-            "EG-1 für Meetingzusammenfassungen",
-            "bald verfügbare Engine für Meetingzusammenfassungen"
+            "EG-1 für Meetingzusammenfassungen auswählen"
           ],
           "words" : [
 
@@ -85469,8 +85466,7 @@
         },
         "el" : {
           "phrases" : [
-            "EG-1 για περιλήψεις συναντήσεων προσεχώς",
-            "γιατί δεν μπορώ να επιλέξω EG-1 για περιλήψεις συναντήσεων"
+            "χρήση του EG-1 για περιλήψεις συναντήσεων"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85479,7 +85475,7 @@
         },
         "en" : {
           "phrases" : [
-            "EG-1 for meeting summaries coming soon"
+            "use EG-1 for meeting summaries"
           ],
           "words" : [
 
@@ -85487,8 +85483,7 @@
         },
         "es" : {
           "phrases" : [
-            "EG-1 para resúmenes de reuniones próximamente",
-            "por qué no puedo elegir EG-1 para resumir reuniones"
+            "usar EG-1 para resumir reuniones"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85497,8 +85492,7 @@
         },
         "et" : {
           "phrases" : [
-            "EG-1 koosolekute kokkuvõtete jaoks",
-            "EG-1 kokkuvõttemootor on tulekul"
+            "kasuta koosolekute kokkuvõteteks EG-1 mudelit"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85507,7 +85501,7 @@
         },
         "fi" : {
           "phrases" : [
-            "EG-1 kokousten yhteenvetoihin tulossa pian"
+            "käytä EG-1:tä kokousten yhteenvetoihin"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85516,7 +85510,7 @@
         },
         "fr" : {
           "phrases" : [
-            "EG-1 pour les résumés de réunion bientôt disponible"
+            "utiliser EG-1 pour résumer les réunions"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85525,8 +85519,7 @@
         },
         "hi" : {
           "phrases" : [
-            "मीटिंग के सारांश के लिए EG-1 कब आएगा",
-            "मीटिंग का सारांश बनाने के लिए EG-1 अभी क्यों नहीं चुन सकते"
+            "मीटिंग का सारांश बनाने के लिए EG-1 चुनें"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85535,8 +85528,7 @@
         },
         "hr" : {
           "phrases" : [
-            "EG-1 za sažetke sastanaka uskoro",
-            "zašto EG-1 još nije dostupan za sažetke sastanaka"
+            "koristi EG-1 za sažetke sastanaka"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85545,7 +85537,7 @@
         },
         "hu" : {
           "phrases" : [
-            "EG-1 a megbeszélések összefoglalásához"
+            "EG-1 használata megbeszélések összefoglalásához"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85554,8 +85546,7 @@
         },
         "it" : {
           "phrases" : [
-            "EG-1 per i riepiloghi delle riunioni",
-            "EG-1 in arrivo per riassumere le riunioni"
+            "usare EG-1 per riassumere le riunioni"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85564,7 +85555,7 @@
         },
         "ja" : {
           "phrases" : [
-            "会議要約用のEG-1の提供予定を確認"
+            "会議の要約にEG-1を使う"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85573,7 +85564,7 @@
         },
         "ko" : {
           "phrases" : [
-            "회의 요약용 EG-1 출시 예정"
+            "회의 요약에 EG-1 사용"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85582,7 +85573,7 @@
         },
         "lt" : {
           "phrases" : [
-            "kodėl negaliu pasirinkti EG-1 susitikimų santraukoms"
+            "naudoti EG-1 susitikimų santraukoms"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85591,7 +85582,7 @@
         },
         "lv" : {
           "phrases" : [
-            "kad būs pieejams EG-1 sapulču kopsavilkumiem"
+            "izmantot EG-1 sapulču kopsavilkumiem"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85600,8 +85591,7 @@
         },
         "mt" : {
           "phrases" : [
-            "EG-1 għas-sommarji tal-laqgħat",
-            "EG-1 għas-sommarji tal-laqgħat dalwaqt disponibbli"
+            "uża EG-1 għas-sommarji tal-laqgħat"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85610,8 +85600,7 @@
         },
         "nl" : {
           "phrases" : [
-            "wanneer komt EG-1 voor vergadersamenvattingen",
-            "EG-1 voor vergadersamenvattingen binnenkort beschikbaar"
+            "EG-1 gebruiken voor vergadersamenvattingen"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85620,7 +85609,7 @@
         },
         "pl" : {
           "phrases" : [
-            "EG-1 do podsumowań spotkań już wkrótce"
+            "użyj EG-1 do podsumowań spotkań"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85629,8 +85618,7 @@
         },
         "pt" : {
           "phrases" : [
-            "EG-1 para resumos de reuniões",
-            "EG-1 para resumir reuniões em breve"
+            "usar EG-1 para resumir reuniões"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85639,8 +85627,7 @@
         },
         "ro" : {
           "phrases" : [
-            "EG-1 pentru rezumatele ședințelor",
-            "când va fi disponibil EG-1 pentru rezumatele întâlnirilor"
+            "folosește EG-1 pentru rezumatele ședințelor"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85649,8 +85636,7 @@
         },
         "ru" : {
           "phrases" : [
-            "когда появится EG-1 для сводок встреч",
-            "почему нельзя выбрать EG-1 для сводок встреч"
+            "использовать EG-1 для итогов встреч"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85659,8 +85645,7 @@
         },
         "sk" : {
           "phrases" : [
-            "kedy bude EG-1 dostupný na zhrnutia stretnutí",
-            "EG-1 na zhrnutia stretnutí už čoskoro"
+            "použiť EG-1 na zhrnutia stretnutí"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85669,8 +85654,7 @@
         },
         "sl" : {
           "phrases" : [
-            "EG-1 za povzetke sestankov bo kmalu na voljo",
-            "zakaj EG-1 za povzetke sestankov še ni na voljo"
+            "uporabi EG-1 za povzetke sestankov"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85679,7 +85663,7 @@
         },
         "sv" : {
           "phrases" : [
-            "EG-1 för mötessammanfattningar kommer snart"
+            "använd EG-1 för mötessammanfattningar"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85688,8 +85672,7 @@
         },
         "tr" : {
           "phrases" : [
-            "toplantı özetleri için EG-1 ne zaman gelecek",
-            "toplantı özetleri için EG-1 neden seçilemiyor"
+            "toplantı özetleri için EG-1 kullan"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85698,8 +85681,7 @@
         },
         "uk" : {
           "phrases" : [
-            "коли буде доступний EG-1 для підсумків зустрічей",
-            "EG-1 для підсумків зустрічей незабаром"
+            "використовувати EG-1 для підсумків зустрічей"
           ],
           "title" : "EG-1",
           "words" : [
@@ -85708,7 +85690,7 @@
         },
         "vi" : {
           "phrases" : [
-            "EG-1 tóm tắt cuộc họp sắp ra mắt"
+            "dùng EG-1 để tóm tắt cuộc họp"
           ],
           "title" : "EG-1 cho tóm tắt cuộc họp",
           "words" : [
@@ -85717,8 +85699,7 @@
         },
         "zh" : {
           "phrases" : [
-            "EG-1会议摘要即将推出",
-            "为什么还不能选EG-1生成会议摘要"
+            "用EG-1生成会议摘要"
           ],
           "title" : "EG-1会议摘要",
           "words" : [

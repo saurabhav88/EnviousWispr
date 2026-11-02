@@ -60,6 +60,17 @@ public struct EGOneConnector: TranscriptPolisher {
       "max_tokens": maxTokens,
       "temperature": config.temperature,
     ]
+    return withLearnedWordAdapterOff(body, hasLearnedWordAdapter: hasLearnedWordAdapter)
+  }
+
+  /// The one owner of how a non-checker request rides a server that loaded the learned-word
+  /// adapter (#3105): the adapter at scale 0 and the polish slot, so the checker's eight slots
+  /// stay its own. The bundled server applies a loaded adapter at full scale to any request that
+  /// names none, so a request without these fields would be answered by the checker's weights.
+  /// Polish and the summary call (#4319) both go through here. Without an adapter the body is unchanged.
+  static func withLearnedWordAdapterOff(
+    _ body: [String: Any], hasLearnedWordAdapter: Bool
+  ) -> [String: Any] {
     guard hasLearnedWordAdapter else { return body }
     var adapted = body
     adapted["lora"] = [["id": 0 as Int, "scale": 0.0 as Double] as [String: Any]]

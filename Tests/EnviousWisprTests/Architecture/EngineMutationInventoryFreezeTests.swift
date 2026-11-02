@@ -519,8 +519,12 @@ import EnviousWisprAppKitTestSupport
     // audio. Matched only by method-name coincidence.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
-      text:
-        "await MeetingSummaryProviders.prepare(provider: provider, model: model, keychain: keychain)",
+      text: "return await MeetingSummaryProviders.prepare(",
+      classification: .unrelatedDomain),
+    // #4319: EG-1's meeting-summary preparation (a cold summary attempt, no engine mutation).
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
+      text: "return egOne.prepare(",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",

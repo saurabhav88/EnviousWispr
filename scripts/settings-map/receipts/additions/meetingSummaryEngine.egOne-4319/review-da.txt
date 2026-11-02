@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "da",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "brug EG-1 til mødereferater"
+    ]
+  }
+}

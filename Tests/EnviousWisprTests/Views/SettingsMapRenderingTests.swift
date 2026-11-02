@@ -234,8 +234,8 @@ struct SettingsMapRenderingTests {
     ] + MeetingsTab.allCases.map { "meetings.\($0.rawValue)" } + [
       // #4287: the Summaries tab with an engine chosen (collapsed card, setup card shown).
       "meetings.summaries.openAI",
-      // #4287: EG-1 while it is Coming soon shows no setup card (its controls are dictation's).
-      "meetings.summaries.egOne",
+      // #4319: EG-1 is selectable; its setup shows the download state but never Remove.
+      "meetings.summaries.egOne", "meetings.summaries.egOne.installed",
     ]
 
   static func render(_ label: String) async throws -> Rendered {
@@ -810,6 +810,10 @@ struct SettingsMapRenderingTests {
     let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
     let (home, environment) = try meetingsEnvironment(
       summaryProvider: parts.count > 2 ? parts[2] : nil)
+    // #4319: an installed EG-1 on the Summaries tab (its card says ready, offers no Remove).
+    if parts.count > 3, parts[3] == "installed" {
+      home.egOne.applyInstallStateForTesting(.installed(version: "1"))
+    }
     let list = try await registrations(environment(AnyView(MeetingsView(selection: .constant(tab)))))
     return Rendered(list: list, destination: .meetings(tab), alwaysOnThisPage: [])
   }
@@ -1115,10 +1119,16 @@ struct SettingsMapRenderingTests {
       uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
     var wantExempt = expected.exempt
     // The fixture was recorded on a Mac with more than 8 GB. On an 8 GB Mac (the support floor,
-    // and the hosted CI runners) EG-1's card adds its low-memory note, one more status line
-    // (LocalEngineStatusCard, `showsLowMemoryNote`).
-    if label.hasPrefix("aiPolish.egOne"), ProcessInfo.processInfo.physicalMemory <= 8 << 30 {
-      wantExempt["statusLine", default: 0] += 1
+    // and the hosted CI runners) EG-1's card adds its low-memory note (LocalEngineStatusCard,
+    // `showsLowMemoryNote`): one more status line on AI Polish, and on the Summaries tab one more
+    // `meetingSummarySetup` row, because that scope claims every registration under the summary
+    // setup section (#4319).
+    if ProcessInfo.processInfo.physicalMemory <= (8 << 30) {
+      if label.hasPrefix("aiPolish.egOne") {
+        wantExempt["statusLine", default: 0] += 1
+      } else if label.hasPrefix("meetings.summaries.egOne") {
+        wantExempt["meetingSummarySetup", default: 0] += 1
+      }
     }
     #expect(exempt == wantExempt, "\(label): exemptions \(exempt)")
   }

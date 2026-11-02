@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "et",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "kasuta koosolekute kokkuvõteteks EG-1 mudelit"
+    ]
+  }
+}

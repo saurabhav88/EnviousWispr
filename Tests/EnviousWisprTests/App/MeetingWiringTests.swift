@@ -167,7 +167,7 @@ struct MeetingWiringTests {
     let gate = MeetingModelUseGate()
     var selection: ParakeetModelSelection?
     var workChanges = 0
-    let inputs: MeetingWiring.Inputs
+    var inputs: MeetingWiring.Inputs
     let lease: EngineLease
     let dictation: DictationSide
     let wakes: MeetingWakeSignal
@@ -401,6 +401,53 @@ struct MeetingWiringTests {
   @MainActor
   final class ChangeCounter {
     var count = 0
+  }
+
+  @MainActor @Observable final class ImportPin {
+    var provider: LLMProvider?
+  }
+
+  /// #4319: an EG-1 summary waits while a file import holds a bundled server; other engines do
+  /// not; the import's observable release wakes the wait.
+  @Test("an EG-1 summary's local turn waits for a file import's pin, and wakes when it clears")
+  func egOneSummaryWaitsForImportPin() async throws {
+    let rig = try Rig()
+    let pin = ImportPin()
+    rig.inputs.importPinnedLocalProvider = { pin.provider }
+    let coordinator = MeetingWiring.make(rig.inputs)
+    let summaries = try #require(coordinator.summaries)
+    #expect(summaries.isLocalTurnForTesting(.egOne))
+    pin.provider = .s1Mini
+    #expect(summaries.isLocalTurnForTesting(.egOne) == false)
+    for other in [LLMProvider.appleIntelligence, .ollama] {
+      #expect(summaries.isLocalTurnForTesting(other), "\(other) is not held back by an import")
+    }
+    let signals = LineBox()
+    let waiting = Task { @MainActor in
+      await MeetingWorkAdmission.waitUntil {
+        let ready = summaries.isLocalTurnForTesting(.egOne)
+        if ready == false {
+          signals.append("import-blocked")
+        }
+        return ready
+      }
+      signals.append("admission-finished")
+      return summaries.isLocalTurnForTesting(.egOne)
+    }
+    defer { waiting.cancel() }
+
+    try #require(
+      await signals.waitForLine(containing: "import-blocked"),
+      "the summary never observed the import pin")
+
+    // The wait registers observation synchronously on MainActor before
+    // this task can resume and clear the pin.
+    pin.provider = nil
+
+    try #require(
+      await signals.waitForLine(containing: "admission-finished"),
+      "clearing the import pin did not wake admission")
+    #expect(await waiting.value)
   }
 
   /// #4287: the production summary owner reads the Summaries tab's engine, not dictation's.

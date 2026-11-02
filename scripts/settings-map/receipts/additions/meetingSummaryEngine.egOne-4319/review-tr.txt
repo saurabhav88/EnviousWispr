@@ -1,0 +1,10 @@
+{
+  "meetingSummaryEngine.egOne": {
+    "language": "tr",
+    "title": "EG-1",
+    "words": [],
+    "phrases": [
+      "toplantı özetleri için EG-1 kullan"
+    ]
+  }
+}
