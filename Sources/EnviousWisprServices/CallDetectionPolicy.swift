@@ -326,7 +326,8 @@ public struct CallDetectionPolicy: Sendable {
       /// A start (or a switch's stop and start) is running.
       case starting(operation: Int)
       case recording(meetingID: UUID)
-      /// Keep recording: the meeting is the user's; this call's end never stops it.
+      /// The meeting is the user's; this call's end never stops it. Only non-card overrides
+      /// produce it (an app switched off while recording). Card Keep re-arms instead (#4249).
       case kept(meetingID: UUID)
       case ending(meetingID: UUID, deadline: Date)
       case confirmingEnd(meetingID: UUID)
@@ -342,7 +343,8 @@ public struct CallDetectionPolicy: Sendable {
     var establishedAt: Date
     var sources: [Source] = []
     var owner: CallEvidenceReader.AppRun? = nil
-    /// A deliberate Keep or manual Stop cannot become another automatic ownership link.
+    /// A manual Stop, an app switched off or a superseded stop cannot become another automatic
+    /// ownership link. Card Keep never sets it (#4249: it re-arms on the next release).
     var ownershipOverridden = false
     var phase: Phase
     /// Confirmed over while its Start ran: the Start is no longer wanted.
