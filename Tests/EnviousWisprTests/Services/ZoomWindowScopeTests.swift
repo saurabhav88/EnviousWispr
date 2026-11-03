@@ -134,6 +134,31 @@ struct ZoomWindowScopeTests {
     #expect(reading(windows)?.roster.names == ["Alex Rivera", "Saurabh A Vaish"])
   }
 
+  /// SURVEY (live full-screen take, 2026-11-02): the meeting window keeps only the large
+  /// Speaker-view tile and its toolbar; the thumbnails move to "zoom floating video window".
+  @Test("full screen: the large tile alone does not hold the meeting window; the floating thumbnails are read")
+  func fullScreenLargeTileOnly() {
+    let call = meeting(
+      ["Alex Rivera, Computer audio unmuted, active speaker"],
+      extra: [
+        CallAXNode(role: "AXButton", description: "Open participants panel, closed, 2 participants")
+      ])
+    let floating = other(
+      "zoom floating video window", ["Saurabh A Vaish, Computer audio unmuted, Video off"])
+    let windows = [floating, other(nil, []), call]
+    #expect(CallSpeakerSurfaceReader.zoomTileCount(call) == 0)
+    #expect(chosen(windows) == [call, floating])
+    #expect(scope(windows) == .resolved)
+    let read = reading(windows)
+    #expect(read?.participants.map(\.name) == ["Saurabh A Vaish", "Alex Rivera"])
+    #expect(read?.participantIdentityEstablished == true)
+    #expect(read?.speaking == ["Alex Rivera"])
+    // The meeting window alone, as before this fix, establishes no one.
+    #expect(ZoomAppSpeakerReader.read(windows: [call]).participantIdentityEstablished == false)
+    // A meeting window with only its large tile and nothing elsewhere is still read alone.
+    #expect(chosen([call]) == [call])
+  }
+
   @Test("an empty meeting window with a tie for most tiles stays unresolved")
   func emptyMeetingTie() {
     let windows = [meeting(), other(nil, [Self.alexTalking]), other("Zoom", [Self.priya])]

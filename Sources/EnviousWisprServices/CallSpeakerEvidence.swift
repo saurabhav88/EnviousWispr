@@ -142,10 +142,11 @@ package enum CallSpeakerSurfaceReader {
 
   /// The Zoom app windows one reading uses, or `nil` when they cannot be chosen (#4013 reading
   /// resilience §3.2). Ported from Granola's `ZoomSpeakerSceneReader.acquire` and
-  /// `fallbackWindows`: the meeting window is read; only when it shows no participant tile does
-  /// the single other window with strictly the most tiles supply them, replacing, never merging
-  /// with, the meeting window's tiles (full screen, a popped-out video, the floating or
-  /// screen-share strip). Tiles therefore come from one window only.
+  /// `fallbackWindows`: the meeting window is read; only when it shows no participant tile
+  /// (`zoomTileCount`: thumbnails, not the large Speaker-view tile) does the single other window
+  /// with strictly the most tiles supply them (full screen's floating video window, a popped-out
+  /// video, the screen-share strip). Thumbnails therefore come from one window only; the
+  /// meeting window adds at most its large tile and toolbar count.
   /// - Several meeting windows: `nil` (Granola takes the first; which call is ours cannot be
   ///   told).
   /// - The meeting window shows a tile: that window alone; other windows are ignored.
@@ -172,10 +173,16 @@ package enum CallSpeakerSurfaceReader {
   }
 
   /// The participant tiles a window shows: every `AXTabGroup` labelled with Zoom's tile
-  /// structure (`ZoomAppSpeakerReader.parseTile`), named or not, the large tile included.
+  /// structure (`ZoomAppSpeakerReader.parseTile`) that carries a video state, named or not.
+  /// The large Speaker-view tile (no video state) is left out: it repeats a participant and
+  /// identifies no one alone. In full screen Zoom keeps only that large tile in the meeting
+  /// window and moves the thumbnails to its floating video window (live take 2026-11-02, #4013
+  /// reading resilience UAT), so counting the large tile kept the meeting window alone and
+  /// withheld every reading.
   static func zoomTileCount(_ window: CallAXWindow) -> Int {
     window.root.allNodes.filter { node in
-      node.role == "AXTabGroup" && node.label.flatMap(ZoomAppSpeakerReader.parseTile) != nil
+      node.role == "AXTabGroup"
+        && node.label.flatMap(ZoomAppSpeakerReader.parseTile)?.hasVideoState == true
     }.count
   }
 

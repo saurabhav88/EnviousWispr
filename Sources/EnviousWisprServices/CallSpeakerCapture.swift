@@ -110,8 +110,15 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
   case zoomApp
 
   static let zoomHomeTitle = "Zoom Workplace"
-  /// The toolbar buttons whose children Zoom never answers for (measured 2026-10-29).
-  static let zoomToolbarIdentifiers: Set<String> = ["leave", "more"]
+  /// The toolbar buttons whose children Zoom never answers for: "End" and "More meeting
+  /// controls" (measured 2026-10-29), and the screen-share toolbar's Pause, Layout, Annotate,
+  /// Remote control and "Show meeting" buttons while the user shares (live take 2026-11-02, #4013
+  /// reading resilience UAT: every copy was unreadable until these were left unread).
+  static let zoomToolbarIdentifiers: Set<String> = [
+    "leave", "more", "ZMMTToolbarContentIdentifierPauseShare",
+    "ZMMTToolbarContentIdentifierShareLayout", "ZMMTToolbarContentIdentifierAnnotate",
+    "ZMMTToolbarContentIdentifierRemoteControl", "ZMMTToolbarContentIdentifierStage",
+  ]
   /// The roles whose subtrees hold Zoom's speaker evidence: tiles and the participants list.
   static let zoomEvidenceRoles: Set<String> = ["AXTabGroup", "AXOutline"]
   /// The roles whose labels or identifiers a Zoom consumer reads outside evidence: tiles and the
