@@ -74,6 +74,42 @@ struct CloudModelMemorySettingsTests {
     #expect(settings.dictationCloudModelMemory.model(for: .claude) == nil)
   }
 
+  @Test(
+    "a trip through an Ollama model with a cloud-shaped name gives back the cloud pick",
+    arguments: Surface.allCases)
+  func ollamaTripWithCloudShapedName(surface: Surface) {
+    let settings = SettingsManager(defaults: Self.freshDefaults())
+    settings.llmProvider = .openAI
+    settings.llmModel = "gpt-6-luna"
+    switch surface {
+    case .dictation:
+      settings.llmProvider = .ollama
+      settings.ollamaModel = "gpt-oss:20b"
+      settings.llmModel = "gpt-oss:20b"
+      settings.llmProvider = .openAI
+      #expect(settings.llmModel == "gpt-6-luna")
+      #expect(settings.dictationCloudModelMemory.model(for: .openAI) == "gpt-6-luna")
+    case .fileImport:
+      settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
+      settings.fileImportLLMProvider = .openAI
+      settings.fileImportLLMProvider = .ollama
+      settings.fileImportOllamaModel = "gpt-oss:20b"
+      settings.fileImportLLMModel = "gpt-oss:20b"
+      settings.fileImportLLMProvider = .openAI
+      #expect(settings.fileImportLLMModel == "gpt-6-luna")
+      #expect(settings.fileImportCloudModelMemory.model(for: .openAI) == "gpt-6-luna")
+    case .meetingSummary:
+      settings.meetingSummaryLLMProvider = .openAI
+      settings.meetingSummaryLLMModel = "gpt-6-luna"
+      settings.meetingSummaryLLMProvider = .ollama
+      settings.meetingSummaryOllamaModel = "gpt-oss:20b"
+      settings.meetingSummaryLLMModel = "gpt-oss:20b"
+      settings.meetingSummaryLLMProvider = .openAI
+      #expect(settings.meetingSummaryLLMModel == "gpt-6-luna")
+      #expect(settings.meetingSummaryCloudModelMemory.model(for: .openAI) == "gpt-6-luna")
+    }
+  }
+
   @Test("a following import uses dictation's remembered pick and keeps no memory of its own")
   func followerUsesDictation() {
     let settings = SettingsManager(defaults: Self.freshDefaults())
