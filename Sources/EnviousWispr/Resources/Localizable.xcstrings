@@ -1460,17 +1460,6 @@
         }
       }
     },
-    "A call starts, EnviousWispr asks whether to record it, and the transcript fills in with who said what." : {
-      "comment" : "EnviousMeet setup: describes the welcome animation for VoiceOver.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Anruf beginnt, EnviousWispr fragt, ob er aufgenommen werden soll, und das Transkript zeigt, wer was gesagt hat."
-          }
-        }
-      }
-    },
     "A change to a meeting could not be saved. Its last saved state is kept." : {
       "comment" : "EnviousMeet: writing a meeting's details failed.",
       "localizations" : {
@@ -1554,6 +1543,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Meeting wird gerade transkribiert. Versuche es erneut, wenn es beendet ist."
+          }
+        }
+      }
+    },
+    "A premium meeting notetaker, with summaries that can run offline on your Mac." : {
+      "comment" : "EnviousMeet setup: welcome line under the title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein erstklassiger Notiz-Assistent für Meetings, mit Zusammenfassungen, die offline auf deinem Mac laufen können."
+          }
+        }
+      }
+    },
+    "A quick \"mind if I record?\" keeps everyone comfortable. In some places, the law also requires it." : {
+      "comment" : "EnviousMeet setup: the line under the consent title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein kurzes „Darf ich aufnehmen?“ sorgt dafür, dass sich alle wohlfühlen. Mancherorts ist diese Frage auch gesetzlich vorgeschrieben."
           }
         }
       }
@@ -2258,17 +2269,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Über Apple Intelligence"
-          }
-        }
-      }
-    },
-    "Accept and continue" : {
-      "comment" : "EnviousMeet setup: accepts the consent promise.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akzeptieren und fortfahren"
           }
         }
       }
@@ -3877,6 +3877,17 @@
         }
       }
     },
+    "Ask first." : {
+      "comment" : "EnviousMeet setup: consent row title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frag zuerst."
+          }
+        }
+      }
+    },
     "Ask offers to record when a call app uses the microphone. Start by itself can record without asking. Off disables call prompts and automatic recording. A recording you start manually can still be linked to an already detected call. Confirmed endings in the native Zoom or Teams app show a 10-second countdown with Keep recording. For uncertain browser endings, recording continues unless you choose Stop recording. Call detection never auto-stops an unlinked recording." : {
       "comment" : "EnviousMeet page: help for When a call starts.",
       "localizations" : {
@@ -4245,17 +4256,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Baskisch"
-          }
-        }
-      }
-    },
-    "Before you record" : {
-      "comment" : "EnviousMeet setup: the consent screen's title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bevor du aufnimmst"
           }
         }
       }
@@ -8226,17 +8226,6 @@
         }
       }
     },
-    "EnviousMeet records your calls and meetings, then writes who said what." : {
-      "comment" : "EnviousMeet setup: welcome line under the title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousMeet nimmt deine Anrufe und Meetings auf und schreibt dann auf, wer was gesagt hat."
-          }
-        }
-      }
-    },
     "EnviousMeet records your voice with the microphone you dictate with." : {
       "comment" : "EnviousMeet page: help for the microphone permission row.",
       "localizations" : {
@@ -9370,7 +9359,7 @@
       }
     },
     "Free and open source" : {
-      "comment" : "EnviousMeet setup: welcome feature title.",
+      "comment" : "EnviousMeet setup: welcome tile title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9706,6 +9695,17 @@
         }
       }
     },
+    "Good meetings start with a heads-up." : {
+      "comment" : "EnviousMeet setup: the consent screen's title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gute Meetings beginnen mit einem kurzen Hinweis."
+          }
+        }
+      }
+    },
     "Google Gemini API Key" : {
       "comment" : "AI Polish: label and VoiceOver name of the API key field.",
       "localizations" : {
@@ -9735,6 +9735,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verstanden"
+          }
+        }
+      }
+    },
+    "Got it. I'll get consent where the law needs it." : {
+      "comment" : "EnviousMeet setup: the consent checkbox.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verstanden. Ich hole die Zustimmung ein, wo sie gesetzlich vorgeschrieben ist."
           }
         }
       }
@@ -10113,17 +10124,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungarisch"
-          }
-        }
-      }
-    },
-    "I understand. I will get consent where the law requires it." : {
-      "comment" : "EnviousMeet setup: the consent checkbox.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ich habe verstanden. Ich hole die Zustimmung ein, wo das Gesetz es verlangt."
           }
         }
       }
@@ -10617,6 +10617,17 @@
         }
       }
     },
+    "It can offer to record Zoom, Meet and Teams calls. When it detects a call ending, it shows a stop countdown or asks whether to keep recording." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Notices your calls. App names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es kann anbieten, Anrufe in Zoom, Meet und Teams aufzunehmen. Wenn es das Ende eines Anrufs erkennt, zeigt es einen Stopp-Countdown oder fragt, ob die Aufnahme weiterlaufen soll."
+          }
+        }
+      }
+    },
     "It cleans up other languages without translating them, but it will not always catch a correction you make mid-sentence." : {
       "comment" : "AI Polish, Why use S1-mini: how it handles other languages.",
       "localizations" : {
@@ -10624,6 +10635,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es bereinigt andere Sprachen, ohne sie zu übersetzen, erkennt aber nicht immer eine Korrektur, die du mitten im Satz machst."
+          }
+        }
+      }
+    },
+    "It records from your Mac, so nobody sees a notetaker join." : {
+      "comment" : "EnviousMeet setup: welcome tile line under No bot in your call.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme läuft auf deinem Mac, also sieht niemand einen Notiz-Bot beitreten."
           }
         }
       }
@@ -10830,6 +10852,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lass die Mikrofon-Engine nach dem Diktieren noch kurz aktiv. So startet die nächste Aufnahme sofort und erfasst deine ersten Wörter."
+          }
+        }
+      }
+    },
+    "Keep the recording and run it again with another engine." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Transcribe again.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behalte die Aufnahme und transkribiere sie erneut mit einer anderen Engine."
           }
         }
       }
@@ -11453,6 +11486,17 @@
         }
       }
     },
+    "Let's go" : {
+      "comment" : "EnviousMeet setup: accepts the consent promise.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los geht's"
+          }
+        }
+      }
+    },
     "Level Rail" : {
       "comment" : "Recording Pill settings: name of the recording pill style with a voice level meter.",
       "localizations" : {
@@ -11861,6 +11905,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live-Vorschau, während gesprochen wird. Das vollständige Transkript folgt nach dem Meeting."
+          }
+        }
+      }
+    },
+    "Live transcript" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Transkript"
           }
         }
       }
@@ -12417,13 +12472,13 @@
         }
       }
     },
-    "Meeting notes, with no bot in your call." : {
+    "Meeting notes, transcribed on your Mac." : {
       "comment" : "EnviousMeet setup: welcome title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Meeting-Notizen ohne Bot in deinem Anruf."
+            "value" : "Meeting-Notizen, transkribiert auf deinem Mac."
           }
         }
       }
@@ -12958,6 +13013,17 @@
         }
       }
     },
+    "Names from Zoom, Teams and Meet calls, when available." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Real speaker names. App names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen aus Anrufen in Zoom, Teams und Meet, wenn verfügbar."
+          }
+        }
+      }
+    },
     "Native Speed" : {
       "comment" : "Welcome screen feature title.",
       "localizations" : {
@@ -13182,17 +13248,6 @@
         }
       }
     },
-    "No" : {
-      "comment" : "EnviousMeet: answer to Record this call?",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nein"
-          }
-        }
-      }
-    },
     "No AI polish" : {
       "comment" : "Transcribe a File, Done step: chip: no cleanup engine was chosen.",
       "localizations" : {
@@ -13243,6 +13298,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Konto erforderlich. Nur anonyme Nutzungsdaten."
+          }
+        }
+      }
+    },
+    "No account, no subscription. The code is public (GPLv3)." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Free and open source. GPLv3 is a license name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Konto, kein Abo. Der Code ist öffentlich (GPLv3)."
           }
         }
       }
@@ -13301,13 +13367,13 @@
         }
       }
     },
-    "No bot joins your call" : {
-      "comment" : "EnviousMeet setup: welcome feature title.",
+    "No bot in your call" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kein Bot nimmt an deinem Anruf teil"
+            "value" : "Kein Bot in deinem Anruf"
           }
         }
       }
@@ -14373,6 +14439,17 @@
         }
       }
     },
+    "Notices your calls" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennt deine Anrufe"
+          }
+        }
+      }
+    },
     "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar." : {
       "comment" : "EnviousMeet page: below macOS 14.2 call detection cannot run.\nEnviousMeet setup: in place of the call-sound row below macOS 14.2.",
       "localizations" : {
@@ -14435,6 +14512,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aus nimmt dein Mikrofon und den Ton auf, den dein Mac abspielt, damit die anderen Gesprächsteilnehmer im Transkript stehen. Ein nimmt nur dein Mikrofon auf. Ohne Kopfhörer hört dein Mikrofon das Gespräch trotzdem über deine Lautsprecher mit. Die Einstellung gilt für das nächste Meeting, das du startest."
+          }
+        }
+      }
+    },
+    "Offline with a model on your Mac, or with your own AI key." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Summaries your way.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline mit einem Modell auf deinem Mac oder mit deinem eigenen KI-Schlüssel."
           }
         }
       }
@@ -14772,17 +14860,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Zeile pro Eintrag: Auslöser, dann =, dann der Text. Tabulator, Pfeil oder Komma funktionieren ebenfalls. Für mehrzeiligen Text füge exportiertes JSON oder CSV ein, oder schreibe \\n an die Stelle eines Zeilenumbruchs."
-          }
-        }
-      }
-    },
-    "One promise, then you are ready." : {
-      "comment" : "EnviousMeet setup: the line under Before you record.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Versprechen, dann bist du bereit."
           }
         }
       }
@@ -15708,6 +15785,28 @@
         }
       }
     },
+    "Play back any moment" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Stelle erneut anhören"
+          }
+        }
+      }
+    },
+    "Play back the audio, with a timestamp on every passage." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Play back any moment.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spiel das Audio ab, mit einem Zeitstempel bei jedem Abschnitt."
+          }
+        }
+      }
+    },
     "Play from here" : {
       "comment" : "EnviousMeet transcript: plays the recording from this turn's start.",
       "localizations" : {
@@ -16586,6 +16685,17 @@
         }
       }
     },
+    "Real speaker names" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Echte Namen der Gesprächsteilnehmer"
+          }
+        }
+      }
+    },
     "Recognition behavior" : {
       "comment" : "Edit word sheet: section label for how strictly a spoken word must match.",
       "localizations" : {
@@ -16637,17 +16747,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur meine Stimme aufnehmen"
-          }
-        }
-      }
-    },
-    "Record this call?" : {
-      "comment" : "EnviousMeet: the question asked when a call starts.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diesen Anruf aufnehmen?"
           }
         }
       }
@@ -17382,6 +17481,17 @@
         }
       }
     },
+    "Rules change by place." : {
+      "comment" : "EnviousMeet setup: consent row title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regeln sind je nach Ort verschieden."
+          }
+        }
+      }
+    },
     "Running" : {
       "comment" : "AI Polish, Ollama: the server is running.",
       "localizations" : {
@@ -17789,6 +17899,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sag zuerst dieses Wort, dann deinen Auslöser. Ein Wort."
+          }
+        }
+      }
+    },
+    "Say you are recording when the call starts." : {
+      "comment" : "EnviousMeet setup: consent row line under Ask first.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sag zu Beginn des Anrufs, dass du aufnimmst."
           }
         }
       }
@@ -18928,6 +19049,17 @@
         }
       }
     },
+    "Some places need everyone in the call to agree." : {
+      "comment" : "EnviousMeet setup: consent row line under Rules change by place.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An manchen Orten müssen alle am Gespräch Beteiligten zustimmen."
+          }
+        }
+      }
+    },
     "Something needs attention. Try the refresh button." : {
       "comment" : "AI Polish, local model card: the reason under the health status.",
       "localizations" : {
@@ -19581,6 +19713,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für Zusammenfassungen brauchst du einen API-Schlüssel. Ohne API-Schlüssel wird keine Zusammenfassung erstellt."
+          }
+        }
+      }
+    },
+    "Summaries your way" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassungen nach deinen Wünschen"
           }
         }
       }
@@ -22127,7 +22270,7 @@
       }
     },
     "Transcribe again" : {
-      "comment" : "EnviousMeet: makes the meeting's transcript again from its kept audio.",
+      "comment" : "EnviousMeet setup: welcome tile title.\nEnviousMeet: makes the meeting's transcript again from its kept audio.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22155,6 +22298,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkribiert"
+          }
+        }
+      }
+    },
+    "Transcribed on your Mac" : {
+      "comment" : "EnviousMeet setup: welcome tile title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert auf deinem Mac"
           }
         }
       }
@@ -23514,6 +23668,17 @@
         }
       }
     },
+    "Watch the words appear while people talk." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Live transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieh zu, wie die Wörter erscheinen, während gesprochen wird."
+          }
+        }
+      }
+    },
     "We cannot hear you" : {
       "comment" : "Practice screen headline. A permission is missing.",
       "localizations" : {
@@ -24290,17 +24455,6 @@
         }
       }
     },
-    "Yes" : {
-      "comment" : "EnviousMeet: answer to Record this call?",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ja"
-          }
-        }
-      }
-    },
     "Yiddish" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -24324,7 +24478,7 @@
       }
     },
     "You" : {
-      "comment" : "EnviousMeet setup animation: the user's speaker label.\nEnviousMeet: the microphone level meter's label.",
+      "comment" : "EnviousMeet: the microphone level meter's label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24462,6 +24616,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Du hast diesen Eintrag aus dem Verlauf gelöscht. Kopiere oder speichere ihn, bevor du die Ansicht verlässt."
+          }
+        }
+      }
+    },
+    "You get consent where the law needs it." : {
+      "comment" : "EnviousMeet setup: consent row line under Your call, your choice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du holst die Zustimmung ein, wo sie gesetzlich vorgeschrieben ist."
           }
         }
       }
@@ -24715,13 +24880,13 @@
         }
       }
     },
-    "Your audio never leaves your Mac" : {
-      "comment" : "EnviousMeet setup: welcome feature title.",
+    "Your audio never leaves your Mac." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Transcribed on your Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dein Audio verlässt nie deinen Mac"
+            "value" : "Dein Audio verlässt nie deinen Mac."
           }
         }
       }
@@ -24744,6 +24909,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deine Aufnahme blieb auf diesem Mac. Nur der Text wurde an %@ gesendet."
+          }
+        }
+      }
+    },
+    "Your call, your choice." : {
+      "comment" : "EnviousMeet setup: consent row title; a play on words (call = phone call and decision).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Entscheidung, deine Verantwortung."
           }
         }
       }
