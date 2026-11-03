@@ -29,9 +29,12 @@ package enum ZoomAppSpeakerReader {
   static let panelTags: Set<String> = ["Host", "Co-host", "me", "Guest"]
 
   /// `share` is read from the whole capture before window choice (`shareContext`); `.none` means
-  /// no share was seen, so only the tile-flag reading below runs.
+  /// no share was seen, so only the tile-flag reading below runs. `knownSelf` is the name a
+  /// bound participants-list row marked `(me)` earlier in this recording (#4356); when given it
+  /// is the user's in-call identity instead of the signed-in account name.
   package static func read(
-    windows: [CallAXWindow], accountTitles: [String]? = nil, share: ShareContext = .none
+    windows: [CallAXWindow], accountTitles: [String]? = nil, share: ShareContext = .none,
+    knownSelf: String? = nil
   ) -> CallSpeakerReading {
     var tileNames: [String] = []
     var speaking: [String] = []
@@ -121,6 +124,10 @@ package enum ZoomAppSpeakerReader {
     // During a share, lists in windows the reading does not use still protect it (PR #4352
     // cloud review): their `(me)` marks and their names shown twice.
     let selfList = uniqueInOrder(selfNames + (share.isSharing ? share.selfMarks : []))
+    // Bound `(me)` rows from the whole capture (`share`) and from the lists read here, so a
+    // direct read without a share context still carries them (#4356).
+    let boundMarks = uniqueInOrder(
+      share.selfMarks + boundSelfMarks(lists.map { $0.rows.entries }))
     let peopleNames = people.compactMap(\.name)
     let participants = people.enumerated().map { index, tile in
       CallParticipant(
@@ -135,7 +142,9 @@ package enum ZoomAppSpeakerReader {
     }.union(share.isSharing ? share.listedTwice : [])
     // Identity holds when the tiles are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
-    let account = accountName(fromTitles: accountTitles)
+    // #4356: the name Zoom marked `(me)` in its list wins over the signed-in account name, which
+    // can differ from the meeting name (a middle initial, a rename, a typed guest name).
+    let account = knownSelf.map { [$0] } ?? accountName(fromTitles: accountTitles)
     // The user's share hid every count (#4013 share plan §3.3); read from the whole capture.
     // Every tile the copy shows must be in the windows read, so a person in a window window
     // choice left out can never be missing from a two-person proof.
@@ -146,8 +155,8 @@ package enum ZoomAppSpeakerReader {
     // a `Talking:` label in the collapsed floating window, or one tile that follows the talker.
     if share.isSharing, let signal = shareSignal(windows: windows, share: share) {
       return shareReading(
-        signal, selfList: selfList, account: account, complete: complete, count: count,
-        listedTwice: listedTwice, countHidden: countHidden)
+        signal, selfList: selfList, boundMarks: boundMarks, account: account,
+        complete: complete, count: count, listedTwice: listedTwice, countHidden: countHidden)
     }
     let flagSource: CallSpeakerReading.TalkerSource? =
       participants.contains(where: \.isTalking) ? .flag : nil
@@ -162,7 +171,8 @@ package enum ZoomAppSpeakerReader {
         // Complete only when every count the call shows agrees with it; a conflict leaves the
         // names as names but never confirms that anyone left.
         participantListComplete: count != nil, participantCount: count,
-        accountSelfNames: account, talkerSource: flagSource, countHiddenByShare: countHidden)
+        accountSelfNames: account, talkerSource: flagSource, countHiddenByShare: countHidden,
+        boundSelfMarks: boundMarks)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
@@ -172,7 +182,7 @@ package enum ZoomAppSpeakerReader {
       participantIdentityEstablished: identity,
       sharedNames: listedTwice.union(repeatedNames(peopleNames)),
       participantCount: count, accountSelfNames: account, talkerSource: flagSource,
-      countHiddenByShare: countHidden)
+      countHiddenByShare: countHidden, boundSelfMarks: boundMarks)
   }
 
   /// The talker signal a screen-share layout shows instead of an `active speaker` flag.
@@ -221,12 +231,12 @@ package enum ZoomAppSpeakerReader {
   /// chosen windows keep their shared names, self marks and complete-roster facts; the signal
   /// alone never makes a list complete.
   static func shareReading(
-    _ signal: ShareSignal, selfList: [String], account: [String], complete: PanelRows?,
-    count: Int?, listedTwice: Set<String>, countHidden: Bool
+    _ signal: ShareSignal, selfList: [String], boundMarks: [String], account: [String],
+    complete: PanelRows?, count: Int?, listedTwice: Set<String>, countHidden: Bool
   ) -> CallSpeakerReading {
     var participants: [CallParticipant] = []
     let source: CallSpeakerReading.TalkerSource
-    if let me = identifiedSelf(marks: selfList, account: account) {
+    if let me = identifiedSelf(marks: selfList, boundMarks: boundMarks, account: account) {
       switch signal {
       case .label(let name):
         if !name.isEmpty, name != me {
@@ -256,13 +266,15 @@ package enum ZoomAppSpeakerReader {
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: true, sharedNames: listedTwice,
         participantListComplete: count != nil, participantCount: count,
-        accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden)
+        accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden,
+        boundSelfMarks: boundMarks)
     }
     return CallSpeakerReading(
       speaking: speaking, roster: CallSpeakerRoster(names: shown, selfNames: selfList),
       rosterFromParticipantList: false, participants: participants,
       participantIdentityEstablished: true, sharedNames: listedTwice, participantCount: count,
-      accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden)
+      accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden,
+      boundSelfMarks: boundMarks)
   }
 
   /// The participants panel's rows (2026-10-29, `zoom-1on1-findings-2026-10-29.md`): each person
@@ -421,14 +433,11 @@ package enum ZoomAppSpeakerReader {
       }
     }
     let nodes = windows.flatMap { $0.root.allNodes }
-    let rows = nodes.filter { $0.role == "AXOutline" && $0.label == participantsListLabel }
-      .map { panelRows($0).entries }
+    let rows = listEntries(nodes)
     let listedTwice = rows.reduce(into: Set<String>()) { shared, entries in
       shared.formUnion(repeatedNames(entries.map { panelEntry($0).name }))
     }
-    // Only a bound participants-list row's `(me)` counts here, never any other text (a chat
-    // message ending in "(me)" must not say who the user is).
-    let selfMarks = uniqueInOrder(rows.flatMap { $0.compactMap(selfName(fromParticipantEntry:)) })
+    let selfMarks = boundSelfMarks(rows)
     let tileCount = nodes.filter { node in
       node.role == "AXTabGroup" && node.label.flatMap(parseTile) != nil
     }.count
@@ -437,15 +446,37 @@ package enum ZoomAppSpeakerReader {
       listedTwice: listedTwice, selfMarks: selfMarks, tileCount: tileCount)
   }
 
+  /// The `(me)` names of every bound participants-list row in `windows`, from every window
+  /// (#4356): the one authority for "Zoom's list marked this name as the user". Shared by
+  /// `shareContext` and the self probe.
+  package static func boundSelfMarks(windows: [CallAXWindow]) -> [String] {
+    boundSelfMarks(listEntries(windows.flatMap { $0.root.allNodes }))
+  }
+
+  /// The bound entries of each participants list among `nodes`, one array per list.
+  static func listEntries(_ nodes: [CallAXNode]) -> [[String]] {
+    nodes.filter { $0.role == "AXOutline" && $0.label == participantsListLabel }
+      .map { panelRows($0).entries }
+  }
+
+  /// Only a bound participants-list row's `(me)` counts here, never any other text (a chat
+  /// message ending in "(me)" must not say who the user is).
+  static func boundSelfMarks(_ lists: [[String]]) -> [String] {
+    uniqueInOrder(lists.flatMap { $0.compactMap(selfName(fromParticipantEntry:)) })
+  }
+
   /// The one name the user goes by in this reading, or `nil` when it cannot be told (#4013 share
   /// plan §3.0, review r1 F4): the panel's `(me)` mark when it names exactly one person, else
-  /// exactly one checked account. A mark and an account that disagree, or two marks, are
-  /// conflicting evidence: `nil`.
-  static func identifiedSelf(marks: [String], account: [String]) -> String? {
+  /// exactly one account (the user's in-call identity, #4356). Two marks are conflicting
+  /// evidence: `nil`. A mark and an account that disagree: a mark from a bound list row
+  /// (`boundMarks`) wins, since Zoom's own list said it (#4356 G3); any other mark is `nil`.
+  static func identifiedSelf(
+    marks: [String], boundMarks: [String] = [], account: [String]
+  ) -> String? {
     let marked = uniqueInOrder(marks)
     guard marked.count <= 1, account.count <= 1 else { return nil }
     if let mark = marked.first {
-      if let other = account.first, other != mark { return nil }
+      if let other = account.first, other != mark, !boundMarks.contains(mark) { return nil }
       return mark
     }
     return account.first

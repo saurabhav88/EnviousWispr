@@ -1013,4 +1013,82 @@ struct NativeCallSpeakerReaderTests {
     #expect(marked?.speaking == ["Bea Chen"])
     #expect(marked?.roster.selfNames == ["Dana Lee"])
   }
+
+  // #4356: the user's in-call identity. A bound participants-list `(me)` row, or the name the
+  // session learned from one (`knownSelf`), says who the user is even when the signed-in account
+  // name differs (real call 2026-11-03: tile "Saurabh Vaish", account "Saurabh A Vaish").
+
+  private func popped(_ entries: [String]) -> CallAXWindow {
+    window(
+      "Participants",
+      [
+        CallAXNode(
+          role: "AXOutline", description: "Participants list",
+          children: entries.map { zoomRow($0) })
+      ])
+  }
+
+  private func surfaceRead(
+    _ windows: [CallAXWindow], account: [String]?, knownSelf: String? = nil
+  ) -> CallSpeakerReading? {
+    CallSpeakerSurfaceReader.read(
+      surface: .zoomApp,
+      capture: CallAXCapture(
+        windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
+        readEndHostTime: 0, accountTitles: account),
+      rules: TalkerRulesSnapshot.empty.rules, knownSelf: knownSelf)
+  }
+
+  @Test("Zoom share: a bound (me) row wins over a different account name; unbound text does not")
+  func boundMarkBeatsAccount() {
+    let toolbar = window("zoom share toolbar window", [])
+    let label = floating([talking("Talking: Bea Chen")])
+    // The account says "Saurabh A Vaish"; Zoom's own list marks "Dana Lee (me)".
+    let bound = surfaceRead(
+      [toolbar, label, popped(["Dana Lee (me)", "Bea Chen"])], account: Self.account)
+    #expect(bound?.speaking == ["Bea Chen"])
+    #expect(bound?.boundSelfMarks == ["Dana Lee"])
+    // The same words as plain text in a window the reading uses (a chat line, an unbound row)
+    // keep the old rule: a mark the account disagrees with says nothing.
+    let unboundLabel = floating([
+      talking("Talking: Bea Chen"), CallAXNode(role: "AXStaticText", value: "Dana Lee (me)"),
+    ])
+    let unbound = surfaceRead([toolbar, unboundLabel], account: Self.account)
+    #expect(unbound?.speaking == [])
+    #expect(unbound?.boundSelfMarks == [])
+    // Two different bound marks: who the user is cannot be told.
+    let two = surfaceRead(
+      [toolbar, label, popped(["Dana Lee (me)", "Bea Chen"]), popped(["Sam Ortiz (me)"])],
+      account: Self.account)
+    #expect(two?.speaking == [])
+  }
+
+  @Test("Zoom: a learned in-call name replaces the account name as the user's identity")
+  func knownSelfBeatsAccount() {
+    let toolbar = window("zoom share toolbar window", [])
+    let label = floating([talking("Talking: Bea Chen")])
+    // Learned "Bea Chen" is the user: their own Talking label is quiet.
+    let learned = surfaceRead([toolbar, label], account: Self.account, knownSelf: "Bea Chen")
+    #expect(learned?.accountSelfNames == ["Bea Chen"])
+    #expect(learned?.speaking == [])
+    // Nothing learned: the account stays the fallback, so Bea is a far-side talker.
+    let fallback = surfaceRead([toolbar, label], account: Self.account)
+    #expect(fallback?.accountSelfNames == [Self.user])
+    #expect(fallback?.speaking == ["Bea Chen"])
+  }
+
+  @Test("Zoom: an ordinary reading carries bound (me) marks from a list in another window")
+  func boundMarksOutsideShare() {
+    let meeting = meetingWindow([
+      zoomTile("Bea Chen, Computer audio muted, Video off"),
+      zoomTile("Dana Lee, Computer audio muted, Video off"),
+    ])
+    let reading = surfaceRead([meeting, popped(["Dana Lee (me)", "Bea Chen"])], account: nil)
+    #expect(reading?.boundSelfMarks == ["Dana Lee"])
+    let noList = surfaceRead([meeting], account: nil)
+    #expect(noList?.boundSelfMarks == [])
+    let direct = ZoomAppSpeakerReader.read(
+      windows: [meeting, popped(["Dana Lee (me)", "Bea Chen"])])
+    #expect(direct.boundSelfMarks == ["Dana Lee"])
+  }
 }
