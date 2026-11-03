@@ -82,12 +82,13 @@ struct MeetingSetupHowTo: View {
       .onPreferenceChange(WidthKey.self) { value in width = value }
 
       HStack(spacing: 10) {
-        Button {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Back", comment: "EnviousMeet setup: shows the previous how-it-works card."),
+          isEnabled: true, emphasis: .quiet, size: .medium
+        ) {
           model.previous()
-        } label: {
-          Text("Back", comment: "EnviousMeet setup: shows the previous how-it-works card.")
         }
-        .buttonStyle(.bordered)
         Spacer()
         HStack(spacing: 6) {
           ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
@@ -98,27 +99,26 @@ struct MeetingSetupHowTo: View {
         }
         .accessibilityHidden(true)
         Spacer()
-        Button {
-          model.togglePause()
-        } label: {
-          if model.paused {
-            Text(
+        SettingsActionButton(
+          title: model.paused
+            ? LocalizedStringResource(
               "Play",
               comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
-          } else {
-            Text(
+            : LocalizedStringResource(
               "Pause",
               comment:
-                "EnviousMeet setup: stops the how-it-works cards from moving on by themselves.")
-          }
+                "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
+          isEnabled: true, emphasis: .quiet, size: .medium
+        ) {
+          model.togglePause()
         }
-        .buttonStyle(.bordered)
-        Button {
+        SettingsActionButton(
+          title: LocalizedStringResource(
+            "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
+          isEnabled: true, emphasis: .quiet, size: .medium
+        ) {
           model.next()
-        } label: {
-          Text("Next", comment: "EnviousMeet setup: shows the next how-it-works card.")
         }
-        .buttonStyle(.bordered)
       }
       .padding(.horizontal, 14)
       .padding(.bottom, 12)
