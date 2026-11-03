@@ -105,9 +105,11 @@ package enum CallSelfMuteReader {
       CallSpeakerSurfaceReader.scope(surface: surface, capture: capture, family: family)
         == .resolved
     else { return .unknown }
-    // Where the button may be: the one Zoom meeting window, the one Meet page, or the Teams
-    // windows of the one meeting the app shows (its main window and compact view, matched by
-    // title). Browser chrome, other pages and other windows are never searched.
+    // Where the button may be: the one Zoom meeting window (never a window whose tiles the
+    // reading borrows; with no meeting window the state is unknown, #4013 reading resilience
+    // §3.2), the one Meet page, or the Teams windows of the one meeting the app shows (its main
+    // window and compact view, matched by title). Browser chrome, other pages and other windows
+    // are never searched.
     let roots: [CallAXNode]
     switch surface {
     case .zoomApp:

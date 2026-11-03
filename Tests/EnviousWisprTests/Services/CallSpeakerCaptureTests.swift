@@ -841,7 +841,10 @@ struct CallSpeakerCaptureTests {
     #expect(scope([meeting(), home]) == .resolved)
     #expect(scope([meeting(), meeting()]) == .unresolved, "two meeting windows")
     #expect(scope([home]) == .unresolved, "no meeting window")
-    #expect(scope([meeting(), panel]) == .unresolved, "meeting content in another window")
+    // #4013 reading resilience §3.2 (intentional change): the meeting window shows no tile, so
+    // the one other window with tiles supplies them instead of withholding the capture.
+    #expect(scope([meeting(), panel]) == .resolved, "tiles only in another window")
+    #expect(scope([meeting(), panel, panel]) == .unresolved, "a tie for most tiles")
   }
 
   @Test("the surface comes from the call family and whether a browser held the microphone")
