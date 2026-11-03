@@ -1269,14 +1269,22 @@ struct BrandedPanel<Content: View, Footnote: View>: View {
 
       footnote
     }
-    .padding(18)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stSectionBg)
-    .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
+    .brandedPanelChrome()
+  }
+}
+
+extension View {
+  /// `BrandedPanel`'s card surface alone, for a panel that draws its own heading (#4346: the
+  /// EnviousMeet setup's logo heading replaces the eyebrow).
+  func brandedPanelChrome() -> some View {
+    padding(18)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Color.stSectionBg)
+      .clipShape(RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius))
+      .overlay(
+        RoundedRectangle(cornerRadius: SettingsLayout.sectionRadius)
+          .strokeBorder(Color.stDivider, lineWidth: 1)
+      )
   }
 }
 

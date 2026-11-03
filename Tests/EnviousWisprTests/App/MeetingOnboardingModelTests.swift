@@ -9,7 +9,8 @@ import Testing
 
 /// #4017: EnviousMeet's setup. When these fail, the user can unlock recording without the
 /// consent promise, cannot finish setup, is told a permission is on when it is not, or
-/// EnviousMeet stays locked after setup.
+/// EnviousMeet stays locked after setup. #4346: setup needs the microphone and (macOS 14.2+)
+/// the call sound before Continue; Calendar stays optional.
 @Suite("EnviousMeet setup", .tags(.productOutcome))
 @MainActor
 struct MeetingOnboardingModelTests {
@@ -35,6 +36,7 @@ struct MeetingOnboardingModelTests {
       heldCalendar?.resume()
       heldCalendar = nil
     }
+    var callSoundSupported = true
     var emitted: [MeetingSetupTelemetry] = []
     var clock = Date(timeIntervalSince1970: 1_000_000)
 
@@ -59,6 +61,7 @@ struct MeetingOnboardingModelTests {
           return calendarAnswer
         },
         openCallSoundSettings: {}, openCalendarSettings: {},
+        callSoundSupported: { [unowned self] in callSoundSupported },
         settings: settings,
         emit: { [unowned self] in emitted.append($0) },
         now: { [unowned self] in clock }))
@@ -77,17 +80,18 @@ struct MeetingOnboardingModelTests {
     #expect(rig.model.screen == .permissions)
   }
 
-  @Test("skipping both optional permissions still finishes and unlocks EnviousMeet")
+  @Test("skipping the optional calendar still finishes and unlocks EnviousMeet")
   func finishWithSkips() throws {
     let rig = try Rig()
+    rig.callSoundStatus = .granted
     rig.model.begin()
     rig.model.getStarted()
     rig.model.consented = true
     rig.model.accept()
-    rig.model.skipCallSound()
     rig.model.skipCalendar()
     rig.model.continueToDone()
-    #expect(rig.model.unresolved.count == 2)
+    #expect(rig.model.screen == .done)
+    #expect(rig.model.unresolved.count == 1)
     rig.clock = rig.clock.addingTimeInterval(42)
     rig.model.finish()
     #expect(rig.settings.meetingOnboardingComplete)
@@ -96,7 +100,7 @@ struct MeetingOnboardingModelTests {
     #expect(row.outcome == .finished)
     #expect(row.screen == .done)
     #expect(row.seconds == 42)
-    #expect(row.callSound == .skipped)
+    #expect(row.callSound == .granted)
     #expect(row.calendar == .skipped)
     #expect(row.microphone == .granted)
   }
@@ -159,30 +163,33 @@ struct MeetingOnboardingModelTests {
     #expect(rig.model.callSound == .granted)
   }
 
-  @Test("Not now while macOS asks about the call sound does nothing; the answer decides")
+  @Test("Not now while macOS asks about the calendar does nothing; the answer decides")
   func skipWhileAskingIsRefused() async throws {
     let rig = try Rig()
-    rig.callSoundAnswer = .denied
-    rig.holdCallSound = true
-    let request = Task { await rig.model.allowCallSound() }
+    rig.calendarAnswer = .denied
+    rig.holdCalendar = true
+    let request = Task { await rig.model.allowCalendar() }
     #expect(await settleUntilObserved { rig.model.asking })
-    rig.model.skipCallSound()
-    #expect(rig.model.callSound != .skipped)
-    rig.releaseCallSound()
+    rig.model.skipCalendar()
+    #expect(rig.model.calendar != .skipped)
+    rig.releaseCalendar()
     await request.value
-    #expect(rig.model.callSound == .denied)
-    #expect(rig.settings.meetingCaptureCallSound == true)
+    #expect(rig.model.calendar == .denied)
   }
 
   @Test("an answer that arrives after setup finished never undoes a later settings choice")
   func lateAnswersKeepLaterChoices() async throws {
     let rig = try Rig()
+    // Setup can finish only with the required permissions satisfied (#4346).
+    rig.callSoundStatus = .granted
+    rig.model.begin()
     rig.callSoundAnswer = .granted
     rig.holdCallSound = true
     let sound = Task { await rig.model.allowCallSound() }
     #expect(await settleUntilObserved { rig.model.asking })
     #expect(rig.settings.meetingCaptureCallSound == true, "Allow saves the choice at once")
     rig.model.continueToDone()
+    #expect(rig.model.screen == .done)
     rig.model.finish()
     rig.settings.meetingCaptureCallSound = false
     rig.releaseCallSound()
@@ -190,11 +197,14 @@ struct MeetingOnboardingModelTests {
     #expect(rig.settings.meetingCaptureCallSound == false)
 
     let again = try Rig()
+    again.callSoundStatus = .granted
+    again.model.begin()
     again.calendarAnswer = .granted
     again.holdCalendar = true
     let calendar = Task { await again.model.allowCalendar() }
     #expect(await settleUntilObserved { again.model.asking })
     again.model.continueToDone()
+    #expect(again.model.screen == .done)
     again.model.finish()
     // The user turns the page switch on, then off again, while macOS still asks.
     again.model.noteCalendarNamesChoice()
@@ -207,11 +217,14 @@ struct MeetingOnboardingModelTests {
   @Test("a calendar grant that arrives after setup finished still turns on calendar names")
   func lateCalendarGrantStillApplies() async throws {
     let rig = try Rig()
+    rig.callSoundStatus = .granted
+    rig.model.begin()
     rig.calendarAnswer = .granted
     rig.holdCalendar = true
     let calendar = Task { await rig.model.allowCalendar() }
     #expect(await settleUntilObserved { rig.model.asking })
     rig.model.continueToDone()
+    #expect(rig.model.screen == .done)
     rig.model.finish()
     #expect(rig.settings.meetingUseCalendarForNames == false)
     rig.releaseCalendar()
@@ -219,18 +232,10 @@ struct MeetingOnboardingModelTests {
     #expect(rig.settings.meetingUseCalendarForNames == true)
   }
 
-  @Test("Not now on call sound turns the call sound off for the next meeting")
-  func skipCallSoundTurnsItOff() throws {
-    let rig = try Rig()
-    #expect(rig.settings.meetingCaptureCallSound)
-    rig.model.begin()
-    rig.model.skipCallSound()
-    #expect(rig.settings.meetingCaptureCallSound == false)
-  }
-
   @Test("calendar access allowed later in System Settings still turns on calendar names")
   func calendarGrantedLaterNamesMeetings() async throws {
     let rig = try Rig()
+    rig.callSoundStatus = .granted
     rig.model.begin()
     rig.calendarAnswer = .denied
     await rig.model.allowCalendar()
@@ -250,7 +255,96 @@ struct MeetingOnboardingModelTests {
     await rig.model.allowCallSound()
     #expect(rig.model.callSound == .askedAtFirstRecording)
     #expect(rig.settings.meetingCallSoundExplained == false)
-    #expect(rig.model.unresolved.count == 2)
+    #expect(rig.model.unresolved.count == 1)
+    #expect(rig.model.canContinue)
+    #expect(rig.model.callSoundMayAskLater)
+  }
+
+  /// Puts the model on the permissions screen with the consent promise given.
+  private func toPermissions(_ rig: Rig) {
+    rig.model.begin()
+    rig.model.getStarted()
+    rig.model.consented = true
+    rig.model.accept()
+  }
+
+  @Test("Continue stays off until the microphone and the call sound are allowed")
+  func continueNeedsMicrophoneAndCallSound() async throws {
+    let rig = try Rig()
+    rig.microphone = .notDetermined
+    rig.callSoundAnswer = .granted
+    toPermissions(rig)
+    #expect(rig.model.canContinue == false)
+    rig.model.continueToDone()
+    #expect(rig.model.screen == .permissions)
+    await rig.model.allowMicrophone()
+    #expect(rig.model.microphoneSatisfied)
+    #expect(rig.model.canContinue == false, "call sound is still missing")
+    rig.model.continueToDone()
+    #expect(rig.model.screen == .permissions)
+    await rig.model.allowCallSound()
+    #expect(rig.model.canContinue)
+    rig.model.continueToDone()
+    #expect(rig.model.screen == .done)
+    #expect(rig.model.callSoundMayAskLater == false)
+  }
+
+  @Test("an unreadable call-sound answer lets setup continue and says macOS may ask later")
+  func unreadableCallSoundContinues() async throws {
+    let rig = try Rig()
+    rig.callSoundAnswer = .unknown
+    toPermissions(rig)
+    await rig.model.allowCallSound()
+    #expect(rig.model.callSound == .requested)
+    #expect(rig.model.canContinue)
+    #expect(rig.model.callSoundMayAskLater)
+    rig.model.continueToDone()
+    #expect(rig.model.screen == .done)
+  }
+
+  @Test("a refused call sound or a blocked microphone keeps Continue off")
+  func refusedPermissionsBlock() throws {
+    let rig = try Rig()
+    rig.callSoundStatus = .denied
+    toPermissions(rig)
+    #expect(rig.model.callSound == .denied)
+    #expect(rig.model.canContinue == false)
+
+    let blocked = try Rig()
+    blocked.microphone = .restricted
+    blocked.callSoundStatus = .granted
+    toPermissions(blocked)
+    #expect(blocked.model.microphone == .unavailable)
+    #expect(blocked.model.canContinue == false)
+    blocked.model.continueToDone()
+    #expect(blocked.model.screen == .permissions)
+  }
+
+  @Test("below macOS 14.2 only the microphone is required")
+  func olderMacNeedsOnlyMicrophone() throws {
+    let rig = try Rig()
+    rig.callSoundSupported = false
+    toPermissions(rig)
+    #expect(rig.model.callSound == .notAsked)
+    #expect(rig.model.callSoundRequired == false)
+    #expect(rig.model.canContinue)
+    #expect(rig.model.callSoundMayAskLater == false)
+    rig.model.continueToDone()
+    #expect(rig.model.screen == .done)
+  }
+
+  @Test("the calendar never blocks Continue, refused or never asked")
+  func calendarNeverBlocks() async throws {
+    let rig = try Rig()
+    rig.callSoundStatus = .granted
+    toPermissions(rig)
+    #expect(rig.model.calendar == .notAsked)
+    #expect(rig.model.canContinue)
+    rig.calendarAnswer = .denied
+    await rig.model.allowCalendar()
+    #expect(rig.model.calendar == .denied)
+    #expect(rig.model.canContinue)
+    #expect(rig.model.unresolved.count == 1)
   }
 
   @Test("the setup row reports the furthest screen, not the one shown when the user left")

@@ -112,8 +112,15 @@ class AX:
 
     def label_names(self, el):
         """A control's NAME: AXTitle and AXDescription. AXValue is left out on purpose: on a
-        sidebar row or a tab it holds the selection state ("Not selected"), never the name."""
-        return [t for t in (self.text(el, "AXTitle"), self.text(el, "AXDescription")) if t]
+        sidebar row or a tab it holds the selection state ("Not selected"), never the name.
+
+        #4346: EnviousMeet's sidebar row is spoken "EnviousMeet, Beta" (its BETA tag); the
+        name without that one exact suffix is listed too, so the row still answers to its page
+        name. Only the ", <Beta>" ending is removed; every other name must still match whole."""
+        names = [t for t in (self.text(el, "AXTitle"), self.text(el, "AXDescription")) if t]
+        suffixes = [f", {b}" for b in self.terms("Beta")]
+        return names + [n[: -len(s)] for n in names for s in suffixes
+                        if n.endswith(s) and len(n) > len(s)]
 
     def walk(self, el, depth=0, max_depth=60, skip=None):
         """Every element under `el`, itself first. The rows of a content list longer than

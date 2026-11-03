@@ -2,15 +2,18 @@ import SwiftUI
 
 /// EnviousMeet's setup, shown on the EnviousMeet page until it is finished (#4017 O1, O2, O3):
 /// Get Started, the consent promise, three permissions, then "You're all set". It sits inside
-/// the EnviousMeet page's panel like every settings page: left-aligned, step dots, a large
-/// welcome video; the page frame scrolls.
+/// the EnviousMeet page's panel like every settings page: left-aligned, logo heading, step dots
+/// (#4346); the page frame scrolls.
 struct MeetingOnboardingView: View {
   @Environment(MeetingOnboardingModel.self) private var model
 
   var body: some View {
     // Every column has a largest width, never a fixed one, so a narrow window narrows it.
     VStack(alignment: .leading, spacing: 22) {
-      MeetingSetupStepDots(step: model.screen)
+      VStack(alignment: .leading, spacing: 14) {
+        MeetingBrandHeading()
+        MeetingSetupStepDots(step: model.screen)
+      }
       ZStack(alignment: .topLeading) {
         switch model.screen {
         case .welcome: MeetingSetupWelcome().transition(Self.transition)
@@ -75,55 +78,102 @@ private struct MeetingSetupStepDots: View {
 
 // MARK: - Get Started
 
+/// #4346: the welcome is the pitch, then Get Started at once, then what EnviousMeet does. Copy
+/// is the founder-approved preview's (issue #4346, 2026-11-02), checked against the app by Codex.
 private struct MeetingSetupWelcome: View {
   @Environment(MeetingOnboardingModel.self) private var model
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var appeared = false
 
-  private static let features: [(icon: String, title: LocalizedStringResource)] = [
-    (
-      "person.2.slash",
-      LocalizedStringResource(
-        "No bot joins your call", comment: "EnviousMeet setup: welcome feature title.")
-    ),
-    (
-      "lock.shield",
-      LocalizedStringResource(
-        "Your audio never leaves your Mac", comment: "EnviousMeet setup: welcome feature title.")
-    ),
-    (
-      "heart",
-      LocalizedStringResource(
-        "Free and open source", comment: "EnviousMeet setup: welcome feature title.")
-    ),
+  struct Tile {
+    let icon: String
+    let title: LocalizedStringResource
+    let line: LocalizedStringResource
+  }
+
+  static let tiles: [Tile] = [
+    Tile(
+      icon: "person.2.slash",
+      title: LocalizedStringResource(
+        "No bot in your call", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "It records from your Mac, so nobody sees a notetaker join.",
+        comment: "EnviousMeet setup: welcome tile line under No bot in your call.")),
+    Tile(
+      icon: "lock.shield",
+      title: LocalizedStringResource(
+        "Transcribed on your Mac", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Your audio never leaves your Mac.",
+        comment: "EnviousMeet setup: welcome tile line under Transcribed on your Mac.")),
+    Tile(
+      icon: "list.bullet.rectangle",
+      title: LocalizedStringResource(
+        "Summaries your way", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Offline with a model on your Mac, or with your own AI key.",
+        comment: "EnviousMeet setup: welcome tile line under Summaries your way.")),
+    Tile(
+      icon: "waveform",
+      title: LocalizedStringResource(
+        "Live transcript", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Watch the words appear while people talk.",
+        comment: "EnviousMeet setup: welcome tile line under Live transcript.")),
+    Tile(
+      icon: "person.text.rectangle",
+      title: LocalizedStringResource(
+        "Real speaker names", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Names from Zoom, Teams and Meet calls, when available.",
+        comment: "EnviousMeet setup: welcome tile line under Real speaker names. App names are not translated.")),
+    Tile(
+      icon: "phone",
+      title: LocalizedStringResource(
+        "Notices your calls", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "It can offer to record your calls. When it detects a call ending, it counts down to stop or asks whether to keep recording.",
+        comment: "EnviousMeet setup: welcome tile line under Notices your calls.")),
+    Tile(
+      icon: "play.circle",
+      title: LocalizedStringResource(
+        "Play back any moment", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Play back the audio, with a timestamp on every passage.",
+        comment: "EnviousMeet setup: welcome tile line under Play back any moment.")),
+    Tile(
+      icon: "arrow.clockwise",
+      title: LocalizedStringResource(
+        "Transcribe again", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "Keep the recording and run it again with another engine.",
+        comment: "EnviousMeet setup: welcome tile line under Transcribe again.")),
+    Tile(
+      icon: "heart",
+      title: LocalizedStringResource(
+        "Free and open source", comment: "EnviousMeet setup: welcome tile title."),
+      line: LocalizedStringResource(
+        "No account, no subscription. The code is public (GPLv3).",
+        comment: "EnviousMeet setup: welcome tile line under Free and open source. GPLv3 is a license name.")),
   ]
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      MeetingWelcomeMedia()
-        .aspectRatio(MeetingWelcomeMedia.aspectRatio, contentMode: .fit)
-        .frame(maxWidth: 640)
-        .padding(.bottom, 22)
-
-      Text("Meeting notes, with no bot in your call.", comment: "EnviousMeet setup: welcome title.")
+      Text(
+        "Meeting notes, transcribed on your Mac.", comment: "EnviousMeet setup: welcome title.")
         .font(.setupTitle)
         .foregroundStyle(Color.obTextPrimary)
         .kerning(-0.3)
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.bottom, 8)
       Text(
-        "EnviousMeet records your calls and meetings, then writes who said what.",
+        "A premium meeting notetaker, with summaries that can run offline on your Mac.",
         comment: "EnviousMeet setup: welcome line under the title."
       )
       .font(.setupLead)
       .foregroundStyle(Color.obTextSecondary)
       .fixedSize(horizontal: false, vertical: true)
-      .padding(.bottom, 16)
-
-      // In a row when it fits, else stacked.
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 18) { features }
-        VStack(alignment: .leading, spacing: 8) { features }
-      }
-      .padding(.bottom, 24)
+      .padding(.bottom, 18)
 
       Button {
         model.getStarted()
@@ -133,59 +183,147 @@ private struct MeetingSetupWelcome: View {
       .buttonStyle(OnboardingButtonStyle())
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.getStarted")
-    }
-    .frame(maxWidth: 640, alignment: .leading)
-    .onAppear { appeared = true }
-  }
+      .padding(.bottom, 24)
 
-  @ViewBuilder private var features: some View {
-        ForEach(Array(Self.features.enumerated()), id: \.offset) { index, feature in
-          HStack(spacing: 7) {
-            Image(systemName: feature.icon)
-              .font(.system(size: 13, weight: .semibold))
-              .foregroundStyle(Color.obAccent)
-              .accessibilityHidden(true)
-            Text(feature.title).font(.setupRowLine).foregroundStyle(Color.obTextPrimary)
-          }
-          .opacity(appeared ? 1 : 0)
-          .offset(y: appeared ? 0 : 8)
-          .animation(.easeOut(duration: 0.4).delay(0.1 + Double(index) * 0.08), value: appeared)
-          .accessibilityElement(children: .combine)
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 220), spacing: 12, alignment: .top)],
+        alignment: .leading, spacing: 12
+      ) {
+        ForEach(Array(Self.tiles.enumerated()), id: \.offset) { index, tile in
+          MeetingSetupFeatureTile(tile: tile)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 8)
+            .animation(
+              reduceMotion ? nil : .easeOut(duration: 0.35).delay(0.05 + Double(index) * 0.04),
+              value: appeared)
         }
+      }
+    }
+    .frame(maxWidth: 760, alignment: .leading)
+    .onAppear { appeared = true }
   }
 }
 
-// MARK: - Before you record
+/// One welcome tile: icon, title, one line (#4346).
+private struct MeetingSetupFeatureTile: View {
+  let tile: MeetingSetupWelcome.Tile
 
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: tile.icon)
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(Color.obAccent)
+        .frame(width: 34, height: 34)
+        .background(Color.obAccentSoft, in: RoundedRectangle(cornerRadius: 9))
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(tile.title).font(.setupRowTitle).foregroundStyle(Color.obTextPrimary)
+        Text(tile.line)
+          .font(.setupRowLine)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background(Color.obTextTertiary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    .overlay(
+      RoundedRectangle(cornerRadius: 12).strokeBorder(Color.obTextTertiary.opacity(0.18), lineWidth: 1)
+    )
+    .accessibilityElement(children: .combine)
+  }
+}
+
+// MARK: - Consent
+
+/// #4346: a friendly heads-up with three short rows; the legal text stays, as fine print.
 private struct MeetingSetupConsent: View {
   @Environment(MeetingOnboardingModel.self) private var model
+
+  private static let rows: [(icon: String, title: LocalizedStringResource, line: LocalizedStringResource)] = [
+    (
+      "bubble.left",
+      LocalizedStringResource("Ask first.", comment: "EnviousMeet setup: consent row title."),
+      LocalizedStringResource(
+        "Say you are recording when the call starts.",
+        comment: "EnviousMeet setup: consent row line under Ask first.")
+    ),
+    (
+      "globe",
+      LocalizedStringResource(
+        "Rules change by place.", comment: "EnviousMeet setup: consent row title."),
+      LocalizedStringResource(
+        "Some places need everyone in the call to agree.",
+        comment: "EnviousMeet setup: consent row line under Rules change by place.")
+    ),
+    (
+      "checkmark",
+      LocalizedStringResource(
+        "Your call, your choice.",
+        comment: "EnviousMeet setup: consent row title; a play on words (call = phone call and decision)."),
+      LocalizedStringResource(
+        "You get consent where the law needs it.",
+        comment: "EnviousMeet setup: consent row line under Your call, your choice.")
+    ),
+  ]
 
   var body: some View {
     @Bindable var model = model
     VStack(alignment: .leading, spacing: 0) {
-      Text("Before you record", comment: "EnviousMeet setup: the consent screen's title.")
-        .font(.setupTitle)
-        .foregroundStyle(Color.obTextPrimary)
-        .kerning(-0.4)
-        .padding(.bottom, 8)
       Text(
-        "One promise, then you are ready.",
-        comment: "EnviousMeet setup: the line under Before you record."
+        "Good meetings start with a heads-up.",
+        comment: "EnviousMeet setup: the consent screen's title."
+      )
+      .font(.setupTitle)
+      .foregroundStyle(Color.obTextPrimary)
+      .kerning(-0.4)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 8)
+      Text(
+        "A quick \"mind if I record?\" keeps everyone comfortable. In some places, the law also requires it.",
+        comment: "EnviousMeet setup: the line under the consent title."
       )
       .font(.setupLead)
       .foregroundStyle(Color.obTextSecondary)
-      .padding(.bottom, 24)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 20)
 
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 14) {
+        ForEach(Self.rows.indices, id: \.self) { index in
+          let row = Self.rows[index]
+          HStack(alignment: .top, spacing: 12) {
+            Image(systemName: row.icon)
+              .font(.system(size: 14, weight: .semibold))
+              .foregroundStyle(Color.obAccent)
+              .frame(width: 34, height: 34)
+              .background(Color.obAccentSoft, in: RoundedRectangle(cornerRadius: 9))
+              .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(row.title).font(.setupRowTitle).foregroundStyle(Color.obTextPrimary)
+              Text(row.line)
+                .font(.setupRowLine)
+                .foregroundStyle(Color.obTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          .accessibilityElement(children: .combine)
+        }
+      }
+      .padding(.bottom, 20)
+
+      // The legal text (#4017 O4, shared with the settings page) as fine print, at the floor.
+      VStack(alignment: .leading, spacing: 6) {
         ForEach(MeetingConsentCopy.paragraphs.indices, id: \.self) { index in
           Text(MeetingConsentCopy.paragraphs[index])
-            .font(.setupBody)
-            .lineSpacing(3)
-            .foregroundStyle(Color.obTextPrimary.opacity(0.88))
+            .font(.setupRowLine)
+            .foregroundStyle(Color.obTextSecondary)
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      .padding(.bottom, 24)
+      .padding(.top, 14)
+      .overlay(alignment: .top) { Divider().opacity(0.6) }
+      .padding(.bottom, 20)
 
       Toggle(isOn: $model.consented) {
         Text(MeetingConsentCopy.promise)
@@ -195,13 +333,13 @@ private struct MeetingSetupConsent: View {
       }
       .toggleStyle(.checkbox)
       .accessibilityIdentifier("meetings.setup.consent")
-      .padding(.bottom, 28)
+      .padding(.bottom, 24)
 
       HStack(spacing: 16) {
         Button {
           model.accept()
         } label: {
-          Text("Accept and continue", comment: "EnviousMeet setup: accepts the consent promise.")
+          Text("Let's go", comment: "EnviousMeet setup: accepts the consent promise.")
         }
         .buttonStyle(
           OnboardingButtonStyle(color: model.consented ? .obButtonFill : .obButtonFill.opacity(0.4))
@@ -218,7 +356,7 @@ private struct MeetingSetupConsent: View {
         .buttonStyle(.link)
       }
     }
-    .frame(maxWidth: 560, alignment: .leading)
+    .frame(maxWidth: 600, alignment: .leading)
   }
 }
 
@@ -236,7 +374,7 @@ enum MeetingConsentCopy {
       comment: "EnviousMeet consent text, paragraph 3."),
   ]
   static let promise = LocalizedStringResource(
-    "I understand. I will get consent where the law requires it.",
+    "Got it. I'll get consent where the law needs it.",
     comment: "EnviousMeet setup: the consent checkbox.")
 }
 
@@ -254,10 +392,17 @@ private struct MeetingSetupPermissions: View {
       .foregroundStyle(Color.obTextPrimary)
       .kerning(-0.4)
       .padding(.bottom, 8)
-      Text(
-        "You can say no to any of them and turn it on later.",
-        comment: "EnviousMeet setup: the line under the permissions title."
-      )
+      Group {
+        if model.callSoundRequired {
+          Text(
+            "EnviousMeet needs the microphone and call sound to record. Calendar is optional.",
+            comment: "EnviousMeet setup: the line under the permissions title.")
+        } else {
+          Text(
+            "EnviousMeet needs the microphone to record. Calendar is optional.",
+            comment: "EnviousMeet setup: the line under the permissions title on a Mac that cannot record the call sound (below macOS 14.2).")
+        }
+      }
       .font(.setupLead)
       .foregroundStyle(Color.obTextSecondary)
       .padding(.bottom, 20)
@@ -271,16 +416,21 @@ private struct MeetingSetupPermissions: View {
             "To hear your voice.", comment: "EnviousMeet setup: why the microphone."),
           state: model.microphone, busy: model.asking,
           allow: { Task { await model.allowMicrophone() } }, skip: nil, openSettings: { Task { await model.allowMicrophone() } })
-        MeetingSetupPermissionRow(
-          icon: "speaker.wave.2.fill",
-          title: LocalizedStringResource(
-            "Call sound", comment: "EnviousMeet setup: a permission name."),
-          line: LocalizedStringResource(
-            "To hear the other people, also with AirPods. Only the sound, never your screen.",
-            comment: "EnviousMeet setup: why the call sound."),
-          state: model.callSound, busy: model.asking,
-          allow: { Task { await model.allowCallSound() } }, skip: { model.skipCallSound() },
-          openSettings: { model.openCallSoundSettings() })
+        if model.callSoundRequired {
+          // #4346: required, so no Not now.
+          MeetingSetupPermissionRow(
+            icon: "speaker.wave.2.fill",
+            title: LocalizedStringResource(
+              "Call sound", comment: "EnviousMeet setup: a permission name."),
+            line: LocalizedStringResource(
+              "To hear the other people, also with AirPods. Only the sound, never your screen.",
+              comment: "EnviousMeet setup: why the call sound."),
+            state: model.callSound, busy: model.asking,
+            allow: { Task { await model.allowCallSound() } }, skip: nil,
+            openSettings: { model.openCallSoundSettings() })
+        } else {
+          MeetingSetupOlderMacNote()
+        }
         MeetingSetupPermissionRow(
           icon: "calendar",
           title: LocalizedStringResource(
@@ -300,11 +450,70 @@ private struct MeetingSetupPermissions: View {
       } label: {
         Text("Continue", comment: "EnviousMeet setup: leaves the permissions screen.")
       }
-      .buttonStyle(OnboardingButtonStyle())
+      .buttonStyle(
+        OnboardingButtonStyle(color: model.canContinue ? .obButtonFill : .obButtonFill.opacity(0.4))
+      )
+      .disabled(!model.canContinue)
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.continue")
+
+      if let blocked = blockedReason {
+        Text(blocked)
+          .font(.setupRowLine)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.top, 10)
+      }
     }
     .frame(maxWidth: 600, alignment: .leading)
+  }
+
+  /// Why Continue is off (#4346 plan §8), or nil when it is on.
+  private var blockedReason: LocalizedStringResource? {
+    if model.microphone == .unavailable {
+      return LocalizedStringResource(
+        "This Mac does not allow the microphone, so EnviousMeet cannot record here.",
+        comment: "EnviousMeet setup: under Continue when a device profile blocks the microphone.")
+    }
+    switch (model.microphoneSatisfied, model.callSoundSatisfied) {
+    case (true, true): return nil
+    case (false, false):
+      return LocalizedStringResource(
+        "Allow the microphone and call sound to continue.",
+        comment: "EnviousMeet setup: under Continue while both required permissions are missing.")
+    case (false, true):
+      return LocalizedStringResource(
+        "Allow the microphone to continue.",
+        comment: "EnviousMeet setup: under Continue while the microphone is missing.")
+    case (true, false):
+      return LocalizedStringResource(
+        "Allow call sound to continue.",
+        comment: "EnviousMeet setup: under Continue while the call sound is missing.")
+    }
+  }
+}
+
+/// Below macOS 14.2 the Mac cannot record the call sound, so setup shows this note in place of
+/// the call-sound row (#4346 plan §3.3).
+private struct MeetingSetupOlderMacNote: View {
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "info.circle")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(Color.obTextSecondary)
+        .frame(width: 34, height: 34)
+        .background(Color.obAccentSoft, in: RoundedRectangle(cornerRadius: 9))
+        .accessibilityHidden(true)
+      Text(
+        "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar.",
+        comment: "EnviousMeet setup: in place of the call-sound row below macOS 14.2.")
+        .font(.setupRowLine)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 8)
+    }
+    .padding(.vertical, 16)
+    .overlay(alignment: .top) { Divider().opacity(0.6) }
   }
 }
 
@@ -321,7 +530,9 @@ private struct MeetingSetupPermissionRow: View {
   private var allowed: Bool { state == .granted }
 
   var body: some View {
-    HStack(spacing: 12) {
+    // #4346 UX pass: icon, title and status share the row's top line, as the consent rows do,
+    // so a long German line does not push them down to its middle.
+    HStack(alignment: .top, spacing: 12) {
       Image(systemName: icon)
         .font(.system(size: 14, weight: .semibold))
         .foregroundStyle(allowed ? Color.obSuccess : Color.obAccent)
@@ -342,7 +553,7 @@ private struct MeetingSetupPermissionRow: View {
         }
       }
       Spacer(minLength: 8)
-      trailing
+      trailing.frame(minHeight: 34)
     }
     .padding(.vertical, 16)
     .overlay(alignment: .top) { Divider().opacity(0.6) }
@@ -429,32 +640,34 @@ private struct MeetingSetupDone: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ZStack {
-        MeetingConfettiBurst()
-        RainbowLipsView(animationState: .heart, size: 96)
-          .accessibilityHidden(true)
-      }
-      .frame(width: 160, height: 110)
-      .padding(.bottom, 12)
-      Text("You're all set!", comment: "EnviousMeet setup: the last screen's title.")
+      Text("You're all set.", comment: "EnviousMeet setup: the last screen's title.")
         .font(.setupTitle)
         .foregroundStyle(Color.obTextPrimary)
         .padding(.bottom, 8)
       Text(
-        "Start a recording from the menu bar. The lips in the menu bar glow while a meeting records.",
-        comment: "EnviousMeet setup: how to record, on the last screen."
+        "Here is how EnviousMeet works. Use the arrow keys or the buttons to flip through.",
+        comment: "EnviousMeet setup: the line above the how-it-works cards on the last screen."
       )
       .font(.setupLead)
-      .foregroundStyle(Color.obTextPrimary.opacity(0.85))
-      .fixedSize(horizontal: false, vertical: true)
-      .padding(.bottom, 6)
-      Text(
-        "Your recordings appear in History, under M (Meetings).",
-        comment: "EnviousMeet setup: where recordings are, on the last screen."
-      )
-      .font(.setupBody)
       .foregroundStyle(Color.obTextSecondary)
-      .padding(.bottom, model.unresolved.isEmpty ? 28 : 12)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 16)
+
+      // #4346 plan §3.4: six how-it-works cards.
+      MeetingSetupHowTo()
+        .padding(.bottom, model.unresolved.isEmpty && !model.callSoundMayAskLater ? 24 : 14)
+
+      // #4346 §16.2: shown independently of the Calendar line; both can show.
+      if model.callSoundMayAskLater {
+        Text(
+          "macOS may ask about call sound the first time you record.",
+          comment: "EnviousMeet setup: last screen, when macOS could not confirm the call-sound answer yet."
+        )
+        .font(.setupRowLine)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, model.unresolved.isEmpty ? 18 : 8)
+      }
 
       if !model.unresolved.isEmpty {
         Text(
@@ -478,53 +691,6 @@ private struct MeetingSetupDone: View {
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.finish")
     }
-    .frame(maxWidth: 560, alignment: .leading)
-  }
-}
-
-/// A one-time burst of rainbow confetti behind the heart (#4017 O2). Off with Reduce Motion.
-private struct MeetingConfettiBurst: View {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var start = Date()
-
-  private static let colors: [Color] = [
-    Color(red: 1.0, green: 0.165, blue: 0.251), Color(red: 1.0, green: 0.549, blue: 0.0),
-    Color(red: 1.0, green: 0.843, blue: 0.0), Color(red: 0.678, green: 1.0, blue: 0.184),
-    Color(red: 0.0, green: 0.98, blue: 0.604), Color(red: 0.0, green: 1.0, blue: 1.0),
-    Color(red: 0.118, green: 0.565, blue: 1.0), Color(red: 0.255, green: 0.412, blue: 0.882),
-    Color(red: 0.541, green: 0.169, blue: 0.886),
-  ]
-  private static let duration = 2.2
-  private static let pieces = 42
-
-  var body: some View {
-    if reduceMotion {
-      EmptyView()
-    } else {
-      TimelineView(.animation) { context in
-        let t = context.date.timeIntervalSince(start)
-        Canvas { canvas, size in
-          guard t < Self.duration else { return }
-          let progress = t / Self.duration
-          let center = CGPoint(x: size.width / 2, y: size.height / 2)
-          for index in 0..<Self.pieces {
-            let angle = Double(index) / Double(Self.pieces) * 2 * .pi
-            let reach = 120 + Double(index % 4) * 40
-            let eased = 1 - pow(1 - progress, 3)
-            let x = center.x + cos(angle) * reach * eased
-            let y = center.y + sin(angle) * reach * 0.8 * eased + 90 * progress * progress
-            var piece = canvas
-            piece.opacity = 1 - progress
-            piece.translateBy(x: x, y: y)
-            piece.rotate(by: .degrees(Double(index * 47) + progress * 360))
-            piece.fill(
-              Path(roundedRect: CGRect(x: -4, y: -7, width: 8, height: 14), cornerRadius: 2),
-              with: .color(Self.colors[index % Self.colors.count]))
-          }
-        }
-      }
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
-    }
+    .frame(maxWidth: 760, alignment: .leading)
   }
 }

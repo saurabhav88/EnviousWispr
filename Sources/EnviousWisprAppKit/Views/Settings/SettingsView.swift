@@ -494,7 +494,8 @@ struct UnifiedWindowView: View {
   private func sidebarRow(_ section: SettingsPage) -> some View {
     let selected = navigationState.selectedPage == section
     return SidebarNavRow(
-      label: section.label, isSelected: selected, activity: sidebarActivity(section)
+      label: section.label, isSelected: selected, activity: sidebarActivity(section),
+      showsBeta: section == .meetings
     ) {
       Image(systemName: section.icon)
         .font(.system(size: 15, weight: .medium))

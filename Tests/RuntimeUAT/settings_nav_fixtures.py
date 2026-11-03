@@ -215,8 +215,13 @@ class FakeSettings:
         rows = []
         for page in sn.PAGES:
             activity = "Dictionary enrichment in progress" if page == "Dictionary" else None
-            rows.append(self.named("AXButton", page, value=self.sel(page == self.page, activity),
-                                   press=self._select_page(page)))
+            row = self.named("AXButton", page, value=self.sel(page == self.page, activity),
+                             press=self._select_page(page))
+            if page == "EnviousMeet":
+                # #4346: the real row is spoken with its BETA tag, "EnviousMeet, Beta".
+                key = "AXDescription" if self.description_only else "AXTitle"
+                row[key] = f"{self.t(page)}, {self.t('Beta')}"
+            rows.append(row)
         if self.duplicate_sidebar_label:
             rows.append(self.named("AXButton", self.duplicate_sidebar_label, value=self.sel(False)))
         return el("AXScrollArea", children=[el("AXGroup", children=rows)],

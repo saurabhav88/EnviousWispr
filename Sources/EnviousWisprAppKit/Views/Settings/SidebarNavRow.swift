@@ -18,6 +18,8 @@ struct SidebarNavRow<Icon: View>: View {
   /// #3385: one value drives the dot AND its words, so a Dictionary dot can no
   /// longer be announced as a file import (`SettingsShellCopy.sidebarValue`).
   var activity: SettingsShellCopy.SidebarActivity = .none
+  /// #4346: EnviousMeet's BETA tag after the label; spoken after the name.
+  var showsBeta = false
   /// Render-only: forces the hover paint so a harness can draw it. Production
   /// never passes it (`SettingsShellWiringTests` checks), so real hover comes
   /// only from the pointer.
@@ -66,6 +68,10 @@ struct SidebarNavRow<Icon: View>: View {
             )
             .fixedSize()
             .accessibilityHidden(true)
+        } else if showsBeta {
+          // #4346: in the dot's slot, like the Set up tag above. EnviousMeet never shows a dot
+          // (#3972 R47, `SettingsView.sidebarActivity`), so nothing else needs this slot.
+          BetaBadge(onSelectedRow: isSelected, compact: true)
         } else {
           Circle()
             .fill(isSelected ? Color.white : Color.stAccentSolid)
@@ -94,7 +100,7 @@ struct SidebarNavRow<Icon: View>: View {
     .buttonStyle(.plain)
     .onHover { pointerInside = $0 }
     .animation(reduceMotion ? nil : SettingsHover.animation, value: hovering)
-    .accessibilityLabel(label)
+    .accessibilityLabel(showsBeta ? "\(label), \(BetaBadge.spoken)" : label)
     .accessibilityValue(SettingsShellCopy.sidebarValue(isSelected: isSelected, activity: activity))
     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
   }
