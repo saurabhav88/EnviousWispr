@@ -339,21 +339,21 @@ struct SettingsManagerOllamaTruthTests {
   /// The refusal is scoped to Ollama. Remoteness is an Ollama-daemon fact and
   /// means nothing for a cloud provider, whose models are all "remote" in the
   /// ordinary sense — filtering them out would disable cloud polish entirely.
+  ///
+  /// #4353 D1: through the settings appliers a cloud surface always has a remembered pick, which
+  /// discovery leaves alone, so this checks the repair policy itself with nothing remembered.
   @Test("cloud auto-selection is unaffected by remoteness")
   func cloudAutoSelectionUnaffected() {
     for provider in [LLMProvider.openAI, .gemini, .claude] {
-      let settings = freshSettings()
-      settings.llmProvider = provider
-      settings.llmModel = "deleted-model"
-
-      settings.applyDiscoveredModels(
-        [
+      let repair = SettingsManager.discoveredModelRepair(
+        for: [
           LLMModelInfo(
             id: "some-model", displayName: "S", provider: provider, isAvailable: true,
             isRemote: true)
-        ], for: provider)
+        ], provider: provider, cloudModel: "deleted-model", ollamaModel: "",
+        rememberedCloudModel: nil)
 
-      #expect(settings.llmModel == "some-model", "\(provider) must still auto-select")
+      #expect(repair.cloudModel == "some-model", "\(provider) must still auto-select")
     }
   }
 
@@ -444,14 +444,17 @@ struct SettingsManagerOllamaTruthTests {
   /// Gemini id, so the foreign-provider check waves it through and a pinned
   /// user 404s on every dictation forever — discovery does not run at launch,
   /// and opening AI Polish settings only loads cached rows.
-  @Test("a persisted RETIRED model id is swept at launch")
+  ///
+  /// #4353 decision 3 supersedes this sweep: nobody's stored selection changes, retired ids
+  /// included. The upgrade seeds the memory from the stored id, and the id stays chosen.
+  @Test("a persisted RETIRED model id is kept at launch")
   func launchSweepsRetiredModel() {
     let settings = freshSettings { suite in
       suite.set("gemini", forKey: "llmProvider")
       suite.set("gemini-2.0-flash", forKey: "llmModel")
     }
 
-    #expect(settings.llmModel == LLMProvider.defaultModel(for: .gemini))
+    #expect(settings.llmModel == "gemini-2.0-flash")
   }
 
   /// The direction that protects user choice. This sweep rewrites a persisted
@@ -472,7 +475,8 @@ struct SettingsManagerOllamaTruthTests {
   /// The sweep runs during initialization, and this file persists
   /// initialization-time values by write-through rather than relying on the
   /// `didSet` observer. Without that, the repair would be forgotten on quit.
-  @Test("the swept value survives a reload")
+  /// #4353 decision 3: the kept retired id also survives a reload.
+  @Test("the kept value survives a reload")
   func sweptValuePersistsAcrossReload() {
     let suiteName = "ew-tests-\(UUID().uuidString)"
     let suite = TestDefaults.suite(suiteName)!
@@ -482,7 +486,7 @@ struct SettingsManagerOllamaTruthTests {
     _ = SettingsManager(defaults: suite)
     let reloaded = SettingsManager(defaults: suite)
 
-    #expect(reloaded.llmModel == LLMProvider.defaultModel(for: .gemini))
+    #expect(reloaded.llmModel == "gemini-2.0-flash")
     suite.removePersistentDomain(forName: suiteName)
   }
 

@@ -41,7 +41,7 @@ struct FileImportPolisherSplitTests {
   func theTwoSurfacesHoldDifferentEngines() {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     settings.fileImportLLMProvider = .some(.openAI)
 
     #expect(settings.llmProvider == .gemini, "the import pick must not touch dictation")
@@ -54,7 +54,7 @@ struct FileImportPolisherSplitTests {
   func pickingTheSameEngineIsStillAChoice() {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .gemini)
     settings.fileImportLLMProvider = .some(.gemini)
 
     settings.llmProvider = .claude
@@ -83,7 +83,7 @@ struct FileImportPolisherSplitTests {
   func followingCanBeRestored() {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     settings.fileImportLLMProvider = .some(.openAI)
     settings.followDictationForFileImportPolish()
 
@@ -117,13 +117,13 @@ struct FileImportPolisherSplitTests {
     settings.llmModel = "gpt-5-mini"
     settings.ollamaModel = "qwen3:8b"
 
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     settings.fileImportLLMProvider = .some(.openAI)
     #expect(settings.effectiveFileImportLLMModel == "gpt-5-mini")
 
     // A second call must not overwrite the user's own later edits.
     settings.fileImportLLMModel = "gpt-5-nano"
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     #expect(settings.effectiveFileImportLLMModel == "gpt-5-nano")
   }
 
@@ -136,7 +136,7 @@ struct FileImportPolisherSplitTests {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
     settings.llmModel = "gemini-3-flash"
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
 
     settings.fileImportLLMProvider = .openAI
     let resolved = settings.effectiveFileImportLLMModel
@@ -154,7 +154,7 @@ struct FileImportPolisherSplitTests {
   func bundledLiteralDoesNotLeak() {
     let settings = Self.freshSettings()
     settings.llmProvider = .egOne
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .egOne)
     settings.fileImportLLMProvider = .egOne
     #expect(settings.effectiveFileImportLLMModel == LLMProvider.egOneModelName)
 
@@ -171,7 +171,7 @@ struct FileImportPolisherSplitTests {
     let defaults = TestDefaults.suite(suite)!
     let first = SettingsManager(defaults: defaults)
     first.llmProvider = .gemini
-    first.seedFileImportPolishModelsIfNeeded()
+    first.seedFileImportPolishModelsIfNeeded(for: .openAI)
     first.fileImportLLMProvider = .openAI
 
     let reloaded = SettingsManager(defaults: defaults)

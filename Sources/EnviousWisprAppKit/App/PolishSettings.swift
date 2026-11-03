@@ -49,7 +49,7 @@ enum PolishSettings {
     switch surface {
     case .dictation: settings.llmProvider = newValue
     case .fileImport:
-      settings.seedFileImportPolishModelsIfNeeded()
+      settings.seedFileImportPolishModelsIfNeeded(for: newValue)
       settings.fileImportLLMProvider = newValue
     // #4287: the summary surface owns its fields from migration on; nothing to seed.
     case .meetingSummary: settings.meetingSummaryLLMProvider = newValue
@@ -64,7 +64,7 @@ enum PolishSettings {
     switch surface {
     case .dictation: settings.llmModel = newValue
     case .fileImport:
-      settings.seedFileImportPolishModelsIfNeeded()
+      settings.seedFileImportPolishModelsIfNeeded(for: settings.effectiveFileImportLLMProvider)
       if settings.fileImportLLMProvider == nil {
         settings.fileImportLLMProvider = settings.llmProvider
       }
