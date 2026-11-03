@@ -561,6 +561,9 @@ final class PolishSetupMonitor {
       return provider == .ollama ? .ollamaModelNotInstalled : nil
     case .ollamaNoModel:
       return provider == .ollama ? .ollamaNoModel : nil
+    case .cloudNoModel, .cloudModelUnavailable:
+      // #4353 PR 2 chunk 3 confirms these against the cloud readiness and its model menu.
+      return nil
     case .localEngineNotReady, .localEngineDownloadPending:
       guard case .problem(let problem) = readiness(for: provider) else { return nil }
       switch problem {
@@ -637,7 +640,7 @@ final class PolishSetupMonitor {
             rejected: true, configuration: configuration, observedAt: outcome.observedAt)
         }
       case .localEngineNotReady?, .localEngineDownloadPending?, .ollamaUnreachable?,
-        .ollamaModelUnavailable?, .ollamaNoModel?, nil:
+        .ollamaModelUnavailable?, .ollamaNoModel?, .cloudNoModel?, .cloudModelUnavailable?, nil:
         break
       }
       if polished {

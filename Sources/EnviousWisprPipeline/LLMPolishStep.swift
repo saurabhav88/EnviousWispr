@@ -821,6 +821,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// refused (`requestEndedAt`). Reset at every `process` so one take never reads another's.
   struct SetupObservation: Equatable {
     var probeAnsweredAt: ContinuousClock.Instant?
+    /// #4353: when the entry gate found a cloud provider with no model chosen.
+    var cloudModelCheckedAt: ContinuousClock.Instant?
     var requestStartedAt: ContinuousClock.Instant?
     var requestEndedAt: ContinuousClock.Instant?
     /// #3988: frozen where the bundled engine was found missing, before the
@@ -832,6 +834,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     var outsideStopRecovery: OutsideStopContext?
   }
   private(set) var setupObservation = SetupObservation()
+  /// The providers whose model the user picks from a key-backed catalog (#4353).
+  static let cloudProviders: Set<LLMProvider> = [.openAI, .gemini, .claude]
   /// #3988: the wall clock an outside-stop miss is stamped with. A seam for tests.
   var wallNow: @MainActor () -> Date = { Date() }
 
@@ -880,6 +884,15 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       ])
 
     if let bypassed = bypassIfTooShort(context, provider: provider) { return bypassed }
+
+    // #4353 D3: a cloud provider with no model chosen. Checked on the entry snapshot, after
+    // the short-text bypass (a too-short take stays a quiet bypass, as for every provider)
+    // and BEFORE any key read, connector or request. A surfaced skip: the runner keeps the
+    // deterministic text and shows the skipped notice.
+    if Self.cloudProviders.contains(provider), model.isEmpty {
+      setupObservation.cloudModelCheckedAt = .now
+      throw LLMError.cloudModelNotSelected(provider)
+    }
 
     Task {
       await AppLogger.shared.log(

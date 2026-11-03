@@ -513,6 +513,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         // #1305: the runner handles this case on its dedicated surfaced-skip
         // arm before reaching here. Defensive unwrap for any other caller.
         return reason
+      case .cloudModelNotSelected:
+        // #4353: the runner handles this on its surfaced-skip arm too. Defensive.
+        return .noModelSelected
       case .modelNotReady:
         // The on-device model is not usable yet (still downloading, or
         // org-restricted). Reached since #1446: an Apple Intelligence failure is

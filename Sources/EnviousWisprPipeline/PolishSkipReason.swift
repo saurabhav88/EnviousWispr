@@ -32,6 +32,8 @@ enum PolishSkipReason: Sendable, Equatable {
   case ollamaProviderUnreachable
   case ollamaModelUnavailable
   case ollamaNoModelSelected
+  /// #4353 D3: a cloud provider is chosen but no model is. Surfaced skip, before any request.
+  case cloudNoModelSelected(LLMProvider)
   case tooShort(LLMProvider)
   case frameworkUnavailable
   case unsupportedInputLanguage
@@ -57,6 +59,7 @@ enum PolishSkipReason: Sendable, Equatable {
     case .ollamaProviderUnreachable: return "local_polish_ollama_server_down"
     case .ollamaModelUnavailable: return "local_polish_ollama_model_missing"
     case .ollamaNoModelSelected: return "local_polish_ollama_no_model_selected"
+    case .cloudNoModelSelected: return "cloud_no_model_selected"
     case .tooShort: return "too_short"
     case .frameworkUnavailable: return "framework_unavailable"
     case .unsupportedInputLanguage: return "unsupported_input_language"
@@ -78,7 +81,8 @@ enum PolishSkipReason: Sendable, Equatable {
       return provider
     case .ollamaProviderUnreachable, .ollamaModelUnavailable, .ollamaNoModelSelected:
       return .ollama
-    case .tooShort(let provider), .summaryUsesEngine(let provider):
+    case .tooShort(let provider), .summaryUsesEngine(let provider),
+      .cloudNoModelSelected(let provider):
       return provider
     }
   }

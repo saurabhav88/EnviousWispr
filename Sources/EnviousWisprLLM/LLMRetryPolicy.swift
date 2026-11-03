@@ -121,6 +121,9 @@ enum LLMRetryPolicy {
         // the doomed-wait the preflight exists to remove; the next dictation
         // re-probes fresh.
         return false
+      case .cloudModelNotSelected:
+        // EXPLICIT (#4353): retrying cannot make a model selection appear.
+        return false
       default: return false
       }
     }

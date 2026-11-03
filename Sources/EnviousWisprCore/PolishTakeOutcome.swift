@@ -45,6 +45,13 @@ public enum PolishSetupEvidence: String, Sendable, Equatable, CaseIterable {
   case ollamaModelUnavailable
   /// No Ollama model is chosen.
   case ollamaNoModel
+  /// #4353: a cloud provider is chosen but no model is. Seen at the polish step's entry gate,
+  /// before any request.
+  case cloudNoModel
+  /// #4353: the cloud provider answered that the chosen model does not exist
+  /// (`.classified(.modelUnavailable)`, HTTP 404, from a cloud connector). Seen at the
+  /// provider's answer.
+  case cloudModelUnavailable
 }
 
 /// A confirmed, actionable setup problem: the `polish_setup_problem` value on

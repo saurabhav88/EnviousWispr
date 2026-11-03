@@ -1016,6 +1016,8 @@ struct TextProcessingRunnerCaptureTests {
       ("rejected key (classified)", { LLMError.classified(.apiKeyRejected) }, .failed, .cloudKeyRejectedClassified),
       ("out of credits", { LLMError.classified(.outOfCredits) }, .failed, nil),
       ("server error", { LLMError.classified(.providerServerError) }, .failed, nil),
+      // #4353: a cloud model the provider says does not exist is typed evidence.
+      ("cloud model gone (404)", { LLMError.classified(.modelUnavailable) }, .failed, .cloudModelUnavailable),
       ("local engine not ready", { LLMError.localEngineSkipped(.notReady, .egOne) }, .skippedSilently, .localEngineNotReady),
       ("local engine download pending", { LLMError.egOneSkipped(.downloadPending) }, .skippedSilently, .localEngineDownloadPending),
       ("local engine crashed", { LLMError.localEngineSkipped(.crashed, .egOne) }, .skippedSilently, nil),
@@ -1109,12 +1111,12 @@ struct TextProcessingRunnerCaptureTests {
   @Test("typed errors map to evidence; messages never do")
   func evidenceIsTyped() {
     #expect(
-      TextProcessingRunner.setupEvidence(from: LLMError.requestFailed("invalid api key")) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: LLMError.classified(.accessDenied)) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: LLMError.modelNotFound("x")) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: URLError(.notConnectedToInternet)) == nil)
+      TextProcessingRunner.setupEvidence(from: LLMError.requestFailed("invalid api key"), provider: .openAI) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.classified(.accessDenied), provider: .openAI) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.modelNotFound("x"), provider: .openAI) == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: URLError(.notConnectedToInternet), provider: .openAI) == nil)
     #expect(
-      TextProcessingRunner.setupEvidence(from: LLMError.egOneSkipped(.notReady))
+      TextProcessingRunner.setupEvidence(from: LLMError.egOneSkipped(.notReady), provider: .openAI)
         == .localEngineNotReady)
   }
 

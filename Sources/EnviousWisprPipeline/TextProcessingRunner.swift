@@ -454,6 +454,13 @@ internal final class TextProcessingRunner {
         // #4287 PR 3: the same local engine was writing an EnviousMeet summary. A skip with a
         // notice, like the Ollama preflight class above: no Sentry capture, no failure count.
         let summaryBusy = error as? SummaryEngineBusy
+        // #4353 D3: a cloud provider with no model chosen, found before any request. The same
+        // surfaced-skip class: notice yes, Sentry no, `llm.polish_skipped` once, deterministic
+        // text kept, and a bypass (not failed cleanup) for the import's report.
+        var cloudNoModelProvider: LLMProvider?
+        if let llmError = error as? LLMError, case .cloudModelNotSelected(let provider) = llmError {
+          cloudNoModelProvider = provider
+        }
         let reason: String
         if isAppleIntelligencePolishTimeout {
           reason =
@@ -470,6 +477,9 @@ internal final class TextProcessingRunner {
         } else if let summaryBusy {
           reason =
             "skipped: \(summaryBusy.provider.rawValue) is writing an EnviousMeet summary, using deterministic text"
+        } else if let cloudNoModelProvider {
+          reason =
+            "skipped: no \(cloudNoModelProvider.rawValue) model selected, using deterministic text"
         } else {
           reason = "failed: \(error.localizedDescription)"
         }
@@ -539,9 +549,14 @@ internal final class TextProcessingRunner {
         let polishSkippedSilently =
           isSilentPolishSkip || contextWindowSkip != nil || isAppleIntelligencePolishTimeout
           || isLocalEnginePolishTimeout || isCancellationLike
-        if polishSkippedSilently || summaryBusy != nil { context.polishWasBypassed = true }
+        if polishSkippedSilently || summaryBusy != nil || cloudNoModelProvider != nil {
+          context.polishWasBypassed = true
+        }
         if step.errorSurfacePolicy == .surface, let summaryBusy {
           polishNotice = summaryBusy.notice
+        } else if step.errorSurfacePolicy == .surface, let cloudNoModelProvider {
+          // The existing skipped-tone sentence ("no polish model is selected"); no new copy.
+          polishNotice = PolishFailureReason.noModelSelected.notice(provider: cloudNoModelProvider)
         } else if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed
@@ -623,13 +638,13 @@ internal final class TextProcessingRunner {
           } else if polishSkippedSilently {
             result = .skippedSilently
           } else if localPolishSkipReason != nil || summaryBusy != nil
-            || polishNotice?.leadIn == .skipped
+            || cloudNoModelProvider != nil || polishNotice?.leadIn == .skipped
           {
             result = .skippedWithNotice
           } else {
             result = .failed
           }
-          let evidence = Self.setupEvidence(from: error)
+          let evidence = Self.setupEvidence(from: error, provider: polishProviderAtStart)
           settlePolishOutcome(
             result, evidence,
             observedAt: Self.observationStamp(
@@ -675,6 +690,9 @@ internal final class TextProcessingRunner {
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         } else if let summaryBusy {
           let reason = PolishSkipReason.summaryUsesEngine(summaryBusy.provider)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+        } else if let cloudNoModelProvider {
+          let reason = PolishSkipReason.cloudNoModelSelected(cloudNoModelProvider)
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
@@ -727,6 +745,11 @@ internal final class TextProcessingRunner {
       stamp = seen?.requestEndedAt
     case .ollamaUnreachable?, .ollamaModelUnavailable?, .ollamaNoModel?:
       stamp = seen?.probeAnsweredAt
+    case .cloudNoModel?:
+      // No request was made; the entry gate is where it was seen.
+      stamp = seen?.cloudModelCheckedAt
+    case .cloudModelUnavailable?:
+      stamp = seen?.requestEndedAt
     case .localEngineNotReady?, .localEngineDownloadPending?:
       stamp = seen?.requestEndedAt
     case nil:
@@ -738,9 +761,18 @@ internal final class TextProcessingRunner {
   /// #3438: what a polish error says about the setup, from its TYPE only (never a message).
   /// Nil for every error that is not about setup: timeouts, length limits, server errors,
   /// crashes, output rejection, a missing Apple Intelligence.
-  static func setupEvidence(from error: any Error) -> PolishSetupEvidence? {
+  ///
+  /// `provider` is the step's entry snapshot. It is read for ONE question: a model the provider
+  /// says does not exist (`.modelUnavailable`, HTTP 404) is a cloud model problem only for a
+  /// cloud provider. A 403 (`.accessDenied`) is not counted: at request time it can be about
+  /// the whole key or project, not this model.
+  static func setupEvidence(from error: any Error, provider: LLMProvider?) -> PolishSetupEvidence? {
     guard let llmError = error as? LLMError else { return nil }
     switch llmError {
+    case .cloudModelNotSelected: return .cloudNoModel
+    case .classified(.modelUnavailable):
+      guard let provider, LLMPolishStep.cloudProviders.contains(provider) else { return nil }
+      return .cloudModelUnavailable
     case .classified(.apiKeyMissing): return .cloudKeyMissing
     case .classified(.apiKeyUnreadable): return .cloudKeyUnreadable
     case .invalidAPIKey: return .cloudKeyRejected
