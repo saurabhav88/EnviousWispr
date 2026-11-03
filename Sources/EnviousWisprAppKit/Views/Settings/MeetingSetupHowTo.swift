@@ -374,13 +374,9 @@ private struct MeetingHowToApps: View {
           }
         }
         // The eighth tile: the same calls in a web browser, so the 4-wide grid has no gap.
+        // Chrome's own icon when it is installed (founder 2026-11-03); a globe otherwise.
         VStack(spacing: 5) {
-          Image(systemName: "globe")
-            .font(.system(size: 18, weight: .semibold))
-            .foregroundStyle(Color.stAccentSolid)
-            .frame(width: 36, height: 36)
-            .background(
-              Color.white, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+          browserMark
           Text(
             "In a browser",
             comment:
@@ -401,6 +397,19 @@ private struct MeetingHowToApps: View {
       .multilineTextAlignment(.center)
     }
     .padding(14)
+  }
+
+  @ViewBuilder private var browserMark: some View {
+    if let chrome = CallAppIcon.icon(bundleID: "com.google.Chrome") {
+      Image(nsImage: chrome).resizable().aspectRatio(contentMode: .fit)
+        .frame(width: 36, height: 36)
+    } else {
+      Image(systemName: "globe")
+        .font(.system(size: 18, weight: .semibold))
+        .foregroundStyle(Color.stAccentSolid)
+        .frame(width: 36, height: 36)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
   }
 
   private static func label(_ family: CallAppFamily) -> String {
@@ -577,7 +586,10 @@ private struct MeetingHowToHistory: View {
 private struct MeetingHowToSummaries: View {
   private var groups: [(heading: String, names: [String])] {
     PolishRailGroup.allCases.compactMap { group in
-      let names = MeetingSummaryEngineChoices.providers.filter { $0.group == group }.map(\.name)
+      // The short brand name on this small card (founder 2026-11-03): Gemini, not Google Gemini.
+      let names = MeetingSummaryEngineChoices.providers.filter { $0.group == group }.map {
+        $0.provider == .gemini ? "Gemini" : $0.name
+      }
       return names.isEmpty ? nil : (group.heading, names)
     }
   }
