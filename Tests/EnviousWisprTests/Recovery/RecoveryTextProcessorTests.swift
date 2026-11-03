@@ -305,52 +305,27 @@ struct RecoveryTextProcessorTests {
     #expect(handRolledSeams.isEmpty, "recovery must name .silent, not per-seam closures")
   }
 
-  // MARK: - Retired-model repair at the replay seam (#1770)
+  // MARK: - The replay seam requests the recorded model as chosen (#4353)
 
-  /// The pure decision, tested directly: withdrawn ids are replaced, live ids
-  /// are not. The negative direction is the one that protects user choice —
-  /// a rule that caught legitimate models would silently override what the
-  /// user picked, which is worse than the bug it fixes.
-  @Test("retired ids are replaced; live ids survive untouched")
-  func retiredModelSubstitution() {
-    #expect(
-      LLMProvider.replacingRetiredModel("gemini-2.0-flash", for: .gemini)
-        == LLMProvider.defaultModel(for: .gemini))
-    for live in ["gemini-3.6-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite-preview"] {
-      #expect(LLMProvider.replacingRetiredModel(live, for: .gemini) == live)
-    }
-  }
-
-  /// The retirement is Google's, so it may only ever apply to Google's provider.
-  /// An Ollama model is named by the USER: `ollama cp` will happily produce a
-  /// local model called `gemini-2.0-flash`, and that is a legitimate choice.
-  /// A provider-blind membership test would rewrite it to `llama3.2` on replay,
-  /// so a recovered take would polish through the wrong local model — or skip
-  /// polish entirely if `llama3.2` is not installed.
-  @Test("a retired GEMINI id is left alone under a different provider")
+  /// The retirement is Google's, so the membership test may only ever apply to Google's
+  /// provider. An Ollama model is named by the USER: `ollama cp` will happily produce a local
+  /// model called `gemini-2.0-flash`, and that is a legitimate choice.
+  @Test("a retired GEMINI id is retired only under Gemini")
   func retiredIDIsScopedToItsProvider() {
-    for foreign in [LLMProvider.ollama, .openAI, .claude] {
-      #expect(
-        LLMProvider.replacingRetiredModel("gemini-2.0-flash", for: foreign) == "gemini-2.0-flash",
-        "\(foreign) never had this id withdrawn — only Gemini did")
-    }
-    // And the membership test itself, so the scoping is pinned at the authority
-    // rather than only at one caller.
     #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: .gemini))
-    #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: .ollama) == false)
+    for foreign in [LLMProvider.ollama, .openAI, .claude] {
+      #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: foreign) == false)
+    }
   }
 
-  /// The WIRING, proved without adding a production test seam — `steps` is
-  /// private by design, and the established pattern in this file is a static
-  /// source check (see the `.silent` tests above).
+  /// The WIRING, proved without adding a production test seam (`steps` is private by
+  /// design; the established pattern in this file is a static source check).
   ///
-  /// Why this matters: recovery deliberately replays the model recorded in the
-  /// spool at capture time, so it BYPASSES `SettingsManager`'s sweep entirely.
-  /// A spool captured while the user was pinned to a retired id would replay
-  /// against a dead model and return unpolished text. A substitution helper
-  /// nothing calls is not a repair.
-  @Test("the replay seam actually routes the snapshot model through the retired-id repair")
-  func recoveryAppliesRetiredModelRepair() throws {
+  /// #4353 decision 4 supersedes #1770 here: recovery replays the recorded model as chosen.
+  /// Swapping a withdrawn id for the default made the requested model disagree with the one
+  /// the user chose and still sees in Settings.
+  @Test("the replay seam requests the snapshot model as recorded")
+  func recoveryReplaysRecordedModel() throws {
     let path = RepoRoot.url.appending(
       path: "Sources/EnviousWisprPipeline/RecoveryTextProcessor.swift")
     let source = try String(contentsOf: path, encoding: .utf8)
@@ -359,16 +334,8 @@ struct RecoveryTextProcessorTests {
       .filter { !$0.hasPrefix("//") }
       .joined(separator: " ")
 
-    let routesThroughRepair = code.contains(
-      "steps.llmPolish.llmModel = LLMProvider.replacingRetiredModel(")
-    // The regression: assigning the snapshot id straight through, which is what
-    // this file did before #1770 and what a careless revert would restore.
-    let assignsRawSnapshotModel = code.contains("steps.llmPolish.llmModel = snapshot.llmModel")
-
-    #expect(routesThroughRepair)
-    #expect(
-      assignsRawSnapshotModel == false,
-      "recovery must not replay a raw snapshot model id — a retired one 404s")
+    #expect(code.contains("steps.llmPolish.llmModel = snapshot.llmModel"))
+    #expect(code.contains("replacingRetiredModel") == false)
   }
   // MARK: - Blank polish never reaches History (#1948, emoji design review Q1)
 

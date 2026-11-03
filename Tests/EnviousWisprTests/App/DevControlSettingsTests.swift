@@ -1399,7 +1399,9 @@
       #expect(loads == 0)
     }
 
-    @Test("cache repair stays on the requested surface and is attributed even on refusal")
+    /// #4353 D1 + decision 7: a remembered cloud pick, even a leftover audio-input id, is never
+    /// swapped by a cache load. The cache is still pruned, and a refused write changes nothing.
+    @Test("a cache load before a refusal prunes the cache and keeps every surface's pick")
     func modelCacheRepairBeforeRefusal() throws {
       for surface in [ProviderSetupSurface.dictation, .fileImport] {
         let (_, cache, settings) = Self.fixture()
@@ -1431,11 +1433,10 @@
           DevControlSettings.write(
             key, value: "not-in-catalog", force: false, context: context, to: settings
           ).code == "badValue")
-        #expect(PolishSettings.cloudModel(on: surface, in: settings) == "gemini-3.7-flash")
+        #expect(PolishSettings.cloudModel(on: surface, in: settings) == "gemini-3.5-transcribe")
         let other: ProviderSetupSurface = surface == .dictation ? .fileImport : .dictation
         #expect(PolishSettings.cloudModel(on: other, in: settings) == "gemini-3.5-transcribe")
-        #expect(fired.isEmpty == false)
-        #expect(fired.allSatisfy { $0.1 })
+        #expect(fired.isEmpty)
         #expect(settings.isDevControlWrite == false)
         #expect(discovery.discoveredModels.map(\.id) == ["gemini-3.7-flash"])
       }

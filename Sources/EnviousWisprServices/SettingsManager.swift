@@ -158,6 +158,8 @@ public final class SettingsManager {
   public nonisolated static let unifiedDefaultsKeys: [String] = [
     "selectedBackend", "recordingMode", "llmProvider", "lastLLMProvider", "llmModel", "ollamaModel",
     "meetingSummaryLLMProvider", "meetingSummaryLLMModel", "meetingSummaryOllamaModel",
+    SettingsManager.dictationCloudModelMemoryKey, SettingsManager.fileImportCloudModelMemoryKey,
+    SettingsManager.meetingSummaryCloudModelMemoryKey,
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
@@ -272,6 +274,9 @@ public final class SettingsManager {
       // consistent across providers (turning polish off from Apple Intelligence
       // vs OpenAI both read `user`). Only async background discovery
       // (`applyDiscoveredModels`) is `system`.
+      if oldValue != llmProvider, CloudModelMemory.cloudProviders.contains(llmProvider) {
+        llmModel = dictationCloudModelMemory.model(for: llmProvider) ?? ""
+      }
       canonicalizeLLMModelForProvider()
       // Remember the last real engine so the top on/off toggle can restore it
       // when polish is turned back on (#1285). `.none` is the "off" state, not
@@ -310,7 +315,8 @@ public final class SettingsManager {
   /// `modelIDLooksLikeCloudProvider` catches that case as well.
   private func canonicalizeLLMModelForProvider() {
     llmModel = Self.normalizedModel(
-      for: llmProvider, cloudModel: llmModel, ollamaModel: ollamaModel)
+      for: llmProvider, cloudModel: llmModel, ollamaModel: ollamaModel,
+      remembered: dictationCloudModelMemory.model(for: llmProvider))
   }
 
   /// #2772: the same sweep for the FILE-IMPORT provider, run synchronously on every import
@@ -327,7 +333,8 @@ public final class SettingsManager {
     fileImportLLMModel = Self.normalizedModel(
       for: effectiveFileImportLLMProvider,
       cloudModel: fileImportLLMModel,
-      ollamaModel: fileImportOllamaModel)
+      ollamaModel: fileImportOllamaModel,
+      remembered: fileImportCloudModelMemory.model(for: effectiveFileImportLLMProvider))
   }
 
   /// Which model id a provider may legitimately carry — ONE policy, two surfaces (#2772).
@@ -339,8 +346,13 @@ public final class SettingsManager {
   /// The same class applies BETWEEN cloud providers — OpenAI→Gemini→Claude with a real
   /// model selected left it unswept and every request failed until async discovery
   /// happened to repair it (#158, Codex r4); `modelIDLooksLikeCloudProvider` catches that.
+  ///
+  /// #4353 D1: `remembered` is the surface's `CloudModelMemory` entry for `provider`. When the
+  /// current id cannot serve a cloud provider (a provider switch left the previous provider's
+  /// id, or a fixed literal, or nothing), the remembered id comes back byte for byte, so a
+  /// provider round trip returns the user's own pick instead of the provider default.
   static func normalizedModel(
-    for provider: LLMProvider, cloudModel: String, ollamaModel: String
+    for provider: LLMProvider, cloudModel: String, ollamaModel: String, remembered: String?
   ) -> String {
     let fixedLiterals = [
       "apple-intelligence", LLMProvider.egOneModelName, LLMProvider.s1MiniModelName,
@@ -379,15 +391,99 @@ public final class SettingsManager {
         || LLMProvider.isRetiredModel(cloudModel, for: provider)
         || !LLMProvider.modelIDLooksLikeCloudProvider(cloudModel, provider)
       {
+        // #4353 D1: no retirement veto on the remembered id. Deciding that a chosen model no
+        // longer works belongs to the request, not to a launch-time sweep (plan D1/D2).
+        if let remembered, CloudModelMemory.accepts(remembered, for: provider) {
+          return remembered
+        }
         return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
       }
       return cloudModel
     }
   }
 
+  // MARK: - Cloud model memory (#4353 D1)
+
+  nonisolated static let dictationCloudModelMemoryKey = "cloudModelByProvider"
+  nonisolated static let fileImportCloudModelMemoryKey = "fileImportCloudModelByProvider"
+  nonisolated static let meetingSummaryCloudModelMemoryKey = "meetingSummaryCloudModelByProvider"
+
+  /// The cloud model each surface last had for each cloud provider. One `llmModel` per surface
+  /// serves every cloud provider, so without these a provider round trip refilled the provider
+  /// default and the user's pick was lost (#4353). Written by the model fields' `didSet`s
+  /// (every accepted write, user and system alike), read by `normalizedModel` and by the
+  /// discovery repair, which leaves a remembered cloud selection alone.
+  ///
+  /// On an actual provider CHANGE to a cloud provider the field never carries over: the provider
+  /// `didSet`s put the remembered entry, or nothing (which canonicalization fills), in its
+  /// place before canonicalizing. The leftover belongs to the previous provider, and the prefix
+  /// check cannot tell ownership: an Ollama model can carry a cloud-shaped name (`gpt-oss:20b`
+  /// passes OpenAI's check), directly, through polish-off, or through an import override seeded
+  /// from dictation's Ollama pick. Kept, it would be recorded as the cloud provider's choice.
+  public private(set) var dictationCloudModelMemory: CloudModelMemory {
+    didSet {
+      Self.persist(dictationCloudModelMemory, key: Self.dictationCloudModelMemoryKey, in: defaults)
+    }
+  }
+
+  /// Transcribe a File's own memory, written only while the import overrides dictation.
+  public private(set) var fileImportCloudModelMemory: CloudModelMemory {
+    didSet {
+      Self.persist(fileImportCloudModelMemory, key: Self.fileImportCloudModelMemoryKey, in: defaults)
+    }
+  }
+
+  /// Meeting summaries' own memory.
+  public private(set) var meetingSummaryCloudModelMemory: CloudModelMemory {
+    didSet {
+      Self.persist(
+        meetingSummaryCloudModelMemory, key: Self.meetingSummaryCloudModelMemoryKey, in: defaults)
+    }
+  }
+
+  /// Records `model` for `provider` in one surface's memory. Writes nothing when the pair is not
+  /// a cloud selection or the entry already holds it, so an unchanged write does not persist.
+  private func recordCloudModel(
+    _ model: String, for provider: LLMProvider,
+    in memory: ReferenceWritableKeyPath<SettingsManager, CloudModelMemory>
+  ) {
+    var updated = self[keyPath: memory]
+    guard updated.model(for: provider) != model, updated.record(model, for: provider) else {
+      return
+    }
+    self[keyPath: memory] = updated
+  }
+
+  private static func persist(_ memory: CloudModelMemory, key: String, in defaults: UserDefaults) {
+    guard let data = try? JSONEncoder().encode(memory) else { return }
+    defaults.set(data, forKey: key)
+  }
+
+  /// The stored memory, or `nil` when the key is absent or unreadable. `nil` means "seed me";
+  /// a present empty memory means seeding already ran and must not repeat.
+  private static func loadCloudModelMemory(key: String, from defaults: UserDefaults)
+    -> CloudModelMemory?
+  {
+    guard let data = defaults.data(forKey: key) else { return nil }
+    return try? JSONDecoder().decode(CloudModelMemory.self, from: data)
+  }
+
+  /// Seeds one surface's memory ONCE, from the RAW stored model (never an init fallback), and
+  /// persists it even when empty so the seed never repeats (#4353 D1 migration).
+  private func seedCloudModelMemoryIfAbsent(
+    _ memory: ReferenceWritableKeyPath<SettingsManager, CloudModelMemory>, key: String,
+    rawModel: String?, provider: LLMProvider?
+  ) {
+    guard Self.loadCloudModelMemory(key: key, from: defaults) == nil else { return }
+    var seeded = CloudModelMemory()
+    if let rawModel, let provider { seeded.record(rawModel, for: provider) }
+    self[keyPath: memory] = seeded
+  }
+
   public var llmModel: String {
     didSet {
       defaults.set(llmModel, forKey: "llmModel")
+      recordCloudModel(llmModel, for: llmProvider, in: \.dictationCloudModelMemory)
       onChange?(.llmModel)
     }
   }
@@ -430,6 +526,11 @@ public final class SettingsManager {
       // Synchronous, and before the notification: a provider change can leave the model
       // field holding the PREVIOUS provider's id, and every consumer of the change must
       // see the pair already consistent. Chunk-2 review, blocking finding 1.
+      if oldValue != fileImportLLMProvider, let chosen = fileImportLLMProvider,
+        CloudModelMemory.cloudProviders.contains(chosen)
+      {
+        fileImportLLMModel = fileImportCloudModelMemory.model(for: chosen) ?? ""
+      }
       canonicalizeFileImportLLMModelForProvider()
       onChange?(.fileImportLLMProvider)
     }
@@ -440,6 +541,10 @@ public final class SettingsManager {
   public var fileImportLLMModel: String {
     didSet {
       defaults.set(fileImportLLMModel, forKey: "fileImportLLMModel")
+      // A follower has no import choice of its own: its model is dictation's.
+      if let overridden = fileImportLLMProvider {
+        recordCloudModel(fileImportLLMModel, for: overridden, in: \.fileImportCloudModelMemory)
+      }
       onChange?(.fileImportLLMModel)
     }
   }
@@ -465,9 +570,19 @@ public final class SettingsManager {
   ///
   /// A no-op once an override exists, because after that the import fields are the user's
   /// own and copying over them would discard a real choice.
-  public func seedFileImportPolishModelsIfNeeded() {
+  ///
+  /// #4353 D1: `target` is the provider the import is about to use. The import's cloud field
+  /// starts from the import's OWN remembered entry for `target` when it has one (an earlier
+  /// override), else from dictation's entry for `target`, which is then copied into the
+  /// import's memory. No other entry is copied.
+  public func seedFileImportPolishModelsIfNeeded(for target: LLMProvider) {
     guard fileImportLLMProvider == nil else { return }
-    fileImportLLMModel = llmModel
+    if fileImportCloudModelMemory.model(for: target) == nil,
+      let dictationPick = dictationCloudModelMemory.model(for: target)
+    {
+      recordCloudModel(dictationPick, for: target, in: \.fileImportCloudModelMemory)
+    }
+    fileImportLLMModel = fileImportCloudModelMemory.model(for: target) ?? llmModel
     fileImportOllamaModel = ollamaModel
   }
 
@@ -532,6 +647,11 @@ public final class SettingsManager {
       }
       // Synchronous, before any notification, for the reason the import twin gives: a
       // provider change can leave the cloud field holding the previous provider's id.
+      if oldValue != meetingSummaryLLMProvider, let chosen = meetingSummaryLLMProvider,
+        CloudModelMemory.cloudProviders.contains(chosen)
+      {
+        meetingSummaryLLMModel = meetingSummaryCloudModelMemory.model(for: chosen) ?? ""
+      }
       canonicalizeMeetingSummaryLLMModelForProvider()
       onChange?(.meetingSummaryLLMProvider)
     }
@@ -541,6 +661,10 @@ public final class SettingsManager {
   public var meetingSummaryLLMModel: String {
     didSet {
       defaults.set(meetingSummaryLLMModel, forKey: "meetingSummaryLLMModel")
+      if let provider = meetingSummaryLLMProvider {
+        recordCloudModel(
+          meetingSummaryLLMModel, for: provider, in: \.meetingSummaryCloudModelMemory)
+      }
       onChange?(.meetingSummaryLLMModel)
     }
   }
@@ -580,7 +704,8 @@ public final class SettingsManager {
     meetingSummaryLLMModel = Self.normalizedModel(
       for: provider,
       cloudModel: meetingSummaryLLMModel,
-      ollamaModel: meetingSummaryOllamaModel)
+      ollamaModel: meetingSummaryOllamaModel,
+      remembered: meetingSummaryCloudModelMemory.model(for: provider))
   }
 
   /// #4287 founder decisions 13-15: the summary engine each user starts with, mapped ONCE
@@ -627,15 +752,24 @@ public final class SettingsManager {
   /// Never overwrites a stored choice: the key's presence, not a readable value, is the
   /// completion marker. Models are written BEFORE the provider key, so an interruption
   /// between them leaves the key absent and the next launch repeats the same mapping.
-  func migrateMeetingSummaryEngineIfNeeded() {
-    guard defaults.object(forKey: Self.meetingSummaryProviderKey) == nil else { return }
-    guard onboardingState == .completed || onboardingEverCompleted else { return }
+  ///
+  /// #4353 D1: the copied dictation model is remembered for the mapped provider BEFORE the
+  /// provider write, whose canonicalization then restores it byte for byte. Without that, a
+  /// copied retired id (a summary field written while the provider is still nil records
+  /// nothing) was replaced by the default the moment the provider landed. At launch this runs
+  /// before any canonicalization, so it copies the stored dictation model.
+  @discardableResult
+  func migrateMeetingSummaryEngineIfNeeded() -> Bool {
+    guard defaults.object(forKey: Self.meetingSummaryProviderKey) == nil else { return false }
+    guard onboardingState == .completed || onboardingEverCompleted else { return false }
     let mapped = Self.migratedMeetingSummaryProvider(
       storedDictationProvider: defaults.object(forKey: "llmProvider"),
       resolvedDictationProvider: llmProvider)
     meetingSummaryLLMModel = llmModel
     meetingSummaryOllamaModel = ollamaModel
+    recordCloudModel(llmModel, for: mapped, in: \.meetingSummaryCloudModelMemory)
     meetingSummaryLLMProvider = mapped
+    return true
   }
 
   // MARK: - S1-mini control line (#2649)
@@ -1707,7 +1841,21 @@ public final class SettingsManager {
       ?? (resolvedProvider != .none ? resolvedProvider : SettingsDefaultValues.lastLLMProvider)
     lastLLMProvider = seededLastProvider
     defaults.set(seededLastProvider.rawValue, forKey: "lastLLMProvider")
-    llmModel = defaults.string(forKey: "llmModel") ?? LLMProvider.defaultModel(for: .openAI)
+    // #4353 D1: the RAW stored models, captured before any fallback is inserted, so the
+    // one-time memory seed never mistakes an init default for a user's selection.
+    let rawLLMModel = defaults.string(forKey: "llmModel")
+    let rawFileImportLLMModel = defaults.string(forKey: "fileImportLLMModel")
+    let rawMeetingSummaryLLMModel = defaults.string(forKey: "meetingSummaryLLMModel")
+    dictationCloudModelMemory =
+      Self.loadCloudModelMemory(key: Self.dictationCloudModelMemoryKey, from: defaults)
+      ?? CloudModelMemory()
+    fileImportCloudModelMemory =
+      Self.loadCloudModelMemory(key: Self.fileImportCloudModelMemoryKey, from: defaults)
+      ?? CloudModelMemory()
+    meetingSummaryCloudModelMemory =
+      Self.loadCloudModelMemory(key: Self.meetingSummaryCloudModelMemoryKey, from: defaults)
+      ?? CloudModelMemory()
+    llmModel = rawLLMModel ?? LLMProvider.defaultModel(for: .openAI)
     ollamaModel = defaults.string(forKey: "ollamaModel") ?? SettingsDefaultValues.ollamaModel
     // #2772: ABSENT means follow dictation, so the key genuinely not being there is the
     // default and `nil` must survive the round trip. `object(forKey:)` distinguishes an
@@ -2061,6 +2209,21 @@ public final class SettingsManager {
     lastSeenWhatsNewVersion = storedWhatsNew
     hasUnreadWhatsNew = (storedWhatsNew != WhatsNewConstants.currentContentVersion)
 
+    // #4353 D1: seed each absent memory from raw stored values, run the summary migration on
+    // the still-raw dictation model, seed the summary memory, and only then canonicalize.
+    // Dictation turned off keeps its pick under the engine the on/off toggle restores.
+    seedCloudModelMemoryIfAbsent(
+      \.dictationCloudModelMemory, key: Self.dictationCloudModelMemoryKey,
+      rawModel: rawLLMModel, provider: llmProvider == .none ? lastLLMProvider : llmProvider)
+    // A follower's import fields are dormant, never a selection.
+    seedCloudModelMemoryIfAbsent(
+      \.fileImportCloudModelMemory, key: Self.fileImportCloudModelMemoryKey,
+      rawModel: rawFileImportLLMModel, provider: fileImportLLMProvider)
+    let migratedSummary = migrateMeetingSummaryEngineIfNeeded()
+    seedCloudModelMemoryIfAbsent(
+      \.meetingSummaryCloudModelMemory, key: Self.meetingSummaryCloudModelMemoryKey,
+      rawModel: migratedSummary ? rawLLMModel : rawMeetingSummaryLLMModel,
+      provider: meetingSummaryLLMProvider)
     // Canonicalize provider-coupled model names after all properties are loaded.
     canonicalizeLLMModelForProvider()
     // #2772: the IMPORT's fields need the same launch-time repair. A model id retired by a
@@ -2068,10 +2231,9 @@ public final class SettingsManager {
     // in `defaults` and no discovery runs at launch to fix it. The helper skips a follower,
     // whose fields are dictation's and already repaired one line up.
     canonicalizeFileImportLLMModelForProvider()
-    // #4287: the same launch-time repair for the summary fields, then the one-time
-    // migration, which needs every dictation field loaded and canonical first.
+    // #4287: the same launch-time repair for the summary fields (the one-time summary
+    // migration ran above, before any canonicalization; #4353 D1).
     canonicalizeMeetingSummaryLLMModelForProvider()
-    migrateMeetingSummaryEngineIfNeeded()
     // Initial assignments bypass didSet; repair old incompatible ON values once loaded.
     normalizeStreamingPreference()
   }
@@ -2102,10 +2264,17 @@ public final class SettingsManager {
   ///
   /// Pure and static, so `FileImportDiscoveryRepairTests` can walk the grid, and so
   /// the two surfaces cannot come to disagree about what a catalog means.
+  ///
+  /// #4353 D1: `rememberedCloudModel` is the surface's memory entry for `provider`. A cloud
+  /// provider with a remembered selection is never repaired by discovery, in any branch: the
+  /// user's choice stands, and a model that stopped working fails at request time instead.
   public static func discoveredModelRepair(
     for models: [LLMModelInfo], provider: LLMProvider,
-    cloudModel: String, ollamaModel: String
+    cloudModel: String, ollamaModel: String, rememberedCloudModel: String?
   ) -> DiscoveredModelRepair {
+    if CloudModelMemory.cloudProviders.contains(provider), rememberedCloudModel != nil {
+      return DiscoveredModelRepair()
+    }
     if models.isEmpty {
       // #1305: for Ollama, empty discovery means NOTHING is installed — arming
       // the remembered `ollamaModel` name here was the root cause of the
@@ -2275,7 +2444,8 @@ public final class SettingsManager {
     isApplyingSystemWrite = true
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
-      for: models, provider: provider, cloudModel: llmModel, ollamaModel: ollamaModel)
+      for: models, provider: provider, cloudModel: llmModel, ollamaModel: ollamaModel,
+      rememberedCloudModel: dictationCloudModelMemory.model(for: provider))
     // The lifted policy preserves every model-value decision; the branch-by-branch
     // comparison against the pre-lift body is in the chunk 3 review record.
     //
@@ -2307,7 +2477,8 @@ public final class SettingsManager {
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
       for: models, provider: provider,
-      cloudModel: meetingSummaryLLMModel, ollamaModel: meetingSummaryOllamaModel)
+      cloudModel: meetingSummaryLLMModel, ollamaModel: meetingSummaryOllamaModel,
+      rememberedCloudModel: meetingSummaryCloudModelMemory.model(for: provider))
     if let newCloud = repair.cloudModel, meetingSummaryLLMModel != newCloud {
       meetingSummaryLLMModel = newCloud
     }
@@ -2328,7 +2499,8 @@ public final class SettingsManager {
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
       for: models, provider: provider,
-      cloudModel: fileImportLLMModel, ollamaModel: fileImportOllamaModel)
+      cloudModel: fileImportLLMModel, ollamaModel: fileImportOllamaModel,
+      rememberedCloudModel: fileImportCloudModelMemory.model(for: provider))
     if let newCloud = repair.cloudModel, fileImportLLMModel != newCloud {
       fileImportLLMModel = newCloud
     }

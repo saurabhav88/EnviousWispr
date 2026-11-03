@@ -163,7 +163,8 @@ struct LLMDiscoveryCachePruneTests {
     #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
   }
 
-  @Test("a polish armed on the pruned id is repaired to a model that polishes text")
+  /// #4353 decision 7: a leftover audio-input pick is not swapped; it gets the normal notice.
+  @Test("a polish armed on the pruned id stays chosen")
   func armedDeadIDIsRepaired() {
     let (c, cache, settings) = Self.fixture()
     settings.llmProvider = .gemini
@@ -172,13 +173,15 @@ struct LLMDiscoveryCachePruneTests {
 
     c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
 
-    #expect(settings.llmModel == "gemini-3.7-flash")
+    #expect(settings.llmModel == "gemini-3.5-transcribe")
+    #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
   }
 
   /// Both surfaces armed on the dead id share one cache. Dictation's pane opens first and
   /// prunes it; the import's pane then loads an already-clean cache and must still repair
   /// its own armed model.
-  @Test("a second surface armed on the dead id is repaired from an already-pruned cache")
+  /// #4353 decision 7: neither surface's leftover audio-input pick is swapped.
+  @Test("a second surface armed on the dead id stays chosen after an already-pruned cache")
   func secondSurfaceIsRepairedWithoutPruning() {
     let (c, cache, settings) = Self.fixture()
     settings.llmProvider = .gemini
@@ -192,7 +195,7 @@ struct LLMDiscoveryCachePruneTests {
     #expect(settings.fileImportLLMModel == "gemini-3.5-transcribe", "the import was repaired by dictation's load")
 
     c.loadCachedModels(for: .gemini, settings: settings, surface: .fileImport)
-    #expect(settings.fileImportLLMModel == "gemini-3.7-flash")
+    #expect(settings.fileImportLLMModel == "gemini-3.5-transcribe")
   }
 
   @Test("a clean cache is left alone: no rewrite, no repair")

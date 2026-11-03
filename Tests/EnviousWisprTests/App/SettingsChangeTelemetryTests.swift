@@ -701,20 +701,25 @@ import Testing
     func systemWriteTagged() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
-      settings.llmProvider = .openAI
+      // #4353 D1: discovery no longer rewrites a remembered cloud pick, so the remaining
+      // auto-correction is Ollama's: an armed model the daemon lacks is repaired to an
+      // installed one under the isApplyingSystemWrite flag.
+      settings.llmProvider = .ollama
+      settings.ollamaModel = "mistral"
+      settings.llmModel = "mistral"
       telemetry.flush()
       box.clear()  // drop the provider-switch deltas; isolate the discovery write
-      // Empty discovery → applyDiscoveredModels resets to the provider default
-      // under the isApplyingSystemWrite flag.
-      settings.llmModel = "gpt-4o"  // a user-ish divergence first
-      telemetry.flush()
-      box.clear()
-      settings.applyDiscoveredModels([], for: .openAI)  // → "gpt-4o-mini", system
+      settings.applyDiscoveredModels(
+        [
+          LLMModelInfo(
+            id: "llama3.2", displayName: "llama3.2", provider: .ollama, isAvailable: true,
+            isRemote: false)
+        ], for: .ollama)  // → "llama3.2", system
       telemetry.flush()
       let d = deltas(box, setting: "llm_model")
       #expect(d.count == 1)
       #expect(d.first?.stringProps["source"] == "system")
-      #expect(d.first?.stringProps["to"] == "gpt-4o-mini")
+      #expect(d.first?.stringProps["to"] == "llama3.2")
     }
 
     @Test("Onboarding-time writes are suppressed but advance the baseline")

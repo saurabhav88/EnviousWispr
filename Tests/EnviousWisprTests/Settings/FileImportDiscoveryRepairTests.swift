@@ -60,19 +60,21 @@ struct FileImportDiscoveryRepairTests {
   /// The point of the whole lift: a catalog fetched for the import's provider repairs the
   /// import's model and leaves dictation's alone. Before this, one pair of fields took every
   /// result, so an import-side refresh rewrote the model dictation was about to use.
-  @Test("an import catalog repairs the import's model and never dictation's")
+  ///
+  /// #4353 D1: the import's pick is remembered, so discovery no longer replaces it either.
+  @Test("an import catalog never rewrites dictation's model, and keeps the import's own pick")
   func importDiscoveryLeavesDictationAlone() {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
     settings.llmModel = "gemini-3-flash"
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     settings.fileImportLLMProvider = .some(.openAI)
     settings.fileImportLLMModel = "gpt-4o-retired"
 
     settings.applyDiscoveredModelsForFileImport(
       [Self.row("gpt-5.2", provider: .openAI)], for: .openAI)
 
-    #expect(settings.fileImportLLMModel == "gpt-5.2", "the import's stale id was not repaired")
+    #expect(settings.fileImportLLMModel == "gpt-4o-retired", "a remembered import pick was replaced")
     #expect(settings.llmModel == "gemini-3-flash", "dictation's model was rewritten")
     #expect(settings.llmProvider == .gemini, "dictation's provider was rewritten")
   }
@@ -80,7 +82,9 @@ struct FileImportDiscoveryRepairTests {
   /// A follower has no fields of its own: its provider and model ARE dictation's. Giving it
   /// a private copy would leave the import running whatever was seeded at the moment of the
   /// fetch while the screen showed dictation's live pick.
-  @Test("a follower's discovery repairs dictation's fields, because those are its fields")
+  ///
+  /// #4353 D1: dictation's pick is remembered, so the routed repair leaves it in place.
+  @Test("a follower's discovery is routed to dictation's fields, because those are its fields")
   func aFollowerIsRoutedToDictation() {
     let settings = Self.freshSettings()
     settings.llmProvider = .openAI
@@ -90,8 +94,8 @@ struct FileImportDiscoveryRepairTests {
     settings.applyDiscoveredModelsForFileImport(
       [Self.row("gpt-5.2", provider: .openAI)], for: .openAI)
 
-    #expect(settings.llmModel == "gpt-5.2")
-    #expect(settings.effectiveFileImportLLMModel == "gpt-5.2")
+    #expect(settings.llmModel == "gpt-4o-retired")
+    #expect(settings.effectiveFileImportLLMModel == "gpt-4o-retired")
     #expect(settings.fileImportLLMProvider == nil, "a repair must not create an override")
   }
 
@@ -100,7 +104,7 @@ struct FileImportDiscoveryRepairTests {
   func staleResultsAreDropped() {
     let settings = Self.freshSettings()
     settings.llmProvider = .gemini
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .openAI)
     settings.fileImportLLMProvider = .some(.openAI)
     settings.fileImportLLMModel = "gpt-5.2"
 
@@ -117,7 +121,7 @@ struct FileImportDiscoveryRepairTests {
   func allHostedArmsNothingForTheImport() {
     let settings = Self.freshSettings()
     settings.llmProvider = .egOne
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .ollama)
     settings.fileImportLLMProvider = .some(.ollama)
     settings.fileImportOllamaModel = "qwen2.5:3b"
 
@@ -135,7 +139,7 @@ struct FileImportDiscoveryRepairTests {
   func anEmptyCatalogKeepsTheRememberedName() {
     let settings = Self.freshSettings()
     settings.llmProvider = .egOne
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .ollama)
     settings.fileImportLLMProvider = .some(.ollama)
     settings.fileImportOllamaModel = "qwen2.5:3b"
 
@@ -152,7 +156,7 @@ struct FileImportDiscoveryRepairTests {
   func anArmedModelSurvivesACanonicalMatch() {
     let settings = Self.freshSettings()
     settings.llmProvider = .egOne
-    settings.seedFileImportPolishModelsIfNeeded()
+    settings.seedFileImportPolishModelsIfNeeded(for: .ollama)
     settings.fileImportLLMProvider = .some(.ollama)
     settings.fileImportOllamaModel = "llama3.2"
 
@@ -180,7 +184,8 @@ struct FileImportDiscoveryRepairTests {
     stale.llmProvider = .openAI
     stale.llmModel = "gpt-4o-retired"
     stale.applyDiscoveredModels([Self.row("gpt-5.2", provider: .openAI)], for: .openAI)
-    #expect(stale.llmModel == "gpt-5.2")
+    // #4353 D1: a remembered cloud pick is never repaired by discovery.
+    #expect(stale.llmModel == "gpt-4o-retired")
 
     let hosted = Self.freshSettings()
     hosted.llmProvider = .ollama
@@ -212,7 +217,7 @@ struct FileImportDiscoveryRepairTests {
       for: .openAI)
     #expect(armed.llmModel == "gpt-5.2", "a working selection was repaired away")
 
-    // With nothing armed, the provider's own default family wins over whatever sorts first.
+    // #4353 D1: an unavailable remembered cloud pick stays chosen; it fails at request time.
     let fresh = Self.freshSettings()
     fresh.llmProvider = .claude
     fresh.llmModel = "claude-retired-1"
@@ -221,9 +226,7 @@ struct FileImportDiscoveryRepairTests {
         Self.row("claude-fable-5-1", provider: .claude),
         Self.row("claude-haiku-4-5", provider: .claude),
       ], for: .claude)
-    #expect(
-      fresh.llmModel == "claude-haiku-4-5",
-      "the default family lost to whatever sorted first")
+    #expect(fresh.llmModel == "claude-retired-1", "a remembered pick was repaired away")
   }
 
   /// Switching to Ollama after a cloud provider left the cloud provider's id in the model
@@ -233,19 +236,19 @@ struct FileImportDiscoveryRepairTests {
   func aLeftoverIdIsSweptWhenSwitchingToOllama() {
     // The previous provider's id: swept, so the mirror sees empty and `llama3` survives.
     #expect(
-      SettingsManager.normalizedModel(for: .ollama, cloudModel: "gpt-5", ollamaModel: "llama3")
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "gpt-5", ollamaModel: "llama3", remembered: nil)
         == "")
     // An Ollama name discovery has since replaced: also a leftover.
     #expect(
-      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama2", ollamaModel: "llama3")
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama2", ollamaModel: "llama3", remembered: nil)
         == "")
     // In agreement with the armed model: kept.
     #expect(
-      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama3", ollamaModel: "llama3")
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "llama3", ollamaModel: "llama3", remembered: nil)
         == "llama3")
     // #1305 stands: empty stays empty, never refilled from the armed model.
     #expect(
-      SettingsManager.normalizedModel(for: .ollama, cloudModel: "", ollamaModel: "llama3") == "")
+      SettingsManager.normalizedModel(for: .ollama, cloudModel: "", ollamaModel: "llama3", remembered: nil) == "")
   }
 
   /// A stored provider this build does not know (a later build added it; the user came

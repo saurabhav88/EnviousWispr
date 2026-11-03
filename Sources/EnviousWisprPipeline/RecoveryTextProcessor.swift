@@ -121,18 +121,10 @@ public final class RecoveryTextProcessor {
     // record-time capability, never an engine-identity literal (Codex PR0 P2).
     steps.inverseTextNormalization.backendSupportsLID = snapshot.backendSupportsLanguageDetection
     steps.llmPolish.llmProvider = LLMProvider(rawValue: snapshot.llmProvider) ?? .none
-    // #1770: replay the RECORDED model, except when the provider has since
-    // withdrawn it. This is the second of exactly two production seams where a
-    // user-selected model reaches `LLMPolishStep` (the other is the live frozen
-    // config), and it bypasses `SettingsManager`'s sweep entirely because it
-    // deliberately restores capture-time settings rather than current ones. A
-    // spool captured while the user was pinned to a retired id would otherwise
-    // replay against a dead model and return unpolished text.
-    //
-    // This does not violate the replay-original-settings contract: the original
-    // model no longer exists, so the honest reproduction is the current default.
-    steps.llmPolish.llmModel = LLMProvider.replacingRetiredModel(
-      snapshot.llmModel, for: steps.llmPolish.llmProvider)
+    // Replay the RECORDED model, as chosen (#4353 decision 4 supersedes the #1770 swap to the
+    // default): a model the provider has withdrawn fails at request time and the recovered
+    // take keeps its deterministic text, the same as a live dictation.
+    steps.llmPolish.llmModel = snapshot.llmModel
     steps.llmPolish.backend = snapshot.backendType
     // #2649: replay the recorded control-line picks. A spool from before the
     // pickers carries nil and was polished under the shipped default, so that

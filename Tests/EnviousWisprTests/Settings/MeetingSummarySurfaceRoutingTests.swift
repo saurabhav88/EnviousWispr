@@ -88,7 +88,8 @@ struct MeetingSummarySurfaceRoutingTests {
     #expect(ProviderSetupSurface.dictation.selectionRevision(in: settings) == dictationStart)
   }
 
-  @Test("a summary catalog repairs only the summary model, and only for its own provider")
+  /// #4353 D1: the summary pick is remembered, so discovery leaves it and dictation's alone.
+  @Test("a summary catalog never rewrites a remembered summary pick or dictation's model")
   func repairRoutesToSummaryFields() {
     let settings = Self.freshSettings()
     settings.llmProvider = .openAI
@@ -98,12 +99,12 @@ struct MeetingSummarySurfaceRoutingTests {
 
     settings.applyDiscoveredModelsForMeetingSummary(
       [Self.row("gpt-5.2", provider: .openAI)], for: .openAI)
-    #expect(settings.meetingSummaryLLMModel == "gpt-5.2")
+    #expect(settings.meetingSummaryLLMModel == "gpt-4o-retired")
     #expect(settings.llmModel == "gpt-4o-mini")
 
     settings.applyDiscoveredModelsForMeetingSummary(
       [Self.row("gemini-3-flash", provider: .gemini)], for: .gemini)
-    #expect(settings.meetingSummaryLLMModel == "gpt-5.2")
+    #expect(settings.meetingSummaryLLMModel == "gpt-4o-retired")
   }
 
   @Test("discovery started from the Summaries tab repairs the summary model, not dictation's")
@@ -176,7 +177,8 @@ struct MeetingSummarySurfaceRoutingTests {
     #expect(settings.meetingSummaryOllamaModel == "gone-model")
   }
 
-  @Test("a cached catalog load repairs an excluded summary model and leaves dictation's alone")
+  /// #4353 D1: a remembered summary pick is kept even when the cached catalog excludes it.
+  @Test("a cached catalog load keeps a remembered summary pick and leaves dictation's alone")
   func cachedRepairRoutesToSummary() throws {
     let cache = TestDefaults.suite("ew.tests.4287.cache.\(UUID().uuidString)")!
     let rows = [Self.row("gpt-5.2", provider: .openAI), Self.row("gpt-image-1", provider: .openAI)]
@@ -188,7 +190,7 @@ struct MeetingSummarySurfaceRoutingTests {
     settings.meetingSummaryLLMModel = "gpt-image-1"
     let discovery = Self.coordinator(cache: cache) { _, _ in [] }
     discovery.loadCachedModels(for: .openAI, settings: settings, surface: .meetingSummary)
-    #expect(settings.meetingSummaryLLMModel == "gpt-5.2")
+    #expect(settings.meetingSummaryLLMModel == "gpt-image-1")
     #expect(settings.llmModel == "gpt-4o-mini")
   }
 
