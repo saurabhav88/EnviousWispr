@@ -411,4 +411,62 @@ struct MeetingSpeakerPairNamerTests {
     let teams = TeamsAppSpeakerReader.read(windows: [])
     #expect(teams.countHiddenByShare == false)
   }
+
+  @Test("a tile in a window the reading leaves out stops the hidden-count proof")
+  func hiddenCountExcludedTile() throws {
+    // A second Zoom window showing one more person, which window choice leaves out.
+    let extra = CallAXWindow(
+      title: "Zoom",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(role: "AXTabGroup", description: "Priya Shah, Computer audio muted, Video off")
+        ]))
+    let reading = try #require(Self.reading(Self.sharingCopy(extra: [extra])))
+    #expect(reading.countHiddenByShare == false)
+    #expect(CallSpeakerAccumulator.pairEvidence(reading) == nil)
+  }
+
+  @Test("during a share, a popped-out list protects the tile reading too")
+  func shareTilePathUsesWholeCopyLists() throws {
+    func list(_ entries: [String]) -> CallAXWindow {
+      CallAXWindow(
+        title: "Participants",
+        root: CallAXNode(
+          role: "AXWindow",
+          children: [
+            CallAXNode(
+              role: "AXOutline", description: "Participants list",
+              children: entries.map { entry in
+                let name = ZoomAppSpeakerReader.panelEntry(entry).name
+                return CallAXNode(
+                  role: "AXRow",
+                  children: [
+                    CallAXNode(
+                      role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+                      children: [
+                        CallAXNode(role: "AXStaticText", value: entry),
+                        CallAXNode(
+                          role: "AXMenuButton", description: "More options for \(name), collapsed"),
+                      ])
+                  ])
+              })
+          ]))
+    }
+    // The list shows Alex twice: the two-tile reading marks the name shared and makes no pair.
+    let shared = try #require(
+      Self.reading(
+        Self.sharingCopy(extra: [list(["Alex Rivera", "Alex Rivera", "Saurabh A Vaish (me)"])])))
+    #expect(shared.sharedNames.contains(Self.alex))
+    #expect(shared.roster.selfNames == ["Saurabh A Vaish"])
+    #expect(CallSpeakerAccumulator.pairEvidence(shared) == nil)
+    // A chat-like text ending in "(me)" outside a list never says who the user is.
+    let chat = CallAXWindow(
+      title: "Chat",
+      root: CallAXNode(
+        role: "AXWindow", children: [CallAXNode(role: "AXStaticText", value: "Dana Lee (me)")]))
+    #expect(
+      ZoomAppSpeakerReader.shareContext(windows: Self.sharingCopy(extra: [chat]).windows).selfMarks
+        .isEmpty)
+  }
 }

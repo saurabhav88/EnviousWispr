@@ -321,7 +321,9 @@ struct ZoomWindowScopeTests {
     "share context reads the host toolbar, the guest share content and any count, in any window")
   func shareContext() {
     let none = ZoomAppSpeakerReader.shareContext(windows: [meeting([Self.saurabh])])
-    #expect(none == .none)
+    #expect(none.isSharing == false)
+    #expect(none.countShown == false)
+    #expect(none.tileCount == 1)
     let host = ZoomAppSpeakerReader.shareContext(windows: [Self.toolbar, compact(["Talking: "])])
     #expect(host.hostShare == true)
     #expect(host.guestShare == false)

@@ -118,7 +118,9 @@ package enum ZoomAppSpeakerReader {
     }
     let flaggedOutsidePeople =
       people.count == thumbnails.count && largeTiles.contains(where: \.talking)
-    let selfList = uniqueInOrder(selfNames)
+    // During a share, lists in windows the reading does not use still protect it (PR #4352
+    // cloud review): their `(me)` marks and their names shown twice.
+    let selfList = uniqueInOrder(selfNames + (share.isSharing ? share.selfMarks : []))
     let peopleNames = people.compactMap(\.name)
     let participants = people.enumerated().map { index, tile in
       CallParticipant(
@@ -130,12 +132,16 @@ package enum ZoomAppSpeakerReader {
     // Every list's own duplicates are two people, whether or not that list is complete.
     let listedTwice = lists.reduce(into: Set<String>()) { shared, list in
       shared.formUnion(repeatedNames(list.rows.entries.map { panelEntry($0).name }))
-    }
+    }.union(share.isSharing ? share.listedTwice : [])
     // Identity holds when the tiles are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
     let account = accountName(fromTitles: accountTitles)
     // The user's share hid every count (#4013 share plan §3.3); read from the whole capture.
-    let countHidden = share.hostShare && !share.countShown
+    // Every tile the copy shows must be in the windows read, so a person in a window window
+    // choice left out can never be missing from a two-person proof.
+    let countHidden =
+      share.hostShare && !share.countShown
+      && share.tileCount == thumbnails.count + largeTiles.count
     // During a screen share Zoom may show the talker without a flag (#4013 share plan §3.1-3.2):
     // a `Talking:` label in the collapsed floating window, or one tile that follows the talker.
     if share.isSharing, let signal = shareSignal(windows: windows, share: share) {
@@ -358,15 +364,29 @@ package enum ZoomAppSpeakerReader {
     /// not. Absent is not unknown: a count Zoom shows in a shape we do not parse still counts
     /// as shown, so only a copy with no count at all can say the share hid it.
     package let countShown: Bool
+    /// Names any participants list in the copy shows twice, and the user's `(me)` marks, from
+    /// EVERY window (PR #4352 cloud review): a share reading may be read from the floating
+    /// window alone while the list sits in a popped-out window window choice leaves out, and
+    /// these only ever protect (a shared name is never voted; a mark only tells who the user is).
+    package let listedTwice: Set<String>
+    package let selfMarks: [String]
+    /// Every participant tile the copy shows, in any window, named or not.
+    package let tileCount: Int
 
     package static let none = ShareContext(hostShare: false, guestShare: false, countShown: false)
 
     package var isSharing: Bool { hostShare || guestShare }
 
-    package init(hostShare: Bool, guestShare: Bool, countShown: Bool) {
+    package init(
+      hostShare: Bool, guestShare: Bool, countShown: Bool, listedTwice: Set<String> = [],
+      selfMarks: [String] = [], tileCount: Int = 0
+    ) {
+      self.tileCount = tileCount
       self.hostShare = hostShare
       self.guestShare = guestShare
       self.countShown = countShown
+      self.listedTwice = listedTwice
+      self.selfMarks = selfMarks
     }
   }
 
@@ -400,7 +420,21 @@ package enum ZoomAppSpeakerReader {
           && label.contains { $0.isNumber }
       }
     }
-    return ShareContext(hostShare: hostShare, guestShare: guestShare, countShown: countShown)
+    let nodes = windows.flatMap { $0.root.allNodes }
+    let rows = nodes.filter { $0.role == "AXOutline" && $0.label == participantsListLabel }
+      .map { panelRows($0).entries }
+    let listedTwice = rows.reduce(into: Set<String>()) { shared, entries in
+      shared.formUnion(repeatedNames(entries.map { panelEntry($0).name }))
+    }
+    // Only a bound participants-list row's `(me)` counts here, never any other text (a chat
+    // message ending in "(me)" must not say who the user is).
+    let selfMarks = uniqueInOrder(rows.flatMap { $0.compactMap(selfName(fromParticipantEntry:)) })
+    let tileCount = nodes.filter { node in
+      node.role == "AXTabGroup" && node.label.flatMap(parseTile) != nil
+    }.count
+    return ShareContext(
+      hostShare: hostShare, guestShare: guestShare, countShown: countShown,
+      listedTwice: listedTwice, selfMarks: selfMarks, tileCount: tileCount)
   }
 
   /// The one name the user goes by in this reading, or `nil` when it cannot be told (#4013 share

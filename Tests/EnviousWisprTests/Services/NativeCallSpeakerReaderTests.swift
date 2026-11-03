@@ -978,4 +978,39 @@ struct NativeCallSpeakerReaderTests {
     #expect(conflicting.participantCount == nil)
     #expect(conflicting.roster.names == ["Bea Chen"])
   }
+
+  @Test("Zoom share: a popped-out participants list still protects the label reading")
+  func sharePoppedOutList() {
+    let toolbar = window("zoom share toolbar window", [])
+    let label = floating([talking("Talking: Bea Chen")])
+    func list(_ entries: [String]) -> CallAXWindow {
+      window(
+        "Participants",
+        [
+          CallAXNode(
+            role: "AXOutline", description: "Participants list",
+            children: entries.map { zoomRow($0) })
+        ])
+    }
+    func read(_ windows: [CallAXWindow], account: [String]?) -> CallSpeakerReading? {
+      CallSpeakerSurfaceReader.read(
+        surface: .zoomApp,
+        capture: CallAXCapture(
+          windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
+          readEndHostTime: 0, accountTitles: account),
+        rules: TalkerRulesSnapshot.empty.rules)
+    }
+    let context = CallCaptureContext(completeness: .complete, scope: .resolved)
+    // Two people named Bea in the popped-out list: the label's name is shared, never voted.
+    let shared = read(
+      [toolbar, label, list(["Bea Chen", "Bea Chen", "Dana Lee"])], account: Self.account)
+    #expect(shared?.sharedNames == ["Bea Chen"])
+    #expect(
+      shared.map { CallSpeakerAdmission.admission(of: $0, context: context) }
+        == .withheld(.ambiguousTalker))
+    // The popped-out list's (me) mark tells who the user is when no account was read.
+    let marked = read([toolbar, label, list(["Dana Lee (me)", "Bea Chen"])], account: nil)
+    #expect(marked?.speaking == ["Bea Chen"])
+    #expect(marked?.roster.selfNames == ["Dana Lee"])
+  }
 }
