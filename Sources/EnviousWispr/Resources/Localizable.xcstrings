@@ -1034,6 +1034,23 @@
         }
       }
     },
+    "%lld of %lld" : {
+      "comment" : "EnviousMeet setup: which how-it-works card shows, e.g. 2 of 6.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld von %lld"
+          }
+        }
+      }
+    },
     "%lld of %lld installed on this Mac" : {
       "comment" : "AI Polish, Ollama: pill on the Download more models card. The numbers count the models that run on this Mac.\nLive Preview: actual installed and total language counts from the loaded macOS inventory.",
       "localizations" : {
@@ -3230,6 +3247,17 @@
         }
       }
     },
+    "Also Whereby, Dialpad, Gather, Lark and VooV. In a browser too." : {
+      "comment" : "EnviousMeet setup: under the call app logos. App names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch Whereby, Dialpad, Gather, Lark und VooV. Auch im Browser."
+          }
+        }
+      }
+    },
     "Always" : {
       "comment" : "Microphone settings: readiness option; the microphone stays ready.",
       "localizations" : {
@@ -3280,6 +3308,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Stunde Audio"
+          }
+        }
+      }
+    },
+    "And I'll update the" : {
+      "comment" : "EnviousMeet setup: example live words on card 5, cut off mid-sentence while someone is still talking.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Und ich aktualisiere den"
           }
         }
       }
@@ -4217,7 +4256,7 @@
       }
     },
     "Back" : {
-      "comment" : "EnviousMeet setup: goes to the previous screen.\nTranscribe a File: button that returns to the previous step.",
+      "comment" : "EnviousMeet setup: goes to the previous screen.\nEnviousMeet setup: shows the previous how-it-works card.\nTranscribe a File: button that returns to the previous step.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4740,6 +4779,17 @@
         }
       }
     },
+    "Can we move the launch to the 17th?" : {
+      "comment" : "EnviousMeet setup: example live words on card 5.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Können wir den Launch auf den 17. verschieben?"
+          }
+        }
+      }
+    },
     "Can't reach the download server. Check your connection and try again." : {
       "comment" : "Speech model download: why it failed. Shown in setup and in Settings.",
       "localizations" : {
@@ -4853,6 +4903,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kapsel und Pegelanzeige zeigen die Lautstärke. Lesefeld zeigt Wörter und schaltet die Live-Vorschau ein."
+          }
+        }
+      }
+    },
+    "Card %lld of %lld: %@" : {
+      "comment" : "EnviousMeet setup, VoiceOver: the how-it-works card's position and title.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Card %1$lld of %2$lld: %3$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karte %lld von %lld: %@"
           }
         }
       }
@@ -5848,6 +5915,17 @@
         }
       }
     },
+    "Click Start recording to take notes, or Not now to skip this call." : {
+      "comment" : "EnviousMeet setup: how-it-works card 2 line. Start recording and Not now are the card's buttons.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf „Aufnahme starten“, um Notizen zu machen, oder auf „Nicht jetzt“, um diesen Anruf zu überspringen."
+          }
+        }
+      }
+    },
     "Click the \"Press 🌐 key to\" menu" : {
       "comment" : "Globe key tip (a popover after choosing the Globe key as the keybind): step 2. Quote the menu exactly as macOS labels it in this language.",
       "localizations" : {
@@ -5877,6 +5955,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klicke zuerst in das Feld"
+          }
+        }
+      }
+    },
+    "Click the lips in the menu bar, then Start Meeting Recording. Use it for calls in any app, or a meeting in the room." : {
+      "comment" : "EnviousMeet setup: how-it-works card 3 line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke auf die Lippen in der Menüleiste und dann auf „Meeting-Aufnahme starten“. Damit kannst du Anrufe in jeder App oder Meetings vor Ort aufnehmen."
           }
         }
       }
@@ -8226,6 +8315,17 @@
         }
       }
     },
+    "EnviousMeet notices your calls" : {
+      "comment" : "EnviousMeet setup: how-it-works card 1 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet erkennt deine Anrufe"
+          }
+        }
+      }
+    },
     "EnviousMeet records your voice with the microphone you dictate with." : {
       "comment" : "EnviousMeet page: help for the microphone permission row.",
       "localizations" : {
@@ -8536,6 +8636,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beispiel"
+          }
+        }
+      }
+    },
+    "Example: History's Meetings tab with a recording in progress and its words appearing." : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 5's picture shows.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel: Im Tab „Meetings“ im Verlauf erscheint bei einer laufenden Aufnahme das Gesagte."
+          }
+        }
+      }
+    },
+    "Example: grey lips in the menu bar with a rainbow wave moving left to right while a meeting records." : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 4's picture shows.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel: Graue Lippen in der Menüleiste mit einer Regenbogenwelle, die von links nach rechts läuft, während ein Meeting aufgenommen wird."
+          }
+        }
+      }
+    },
+    "Example: the card under the menu bar asks, Take notes on this Zoom call?" : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 2's picture shows.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel: Die Karte unter der Menüleiste fragt: „Notizen zu diesem Zoom-Anruf machen?“"
+          }
+        }
+      }
+    },
+    "Example: the menu bar menu with Start Meeting Recording selected." : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 3's picture shows.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel: Das Menü der Menüleiste mit ausgewähltem Eintrag „Meeting-Aufnahme starten“."
           }
         }
       }
@@ -9783,6 +9927,17 @@
         }
       }
     },
+    "Grey lips with a rainbow wave mean a meeting is recording." : {
+      "comment" : "EnviousMeet setup: under the menu bar picture on card 4.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Graue Lippen mit einer Regenbogenwelle bedeuten, dass ein Meeting aufgenommen wird."
+          }
+        }
+      }
+    },
     "Gujarati" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -9909,6 +10064,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilf uns, Abstürze und Fehler zu beheben."
+          }
+        }
+      }
+    },
+    "Here is how EnviousMeet works. Use the arrow keys or the buttons to flip through." : {
+      "comment" : "EnviousMeet setup: the line above the how-it-works cards on the last screen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So funktioniert EnviousMeet. Blättere mit den Pfeiltasten oder den Schaltflächen."
           }
         }
       }
@@ -10657,6 +10823,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es bleibt auf deinem Mac, wird am Ende der Aufnahme verworfen und ändert kein Zeichen des eingefügten Texts."
+          }
+        }
+      }
+    },
+    "It works quietly" : {
+      "comment" : "EnviousMeet setup: how-it-works card 4 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft unauffällig"
+          }
+        }
+      }
+    },
+    "It works with the apps you already use. When one of them starts a call, EnviousMeet can notice it and offer to record. Noticing calls needs macOS 14.2 or later." : {
+      "comment" : "EnviousMeet setup: how-it-works card 1 line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es funktioniert mit den Apps, die du schon nutzt. Beginnt in einer davon ein Anruf, kann EnviousMeet ihn erkennen und eine Aufnahme anbieten. Dafür ist macOS 14.2 oder neuer nötig."
           }
         }
       }
@@ -13238,6 +13426,17 @@
         }
       }
     },
+    "Next" : {
+      "comment" : "EnviousMeet setup: shows the next how-it-works card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter"
+          }
+        }
+      }
+    },
     "Next page" : {
       "localizations" : {
         "de" : {
@@ -13374,6 +13573,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Bot in deinem Anruf"
+          }
+        }
+      }
+    },
+    "No bot joins your call. A short card confirms the recording started, then only the lips in the menu bar show it is running." : {
+      "comment" : "EnviousMeet setup: how-it-works card 4 line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Bot nimmt an deinem Anruf teil. Eine kurze Karte bestätigt den Aufnahmestart. Danach zeigen nur noch die Lippen in der Menüleiste an, dass die Aufnahme läuft."
           }
         }
       }
@@ -14974,6 +15184,17 @@
         }
       }
     },
+    "Open History and click M. The meeting you are recording shows its words as people talk. Turn on Live Preview first, in EnviousMeet settings under Models." : {
+      "comment" : "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne den Verlauf und klicke auf M. Beim laufenden Meeting erscheint das Gesagte, während die Teilnehmenden sprechen. Aktiviere dafür zuerst die Live-Vorschau in den EnviousMeet-Einstellungen unter „Modelle“."
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "comment" : "EnviousMeet setup: opens System Settings for a permission.\nPill button: opens the macOS microphone privacy settings.",
       "localizations" : {
@@ -15141,6 +15362,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnet die Liste der KI-Polish-Modelle"
+          }
+        }
+      }
+    },
+    "Or start it yourself" : {
+      "comment" : "EnviousMeet setup: how-it-works card 3 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oder starte die Aufnahme selbst"
           }
         }
       }
@@ -15555,7 +15787,7 @@
       }
     },
     "Pause" : {
-      "comment" : "EnviousMeet: pauses the meeting recording.\nMicrophone settings, media during dictation: option that pauses what is playing.",
+      "comment" : "EnviousMeet setup: stops the how-it-works cards from moving on by themselves.\nEnviousMeet: pauses the meeting recording.\nMicrophone settings, media during dictation: option that pauses what is playing.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15660,6 +15892,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Person"
+          }
+        }
+      }
+    },
+    "Pick a model on your Mac, or bring your own key. Change it anytime in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup: how-it-works card 6 line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell auf deinem Mac oder nutze deinen eigenen Schlüssel. Du kannst das jederzeit in den EnviousMeet-Einstellungen ändern."
           }
         }
       }
@@ -15775,7 +16018,7 @@
       }
     },
     "Play" : {
-      "comment" : "EnviousMeet: plays the meeting recording.",
+      "comment" : "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.\nEnviousMeet: plays the meeting recording.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18844,6 +19087,17 @@
         }
       }
     },
+    "Slack huddles" : {
+      "comment" : "EnviousMeet setup: under the Slack logo; EnviousMeet notices Slack huddles.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slack-Huddles"
+          }
+        }
+      }
+    },
     "Slovak" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -19330,17 +19584,6 @@
         }
       }
     },
-    "Start a recording from the menu bar. The lips in the menu bar glow while a meeting records." : {
-      "comment" : "EnviousMeet setup: how to record, on the last screen.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starte eine Aufnahme über die Menüleiste. Die Lippen in der Menüleiste leuchten, während ein Meeting aufgenommen wird."
-          }
-        }
-      }
-    },
     "Start and stop a recording from the menu bar. Your recordings are in History." : {
       "comment" : "EnviousMeet page: where recording is controlled and where recordings are.",
       "localizations" : {
@@ -19724,6 +19967,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zusammenfassungen nach deinen Wünschen"
+          }
+        }
+      }
+    },
+    "Summarize with the AI you choose" : {
+      "comment" : "EnviousMeet setup: how-it-works card 6 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fasse mit der KI deiner Wahl zusammen"
           }
         }
       }
@@ -20587,6 +20841,17 @@
         }
       }
     },
+    "The AI engines that can write meeting summaries, grouped as in EnviousMeet settings." : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 6's picture shows.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Engines für Meeting-Zusammenfassungen, gruppiert wie in den EnviousMeet-Einstellungen."
+          }
+        }
+      }
+    },
     "The AI that writes your meeting summaries. Separate from AI Polish for dictation." : {
       "comment" : "EnviousMeet Summaries tab: the line under Summary engine.",
       "localizations" : {
@@ -20692,6 +20957,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audioaufnahme wurde gelöscht. Das Transkript bleibt erhalten."
+          }
+        }
+      }
+    },
+    "The call apps EnviousMeet works with: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack huddles, Webex and Jitsi." : {
+      "comment" : "EnviousMeet setup, VoiceOver: what card 1's picture shows. App names are not translated.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anruf-Apps, mit denen EnviousMeet funktioniert: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack-Huddles, Webex und Jitsi."
           }
         }
       }
@@ -23668,6 +23944,17 @@
         }
       }
     },
+    "Watch the live transcript in History" : {
+      "comment" : "EnviousMeet setup: how-it-works card 5 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieh das Live-Transkript im Verlauf"
+          }
+        }
+      }
+    },
     "Watch the words appear while people talk." : {
       "comment" : "EnviousMeet setup: welcome tile line under Live transcript.",
       "localizations" : {
@@ -23921,6 +24208,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn ein Anruf beginnt"
+          }
+        }
+      }
+    },
+    "When a call starts, you'll see this card" : {
+      "comment" : "EnviousMeet setup: how-it-works card 2 title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn ein Anruf beginnt, siehst du diese Karte"
           }
         }
       }
@@ -24455,6 +24753,17 @@
         }
       }
     },
+    "Yes, I'll tell support today." : {
+      "comment" : "EnviousMeet setup: example live words on card 5.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ja, ich sage heute dem Support Bescheid."
+          }
+        }
+      }
+    },
     "Yiddish" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -24696,13 +25005,13 @@
         }
       }
     },
-    "You're all set!" : {
+    "You're all set." : {
       "comment" : "EnviousMeet setup: the last screen's title.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles bereit!"
+            "value" : "Alles bereit."
           }
         }
       }
@@ -25149,17 +25458,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahmeanzeige erscheint, solange du die Taste gedrückt hältst."
-          }
-        }
-      }
-    },
-    "Your recordings appear in History, under M (Meetings)." : {
-      "comment" : "EnviousMeet setup: where recordings are, on the last screen.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Aufnahmen findest du im „Verlauf“ unter „M“ (Meetings)."
           }
         }
       }

@@ -638,32 +638,22 @@ private struct MeetingSetupDone: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ZStack {
-        MeetingConfettiBurst()
-        RainbowLipsView(animationState: .heart, size: 96)
-          .accessibilityHidden(true)
-      }
-      .frame(width: 160, height: 110)
-      .padding(.bottom, 12)
-      Text("You're all set!", comment: "EnviousMeet setup: the last screen's title.")
+      Text("You're all set.", comment: "EnviousMeet setup: the last screen's title.")
         .font(.setupTitle)
         .foregroundStyle(Color.obTextPrimary)
         .padding(.bottom, 8)
       Text(
-        "Start a recording from the menu bar. The lips in the menu bar glow while a meeting records.",
-        comment: "EnviousMeet setup: how to record, on the last screen."
+        "Here is how EnviousMeet works. Use the arrow keys or the buttons to flip through.",
+        comment: "EnviousMeet setup: the line above the how-it-works cards on the last screen."
       )
       .font(.setupLead)
-      .foregroundStyle(Color.obTextPrimary.opacity(0.85))
-      .fixedSize(horizontal: false, vertical: true)
-      .padding(.bottom, 6)
-      Text(
-        "Your recordings appear in History, under M (Meetings).",
-        comment: "EnviousMeet setup: where recordings are, on the last screen."
-      )
-      .font(.setupBody)
       .foregroundStyle(Color.obTextSecondary)
-      .padding(.bottom, model.unresolved.isEmpty && !model.callSoundMayAskLater ? 28 : 12)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.bottom, 16)
+
+      // #4346 plan §3.4: six how-it-works cards.
+      MeetingSetupHowTo()
+        .padding(.bottom, model.unresolved.isEmpty && !model.callSoundMayAskLater ? 24 : 14)
 
       // #4346 §16.2: shown independently of the Calendar line; both can show.
       if model.callSoundMayAskLater {
@@ -699,53 +689,6 @@ private struct MeetingSetupDone: View {
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.finish")
     }
-    .frame(maxWidth: 560, alignment: .leading)
-  }
-}
-
-/// A one-time burst of rainbow confetti behind the heart (#4017 O2). Off with Reduce Motion.
-private struct MeetingConfettiBurst: View {
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var start = Date()
-
-  private static let colors: [Color] = [
-    Color(red: 1.0, green: 0.165, blue: 0.251), Color(red: 1.0, green: 0.549, blue: 0.0),
-    Color(red: 1.0, green: 0.843, blue: 0.0), Color(red: 0.678, green: 1.0, blue: 0.184),
-    Color(red: 0.0, green: 0.98, blue: 0.604), Color(red: 0.0, green: 1.0, blue: 1.0),
-    Color(red: 0.118, green: 0.565, blue: 1.0), Color(red: 0.255, green: 0.412, blue: 0.882),
-    Color(red: 0.541, green: 0.169, blue: 0.886),
-  ]
-  private static let duration = 2.2
-  private static let pieces = 42
-
-  var body: some View {
-    if reduceMotion {
-      EmptyView()
-    } else {
-      TimelineView(.animation) { context in
-        let t = context.date.timeIntervalSince(start)
-        Canvas { canvas, size in
-          guard t < Self.duration else { return }
-          let progress = t / Self.duration
-          let center = CGPoint(x: size.width / 2, y: size.height / 2)
-          for index in 0..<Self.pieces {
-            let angle = Double(index) / Double(Self.pieces) * 2 * .pi
-            let reach = 120 + Double(index % 4) * 40
-            let eased = 1 - pow(1 - progress, 3)
-            let x = center.x + cos(angle) * reach * eased
-            let y = center.y + sin(angle) * reach * 0.8 * eased + 90 * progress * progress
-            var piece = canvas
-            piece.opacity = 1 - progress
-            piece.translateBy(x: x, y: y)
-            piece.rotate(by: .degrees(Double(index * 47) + progress * 360))
-            piece.fill(
-              Path(roundedRect: CGRect(x: -4, y: -7, width: 8, height: 14), cornerRadius: 2),
-              with: .color(Self.colors[index % Self.colors.count]))
-          }
-        }
-      }
-      .allowsHitTesting(false)
-      .accessibilityHidden(true)
-    }
+    .frame(maxWidth: 760, alignment: .leading)
   }
 }
