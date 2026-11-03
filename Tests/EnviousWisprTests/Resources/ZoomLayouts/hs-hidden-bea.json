@@ -1,0 +1,199 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py)",
+ "windows": [
+  {
+   "title": "zoom share statusbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share statusbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Stop share"
+     },
+     {
+      "role": "AXButton",
+      "description": "Dock to top"
+     },
+     {
+      "role": "AXImage",
+      "description": "You are using enhanced encryption"
+     },
+     {
+      "role": "AXButton",
+      "description": "Upgrade to Zoom Pro",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXImage"
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom share toolbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share toolbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Unmute my audio",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Start video",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Participants options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Chat",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Share",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Share options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Pause",
+      "identifier": "ZMMTToolbarContentIdentifierPauseShare",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Layout, press to open presenter layout",
+      "identifier": "ZMMTToolbarContentIdentifierShareLayout",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Annotate",
+      "identifier": "ZMMTToolbarContentIdentifierAnnotate",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Remote control",
+      "identifier": "ZMMTToolbarContentIdentifierRemoteControl",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Show meeting, Show participants and content",
+      "identifier": "ZMMTToolbarContentIdentifierStage",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "More meeting controls, collapsed",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom annotation entrypoint",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom annotation entrypoint",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Annotate, current location: left-bottom corner, press arrow keys to change location"
+     }
+    ]
+   }
+  },
+  {
+   "title": "Annotation - Zoom",
+   "root": {
+    "role": "AXWindow",
+    "title": "Annotation - Zoom"
+   }
+  },
+  {
+   "title": "zoom floating video window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom floating video window",
+    "children": [
+     {
+      "role": "AXStaticText",
+      "value": "Talking: Bea Chen"
+     },
+     {
+      "role": "AXButton",
+      "description": "Hide thumbnail video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show active speaker video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show thumbnail video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show grid video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show full meeting window"
+     }
+    ]
+   }
+  }
+ ]
+}

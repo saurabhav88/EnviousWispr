@@ -236,6 +236,111 @@ package enum ZoomAppSpeakerReader {
     return Int(digits)
   }
 
+  // MARK: - Screen share (#4013 share plan §3.0)
+
+  /// What the WHOLE capture says about a screen share and about counts, read before window
+  /// choice (#4013 share plan §3.0, review r2 R1): the share toolbar and the count texts sit in
+  /// windows the speaker reading never receives, so they are read here, from every copied
+  /// window, and passed on explicitly. They never supply participants.
+  package struct ShareContext: Sendable, Equatable {
+    /// The user is sharing: Zoom showed its share toolbar window.
+    package let hostShare: Bool
+    /// Someone else is sharing: the meeting window shows the shared content.
+    package let guestShare: Bool
+    /// Any participant count or participants list appeared anywhere in the copy, readable or
+    /// not. Absent is not unknown: a count Zoom shows in a shape we do not parse still counts
+    /// as shown, so only a copy with no count at all can say the share hid it.
+    package let countShown: Bool
+
+    package static let none = ShareContext(hostShare: false, guestShare: false, countShown: false)
+
+    package var isSharing: Bool { hostShare || guestShare }
+
+    package init(hostShare: Bool, guestShare: Bool, countShown: Bool) {
+      self.hostShare = hostShare
+      self.guestShare = guestShare
+      self.countShown = countShown
+    }
+  }
+
+  /// Observed 2026-11-03 (run `20261103-083021-4013-share-talking-label-discovery-c469`): every
+  /// host-share copy has this window; no copy without a share does.
+  static let shareToolbarWindowTitle = "zoom share toolbar window"
+  /// The meeting window's shared-content element while someone else shares (every guest-share
+  /// copy; Granola `isShareContent`).
+  static let receivingShareLabel = "Share content"
+  /// The participants panel toolbar button, open or closed, with or without a count
+  /// ("Open participants panel, closed, 3 participants, 1 person is waiting").
+  static let participantsPanelButtonPrefixes = [
+    "Open participants panel", "Close participants panel",
+  ]
+
+  package static func shareContext(windows: [CallAXWindow]) -> ShareContext {
+    let hostShare = windows.contains { $0.title == shareToolbarWindowTitle }
+    let guestShare = windows.contains { window in
+      ZoomCallWindow.isMeeting(identifier: window.root.identifier, title: window.title)
+        && window.root.allNodes.contains {
+          $0.role == "AXUnknown" && $0.label == receivingShareLabel
+        }
+    }
+    let countShown = windows.contains { window in
+      window.root.allNodes.contains { node in
+        guard let label = node.label else { return false }
+        if node.role == "AXOutline", label == participantsListLabel { return true }
+        if node.role == "AXStaticText", label.hasPrefix(participantsCountPrefix) { return true }
+        return node.role == "AXButton"
+          && participantsPanelButtonPrefixes.contains { label.hasPrefix($0) }
+          && label.contains { $0.isNumber }
+      }
+    }
+    return ShareContext(hostShare: hostShare, guestShare: guestShare, countShown: countShown)
+  }
+
+  /// The one name the user goes by in this reading, or `nil` when it cannot be told (#4013 share
+  /// plan §3.0, review r1 F4): the panel's `(me)` mark when it names exactly one person, else
+  /// exactly one checked account. A mark and an account that disagree, or two marks, are
+  /// conflicting evidence: `nil`.
+  static func identifiedSelf(marks: [String], account: [String]) -> String? {
+    let marked = uniqueInOrder(marks)
+    guard marked.count <= 1, account.count <= 1 else { return nil }
+    if let mark = marked.first {
+      if let other = account.first, other != mark { return nil }
+      return mark
+    }
+    return account.first
+  }
+
+  /// The floating video window Zoom shows while the meeting window is hidden or full screen:
+  /// it carries the mode buttons below (Granola `isCompactVideoWindow`'s English pair). Every
+  /// observed floating window has both; the full-screen one lacks the other three modes, so
+  /// only these two are required.
+  static let compactWindowButtons: Set<String> = [
+    "Hide thumbnail video", "Show active speaker video",
+  ]
+
+  static func isCompactWindow(_ window: CallAXWindow) -> Bool {
+    guard !ZoomCallWindow.isMeeting(identifier: window.root.identifier, title: window.title)
+    else { return false }
+    let buttons = Set(window.root.allNodes.filter { $0.role == "AXButton" }.compactMap(\.label))
+    return compactWindowButtons.isSubset(of: buttons)
+  }
+
+  static let talkingPrefix = "Talking: "
+
+  /// `Talking: Bea Chen` → `Bea Chen`; `Talking: ` → `""` (nobody talking). Only the exact
+  /// observed English prefix; any other text → `nil`.
+  static func talkingName(_ label: String) -> String? {
+    guard label.hasPrefix(talkingPrefix) else { return nil }
+    return String(label.dropFirst(talkingPrefix.count))
+  }
+
+  /// Every `Talking: ` text a compact window shows (Zoom's collapsed floating window).
+  static func talkingLabels(_ window: CallAXWindow) -> [String] {
+    window.root.allNodes.filter { $0.role == "AXStaticText" }.compactMap {
+      $0.label.flatMap(talkingName)
+    }
+  }
+
   /// `Saurabh A Vaish (Host, me)` → name `Saurabh A Vaish`. Only a trailing bracket made of
   /// Zoom's own tags is removed, so a name such as `Dana (Design)` keeps its bracket.
   static func panelEntry(_ label: String) -> (name: String, tags: [String]) {
