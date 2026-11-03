@@ -210,6 +210,39 @@ import os
       }
     }
 
+    /// #4013 reading resilience §3.4: the read health `meeting.ended` reports is summed from
+    /// what each delivered copy tolerated.
+    @Test("each delivered copy's tolerated failures add up in the segment's health")
+    func toleratedFailuresAccumulate() async throws {
+      let base = Self.meetCopy()
+      let copy = CallAXCapture(
+        windows: base.windows, documents: base.documents, completeness: .complete,
+        readStartHostTime: base.readStartHostTime, readEndHostTime: base.readEndHostTime,
+        failedReads: 3, toleratedFailures: 2)
+      let copies = Copies([copy])
+      let trusted = World().trustedLock
+      let observer = CallSpeakerObserver(
+        surface: .meet, anchor: 0, startMs: 0, rules: try Self.bundled(),
+        presencePolicy: .current, lag: CallSpeakerLag(milliseconds: 500),
+        dependencies: .init(
+          binding: {
+            CallCaptureBinding(
+              source: .init(
+                family: .googleMeet, target: CallSpeakerTarget(pid: 1, rule: .browser(.chrome))),
+              surface: .meet, generation: 1, mute: false)
+          },
+          capture: { _, _ in copies.take() }, isTrusted: { trusted.withLock { $0 } },
+          isDictationIdle: { true }, lane: .init()))
+      observer.tick()
+      await eventually("first copy delivered") { observer.deliveriesForTesting == 1 }
+      observer.tick()
+      await eventually("second copy delivered") { observer.deliveriesForTesting == 2 }
+      let health = try #require(observer.currentSegment?.health)
+      #expect(health.toleratedFailures == 4)
+      #expect(health.failedReads == 6)
+      #expect(health.captureAttempts == 2)
+    }
+
     /// A Teams app copy whose People list (count-checked) shows `names`, read at `ms` on the
     /// recording clock (anchor 0).
     nonisolated static func teamsCopy(_ names: [String], atMs ms: Int) -> CallAXCapture {

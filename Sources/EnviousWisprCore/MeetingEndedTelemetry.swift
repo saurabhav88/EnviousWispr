@@ -99,6 +99,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   public let speakerNamesSurface: SpeakerNamingSummary.Surface?
   public let speakerNamesOutcome: SpeakerNamingSummary.Outcome?
   public let autoNamedCount: Int?
+  /// #4013 reading resilience §3.4: the committed summary's read health; nil without a committed
+  /// summary or without capture attempts.
+  public let speakerReadHealth: SpeakerReadHealth?
   /// #4248: the recording's mute following, frozen at capture stop; nil when the attempt has no
   /// summary (a Start that failed, an attempt recovered after a relaunch). A Retry inherits it.
   public let muteFollow: MuteFollowSummary?
@@ -217,6 +220,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.speakerNamesSurface = speakerNaming?.surface
     self.speakerNamesOutcome = speakerNaming?.outcome
     self.autoNamedCount = speakerNaming?.autoNamedCount
+    self.speakerReadHealth = speakerNaming?.readHealth
     self.muteFollow = muteFollow
     self.provenance = provenance
   }

@@ -1036,7 +1036,7 @@ struct CallSpeakerCaptureTests {
         as? [String: Any])
     for key in [
       "invalidNameReadings", "evidenceCapacityDrops", "failedReads", "prunedControls",
-      "skippedWindows",
+      "skippedWindows", "toleratedFailures",
     ] {
       #expect(object.removeValue(forKey: key) != nil, "\(key)")
     }
@@ -1045,9 +1045,12 @@ struct CallSpeakerCaptureTests {
     #expect(health.failedReads == nil)
     #expect(health.invalidNameReadings == nil)
     #expect(CallCaptureHealth().failedReads == 0, "a new one starts at zero")
+    #expect(health.toleratedFailures == nil)
+    #expect(CallCaptureHealth().toleratedFailures == 0)
     var counting = health
-    counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2)
+    counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2, toleratedFailures: 1)
     #expect(counting.failedReads == 2)
+    #expect(counting.toleratedFailures == 1)
   }
 
   @Test("only the Zoom app gets the Zoom policy")

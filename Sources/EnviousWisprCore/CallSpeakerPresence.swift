@@ -145,20 +145,25 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   public var nodesVisitedMax = 0
   /// Reads the call app could not answer, button subtrees left unread and windows skipped as
   /// not the call (#4013 13B receipt), summed over copies.
-  /// `invalidNameReadings`, `evidenceCapacityDrops` and these three came later: a health object
-  /// written before them reads them as unknown (`nil`), never zero; a new one starts them at zero.
+  /// `invalidNameReadings`, `evidenceCapacityDrops`, these three and `toleratedFailures` came
+  /// later: a health object written before them reads them as unknown (`nil`), never zero; a new
+  /// one starts them at zero.
   public var failedReads: Int? = 0
   public var prunedControls: Int? = 0
   public var skippedWindows: Int? = 0
+  /// Failed reads the capture policy copied as nothing because no reader uses them (#4013
+  /// reading resilience §3.1), also counted in `failedReads`, summed over copies.
+  public var toleratedFailures: Int? = 0
 
   public init() {}
 
   /// Adds one copy's walk time, size and what it could not read or left out.
   public mutating func noteWalk(
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
-    skippedWindows: Int = 0
+    skippedWindows: Int = 0, toleratedFailures: Int = 0
   ) {
     self.failedReads = (self.failedReads ?? 0) + max(0, failedReads)
+    self.toleratedFailures = (self.toleratedFailures ?? 0) + max(0, toleratedFailures)
     self.prunedControls = (self.prunedControls ?? 0) + max(0, prunedControls)
     self.skippedWindows = (self.skippedWindows ?? 0) + max(0, skippedWindows)
     walkDurationCount += 1
