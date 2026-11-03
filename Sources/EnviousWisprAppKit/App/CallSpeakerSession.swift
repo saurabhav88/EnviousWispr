@@ -87,7 +87,7 @@ final class CallSpeakerSession {
     /// Starts counting app activations; the handler gets each activated app's process id.
     var watch: @MainActor (@escaping @MainActor (pid_t) -> Void) -> NSObjectProtocol
     var stopWatching: @MainActor (NSObjectProtocol) -> Void
-    /// A request (macOS 14+ may refuse it), never a guarantee.
+    /// Asks macOS to bring `pid` to the front; never a guarantee (the outcome is read after).
     var activate: @MainActor (pid_t) -> Void
     /// Runs `body` on the next pass of the main run loop.
     var nextTurn: @MainActor (@escaping @MainActor () -> Void) -> Void
@@ -107,7 +107,11 @@ final class CallSpeakerSession {
         }
       },
       stopWatching: { NSWorkspace.shared.notificationCenter.removeObserver($0) },
-      activate: { pid in _ = NSRunningApplication(processIdentifier: pid)?.activate() },
+      // `NSRunningApplication.activate()` from this background menu-bar app was refused live
+      // (macOS 26, Zoom stayed in front, run 20261103-184451-4356-zoom-self-probe-live-uat-1bfa
+      // take a); the paste cascade's Accessibility activation (`AXFrontmost`) is the app's proven
+      // way to bring another app forward.
+      activate: { pid in _ = PasteService.forceActivateApp(pid: pid) },
       nextTurn: { body in DispatchQueue.main.async { MainActor.assumeIsolated { body() } } })
   }
 
