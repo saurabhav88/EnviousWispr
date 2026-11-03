@@ -474,6 +474,9 @@ struct ZoomSelfProbeTicket: Equatable, Sendable {
   let source: CallSpeakerSourceAnswer.Source
   let segmentStartMs: Int
   let token: Int
+  /// Discovery's source revision at issue: a call that went away and came back between two
+  /// session checks moves it even when the call is the same (as ordinary copies check).
+  let sourceRevision: Int
 }
 
 /// #4356: what one valid Zoom app copy tells the self probe's owner.

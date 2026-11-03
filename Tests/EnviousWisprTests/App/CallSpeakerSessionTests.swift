@@ -970,6 +970,26 @@ import os
       second.cancel()
     }
 
+    @Test("a call that went away and came back between two checks teaches no name")
+    func probeSourceRevision() async throws {
+      let sources = Sources(Self.zoom)
+      let probe = Probe()
+      let session = try zoomSession(sources, clock: Clock(), rig: ZoomRig(), probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      probe.holdAfterStop.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("pressed") { probe.stopped.withLock { $0.count } == 1 }
+      // Discovery saw the call leave and return; no session check ran in between.
+      sources.speakerSourceRevision += 1
+      probe.release.signal()
+      await eventually("settled") { session.pendingProbeForTesting == nil }
+      #expect(session.zoomIdentityForTesting?.knownSelf == nil)
+      #expect(session.zoomIdentityForTesting?.opensUsed == 1, "the press still counts")
+      session.cancel()
+    }
+
     @Test("a new segment of the same call keeps the learned name and the press count")
     func probeIdentitySurvivesSegment() async throws {
       let sources = Sources(Self.zoom)

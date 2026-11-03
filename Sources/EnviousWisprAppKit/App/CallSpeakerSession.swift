@@ -381,7 +381,7 @@ final class CallSpeakerSession {
     nextProbeID += 1
     let ticket = ZoomSelfProbeTicket(
       id: nextProbeID, source: binding.source, segmentStartMs: segmentStartMs,
-      token: probeToken.withLock { $0 })
+      token: probeToken.withLock { $0 }, sourceRevision: deps.sources.speakerSourceRevision)
     beginHandBack(ticket: nextProbeID, zoom: binding.source.target.pid)
     // The next probe needs a fresh valid reading that shows the moment again.
     identity.ready = false
@@ -426,7 +426,8 @@ final class CallSpeakerSession {
       if !result.userClosed, result.panelClosed != true { identity.pressesStopped = true }
     }
     if identity.knownSelf == nil, let name = result.learned,
-      probeToken.withLock({ $0 }) == ticket.token
+      probeToken.withLock({ $0 }) == ticket.token,
+      deps.sources.speakerSourceRevision == ticket.sourceRevision
     {
       identity.knownSelf = name
       deps.log("meeting zoom self known source=probe")
