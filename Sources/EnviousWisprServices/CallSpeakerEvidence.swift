@@ -564,9 +564,17 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// participants agreeing with the roster. Two names on screen alone never qualify. The app's
   /// signed-in account name rides along when it is a valid name (plan r4); it never makes a
   /// reading qualify.
+  ///
+  /// The count may instead be hidden by the user's own Zoom share (`countHiddenByShare`, #4013
+  /// share plan §3.3, founder 2026-11-03 after Granola's `II()`, which accepts a headcount of two
+  /// or unknown): Zoom then shows only the floating tiles and no count anywhere. A count that is
+  /// shown and is not two, or counts that disagree, still refuse.
   static func pairEvidence(_ reading: CallSpeakerReading) -> PairEvidence? {
+    let twoPeople =
+      reading.participantCount == 2
+      || (reading.participantCount == nil && reading.countHiddenByShare)
     guard reading.participantIdentityEstablished, reading.sharedNames.isEmpty,
-      reading.participantCount == 2, reading.participants.count == 2,
+      twoPeople, reading.participants.count == 2,
       reading.roster.names.count == 2, reading.roster.selfNames.count <= 2
     else { return nil }
     let named = reading.participants.compactMap(\.name)

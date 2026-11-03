@@ -105,6 +105,11 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// diagnosis only, never saved, logged with names or sent. `nil` when nothing was shown talking
   /// by a flag and no share signal applied.
   package let talkerSource: TalkerSource?
+  /// The user is sharing a screen and Zoom shows no participant count or list anywhere in the
+  /// copy (#4013 share plan §3.3, review r1 F2): the count is hidden, not unknown. Only the Zoom
+  /// reader sets it, from the whole capture. It lets a two-tile reading prove a two-person call
+  /// without a count; a count that is shown, conflicting or incomplete never sets it.
+  package let countHiddenByShare: Bool
 
   package enum TalkerSource: Sendable, Equatable {
     /// A tile's `active speaker` flag.
@@ -119,8 +124,10 @@ package struct CallSpeakerReading: Sendable, Equatable {
     speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
     participants: [CallParticipant], participantIdentityEstablished: Bool,
     sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil,
-    accountSelfNames: [String] = [], talkerSource: TalkerSource? = nil
+    accountSelfNames: [String] = [], talkerSource: TalkerSource? = nil,
+    countHiddenByShare: Bool = false
   ) {
+    self.countHiddenByShare = countHiddenByShare
     self.accountSelfNames = accountSelfNames
     self.talkerSource = talkerSource
     self.participantListComplete = participantListComplete

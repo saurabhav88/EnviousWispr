@@ -120,6 +120,10 @@ package enum MeetingSpeakerNamer {
   /// A two-person stretch counts only after this long (Granola `zN`: 15,000 ms). Granola also
   /// waives it when only one remote was ever seen; that shortcut is not taken here, because a
   /// saved recording cannot prove nobody else was present while it was not being read (#4206).
+  /// That reason still governs the duration: this minimum is never waived. Separately, a stretch
+  /// may now be proven without a shown count when the user's own Zoom share hides every count
+  /// (founder 2026-11-03, after Granola's `II()`, which accepts a headcount of two or unknown;
+  /// `CallSpeakerAccumulator.pairEvidence`); it still has to last this long.
   package static let minimumPairStretchMs = 15_000
   /// The least call speech one speaker needs inside a stretch for it to name them; an
   /// engineering threshold to validate with the real-call receipts, not a Granola constant.

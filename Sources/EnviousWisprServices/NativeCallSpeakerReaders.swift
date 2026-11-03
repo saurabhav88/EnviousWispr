@@ -134,12 +134,14 @@ package enum ZoomAppSpeakerReader {
     // Identity holds when the tiles are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
     let account = accountName(fromTitles: accountTitles)
+    // The user's share hid every count (#4013 share plan §3.3); read from the whole capture.
+    let countHidden = share.hostShare && !share.countShown
     // During a screen share Zoom may show the talker without a flag (#4013 share plan §3.1-3.2):
     // a `Talking:` label in the collapsed floating window, or one tile that follows the talker.
     if share.isSharing, let signal = shareSignal(windows: windows, share: share) {
       return shareReading(
         signal, selfList: selfList, account: account, complete: complete, count: count,
-        listedTwice: listedTwice)
+        listedTwice: listedTwice, countHidden: countHidden)
     }
     let flagSource: CallSpeakerReading.TalkerSource? =
       participants.contains(where: \.isTalking) ? .flag : nil
@@ -154,7 +156,7 @@ package enum ZoomAppSpeakerReader {
         // Complete only when every count the call shows agrees with it; a conflict leaves the
         // names as names but never confirms that anyone left.
         participantListComplete: count != nil, participantCount: count,
-        accountSelfNames: account, talkerSource: flagSource)
+        accountSelfNames: account, talkerSource: flagSource, countHiddenByShare: countHidden)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
@@ -163,7 +165,8 @@ package enum ZoomAppSpeakerReader {
       rosterFromParticipantList: false, participants: participants,
       participantIdentityEstablished: identity,
       sharedNames: listedTwice.union(repeatedNames(peopleNames)),
-      participantCount: count, accountSelfNames: account, talkerSource: flagSource)
+      participantCount: count, accountSelfNames: account, talkerSource: flagSource,
+      countHiddenByShare: countHidden)
   }
 
   /// The talker signal a screen-share layout shows instead of an `active speaker` flag.
@@ -213,7 +216,7 @@ package enum ZoomAppSpeakerReader {
   /// alone never makes a list complete.
   static func shareReading(
     _ signal: ShareSignal, selfList: [String], account: [String], complete: PanelRows?,
-    count: Int?, listedTwice: Set<String>
+    count: Int?, listedTwice: Set<String>, countHidden: Bool
   ) -> CallSpeakerReading {
     var participants: [CallParticipant] = []
     let source: CallSpeakerReading.TalkerSource
@@ -247,13 +250,13 @@ package enum ZoomAppSpeakerReader {
         rosterFromParticipantList: true, participants: participants,
         participantIdentityEstablished: true, sharedNames: listedTwice,
         participantListComplete: count != nil, participantCount: count,
-        accountSelfNames: account, talkerSource: source)
+        accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden)
     }
     return CallSpeakerReading(
       speaking: speaking, roster: CallSpeakerRoster(names: shown, selfNames: selfList),
       rosterFromParticipantList: false, participants: participants,
       participantIdentityEstablished: true, sharedNames: listedTwice, participantCount: count,
-      accountSelfNames: account, talkerSource: source)
+      accountSelfNames: account, talkerSource: source, countHiddenByShare: countHidden)
   }
 
   /// The participants panel's rows (2026-10-29, `zoom-1on1-findings-2026-10-29.md`): each person

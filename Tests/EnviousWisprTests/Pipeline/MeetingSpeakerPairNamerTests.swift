@@ -158,7 +158,8 @@ struct MeetingSpeakerPairNamerTests {
     let turns = [Self.turn(Self.a, 1_000, 40_000)]
     // The mark says the user is Saurabh; the account says Alex: the mark decides.
     let marked = propose(
-      turns, [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [Self.user], account: [Self.alex])])])
+      turns,
+      [Self.segment(pairs: [Self.stretch(0, 30_000, marked: [Self.user], account: [Self.alex])])])
     #expect(marked.proposals == [Self.a: Self.alex])
     // The segment marks someone not on this two-person call: a contradiction the account cannot
     // settle.
@@ -275,5 +276,139 @@ struct MeetingSpeakerPairNamerTests {
     #expect(recorded == unrecorded)
     #expect(recorded.proposals == [Self.a: Self.alex])
     #expect(recorded.pairProposals == 0)
+  }
+
+  // MARK: - Two people while the user's Zoom share hides the count (#4013 share plan §3.3)
+
+  /// SURVEY shape from the 2026-11-03 discovery run (`p2-thumb-alex`): the user shares, Zoom's
+  /// floating window shows the user and Alex, and no count appears anywhere.
+  private static func sharingCopy(
+    extra: [CallAXWindow] = [],
+    account: [String]? = [
+      "Saurabh A Vaish(saurabhav@gmail.com)"
+    ]
+  ) -> CallAXCapture {
+    let floating = CallAXWindow(
+      title: "zoom floating video window",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(
+            role: "AXTabGroup", description: "Saurabh A Vaish, Computer audio muted, Video off"),
+          CallAXNode(
+            role: "AXTabGroup", description: "Alex Rivera, Computer audio unmuted, Video off"),
+          CallAXNode(role: "AXButton", description: "Hide thumbnail video"),
+          CallAXNode(role: "AXButton", description: "Show active speaker video"),
+        ]))
+    let toolbar = CallAXWindow(
+      title: "zoom share toolbar window",
+      root: CallAXNode(
+        role: "AXWindow", children: [CallAXNode(role: "AXButton", description: "Participants")]))
+    return CallAXCapture(
+      windows: [toolbar, floating] + extra, documents: [], completeness: .complete,
+      readStartHostTime: 0, readEndHostTime: 0, accountTitles: account)
+  }
+
+  private static func reading(_ copy: CallAXCapture) -> CallSpeakerReading? {
+    CallSpeakerSurfaceReader.read(
+      surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules)
+  }
+
+  @Test("a two-person call during the user's share names the other voice after the minimum")
+  func hiddenCountNamesRemote() throws {
+    var accumulator = CallSpeakerAccumulator(
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
+    let copy = Self.sharingCopy()
+    let scope = CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom)
+    #expect(scope == .resolved)
+    // One copy every second for 20 s: a stretch past the unchanged 15 s minimum.
+    for ms in stride(from: 0, through: 20_000, by: 1_000) {
+      accumulator.add(
+        Self.reading(copy), context: CallCaptureContext(completeness: .complete, scope: scope),
+        observationMs: ms)
+    }
+    let segment = accumulator.segment(endMs: 30_000, endReason: .recordingEnded)
+    #expect(segment.pairs?.count == 1)
+    let result = propose([Self.turn(Self.a, 1_000, 19_000)], [segment])
+    #expect(result.proposals == [Self.a: Self.alex])
+    #expect(result.pairProposals == 1)
+  }
+
+  @Test("a hidden-count stretch shorter than the minimum names nobody")
+  func hiddenCountShortStretch() {
+    var accumulator = CallSpeakerAccumulator(
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
+    for ms in stride(from: 0, through: 10_000, by: 1_000) {
+      accumulator.add(
+        Self.reading(Self.sharingCopy()),
+        context: CallCaptureContext(completeness: .complete, scope: .resolved), observationMs: ms)
+    }
+    let segment = accumulator.segment(endMs: 30_000, endReason: .recordingEnded)
+    #expect(propose([Self.turn(Self.a, 1_000, 9_000)], [segment]).proposals.isEmpty)
+  }
+
+  @Test("the hidden count is accepted only from the user's share with no count anywhere")
+  func hiddenCountProvenance() throws {
+    let valid = try #require(Self.reading(Self.sharingCopy()))
+    #expect(valid.countHiddenByShare == true)
+    #expect(CallSpeakerAccumulator.pairEvidence(valid) != nil)
+    // A count in a window the reading does not use still counts as shown.
+    let counted = CallAXWindow(
+      title: "Participants",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(
+            role: "AXButton", description: "Open participants panel, closed, 3 participants")
+        ]))
+    let shown = try #require(Self.reading(Self.sharingCopy(extra: [counted])))
+    #expect(shown.countHiddenByShare == false)
+    #expect(CallSpeakerAccumulator.pairEvidence(shown) == nil)
+    // An unparsed count shape (waiting-room tail) is still a count shown.
+    let waiting = CallAXWindow(
+      title: nil,
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(
+            role: "AXButton",
+            description: "Open participants panel, closed, 2 participants, 1 person is waiting")
+        ]))
+    #expect(
+      try #require(Self.reading(Self.sharingCopy(extra: [waiting]))).countHiddenByShare == false)
+    // An incomplete list anywhere is a count shown too.
+    let list = CallAXWindow(
+      title: nil,
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [CallAXNode(role: "AXOutline", description: "Participants list")]))
+    #expect(try #require(Self.reading(Self.sharingCopy(extra: [list]))).countHiddenByShare == false)
+  }
+
+  @Test("without the user's share, or with a count of three, two tiles prove nothing")
+  func hiddenCountRefusals() {
+    let two = [
+      CallParticipant(key: "a", name: Self.user, isTalking: false, isSelf: false),
+      CallParticipant(key: "b", name: Self.alex, isTalking: false, isSelf: false),
+    ]
+    func reading(count: Int?, hidden: Bool, people: [CallParticipant] = two) -> CallSpeakerReading {
+      CallSpeakerReading(
+        speaking: [], roster: CallSpeakerRoster(names: people.compactMap(\.name), selfNames: []),
+        rosterFromParticipantList: false, participants: people,
+        participantIdentityEstablished: true,
+        sharedNames: [], participantCount: count, countHiddenByShare: hidden)
+    }
+    #expect(CallSpeakerAccumulator.pairEvidence(reading(count: nil, hidden: true)) != nil)
+    // No share provenance: an unknown count (Teams, conflicting counts) still refuses.
+    #expect(CallSpeakerAccumulator.pairEvidence(reading(count: nil, hidden: false)) == nil)
+    // A shown count other than two refuses even with the flag.
+    #expect(CallSpeakerAccumulator.pairEvidence(reading(count: 3, hidden: true)) == nil)
+    // One tile never makes a pair.
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(reading(count: nil, hidden: true, people: [two[1]]))
+        == nil)
+    // The Teams reader never sets the flag.
+    let teams = TeamsAppSpeakerReader.read(windows: [])
+    #expect(teams.countHiddenByShare == false)
   }
 }
