@@ -22,13 +22,10 @@ struct MeetingsView: View {
       settingsPage
     } else {
       // #4017 O1: EnviousMeet is locked until its setup is finished. The setup sits in the
-      // same page frame and header panel as every settings page.
+      // same page frame and panel surface as every settings page; #4346 §18 Q2: its own logo
+      // heading replaces the panel's eyebrow and description.
       SettingsContentView {
-        BrandedPanel(
-          icon: "person.2.wave.2", header: "EnviousMeet", description: MeetingsCopy.pageDescription
-        ) {
-          MeetingOnboardingView()
-        }
+        MeetingOnboardingView().brandedPanelChrome()
       }
     }
   }
@@ -52,6 +49,11 @@ struct MeetingsView: View {
           .padding(.horizontal, SettingsLayout.contentH)
           .padding(.top, SettingsLayout.contentTop)
         }
+        // #4346 §18 Q1: the name and BETA above the tabs.
+        MeetingBrandHeading(logoSize: 20, nameSize: 17)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, SettingsLayout.contentH)
+          .padding(.top, SettingsLayout.contentTop)
         SettingsTabStrip(
           items: MeetingsTab.allCases.map {
             SettingsTabItem(id: $0, icon: $0.icon, label: $0.label, map: $0.mapID)
@@ -305,9 +307,6 @@ extension MeetingsView {
 /// EnviousMeet copy that the Settings Map also reads, so the page and its search entries share
 /// one owner (#3482 title ownership).
 enum MeetingsCopy {
-  static let pageDescription = LocalizedStringResource(
-    "Record a meeting on your Mac and get a transcript with who said what.",
-    comment: "EnviousMeet page: the line under the title.")
   static let startRecording = LocalizedStringResource(
     "Record a meeting", comment: "EnviousMeet: the button that starts a meeting recording.")
   static let whereRecordingsLive = LocalizedStringResource(

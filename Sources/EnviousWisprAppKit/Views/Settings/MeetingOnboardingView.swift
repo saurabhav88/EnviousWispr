@@ -10,7 +10,10 @@ struct MeetingOnboardingView: View {
   var body: some View {
     // Every column has a largest width, never a fixed one, so a narrow window narrows it.
     VStack(alignment: .leading, spacing: 22) {
-      MeetingSetupStepDots(step: model.screen)
+      VStack(alignment: .leading, spacing: 14) {
+        MeetingBrandHeading()
+        MeetingSetupStepDots(step: model.screen)
+      }
       ZStack(alignment: .topLeading) {
         switch model.screen {
         case .welcome: MeetingSetupWelcome().transition(Self.transition)

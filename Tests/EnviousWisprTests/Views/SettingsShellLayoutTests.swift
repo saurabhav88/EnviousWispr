@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 
 /// #3385: the Settings frame without page headers. **When this fails, a sidebar label is cut
-/// off or changes size when selected or busy, the Dictionary heading row clips at a narrow
+/// off or changes size when selected or busy (EnviousMeet's row with its BETA tag, #4346), the Dictionary heading row clips at a narrow
 /// window, or a page draws something above its own first section again.** Production views
 /// hosted here: `SidebarNavRow`, `DictionarySettingsHeading` and `SettingsContentView`, each
 /// wrapped only in a background probe that reports its frame.
@@ -59,7 +59,11 @@ struct SettingsShellLayoutTests {
   static func row(
     _ section: SettingsPage, selected: Bool, activity: SettingsShellCopy.SidebarActivity = .none
   ) -> some View {
-    SidebarNavRow(label: section.label, isSelected: selected, activity: activity) {
+    // #4346: EnviousMeet's row carries the BETA tag, as `SettingsView.sidebarRow` passes it.
+    SidebarNavRow(
+      label: section.label, isSelected: selected, activity: activity,
+      showsBeta: section == .meetings
+    ) {
       Image(systemName: section.icon).font(.system(size: 15, weight: .medium))
     } action: {
     }
@@ -114,6 +118,11 @@ struct SettingsShellLayoutTests {
     let shortest = try #require(heights.values.min())
     #expect(heights.values.allSatisfy { $0 >= shortest })
     print("SidebarRowHeights \(heights.sorted { $0.key < $1.key })")
+    // #4346: the BETA tag sits in the reserved dot slot, so EnviousMeet stays one line like the
+    // one-line History row instead of wrapping to two.
+    #expect(
+      heights[SettingsPage.meetings.rawValue] == heights[SettingsPage.history.rawValue],
+      "EnviousMeet's row is \(String(describing: heights[SettingsPage.meetings.rawValue])) tall, History \(String(describing: heights[SettingsPage.history.rawValue]))")
   }
 
   @Test("the gift is an icon-sized target with its full name for hover and VoiceOver")
