@@ -446,6 +446,22 @@ package enum ZoomAppSpeakerReader {
       listedTwice: listedTwice, selfMarks: selfMarks, tileCount: tileCount)
   }
 
+  /// Whether a copy of every Zoom window shows the moment the self probe may open the panel
+  /// (#4356): at least one participant tile, the closed panel's toolbar button with its count,
+  /// no participants list anywhere and no share toolbar (the user is not sharing).
+  package static func selfProbeReady(windows: [CallAXWindow]) -> Bool {
+    guard !windows.contains(where: { $0.title == shareToolbarWindowTitle }) else { return false }
+    let nodes = windows.flatMap { $0.root.allNodes }
+    guard
+      !nodes.contains(where: { $0.role == "AXOutline" && $0.label == participantsListLabel })
+    else { return false }
+    let closedButton = nodes.contains {
+      $0.role == "AXButton" && $0.label.flatMap(closedPanelCount) != nil
+    }
+    let tile = nodes.contains { $0.role == "AXTabGroup" && $0.label.flatMap(parseTile) != nil }
+    return closedButton && tile
+  }
+
   /// The `(me)` names of every bound participants-list row in `windows`, from every window
   /// (#4356): the one authority for "Zoom's list marked this name as the user". Shared by
   /// `shareContext` and the self probe.

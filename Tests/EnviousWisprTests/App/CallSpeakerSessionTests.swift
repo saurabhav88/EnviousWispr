@@ -60,7 +60,8 @@ import os
               windows: page.windows, documents: page.documents, completeness: .complete,
               readStartHostTime: host, readEndHostTime: host)
           },
-          muteRules: .testPackaged, isTrusted: { true }, isDictationIdle: { true }, save: { try await saved($0) },
+          muteRules: .testPackaged, isTrusted: { true }, isDictationIdle: { true },
+          save: { try await saved($0) },
           lane: .init(), hostTime: { clock.host() }, tick: tick,
           settle: .milliseconds(settleMs), observerTick: .seconds(3_600), saveEvery: 2))
     }
@@ -528,6 +529,487 @@ import os
       #expect(log.sessionHealth?.capacityReason == "segments")
       #expect(log.shapeProblem == nil, "the log still saves")
       session.cancel()
+    }
+
+    // MARK: - Zoom self probe (#4356)
+
+    /// SYNTHETIC Zoom meeting window shapes from the 2026-11-03 live takes: two tiles, the
+    /// closed panel's toolbar button, and optionally the docked participants list.
+    nonisolated static func zoomCopy(
+      host: UInt64, list: [String]? = nil,
+      button: String = "Open participants panel, closed, 2 participants"
+    ) -> CallAXCapture {
+      var children = [
+        CallAXNode(
+          role: "AXTabGroup", description: "Saurabh Vaish, Computer audio muted, Video off"),
+        CallAXNode(role: "AXTabGroup", description: "Bea Chen, Computer audio unmuted, Video off"),
+        CallAXNode(role: "AXButton", description: button, identifier: "participant"),
+      ]
+      if let list {
+        children.append(
+          CallAXNode(
+            role: "AXOutline", description: "Participants list",
+            children: list.map { entry in
+              let name = ZoomAppSpeakerReader.panelEntry(entry).name
+              return CallAXNode(
+                role: "AXRow",
+                children: [
+                  CallAXNode(
+                    role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+                    children: [
+                      CallAXNode(role: "AXStaticText", value: entry),
+                      CallAXNode(
+                        role: "AXMenuButton", description: "More options for \(name), collapsed"),
+                    ])
+                ])
+            }))
+      }
+      let window = CallAXWindow(
+        title: "Zoom Meeting",
+        root: CallAXNode(role: "AXWindow", identifier: "zm.meeting.window.main", children: children)
+      )
+      return CallAXCapture(
+        windows: [window], documents: [], completeness: .complete, readStartHostTime: host,
+        readEndHostTime: host, accountTitles: ["Saurabh A Vaish(saurabhav@gmail.com)"])
+    }
+
+    /// A scripted probe: records every call and answers from `next`; `hold` makes it wait (on
+    /// the lane) until the test lets it go, then it asks `shouldStop` like the real one.
+    final class Probe: Sendable {
+      let calls = OSAllocatedUnfairLock(initialState: [(pid: pid_t, roles: Set<String>)]())
+      let next = OSAllocatedUnfairLock(
+        initialState: ZoomSelfProbe.Result(
+          refusal: nil, pressedOpen: true, learned: "Saurabh Vaish", panelClosed: true,
+          userClosed: false, elapsedMs: 120))
+      let hold = OSAllocatedUnfairLock(initialState: false)
+      /// Hold after asking `shouldStop` (the press already happened) instead of before.
+      let holdAfterStop = OSAllocatedUnfairLock(initialState: false)
+      /// Never ask `shouldStop`: the result of a probe already past its press.
+      let ignoreStop = OSAllocatedUnfairLock(initialState: false)
+      let release = DispatchSemaphore(value: 0)
+      let stopped = OSAllocatedUnfairLock(initialState: [Bool]())
+
+      func run(_ target: CallSpeakerTarget, _ roles: Set<String>, _ stop: () -> Bool)
+        -> ZoomSelfProbe.Result
+      {
+        calls.withLock { $0.append((target.pid, roles)) }
+        let holding = hold.withLock { $0 }
+        let late = holdAfterStop.withLock { $0 }
+        // deadline-fallback: bound a missing release; the test fails on its own expectations
+        if holding, !late { _ = release.wait(timeout: .now() + 10) }
+        let stop = ignoreStop.withLock { $0 } ? false : stop()
+        stopped.withLock { $0.append(stop) }
+        // deadline-fallback: as above
+        if holding, late { _ = release.wait(timeout: .now() + 10) }
+        if stop { return .refused(.skipped, elapsedMs: 1) }
+        return next.withLock { $0 }
+      }
+
+      var count: Int { calls.withLock { $0.count } }
+    }
+
+    /// What the session saved and the mute events it sent.
+    @MainActor
+    final class ZoomRig {
+      var saves: [CallSpeakerLog] = []
+      var muteEvents: [CallMuteCaptureEvent] = []
+      var logs: [String] = []
+      let dictation = CallSpeakerObserverTests.Dictation()
+      var probeLines: Int { logs.filter { $0.hasPrefix("meeting zoom self probe") }.count }
+    }
+
+    /// The Zoom window each copy shows (read on the lane), and how many copies were taken.
+    final class ZoomShape: Sendable {
+      let shape = OSAllocatedUnfairLock(
+        initialState: (
+          list: [String]?.none, button: "Open participants panel, closed, 2 participants"
+        ))
+      let copies = OSAllocatedUnfairLock(initialState: 0)
+
+      func set(list: [String]?, button: String) { shape.withLock { $0 = (list, button) } }
+      var count: Int { copies.withLock { $0 } }
+    }
+
+    private func zoomSession(
+      _ sources: Sources, clock: Clock, rig: ZoomRig, probe: Probe, shape: ZoomShape = ZoomShape(),
+      following: Bool = false
+    ) throws -> CallSpeakerSession {
+      let rules = try TalkerRulesSnapshot(
+        validating: Data(
+          contentsOf: RepoRoot.url.appending(
+            path: "Sources/EnviousWisprServices/Resources/talker-rules.json")), origin: .bundled)
+      return CallSpeakerSession(
+        anchor: 0, rules: rules, bundled: rules.rules,
+        dependencies: .init(
+          sources: sources,
+          capture: { _, _, _ in
+            shape.copies.withLock { $0 += 1 }
+            let now = shape.shape.withLock { $0 }
+            return Self.zoomCopy(host: clock.host(), list: now.list, button: now.button)
+          },
+          muteRules: .testPackaged, isTrusted: { true }, isDictationIdle: { rig.dictation.idle },
+          save: { log in rig.saves.append(log) }, log: { rig.logs.append($0) }, lane: .init(),
+          hostTime: { clock.host() },
+          tick: .seconds(3_600), settle: .milliseconds(2_000), observerTick: .seconds(3_600),
+          saveEvery: 1_000, muteFollowing: { following },
+          muteEvent: { rig.muteEvents.append($0) },
+          selfProbe: { target, roles, stop in probe.run(target, roles, stop) }))
+    }
+
+    /// One tick of the current observer and its outcome: a copy delivered, or a probe settled.
+    private func tickZoom(_ session: CallSpeakerSession, probe: Probe) async {
+      guard let observer = session.currentObserverForTesting else { return }
+      let deliveries = observer.deliveriesForTesting
+      let probes = probe.count
+      observer.tick()
+      await eventually("copy delivered or probe settled") {
+        observer.deliveriesForTesting > deliveries
+          || (probe.count > probes && session.pendingProbeForTesting == nil)
+      }
+    }
+
+    private static let zoomSource = CallSpeakerSourceAnswer.Source(
+      family: .zoom, target: CallSpeakerTarget(pid: 2, rule: .callApp(.zoom)))
+
+    @Test("an unknown user: one valid reading, then the probe in the next slot; the name is used")
+    func probeLearnsAndIsUsed() async throws {
+      let sources = Sources(Self.zoom)
+      let clock = Clock()
+      let rig = ZoomRig()
+      let probe = Probe()
+      let shape = ZoomShape()
+      let session = try zoomSession(sources, clock: clock, rig: rig, probe: probe, shape: shape)
+      session.start()
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 0, "the first tick reads; only a valid reading allows a probe")
+      #expect(session.zoomIdentityForTesting?.ready == true)
+      let copiesBefore = shape.count
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 1)
+      #expect(shape.count == copiesBefore, "the probe took the slot instead of a copy")
+      #expect(probe.calls.withLock { $0.first?.pid } == 2)
+      #expect(probe.calls.withLock { $0.first?.roles } == CallMuteRules.testPackaged.protectedRoles)
+      #expect(session.zoomIdentityForTesting?.knownSelf == "Saurabh Vaish")
+      #expect(session.zoomIdentityForTesting?.opensUsed == 1)
+      // Later copies give the Zoom reader the learned name instead of the account name, and no
+      // further probe runs.
+      clock.ms.withLock { $0 = 20_000 }
+      await tickZoom(session, probe: probe)
+      clock.ms.withLock { $0 = 40_000 }
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 1)
+      let pairs = try #require(session.currentLog?.segments.last?.pairs)
+      #expect(pairs.last?.accountNames == ["Saurabh Vaish"])
+      session.cancel()
+    }
+
+    @Test("a probe slot is recorded like a busy lane tick: mute gets a busy skip, never started")
+    func probeSlotAccounting() async throws {
+      let sources = Sources(Self.zoom)
+      let rig = ZoomRig()
+      let probe = Probe()
+      let session = try zoomSession(
+        sources, clock: Clock(), rig: rig, probe: probe, following: true)
+      session.start()
+      await tickZoom(session, probe: probe)
+      let started = rig.muteEvents.filter { $0 == .started }.count
+      rig.muteEvents.removeAll()
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 1)
+      #expect(rig.muteEvents == [.busySkip])
+      #expect(started == 1)
+      session.cancel()
+    }
+
+    @Test(
+      "no probe while the list is on screen, or once a list (me) row named the user")
+    func probeEligibility() async throws {
+      let sources = Sources(Self.zoom)
+      let rig = ZoomRig()
+      let probe = Probe()
+      let shape = ZoomShape()
+      let session = try zoomSession(sources, clock: Clock(), rig: rig, probe: probe, shape: shape)
+      session.start()
+      // The list is open but marks nobody: never ready.
+      shape.set(
+        list: ["Bea Chen", "Saurabh Vaish"],
+        button: "Close participants panel, opened, 2 participants")
+      await tickZoom(session, probe: probe)
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 0)
+      #expect(session.zoomIdentityForTesting?.ready == false)
+      // The list marks the user: learned without any press.
+      shape.set(
+        list: ["Bea Chen", "Saurabh Vaish (Host, me)"],
+        button: "Close participants panel, opened, 2 participants")
+      await tickZoom(session, probe: probe)
+      #expect(session.zoomIdentityForTesting?.knownSelf == "Saurabh Vaish")
+      shape.set(list: nil, button: "Open participants panel, closed, 2 participants")
+      await tickZoom(session, probe: probe)
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 0, "a known user needs no probe")
+      session.cancel()
+    }
+
+    @Test(
+      "at most three presses per call, two seconds apart; a refusal costs none; an open panel stops presses"
+    )
+    func probeBudget() async throws {
+      let sources = Sources(Self.zoom)
+      let clock = Clock()
+      let rig = ZoomRig()
+      let probe = Probe()
+      probe.next.withLock {
+        $0 = ZoomSelfProbe.Result(
+          refusal: nil, pressedOpen: true, learned: nil, panelClosed: true, userClosed: false,
+          elapsedMs: 600)
+      }
+      let session = try zoomSession(sources, clock: clock, rig: rig, probe: probe)
+      session.start()
+      var ms = 0
+      func round() async {
+        ms += 3_000
+        let now = ms
+        clock.ms.withLock { $0 = now }
+        await tickZoom(session, probe: probe)  // a valid reading
+        await tickZoom(session, probe: probe)  // the probe, when allowed
+      }
+      await round()
+      #expect(probe.count == 1)
+      // Too soon after the last probe: a copy, not a probe.
+      await tickZoom(session, probe: probe)
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 1)
+      await round()
+      await round()
+      #expect(session.zoomIdentityForTesting?.opensUsed == 3)
+      await round()
+      #expect(probe.count == 3, "a fourth press never happens")
+
+      // A refusal presses nothing and uses no press.
+      let other = Probe()
+      other.next.withLock { $0 = .refused(.notInState, elapsedMs: 2) }
+      let refused = try zoomSession(
+        Sources(Self.zoom), clock: Clock(), rig: ZoomRig(), probe: other)
+      refused.start()
+      await tickZoom(refused, probe: other)
+      await tickZoom(refused, probe: other)
+      #expect(other.count == 1)
+      #expect(refused.zoomIdentityForTesting?.opensUsed == 0)
+      refused.cancel()
+
+      // A panel that may still be open: no more presses this call.
+      let stuck = Probe()
+      stuck.next.withLock {
+        $0 = ZoomSelfProbe.Result(
+          refusal: nil, pressedOpen: true, learned: nil, panelClosed: false, userClosed: false,
+          elapsedMs: 600)
+      }
+      let stuckClock = Clock()
+      let stuckSession = try zoomSession(
+        Sources(Self.zoom), clock: stuckClock, rig: ZoomRig(), probe: stuck)
+      stuckSession.start()
+      await tickZoom(stuckSession, probe: stuck)
+      await tickZoom(stuckSession, probe: stuck)
+      stuckClock.ms.withLock { $0 = 10_000 }
+      await tickZoom(stuckSession, probe: stuck)
+      await tickZoom(stuckSession, probe: stuck)
+      #expect(stuck.count == 1)
+      #expect(stuckSession.zoomIdentityForTesting?.pressesStopped == true)
+      stuckSession.cancel()
+      session.cancel()
+    }
+
+    @Test(
+      "a source interruption before the press stops it; a late result for an old call changes nothing"
+    )
+    func probeInvalidation() async throws {
+      let sources = Sources(Self.zoom)
+      let clock = Clock()
+      let rig = ZoomRig()
+      let probe = Probe()
+      let session = try zoomSession(sources, clock: clock, rig: rig, probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      let observer = try #require(session.currentObserverForTesting)
+      observer.tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      // Another call appears: the token moves while the probe waits before its press.
+      sources.answer = .unique(
+        .init(family: .zoom, target: CallSpeakerTarget(pid: 3, rule: .callApp(.zoom))))
+      session.check()
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("probe settled") { session.pendingProbeForTesting == nil }
+      #expect(probe.stopped.withLock { $0 } == [true], "the press never happened")
+      #expect(session.zoomIdentityForTesting?.knownSelf == nil)
+      #expect(session.zoomIdentityForTesting?.opensUsed == 0)
+      session.cancel()
+    }
+
+    @Test(
+      "a pending probe survives a change of call and blocks a new one; its result stays with its call"
+    )
+    func probeAcrossSources() async throws {
+      let sources = Sources(Self.zoom)
+      let clock = Clock()
+      let rig = ZoomRig()
+      let probe = Probe()
+      let session = try zoomSession(sources, clock: clock, rig: rig, probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      // The probe is already past its press: its result names someone and counts a press.
+      probe.ignoreStop.withLock { $0 = true }
+      probe.hold.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      let other = CallSpeakerSourceAnswer.unique(
+        .init(family: .zoom, target: CallSpeakerTarget(pid: 3, rule: .callApp(.zoom))))
+      sources.answer = other
+      clock.ms.withLock { $0 = 1_000 }
+      session.check()
+      clock.ms.withLock { $0 = 4_000 }
+      session.check()
+      #expect(session.zoomIdentityForTesting?.source.target.pid == 3, "a new call's identity")
+      #expect(session.pendingProbeForTesting != nil, "the old ticket is still out")
+      // The new segment reads; no second probe starts while the first is out (the lane is held
+      // too, so the tick is a busy skip).
+      try #require(session.currentObserverForTesting).tick()
+      #expect(probe.count == 1)
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("old probe settled") { session.pendingProbeForTesting == nil }
+      #expect(
+        session.zoomIdentityForTesting?.knownSelf == nil, "the old call's name is not this call's")
+      #expect(session.zoomIdentityForTesting?.opensUsed == 0, "nor its press")
+      #expect(rig.probeLines == 1, "settled once")
+      session.cancel()
+    }
+
+    @Test(
+      "dictation stops a probe before its press, and a name from a probe it overlapped is refused")
+    func probeDictation() async throws {
+      let rig = ZoomRig()
+      let probe = Probe()
+      let session = try zoomSession(Sources(Self.zoom), clock: Clock(), rig: rig, probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      // A whole dictation between two ticks, while the probe waits before its press.
+      rig.dictation.idle = false
+      rig.dictation.idle = true
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("settled") { session.pendingProbeForTesting == nil }
+      #expect(probe.stopped.withLock { $0 } == [true])
+
+      // Past its press: the probe returns a name, but a dictation overlapped it.
+      let late = Probe()
+      let rig2 = ZoomRig()
+      let second = try zoomSession(Sources(Self.zoom), clock: Clock(), rig: rig2, probe: late)
+      second.start()
+      await tickZoom(second, probe: late)
+      late.hold.withLock { $0 = true }
+      late.holdAfterStop.withLock { $0 = true }
+      try #require(second.currentObserverForTesting).tick()
+      await eventually("pressed") { late.stopped.withLock { $0.count } == 1 }
+      rig2.dictation.idle = false
+      rig2.dictation.idle = true
+      late.release.signal()
+      await eventually("settled") { second.pendingProbeForTesting == nil }
+      #expect(second.zoomIdentityForTesting?.knownSelf == nil, "the name is refused")
+      #expect(second.zoomIdentityForTesting?.opensUsed == 1, "the press still counts")
+      session.cancel()
+      second.cancel()
+    }
+
+    @Test("a new segment of the same call keeps the learned name and the press count")
+    func probeIdentitySurvivesSegment() async throws {
+      let sources = Sources(Self.zoom)
+      let clock = Clock()
+      let probe = Probe()
+      let session = try zoomSession(sources, clock: clock, rig: ZoomRig(), probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      await tickZoom(session, probe: probe)
+      #expect(session.zoomIdentityForTesting?.knownSelf == "Saurabh Vaish")
+      // The call is lost for longer than the settle time, then the same call comes back.
+      sources.answer = .none
+      clock.ms.withLock { $0 = 1_000 }
+      session.check()
+      clock.ms.withLock { $0 = 4_000 }
+      session.check()
+      #expect(session.currentObserverForTesting == nil)
+      sources.answer = Self.zoom
+      clock.ms.withLock { $0 = 5_000 }
+      session.check()
+      #expect(session.currentLog?.segments.count == 2)
+      #expect(session.zoomIdentityForTesting?.knownSelf == "Saurabh Vaish")
+      #expect(session.zoomIdentityForTesting?.opensUsed == 1)
+      session.cancel()
+    }
+
+    @Test("after Delete with the session dropped, a probe still out settles once and saves nothing")
+    func probeOutlivesDelete() async throws {
+      let rig = ZoomRig()
+      let probe = Probe()
+      var session: CallSpeakerSession? = try zoomSession(
+        Sources(Self.zoom), clock: Clock(), rig: rig, probe: probe)
+      session?.start()
+      if let session { await tickZoom(session, probe: probe) }
+      probe.hold.withLock { $0 = true }
+      try #require(session?.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      session?.cancel()
+      weak let dropped = session
+      session = nil
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("settled once") { rig.probeLines == 1 }
+      await eventually("released afterwards") { dropped == nil }
+      #expect(rig.saves.isEmpty)
+      #expect(rig.logs.contains("meeting zoom self known source=probe") == false)
+    }
+
+    @Test("Stop waits for a probe still out before the final save; Delete meanwhile saves nothing")
+    func probeAndFinish() async throws {
+      let rig = ZoomRig()
+      let probe = Probe()
+      let session = try zoomSession(Sources(Self.zoom), clock: Clock(), rig: rig, probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      let finished = Task { await session.finish() }
+      await eventually("Stop closed admission") { session.currentObserverForTesting?.open == false }
+      #expect(rig.saves.isEmpty, "no final save while the probe is out")
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      #expect(await finished.value)
+      #expect(rig.saves.count == 1)
+      #expect(session.pendingProbeForTesting == nil)
+
+      let rig2 = ZoomRig()
+      let held = Probe()
+      let deleted = try zoomSession(Sources(Self.zoom), clock: Clock(), rig: rig2, probe: held)
+      deleted.start()
+      await tickZoom(deleted, probe: held)
+      held.hold.withLock { $0 = true }
+      try #require(deleted.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { held.count == 1 }
+      let waiting = Task { await deleted.finish() }
+      await eventually("Stop closed admission") { deleted.currentObserverForTesting?.open == false }
+      deleted.cancel()
+      held.hold.withLock { $0 = false }
+      held.release.signal()
+      #expect(await waiting.value == false)
+      #expect(rig2.saves.isEmpty)
+      #expect(deleted.pendingProbeForTesting == nil, "the ticket still settles")
+      #expect(deleted.zoomIdentityForTesting?.knownSelf == nil, "nothing learned after Delete")
     }
   }
 #endif

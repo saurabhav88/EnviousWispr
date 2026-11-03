@@ -406,6 +406,8 @@ struct MeetingCoordinatorTests {
     func dependencies() -> MeetingCoordinator.Dependencies {
       var dependencies = makeDependencies()
       dependencies.meetingLanguage = { [self] in language }
+      // #4356: a test never presses a real Zoom button.
+      dependencies.selfProbe = { _, _, _ in .refused(.notFound, elapsedMs: 0) }
       return dependencies
     }
 

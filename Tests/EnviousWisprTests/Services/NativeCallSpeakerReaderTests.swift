@@ -1077,6 +1077,31 @@ struct NativeCallSpeakerReaderTests {
     #expect(fallback?.speaking == ["Bea Chen"])
   }
 
+  @Test("Zoom: the self probe may open the panel only with tiles, a count, no list, no share")
+  func selfProbeReady() {
+    let tiles = [
+      zoomTile("Bea Chen, Computer audio muted, Video off"),
+      zoomTile("Dana Lee, Computer audio muted, Video off"),
+    ]
+    let closed = CallAXNode(
+      role: "AXButton", description: "Open participants panel, closed, 2 participants")
+    #expect(ZoomAppSpeakerReader.selfProbeReady(windows: [meetingWindow(tiles + [closed])]))
+    // No count on the button, no tile, a list anywhere, or the user's share toolbar: not now.
+    let opened = CallAXNode(
+      role: "AXButton", description: "Close participants panel, opened, 2 participants")
+    #expect(
+      ZoomAppSpeakerReader.selfProbeReady(windows: [meetingWindow(tiles + [opened])]) == false)
+    #expect(ZoomAppSpeakerReader.selfProbeReady(windows: [meetingWindow([closed])]) == false)
+    #expect(
+      ZoomAppSpeakerReader.selfProbeReady(windows: [
+        meetingWindow(tiles + [closed]), popped(["Bea Chen", "Dana Lee"]),
+      ]) == false)
+    #expect(
+      ZoomAppSpeakerReader.selfProbeReady(windows: [
+        meetingWindow(tiles + [closed]), window("zoom share toolbar window", []),
+      ]) == false)
+  }
+
   @Test("Zoom: an ordinary reading carries bound (me) marks from a list in another window")
   func boundMarksOutsideShare() {
     let meeting = meetingWindow([
