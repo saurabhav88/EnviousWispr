@@ -4604,6 +4604,17 @@
         }
       }
     },
+    "Browser" : {
+      "comment" : "EnviousMeet setup: the last tile beside the call app logos; EnviousMeet also notices calls in a web browser.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browser"
+          }
+        }
+      }
+    },
     "Built for Apple Silicon." : {
       "comment" : "Welcome screen feature line under Native Speed.",
       "localizations" : {
@@ -10517,17 +10528,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Englischen ist auch „period“ ein Befehl. Wenn du stattdessen „full stop“ sagst, schalte „period“ unter „Einrichten“ aus."
-          }
-        }
-      }
-    },
-    "In a browser" : {
-      "comment" : "EnviousMeet setup: the last tile beside the call app logos; EnviousMeet also notices calls in a web browser.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Browser"
           }
         }
       }

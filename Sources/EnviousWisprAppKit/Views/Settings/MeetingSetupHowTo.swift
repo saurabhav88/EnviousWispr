@@ -378,7 +378,7 @@ private struct MeetingHowToApps: View {
         VStack(spacing: 5) {
           browserMark
           Text(
-            "In a browser",
+            "Browser",
             comment:
               "EnviousMeet setup: the last tile beside the call app logos; EnviousMeet also notices calls in a web browser."
           )
