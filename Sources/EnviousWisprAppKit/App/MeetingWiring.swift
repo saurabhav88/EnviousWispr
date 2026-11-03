@@ -73,7 +73,7 @@ enum MeetingWiring {
     /// #4013 13B: call-source discovery, which every recording's speaker session reads.
     var callSources: (any CallSpeakerSources)?
     /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
-    /// (`TalkerRulesStore.refreshIfDue`, at most once a day). The app passes the live store;
+    /// (`RemoteRules.talker.refreshIfDue`, at most once a day). The app passes the live store;
     /// tests never reach the network.
     var refreshTalkerRules: @Sendable () -> Void = {}
     /// The `meeting.summary_finished` emitter.
@@ -264,11 +264,11 @@ enum MeetingWiring {
         isDictationIdle: inputs.isDictationIdle,
         callSources: inputs.callSources,
         talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
-          let selected = await TalkerRulesStore.live.current()
+          let selected = await RemoteRules.talker.current()
           // The day's download, never waited for: this recording keeps the rules read above.
           refreshTalkerRules()
           guard
-            let bundled = TalkerRulesStore.bundledURL.flatMap({ try? Data(contentsOf: $0) })
+            let bundled = TalkerRulesSnapshot.bundledURL.flatMap({ try? Data(contentsOf: $0) })
               .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })
           else { return nil }
           return (selected, bundled.rules)

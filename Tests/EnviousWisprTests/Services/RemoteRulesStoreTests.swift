@@ -2,17 +2,18 @@ import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprServices
 
-/// #4013: when these fail, a call app's broken page or a bad download leaves the app with no
+/// #4013 (generic since reading resilience §3.5): when these fail, a call app's broken page or a bad download leaves the app with no
 /// talker rules, the app asks enviouswispr.com more than once a day, or a recording's rules
 /// change under it after it started.
 ///
 /// Every store here uses its own temporary folder, an injected clock and a fake transport; no test
 /// touches the network or the real Application Support folder.
-@Suite("Talker rules store", .tags(.productOutcome))
-struct TalkerRulesStoreTests {
+@Suite("Rules store", .tags(.productOutcome))
+struct RemoteRulesStoreTests {
 
   private static let start = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -20,7 +21,7 @@ struct TalkerRulesStoreTests {
     Data(#"{"schema":1,"revision":\#(revision),"lagMs":{"meet":\#(lagMs)},"selectors":[]}"#.utf8)
   }
 
-  private static func ok(_ body: Data, url: URL = TalkerRulesStore.endpoint, status: Int = 200)
+  private static func ok(_ body: Data, url: URL = TalkerRulesSnapshot.endpoint, status: Int = 200)
     -> (response: HTTPURLResponse, body: Data)
   {
     (HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!, body)
@@ -30,7 +31,7 @@ struct TalkerRulesStoreTests {
   private final class Folder {
     let url = TestTemporaryDirectory.url
       .appendingPathComponent("talker-rules-\(UUID().uuidString)", isDirectory: true)
-    var cache: URL { url.appendingPathComponent(TalkerRulesStore.cacheFileName) }
+    var cache: URL { url.appendingPathComponent(TalkerRulesSnapshot.cacheFileName) }
     deinit { try? FileManager.default.removeItem(at: url) }
     func writeCache(_ data: Data) throws {
       try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -58,8 +59,8 @@ struct TalkerRulesStoreTests {
     func answer(_ reply: @escaping @Sendable () throws -> (response: HTTPURLResponse, body: Data)) {
       lock.withLock { self.reply = reply }
     }
-    var send: TalkerRulesStore.Transport {
-      { request in
+    var send: RemoteRules.Transport {
+      { request, _ in
         let reply = self.lock.withLock {
           self.requests.append(request)
           return self.reply
@@ -71,8 +72,8 @@ struct TalkerRulesStoreTests {
 
   private func store(
     _ folder: Folder, bundled: Data? = document(revision: 1), transport: Transport, clock: Clock
-  ) -> TalkerRulesStore {
-    TalkerRulesStore(
+  ) -> RemoteRulesStore<TalkerRulesSnapshot> {
+    RemoteRulesStore(
       directory: folder.url, bundledData: { bundled }, transport: transport.send,
       now: { clock.now })
   }
@@ -149,7 +150,7 @@ struct TalkerRulesStoreTests {
     #expect(try Data(contentsOf: folder.cache) == Self.document(revision: 5, lagMs: 90))
 
     let request = try #require(transport.requests.first)
-    #expect(request.url == TalkerRulesStore.endpoint)
+    #expect(request.url == TalkerRulesSnapshot.endpoint)
     #expect(request.httpMethod == "GET")
     #expect(request.httpBody == nil)
     #expect(request.httpShouldHandleCookies == false)
@@ -170,7 +171,7 @@ struct TalkerRulesStoreTests {
     _ = await first.refreshIfDue()
     #expect(transport.count == 1)
 
-    clock.advance(TalkerRulesStore.refreshInterval - 1)
+    clock.advance(RemoteRules.refreshInterval - 1)
     _ = await store(folder, transport: transport, clock: clock).refreshIfDue()
     #expect(transport.count == 1)
 
@@ -266,7 +267,7 @@ struct TalkerRulesStoreTests {
     #expect(await subject.current() == fresh)
     #expect(try Data(contentsOf: folder.cache) == saved)
     let names = try FileManager.default.contentsOfDirectory(atPath: folder.url.path)
-    #expect(names == [TalkerRulesStore.cacheFileName])
+    #expect(names == [TalkerRulesSnapshot.cacheFileName])
   }
 
   @Test("a snapshot already handed out never changes when newer rules arrive")
@@ -289,9 +290,9 @@ struct TalkerRulesStoreTests {
     let (joins, joined) = AsyncStream<Void>.makeStream()
     let clock = Clock(Self.start)
     let folder = Folder()
-    let subject = TalkerRulesStore(
+    let subject = RemoteRulesStore<TalkerRulesSnapshot>(
       directory: folder.url, bundledData: { Self.document(revision: 1) },
-      transport: { _ in try await gate.park() }, now: { clock.now },
+      transport: { _, _ in try await gate.park() }, now: { clock.now },
       onJoinedRefresh: { joined.yield() })
 
     let first = Task { await subject.refreshIfDue() }
@@ -305,6 +306,117 @@ struct TalkerRulesStoreTests {
       #expect(await task.value.rules.revision == 6)
     }
     #expect(gate.parkCount == 1)
+  }
+
+  // MARK: - One store per document
+
+  /// A second document with a small cap and its own files, to prove the store keeps documents
+  /// apart and asks each one's limits.
+  struct ProbeRules: RemoteRulesDocument {
+    static let endpoint = URL(string: "https://enviouswispr.com/meet/probe-rules.json")!
+    static let cacheFileName = "probe-rules.json"
+    static let attemptFileName = "probe-rules-attempt.json"
+    static let maximumBytes = 64
+    static let bundledURL: URL? = nil
+    static let empty = ProbeRules(revision: 0, origin: .empty)
+
+    let revision: Int
+    let origin: RemoteRulesOrigin
+
+    private init(revision: Int, origin: RemoteRulesOrigin) {
+      self.revision = revision
+      self.origin = origin
+    }
+
+    init(validating data: Data, origin: RemoteRulesOrigin) throws {
+      guard let text = String(data: data, encoding: .utf8), text.hasPrefix("probe "),
+        let revision = Int(text.dropFirst(6).trimmingCharacters(in: .whitespaces)), revision > 0
+      else { throw URLError(.cannotParseResponse) }
+      self.init(revision: revision, origin: origin)
+    }
+  }
+
+  private static func probe(_ revision: Int, padding: Int = 0) -> Data {
+    Data(("probe \(revision)" + String(repeating: " ", count: padding)).utf8)
+  }
+
+  @Test("two documents in one folder keep their own files, daily limits and size caps")
+  func documentsStayApart() async throws {
+    let folder = Folder()
+    let clock = Clock(Self.start)
+    let caps = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
+    let transport: RemoteRules.Transport = { request, maximumBytes in
+      let path = request.url?.lastPathComponent ?? ""
+      caps.withLock { $0[path] = maximumBytes }
+      let body = path == "probe-rules.json" ? Self.probe(4) : Self.document(revision: 5)
+      return Self.ok(body, url: request.url!)
+    }
+    let talker = RemoteRulesStore<TalkerRulesSnapshot>(
+      directory: folder.url, bundledData: { Self.document(revision: 1) }, transport: transport,
+      now: { clock.now })
+    let probe = RemoteRulesStore<ProbeRules>(
+      directory: folder.url, bundledData: { nil }, transport: transport, now: { clock.now })
+    #expect(await probe.current() == ProbeRules.empty)
+    #expect(await talker.refreshIfDue().rules.revision == 5)
+    // The talker download's attempt does not use up the probe's day.
+    let fresh = await probe.refreshIfDue()
+    #expect(fresh.revision == 4)
+    #expect(fresh.origin == .downloaded)
+    #expect(
+      caps.withLock { $0 }
+        == ["talker-rules.json": TalkerRules.maximumBytes, "probe-rules.json": 64])
+    let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder.url.path))
+    #expect(
+      names == [
+        "talker-rules.json", "talker-rules-attempt.json", "probe-rules.json",
+        "probe-rules-attempt.json",
+      ])
+    #expect(try Data(contentsOf: folder.url.appendingPathComponent("probe-rules.json")) == Self.probe(4))
+    // A relaunch reads each document's own cache.
+    let relaunched = RemoteRulesStore<ProbeRules>(
+      directory: folder.url, bundledData: { nil }, transport: transport, now: { clock.now })
+    #expect(await relaunched.current().origin == .cached)
+    #expect(await relaunched.current().revision == 4)
+  }
+
+  @Test("a document's own cap refuses an oversized download and an oversized saved copy")
+  func documentCapApplies() async throws {
+    // Valid apart from its size: only the store's cap can refuse it.
+    let oversized = Self.probe(9, padding: 64)
+    #expect(oversized.count > ProbeRules.maximumBytes)
+    #expect(try ProbeRules(validating: oversized, origin: .downloaded).revision == 9)
+    let clock = Date(timeIntervalSince1970: 1_800_000_000)
+
+    let folder = Folder()
+    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+    try oversized.write(to: folder.url.appendingPathComponent(ProbeRules.cacheFileName))
+    let subject = RemoteRulesStore<ProbeRules>(
+      directory: folder.url, bundledData: { Self.probe(1) },
+      transport: { request, _ in Self.ok(oversized, url: request.url!) }, now: { clock })
+    let before = await subject.current()
+    #expect(before.origin == .bundled, "the oversized saved copy is refused")
+    #expect(before.revision == 1)
+    #expect(await subject.refreshIfDue() == before, "the oversized download is refused")
+
+    // Control through the store: the same revision within the cap is cached and downloaded.
+    let fitting = Self.probe(9, padding: 64 - Self.probe(9).count)
+    #expect(fitting.count == ProbeRules.maximumBytes)
+    let accepting = Folder()
+    try FileManager.default.createDirectory(at: accepting.url, withIntermediateDirectories: true)
+    try fitting.write(to: accepting.url.appendingPathComponent(ProbeRules.cacheFileName))
+    let cached = RemoteRulesStore<ProbeRules>(
+      directory: accepting.url, bundledData: { Self.probe(1) },
+      transport: { request, _ in Self.ok(Self.probe(12), url: request.url!) }, now: { clock })
+    #expect(await cached.current().origin == .cached)
+    #expect(await cached.current().revision == 9)
+    let downloaded = await cached.refreshIfDue()
+    #expect(downloaded.origin == .downloaded)
+    #expect(downloaded.revision == 12)
+    let empty = Folder()
+    let fresh = RemoteRulesStore<ProbeRules>(
+      directory: empty.url, bundledData: { Self.probe(1) },
+      transport: { request, _ in Self.ok(fitting, url: request.url!) }, now: { clock })
+    #expect(await fresh.refreshIfDue().revision == 9)
   }
 
   @Test("the signal wait gives up when nothing is sent")
@@ -359,7 +471,7 @@ struct TalkerRulesStoreTests {
     }
 
     func arrived(within limit: Duration) async -> Bool {
-      await TalkerRulesStoreTests.signals(1, from: arrivals, within: limit)
+      await RemoteRulesStoreTests.signals(1, from: arrivals, within: limit)
     }
 
     func release(_ reply: (response: HTTPURLResponse, body: Data)) {

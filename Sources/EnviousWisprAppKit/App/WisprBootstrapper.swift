@@ -2639,7 +2639,7 @@ package final class WisprBootstrapper {
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })
     let refreshTalkerRules: @Sendable () -> Void = {
-      Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
+      Task.detached(priority: .utility) { _ = await RemoteRules.talker.refreshIfDue() }
     }
     meetingInputs.refreshTalkerRules = refreshTalkerRules
     // The day's talker-rules download at launch, off the launch path.
