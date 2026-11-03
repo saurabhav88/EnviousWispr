@@ -96,17 +96,40 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// showed did not match its own count. Never a count of what was read.
   package let participantCount: Int?
   /// The call app's signed-in account display name (Zoom's menu bar, `CallAccountMenu`), at most
-  /// one; empty when not read. Not a meeting marking (#4013 plan r4): only the 1-on-1 rule may
-  /// use it, and only when no app marking says who the user is.
+  /// one; empty when not read. Not a meeting marking (#4013 plan r4): the 1-on-1 rule may use it
+  /// only when no app marking says who the user is, and the Zoom screen-share readings
+  /// (#4013 share plan §3.0) use it, with any `(me)` mark, to keep the user's own name out of
+  /// their talker signal. It never names anyone as a far-side speaker.
   package let accountSelfNames: [String]
+  /// Which Zoom signal said who talks (#4013 share plan §3.0, review r1 Q3): kept for tests and
+  /// diagnosis only, never saved, logged with names or sent. `nil` when nothing was shown talking
+  /// by a flag and no share signal applied.
+  package let talkerSource: TalkerSource?
+  /// The user is sharing a screen and Zoom shows no participant count or list anywhere in the
+  /// copy (#4013 share plan §3.3, review r1 F2): the count is hidden, not unknown. Only the Zoom
+  /// reader sets it, from the whole capture. It lets a two-tile reading prove a two-person call
+  /// without a count; a count that is shown, conflicting or incomplete never sets it.
+  package let countHiddenByShare: Bool
+
+  package enum TalkerSource: Sendable, Equatable {
+    /// A tile's `active speaker` flag.
+    case flag
+    /// The collapsed floating window's `Talking: <name>`.
+    case label
+    /// The one share-layout tile that follows the talker.
+    case loneTile
+  }
 
   package init(
     speaking: [String], roster: CallSpeakerRoster, rosterFromParticipantList: Bool,
     participants: [CallParticipant], participantIdentityEstablished: Bool,
     sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil,
-    accountSelfNames: [String] = []
+    accountSelfNames: [String] = [], talkerSource: TalkerSource? = nil,
+    countHiddenByShare: Bool = false
   ) {
+    self.countHiddenByShare = countHiddenByShare
     self.accountSelfNames = accountSelfNames
+    self.talkerSource = talkerSource
     self.participantListComplete = participantListComplete
     self.participantCount = participantCount
     self.speaking = speaking

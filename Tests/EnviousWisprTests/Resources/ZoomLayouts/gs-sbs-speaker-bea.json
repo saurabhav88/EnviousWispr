@@ -1,0 +1,223 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py)",
+ "windows": [
+  {
+   "title": "Zoom Meeting  40-minutes",
+   "root": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting  40-minutes",
+    "identifier": "zm.meeting.window.main",
+    "children": [
+     {
+      "role": "AXUnknown",
+      "description": "Share content"
+     },
+     {
+      "role": "AXTabGroup",
+      "description": "Bea Chen, Computer audio unmuted",
+      "children": [
+       {
+        "role": "AXStaticText",
+        "value": "Bea Chen"
+       },
+       {
+        "role": "AXButton",
+        "description": "Bea Chen"
+       }
+      ]
+     },
+     {
+      "role": "AXSplitter"
+     },
+     {
+      "role": "AXButton",
+      "description": "Unmute my audio",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Start video",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "End",
+      "identifier": "leave",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open participants panel, closed, 3 participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Participants options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open chat panel ",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Share",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Share options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "React",
+      "identifier": "react",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "React options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "More meeting controls, collapsed",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXStaticText",
+      "description": "Share"
+     },
+     {
+      "role": "AXButton",
+      "description": "Back, Share"
+     },
+     {
+      "role": "AXButton",
+      "description": "Pop out, Share"
+     },
+     {
+      "role": "AXButton",
+      "description": "Close, Share"
+     },
+     {
+      "role": "AXScrollArea",
+      "children": [
+       {
+        "role": "AXStaticText",
+        "description": "How many participants can share at a time?"
+       },
+       {
+        "role": "AXMenuButton",
+        "title": "How many participants can share at a time?, One participant can share at a time"
+       },
+       {
+        "role": "AXStaticText",
+        "description": "Who can share?"
+       },
+       {
+        "role": "AXMenuButton",
+        "title": "Who can share?, All participants"
+       },
+       {
+        "role": "AXStaticText",
+        "description": "Who can share when someone else is sharing?"
+       },
+       {
+        "role": "AXMenuButton",
+        "title": "Who can share when someone else is sharing?, Host only"
+       }
+      ]
+     },
+     {
+      "role": "AXSplitter"
+     },
+     {
+      "role": "AXButton",
+      "description": "Meeting  40-minutes",
+      "identifier": "MeetingTopBarInfoButton"
+     },
+     {
+      "role": "menu button",
+      "description": "Change screen"
+     },
+     {
+      "role": "AXUnknown",
+      "description": "Meeting"
+     },
+     {
+      "role": "AXUnknown",
+      "description": "Alex Rivera's screen, selected",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Alex Rivera's screen, selected"
+       },
+       {
+        "role": "menu button",
+        "description": "options for Alex Rivera's screen"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Notes pop-up; My Notes is on"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Zoom AI pop-up; Zoom AI is off"
+     },
+     {
+      "role": "AXButton",
+      "description": "View options, Side-by-side: Speaker"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open meeting security popup"
+     },
+     {
+      "role": "AXButton",
+      "description": "Upgrade to Zoom Pro",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     }
+    ]
+   }
+  }
+ ]
+}

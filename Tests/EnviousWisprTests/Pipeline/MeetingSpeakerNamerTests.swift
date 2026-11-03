@@ -150,7 +150,8 @@ struct MeetingSpeakerNamerTests {
     #expect(propose(turns, eligible, endpoint).proposals[Self.b] == nil)
   }
 
-  @Test("a vote while its name was confirmed gone does not count; one before it was first seen does")
+  @Test(
+    "a vote while its name was confirmed gone does not count; one before it was first seen does")
   func absenceContradicts() {
     let turns = [Self.turn(Self.a, 0, 20_000)]
     let eligible = Self.eligibility([Self.a])
@@ -170,12 +171,16 @@ struct MeetingSpeakerNamerTests {
             status: .observed, lag: CallSpeakerLag(milliseconds: 0),
             roster: CallSpeakerRoster(names: ["Alex Rivera"], selfNames: []),
             rosterFromParticipantList: true,
-            observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) },
+            observations: samples.map {
+              CallSpeakerObservation(observationMs: $0.0, speaking: $0.1)
+            },
             presence: [presence])
         ])
     }
     // Three votes while confirmed gone (9-15 s): not counted.
-    #expect(propose(turns, eligible, log(Self.votes("Alex Rivera", from: 11_000, count: 3))).proposals.isEmpty)
+    #expect(
+      propose(turns, eligible, log(Self.votes("Alex Rivera", from: 11_000, count: 3))).proposals
+        .isEmpty)
     // Three votes before the first sighting: counted.
     #expect(
       propose(turns, eligible, log(Self.votes("Alex Rivera", from: 1_000, count: 3))).proposals
@@ -202,7 +207,8 @@ struct MeetingSpeakerNamerTests {
     #expect(propose(turns, Self.eligibility([Self.a]), log).proposals == [Self.a: "Alex Rivera"])
   }
 
-  @Test("no segment: no call read; all segments refused for one reason: that reason; mixed: unknown")
+  @Test(
+    "no segment: no call read; all segments refused for one reason: that reason; mixed: unknown")
   func segmentRefusals() {
     let turns = [Self.turn(Self.a, 0, 10_000)]
     let eligible = Self.eligibility([Self.a])
@@ -436,7 +442,8 @@ struct MeetingSpeakerNamerTests {
   func markerOnlySpeaker() {
     let result = propose(
       [Self.turn(Self.a, 1_000, 2_000)],
-      Self.eligibility([Self.a], markers: [MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000)]),
+      Self.eligibility(
+        [Self.a], markers: [MeetingNamingMarker(track: .callSound, startMs: 1_000, endMs: 2_000)]),
       Self.log(Self.votes("Alex Rivera", from: 1_000, count: 5)))
     #expect(result.outcome == .noEligibleSpeakers)
   }
@@ -472,13 +479,16 @@ struct MeetingSpeakerNamerTests {
     let turns = [Self.turn(Self.a, 0, 10_000)]
     let samples = Self.votes("Alex Rivera", from: 0, count: 3)
     let eligible = Self.eligibility([Self.a])
-    func run(_ rules: FrozenTalkerRules?, source: CallSpeakerSource = .rules) -> MeetingNamingResult {
+    func run(_ rules: FrozenTalkerRules?, source: CallSpeakerSource = .rules) -> MeetingNamingResult
+    {
       propose(turns, eligible, Self.log(samples, surface: .meet, source: source, rules: rules))
     }
     #expect(run(Self.verifiedMeet).proposals == [Self.a: "Alex Rivera"])
     #expect(run(nil).outcome == .rulesUnusable)
     #expect(run(FrozenTalkerRules(version: 1, payload: "{not json")).outcome == .rulesUnusable)
-    #expect(run(FrozenTalkerRules(version: 2, payload: Self.verifiedMeet.payload)).outcome == .rulesUnusable)
+    #expect(
+      run(FrozenTalkerRules(version: 2, payload: Self.verifiedMeet.payload)).outcome
+        == .rulesUnusable)
     #expect(run(Self.frozen("")).outcome == .rulesUnusable, "no Meet entry: unconfigured")
     let unverified = Self.frozen(
       #"{"surface":"meet","tileClass":"dkjMxf","nameSource":"firstStaticText","talkingClasses":["kssMZb"],"verification":"unverified"}"#
@@ -499,7 +509,9 @@ struct MeetingSpeakerNamerTests {
     #expect(propose(turns, eligible, Self.log(samples, source: .rules)).outcome == .unsupported)
     #expect(propose(turns, eligible, Self.log(samples, source: nil)).outcome == .unsupported)
     #expect(
-      propose(turns, eligible, Self.log(samples, surface: .zoomWeb)).proposals == [Self.a: "Alex Rivera"])
+      propose(turns, eligible, Self.log(samples, surface: .zoomWeb)).proposals == [
+        Self.a: "Alex Rivera"
+      ])
   }
 
   @Test("missing, unread or uncertain evidence keeps the fallback labels, each with its reason")
@@ -560,5 +572,58 @@ struct MeetingSpeakerNamerTests {
       log: Self.log(Self.votes("Alex Rivera", from: 0, count: 5)))
     #expect(composition == before)
     #expect(composition.speakerNames == [Self.a: "Speaker 1"])
+  }
+
+  // MARK: - Zoom screen share signals reach the votes (#4013 share plan §3.1-3.2)
+
+  /// Real readers and the real accumulator: a host share in Zoom's collapsed floating window
+  /// (Bea talks, then Alex) and the lone floating tile. SURVEY shapes from the 2026-11-03
+  /// discovery run, rebuilt as small trees.
+  @Test("Zoom share labels and the lone tile become votes that name each voice")
+  func zoomShareSignalsName() {
+    let modes = ["Hide thumbnail video", "Show active speaker video"].map {
+      CallAXNode(role: "AXButton", description: $0)
+    }
+    let toolbar = CallAXWindow(
+      title: "zoom share toolbar window", root: CallAXNode(role: "AXWindow"))
+    func capture(_ child: CallAXNode) -> CallAXCapture {
+      CallAXCapture(
+        windows: [
+          toolbar,
+          CallAXWindow(
+            title: "zoom floating video window",
+            root: CallAXNode(role: "AXWindow", children: [child] + modes)),
+        ],
+        documents: [], completeness: .complete, readStartHostTime: 0, readEndHostTime: 0,
+        accountTitles: ["Saurabh A Vaish(saurabhav@gmail.com)"])
+    }
+    let label = { (text: String) in capture(CallAXNode(role: "AXStaticText", value: text)) }
+    let tile = { (text: String) in capture(CallAXNode(role: "AXTabGroup", description: text)) }
+    var accumulator = CallSpeakerAccumulator(
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
+    func add(_ copy: CallAXCapture, at ms: Int) {
+      let scope = CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom)
+      accumulator.add(
+        CallSpeakerSurfaceReader.read(
+          surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules),
+        context: CallCaptureContext(completeness: .complete, scope: scope), observationMs: ms)
+    }
+    // Bea talks 1-3 s by label, the user talks 4-5 s, Alex talks 6-8 s by the lone tile.
+    for ms in stride(from: 1_000, to: 3_000, by: 400) { add(label("Talking: Bea Chen"), at: ms) }
+    for ms in stride(from: 4_000, to: 5_000, by: 400) {
+      add(label("Talking: Saurabh A Vaish"), at: ms)
+    }
+    for ms in stride(from: 6_000, to: 8_000, by: 400) {
+      add(tile("Alex Rivera, Computer audio unmuted, Video off"), at: ms)
+    }
+    let log = CallSpeakerLog(
+      rules: nil, segments: [accumulator.segment(endMs: 10_000, endReason: .recordingEnded)])
+    let result = propose(
+      [
+        Self.turn(Self.a, 1_000, 3_000), Self.turn(Self.b, 6_000, 8_000),
+        Self.turn("sys:S3", 4_000, 5_000),
+      ],
+      Self.eligibility([Self.a, Self.b, "sys:S3"], speech: [(0, 10_000)]), log)
+    #expect(result.proposals == [Self.a: "Bea Chen", Self.b: "Alex Rivera"])
   }
 }

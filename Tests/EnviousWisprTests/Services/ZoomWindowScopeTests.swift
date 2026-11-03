@@ -54,7 +54,8 @@ struct ZoomWindowScopeTests {
   }
 
   private func chosen(_ windows: [CallAXWindow]) -> [CallAXWindow]? {
-    CallSpeakerSurfaceReader.zoomWindows(windows)
+    CallSpeakerSurfaceReader.zoomWindows(
+      windows, share: ZoomAppSpeakerReader.shareContext(windows: windows))
   }
 
   private static let muteButton = CallAXNode(
@@ -63,7 +64,8 @@ struct ZoomWindowScopeTests {
     role: "AXButton", description: "Mute my audio", identifier: "audio")
 
   private func mute(_ windows: [CallAXWindow], complete: Bool = true) -> CallSelfMute {
-    CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows, complete: complete), rules: .testPackaged)
+    CallSelfMuteReader.read(
+      surface: .zoomApp, capture: capture(windows, complete: complete), rules: .testPackaged)
   }
 
   // MARK: - Rule 1: how many meeting windows
@@ -136,7 +138,9 @@ struct ZoomWindowScopeTests {
 
   /// SURVEY (live full-screen take, 2026-11-02): the meeting window keeps only the large
   /// Speaker-view tile and its toolbar; the thumbnails move to "zoom floating video window".
-  @Test("full screen: the large tile alone does not hold the meeting window; the floating thumbnails are read")
+  @Test(
+    "full screen: the large tile alone does not hold the meeting window; the floating thumbnails are read"
+  )
   func fullScreenLargeTileOnly() {
     let call = meeting(
       ["Alex Rivera, Computer audio unmuted, active speaker"],
@@ -278,5 +282,167 @@ struct ZoomWindowScopeTests {
     // A failed selector identifier makes the copy unreadable (chunk 2), which reads unknown.
     #expect(
       mute([meeting([Self.alexTalking], extra: [Self.muteButton])], complete: false) == .unknown)
+  }
+
+  // MARK: - Screen share context and the collapsed floating window (#4013 share plan §3.0-3.1)
+  // Window titles, mode buttons and labels are SURVEY from the 2026-11-03 discovery run
+  // (`20261103-083021-4013-share-talking-label-discovery-c469`).
+
+  private static let toolbar = CallAXWindow(
+    title: "zoom share toolbar window",
+    root: CallAXNode(
+      role: "AXWindow",
+      children: [CallAXNode(role: "AXButton", title: "Participants", description: "participant")]))
+
+  private static func modeButtons(_ labels: [String]) -> [CallAXNode] {
+    labels.map { CallAXNode(role: "AXButton", description: $0) }
+  }
+
+  private static let allModes = modeButtons([
+    "Hide thumbnail video", "Show active speaker video", "Show thumbnail video", "Show grid video",
+    "Show full meeting window",
+  ])
+
+  private func talkingText(_ value: String) -> CallAXNode {
+    CallAXNode(role: "AXStaticText", value: value)
+  }
+
+  private func compact(_ labels: [String], tiles: [String] = [], modes: [CallAXNode]? = nil)
+    -> CallAXWindow
+  {
+    other(
+      "zoom floating video window", tiles, extra: labels.map(talkingText) + (modes ?? Self.allModes)
+    )
+  }
+
+  private static let receiving = CallAXNode(role: "AXUnknown", description: "Share content")
+
+  @Test(
+    "share context reads the host toolbar, the guest share content and any count, in any window")
+  func shareContext() {
+    let none = ZoomAppSpeakerReader.shareContext(windows: [meeting([Self.saurabh])])
+    #expect(none.isSharing == false)
+    #expect(none.countShown == false)
+    #expect(none.tileCount == 1)
+    let host = ZoomAppSpeakerReader.shareContext(windows: [Self.toolbar, compact(["Talking: "])])
+    #expect(host.hostShare == true)
+    #expect(host.guestShare == false)
+    #expect(host.countShown == false)
+    let guest = ZoomAppSpeakerReader.shareContext(windows: [
+      meeting([Self.alexTalking], extra: [Self.receiving])
+    ])
+    #expect(guest.guestShare == true)
+    #expect(guest.hostShare == false)
+    // "Share content" outside the meeting window is not a guest share.
+    #expect(
+      ZoomAppSpeakerReader.shareContext(windows: [other(nil, [], extra: [Self.receiving])])
+        .guestShare == false)
+    // Counts in any window, in any shape Zoom draws them, parsed or not.
+    let button = { (label: String) in CallAXNode(role: "AXButton", description: label) }
+    for label in [
+      "Open participants panel, closed, 3 participants",
+      "Open participants panel, closed, 2 participants, 1 person is waiting",
+      "Close participants panel, opened, 4 participants",
+    ] {
+      #expect(
+        ZoomAppSpeakerReader.shareContext(windows: [
+          Self.toolbar, other(nil, [], extra: [button(label)]),
+        ]).countShown)
+    }
+    #expect(
+      ZoomAppSpeakerReader.shareContext(windows: [
+        other(nil, [], extra: [talkingText("Participants (3)")])
+      ]).countShown)
+    #expect(
+      ZoomAppSpeakerReader.shareContext(windows: [
+        other(nil, [], extra: [CallAXNode(role: "AXOutline", description: "Participants list")])
+      ]).countShown)
+    // The share toolbar's own Participants button carries no count.
+    #expect(ZoomAppSpeakerReader.shareContext(windows: [Self.toolbar]).countShown == false)
+  }
+
+  @Test("the user's name: one panel mark, else exactly one account; disagreement is unknown")
+  func identifiedSelf() {
+    #expect(
+      ZoomAppSpeakerReader.identifiedSelf(marks: [], account: ["Saurabh A Vaish"])
+        == "Saurabh A Vaish")
+    #expect(ZoomAppSpeakerReader.identifiedSelf(marks: ["Dana"], account: []) == "Dana")
+    #expect(
+      ZoomAppSpeakerReader.identifiedSelf(marks: ["Dana", "Dana"], account: ["Dana"]) == "Dana")
+    #expect(
+      ZoomAppSpeakerReader.identifiedSelf(marks: ["Dana"], account: ["Saurabh A Vaish"]) == nil)
+    #expect(ZoomAppSpeakerReader.identifiedSelf(marks: ["Dana", "Lee"], account: []) == nil)
+    #expect(ZoomAppSpeakerReader.identifiedSelf(marks: [], account: []) == nil)
+  }
+
+  @Test("a compact window needs both observed mode buttons and is never the meeting window")
+  func compactRecognition() {
+    #expect(ZoomAppSpeakerReader.isCompactWindow(compact([])))
+    // The full-screen floating window shows only some modes; the two required ones suffice.
+    #expect(
+      ZoomAppSpeakerReader.isCompactWindow(
+        compact(
+          [],
+          modes: Self.modeButtons([
+            "Hide thumbnail video", "Show active speaker video", "Show thumbnail video",
+          ]))))
+    #expect(
+      ZoomAppSpeakerReader.isCompactWindow(
+        compact([], modes: Self.modeButtons(["Hide thumbnail video"]))) == false)
+    #expect(ZoomAppSpeakerReader.isCompactWindow(meeting(extra: Self.allModes)) == false)
+    #expect(ZoomAppSpeakerReader.talkingName("Talking: Bea Chen") == "Bea Chen")
+    #expect(ZoomAppSpeakerReader.talkingName("Talking: ") == "")
+    #expect(ZoomAppSpeakerReader.talkingName("Talking:Bea") == nil)
+    #expect(ZoomAppSpeakerReader.talkingName("Sprechen: Bea") == nil)
+  }
+
+  @Test(
+    "during a share with no tile anywhere, the one compact window with one Talking label is read")
+  func collapsedWindowChosen() {
+    let label = compact(["Talking: Bea Chen"])
+    #expect(chosen([Self.toolbar, label]) == [label])
+    // An empty label ("nobody talking") is still the window to read.
+    let quiet = compact(["Talking: "])
+    #expect(chosen([Self.toolbar, quiet]) == [quiet])
+    // With a tile-free meeting window, both are read.
+    let empty = meeting(extra: [Self.receiving])
+    #expect(chosen([empty, label]) == [empty, label])
+  }
+
+  @Test("the collapsed window is refused when ambiguous, outside a share, or not compact")
+  func collapsedWindowRefused() {
+    // No share evidence: as before, nothing to choose.
+    #expect(chosen([compact(["Talking: Bea Chen"])]) == nil)
+    // Two labelled compact windows, or two labels in one.
+    #expect(
+      chosen([Self.toolbar, compact(["Talking: Bea Chen"]), compact(["Talking: Alex Rivera"])])
+        == nil)
+    #expect(chosen([Self.toolbar, compact(["Talking: Bea Chen", "Talking: Alex Rivera"])]) == nil)
+    // A Talking text in a window without the mode buttons is not Zoom's floating window.
+    #expect(chosen([Self.toolbar, compact(["Talking: Bea Chen"], modes: [])]) == nil)
+  }
+
+  @Test("tiles anywhere win over the collapsed window, large tiles included")
+  func tilesWinOverLabel() {
+    let label = compact(["Talking: Bea Chen"])
+    // A thumbnail in another window: the existing strict-winner rule.
+    let strip = other(nil, [Self.saurabh])
+    #expect(chosen([Self.toolbar, meeting(), label, strip]) == [meeting(), strip])
+    // A large tile (no video state) in the meeting window: the meeting window alone, as before.
+    let large = meeting(["Bea Chen, Computer audio unmuted"])
+    #expect(chosen([Self.toolbar, large, label]) == [large])
+    // Thumbnails in the meeting window: the meeting window alone.
+    let full = meeting([Self.saurabh, Self.alexTalking])
+    #expect(chosen([Self.toolbar, full, label]) == [full])
+  }
+
+  @Test("the collapsed window resolves scope, and mute stays unknown without a meeting window")
+  func collapsedScopeAndMute() {
+    let windows = [Self.toolbar, compact(["Talking: Bea Chen"])]
+    #expect(scope(windows) == .resolved)
+    #expect(mute(windows) == .unknown)
+    #expect(
+      mute([meeting(extra: [Self.muteButton, Self.receiving]), compact(["Talking: Bea Chen"])])
+        == .muted)
   }
 }
