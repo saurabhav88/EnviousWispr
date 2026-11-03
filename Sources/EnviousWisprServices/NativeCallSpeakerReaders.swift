@@ -43,7 +43,13 @@ package enum ZoomAppSpeakerReader {
       for node in nodes where node.role == "AXButton" {
         if let count = node.label.flatMap(closedPanelCount) { buttonCounts.insert(count) }
       }
-      let counts = Set(nodes.compactMap { $0.label.flatMap(participantCount) })
+      // Only the static text Zoom draws above the list (C1a). Capture tolerance (#4013 reading
+      // resilience §3.1) copies a failed label as nothing on an unprotected role outside a tile
+      // or the list, so such a role must never supply or contradict the count.
+      let counts = Set(
+        nodes.lazy.filter { $0.role == "AXStaticText" }.compactMap {
+          $0.label.flatMap(participantCount)
+        })
       panelCounts.formUnion(counts)
       for node in nodes where node.role == "AXOutline" && node.label == participantsListLabel {
         lists.append((panelRows(node), counts))
@@ -363,7 +369,8 @@ package enum TeamsAppSpeakerReader {
     // With People closed there are no rows: the one self tile gives the user's exact name.
     let selfFromTile = selfTiles.count == 1 ? selfTileName(selfTiles[0]) : nil
     let selfNames =
-      rosterNames.isEmpty ? (selfFromTile.map { [$0] } ?? []) : (candidates.count == 1 ? candidates : [])
+      rosterNames.isEmpty
+      ? (selfFromTile.map { [$0] } ?? []) : (candidates.count == 1 ? candidates : [])
     // The user's own tile talking is the user (the namer removes self); a self tile whose name is
     // not known adds nobody.
     if selfTileTalking, selfNames.count == 1 { speaking.append(selfNames[0]) }
@@ -403,7 +410,8 @@ package enum TeamsAppSpeakerReader {
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
       // With People closed the gallery is the roster offered for renaming.
-      roster: CallSpeakerRoster(names: rosterNames.isEmpty ? shown : rosterNames, selfNames: selfNames),
+      roster: CallSpeakerRoster(
+        names: rosterNames.isEmpty ? shown : rosterNames, selfNames: selfNames),
       rosterFromParticipantList: complete, participants: participants,
       // Rows in two windows cannot be matched to each other: no identity.
       participantIdentityEstablished: rosters.count <= 1 && !participants.isEmpty,
@@ -435,7 +443,9 @@ package enum TeamsAppSpeakerReader {
   /// Whether a window holds anything this reader reads: a talker label, a roster row, a tile.
   static func showsMeeting(_ root: CallAXNode) -> Bool {
     root.allNodes.contains { node in
-      guard let label = node.label else { return node.role == "AXMenuItem" && hasTalkingFrame(node) }
+      guard let label = node.label else {
+        return node.role == "AXMenuItem" && hasTalkingFrame(node)
+      }
       switch node.role {
       case "AXGroup": return label.hasSuffix(speakingSuffix)
       case "AXRow": return rosterName(label) != nil
