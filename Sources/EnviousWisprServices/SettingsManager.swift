@@ -274,10 +274,8 @@ public final class SettingsManager {
       // consistent across providers (turning polish off from Apple Intelligence
       // vs OpenAI both read `user`). Only async background discovery
       // (`applyDiscoveredModels`) is `system`.
-      if oldValue != llmProvider,
-        let remembered = dictationCloudModelMemory.model(for: llmProvider)
-      {
-        llmModel = remembered
+      if oldValue != llmProvider, CloudModelMemory.cloudProviders.contains(llmProvider) {
+        llmModel = dictationCloudModelMemory.model(for: llmProvider) ?? ""
       }
       canonicalizeLLMModelForProvider()
       // Remember the last real engine so the top on/off toggle can restore it
@@ -416,10 +414,12 @@ public final class SettingsManager {
   /// (every accepted write, user and system alike), read by `normalizedModel` and by the
   /// discovery repair, which leaves a remembered cloud selection alone.
   ///
-  /// On an actual provider CHANGE the provider `didSet`s restore the remembered entry before
-  /// canonicalizing, instead of trusting the leftover field: an Ollama model can carry a
-  /// cloud-shaped name (`gpt-oss:20b` passes OpenAI's prefix check), and kept it would
-  /// overwrite OpenAI's memory with a name OpenAI cannot serve.
+  /// On an actual provider CHANGE to a cloud provider the field never carries over: the provider
+  /// `didSet`s put the remembered entry, or nothing (which canonicalization fills), in its
+  /// place before canonicalizing. The leftover belongs to the previous provider, and the prefix
+  /// check cannot tell ownership: an Ollama model can carry a cloud-shaped name (`gpt-oss:20b`
+  /// passes OpenAI's check), directly, through polish-off, or through an import override seeded
+  /// from dictation's Ollama pick. Kept, it would be recorded as the cloud provider's choice.
   public private(set) var dictationCloudModelMemory: CloudModelMemory {
     didSet {
       Self.persist(dictationCloudModelMemory, key: Self.dictationCloudModelMemoryKey, in: defaults)
@@ -527,9 +527,9 @@ public final class SettingsManager {
       // field holding the PREVIOUS provider's id, and every consumer of the change must
       // see the pair already consistent. Chunk-2 review, blocking finding 1.
       if oldValue != fileImportLLMProvider, let chosen = fileImportLLMProvider,
-        let remembered = fileImportCloudModelMemory.model(for: chosen)
+        CloudModelMemory.cloudProviders.contains(chosen)
       {
-        fileImportLLMModel = remembered
+        fileImportLLMModel = fileImportCloudModelMemory.model(for: chosen) ?? ""
       }
       canonicalizeFileImportLLMModelForProvider()
       onChange?(.fileImportLLMProvider)
@@ -648,9 +648,9 @@ public final class SettingsManager {
       // Synchronous, before any notification, for the reason the import twin gives: a
       // provider change can leave the cloud field holding the previous provider's id.
       if oldValue != meetingSummaryLLMProvider, let chosen = meetingSummaryLLMProvider,
-        let remembered = meetingSummaryCloudModelMemory.model(for: chosen)
+        CloudModelMemory.cloudProviders.contains(chosen)
       {
-        meetingSummaryLLMModel = remembered
+        meetingSummaryLLMModel = meetingSummaryCloudModelMemory.model(for: chosen) ?? ""
       }
       canonicalizeMeetingSummaryLLMModelForProvider()
       onChange?(.meetingSummaryLLMProvider)

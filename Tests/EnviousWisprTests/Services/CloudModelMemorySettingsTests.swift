@@ -110,6 +110,42 @@ struct CloudModelMemorySettingsTests {
     }
   }
 
+  enum LeftoverRoute: CaseIterable { case direct, throughPolishOff, importOverride, summary }
+
+  @Test(
+    "an Ollama model with a cloud-shaped name never becomes a first-visit cloud pick",
+    arguments: LeftoverRoute.allCases)
+  func leftoverNeverBecomesCloudPick(route: LeftoverRoute) {
+    let leftover = "claude-local:7b"
+    let settings = SettingsManager(defaults: Self.freshDefaults())
+    let model: String
+    let memory: CloudModelMemory
+    switch route {
+    case .direct, .throughPolishOff:
+      settings.llmProvider = .ollama
+      settings.ollamaModel = leftover
+      settings.llmModel = leftover
+      if route == .throughPolishOff { settings.llmProvider = .none }
+      settings.llmProvider = .claude
+      (model, memory) = (settings.llmModel, settings.dictationCloudModelMemory)
+    case .importOverride:
+      settings.llmProvider = .ollama
+      settings.ollamaModel = leftover
+      settings.llmModel = leftover
+      settings.seedFileImportPolishModelsIfNeeded(for: .claude)
+      settings.fileImportLLMProvider = .claude
+      (model, memory) = (settings.fileImportLLMModel, settings.fileImportCloudModelMemory)
+    case .summary:
+      settings.meetingSummaryLLMProvider = .ollama
+      settings.meetingSummaryOllamaModel = leftover
+      settings.meetingSummaryLLMModel = leftover
+      settings.meetingSummaryLLMProvider = .claude
+      (model, memory) = (settings.meetingSummaryLLMModel, settings.meetingSummaryCloudModelMemory)
+    }
+    #expect(model != leftover)
+    #expect(memory.model(for: .claude) != leftover)
+  }
+
   @Test("a following import uses dictation's remembered pick and keeps no memory of its own")
   func followerUsesDictation() {
     let settings = SettingsManager(defaults: Self.freshDefaults())
