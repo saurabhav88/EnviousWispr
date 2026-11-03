@@ -240,6 +240,27 @@ struct ZoomSelfProbeTests {
     #expect(refused.presses.count == 1)
   }
 
+  @Test("a press that could not complete and lands late is still closed by the probe")
+  func lateIndeterminateOpen() {
+    let zoom = FakeZoom()
+    zoom.rows = Self.usual
+    zoom.pressAnswer = .indeterminate
+    // Zoom acts on the open press only after the first look: the button still reads closed.
+    zoom.pressOpens = false
+    zoom.onPause = { z in
+      guard z.openedAt == nil, z.pauses.count == 1 else { return }
+      z.setLabel("Close participants panel, opened, 2 participants")
+      z.openedAt = z.offset
+      z.children[FakeZoom.meeting]?.append(FakeZoom.panel)
+      z.pressOpens = true
+    }
+    let result = zoom.run()
+    #expect(result.userClosed == false)
+    #expect(result.learned == "Saurabh Vaish")
+    #expect(result.panelClosed == true)
+    #expect(zoom.presses == [FakeZoom.button, FakeZoom.button], "the late panel is closed")
+  }
+
   @Test("rows drawn late are still read before the deadline")
   func lateRows() {
     let zoom = FakeZoom()

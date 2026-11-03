@@ -102,21 +102,27 @@ package enum ZoomSelfProbe {
     case .refused(let refusal): return .refused(refusal, elapsedMs: elapsed())
     }
     guard !shouldStop() else { return .refused(.skipped, elapsedMs: elapsed()) }
-    guard press(opener) != .refused else { return .refused(.pressFailed, elapsedMs: elapsed()) }
+    let opened = press(opener)
+    guard opened != .refused else { return .refused(.pressFailed, elapsedMs: elapsed()) }
 
     // Identity poll: one absolute deadline; no poll starts after it.
     let deadline = access.now().advanced(by: pollDeadline)
     var learned: String?
     var userClosed = false
+    // A press that could not complete may land late: until the panel is seen open, a closed
+    // label is the probe's own press still pending, not the user closing the panel.
+    var sawOpen = opened == .done
     while access.now() < deadline, !shouldStop() {
       guard let window = current(meeting, app: app, access: access) else { break }
-      // The button reads closed again: someone else closed it (the label already reads open
-      // when the press returns, 5 of 5 live takes, receipt-press.md), so ownership ends here.
-      if case .found(_, let label) = button(in: window, access: access),
-        label.hasPrefix(closedPrefix)
-      {
-        userClosed = true
-        break
+      // The button reads closed again after a completed press (the label already reads open
+      // when the press returns, 5 of 5 live takes, receipt-press.md) or after the panel was
+      // seen open: someone else closed it, so ownership ends here.
+      if case .found(_, let label) = button(in: window, access: access) {
+        if label.hasPrefix(openPrefix) { sawOpen = true }
+        if sawOpen, label.hasPrefix(closedPrefix) {
+          userClosed = true
+          break
+        }
       }
       let remaining = access.now().duration(to: deadline)
       var bounds = CallAXBounds.standard
