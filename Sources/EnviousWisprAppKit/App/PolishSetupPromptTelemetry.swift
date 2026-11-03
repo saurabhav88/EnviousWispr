@@ -86,6 +86,8 @@ extension PolishSetupProblem {
       return reason == .appleIntelligenceDisabled ? "apple_turned_off" : "apple_unavailable"
     case .appleModelNotReady: return "apple_not_ready"
     case .localEngineStoppedOutside: return PolishSetupProblemTag.localStoppedOutside.rawValue
+    case .cloudNoModel: return PolishSetupProblemTag.cloudNoModel.rawValue
+    case .cloudModelUnavailable: return PolishSetupProblemTag.cloudModelUnavailable.rawValue
     }
   }
 }

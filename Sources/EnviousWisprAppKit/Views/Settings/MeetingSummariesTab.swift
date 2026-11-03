@@ -128,7 +128,9 @@ struct MeetingSummariesTab: View {
       claudeKeySaved: setupModel.claudeKeySaved,
       savedKeyPresence: savedKeyPresence,
       cloudVerdicts: llmDiscovery.cloudVerdicts,
-      ollamaModel: settings.meetingSummaryOllamaModel)
+      ollamaModel: settings.meetingSummaryOllamaModel,
+      // #4353: the status chip reads the key; the model warning is the monitor's.
+      selectedCloudModel: nil, cloudModelEvidence: [:])
   }
 
   /// Pure, for tests: nil says nothing (no engine, or a state never observed).

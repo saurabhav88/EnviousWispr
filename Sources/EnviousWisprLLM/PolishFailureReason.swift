@@ -560,3 +560,16 @@ public struct PolishNotice: Equatable, Sendable {
     self.text = text
   }
 }
+
+/// #4353 D4: the sentence for a chosen cloud model the provider says no longer exists, naming
+/// the model the take asked for. One owner below AppKit, so the dictation notice and the
+/// Settings surfaces read the same words.
+public enum CloudModelNoticeCopy {
+  public static func noLongerWorks(_ model: String) -> String {
+    String(
+      localized: "\(model) no longer works. Select a new cloud model.",
+      comment:
+        "Notice: the chosen cloud AI model stopped working; the person picks another one. %@ is a model id, such as gpt-4o-mini; keep it as is."
+    )
+  }
+}

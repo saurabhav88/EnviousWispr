@@ -131,6 +131,33 @@ struct CloudModelPreflightTests {
     #expect(LLMRetryPolicy.isRetryable(LLMError.cloudModelNotSelected(.openAI)) == false)
   }
 
+  private struct GonePolisher: TranscriptPolisher {
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw LLMError.classified(.modelUnavailable)
+    }
+  }
+
+  @Test("a cloud model the provider says is gone is named in the notice, from the take's model")
+  func goneModelIsNamed() async throws {
+    let spies = Spies()
+    let step = makeStep(.openAI, model: "gpt-x", spies)
+    step.makePolisher = { _, _, _ in GonePolisher() }
+    let result = try await run(step, spies)
+    #expect(result.polishNotice?.leadIn == .failed)
+    #expect(result.polishNotice?.text == "gpt-x no longer works. Select a new cloud model.")
+    #expect(result.context.text == Self.longTranscript)
+
+    // Ollama's own missing model keeps its own sentence.
+    let local = makeStep(.ollama, model: "llama3.2", spies)
+    local.ollamaReadinessProbe = { _ in .ready(facts: OllamaModelFacts(isRemote: false, thinks: false)) }
+    local.makePolisher = { _, _, _ in GonePolisher() }
+    let ollama = try await run(local, spies)
+    #expect(ollama.polishNotice?.text != "llama3.2 no longer works. Select a new cloud model.")
+  }
+
   // MARK: - Controls
 
   @Test("a chosen cloud model still polishes")

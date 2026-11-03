@@ -114,6 +114,40 @@ struct PolishCloudVerdict: Equatable {
   }
 }
 
+/// #4353 D4: the newest DEFINITIVE answer about one cloud model, under the saved key it was
+/// earned with. Two producers write it, both through `LLMModelDiscoveryCoordinator
+/// .recordCloudModelObservation`: live discovery (a probe that worked, or the provider's own
+/// "not there"), and a dictation (a polished take, or the provider's 404 for its request). A
+/// cache load, a transport failure or an inconclusive probe writes nothing, so it neither
+/// raises nor clears a warning.
+struct CloudModelObservation: Equatable {
+  let credentialRevision: UInt64
+  let works: Bool
+  let observedAt: ContinuousClock.Instant
+
+  /// The one reading every projection uses (warnings, the model row): the chosen model is
+  /// confirmed broken when the newest answer about it, for the key saved now, says so.
+  static func confirmsUnavailable(
+    _ observations: [LLMProvider: [String: CloudModelObservation]], provider: LLMProvider,
+    model: String, credentialRevision: UInt64?
+  ) -> Bool {
+    guard let observation = observations[provider]?[model],
+      observation.credentialRevision == credentialRevision
+    else { return false }
+    return observation.works == false
+  }
+
+  /// Newest wins for the same key; an answer about a different key replaces the old one.
+  static func merged(
+    _ current: CloudModelObservation?, with new: CloudModelObservation
+  ) -> CloudModelObservation {
+    guard let current, current.credentialRevision == new.credentialRevision,
+      current.observedAt > new.observedAt
+    else { return new }
+    return current
+  }
+}
+
 /// Everything the three policies read, captured once so they see the same snapshot.
 struct PolishSetupFacts {
   let egOneInstall: EGOneInstallState
@@ -147,6 +181,11 @@ struct PolishSetupFacts {
   let claudeKeySaved: Bool?
   let ollamaSetup: OllamaSetupState
   let ollamaModel: OllamaModelFact
+  /// #4353: the cloud model the scope will ask for, or nil when the caller does not judge the
+  /// model (the import gate, a provider that is not the chosen one). Empty means none chosen.
+  var selectedCloudModel: String? = nil
+  /// #4353: the newest definitive answer per cloud provider and model.
+  var cloudModelEvidence: [LLMProvider: [String: CloudModelObservation]] = [:]
 
   /// #3988: whether `provider`'s restart after an outside stop failed. A failure keeps its
   /// own red status and copy; it is never the informational stopped-outside notice.
@@ -200,7 +239,9 @@ extension PolishSetupFacts {
     openAIKeySaved: Bool?, geminiKeySaved: Bool?, claudeKeySaved: Bool?,
     savedKeyPresence: SavedKeyPresence,
     cloudVerdicts: [LLMProvider: PolishCloudVerdict],
-    ollamaModel: String
+    ollamaModel: String,
+    selectedCloudModel: String?,
+    cloudModelEvidence: [LLMProvider: [String: CloudModelObservation]]
   ) -> PolishSetupFacts {
     PolishSetupFacts(
       egOneInstall: localPolishRuntimes.egOne.installState,
@@ -220,7 +261,8 @@ extension PolishSetupFacts {
       ollamaSetup: setup.ollamaSetup.setupState,
       ollamaModel: .from(
         model: ollamaModel,
-        downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)))
+        downloaded: setup.ollamaSetup.downloadedModels.map(\.exactName)),
+      selectedCloudModel: selectedCloudModel, cloudModelEvidence: cloudModelEvidence)
   }
 }
 
@@ -252,6 +294,19 @@ enum PolishSetupProblem: Hashable {
   /// dictation starts it again. Informational, and never a leave dialog, banner, menu line or
   /// sidebar tag: only a take that actually missed polish earns its one notice.
   case localEngineStoppedOutside(LLMProvider, OutsideStopContext)
+  /// #4353: a cloud provider is chosen but no model is.
+  case cloudNoModel(LLMProvider)
+  /// #4353: the chosen cloud model no longer works: the provider said so, in live discovery for
+  /// the saved key or in a dictation's own request. The id is the one the person chose.
+  case cloudModelUnavailable(LLMProvider, String)
+
+  /// The cloud model problems open that scope's model menu (#4353 D4).
+  var opensModelMenu: Bool {
+    switch self {
+    case .cloudNoModel, .cloudModelUnavailable: return true
+    default: return false
+    }
+  }
 
   /// False for motion the app finishes on its own; those get an OK-only notice.
   var isActionable: Bool {
@@ -262,7 +317,7 @@ enum PolishSetupProblem: Hashable {
     case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
       .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
       .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed,
-      .appleUnavailable:
+      .appleUnavailable, .cloudNoModel, .cloudModelUnavailable:
       return true
     }
   }
@@ -360,9 +415,27 @@ enum PolishSetupReadiness: Equatable {
     }
   }
 
+  // The key first, then the model (#4353): a missing or rejected key is the person's first
+  // move. With the key fine, no chosen model is a setup problem, and a chosen model is one
+  // only when live discovery for the key saved NOW confirmed it unavailable.
+  private static func cloud(
+    _ provider: LLMProvider, facts: PolishSetupFacts
+  ) -> PolishSetupReadiness {
+    let key = cloudKey(provider, facts: facts)
+    guard key == .noProblem, let model = facts.selectedCloudModel else { return key }
+    if model.isEmpty { return .problem(.cloudNoModel(provider)) }
+    if CloudModelObservation.confirmsUnavailable(
+      facts.cloudModelEvidence, provider: provider, model: model,
+      credentialRevision: facts.credentialRevisions[provider])
+    {
+      return .problem(.cloudModelUnavailable(provider, model))
+    }
+    return .noProblem
+  }
+
   // A stored key that was never validated is not a setup problem; a rejection counts only
   // when a typed verdict says so about the key that is saved now.
-  private static func cloud(
+  private static func cloudKey(
     _ provider: LLMProvider, facts: PolishSetupFacts
   ) -> PolishSetupReadiness {
     switch facts.savedKeyState(for: provider) {

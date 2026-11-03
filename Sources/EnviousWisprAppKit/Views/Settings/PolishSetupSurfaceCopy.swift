@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import Foundation
 
 /// The words of the AI polish setup reminders (#3438, plan §17 C4 to C6): the menu bar line, the
@@ -142,6 +143,18 @@ enum PolishSetupSurfaceCopy {
       return String(
         localized: "Apple Intelligence isn't ready yet",
         comment: "AI Polish, notice when leaving the page. Apple Intelligence is a product name.")
+    case .cloudNoModel(let provider):
+      return String(
+        localized: "\(provider.displayName) needs a model",
+        comment:
+          "Short reason, no full stop: a cloud AI provider is chosen but no model is. %@ is a provider name, such as OpenAI."
+      )
+    case .cloudModelUnavailable(_, let model):
+      return String(
+        localized: "\(model) no longer works",
+        comment:
+          "Short reason, no full stop: the chosen cloud AI model stopped working. %@ is a model id, such as gpt-4o-mini; keep it as is."
+      )
     case .localEngineStoppedOutside(let provider, _):
       // Never shown by the setup surfaces (#3988 keeps this problem off them); here so the
       // switch stays exhaustive and any defensive reader gets true words.
@@ -150,6 +163,77 @@ enum PolishSetupSurfaceCopy {
         comment:
           "Short reason, no full stop: a local AI model was stopped outside the app and restarts on the next dictation. %@ is a model name, such as EG-1."
       )
+    }
+  }
+
+  // MARK: - A cloud model to choose (#4353 D4, founder decision 4)
+
+  /// The card's title for a cloud provider with no model.
+  static func chooseModelTitle(_ provider: LLMProvider) -> String {
+    String(
+      localized: "Choose a model for \(provider.displayName).",
+      comment:
+        "Card after a dictation, title: a cloud AI provider is chosen but no model is. %@ is a provider name, such as OpenAI."
+    )
+  }
+
+  /// The card's title for a chosen cloud model that stopped working.
+  static func modelNoLongerWorksTitle(_ model: String) -> String {
+    String(
+      localized: "\(model) no longer works.",
+      comment:
+        "Card after a dictation, title: the chosen cloud AI model stopped working. %@ is a model id, such as gpt-4o-mini; keep it as is."
+    )
+  }
+
+  /// The one sentence a surface shows outside the card: what broke and what to do.
+  static func modelNoLongerWorksNotice(_ model: String) -> String {
+    CloudModelNoticeCopy.noLongerWorks(model)
+  }
+
+  /// The button that opens that screen's model menu.
+  static var selectNewCloudModel: String {
+    String(
+      localized: "Select a new cloud model",
+      comment: "Button: opens AI Polish with the model menu open, to pick another cloud AI model.")
+  }
+
+  /// The model field when nothing is chosen.
+  static var chooseAModel: String {
+    String(
+      localized: "Choose a model",
+      comment: "AI Polish model menu, closed: no cloud model is chosen yet.")
+  }
+
+  /// Under the model row after a key is saved and no model is chosen yet.
+  static var chooseModelGuidance: String {
+    String(
+      localized: "Choose a model to turn on AI Polish. Dictation still works until you do.",
+      comment:
+        "AI Polish, under the model menu after an API key is saved and no model is chosen. AI Polish names a feature."
+    )
+  }
+
+  /// Under the model row when live discovery confirmed the chosen model unavailable.
+  static func modelUnavailableWithKey(_ model: String) -> String {
+    String(
+      localized: "\(model) is no longer available with your key. Choose another.",
+      comment:
+        "AI Polish, under the model menu: the chosen cloud AI model is not available for the saved API key. %@ is a model id, such as gpt-4o-mini; keep it as is."
+    )
+  }
+
+  /// The leave pop-up's reason for a cloud provider with no model.
+  static func chooseProviderModel(_ provider: LLMProvider, _ scope: PolishSetupScope) -> String {
+    switch scope {
+    case .dictation:
+      return String(
+        localized: "Choose a \(provider.displayName) model to use AI polish.",
+        comment: "AI Polish, leave pop-up reason. %@ is a provider name, such as OpenAI.")
+    case .meetingSummary:
+      return String(
+        localized: "Choose a \(provider.displayName) model to write meeting summaries.",
+        comment: "Meeting summaries, leave pop-up reason. %@ is a provider name, such as OpenAI.")
     }
   }
 

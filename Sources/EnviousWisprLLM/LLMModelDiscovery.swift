@@ -56,14 +56,16 @@ public struct LLMModelDiscovery: Sendable {
   static func modelInfo(
     from candidate: DiscoveryCandidate,
     provider: LLMProvider,
-    availability: LLMModelAvailability
+    availability: LLMModelAvailability,
+    observedAt: ContinuousClock.Instant?
   ) -> LLMModelInfo {
     LLMModelInfo(
       id: candidate.id,
       displayName: candidate.displayName,
       provider: provider,
       availability: availability,
-      isRemote: candidate.isRemote
+      isRemote: candidate.isRemote,
+      availabilityObservedAt: observedAt
     )
   }
 
@@ -177,10 +179,14 @@ public struct LLMModelDiscovery: Sendable {
           group.addTask {
             let availability = await probeModel(
               id: model.id, provider: provider, apiKey: apiKey)
+            // #4353: this model's answer arrived now, inside its own probe task; neither the
+            // discovery's start nor the list's publication stands in for it.
+            let observedAt = ContinuousClock.now
             return Self.modelInfo(
               from: model,
               provider: provider,
-              availability: availability
+              availability: availability,
+              observedAt: observedAt
             )
           }
         }

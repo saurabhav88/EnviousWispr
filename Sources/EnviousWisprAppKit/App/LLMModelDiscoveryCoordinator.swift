@@ -25,6 +25,39 @@ final class LLMModelDiscoveryCoordinator {
   private var completedVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
   private var pendingVerdicts: [LLMProvider: PolishCloudVerdict] = [:]
 
+  /// #4353 D4: the newest definitive answer per cloud provider and model (`CloudModelObservation`).
+  /// Live discovery and dictations write it; cache loads never do.
+  private(set) var cloudModelObservations: [LLMProvider: [String: CloudModelObservation]] = [:]
+
+  /// #4353: one discovered row as a definitive answer, stamped with its own probe's arrival time.
+  /// Nil for an inconclusive row and for a row with no probe time (one read back from the cache).
+  static func observation(
+    of row: LLMModelInfo, credentialRevision: UInt64
+  ) -> CloudModelObservation? {
+    guard let observedAt = row.availabilityObservedAt else { return nil }
+    switch row.availability {
+    case .available:
+      return CloudModelObservation(
+        credentialRevision: credentialRevision, works: true, observedAt: observedAt)
+    case .confirmedUnavailable:
+      return CloudModelObservation(
+        credentialRevision: credentialRevision, works: false, observedAt: observedAt)
+    case .inconclusive:
+      return nil
+    }
+  }
+
+  /// Merges one definitive answer: newest wins for the same key.
+  func recordCloudModelObservation(
+    provider: LLMProvider, model: String, observation: CloudModelObservation
+  ) {
+    guard PolishSetupMonitor.usesCloudKey(provider), !model.isEmpty else { return }
+    let merged = CloudModelObservation.merged(
+      cloudModelObservations[provider]?[model], with: observation)
+    guard merged != cloudModelObservations[provider]?[model] else { return }
+    cloudModelObservations[provider, default: [:]][model] = merged
+  }
+
   /// Every provider's verdict: a pending check where one runs, otherwise the last completed one.
   var cloudVerdicts: [LLMProvider: PolishCloudVerdict] {
     completedVerdicts.merging(pendingVerdicts) { _, pending in pending }
@@ -380,6 +413,14 @@ final class LLMModelDiscoveryCoordinator {
       discoveredModels = models
       if provider != .appleIntelligence {
         cacheModels(models, for: provider)
+      }
+      if PolishSetupMonitor.usesCloudKey(provider), let revisionAtStart {
+        for model in models {
+          guard let observation = Self.observation(of: model, credentialRevision: revisionAtStart)
+          else { continue }
+          recordCloudModelObservation(
+            provider: provider, model: model.id, observation: observation)
+        }
       }
       keyValidationState = .valid
       publishVerdict(.accepted, provider: provider, revision: revisionAtStart)

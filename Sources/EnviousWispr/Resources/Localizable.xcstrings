@@ -381,6 +381,17 @@
         }
       }
     },
+    "%@ is no longer available with your key. Choose another." : {
+      "comment" : "AI Polish, under the model menu: the chosen cloud AI model is not available for the saved API key. %@ is a model id, such as gpt-4o-mini; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist mit deinem Schlüssel nicht mehr verfügbar. Wähle ein anderes."
+          }
+        }
+      }
+    },
     "%@ is not downloaded yet" : {
       "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
       "localizations" : {
@@ -508,6 +519,17 @@
         }
       }
     },
+    "%@ needs a model" : {
+      "comment" : "Short reason, no full stop: a cloud AI provider is chosen but no model is. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht ein Modell"
+          }
+        }
+      }
+    },
     "%@ needs an API key" : {
       "comment" : "Short reason, no full stop: a cloud model has no saved API key. %@ is a provider name, such as OpenAI.",
       "localizations" : {
@@ -554,6 +576,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ neue Wörter gefunden. %2$@ hast du bereits."
+          }
+        }
+      }
+    },
+    "%@ no longer works" : {
+      "comment" : "Short reason, no full stop: the chosen cloud AI model stopped working. %@ is a model id, such as gpt-4o-mini; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ funktioniert nicht mehr"
+          }
+        }
+      }
+    },
+    "%@ no longer works." : {
+      "comment" : "Card after a dictation, title: the chosen cloud AI model stopped working. %@ is a model id, such as gpt-4o-mini; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ funktioniert nicht mehr."
+          }
+        }
+      }
+    },
+    "%@ no longer works. Select a new cloud model." : {
+      "comment" : "Notice: the chosen cloud AI model stopped working; the person picks another one. %@ is a model id, such as gpt-4o-mini; keep it as is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ funktioniert nicht mehr. Wähle ein neues Cloud-Modell."
           }
         }
       }
@@ -5410,6 +5465,28 @@
         }
       }
     },
+    "Choose a %@ model to use AI polish." : {
+      "comment" : "AI Polish, leave pop-up reason. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell von %@, um die KI-Nachbearbeitung zu nutzen."
+          }
+        }
+      }
+    },
+    "Choose a %@ model to write meeting summaries." : {
+      "comment" : "Meeting summaries, leave pop-up reason. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell von %@, um Meeting-Zusammenfassungen zu erstellen."
+          }
+        }
+      }
+    },
     "Choose a different file" : {
       "comment" : "Transcribe a File, Upload step: button beside the chosen file.",
       "localizations" : {
@@ -5483,6 +5560,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mikrofon wählen"
+          }
+        }
+      }
+    },
+    "Choose a model" : {
+      "comment" : "AI Polish model menu, closed: no cloud model is chosen yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell wählen"
+          }
+        }
+      }
+    },
+    "Choose a model for %@." : {
+      "comment" : "Card after a dictation, title: a cloud AI provider is chosen but no model is. %@ is a provider name, such as OpenAI.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell für %@."
+          }
+        }
+      }
+    },
+    "Choose a model to turn on AI Polish. Dictation still works until you do." : {
+      "comment" : "AI Polish, under the model menu after an API key is saved and no model is chosen. AI Polish names a feature.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell, um die KI-Nachbearbeitung einzuschalten. Bis dahin funktioniert das Diktieren weiter."
           }
         }
       }
@@ -18406,6 +18516,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Markiere ein falsch erkanntes Wort und drücke dann diese Tasten."
+          }
+        }
+      }
+    },
+    "Select a new cloud model" : {
+      "comment" : "Button: opens AI Polish with the model menu open, to pick another cloud AI model.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Cloud-Modell wählen"
           }
         }
       }

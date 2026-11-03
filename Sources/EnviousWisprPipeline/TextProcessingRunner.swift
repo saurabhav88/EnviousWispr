@@ -573,7 +573,16 @@ internal final class TextProcessingRunner {
             // fire-and-forget; the raw transcript/prompt/provider-body never
             // leave the device (the reason set is closed and content-free).
             let reason = PolishFailureReason.from(error)
-            polishNotice = reason.notice(provider: provider)
+            // #4353 D4: a cloud model the provider says no longer exists is named, from the
+            // model this take asked for (the step's entry snapshot), never current settings.
+            if reason == .modelUnavailable, LLMPolishStep.cloudProviders.contains(provider),
+              let attempted = polishModelAtStart, !attempted.isEmpty
+            {
+              polishNotice = PolishNotice(
+                leadIn: .failed, text: CloudModelNoticeCopy.noLongerWorks(attempted))
+            } else {
+              polishNotice = reason.notice(provider: provider)
+            }
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting
             // SUBSET below, not the record itself.

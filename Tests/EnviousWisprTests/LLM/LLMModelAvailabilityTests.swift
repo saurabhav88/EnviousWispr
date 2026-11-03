@@ -44,6 +44,17 @@ struct LLMModelAvailabilityTests {
     #expect(ollama.availability == .available)
   }
 
+  @Test("a probe time never survives the cache, so a cached row is never fresh evidence")
+  func probeTimeIsTransient() throws {
+    let row = LLMModelInfo(
+      id: "gpt-x", displayName: "x", provider: .openAI, availability: .confirmedUnavailable,
+      isRemote: false, availabilityObservedAt: .now)
+    let data = try JSONEncoder().encode(row)
+    let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(object["availabilityObservedAt"] == nil)
+    #expect(try JSONDecoder().decode(LLMModelInfo.self, from: data).availabilityObservedAt == nil)
+  }
+
   @Test("each value survives a save and load, and the old key is still written")
   func roundTripWritesBothKeys() throws {
     let cases: [(LLMModelAvailability, Bool)] = [
@@ -138,11 +149,13 @@ struct LLMModelAvailabilityTests {
   func answerReachesRow() {
     let candidate = LLMModelDiscovery.DiscoveryCandidate(
       id: "gpt-6-luna", displayName: "GPT 6 Luna", isRemote: false)
+    let stamped = ContinuousClock.now
     for availability in [LLMModelAvailability.available, .confirmedUnavailable, .inconclusive] {
       let row = LLMModelDiscovery.modelInfo(
-        from: candidate, provider: .openAI, availability: availability)
+        from: candidate, provider: .openAI, availability: availability, observedAt: stamped)
       #expect(row.availability == availability)
       #expect(row.id == "gpt-6-luna")
+      #expect(row.availabilityObservedAt == stamped, "the probe's own time must reach the row")
     }
   }
 }

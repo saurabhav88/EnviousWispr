@@ -392,6 +392,10 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// The user may pick this row. Only confirmed unavailability locks a row (#4353 D4).
   public var isSelectable: Bool { availability != .confirmedUnavailable }
 
+  /// #4353 D4: when THIS row's probe answer arrived, stamped where the probe returned. Transient:
+  /// never encoded, so a row read back from the cache has nil and is never fresh evidence.
+  public var availabilityObservedAt: ContinuousClock.Instant?
+
   /// #1914: whether the OLLAMA DAEMON proxies this model to Ollama's own
   /// servers instead of running it on this Mac.
   ///
@@ -429,8 +433,10 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// `LLMPolishStep`'s non-optional `ollamaThinks` binding uses.
   public init(
     id: String, displayName: String, provider: LLMProvider, availability: LLMModelAvailability,
-    isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil
+    isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil,
+    availabilityObservedAt: ContinuousClock.Instant? = nil
   ) {
+    self.availabilityObservedAt = availabilityObservedAt
     self.id = id
     self.displayName = displayName
     self.provider = provider
@@ -468,6 +474,7 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// provider's `false` was a confirmed fact (Apple Intelligence: this Mac cannot run it).
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
+    availabilityObservedAt = nil
     id = try container.decode(String.self, forKey: .id)
     displayName = try container.decode(String.self, forKey: .displayName)
     provider = try container.decode(LLMProvider.self, forKey: .provider)

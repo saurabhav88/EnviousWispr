@@ -127,7 +127,10 @@ enum FileImportPolishGate {
         cloudVerdicts: llmDiscovery.cloudVerdicts,
         // The import's own OLLAMA field, never the effective model, and present in the
         // daemon's own list, not merely remembered. See `ollamaModelIsArmed(_:downloaded:)`.
-        ollamaModel: importOllamaModel),
+        ollamaModel: importOllamaModel,
+        // #4353: the import gate decides whether an import may START. An empty or broken cloud
+        // model does not block it: the import's polish step skips with deterministic text.
+        selectedCloudModel: nil, cloudModelEvidence: [:]),
       hasUnsavedKeyDraft: hasUnsavedKeyDraft)
   }
 

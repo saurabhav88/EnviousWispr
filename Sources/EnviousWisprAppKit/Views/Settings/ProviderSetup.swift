@@ -746,6 +746,9 @@ struct ProviderSetupSection: View {
   @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
+  /// #4353 D4: carries "open this screen's model menu" from the card's button. Optional: the
+  /// Transcribe a File wizard and previews may render this card without one.
+  @Environment(NavigationCoordinator.self) private var navigation: NavigationCoordinator?
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -840,6 +843,18 @@ struct ProviderSetupSection: View {
         revealsKey = false
         modelMenuOpen = false
       }
+      .onAppear { openRequestedModelMenu() }
+      .onChange(of: navigation?.pendingModelMenu) { _, _ in openRequestedModelMenu() }
+      .onChange(of: surfaceDiscoveredModels.isEmpty) { _, _ in openRequestedModelMenu() }
+      // #4353 D4: a key just checked valid with no model chosen: bring the model row into view
+      // and ring it, once per check (never on unrelated updates). AI Polish's own card only:
+      // the map registers the row there.
+      .onChange(of: surfaceValidation) { _, validation in
+        guard surface == .dictation, validation == .valid,
+          PolishSetupMonitor.usesCloudKey(provider), surfaceCloudModel.isEmpty
+        else { return }
+        navigation?.requestReveal(.polishModel)
+      }
       // Transcribe a File shows this same card as a wizard step, which the Settings Map leaves
       // out (plan §5); there every control inside it counts as wizard content (#3482).
       .settingsMapExemptScope(.transcribeFileWizard, when: surface == .fileImport)
@@ -871,7 +886,9 @@ private var statusFacts: PolishSetupFacts {
     claudeKeySaved: model.claudeKeySaved,
     savedKeyPresence: savedKeyPresence,
     cloudVerdicts: llmDiscovery.cloudVerdicts,
-    ollamaModel: surfaceOllamaModel)
+    ollamaModel: surfaceOllamaModel,
+    // #4353: the status chip reads the key; the model warning is the monitor's.
+    selectedCloudModel: nil, cloudModelEvidence: [:])
 }
 
 /// The chosen provider's status, as the card on the AI Polish page shows it. Health only
@@ -1062,6 +1079,61 @@ private var cloudRows: some View {
   }
   PolishRowDivider()
   modelSelectorRow
+  cloudModelNotice
+}
+
+/// #4353 D4: one line under a cloud model row. A model live discovery confirmed unavailable for
+/// the key saved now gets a warning; with models to choose from and none chosen, the first
+/// choice gets guidance. Icon and words carry the meaning, never colour alone. Nothing here
+/// selects or writes a model.
+@ViewBuilder
+private var cloudModelNotice: some View {
+  if let line = cloudModelNoticeLine {
+    PolishIndented {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Image(systemName: line.warning ? "exclamationmark.triangle" : "arrow.up.circle")
+          .accessibilityHidden(true)
+        Text(line.text)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .font(.stRowHelper)
+      .foregroundStyle(line.warning ? Color.stWarning : Color.stAccent)
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .fill((line.warning ? Color.stWarning : Color.stAccent).opacity(0.10)))
+      .accessibilityElement(children: .combine)
+    }
+  }
+}
+
+private var cloudModelNoticeLine: (text: String, warning: Bool)? {
+  guard PolishSetupMonitor.usesCloudKey(provider) else { return nil }
+  let chosen = surfaceCloudModel
+  if !chosen.isEmpty {
+    guard
+      CloudModelObservation.confirmsUnavailable(
+        llmDiscovery.cloudModelObservations, provider: provider, model: chosen,
+        credentialRevision: savedKeyPresence.revision(for: provider))
+    else { return nil }
+    return (PolishSetupSurfaceCopy.modelUnavailableWithKey(chosen), true)
+  }
+  guard !surfaceDiscoveredModels.isEmpty else { return nil }
+  return (PolishSetupSurfaceCopy.chooseModelGuidance, false)
+}
+
+/// #4353 D4: opens this card's model menu for a pending request addressed to this surface.
+/// Waits, without consuming, while the menu cannot open yet (no models loaded).
+private func openRequestedModelMenu() {
+  guard let navigation,
+    let request = ModelMenuRequest.toOpen(
+      pending: navigation.pendingModelMenu, surface: surface,
+      providerIsCloud: PolishSetupMonitor.usesCloudKey(provider),
+      modelsLoaded: !surfaceDiscoveredModels.isEmpty)
+  else { return }
+  navigation.consumeModelMenu(request)
+  modelMenuOpen = true
 }
 
 /// The three S1-mini control-line pickers (#2649). Each writes its own stored
@@ -1222,7 +1294,11 @@ private var modelFieldLabel: String {
         comment:
           "AI Polish model picker: a cloud provider's models appear after its key is saved.")
   }
-  if surfaceCloudModel.isEmpty { return String(localized: "No model selected") }
+  // #4353 D4: nothing is preselected, so an empty field asks for the first choice.
+  if surfaceCloudModel.isEmpty {
+    return provider == .ollama
+      ? String(localized: "No model selected") : PolishSetupSurfaceCopy.chooseAModel
+  }
   return surfaceDiscoveredModels.first { $0.id == surfaceCloudModel }?.localizedDisplayName
     ?? surfaceCloudModel
 }

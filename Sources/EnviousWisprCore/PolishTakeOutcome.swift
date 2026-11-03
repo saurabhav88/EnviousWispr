@@ -59,6 +59,10 @@ public enum PolishSetupEvidence: String, Sendable, Equatable, CaseIterable {
 public enum PolishSetupProblemTag: String, Sendable, Equatable, CaseIterable {
   case cloudKeyMissing = "cloud_key_missing"
   case cloudKeyRejected = "cloud_key_rejected"
+  /// #4353: a cloud provider is chosen with no model.
+  case cloudNoModel = "cloud_no_model"
+  /// #4353: the provider said the chosen cloud model does not exist.
+  case cloudModelUnavailable = "cloud_model_unavailable"
   case ollamaNotInstalled = "ollama_not_installed"
   case ollamaNotRunning = "ollama_not_running"
   case ollamaNoModel = "ollama_no_model"

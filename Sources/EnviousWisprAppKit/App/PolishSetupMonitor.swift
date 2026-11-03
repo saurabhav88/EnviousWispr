@@ -351,6 +351,9 @@ final class PolishSetupMonitor {
   @ObservationIgnored private let reportPrompt: @MainActor (PolishSetupPromptEvent) -> Void
   /// Where a take's own key read goes (`SavedKeyPresence.recordRead` in production): a take
   /// that found no key is confirmed evidence the key is absent, with no second read.
+  /// #4353: where a dictation's answer about its cloud model goes (the discovery coordinator).
+  @ObservationIgnored private let recordCloudModelOutcome:
+    @MainActor (LLMProvider, String, CloudModelObservation) -> Void
   @ObservationIgnored private let recordKeyEvidence:
     @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant) -> Void
   /// Takes already taken in, newest last, so a repeated delivery changes nothing.
@@ -402,6 +405,8 @@ final class PolishSetupMonitor {
     reportPrompt: @escaping @MainActor (PolishSetupPromptEvent) -> Void = { $0.send() },
     recordKeyEvidence: @escaping @MainActor (LLMProvider, SavedKeyState, ContinuousClock.Instant)
       -> Void = { _, _, _ in },
+    recordCloudModelOutcome: @escaping @MainActor (LLMProvider, String, CloudModelObservation)
+      -> Void = { _, _, _ in },
     noticeStore: OutsideStopNoticeStore = OutsideStopNoticeStore(defaults: nil),
     wallNow: @escaping @MainActor () -> Date = { Date() }
   ) {
@@ -410,6 +415,7 @@ final class PolishSetupMonitor {
     self.appleRefresh = appleRefresh
     self.reportPrompt = reportPrompt
     self.recordKeyEvidence = recordKeyEvidence
+    self.recordCloudModelOutcome = recordCloudModelOutcome
     self.noticeStore = noticeStore
     self.wallNow = wallNow
   }
@@ -561,9 +567,12 @@ final class PolishSetupMonitor {
       return provider == .ollama ? .ollamaModelNotInstalled : nil
     case .ollamaNoModel:
       return provider == .ollama ? .ollamaNoModel : nil
-    case .cloudNoModel, .cloudModelUnavailable:
-      // #4353 PR 2 chunk 3 confirms these against the cloud readiness and its model menu.
-      return nil
+    case .cloudNoModel:
+      // #4353: the take's own frozen model was empty.
+      return Self.usesCloudKey(provider) && take.model.isEmpty ? .cloudNoModel : nil
+    case .cloudModelUnavailable:
+      // #4353: the provider answered this take's request that its model does not exist.
+      return Self.usesCloudKey(provider) && !take.model.isEmpty ? .cloudModelUnavailable : nil
     case .localEngineNotReady, .localEngineDownloadPending:
       guard case .problem(let problem) = readiness(for: provider) else { return nil }
       switch problem {
@@ -579,7 +588,7 @@ final class PolishSetupMonitor {
         .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
         .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed,
         .localEngineDownloading, .localEngineVerifying, .appleUnavailable, .appleModelNotReady,
-        .localEngineStoppedOutside:
+        .localEngineStoppedOutside, .cloudNoModel, .cloudModelUnavailable:
         // Downloading, verifying, stopped from outside (#3988: told by its own notice, never a
         // setup problem) or another engine's state: not this take's setup problem.
         return nil
@@ -639,13 +648,21 @@ final class PolishSetupMonitor {
           recordCloudKeyTakeObservation(
             rejected: true, configuration: configuration, observedAt: outcome.observedAt)
         }
+      case .cloudModelUnavailable?:
+        if outcome.setupProblem == .cloudModelUnavailable {
+          recordCloudModelTake(works: false, take: take, configuration: configuration,
+            observedAt: outcome.observedAt)
+        }
       case .localEngineNotReady?, .localEngineDownloadPending?, .ollamaUnreachable?,
-        .ollamaModelUnavailable?, .ollamaNoModel?, .cloudNoModel?, .cloudModelUnavailable?, nil:
+        .ollamaModelUnavailable?, .ollamaNoModel?, .cloudNoModel?, nil:
         break
       }
       if polished {
         recordCloudKeyTakeObservation(
           rejected: false, configuration: configuration, observedAt: outcome.observedAt)
+        // The model the take asked for works, under this key.
+        recordCloudModelTake(
+          works: true, take: take, configuration: configuration, observedAt: outcome.observedAt)
       }
       // A request the provider answered or rejected carried a saved key when the connector read
       // it: present AT THAT READ, ordered by the saved-key owner against every newer answer (a
@@ -690,6 +707,23 @@ final class PolishSetupMonitor {
     let afterOllama = withOllamaTakeObservation(
       readiness, provider: provider, model: model, lastCommitAt: inputs.ollamaLastCommitAt)
     return withCloudTakeObservation(afterOllama, provider: provider, facts: inputs.facts)
+  }
+
+  /// #4353: what a dictation learned about its own model, handed to the one owner of model
+  /// answers (`LLMModelDiscoveryCoordinator`), whose newest-wins merge the readiness then reads.
+  /// Needs the key the take ran with; a take with no known key revision says nothing.
+  private func recordCloudModelTake(
+    works: Bool, take: PolishSetupTakeContext, configuration: PolishSetupConfiguration,
+    observedAt: ContinuousClock.Instant
+  ) {
+    guard let credentialRevision = configuration.credentialRevision, !take.model.isEmpty else {
+      return
+    }
+    recordCloudModelOutcome(
+      take.provider, take.model,
+      CloudModelObservation(
+        credentialRevision: credentialRevision, works: works, observedAt: observedAt))
+    reconcile()
   }
 
   /// `readiness` for Ollama with the newest take answer applied when it is newer than the
@@ -894,7 +928,7 @@ final class PolishSetupMonitor {
       && !inputs.facts.localRestartFailed(ticket.stop.provider)
   }
 
-  private static func usesCloudKey(_ provider: LLMProvider) -> Bool {
+  static func usesCloudKey(_ provider: LLMProvider) -> Bool {
     switch provider {
     case .openAI, .gemini, .claude: return true
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
@@ -908,7 +942,8 @@ final class PolishSetupMonitor {
     case .ollamaNoModel: return .ollamaNoModel
     case .ollamaModelNotInstalled: return .ollamaModelNotInstalled
     case .cloudKeyMissing, .cloudKeyRejected, .localNotDownloaded, .localDownloadPaused,
-      .localUpdatePaused, .localDownloadFailed, .localStoppedOutside:
+      .localUpdatePaused, .localDownloadFailed, .localStoppedOutside, .cloudNoModel,
+      .cloudModelUnavailable:
       return nil
     }
   }
@@ -1143,7 +1178,10 @@ extension PolishSetupInputs {
         claudeKeySaved: savedKeyPresence.savedFlag(for: .claude),
         savedKeyPresence: savedKeyPresence,
         cloudVerdicts: llmDiscovery.cloudVerdicts,
-        ollamaModel: engine.ollamaModel),
+        ollamaModel: engine.ollamaModel,
+        // #4353: the scope's own cloud model, judged for the chosen cloud provider only.
+        selectedCloudModel: PolishSetupMonitor.usesCloudKey(provider) ? engine.model : nil,
+        cloudModelEvidence: llmDiscovery.cloudModelObservations),
       ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt)
   }
 }

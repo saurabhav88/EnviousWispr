@@ -240,6 +240,8 @@
       case .appleUnavailable: return "appleUnavailable"
       case .appleModelNotReady: return "appleModelNotReady"
       case .localEngineStoppedOutside: return "localEngineStoppedOutside"
+      case .cloudNoModel: return "cloudNoModel"
+      case .cloudModelUnavailable: return "cloudModelUnavailable"
       }
     }
 
@@ -248,7 +250,7 @@
       "ollamaNoModel", "ollamaModelNotInstalled", "localEngineNotDownloaded",
       "localEngineDownloadPaused", "localEngineUpdatePaused", "localEngineFailed",
       "localEngineDownloading", "localEngineVerifying", "appleUnavailable", "appleModelNotReady",
-      "localEngineStoppedOutside",
+      "localEngineStoppedOutside", "cloudNoModel", "cloudModelUnavailable",
     ]
 
     /// The setup-card problems real routing can produce, each with a distinct sentence: cloud
@@ -284,7 +286,10 @@
       for provider in [LLMProvider.openAI, .gemini, .claude] {
         samples.append(("cloudKeyMissing.\(provider.rawValue)", .cloudKeyMissing(provider)))
         samples.append(("cloudKeyRejected.\(provider.rawValue)", .cloudKeyRejected(provider)))
+        samples.append(("cloudNoModel.\(provider.rawValue)", .cloudNoModel(provider)))
       }
+      samples.append(
+        ("cloudModelUnavailable.openAI", .cloudModelUnavailable(.openAI, "gpt-4o-mini")))
       for provider in [LLMProvider.egOne, .s1Mini] {
         let name = provider.rawValue
         samples += [

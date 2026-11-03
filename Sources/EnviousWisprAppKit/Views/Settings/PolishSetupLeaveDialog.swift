@@ -194,6 +194,10 @@ struct PolishSetupLeaveDialogContent: Equatable {
     // #3988: the monitor never raises a leave dialog for it; its words have one owner.
     case .localEngineStoppedOutside(_, let stop):
       return PolishSetupSurfaceCopy.outsideStopNotice(stop)
+    case .cloudNoModel(let provider):
+      return PolishSetupSurfaceCopy.chooseProviderModel(provider, scope)
+    case .cloudModelUnavailable(_, let model):
+      return PolishSetupSurfaceCopy.modelNoLongerWorksNotice(model)
     }
   }
 
@@ -209,7 +213,8 @@ struct PolishSetupLeaveDialogContent: Equatable {
       return PolishSetupSurfaceCopy.outsideStopTitle
     case .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled, .ollamaNotRunning,
       .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
-      .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable:
+      .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable,
+      .cloudNoModel, .cloudModelUnavailable:
       return Copy.finishTitle(scope)
     }
   }
@@ -224,7 +229,8 @@ struct PolishSetupLeaveDialogContent: Equatable {
       return PolishSetupSurfaceCopy.outsideStopNotice(stop)
     case .localEngineDownloading, .cloudKeyMissing, .cloudKeyRejected, .ollamaNotInstalled,
       .ollamaNotRunning, .ollamaNoModel, .ollamaModelNotInstalled, .localEngineNotDownloaded,
-      .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable:
+      .localEngineDownloadPaused, .localEngineUpdatePaused, .localEngineFailed, .appleUnavailable,
+      .cloudNoModel, .cloudModelUnavailable:
       return Copy.downloadingMessage(scope)
     }
   }
