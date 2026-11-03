@@ -11,6 +11,17 @@ import Testing
 /// Trees are SYNTHETIC literal copies shaped like the live reads of 2026-10-30
 /// (`docs/audits/2026-10-30-4248/live-ax-probes.md`): Zoom 7.1.9, Teams 26276.505 and Google
 /// Meet in Chrome 156, English labels only.
+extension CallMuteRules {
+  /// The packaged rules, read through the app's own lookup; tests pass them explicitly, since
+  /// the reader has no implicit default (#4013 reading resilience §3.5).
+  static let testPackaged: CallMuteRules = {
+    guard let url = CallMuteRules.bundledURL, let data = try? Data(contentsOf: url),
+      let rules = try? CallMuteRules(validating: data)
+    else { preconditionFailure("the packaged call-mute-rules.json did not load") }
+    return rules
+  }()
+}
+
 @Suite("Call self-mute reader", .tags(.productOutcome))
 struct CallSelfMuteReaderTests {
   static let meetURL = "https://meet.google.com/pwe-iofm-gdv"
@@ -43,11 +54,11 @@ struct CallSelfMuteReaderTests {
   func zoomStates() {
     #expect(
       CallSelfMuteReader.read(
-        surface: .zoomApp, capture: capture(windows: [zoomWindow([zoomButton("Unmute my audio")])]))
+        surface: .zoomApp, capture: capture(windows: [zoomWindow([zoomButton("Unmute my audio")])]), rules: .testPackaged)
         == .muted)
     #expect(
       CallSelfMuteReader.read(
-        surface: .zoomApp, capture: capture(windows: [zoomWindow([zoomButton("Mute my audio")])]))
+        surface: .zoomApp, capture: capture(windows: [zoomWindow([zoomButton("Mute my audio")])]), rules: .testPackaged)
         == .unmuted)
   }
 
@@ -64,7 +75,7 @@ struct CallSelfMuteReaderTests {
     for controls in cases {
       #expect(
         CallSelfMuteReader.read(
-          surface: .zoomApp, capture: capture(windows: [zoomWindow(controls)]))
+          surface: .zoomApp, capture: capture(windows: [zoomWindow(controls)]), rules: .testPackaged)
           == .unknown, "\(controls)")
     }
   }
@@ -73,20 +84,20 @@ struct CallSelfMuteReaderTests {
   func zoomAmbiguous() {
     let twoButtons = zoomWindow([zoomButton("Unmute my audio"), zoomButton("Unmute my audio")])
     #expect(
-      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [twoButtons]))
+      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [twoButtons]), rules: .testPackaged)
         == .unknown)
     let one = zoomWindow([zoomButton("Unmute my audio")])
     #expect(
-      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [one, one])) == .unknown)
+      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [one, one]), rules: .testPackaged) == .unknown)
     // The home window is not the meeting: its button is never read.
     let home = CallAXWindow(
       title: "Zoom Workplace",
       root: CallAXNode(role: "AXWindow", children: [zoomButton("Unmute my audio")]))
     #expect(
-      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [home])) == .unknown)
+      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [home]), rules: .testPackaged) == .unknown)
     // A button outside the meeting window does not count, and the meeting window's own decides.
     let mixed = capture(windows: [home, zoomWindow([zoomButton("Mute my audio")])])
-    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: mixed) == .unmuted)
+    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: mixed, rules: .testPackaged) == .unmuted)
   }
 
   // MARK: - Teams app
@@ -107,11 +118,11 @@ struct CallSelfMuteReaderTests {
   func teamsStates() {
     #expect(
       CallSelfMuteReader.read(
-        surface: .teamsApp, capture: capture(windows: [teamsWindow([teamsButton("Unmute mic")])]))
+        surface: .teamsApp, capture: capture(windows: [teamsWindow([teamsButton("Unmute mic")])]), rules: .testPackaged)
         == .muted)
     #expect(
       CallSelfMuteReader.read(
-        surface: .teamsApp, capture: capture(windows: [teamsWindow([teamsButton("Mute mic")])]))
+        surface: .teamsApp, capture: capture(windows: [teamsWindow([teamsButton("Mute mic")])]), rules: .testPackaged)
         == .unmuted)
   }
 
@@ -131,14 +142,14 @@ struct CallSelfMuteReaderTests {
       ]),
     ]
     for item in cases {
-      #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: item) == .unknown, "\(item)")
+      #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: item, rules: .testPackaged) == .unknown, "\(item)")
     }
     // The compact view of the same meeting is one meeting; its one button decides.
     let compact = capture(windows: [
       teamsWindow([], title: "Meeting with Sam"),
       teamsWindow([teamsButton("Mute mic")], title: "Meeting compact view | Meeting with Sam"),
     ])
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: compact) == .unmuted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: compact, rules: .testPackaged) == .unmuted)
   }
 
   @Test("Teams: the window holding the button is the meeting; other meetings or buttons are unknown")
@@ -147,7 +158,7 @@ struct CallSelfMuteReaderTests {
     // roster closed shows the button and no tile, talker or roster row.
     let tileFree = CallAXWindow(
       title: "Meeting with Sam", root: CallAXNode(role: "AXWindow", children: [teamsButton("Unmute mic")]))
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree])) == .muted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree]), rules: .testPackaged) == .muted)
     // The home window's meeting-link rows (live labels) are no second meeting.
     let home = CallAXWindow(
       title: "Meet",
@@ -157,7 +168,7 @@ struct CallSelfMuteReaderTests {
           CallAXNode(role: "AXRow", title: "Meeting links"),
           CallAXNode(role: "AXRow", title: "Meeting link, Meeting with Sam, Created 13 hours ago"),
         ]))
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree, home])) == .muted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [tileFree, home]), rules: .testPackaged) == .muted)
     // The compact view alone holds the button: still the one meeting.
     let compact = CallAXWindow(
       title: "Meeting compact view | Meeting with Sam",
@@ -165,7 +176,7 @@ struct CallSelfMuteReaderTests {
     #expect(
       CallSelfMuteReader.read(
         surface: .teamsApp,
-        capture: capture(windows: [teamsWindow([], title: "Meeting with Sam"), compact])) == .unmuted)
+        capture: capture(windows: [teamsWindow([], title: "Meeting with Sam"), compact]), rules: .testPackaged) == .unmuted)
     // A button in another window (chat, calendar) is not the meeting's: alone it names no
     // meeting shown, and beside the meeting's own button the two cannot be told apart.
     let chat = CallAXWindow(
@@ -179,7 +190,7 @@ struct CallSelfMuteReaderTests {
       capture(windows: [CallAXWindow(title: nil, root: tileFree.root)]),
     ]
     for item in unknowns {
-      #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: item) == .unknown, "\(item)")
+      #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: item, rules: .testPackaged) == .unknown, "\(item)")
     }
   }
 
@@ -205,11 +216,11 @@ struct CallSelfMuteReaderTests {
   func meetStates() {
     #expect(
       CallSelfMuteReader.read(
-        surface: .meet, capture: browser([meetPage([meetButton("Turn on microphone")])]))
+        surface: .meet, capture: browser([meetPage([meetButton("Turn on microphone")])]), rules: .testPackaged)
         == .muted)
     #expect(
       CallSelfMuteReader.read(
-        surface: .meet, capture: browser([meetPage([meetButton("Turn off microphone")])]))
+        surface: .meet, capture: browser([meetPage([meetButton("Turn off microphone")])]), rules: .testPackaged)
         == .unmuted)
   }
 
@@ -218,29 +229,29 @@ struct CallSelfMuteReaderTests {
     // A matching button in browser chrome or on a non-meeting page is not the meeting's.
     let chromeOnly = browser(
       [meetPage([])], chrome: [meetButton("Turn on microphone")])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: chromeOnly) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: chromeOnly, rules: .testPackaged) == .unknown)
     let elsewhere = browser([
       meetPage([meetButton("Turn off microphone")]),
       meetPage([meetButton("Turn on microphone")], url: "https://example.com/notes"),
     ])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: elsewhere) == .unmuted)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: elsewhere, rules: .testPackaged) == .unmuted)
     // The live-region sentence is not the button.
     let liveText = browser([
       meetPage([CallAXNode(role: "AXStaticText", value: "Your microphone is off.")])
     ])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: liveText) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: liveText, rules: .testPackaged) == .unknown)
     // Two meeting pages, two buttons on one page, or a wrong role.
     let twoMeetings = browser([
       meetPage([meetButton("Turn on microphone")]),
       meetPage([meetButton("Turn on microphone")], url: Self.otherMeetURL),
     ])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: twoMeetings) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: twoMeetings, rules: .testPackaged) == .unknown)
     let twoButtons = browser([
       meetPage([meetButton("Turn on microphone"), meetButton("Turn on microphone")])
     ])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: twoButtons) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: twoButtons, rules: .testPackaged) == .unknown)
     let wrongRole = browser([meetPage([meetButton("Turn on microphone", role: "AXStaticText")])])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: wrongRole) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: wrongRole, rules: .testPackaged) == .unknown)
     // A title and description that disagree cannot be told apart.
     let torn = browser([
       meetPage([
@@ -248,7 +259,7 @@ struct CallSelfMuteReaderTests {
           role: "AXButton", title: "Turn on microphone", description: "Turn off microphone")
       ])
     ])
-    #expect(CallSelfMuteReader.read(surface: .meet, capture: torn) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .meet, capture: torn, rules: .testPackaged) == .unknown)
   }
 
   // MARK: - Every surface
@@ -261,15 +272,15 @@ struct CallSelfMuteReaderTests {
     for completeness in [CallCaptureContext.Completeness.truncated, .unreadable] {
       #expect(
         CallSelfMuteReader.read(
-          surface: .zoomApp, capture: capture(windows: zoom, completeness: completeness))
+          surface: .zoomApp, capture: capture(windows: zoom, completeness: completeness), rules: .testPackaged)
           == .unknown)
       #expect(
         CallSelfMuteReader.read(
-          surface: .teamsApp, capture: capture(windows: teams, completeness: completeness))
+          surface: .teamsApp, capture: capture(windows: teams, completeness: completeness), rules: .testPackaged)
           == .unknown)
       let partial = capture(
         windows: meet.windows, documents: meet.documents, completeness: completeness)
-      #expect(CallSelfMuteReader.read(surface: .meet, capture: partial) == .unknown)
+      #expect(CallSelfMuteReader.read(surface: .meet, capture: partial, rules: .testPackaged) == .unknown)
     }
   }
 
@@ -285,17 +296,18 @@ struct CallSelfMuteReaderTests {
     #expect(others.count == CallSpeakerSurface.allCases.count - 3)
     for surface in others {
       #expect(
-        CallSelfMuteReader.read(surface: surface, capture: everything) == .unknown, "\(surface)")
+        CallSelfMuteReader.read(surface: surface, capture: everything, rules: .testPackaged) == .unknown, "\(surface)")
     }
   }
 
-  @Test("no rules, or rules without the surface, is unknown")
+  @Test("empty rules, or rules without the surface, is unknown")
   func missingRules() throws {
     let zoom = capture(windows: [zoomWindow([zoomButton("Unmute my audio")])])
-    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: zoom, rules: nil) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: zoom, rules: .empty) == .unknown)
+    #expect(CallMuteRules.empty.protectedRoles.isEmpty)
     let meetOnly = try CallMuteRules(
       validating: Data(
-        #"{"revision":1,"surfaces":{"meet":{"role":"AXButton","labels":{"Turn on microphone":"muted","Turn off microphone":"unmuted"}}}}"#
+        #"{"schema":1,"revision":1,"surfaces":{"meet":{"role":"AXButton","labels":{"Turn on microphone":"muted","Turn off microphone":"unmuted"}}}}"#
           .utf8))
     #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: zoom, rules: meetOnly) == .unknown)
   }
@@ -306,11 +318,56 @@ struct CallSelfMuteReaderTests {
   func packagedRules() throws {
     let url = try #require(CallMuteRules.bundledURL)
     let rules = try CallMuteRules(validating: Data(contentsOf: url))
-    #expect(CallMuteRules.bundled == rules)
+    #expect(rules == .testPackaged)
+    #expect(rules.revision >= 1)
+    #expect(rules.protectedRoles == ["AXButton"])
     #expect(Set(rules.rules.keys) == [.zoomApp, .teamsApp, .meet])
     #expect(rules.rules[.zoomApp]?.identifier == "audio")
     #expect(rules.rules[.teamsApp]?.domIdentifier == "microphone-button")
     #expect(rules.rules[.meet]?.identifier == nil && rules.rules[.meet]?.domIdentifier == nil)
+  }
+
+  @Test("the hosted rules file is the bundled file, byte for byte, and validates")
+  func hostedMatchesBundled() throws {
+    let hosted = try Data(
+      contentsOf: RepoRoot.url.appending(path: "website/public/meet/call-mute-rules.json"))
+    let packaged = try Data(contentsOf: #require(CallMuteRules.bundledURL))
+    #expect(hosted == packaged)
+    #expect(try CallMuteRules(validating: hosted, origin: .downloaded).revision >= 1)
+  }
+
+  /// The same literal documents `website/scripts/check-call-mute-rules.mjs` checks, so the app's
+  /// validator and the website's check agree on every one (#4013 reading resilience §3.5).
+  @Test("every shared fixture is accepted or refused as the website check expects")
+  func sharedFixtures() throws {
+    let data = try Data(
+      contentsOf: RepoRoot.url.appending(path: "website/scripts/call-mute-rules-fixtures.json"))
+    let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let fixtures = try #require(root["fixtures"] as? [[String: Any]])
+    var accepted = 0
+    var refused = 0
+    for fixture in fixtures {
+      let name = try #require(fixture["name"] as? String)
+      let accept = try #require(fixture["accept"] as? Bool)
+      // A `raw` fixture is exact JSON text: re-serializing would erase its number spelling.
+      let document =
+        if let raw = fixture["raw"] as? String {
+          Data(raw.utf8)
+        } else {
+          try JSONSerialization.data(
+            withJSONObject: try #require(fixture["document"]), options: [.fragmentsAllowed])
+        }
+      switch (accept, Result { try CallMuteRules(validating: document) }) {
+      case (true, .success): accepted += 1
+      case (false, .failure): refused += 1
+      case (true, .failure(let error)):
+        Issue.record("\(name): refused (\(error)) but the fixture says it is valid")
+      case (false, .success):
+        Issue.record("\(name): accepted but the fixture says it is invalid")
+      }
+    }
+    #expect(accepted >= 5)
+    #expect(refused >= 25)
   }
 
   @Test("a rules file that is broken or incomplete is refused")
@@ -318,15 +375,24 @@ struct CallSelfMuteReaderTests {
     let labels = #""labels":{"Unmute mic":"muted","Mute mic":"unmuted"}"#
     let refused = [
       "not json",
-      #"{"revision":0,"surfaces":{}}"#,
-      #"{"revision":1,"surfaces":{"slack_app":{"role":"AXButton",\#(labels)}}}"#,
-      #"{"revision":1,"surfaces":{"nonsense":{"role":"AXButton",\#(labels)}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"",\#(labels)}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"AXButton","identifier":"a","domIdentifier":"b",\#(labels)}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"AXButton","identifier":"",\#(labels)}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"Unmute mic":"muted"}}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"Unmute mic":"muted","Mute mic":"loud"}}}}"#,
-      #"{"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"":"muted","Mute mic":"unmuted"}}}}"#,
+      #"{"schema":1,"revision":0,"surfaces":{}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"slack_app":{"role":"AXButton",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"nonsense":{"role":"AXButton",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","identifier":"a","domIdentifier":"b",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","identifier":"",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"Unmute mic":"muted"}}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"Unmute mic":"muted","Mute mic":"loud"}}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","labels":{"":"muted","Mute mic":"unmuted"}}}}"#,
+      // #4013 reading resilience §3.5: the schema gate, strict fields and roles.
+      #"{"revision":1,"surfaces":{}}"#,
+      #"{"schema":2,"revision":1,"surfaces":{}}"#,
+      #"{"schema":"1","revision":1,"surfaces":{}}"#,
+      #"{"schema":1,"revision":1.5,"surfaces":{}}"#,
+      #"{"schema":1,"revision":1000000001,"surfaces":{}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{},"extra":true}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"AXButton","note":"x",\#(labels)}}}"#,
+      #"{"schema":1,"revision":1,"surfaces":{"teams_app":{"role":"Button",\#(labels)}}}"#,
     ]
     for text in refused {
       #expect(throws: (any Error).self, "\(text)") {
@@ -348,7 +414,7 @@ struct CallSelfMuteReaderTests {
     tree.texts[2] = [.identifier: "audio", .description: "Unmute my audio"]
     let copy = walk(tree, policy: .zoomApp)
     #expect(copy.completeness == .complete)
-    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: copy) == .muted)
+    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: copy, rules: .testPackaged) == .muted)
   }
 
   /// Two different buttons whose elements hash alike are both copied, so the reader sees two
@@ -368,10 +434,10 @@ struct CallSelfMuteReaderTests {
     tree.hashes = [2: 7, 3: 7]
     let copy = walk(tree)
     #expect(copy.windows.first?.root.children.count == 3)
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy, rules: .testPackaged) == .unknown)
     // One of them alone is read.
     tree.children[1] = [4, 2]
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: walk(tree)) == .unmuted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: walk(tree), rules: .testPackaged) == .unmuted)
   }
 
   private func walk(_ tree: CallSpeakerCaptureTests.Tree, policy: CallAXCapturePolicy = .standard)

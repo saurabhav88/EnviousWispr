@@ -368,18 +368,22 @@ final class MeetingCoordinator {
     /// network; frozen at recording start. Nil: no speaker capture for this recording.
     var talkerRules: @MainActor () async -> (selected: TalkerRulesSnapshot, bundled: TalkerRules)? =
       { nil }
+    /// #4248, #4013 reading resilience §3.5: the self-mute rules in force now, read without the
+    /// network (`RemoteRules.mute.current()`); frozen at recording start for its capture
+    /// protection and mute reading. The default follows no button, so the microphone stays live.
+    var muteRules: @MainActor () async -> CallMuteRules = { .empty }
     /// #4013 chunk 13A: whether this app may read other apps through Accessibility.
     var isAccessibilityTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
-    /// #4013 chunk 13A: one bounded copy of a call app (run off the main actor).
-    var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture = {
-      target, family in
+    /// #4013 chunk 13A: one bounded copy of a call app (run off the main actor), keeping every
+    /// read on `protectedRoles` (the recording's mute-rule roles) strict (reading resilience
+    /// §3.1).
+    var captureCallApp: @Sendable (CallSpeakerTarget, CallAppFamily, Set<String>) -> CallAXCapture =
+    { target, family, protectedRoles in
       CallSpeakerCapture.live(
         pid: target.pid,
         bounds: CallSpeakerSurfaceChoice.captureBounds(family: family, rule: target.rule),
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
-        // The mute reader's button roles stay fully read (#4013 reading resilience §3.1); the
-        // bundled rules are what `CallSelfMuteReader` reads today.
-        protectedRoles: Set(CallMuteRules.bundled?.rules.values.map(\.role) ?? []),
+        protectedRoles: protectedRoles,
         keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
@@ -558,6 +562,9 @@ final class MeetingCoordinator {
 
   /// #4013 chunk 13A: the recording's speaker observer and the meeting it belongs to.
   private var speakerSession: (meetingID: UUID, session: CallSpeakerSession)?
+  /// The self-mute rules the recording froze at its start (#4013 reading resilience §3.5); a
+  /// session is made only once they are read, so every session of the recording uses them.
+  private var speakerMuteRules: (meetingID: UUID, rules: CallMuteRules)?
   /// #4248: the recording's mute follower and the newest state it published.
   private var muteFollow: MuteFollow?
   /// #4248: what the live card shows about the call's mute button; nil while not recording.
@@ -2391,6 +2398,7 @@ final class MeetingCoordinator {
       + unsavedSpeakerSessions.map { (meetingID: $0.key, session: $0.value) }
     for entry in speakerSessions { entry.session.closeAdmission() }
     speakerSession = nil
+    speakerMuteRules = nil
     unsavedSpeakerSessions = [:]
     // #4248: queued ahead of the microphone writer's close below.
     if let meetingID = muteFollow?.meetingID { endMuteFollow(meetingID) }
@@ -2654,6 +2662,10 @@ final class MeetingCoordinator {
   /// stays off). With following off, the session waits for the rules as before.
   private func startSpeakerSession(meetingID: UUID, recorder: MeetingRecording) async {
     guard deps.callSources != nil else { return }
+    // Frozen first, whether or not names are on: a mute-only session reads with them too.
+    let muteRules = await deps.muteRules()
+    guard case .recording(let current, _) = phase, current == meetingID, !quitting else { return }
+    speakerMuteRules = (meetingID, muteRules)
     if deps.muteFollowingEnabled() {
       makeSpeakerSession(meetingID: meetingID, recorder: recorder, rules: nil)
     }
@@ -2675,13 +2687,14 @@ final class MeetingCoordinator {
   ) {
     guard let sources = deps.callSources,
       case .recording(let current, _) = phase, current == meetingID, !quitting,
-      speakerSession == nil
+      speakerSession == nil, let frozen = speakerMuteRules, frozen.meetingID == meetingID
     else { return }
     let timing = deps.speakerSessionTiming
     let session = CallSpeakerSession(
       anchor: recorder.anchor, rules: rules?.selected, bundled: rules?.bundled,
       dependencies: .init(
-        sources: sources, capture: deps.captureCallApp, isTrusted: deps.isAccessibilityTrusted,
+        sources: sources, capture: deps.captureCallApp, muteRules: frozen.rules,
+        isTrusted: deps.isAccessibilityTrusted,
         isDictationIdle: { [weak self] in self?.deps.isDictationIdle() ?? false },
         save: { [weak self] log in
           guard let self else { return }
@@ -2859,6 +2872,7 @@ final class MeetingCoordinator {
 
   /// The meeting's speaker session, removed from the coordinator; nil when it has none.
   private func takeSpeakerSession(_ meetingID: UUID) -> CallSpeakerSession? {
+    if speakerMuteRules?.meetingID == meetingID { speakerMuteRules = nil }
     guard let current = speakerSession, current.meetingID == meetingID else { return nil }
     speakerSession = nil
     return current.session

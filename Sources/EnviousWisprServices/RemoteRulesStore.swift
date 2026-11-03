@@ -53,6 +53,8 @@ package enum RemoteRules {
   /// the live HTTPS transport and the wall clock.
   package static let talker = RemoteRulesStore<TalkerRulesSnapshot>.live(
     directoryName: "TalkerRules")
+  /// The app's self-mute rules (#4248), under `<data directory>/CallMuteRules/`.
+  package static let mute = RemoteRulesStore<CallMuteRules>.live(directoryName: "CallMuteRules")
 }
 
 /// The one owner of one rules document on this Mac (#4013 D3, chunk 5; generic since reading

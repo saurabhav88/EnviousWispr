@@ -113,7 +113,7 @@ import os
             }
           },
           sourceRevision: { world.sourceRevision },
-          capture: { _, _ in capture.take() },
+          capture: { _, _ in capture.take() }, muteRules: .testPackaged,
           isTrusted: { trusted.withLock { $0 } },
           isDictationIdle: { dictation.idle }, lane: lane))
     }
@@ -231,7 +231,7 @@ import os
                 family: .googleMeet, target: CallSpeakerTarget(pid: 1, rule: .browser(.chrome))),
               surface: .meet, generation: 1, mute: false)
           },
-          capture: { _, _ in copies.take() }, isTrusted: { trusted.withLock { $0 } },
+          capture: { _, _ in copies.take() }, muteRules: .testPackaged, isTrusted: { trusted.withLock { $0 } },
           isDictationIdle: { true }, lane: .init()))
       observer.tick()
       await eventually("first copy delivered") { observer.deliveriesForTesting == 1 }
@@ -280,7 +280,7 @@ import os
                 family: .teams, target: CallSpeakerTarget(pid: 1, rule: .callApp(.teams))),
               surface: .teamsApp, generation: 1, mute: false)
           },
-          capture: { _, _ in copies.take() }, isTrusted: { true },
+          capture: { _, _ in copies.take() }, muteRules: .testPackaged, isTrusted: { true },
           isDictationIdle: { dictation.idle }, lane: .init()))
     }
 
@@ -355,7 +355,8 @@ import os
         return (rules, rules.rules)
       }
       deps.speakerCaptureLane = .init()
-      deps.captureCallApp = { _, _ in capture.take() }
+      deps.captureCallApp = { _, _, _ in capture.take() }
+      deps.muteRules = { .testPackaged }
       deps.isAccessibilityTrusted = { true }
       return MeetingCoordinator(dependencies: deps)
     }
@@ -390,6 +391,52 @@ import os
       #expect(recorder.mutedMeter.last == false)
       #expect(coordinator.muteState == nil)
       #expect(coordinator.muteCallApp == nil)
+    }
+
+    /// #4013 reading resilience §3.5: the mute rules are frozen when the recording starts, the
+    /// copy protects exactly their roles, and a newer download reaches only the next recording,
+    /// whether or not names are on.
+    @Test("each recording freezes its mute rules for capture protection, names on or off")
+    func muteRulesFrozenPerRecording() async throws {
+      for namesOn in [true, false] {
+        let harness = try Harness()
+        let rules = try Self.bundled()
+        let newer = try CallMuteRules(
+          validating: Data(
+            #"{"schema":1,"revision":2,"surfaces":{"meet":{"role":"AXCheckBox","labels":{"Turn on microphone":"muted","Turn off microphone":"unmuted"}}}}"#
+              .utf8), origin: .downloaded)
+        let current = OSAllocatedUnfairLock(initialState: CallMuteRules.testPackaged)
+        let seen = OSAllocatedUnfairLock<[Set<String>]>(initialState: [])
+        var deps = harness.dependencies()
+        deps.muteFollowingEnabled = { true }
+        deps.callSources = Sources(Self.meetCall)
+        deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(100))
+        deps.talkerRules = { namesOn ? (rules, rules.rules) : nil }
+        deps.muteRules = { current.withLock { $0 } }
+        deps.speakerCaptureLane = .init()
+        deps.captureCallApp = { _, _, roles in
+          seen.withLock { $0.append(roles) }
+          return CallSpeakerObserverTests.meetCopy()
+        }
+        deps.isAccessibilityTrusted = { true }
+        let coordinator = MeetingCoordinator(dependencies: deps)
+
+        _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+        await eventually("first copy") { seen.withLock { !$0.isEmpty } }
+        // A download lands mid-recording: this recording keeps the rules it froze.
+        current.withLock { $0 = newer }
+        let before = seen.withLock { $0.count }
+        await eventually("more copies") { seen.withLock { $0.count } >= before + 2 }
+        #expect(seen.withLock { Set($0) } == [["AXButton"]], "names on: \(namesOn)")
+        await coordinator.stop(reason: .user)
+        await eventually("idle") { coordinator.phase == .idle }
+
+        seen.withLock { $0 = [] }
+        _ = await coordinator.start(from: .detected, callApp: .googleMeet)
+        await eventually("next recording's copy") { seen.withLock { !$0.isEmpty } }
+        #expect(seen.withLock { Set($0) } == [["AXCheckBox"]], "names on: \(namesOn)")
+        await coordinator.stop(reason: .user)
+      }
     }
 
     @Test("with mute following off nothing is bound; switching it on binds at once")

@@ -493,11 +493,11 @@ struct CallSpeakerCaptureTests {
       tree, policy: CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: rule),
       keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: .teams, rule: rule) })
     #expect(copy.completeness == .complete)
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy) == .muted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy, rules: .testPackaged) == .muted)
     // The meeting-page filter alone (before #4248) never copies the page: unknown.
     let filtered = capture(
       tree, keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .teams) })
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered, rules: .testPackaged) == .unknown)
   }
 
   // MARK: - Timeline

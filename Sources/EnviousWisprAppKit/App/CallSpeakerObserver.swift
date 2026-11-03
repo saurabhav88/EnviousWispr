@@ -94,6 +94,9 @@ final class CallSpeakerObserver {
     var sourceRevision: @MainActor () -> Int = { 0 }
     /// One bounded copy of that app, run on the lane's queue.
     var capture: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture
+    /// The recording's frozen self-mute rules, the same ones `capture` protects (#4248, #4013
+    /// reading resilience §3.5).
+    var muteRules: CallMuteRules
     var isTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
     /// Read inside Observation tracking, so any change to what it reads invalidates copies in
     /// flight at once, even a whole dictation that starts and ends between two ticks.
@@ -279,6 +282,7 @@ final class CallSpeakerObserver {
       namingGeneration: namingGeneration,
       dictation: dictationChanges.withLock { $0 }, source: deps.sourceRevision())
     let capture = deps.capture
+    let muteRules = deps.muteRules
     let isTrusted = deps.isTrusted
     let rules = forNaming ? naming?.rules : nil
     deps.lane.queue.async { [weak self] in
@@ -295,7 +299,9 @@ final class CallSpeakerObserver {
           completeness: copy.completeness,
           scope: CallSpeakerSurfaceReader.scope(
             surface: binding.surface, capture: copy, family: binding.source.family)),
-        mute: binding.mute ? CallSelfMuteReader.read(surface: binding.surface, capture: copy) : nil)
+        mute: binding.mute
+          ? CallSelfMuteReader.read(surface: binding.surface, capture: copy, rules: muteRules)
+          : nil)
       // The lane frees only once the physical work returned.
       busy.withLock { $0 = false }
       Task { @MainActor [weak self] in

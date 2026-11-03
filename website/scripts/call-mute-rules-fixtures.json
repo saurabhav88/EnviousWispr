@@ -1,0 +1,619 @@
+{
+  "_comment": "#4248 and #4013 reading resilience: literal self-mute rules documents both validators must agree on. Read by CallSelfMuteReaderTests (Swift) and check-call-mute-rules.mjs (website). A fixture with `raw` is exact JSON text, read as written by both validators, so number spellings survive.",
+  "fixtures": [
+    {
+      "name": "the bundled file",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "zoom_app": {
+            "role": "AXButton",
+            "identifier": "audio",
+            "labels": {
+              "Unmute my audio": "muted",
+              "Mute my audio": "unmuted"
+            }
+          },
+          "teams_app": {
+            "role": "AXButton",
+            "domIdentifier": "microphone-button",
+            "labels": {
+              "Unmute mic": "muted",
+              "Mute mic": "unmuted"
+            }
+          },
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "no surfaces",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {}
+      }
+    },
+    {
+      "name": "largest revision",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1000000000,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "identifier",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "zoom_app": {
+            "role": "AXButton",
+            "identifier": "audio",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "dom identifier",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "teams_app": {
+            "role": "AXButton",
+            "domIdentifier": "microphone-button",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "another role",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXCheckBox",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "several labels per state",
+      "accept": true,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "a": "muted",
+              "b": "muted",
+              "c": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "not an object",
+      "accept": false,
+      "document": [
+        1
+      ]
+    },
+    {
+      "name": "missing schema",
+      "accept": false,
+      "document": {
+        "revision": 1,
+        "surfaces": {}
+      }
+    },
+    {
+      "name": "schema 2",
+      "accept": false,
+      "document": {
+        "schema": 2,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "schema as text",
+      "accept": false,
+      "document": {
+        "schema": "1",
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "schema true",
+      "accept": false,
+      "document": {
+        "schema": true,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "revision 0",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 0,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "negative revision",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": -1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "revision too large",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1000000001,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "fractional revision",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1.5,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "revision as text",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": "1",
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown top-level field",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        },
+        "extra": true
+      }
+    },
+    {
+      "name": "surfaces not an object",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": []
+      }
+    },
+    {
+      "name": "unsupported surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "slack_app": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown surface",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "nonsense": {
+            "role": "AXButton",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "rule not an object",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": "AXButton"
+        }
+      }
+    },
+    {
+      "name": "unknown rule field",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "note": "x",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "missing role",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "empty role",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "role without AX",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "Button",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "role with a space",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AX Button",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "both ids",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "identifier": "a",
+            "domIdentifier": "b",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "empty identifier",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "identifier": "",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "null identifier",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "identifier": null,
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "empty dom identifier",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "domIdentifier": "",
+            "labels": {
+              "Turn on microphone": "muted",
+              "Turn off microphone": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "missing labels",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton"
+          }
+        }
+      }
+    },
+    {
+      "name": "one state only",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "a": "muted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown state",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "a": "muted",
+              "b": "loud"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "empty label",
+      "accept": false,
+      "document": {
+        "schema": 1,
+        "revision": 1,
+        "surfaces": {
+          "meet": {
+            "role": "AXButton",
+            "labels": {
+              "": "muted",
+              "b": "unmuted"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "raw: schema spelled 1.0",
+      "accept": true,
+      "raw": "{\"schema\":1.0,\"revision\":1,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: revision spelled 2e0",
+      "accept": true,
+      "raw": "{\"schema\":1,\"revision\":2e0,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: largest revision spelled 1E9",
+      "accept": true,
+      "raw": "{\"schema\":1,\"revision\":1E9,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: revision 1.5",
+      "accept": false,
+      "raw": "{\"schema\":1,\"revision\":1.5,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: revision 2.5e0",
+      "accept": false,
+      "raw": "{\"schema\":1,\"revision\":2.5e0,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: schema true",
+      "accept": false,
+      "raw": "{\"schema\":true,\"revision\":1,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: revision false",
+      "accept": false,
+      "raw": "{\"schema\":1,\"revision\":false,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    },
+    {
+      "name": "raw: revision 1e10",
+      "accept": false,
+      "raw": "{\"schema\":1,\"revision\":1e10,\"surfaces\":{\"meet\":{\"role\":\"AXButton\",\"labels\":{\"Turn on microphone\":\"muted\",\"Turn off microphone\":\"unmuted\"}}}}"
+    }
+  ]
+}

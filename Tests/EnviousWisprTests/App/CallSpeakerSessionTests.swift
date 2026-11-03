@@ -53,14 +53,14 @@ import os
         dependencies: .init(
           sources: sources,
           // The SYNTHETIC Meet page, read at the test clock's time.
-          capture: { _, _ in
+          capture: { _, _, _ in
             let page = CallSpeakerObserverTests.meetCopy()
             let host = clock.host()
             return CallAXCapture(
               windows: page.windows, documents: page.documents, completeness: .complete,
               readStartHostTime: host, readEndHostTime: host)
           },
-          isTrusted: { true }, isDictationIdle: { true }, save: { try await saved($0) },
+          muteRules: .testPackaged, isTrusted: { true }, isDictationIdle: { true }, save: { try await saved($0) },
           lane: .init(), hostTime: { clock.host() }, tick: tick,
           settle: .milliseconds(settleMs), observerTick: .seconds(3_600), saveEvery: 2))
     }
@@ -285,7 +285,7 @@ import os
         anchor: 0, rules: withRules ? rules : nil, bundled: withRules ? rules.rules : nil,
         dependencies: .init(
           sources: sources,
-          capture: { _, _ in
+          capture: { _, _, _ in
             copies.withLock { $0 += 1 }
             if holding.withLock({ $0 }) { gate.wait() }
             let page = CallSpeakerObserverTests.meetCopy()
@@ -294,7 +294,7 @@ import os
               windows: page.windows, documents: page.documents, completeness: .complete,
               readStartHostTime: host, readEndHostTime: host)
           },
-          isTrusted: { true }, isDictationIdle: { true },
+          muteRules: .testPackaged, isTrusted: { true }, isDictationIdle: { true },
           save: { _ in rig.saves += 1 }, lane: .init(), hostTime: { clock.host() },
           tick: .seconds(3_600), settle: .milliseconds(2_000), observerTick: .seconds(3_600),
           saveEvery: 2, muteFollowing: { rig.following },

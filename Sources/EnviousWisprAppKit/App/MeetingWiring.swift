@@ -72,10 +72,10 @@ enum MeetingWiring {
     var detectedStartWanted: @MainActor () async -> Bool = { true }
     /// #4013 13B: call-source discovery, which every recording's speaker session reads.
     var callSources: (any CallSpeakerSources)?
-    /// #4013 chunk 13A: starts the day's talker-rules download without waiting for it
-    /// (`RemoteRules.talker.refreshIfDue`, at most once a day). The app passes the live store;
-    /// tests never reach the network.
-    var refreshTalkerRules: @Sendable () -> Void = {}
+    /// #4013 chunk 13A: starts the day's rules downloads without waiting for them
+    /// (`RemoteRules.talker` and `RemoteRules.mute` `refreshIfDue`, each at most once a day). The
+    /// app passes the live stores; tests never reach the network.
+    var refreshRules: @Sendable () -> Void = {}
     /// The `meeting.summary_finished` emitter.
     var emitSummaryFinished: @MainActor (MeetingSummaryFinishedTelemetry) -> Void = {
       TelemetryService.shared.trackMeetingSummaryFinished($0)
@@ -263,16 +263,18 @@ enum MeetingWiring {
         workChanged: inputs.workChanged,
         isDictationIdle: inputs.isDictationIdle,
         callSources: inputs.callSources,
-        talkerRules: { [refreshTalkerRules = inputs.refreshTalkerRules] in
+        talkerRules: { [refreshRules = inputs.refreshRules] in
           let selected = await RemoteRules.talker.current()
-          // The day's download, never waited for: this recording keeps the rules read above.
-          refreshTalkerRules()
+          // The day's downloads, never waited for: this recording keeps the rules read above.
+          refreshRules()
           guard
             let bundled = TalkerRulesSnapshot.bundledURL.flatMap({ try? Data(contentsOf: $0) })
               .flatMap({ try? TalkerRulesSnapshot(validating: $0, origin: .bundled) })
           else { return nil }
           return (selected, bundled.rules)
         },
+        // #4248, #4013 reading resilience §3.5: frozen at recording start, names on or off.
+        muteRules: { await RemoteRules.mute.current() },
         // #4248: "Leave my voice out when I'm muted"; changes reach `muteFollowingChanged()`.
         muteFollowingEnabled: { [settings = inputs.settings] in settings.meetingFollowsCallMute }))
     inputs.transcriptCoordinator.deleteMeeting = {

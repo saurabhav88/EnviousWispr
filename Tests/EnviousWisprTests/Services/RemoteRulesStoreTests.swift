@@ -419,6 +419,317 @@ struct RemoteRulesStoreTests {
     #expect(await fresh.refreshIfDue().revision == 9)
   }
 
+  // MARK: - The self-mute rules document (#4013 reading resilience §3.5)
+
+  private static func muteDocument(revision: Int, schema: Int = 1, role: String = "AXButton")
+    -> Data
+  {
+    Data(
+      #"{"schema":\#(schema),"revision":\#(revision),"surfaces":{"meet":{"role":"\#(role)","labels":{"Turn on microphone":"muted","Turn off microphone":"unmuted"}}}}"#
+        .utf8)
+  }
+
+  private func muteStore(
+    _ folder: Folder, bundled: Data? = muteDocument(revision: 1), transport: Transport,
+    clock: Clock
+  ) -> RemoteRulesStore<CallMuteRules> {
+    RemoteRulesStore(
+      directory: folder.url, bundledData: { bundled }, transport: transport.send,
+      now: { clock.now })
+  }
+
+  @Test("mute rules: bundled first, a higher saved revision wins, a tie keeps the bundle")
+  func muteBundledAndCache() async throws {
+    let none = Transport { throw URLError(.timedOut) }
+    let clock = Clock(Self.start)
+    let fresh = await muteStore(Folder(), transport: none, clock: clock).current()
+    #expect(fresh.origin == .bundled)
+    #expect(fresh.revision == 1)
+    for (saved, origin, revision) in [(3, RemoteRulesOrigin.cached, 3), (1, .bundled, 1)] {
+      let folder = Folder()
+      try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+      try Self.muteDocument(revision: saved, role: "AXCheckBox").write(
+        to: folder.url.appendingPathComponent(CallMuteRules.cacheFileName))
+      let current = await muteStore(folder, transport: none, clock: clock).current()
+      #expect(current.origin == origin)
+      #expect(current.revision == revision)
+    }
+  }
+
+  @Test("mute rules: a saved copy of another schema falls back; no valid copy follows nothing")
+  func muteFallbacks() async throws {
+    let none = Transport { throw URLError(.timedOut) }
+    let clock = Clock(Self.start)
+    let folder = Folder()
+    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+    try Self.muteDocument(revision: 9, schema: 2).write(
+      to: folder.url.appendingPathComponent(CallMuteRules.cacheFileName))
+    #expect(await muteStore(folder, transport: none, clock: clock).current().revision == 1)
+    let empty = await muteStore(
+      Folder(), bundled: Data("broken".utf8), transport: none, clock: clock
+    ).current()
+    #expect(empty == .empty)
+    #expect(empty.rules.isEmpty)
+  }
+
+  @Test("mute rules: a higher download is used, saved and its roles reach protection")
+  func muteDownload() async throws {
+    let folder = Folder()
+    let clock = Clock(Self.start)
+    let transport = Transport {
+      Self.ok(Self.muteDocument(revision: 4, role: "AXCheckBox"), url: CallMuteRules.endpoint)
+    }
+    let subject = muteStore(folder, transport: transport, clock: clock)
+    let atStart = await subject.current()
+    let fresh = await subject.refreshIfDue()
+    #expect(fresh.origin == .downloaded)
+    #expect(fresh.protectedRoles == ["AXCheckBox"])
+    #expect(atStart.protectedRoles == ["AXButton"], "a value already handed out never changes")
+    #expect(transport.requests.first?.url == CallMuteRules.endpoint)
+    #expect(
+      try Data(contentsOf: folder.url.appendingPathComponent(CallMuteRules.cacheFileName))
+        == Self.muteDocument(revision: 4, role: "AXCheckBox"))
+    // The talker document's address is refused for the mute document.
+    let wrong = Transport { Self.ok(Self.muteDocument(revision: 8)) }
+    let other = await muteStore(Folder(), transport: wrong, clock: clock).refreshIfDue()
+    #expect(other.revision == 1)
+  }
+
+  // MARK: - Shared characterizations for both shipped documents (#4013 reading resilience §11)
+
+  /// The two documents the app downloads. Every behavior the store owns runs for both; the
+  /// talker-only parts (lag values, the frozen payload text) stay in the talker tests above.
+  enum Kind: String, CaseIterable, Sendable {
+    case talker, mute
+  }
+
+  /// A valid document of `kind` at `revision`; `variant` changes its content, not its revision.
+  private static func body(_ kind: Kind, revision: Int, variant: Bool = false) -> Data {
+    switch kind {
+    case .talker: document(revision: revision, lagMs: variant ? 50 : 0)
+    case .mute: muteDocument(revision: revision, role: variant ? "AXCheckBox" : "AXButton")
+    }
+  }
+
+  private static func endpoint(_ kind: Kind) -> URL {
+    kind == .talker ? TalkerRulesSnapshot.endpoint : CallMuteRules.endpoint
+  }
+
+  private static func cacheName(_ kind: Kind) -> String {
+    kind == .talker ? TalkerRulesSnapshot.cacheFileName : CallMuteRules.cacheFileName
+  }
+
+  private static func maximumBytes(_ kind: Kind) -> Int {
+    kind == .talker ? TalkerRulesSnapshot.maximumBytes : CallMuteRules.maximumBytes
+  }
+
+  /// A store of `D` over `folder`, bundling revision 1.
+  private func generic<D: RemoteRulesDocument>(
+    _: D.Type, _ kind: Kind, _ folder: Folder, transport: @escaping RemoteRules.Transport, clock: Clock,
+    onJoined: (@Sendable () -> Void)? = nil
+  ) -> RemoteRulesStore<D> {
+    RemoteRulesStore<D>(
+      directory: folder.url, bundledData: { Self.body(kind, revision: 1) }, transport: transport,
+      now: { clock.now }, onJoinedRefresh: onJoined)
+  }
+
+  @Test("both documents: one download a day across a relaunch, and a newer one is kept", arguments: Kind.allCases)
+  func bothDailyLimitAndRelaunch(kind: Kind) async throws {
+    switch kind {
+    case .talker: try await dailyLimitAndRelaunch(TalkerRulesSnapshot.self, kind)
+    case .mute: try await dailyLimitAndRelaunch(CallMuteRules.self, kind)
+    }
+  }
+
+  private func dailyLimitAndRelaunch<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind)
+    async throws
+  {
+    let folder = Folder()
+    let clock = Clock(Self.start)
+    let transport = Transport { Self.ok(Self.body(kind, revision: 5), url: Self.endpoint(kind)) }
+    let first = generic(type, kind, folder, transport: transport.send, clock: clock)
+    let fresh = await first.refreshIfDue()
+    #expect(fresh.origin == .downloaded)
+    #expect(fresh.revision == 5)
+    _ = await first.refreshIfDue()
+    #expect(transport.count == 1)
+    let request = try #require(transport.requests.first)
+    #expect(request.url == Self.endpoint(kind))
+    #expect(request.httpMethod == "GET" && request.httpBody == nil)
+    #expect(request.httpShouldHandleCookies == false && request.timeoutInterval == 5)
+    let relaunched = generic(type, kind, folder, transport: transport.send, clock: clock)
+    #expect(await relaunched.current().origin == .cached)
+    #expect(await relaunched.current().revision == 5)
+    clock.advance(RemoteRules.refreshInterval - 1)
+    _ = await relaunched.refreshIfDue()
+    #expect(transport.count == 1)
+    clock.advance(1)
+    _ = await generic(type, kind, folder, transport: transport.send, clock: clock).refreshIfDue()
+    #expect(transport.count == 2)
+  }
+
+  @Test("both documents: a clock set back does not block refreshes", arguments: Kind.allCases)
+  func bothClockSetBack(kind: Kind) async throws {
+    switch kind {
+    case .talker: try await bothClockSetBack(TalkerRulesSnapshot.self, kind)
+    case .mute: try await bothClockSetBack(CallMuteRules.self, kind)
+    }
+  }
+
+  private func bothClockSetBack<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind)
+    async throws
+  {
+    let folder = Folder()
+    let clock = Clock(Self.start)
+    let transport = Transport { Self.ok(Self.body(kind, revision: 1), url: Self.endpoint(kind)) }
+    _ = await generic(type, kind, folder, transport: transport.send, clock: clock).refreshIfDue()
+    clock.advance(-60)
+    _ = await generic(type, kind, folder, transport: transport.send, clock: clock).refreshIfDue()
+    #expect(transport.count == 2)
+  }
+
+  @Test(
+    "both documents: every failed download keeps the rules and the saved copy, and waits a day",
+    arguments: Kind.allCases, [
+      "offline", "timeout", "cancelled", "http 500", "http 304", "another host", "another path",
+      "invalid", "oversized", "older revision", "same revision",
+    ])
+  func bothFailedDownloads(kind: Kind, failure: String) async throws {
+    switch kind {
+    case .talker: try await bothFailedDownloads(TalkerRulesSnapshot.self, kind, failure: failure)
+    case .mute: try await bothFailedDownloads(CallMuteRules.self, kind, failure: failure)
+    }
+  }
+
+  private func bothFailedDownloads<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind, failure: String)
+    async throws
+  {
+    let folder = Folder()
+    let saved = Self.body(kind, revision: 3)
+    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+    try saved.write(to: folder.url.appendingPathComponent(Self.cacheName(kind)))
+    let endpoint = Self.endpoint(kind)
+    let transport = Transport {
+      switch failure {
+      case "offline": throw URLError(.notConnectedToInternet)
+      case "timeout": throw URLError(.timedOut)
+      case "cancelled": throw CancellationError()
+      case "http 500": return Self.ok(Self.body(kind, revision: 8), url: endpoint, status: 500)
+      case "http 304": return Self.ok(Self.body(kind, revision: 8), url: endpoint, status: 304)
+      case "another host":
+        var parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+        parts.host = "example.com"
+        return Self.ok(Self.body(kind, revision: 8), url: parts.url!)
+      case "another path":
+        return Self.ok(
+          Self.body(kind, revision: 8), url: URL(string: "https://enviouswispr.com/other.json")!)
+      case "invalid": return Self.ok(Data(#"{"schema":1}"#.utf8), url: endpoint)
+      case "oversized":
+        return Self.ok(Data(repeating: 0x20, count: Self.maximumBytes(kind) + 1), url: endpoint)
+      case "older revision": return Self.ok(Self.body(kind, revision: 2), url: endpoint)
+      default: return Self.ok(Self.body(kind, revision: 3, variant: true), url: endpoint)
+      }
+    }
+    let subject = generic(type, kind, folder, transport: transport.send, clock: Clock(Self.start))
+    let before = await subject.current()
+    let after = await subject.refreshIfDue()
+    #expect(after == before)
+    #expect(after.origin == .cached)
+    #expect(
+      try Data(contentsOf: folder.url.appendingPathComponent(Self.cacheName(kind))) == saved)
+    _ = await subject.refreshIfDue()
+    #expect(transport.count == 1)
+  }
+
+  @Test("both documents: a cache that cannot be replaced keeps the old copy", arguments: Kind.allCases)
+  func bothCacheWriteFailure(kind: Kind) async throws {
+    switch kind {
+    case .talker: try await bothCacheWriteFailure(TalkerRulesSnapshot.self, kind)
+    case .mute: try await bothCacheWriteFailure(CallMuteRules.self, kind)
+    }
+  }
+
+  private func bothCacheWriteFailure<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind)
+    async throws
+  {
+    let folder = Folder()
+    let saved = Self.body(kind, revision: 3)
+    try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+    try saved.write(to: folder.url.appendingPathComponent(Self.cacheName(kind)))
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o555], ofItemAtPath: folder.url.path)
+    defer {
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: folder.url.path)
+    }
+    let transport = Transport {
+      Self.ok(Self.body(kind, revision: 8, variant: true), url: Self.endpoint(kind))
+    }
+    let subject = generic(type, kind, folder, transport: transport.send, clock: Clock(Self.start))
+    let fresh = await subject.refreshIfDue()
+    #expect(fresh.origin == .downloaded)
+    #expect(fresh.revision == 8)
+    #expect(await subject.current() == fresh)
+    #expect(
+      try Data(contentsOf: folder.url.appendingPathComponent(Self.cacheName(kind))) == saved)
+    #expect(
+      try FileManager.default.contentsOfDirectory(atPath: folder.url.path) == [
+        Self.cacheName(kind)
+      ])
+  }
+
+  @Test("both documents: a value handed out never changes when a newer one arrives", arguments: Kind.allCases)
+  func bothSnapshotsAreFrozen(kind: Kind) async throws {
+    switch kind {
+    case .talker: try await bothSnapshotsAreFrozen(TalkerRulesSnapshot.self, kind)
+    case .mute: try await bothSnapshotsAreFrozen(CallMuteRules.self, kind)
+    }
+  }
+
+  private func bothSnapshotsAreFrozen<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind)
+    async throws
+  {
+    let transport = Transport {
+      Self.ok(Self.body(kind, revision: 2, variant: true), url: Self.endpoint(kind))
+    }
+    let subject = generic(
+      type, kind, Folder(), transport: transport.send, clock: Clock(Self.start))
+    let atRecordingStart = await subject.current()
+    let copy = atRecordingStart
+    _ = await subject.refreshIfDue()
+    #expect(atRecordingStart == copy)
+    #expect(atRecordingStart.revision == 1)
+    #expect(await subject.current().revision == 2)
+  }
+
+  @Test("both documents: callers during a download share it", arguments: Kind.allCases)
+  func bothConcurrentCallersShareOneDownload(kind: Kind) async throws {
+    switch kind {
+    case .talker: try await bothConcurrentCallersShareOneDownload(TalkerRulesSnapshot.self, kind)
+    case .mute: try await bothConcurrentCallersShareOneDownload(CallMuteRules.self, kind)
+    }
+  }
+
+  private func bothConcurrentCallersShareOneDownload<D: RemoteRulesDocument>(_ type: D.Type, _ kind: Kind)
+    async throws
+  {
+    let gate = Gate()
+    let (joins, joined) = AsyncStream<Void>.makeStream()
+    let subject = generic(
+      type, kind, Folder(), transport: { _, _ in try await gate.park() },
+      clock: Clock(Self.start), onJoined: { joined.yield() })
+    let first = Task { await subject.refreshIfDue().revision }
+    #expect(await gate.arrived(within: .seconds(5)))
+    let second = Task { await subject.refreshIfDue().revision }
+    let third = Task { await subject.refreshIfDue().revision }
+    #expect(await Self.signals(2, from: joins, within: .seconds(5)))
+    gate.release(Self.ok(Self.body(kind, revision: 6), url: Self.endpoint(kind)))
+    for task in [first, second, third] {
+      #expect(await task.value == 6)
+    }
+    #expect(gate.parkCount == 1)
+  }
+
   @Test("the signal wait gives up when nothing is sent")
   func signalWaitDeadline() async {
     let (stream, _) = AsyncStream<Void>.makeStream()

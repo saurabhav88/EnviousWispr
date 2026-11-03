@@ -63,7 +63,7 @@ struct ZoomWindowScopeTests {
     role: "AXButton", description: "Mute my audio", identifier: "audio")
 
   private func mute(_ windows: [CallAXWindow], complete: Bool = true) -> CallSelfMute {
-    CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows, complete: complete))
+    CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows, complete: complete), rules: .testPackaged)
   }
 
   // MARK: - Rule 1: how many meeting windows
