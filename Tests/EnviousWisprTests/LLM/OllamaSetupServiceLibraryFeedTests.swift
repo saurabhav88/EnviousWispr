@@ -174,7 +174,7 @@ struct OllamaSetupServiceLibraryFeedTests {
     // The picker lists models the daemon reports, so a downloaded feed model lands in the
     // picker's non-recommended section.
     let info = LLMModelInfo(
-      id: "olmo2:7b", displayName: "olmo2:7b", provider: .ollama, isAvailable: true,
+      id: "olmo2:7b", displayName: "olmo2:7b", provider: .ollama, availability: .available,
       isRemote: false)
     let groups = OllamaModelPickerPresentation.groups(from: [info], provider: .ollama)
     #expect(groups.recommended.isEmpty)

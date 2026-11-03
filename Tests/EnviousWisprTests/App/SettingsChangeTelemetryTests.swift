@@ -712,7 +712,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "llama3.2", displayName: "llama3.2", provider: .ollama, isAvailable: true,
+            id: "llama3.2", displayName: "llama3.2", provider: .ollama, availability: .available,
             isRemote: false)
         ], for: .ollama)  // → "llama3.2", system
       telemetry.flush()
@@ -880,7 +880,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            id: "mistral", displayName: "M", provider: .ollama, availability: .available,
             isRemote: false)
         ],
         for: .ollama)
@@ -938,7 +938,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            id: "mistral", displayName: "M", provider: .ollama, availability: .available,
             isRemote: false)
         ],
         for: .ollama)

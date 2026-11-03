@@ -20,7 +20,7 @@ struct CloudModelMemorySettingsTests {
 
   private static func row(_ id: String, available: Bool = true) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: .openAI, isAvailable: available, isRemote: false)
+      id: id, displayName: id, provider: .openAI, availability: available ? .available : .confirmedUnavailable, isRemote: false)
   }
 
   // MARK: - Round trips

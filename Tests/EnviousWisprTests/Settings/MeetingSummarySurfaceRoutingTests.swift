@@ -20,7 +20,7 @@ struct MeetingSummarySurfaceRoutingTests {
   }
 
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
-    LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: true, isRemote: false)
+    LLMModelInfo(id: id, displayName: id, provider: provider, availability: .available, isRemote: false)
   }
 
   @Test("the summary surface reads and writes only the summary fields")

@@ -24,7 +24,7 @@ struct SettingsManagerOllamaTruthTests {
     _ id: String, available: Bool = true, isRemote: Bool = false
   ) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: .ollama, isAvailable: available, isRemote: isRemote)
+      id: id, displayName: id, provider: .ollama, availability: available ? .available : .confirmedUnavailable, isRemote: isRemote)
   }
 
   // MARK: - Empty discovery (the root-cause fix)
@@ -348,7 +348,7 @@ struct SettingsManagerOllamaTruthTests {
       let repair = SettingsManager.discoveredModelRepair(
         for: [
           LLMModelInfo(
-            id: "some-model", displayName: "S", provider: provider, isAvailable: true,
+            id: "some-model", displayName: "S", provider: provider, availability: .available,
             isRemote: true)
         ], provider: provider, cloudModel: "deleted-model", ollamaModel: "",
         rememberedCloudModel: nil)

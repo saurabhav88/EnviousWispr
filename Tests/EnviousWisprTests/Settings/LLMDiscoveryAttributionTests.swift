@@ -50,7 +50,7 @@ struct LLMDiscoveryAttributionTests {
 
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: provider, isAvailable: true, isRemote: false)
+      id: id, displayName: id, provider: provider, availability: .available, isRemote: false)
   }
 
   /// The owner change is the moment the old answers stop being true, and it is the ONLY
@@ -138,7 +138,7 @@ struct LLMDiscoveryCachePruneTests {
 
   private static func cache(_ ids: [String], provider: LLMProvider, in defaults: UserDefaults) {
     let rows = ids.map {
-      LLMModelInfo(id: $0, displayName: $0, provider: provider, isAvailable: true, isRemote: false)
+      LLMModelInfo(id: $0, displayName: $0, provider: provider, availability: .available, isRemote: false)
     }
     defaults.set(try! JSONEncoder().encode(rows), forKey: "cachedModels_\(provider.rawValue)")
   }
@@ -231,7 +231,7 @@ struct LLMDiscoveryCachePruneTests {
       "ew.tests.discovery-attribution.ai.\(UUID().uuidString)")!
     let stale = LLMModelInfo(
       id: "apple-intelligence", displayName: "Stale label from an old cache",
-      provider: .appleIntelligence, isAvailable: true, isRemote: false)
+      provider: .appleIntelligence, availability: .available, isRemote: false)
     defaults.set(try JSONEncoder().encode([stale]), forKey: "cachedModels_appleIntelligence")
     let c = LLMModelDiscoveryCoordinator(
       keychainManager: KeychainManager(), cacheDefaults: defaults)

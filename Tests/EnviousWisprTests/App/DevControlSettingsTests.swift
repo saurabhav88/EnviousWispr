@@ -1131,7 +1131,7 @@
     private static func model(_ id: String, _ provider: LLMProvider, available: Bool = true, remote: Bool = false)
       -> LLMModelInfo
     {
-      LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: available, isRemote: remote)
+      LLMModelInfo(id: id, displayName: id, provider: provider, availability: available ? .available : .confirmedUnavailable, isRemote: remote)
     }
 
     @Test("the import provider: a pick seeds then overrides, null follows dictation, none is its own choice")

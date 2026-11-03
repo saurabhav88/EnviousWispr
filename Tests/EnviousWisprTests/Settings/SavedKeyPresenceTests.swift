@@ -84,7 +84,7 @@ struct SavedKeyPresenceTests {
   }
 
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
-    LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: true, isRemote: true)
+    LLMModelInfo(id: id, displayName: id, provider: provider, availability: .available, isRemote: true)
   }
 
   // MARK: - Presence

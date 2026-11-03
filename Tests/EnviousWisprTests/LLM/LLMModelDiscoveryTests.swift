@@ -111,7 +111,7 @@ struct LLMModelDiscoveryTests {
       ["name": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com"],
     ])
     let models = candidates.map {
-      LLMModelDiscovery.modelInfo(from: $0, provider: .ollama, isAvailable: true)
+      LLMModelDiscovery.modelInfo(from: $0, provider: .ollama, availability: .available)
     }
 
     #expect(models.map(\.id) == ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud"])
@@ -212,11 +212,12 @@ struct LLMModelDiscoveryTests {
       id: "local", displayName: "Local", isRemote: false)
 
     #expect(
-      LLMModelDiscovery.modelInfo(from: remote, provider: .ollama, isAvailable: true).isRemote)
+      LLMModelDiscovery.modelInfo(from: remote, provider: .ollama, availability: .available).isRemote)
     // The negative half: without it, hard-coding `true` would pass the above
     // while marking every model hosted and disabling Ollama auto-selection.
     #expect(
-      !LLMModelDiscovery.modelInfo(from: local, provider: .ollama, isAvailable: true).isRemote)
+      LLMModelDiscovery.modelInfo(from: local, provider: .ollama, availability: .available).isRemote
+        == false)
   }
 
   /// An unreadable row is dropped rather than guessed at, and a legitimately

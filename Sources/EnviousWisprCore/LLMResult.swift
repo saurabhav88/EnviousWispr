@@ -342,6 +342,21 @@ public enum AppleIntelligenceModelStatus: String, Codable, Sendable, CaseIterabl
   }
 }
 
+/// What model discovery learned about one model for the current key (#4353 D4).
+///
+/// Three values, because two lied: a probe that never got an answer (offline, timeout, a
+/// busy server) used to read as "locked", and a locked row cannot be chosen, so a network
+/// blip during discovery took a working model away from the user.
+public enum LLMModelAvailability: String, Codable, Sendable, Equatable {
+  /// The probe got a working answer.
+  case available
+  /// The provider said this model is missing or not allowed for this key (for a cloud
+  /// provider: 404, 403, or Gemini's zero quota), or this Mac cannot run it.
+  case confirmedUnavailable
+  /// No usable answer either way. The row stays selectable.
+  case inconclusive
+}
+
 /// A discoverable LLM model with availability status.
 public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// Canonical Ollama model name: strips a `:latest` suffix, preserves every
@@ -368,7 +383,14 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   public let id: String
   public let displayName: String
   public let provider: LLMProvider
-  public var isAvailable: Bool
+  public var availability: LLMModelAvailability
+
+  /// Discovery CONFIRMED this model works. Not the same question as `isSelectable`: an
+  /// inconclusive row is selectable but not confirmed available.
+  public var isAvailable: Bool { availability == .available }
+
+  /// The user may pick this row. Only confirmed unavailability locks a row (#4353 D4).
+  public var isSelectable: Bool { availability != .confirmedUnavailable }
 
   /// #1914: whether the OLLAMA DAEMON proxies this model to Ollama's own
   /// servers instead of running it on this Mac.
@@ -406,13 +428,13 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// exists to remove. Required turns that into a compile error, the same cure
   /// `LLMPolishStep`'s non-optional `ollamaThinks` binding uses.
   public init(
-    id: String, displayName: String, provider: LLMProvider, isAvailable: Bool,
+    id: String, displayName: String, provider: LLMProvider, availability: LLMModelAvailability,
     isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil
   ) {
     self.id = id
     self.displayName = displayName
     self.provider = provider
-    self.isAvailable = isAvailable
+    self.availability = availability
     self.isRemote = isRemote
     self.appleIntelligenceStatus = appleIntelligenceStatus
   }
@@ -439,12 +461,26 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   ///   load-bearing: cloud panes load the cache and do NOT auto-run discovery,
   ///   so failing closed there would leave a real user staring at an empty
   ///   model list until they thought to press refresh.
+  ///
+  /// #4353 D4: `availability` is absent in caches written before it existed. A legacy CLOUD
+  /// row stored `false` both for a real lock and for a probe that never got an answer, so it
+  /// decodes as inconclusive (selectable) rather than as a confirmed lock. Every other
+  /// provider's `false` was a confirmed fact (Apple Intelligence: this Mac cannot run it).
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     displayName = try container.decode(String.self, forKey: .displayName)
     provider = try container.decode(LLMProvider.self, forKey: .provider)
-    isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
+    if let stored = try container.decodeIfPresent(
+      LLMModelAvailability.self, forKey: .availability)
+    {
+      availability = stored
+    } else if try container.decode(Bool.self, forKey: .isAvailable) {
+      availability = .available
+    } else {
+      availability =
+        [.openAI, .gemini, .claude].contains(provider) ? .inconclusive : .confirmedUnavailable
+    }
     // #3142: absent in caches written before the field existed; nil means "a model name".
     appleIntelligenceStatus = try container.decodeIfPresent(
       AppleIntelligenceModelStatus.self, forKey: .appleIntelligenceStatus)
@@ -463,6 +499,23 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
     } else {
       isRemote = false
     }
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id, displayName, provider, availability, isAvailable, isRemote, appleIntelligenceStatus
+  }
+
+  /// Writes `isAvailable` beside `availability` so a build from before #4353 can still read
+  /// the cache after a downgrade (it requires the key).
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(displayName, forKey: .displayName)
+    try container.encode(provider, forKey: .provider)
+    try container.encode(availability, forKey: .availability)
+    try container.encode(isAvailable, forKey: .isAvailable)
+    try container.encode(isRemote, forKey: .isRemote)
+    try container.encodeIfPresent(appleIntelligenceStatus, forKey: .appleIntelligenceStatus)
   }
 }
 
