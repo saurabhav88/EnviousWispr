@@ -5,11 +5,16 @@ import Foundation
 /// was complete, nor that it belongs to the one call being recorded.
 package struct CallCaptureContext: Sendable, Equatable {
   package enum Completeness: Sendable, Equatable {
-    /// Every element within the copy's bounds was reached and every read succeeded.
+    /// Every element within the copy's bounds was reached and every read a reader could use
+    /// succeeded. A failed read the capture policy tolerates (a label no consumer reads, outside
+    /// tiles and lists, `CallAXCapturePolicy.tolerates`) is counted in
+    /// `CallAXCapture.toleratedFailures` and never makes a copy anything but complete.
     case complete
     /// The copy stopped at its node, depth or time bound.
     case truncated
-    /// A read failed (the app went away, an attribute could not be read).
+    /// A read that could hide evidence failed (the app went away; a role, children, a page
+    /// address or a window label could not be read; or any read on a role a consumer reads or
+    /// inside a tile or list).
     case unreadable
     case unknown
   }

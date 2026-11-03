@@ -377,6 +377,9 @@ final class MeetingCoordinator {
         pid: target.pid,
         bounds: CallSpeakerSurfaceChoice.captureBounds(family: family, rule: target.rule),
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
+        // The mute reader's button roles stay fully read (#4013 reading resilience §3.1); the
+        // bundled rules are what `CallSelfMuteReader` reads today.
+        protectedRoles: Set(CallMuteRules.bundled?.rules.values.map(\.role) ?? []),
         keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
