@@ -4,7 +4,9 @@ import Foundation
 /// Reads the Zoom desktop app's own talker signal (#4013 r1 R1). Observed on Zoom Workplace,
 /// 2026-10-27 (`docs/audits/2026-10-27-4013/zoom-mac-names-findings.md`): every participant tile
 /// is an `AXTabGroup` labelled `<Name>, Computer audio muted, Video off`, and the person talking
-/// gets `, active speaker` added. The large Speaker-view tile alone is not evidence of talking.
+/// gets `, active speaker` added. The large Speaker-view tile alone is not evidence of talking,
+/// except in the observed screen-share layouts where it is the only tile Zoom shows and follows
+/// the talker (`shareSignal`, #4013 share plan §3.2).
 ///
 /// The roster comes from the participants panel when it is open and complete (#4013 C1a,
 /// 2026-10-28, `docs/audits/2026-10-27-4013/c1a-receipt.txt`): an `AXOutline` labelled
@@ -19,15 +21,18 @@ package enum ZoomAppSpeakerReader {
   ]
   static let activeSpeakerFlag = "active speaker"
   static let noAudioState = "No audio connected"
+  static let unmutedAudioState = "Computer audio unmuted"
   static let videoStates: Set<String> = ["Video off", "Video on"]
   static let participantsListLabel = "Participants list"
   static let participantsCountPrefix = "Participants ("
   /// The words Zoom puts in brackets after a name in the participants panel.
   static let panelTags: Set<String> = ["Host", "Co-host", "me", "Guest"]
 
-  package static func read(windows: [CallAXWindow], accountTitles: [String]? = nil)
-    -> CallSpeakerReading
-  {
+  /// `share` is read from the whole capture before window choice (`shareContext`); `.none` means
+  /// no share was seen, so only the tile-flag reading below runs.
+  package static func read(
+    windows: [CallAXWindow], accountTitles: [String]? = nil, share: ShareContext = .none
+  ) -> CallSpeakerReading {
     var tileNames: [String] = []
     var speaking: [String] = []
     var selfNames: [String] = []
@@ -129,6 +134,15 @@ package enum ZoomAppSpeakerReader {
     // Identity holds when the tiles are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
     let account = accountName(fromTitles: accountTitles)
+    // During a screen share Zoom may show the talker without a flag (#4013 share plan §3.1-3.2):
+    // a `Talking:` label in the collapsed floating window, or one tile that follows the talker.
+    if share.isSharing, let signal = shareSignal(windows: windows, share: share) {
+      return shareReading(
+        signal, selfList: selfList, account: account, complete: complete, count: count,
+        listedTwice: listedTwice)
+    }
+    let flagSource: CallSpeakerReading.TalkerSource? =
+      participants.contains(where: \.isTalking) ? .flag : nil
     if let complete {
       let names = complete.entries.map { panelEntry($0).name }
       return CallSpeakerReading(
@@ -140,7 +154,7 @@ package enum ZoomAppSpeakerReader {
         // Complete only when every count the call shows agrees with it; a conflict leaves the
         // names as names but never confirms that anyone left.
         participantListComplete: count != nil, participantCount: count,
-        accountSelfNames: account)
+        accountSelfNames: account, talkerSource: flagSource)
     }
     return CallSpeakerReading(
       speaking: uniqueInOrder(speaking),
@@ -149,7 +163,97 @@ package enum ZoomAppSpeakerReader {
       rosterFromParticipantList: false, participants: participants,
       participantIdentityEstablished: identity,
       sharedNames: listedTwice.union(repeatedNames(peopleNames)),
-      participantCount: count, accountSelfNames: account)
+      participantCount: count, accountSelfNames: account, talkerSource: flagSource)
+  }
+
+  /// The talker signal a screen-share layout shows instead of an `active speaker` flag.
+  enum ShareSignal: Equatable {
+    /// The collapsed floating window's `Talking: <name>`; `""` when nobody talks.
+    case label(String)
+    /// The one tile Zoom shows, which follows the talker and keeps the last one through silence.
+    case loneTile(name: String, talking: Bool)
+  }
+
+  /// The share signal in the chosen windows, or `nil` when the layout is not one of the observed
+  /// share shapes (then the tile-flag reading applies, as before). Every tile Zoom draws counts,
+  /// large, unnamed and joining ones included.
+  /// - No tile at all: exactly one `Talking: ` text in a compact window.
+  /// - Exactly one tile, named and not joining: the meeting window's large tile (no video state)
+  ///   while someone else shares (Side-by-side: Speaker), or a compact window's tile while the
+  ///   user shares ("Show active speaker video"). It talks when its audio is unmuted or Zoom
+  ///   flags it.
+  static func shareSignal(windows: [CallAXWindow], share: ShareContext) -> ShareSignal? {
+    let tiles = windows.flatMap { window in
+      window.root.allNodes.compactMap { node -> (window: CallAXWindow, tile: Tile)? in
+        guard node.role == "AXTabGroup", let label = node.label, let tile = parseTile(label)
+        else { return nil }
+        return (window, tile)
+      }
+    }
+    if tiles.isEmpty {
+      let labels = windows.filter(isCompactWindow).flatMap(talkingLabels)
+      return labels.count == 1 ? .label(labels[0]) : nil
+    }
+    guard tiles.count == 1, let only = tiles.first, !only.tile.name.isEmpty, !only.tile.isJoining
+    else { return nil }
+    let isMeeting = ZoomCallWindow.isMeeting(
+      identifier: only.window.root.identifier, title: only.window.title)
+    let shape =
+      (share.guestShare && isMeeting && !only.tile.hasVideoState)
+      || (share.hostShare && isCompactWindow(only.window))
+    guard shape else { return nil }
+    return .loneTile(
+      name: only.tile.name, talking: only.tile.isUnmuted || only.tile.isActiveSpeaker)
+  }
+
+  /// A share-layout reading (#4013 share plan §3.0-3.2). It needs the user's own name
+  /// (`identifiedSelf`): without it the reading is quiet and adds no name, and a signal naming
+  /// the user is quiet too, so the user's own speech never becomes a far-side vote. Lists in the
+  /// chosen windows keep their shared names, self marks and complete-roster facts; the signal
+  /// alone never makes a list complete.
+  static func shareReading(
+    _ signal: ShareSignal, selfList: [String], account: [String], complete: PanelRows?,
+    count: Int?, listedTwice: Set<String>
+  ) -> CallSpeakerReading {
+    var participants: [CallParticipant] = []
+    let source: CallSpeakerReading.TalkerSource
+    if let me = identifiedSelf(marks: selfList, account: account) {
+      switch signal {
+      case .label(let name):
+        if !name.isEmpty, name != me {
+          participants = [
+            CallParticipant(key: "talking-label", name: name, isTalking: true, isSelf: false)
+          ]
+        }
+      case .loneTile(let name, let talking):
+        if name != me {
+          participants = [
+            CallParticipant(key: "lone-tile", name: name, isTalking: talking, isSelf: false)
+          ]
+        }
+      }
+    }
+    switch signal {
+    case .label: source = .label
+    case .loneTile: source = .loneTile
+    }
+    let shown = participants.compactMap(\.name)
+    let speaking = participants.filter(\.isTalking).compactMap(\.name)
+    if let complete {
+      return CallSpeakerReading(
+        speaking: speaking,
+        roster: CallSpeakerRoster(
+          names: complete.entries.map { panelEntry($0).name }, selfNames: selfList),
+        rosterFromParticipantList: true, participants: participants,
+        participantIdentityEstablished: true, sharedNames: listedTwice,
+        participantListComplete: count != nil, participantCount: count,
+        accountSelfNames: account, talkerSource: source)
+    }
+    return CallSpeakerReading(
+      speaking: speaking, roster: CallSpeakerRoster(names: shown, selfNames: selfList),
+      rosterFromParticipantList: false, participants: participants,
+      participantIdentityEstablished: true, sharedNames: listedTwice, participantCount: count,
+      accountSelfNames: account, talkerSource: source)
   }
 
   /// The participants panel's rows (2026-10-29, `zoom-1on1-findings-2026-10-29.md`): each person
@@ -358,9 +462,11 @@ package enum ZoomAppSpeakerReader {
   /// Read from the end, where Zoom's structure is fixed: an optional `active speaker`, an
   /// optional video state, then exactly one audio state. Everything before that is the name, so
   /// commas and look-alike words inside a name survive. Any other ending is not read (no guess).
-  static func parseTile(_ label: String)
-    -> (name: String, isActiveSpeaker: Bool, hasVideoState: Bool, isJoining: Bool)?
-  {
+  typealias Tile = (
+    name: String, isActiveSpeaker: Bool, hasVideoState: Bool, isJoining: Bool, isUnmuted: Bool
+  )
+
+  static func parseTile(_ label: String) -> Tile? {
     var parts = label.components(separatedBy: ", ")
     let isActiveSpeaker = parts.last == activeSpeakerFlag
     if isActiveSpeaker { parts.removeLast() }
@@ -373,7 +479,8 @@ package enum ZoomAppSpeakerReader {
     // An empty name is returned as "": the tile is still a person the caller must not drop.
     // "No audio connected" is how a joining person's tile reads for its first moments.
     return (
-      parts.joined(separator: ", "), isActiveSpeaker, hasVideoState, state == noAudioState
+      parts.joined(separator: ", "), isActiveSpeaker, hasVideoState, state == noAudioState,
+      state == unmutedAudioState
     )
   }
 

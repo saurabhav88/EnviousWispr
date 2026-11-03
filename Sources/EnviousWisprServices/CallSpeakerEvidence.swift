@@ -102,12 +102,7 @@ package enum CallSpeakerSurfaceReader {
     case .zoomApp:
       // Share and count evidence come from the whole copy, before window choice (#4013 share
       // plan §3.0): the windows that carry them are not the ones the reading uses.
-      zoomWindows(
-        capture.windows, share: ZoomAppSpeakerReader.shareContext(windows: capture.windows)
-      )
-      .map {
-        ZoomAppSpeakerReader.read(windows: $0, accountTitles: capture.accountTitles)
-      }
+      zoomReading(capture)
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -115,6 +110,15 @@ package enum CallSpeakerSurfaceReader {
     case .slackApp:
       RulesSpeakerReader.read(windows: capture.windows, rule: rules.rule(for: surface))
     case .facetime, .webex, .dialpad, .gather, .lark, .voov, .whereby, .jitsi: nil
+    }
+  }
+
+  /// The Zoom app reading: the share context is read once from the whole copy and given to both
+  /// window choice and the reader (#4013 share plan §3.0, review r2 R1).
+  static func zoomReading(_ capture: CallAXCapture) -> CallSpeakerReading? {
+    let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows)
+    return zoomWindows(capture.windows, share: share).map {
+      ZoomAppSpeakerReader.read(windows: $0, accountTitles: capture.accountTitles, share: share)
     }
   }
 

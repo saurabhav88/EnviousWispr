@@ -134,6 +134,7 @@ struct NativeCallSpeakerReaderTests {
       reading.roster.names == ["Saurabh A Vaish", "Alex Rivera", "Alex Rivera", "Priya Shah"])
     #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
     #expect(reading.speaking == ["Priya Shah"])
+    #expect(reading.talkerSource == .flag)
   }
 
   /// SYNTHETIC: a panel Zoom draws only partly, a panel with no count, and two counts that
@@ -142,7 +143,8 @@ struct NativeCallSpeakerReaderTests {
   func zoomIncompletePanel() {
     let entries = ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Priya Shah"]
     for counts in [["Participants (12)"], [], ["Participants (3)", "Participants (4)"]] {
-      let reading = ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: counts)])
+      let reading = ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: counts)]
+      )
       #expect(!reading.rosterFromParticipantList, "\(counts)")
       // The thumbnails keep both people named Alex Rivera; the large tile repeats Priya.
       #expect(
@@ -165,7 +167,8 @@ struct NativeCallSpeakerReaderTests {
     }
     let uncounted = zoomPanel(
       entries: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Priya Shah"], counts: [])
-    let countElsewhere = window("Zoom", [CallAXNode(role: "AXStaticText", value: "Participants (3)")])
+    let countElsewhere = window(
+      "Zoom", [CallAXNode(role: "AXStaticText", value: "Participants (3)")])
     #expect(
       !ZoomAppSpeakerReader.read(windows: [uncounted, countElsewhere]).rosterFromParticipantList)
   }
@@ -174,10 +177,13 @@ struct NativeCallSpeakerReaderTests {
 
   @Test("Zoom: the closed-panel button's count is read only in its observed shape")
   func zoomClosedPanelCount() {
-    #expect(ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 4 participants") == 4)
-    #expect(ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 1 participant") == 1)
+    #expect(
+      ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 4 participants") == 4)
+    #expect(
+      ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 1 participant") == 1)
     // SURVEY 2026-10-29: Zoom writes "1 participants" for one person.
-    #expect(ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 1 participants") == 1)
+    #expect(
+      ZoomAppSpeakerReader.closedPanelCount("Open participants panel, closed, 1 participants") == 1)
     for text in [
       "Open participants panel, closed, 2 participant",
       "Open participants panel, closed, participants", "Participants, 2",
@@ -205,13 +211,16 @@ struct NativeCallSpeakerReaderTests {
       zoomOneOnOne(button: "Open participants panel, closed, 2 participants")
     ])
     #expect(closed.participantCount == 2)
-    #expect(CallSpeakerAccumulator.pairEvidence(closed)?.names == ["Saurabh A Vaish", "Alex Rivera"])
+    #expect(
+      CallSpeakerAccumulator.pairEvidence(closed)?.names == ["Saurabh A Vaish", "Alex Rivera"])
     #expect(closed.roster.selfNames.isEmpty, "a closed panel never marks the user")
     #expect(ZoomAppSpeakerReader.read(windows: [zoomOneOnOne(button: nil)]).participantCount == nil)
     // Two buttons that disagree.
     let twoCounts = zoomOneOnOne(
       button: "Open participants panel, closed, 2 participants",
-      extra: [CallAXNode(role: "AXButton", description: "Open participants panel, closed, 3 participants")])
+      extra: [
+        CallAXNode(role: "AXButton", description: "Open participants panel, closed, 3 participants")
+      ])
     #expect(ZoomAppSpeakerReader.read(windows: [twoCounts]).participantCount == nil)
   }
 
@@ -219,8 +228,9 @@ struct NativeCallSpeakerReaderTests {
   func zoomPanelHeadCount() {
     let entries = ["Saurabh A Vaish (Host, me)", "Alex Rivera"]
     #expect(
-      ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: ["Participants (2)"])])
-        .participantCount == 2)
+      ZoomAppSpeakerReader.read(windows: [zoomPanel(entries: entries, counts: ["Participants (2)"])]
+      )
+      .participantCount == 2)
     // A list that does not match its own count leaves the head count unknown, button or not.
     let partial = zoomPanel(entries: entries, counts: ["Participants (3)"])
     #expect(ZoomAppSpeakerReader.read(windows: [partial]).participantCount == nil)
@@ -244,7 +254,9 @@ struct NativeCallSpeakerReaderTests {
 
   /// SURVEY (2026-10-29): Speaker view with two people. The other person is the one large tile,
   /// with no video state; only the user has a thumbnail.
-  private func zoomTwoPersonSpeakerView(button: String?, large: String = "Alex Rivera, Computer audio muted")
+  private func zoomTwoPersonSpeakerView(
+    button: String?, large: String = "Alex Rivera, Computer audio muted"
+  )
     -> CallAXWindow
   {
     window(
@@ -265,7 +277,8 @@ struct NativeCallSpeakerReaderTests {
     // Without a count, or with a count the tiles do not add up to, the large tile stays a repeat.
     for button in [nil, "Open participants panel, closed, 3 participants"] {
       let reading = ZoomAppSpeakerReader.read(windows: [zoomTwoPersonSpeakerView(button: button)])
-      #expect(reading.participants.map(\.name) == ["Saurabh A Vaish"], "\(String(describing: button))")
+      #expect(
+        reading.participants.map(\.name) == ["Saurabh A Vaish"], "\(String(describing: button))")
       #expect(CallSpeakerAccumulator.pairEvidence(reading) == nil)
     }
     // A large tile showing the thumbnail's own person is that person again, not a second one.
@@ -367,13 +380,16 @@ struct NativeCallSpeakerReaderTests {
     #expect(reading.roster.selfNames.isEmpty)
     #expect(reading.participants.allSatisfy { !$0.isSelf })
     #expect(CallSpeakerAccumulator.pairEvidence(reading)?.account == ["Saurabh A Vaish"])
-    let unusable: [[String]?] = [nil, [], ["A B(a@example.com)", "C D(c@example.com)"], ["Saurabh A Vaish"]]
+    let unusable: [[String]?] = [
+      nil, [], ["A B(a@example.com)", "C D(c@example.com)"], ["Saurabh A Vaish"],
+    ]
     for titles in unusable {
       let none = ZoomAppSpeakerReader.read(windows: [window], accountTitles: titles)
       #expect(none.accountSelfNames.isEmpty, "\(String(describing: titles))")
       #expect(CallSpeakerAccumulator.pairEvidence(none)?.account == [])
     }
-    #expect(CallAccountMenu.displayName(fromTitle: "Dana (Design)(d@example.com)") == "Dana (Design)")
+    #expect(
+      CallAccountMenu.displayName(fromTitle: "Dana (Design)(d@example.com)") == "Dana (Design)")
     for title in ["Dana Lee", "Dana Lee(no address)", "(d@example.com)", "Dana Lee(d@example.com"] {
       #expect(CallAccountMenu.displayName(fromTitle: title) == nil, "\(title)")
     }
@@ -458,7 +474,8 @@ struct NativeCallSpeakerReaderTests {
       window(
         "Zoom Meeting",
         [
-          zoomTile("Dana, Computer audio engineer, Computer audio unmuted, Video off, active speaker"),
+          zoomTile(
+            "Dana, Computer audio engineer, Computer audio unmuted, Video off, active speaker"),
           zoomTile("Priya Shah, Computer audio muted, Video off, Hand raised"),
           zoomTile("Alex Rivera, Computer audio unmuted"),
           zoomTile("Alex Rivera, Computer audio unmuted, Video off"),
@@ -502,7 +519,9 @@ struct NativeCallSpeakerReaderTests {
     #expect(reading.rosterFromParticipantList)
   }
 
-  private func teamsRoster(_ rows: [String], counts: [String], title: String = "Meeting with Saurabh Vaish")
+  private func teamsRoster(
+    _ rows: [String], counts: [String], title: String = "Meeting with Saurabh Vaish"
+  )
     -> CallAXWindow
   {
     window(
@@ -530,8 +549,14 @@ struct NativeCallSpeakerReaderTests {
       [teamsRoster(rows, counts: ["In this meeting, 12 total"])],
       [teamsRoster(rows, counts: [])],
       [teamsRoster(rows, counts: ["In this meeting, 4 total", "In this meeting, 5 total"])],
-      [teamsRoster(rows, counts: []), window("Other", [CallAXNode(role: "AXGroup", description: "In this meeting, 4 total")])],
-      [teamsRoster(rows, counts: ["In this meeting, 4 total"]), teamsRoster(rows, counts: ["In this meeting, 4 total"], title: "Second")],
+      [
+        teamsRoster(rows, counts: []),
+        window("Other", [CallAXNode(role: "AXGroup", description: "In this meeting, 4 total")]),
+      ],
+      [
+        teamsRoster(rows, counts: ["In this meeting, 4 total"]),
+        teamsRoster(rows, counts: ["In this meeting, 4 total"], title: "Second"),
+      ],
     ]
     for windows in incomplete {
       let reading = TeamsAppSpeakerReader.read(windows: windows)
@@ -539,7 +564,10 @@ struct NativeCallSpeakerReaderTests {
       #expect(reading.roster.names.contains("Priya Shah"), "names stay for suggestions")
     }
     #expect(TeamsAppSpeakerReader.meetingCount("In this meeting, 3 total Mute all") == 3)
-    for text in ["In this meeting, total", "In this meeting, 3 totally", "In the lobby, 2 total", "In this meeting, 3 total Admit all"] {
+    for text in [
+      "In this meeting, total", "In this meeting, 3 totally", "In the lobby, 2 total",
+      "In this meeting, 3 total Admit all",
+    ] {
       #expect(TeamsAppSpeakerReader.meetingCount(text) == nil, "\(text)")
     }
   }
@@ -552,7 +580,10 @@ struct NativeCallSpeakerReaderTests {
       CallAXNode(
         role: "AXMenuItem", description: label,
         children: [
-          CallAXNode(role: "AXGroup", domClassList: talking ? ["fui-Flex", "vdi-frame-occlusion"] : ["fui-Flex", "vdi-occlusion"])
+          CallAXNode(
+            role: "AXGroup",
+            domClassList: talking
+              ? ["fui-Flex", "vdi-frame-occlusion"] : ["fui-Flex", "vdi-occlusion"])
         ])
     }
     let reading = TeamsAppSpeakerReader.read(windows: [
@@ -581,7 +612,8 @@ struct NativeCallSpeakerReaderTests {
       window(
         "Meeting",
         [
-          CallAXNode(role: "AXMenuItem", description: "Context menu is available", children: [frame]),
+          CallAXNode(
+            role: "AXMenuItem", description: "Context menu is available", children: [frame]),
           CallAXNode(
             role: "AXMenuItem", description: "Priya Shah (Guest), Context menu is available",
             children: [frame]),
@@ -668,7 +700,8 @@ struct NativeCallSpeakerReaderTests {
         [
           CallAXNode(role: "AXRow", description: "Lee, Attendee, Muted"),
           CallAXNode(role: "AXRow", description: "Lee, Dana, Organizer, Muted"),
-          CallAXNode(role: "AXMenuItem", description: "Myself video, Lee, Dana, Muted, Has context menu"),
+          CallAXNode(
+            role: "AXMenuItem", description: "Myself video, Lee, Dana, Muted, Has context menu"),
         ])
     ])
     #expect(reading.roster.names == ["Lee", "Lee, Dana"])
@@ -682,7 +715,8 @@ struct NativeCallSpeakerReaderTests {
       window(
         "Meeting",
         [
-          CallAXNode(role: "AXRow", description: "Dana, Presenter, Lee (Guest), Meeting guest, Muted"),
+          CallAXNode(
+            role: "AXRow", description: "Dana, Presenter, Lee (Guest), Meeting guest, Muted"),
           CallAXNode(role: "AXRow", description: "Priya Shah, Attendee"),
           CallAXNode(role: "AXRow", description: "Alex Rivera, Attendee, Raised hand"),
         ])
@@ -700,7 +734,8 @@ struct NativeCallSpeakerReaderTests {
         [
           CallAXNode(role: "AXRow", description: "Lee, Attendee, Muted"),
           CallAXNode(
-            role: "AXMenuItem", description: "Myself video, Lee, Muted engineer, Muted, Has context menu"),
+            role: "AXMenuItem",
+            description: "Myself video, Lee, Muted engineer, Muted, Has context menu"),
         ])
     ])
     #expect(reading.roster.selfNames.isEmpty)
@@ -719,5 +754,228 @@ struct NativeCallSpeakerReaderTests {
     ])
     #expect(reading.speaking.isEmpty)
     #expect(reading.roster.names == ["Priya Shah"])
+  }
+
+  // MARK: - Zoom screen share (#4013 share plan §3.0-3.2)
+  // SURVEY shapes from the 2026-11-03 discovery run
+  // (`20261103-083021-4013-share-talking-label-discovery-c469`), rebuilt as small trees.
+
+  private static let user = "Saurabh A Vaish"
+  private static let account = ["Saurabh A Vaish(saurabhav@gmail.com)"]
+  private static let hostShare = ZoomAppSpeakerReader.ShareContext(
+    hostShare: true, guestShare: false, countShown: false)
+  private static let guestShare = ZoomAppSpeakerReader.ShareContext(
+    hostShare: false, guestShare: true, countShown: true)
+
+  private static let modes = ["Hide thumbnail video", "Show active speaker video"].map {
+    CallAXNode(role: "AXButton", description: $0)
+  }
+
+  private func floating(_ children: [CallAXNode]) -> CallAXWindow {
+    window("zoom floating video window", children + Self.modes)
+  }
+
+  private func talking(_ value: String) -> CallAXNode {
+    CallAXNode(role: "AXStaticText", value: value)
+  }
+
+  private func meetingWindow(_ children: [CallAXNode]) -> CallAXWindow {
+    CallAXWindow(
+      title: "Zoom Meeting",
+      root: CallAXNode(role: "AXWindow", identifier: "zm.meeting.window.main", children: children))
+  }
+
+  private func share(
+    _ windows: [CallAXWindow], _ context: ZoomAppSpeakerReader.ShareContext,
+    account: [String]? = account
+  ) -> CallSpeakerReading {
+    ZoomAppSpeakerReader.read(windows: windows, accountTitles: account, share: context)
+  }
+
+  @Test("Zoom share: the collapsed window's Talking label names the talker")
+  func shareLabel() {
+    let reading = share([floating([talking("Talking: Bea Chen")])], Self.hostShare)
+    #expect(reading.speaking == ["Bea Chen"])
+    #expect(reading.participants.map(\.key) == ["talking-label"])
+    #expect(reading.roster.names == ["Bea Chen"])
+    #expect(reading.participantIdentityEstablished == true)
+    #expect(reading.participantListComplete == false)
+    #expect(reading.talkerSource == .label)
+  }
+
+  @Test("Zoom share: an empty label, or one naming the user, is a quiet reading with no name")
+  func shareLabelQuiet() {
+    for text in ["Talking: ", "Talking: Saurabh A Vaish"] {
+      let reading = share([floating([talking(text)])], Self.hostShare)
+      #expect(reading.speaking.isEmpty)
+      #expect(reading.participants.isEmpty)
+      #expect(reading.roster.names.isEmpty)
+      #expect(reading.participantIdentityEstablished == true)
+    }
+  }
+
+  @Test("Zoom share: without one known user name the new signals stay quiet")
+  func shareNeedsSelf() {
+    let label = [floating([talking("Talking: Bea Chen")])]
+    // No account read, no panel mark.
+    #expect(share(label, Self.hostShare, account: nil).speaking.isEmpty)
+    #expect(share(label, Self.hostShare, account: nil).roster.names.isEmpty)
+    // A panel mark that disagrees with the account.
+    let conflicting =
+      label + [window(nil, [CallAXNode(role: "AXStaticText", value: "Dana Lee (me)")])]
+    #expect(share(conflicting, Self.hostShare).speaking.isEmpty)
+    // A panel mark alone is enough.
+    let marked = label + [window(nil, [CallAXNode(role: "AXStaticText", value: "Dana Lee (me)")])]
+    #expect(share(marked, Self.hostShare, account: nil).speaking == ["Bea Chen"])
+    #expect(share(marked, Self.hostShare, account: nil).roster.selfNames == ["Dana Lee"])
+  }
+
+  @Test("Zoom share: the lone floating tile follows the talker while the user shares")
+  func shareLoneFloatingTile() {
+    let unmuted = share(
+      [floating([zoomTile("Bea Chen, Computer audio unmuted, Video off")])], Self.hostShare)
+    #expect(unmuted.speaking == ["Bea Chen"])
+    #expect(unmuted.participants.map(\.key) == ["lone-tile"])
+    #expect(unmuted.talkerSource == .loneTile)
+    // Muted: present, not talking.
+    let muted = share(
+      [floating([zoomTile("Bea Chen, Computer audio muted, Video off")])], Self.hostShare)
+    #expect(muted.speaking.isEmpty)
+    #expect(muted.roster.names == ["Bea Chen"])
+    // A real flag counts.
+    let flagged = share(
+      [floating([zoomTile("Bea Chen, Computer audio muted, Video off, active speaker")])],
+      Self.hostShare)
+    #expect(flagged.speaking == ["Bea Chen"])
+    // The lone tile showing the user is quiet and adds no name.
+    let me = share(
+      [floating([zoomTile("Saurabh A Vaish, Computer audio unmuted, Video off")])], Self.hostShare)
+    #expect(me.speaking.isEmpty)
+    #expect(me.roster.names.isEmpty)
+  }
+
+  @Test("Zoom share: the meeting window's lone large tile follows the talker while a guest shares")
+  func shareLoneLargeTile() {
+    let windows = [
+      meetingWindow([
+        zoomTile("Alex Rivera, Computer audio unmuted"),
+        CallAXNode(role: "AXUnknown", description: "Share content"),
+        CallAXNode(
+          role: "AXButton", description: "Open participants panel, closed, 3 participants"),
+      ])
+    ]
+    let reading = share(windows, Self.guestShare)
+    #expect(reading.speaking == ["Alex Rivera"])
+    #expect(reading.participantCount == 3)
+    #expect(reading.participantIdentityEstablished == true)
+    // The same lone tile with no share seen: the tile-flag reading, as before.
+    #expect(share(windows, .none).participantIdentityEstablished == false)
+  }
+
+  @Test("Zoom share: a lone tile needs its observed shape and no other tile")
+  func shareLoneTileRefused() {
+    let bea = zoomTile("Bea Chen, Computer audio unmuted, Video off")
+    // Beside another tile: the tile-flag reading (nobody flagged, nobody talking).
+    let two = share(
+      [floating([bea, zoomTile("Saurabh A Vaish, Computer audio muted, Video off")])],
+      Self.hostShare)
+    #expect(two.speaking.isEmpty)
+    #expect(two.talkerSource == nil)
+    // A joining or unnamed tile is not a talker.
+    #expect(
+      share([floating([zoomTile("Bea Chen, No audio connected")])], Self.hostShare).talkerSource
+        == nil)
+    #expect(
+      share([floating([zoomTile("Computer audio unmuted, Video off")])], Self.hostShare)
+        .talkerSource == nil)
+    // A floating tile while a guest shares, or a meeting-window tile while the user shares.
+    #expect(share([floating([bea])], Self.guestShare).talkerSource == nil)
+    #expect(
+      share([meetingWindow([zoomTile("Bea Chen, Computer audio unmuted")])], Self.hostShare)
+        .talkerSource == nil)
+    // A thumbnail-shaped tile alone in the meeting window during a guest share.
+    #expect(share([meetingWindow([bea])], Self.guestShare).talkerSource == nil)
+  }
+
+  @Test(
+    "Zoom share: lists beside a share signal keep their shared names, self marks and completeness")
+  func shareKeepsListEvidence() {
+    let label = floating([talking("Talking: Bea Chen")])
+    // An incomplete list (unbound row) that shows a name twice still marks it shared.
+    let incomplete = window(
+      "Participants",
+      [
+        CallAXNode(
+          role: "AXOutline", description: "Participants list",
+          children: ["Bea Chen", "Bea Chen", "Saurabh A Vaish (Host, me)"].map { zoomRow($0) })
+      ])
+    let reading = share([label, incomplete], Self.hostShare)
+    #expect(reading.sharedNames == ["Bea Chen"])
+    #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
+    #expect(reading.participantListComplete == false)
+    // CallSpeakerAdmission withholds the shared name.
+    let context = CallCaptureContext(completeness: .complete, scope: .resolved)
+    #expect(
+      CallSpeakerAdmission.admission(of: reading, context: context) == .withheld(.ambiguousTalker))
+    #expect(
+      CallSpeakerAdmission.admission(of: share([label], Self.hostShare), context: context)
+        == .admitted)
+  }
+
+  @Test("Zoom: the flag source is kept with or without a complete panel, and absent when quiet")
+  func flagSourceWithPanel() {
+    let flagged = ZoomAppSpeakerReader.read(windows: [
+      zoomPanel(
+        entries: ["Saurabh A Vaish (Host, me)", "Alex Rivera", "Alex Rivera", "Priya Shah"],
+        counts: ["Participants (4)"])
+    ])
+    #expect(flagged.rosterFromParticipantList == true)
+    #expect(flagged.talkerSource == .flag)
+    let quietTiles = ZoomAppSpeakerReader.read(windows: [
+      window(nil, [zoomTile("Alex Rivera, Computer audio muted, Video off")])
+    ])
+    #expect(quietTiles.talkerSource == nil)
+    let quietPanel = ZoomAppSpeakerReader.read(windows: [
+      window(
+        nil,
+        [
+          zoomTile("Alex Rivera, Computer audio muted, Video off"),
+          CallAXNode(role: "AXStaticText", value: "Participants (1)"),
+          CallAXNode(
+            role: "AXOutline", description: "Participants list", children: [zoomRow("Alex Rivera")]),
+        ])
+    ])
+    #expect(quietPanel.rosterFromParticipantList == true)
+    #expect(quietPanel.talkerSource == nil)
+  }
+
+  @Test(
+    "Zoom share: a complete panel beside a share signal keeps its roster, count and completeness")
+  func shareKeepsCompletePanel() {
+    let label = floating([talking("Talking: Bea Chen")])
+    func panel(_ counts: [String]) -> CallAXWindow {
+      window(
+        "Participants",
+        counts.map { CallAXNode(role: "AXStaticText", value: $0) } + [
+          CallAXNode(
+            role: "AXOutline", description: "Participants list",
+            children: ["Saurabh A Vaish (Host, me)", "Bea Chen", "Alex Rivera"].map { zoomRow($0) })
+        ])
+    }
+    let agreeing = share([label, panel(["Participants (3)"])], Self.hostShare)
+    #expect(agreeing.speaking == ["Bea Chen"])
+    #expect(agreeing.roster.names == ["Saurabh A Vaish", "Bea Chen", "Alex Rivera"])
+    #expect(agreeing.roster.selfNames == ["Saurabh A Vaish"])
+    #expect(agreeing.rosterFromParticipantList == true)
+    #expect(agreeing.participantListComplete == true)
+    #expect(agreeing.participantCount == 3)
+    #expect(agreeing.talkerSource == .label)
+    // Two counts that disagree: the names stay, completeness and the count do not.
+    let conflicting = share(
+      [label, panel(["Participants (3)", "Participants (4)"])], Self.hostShare)
+    #expect(conflicting.speaking == ["Bea Chen"])
+    #expect(conflicting.participantListComplete == false)
+    #expect(conflicting.participantCount == nil)
+    #expect(conflicting.roster.names == ["Bea Chen"])
   }
 }
