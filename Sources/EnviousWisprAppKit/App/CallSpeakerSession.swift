@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import Darwin
 import EnviousWisprCore
@@ -74,6 +75,49 @@ final class CallSpeakerSession {
     /// stop. The default presses nothing.
     var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
       { _, _, _ in .refused(.notFound, elapsedMs: 0) }
+    /// #4356 plan §3.4: the frontmost app and app activations, for the focus hand-back.
+    var focus: FocusAccess = .live
+  }
+
+  /// #4356 plan §3.4: what the focus hand-back reads and asks of macOS, by process id. Every
+  /// call runs on the main actor (the app's run loop keeps NSWorkspace current).
+  struct FocusAccess {
+    /// The frontmost app's process id; nil when there is none.
+    var frontmost: @MainActor () -> pid_t?
+    /// Starts counting app activations; the handler gets each activated app's process id.
+    var watch: @MainActor (@escaping @MainActor (pid_t) -> Void) -> NSObjectProtocol
+    var stopWatching: @MainActor (NSObjectProtocol) -> Void
+    /// A request (macOS 14+ may refuse it), never a guarantee.
+    var activate: @MainActor (pid_t) -> Void
+    /// Runs `body` on the next pass of the main run loop.
+    var nextTurn: @MainActor (@escaping @MainActor () -> Void) -> Void
+
+    static let live = FocusAccess(
+      frontmost: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+      watch: { handler in
+        NSWorkspace.shared.notificationCenter.addObserver(
+          forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+          // Read the payload before `assumeIsolated` (see `AccessibilityWarmupObserver`).
+          let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+            .processIdentifier
+          MainActor.assumeIsolated {
+            if let pid { handler(pid) }
+          }
+        }
+      },
+      stopWatching: { NSWorkspace.shared.notificationCenter.removeObserver($0) },
+      activate: { pid in _ = NSRunningApplication(processIdentifier: pid)?.activate() },
+      nextTurn: { body in DispatchQueue.main.async { MainActor.assumeIsolated { body() } } })
+  }
+
+  /// #4356 plan §3.4: one ticket's hand-back: the app to ask back, and every app activation
+  /// since the ticket was made, in order.
+  private struct HandBack {
+    let ticketID: Int
+    let returnTo: pid_t?
+    var activations: [pid_t] = []
+    var watch: NSObjectProtocol?
   }
 
   /// #4356 plan §3.3: what this recording knows about the user in one Zoom app call. Kept across
@@ -137,6 +181,8 @@ final class CallSpeakerSession {
   private let probeToken = OSAllocatedUnfairLock(initialState: 0)
   /// Waiting for `pendingProbe` to settle (`finish`).
   private var probeWaiters: [CheckedContinuation<Void, Never>] = []
+  /// #4356: the pending probe's focus hand-back context; not part of the call's identity.
+  private var handBack: HandBack?
 
   /// #4356: probes at least this far apart, and at most this many open presses per call.
   static let probeSpacingMs = 2_000
@@ -336,6 +382,7 @@ final class CallSpeakerSession {
     let ticket = ZoomSelfProbeTicket(
       id: nextProbeID, source: binding.source, segmentStartMs: segmentStartMs,
       token: probeToken.withLock { $0 })
+    beginHandBack(ticket: nextProbeID, zoom: binding.source.target.pid)
     // The next probe needs a fresh valid reading that shows the moment again.
     identity.ready = false
     identity.lastProbeAtMs = now
@@ -369,8 +416,8 @@ final class CallSpeakerSession {
         + " closed=\(result.panelClosed.map { String($0) } ?? "unknown")"
         + " user_closed=\(result.userClosed) refusal=\(result.refusal?.rawValue ?? "none")"
         + " ms=\(result.elapsedMs)")
-    // Everything below needs a live recording; the focus hand-back (plan §3.4) goes above this
-    // line, since it also runs after Delete.
+    finishHandBack(ticket: ticket, result: result)
+    // Everything below needs a live recording; the hand-back above also runs after Delete.
     guard lifecycle == .open || lifecycle == .finishing, var identity,
       identity.source == ticket.source
     else { return }
@@ -385,6 +432,45 @@ final class CallSpeakerSession {
       deps.log("meeting zoom self known source=probe")
     }
     self.identity = identity
+  }
+
+  /// Saves the app to ask back (never Zoom, never EnviousWispr) and starts counting
+  /// activations, before the lane job can press anything.
+  private func beginHandBack(ticket id: Int, zoom: pid_t) {
+    if let old = handBack?.watch { deps.focus.stopWatching(old) }
+    let front = deps.focus.frontmost()
+    let returnTo = front.flatMap { $0 == zoom || $0 == getpid() ? nil : $0 }
+    var context = HandBack(ticketID: id, returnTo: returnTo)
+    if returnTo != nil {
+      context.watch = deps.focus.watch { [weak self] pid in
+        guard self?.handBack?.ticketID == id else { return }
+        self?.handBack?.activations.append(pid)
+      }
+    }
+    handBack = context
+  }
+
+  /// After the probe returned: asks the saved app back once, only when the probe pressed, the
+  /// one activation since the ticket was Zoom's, and Zoom is still in front. Anything else the
+  /// user did in between wins. The outcome is read on the next run-loop pass.
+  private func finishHandBack(ticket: ZoomSelfProbeTicket, result: ZoomSelfProbe.Result) {
+    guard let context = handBack, context.ticketID == ticket.id else { return }
+    handBack = nil
+    if let watch = context.watch { deps.focus.stopWatching(watch) }
+    let zoom = ticket.source.target.pid
+    guard result.pressedOpen, let returnTo = context.returnTo else {
+      deps.log("meeting zoom self handback=not_needed")
+      return
+    }
+    guard context.activations == [zoom], deps.focus.frontmost() == zoom else {
+      deps.log("meeting zoom self handback=skipped_user_moved")
+      return
+    }
+    deps.focus.activate(returnTo)
+    deps.focus.nextTurn { [self] in
+      let restored = deps.focus.frontmost() == returnTo
+      deps.log("meeting zoom self handback=\(restored ? "restored" : "refused")")
+    }
   }
 
   /// Returns once no probe is out.

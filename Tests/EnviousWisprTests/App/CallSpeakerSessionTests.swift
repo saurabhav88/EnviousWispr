@@ -630,10 +630,52 @@ import os
       var count: Int { copies.withLock { $0 } }
     }
 
+    /// A scripted front app and activation feed for the focus hand-back (plan §3.4).
+    @MainActor
+    final class FakeFocus {
+      var front: pid_t?
+      var requested: [pid_t] = []
+      var watching: [ObjectIdentifier: (pid_t) -> Void] = [:]
+      var removed = 0
+      var turns: [() -> Void] = []
+
+      init(front: pid_t? = nil) { self.front = front }
+
+      /// macOS activated `pid` (the user, or the probe's own press of Zoom).
+      func activated(_ pid: pid_t) {
+        front = pid
+        for handler in watching.values { handler(pid) }
+      }
+
+      func runTurns() {
+        let pending = turns
+        turns = []
+        for turn in pending { turn() }
+      }
+
+      var access: CallSpeakerSession.FocusAccess {
+        CallSpeakerSession.FocusAccess(
+          frontmost: { [self] in front },
+          watch: { [self] handler in
+            let token = NSObject()
+            watching[ObjectIdentifier(token)] = handler
+            return token
+          },
+          stopWatching: { [self] token in
+            if watching.removeValue(forKey: ObjectIdentifier(token as AnyObject)) != nil {
+              removed += 1
+            }
+          },
+          activate: { [self] pid in requested.append(pid) },
+          nextTurn: { [self] body in turns.append(body) })
+      }
+    }
+
     private func zoomSession(
       _ sources: Sources, clock: Clock, rig: ZoomRig, probe: Probe, shape: ZoomShape = ZoomShape(),
-      following: Bool = false
+      following: Bool = false, focus: FakeFocus? = nil
     ) throws -> CallSpeakerSession {
+      let focus = focus ?? FakeFocus()
       let rules = try TalkerRulesSnapshot(
         validating: Data(
           contentsOf: RepoRoot.url.appending(
@@ -653,7 +695,8 @@ import os
           tick: .seconds(3_600), settle: .milliseconds(2_000), observerTick: .seconds(3_600),
           saveEvery: 1_000, muteFollowing: { following },
           muteEvent: { rig.muteEvents.append($0) },
-          selfProbe: { target, roles, stop in probe.run(target, roles, stop) }))
+          selfProbe: { target, roles, stop in probe.run(target, roles, stop) },
+          focus: focus.access))
     }
 
     /// One tick of the current observer and its outcome: a copy delivered, or a probe settled.
@@ -1010,6 +1053,162 @@ import os
       #expect(rig2.saves.isEmpty)
       #expect(deleted.pendingProbeForTesting == nil, "the ticket still settles")
       #expect(deleted.zoomIdentityForTesting?.knownSelf == nil, "nothing learned after Delete")
+    }
+
+    // MARK: - Focus hand-back (#4356 plan §3.4)
+
+    static let textEdit: pid_t = 50
+
+    /// One probe with the user in TextEdit; `during` runs while the probe is out (after the
+    /// ticket, before the result), as macOS and the user would.
+    private func handBack(
+      front: pid_t? = textEdit, pressed: Bool = true,
+      during: @MainActor (FakeFocus) -> Void
+    ) async throws -> (focus: FakeFocus, rig: ZoomRig) {
+      let rig = ZoomRig()
+      let probe = Probe()
+      if !pressed { probe.next.withLock { $0 = .refused(.notInState, elapsedMs: 2) } }
+      let focus = FakeFocus(front: front)
+      let session = try zoomSession(
+        Sources(Self.zoom), clock: Clock(), rig: rig, probe: probe, focus: focus)
+      session.start()
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("probe dispatched") { probe.count == 1 }
+      during(focus)
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("settled") { session.pendingProbeForTesting == nil }
+      session.cancel()
+      return (focus, rig)
+    }
+
+    private func outcome(_ rig: ZoomRig) -> [String] {
+      rig.logs.filter { $0.hasPrefix("meeting zoom self handback=") }
+    }
+
+    @Test("the press brought Zoom forward: the user's app is asked back once, and it came back")
+    func handBackRestores() async throws {
+      let (focus, rig) = try await handBack { $0.activated(2) }
+      #expect(focus.requested == [Self.textEdit])
+      #expect(outcome(rig).isEmpty, "the outcome is read on the next run-loop pass")
+      focus.front = Self.textEdit
+      focus.runTurns()
+      #expect(outcome(rig) == ["meeting zoom self handback=restored"])
+      #expect(focus.removed == 1)
+      #expect(focus.watching.isEmpty)
+    }
+
+    @Test("macOS keeps Zoom in front: refused, never asked again")
+    func handBackRefused() async throws {
+      let (focus, rig) = try await handBack { $0.activated(2) }
+      focus.runTurns()
+      #expect(focus.requested == [Self.textEdit])
+      #expect(outcome(rig) == ["meeting zoom self handback=refused"])
+    }
+
+    @Test("anything but exactly Zoom's own activation leaves the front app alone")
+    func handBackUserMoved() async throws {
+      let cases: [(String, @MainActor (FakeFocus) -> Void)] = [
+        ("no activation", { _ in }),
+        (
+          "Zoom twice",
+          {
+            $0.activated(2)
+            $0.activated(2)
+          }
+        ),
+        ("another app", { $0.activated(77) }),
+        (
+          "away and back",
+          {
+            $0.activated(77)
+            $0.activated(2)
+          }
+        ),
+      ]
+      for (label, during) in cases {
+        let (focus, rig) = try await handBack(during: during)
+        #expect(focus.requested.isEmpty, "\(label)")
+        #expect(outcome(rig) == ["meeting zoom self handback=skipped_user_moved"], "\(label)")
+        #expect(focus.watching.isEmpty, "\(label)")
+      }
+    }
+
+    @Test(
+      "Zoom already in front, no app in front, EnviousWispr in front, or nothing pressed: no ask")
+    func handBackNotNeeded() async throws {
+      for front in [pid_t(2), nil, getpid()] {
+        let (focus, rig) = try await handBack(front: front) { $0.activated(2) }
+        #expect(focus.requested.isEmpty)
+        #expect(outcome(rig) == ["meeting zoom self handback=not_needed"])
+      }
+      let (focus, rig) = try await handBack(pressed: false) { _ in }
+      #expect(focus.requested.isEmpty)
+      #expect(outcome(rig) == ["meeting zoom self handback=not_needed"])
+      #expect(focus.removed == 1, "the activation watch still ends")
+    }
+
+    @Test("after Delete with the session dropped, the hand-back still happens once")
+    func handBackAfterDelete() async throws {
+      let rig = ZoomRig()
+      let probe = Probe()
+      let focus = FakeFocus(front: Self.textEdit)
+      var session: CallSpeakerSession? = try zoomSession(
+        Sources(Self.zoom), clock: Clock(), rig: rig, probe: probe, focus: focus)
+      session?.start()
+      if let session { await tickZoom(session, probe: probe) }
+      // Delete comes after the press (a Delete before it means no press and nothing to give back).
+      probe.hold.withLock { $0 = true }
+      probe.holdAfterStop.withLock { $0 = true }
+      try #require(session?.currentObserverForTesting).tick()
+      await eventually("pressed") { probe.stopped.withLock { $0.count } == 1 }
+      session?.cancel()
+      weak let dropped = session
+      session = nil
+      focus.activated(2)
+      probe.release.signal()
+      await eventually("asked back") { focus.requested == [Self.textEdit] }
+      focus.front = Self.textEdit
+      focus.runTurns()
+      #expect(outcome(rig) == ["meeting zoom self handback=restored"])
+      #expect(rig.saves.isEmpty)
+      await eventually("released afterwards") { dropped == nil }
+    }
+
+    @Test("a settled probe's activation watch cannot touch the next probe")
+    func handBackPerTicket() async throws {
+      let rig = ZoomRig()
+      let clock = Clock()
+      let probe = Probe()
+      probe.next.withLock {
+        $0 = ZoomSelfProbe.Result(
+          refusal: nil, pressedOpen: true, learned: nil, panelClosed: true, userClosed: false,
+          elapsedMs: 600)
+      }
+      let focus = FakeFocus(front: Self.textEdit)
+      let session = try zoomSession(
+        Sources(Self.zoom), clock: clock, rig: rig, probe: probe, focus: focus)
+      session.start()
+      await tickZoom(session, probe: probe)
+      await tickZoom(session, probe: probe)
+      #expect(probe.count == 1)
+      #expect(focus.watching.isEmpty, "the first ticket's watch ended")
+      // The user is back in TextEdit; a second probe, with Zoom's own activation only.
+      focus.front = Self.textEdit
+      clock.ms.withLock { $0 = 5_000 }
+      await tickZoom(session, probe: probe)
+      probe.hold.withLock { $0 = true }
+      try #require(session.currentObserverForTesting).tick()
+      await eventually("second probe") { probe.count == 2 }
+      focus.activated(2)
+      probe.hold.withLock { $0 = false }
+      probe.release.signal()
+      await eventually("settled") { session.pendingProbeForTesting == nil }
+      #expect(focus.requested == [Self.textEdit], "only the second probe asks, once")
+      #expect(focus.removed == 2)
+      session.cancel()
     }
   }
 #endif
