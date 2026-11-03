@@ -81,6 +81,9 @@ struct MeetingSetupHowTo: View {
             .onChange(of: geo.size.width) { _, value in width = value }
         })
 
+      // Both button sides take equal shares of the row, so the dots sit on the card's centre
+      // line whatever the buttons' widths; a side too wide for its half (German at the narrowest
+      // window) pushes the dots over instead of covering them.
       HStack(spacing: 10) {
         SettingsActionButton(
           title: LocalizedStringResource(
@@ -89,7 +92,8 @@ struct MeetingSetupHowTo: View {
         ) {
           model.previous()
         }
-        Spacer()
+        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .leading)
         HStack(spacing: 6) {
           ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
             Circle()
@@ -97,30 +101,35 @@ struct MeetingSetupHowTo: View {
               .frame(width: 7, height: 7)
           }
         }
+        .fixedSize()
         .accessibilityHidden(true)
-        Spacer()
-        SettingsActionButton(
-          title: model.paused
-            ? LocalizedStringResource(
-              "Play",
-              comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
-            : LocalizedStringResource(
-              "Pause",
-              comment:
-                "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
-          isEnabled: true, emphasis: .quiet, size: .medium
-        ) {
-          model.togglePause()
+        HStack(spacing: 10) {
+          SettingsActionButton(
+            title: model.paused
+              ? LocalizedStringResource(
+                "Play",
+                comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
+              : LocalizedStringResource(
+                "Pause",
+                comment:
+                  "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
+            isEnabled: true, emphasis: .quiet, size: .medium
+          ) {
+            model.togglePause()
+          }
+          SettingsActionButton(
+            title: LocalizedStringResource(
+              "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
+            isEnabled: true, emphasis: .quiet, size: .medium
+          ) {
+            model.next()
+          }
         }
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
-          isEnabled: true, emphasis: .quiet, size: .medium
-        ) {
-          model.next()
-        }
+        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .trailing)
       }
-      .padding(.horizontal, 14)
+      .frame(maxWidth: .infinity)
+      .padding(.horizontal, MeetingSetupHowToCard.padding)
       .padding(.bottom, 12)
       .padding(.top, 4)
     }
@@ -176,7 +185,7 @@ struct MeetingSetupHowToCard: View {
     let layout =
       stacked
       ? AnyLayout(VStackLayout(alignment: .leading, spacing: Self.gap))
-      : AnyLayout(HStackLayout(alignment: .center, spacing: Self.gap))
+      : AnyLayout(HStackLayout(alignment: .top, spacing: Self.gap))
     layout {
       VStack(alignment: .leading, spacing: 8) {
         Text(
@@ -201,8 +210,9 @@ struct MeetingSetupHowToCard: View {
         .frame(minHeight: 200)
         .background(Color.obTextTertiary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         // Pictures of the real controls, not controls: no clicks, no keyboard focus, one label.
+        // Not `.disabled`: that greys the example buttons, so they would not look like the real
+        // card (the example card's actions are empty anyway).
         .allowsHitTesting(false)
-        .disabled(true)
         .focusable(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(card.illustration))
@@ -246,7 +256,7 @@ enum MeetingSetupHowToCopy {
         "It works with the apps you already use. When one of them starts a call, EnviousMeet can notice it and offer to record. Noticing calls needs macOS 14.2 or later.",
         comment: "EnviousMeet setup: how-it-works card 1 line."),
       illustration: LocalizedStringResource(
-        "The call apps EnviousMeet works with: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack huddles, Webex and Jitsi.",
+        "The call apps EnviousMeet works with: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack huddles, Webex and Jitsi, also in a web browser.",
         comment:
           "EnviousMeet setup, VoiceOver: what card 1's picture shows. App names are not translated."
       )),
@@ -308,13 +318,16 @@ enum MeetingSetupHowToCopy {
 /// A strip that looks like the Mac menu bar, with the EnviousWispr icon.
 private struct MeetingHowToMenuBar<Icon: View>: View {
   var highlighted = false
+  /// The icon's slot and the strip's height; card 4 draws them larger so its lips read.
+  var iconSize = CGSize(width: 30, height: 20)
+  var barHeight: CGFloat = 28
   @ViewBuilder let icon: () -> Icon
 
   var body: some View {
     HStack(spacing: 14) {
       Spacer()
       icon()
-        .frame(width: 30, height: 20)
+        .frame(width: iconSize.width, height: iconSize.height)
         .background(
           highlighted ? Color.white.opacity(0.22) : Color.clear,
           in: RoundedRectangle(cornerRadius: 6))
@@ -323,7 +336,7 @@ private struct MeetingHowToMenuBar<Icon: View>: View {
     }
     .foregroundStyle(Color.white)
     .padding(.horizontal, 12)
-    .frame(height: 28)
+    .frame(height: barHeight)
     .background(
       LinearGradient(
         colors: [
@@ -348,7 +361,7 @@ private struct MeetingHowToApps: View {
 
   var body: some View {
     VStack(spacing: 10) {
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 10)
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 4), spacing: 10)
       {
         ForEach(Self.families, id: \.self) { family in
           VStack(spacing: 5) {
@@ -360,10 +373,28 @@ private struct MeetingHowToApps: View {
               .fixedSize(horizontal: false, vertical: true)
           }
         }
+        // The eighth tile: the same calls in a web browser, so the 4-wide grid has no gap.
+        VStack(spacing: 5) {
+          Image(systemName: "globe")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Color.stAccentSolid)
+            .frame(width: 36, height: 36)
+            .background(
+              Color.white, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+          Text(
+            "In a browser",
+            comment:
+              "EnviousMeet setup: the last tile beside the call app logos; EnviousMeet also notices calls in a web browser."
+          )
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(Color.obTextSecondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+        }
       }
       Text(
-        "Also Whereby, Dialpad, Gather, Lark and VooV. In a browser too.",
-        comment: "EnviousMeet setup: under the call app logos. App names are not translated."
+        "Also Whereby, Dialpad, Gather, Lark and VooV.",
+        comment: "EnviousMeet setup: under the call app logos and the browser tile. App names are not translated."
       )
       .font(.system(size: 14))
       .foregroundStyle(Color.obTextTertiary)
@@ -449,7 +480,7 @@ private struct MeetingHowToQuiet: View {
 
   var body: some View {
     VStack(spacing: 14) {
-      MeetingHowToMenuBar {
+      MeetingHowToMenuBar(iconSize: CGSize(width: 84, height: 44), barHeight: 56) {
         TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: reduceMotion || !isVisible)) {
           context in
           let phase = (context.date.timeIntervalSince(start) / 2).truncatingRemainder(dividingBy: 1)
@@ -466,7 +497,7 @@ private struct MeetingHowToQuiet: View {
         comment: "EnviousMeet setup: under the menu bar picture on card 4."
       )
       .font(.system(size: 14))
-      .foregroundStyle(Color.obTextTertiary)
+      .foregroundStyle(Color.obTextSecondary)
       .multilineTextAlignment(.center)
     }
     .padding(14)
@@ -557,7 +588,7 @@ private struct MeetingHowToSummaries: View {
         VStack(alignment: .leading, spacing: 6) {
           Text(group.heading)
             .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(Color.obTextTertiary)
+            .foregroundStyle(Color.obTextSecondary)
           ForEach(group.names, id: \.self) { name in
             Text(verbatim: name)
               .font(.system(size: 14, weight: .semibold))
@@ -569,6 +600,8 @@ private struct MeetingHowToSummaries: View {
         .background(Color.obTextTertiary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
       }
     }
+    // The columns share the tallest one's height, and no more: not the picture box's.
+    .fixedSize(horizontal: false, vertical: true)
     .padding(12)
   }
 }

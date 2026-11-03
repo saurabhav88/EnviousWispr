@@ -25,7 +25,11 @@ struct MeetingsView: View {
       // same page frame and panel surface as every settings page; #4346 §18 Q2: its own logo
       // heading replaces the panel's eyebrow and description.
       SettingsContentView {
+        // #4346 UX pass: the panel hugs the setup's 760-point content (plus the chrome's 18
+        // points each side) so a wide window shows no empty half inside the card.
         MeetingOnboardingView().brandedPanelChrome()
+          .frame(maxWidth: 796, alignment: .leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
   }

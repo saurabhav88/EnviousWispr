@@ -3247,13 +3247,13 @@
         }
       }
     },
-    "Also Whereby, Dialpad, Gather, Lark and VooV. In a browser too." : {
-      "comment" : "EnviousMeet setup: under the call app logos. App names are not translated.",
+    "Also Whereby, Dialpad, Gather, Lark and VooV." : {
+      "comment" : "EnviousMeet setup: under the call app logos and the browser tile. App names are not translated.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auch Whereby, Dialpad, Gather, Lark und VooV. Auch im Browser."
+            "value" : "Auch Whereby, Dialpad, Gather, Lark und VooV."
           }
         }
       }
@@ -10517,6 +10517,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Englischen ist auch „period“ ein Befehl. Wenn du stattdessen „full stop“ sagst, schalte „period“ unter „Einrichten“ aus."
+          }
+        }
+      }
+    },
+    "In a browser" : {
+      "comment" : "EnviousMeet setup: the last tile beside the call app logos; EnviousMeet also notices calls in a web browser.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Browser"
           }
         }
       }
@@ -20961,13 +20972,13 @@
         }
       }
     },
-    "The call apps EnviousMeet works with: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack huddles, Webex and Jitsi." : {
+    "The call apps EnviousMeet works with: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack huddles, Webex and Jitsi, also in a web browser." : {
       "comment" : "EnviousMeet setup, VoiceOver: what card 1's picture shows. App names are not translated.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Anruf-Apps, mit denen EnviousMeet funktioniert: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack-Huddles, Webex und Jitsi."
+            "value" : "Die Anruf-Apps, mit denen EnviousMeet funktioniert: Zoom, Microsoft Teams, Google Meet, FaceTime, Slack-Huddles, Webex und Jitsi, auch im Webbrowser."
           }
         }
       }

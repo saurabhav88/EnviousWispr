@@ -530,7 +530,9 @@ private struct MeetingSetupPermissionRow: View {
   private var allowed: Bool { state == .granted }
 
   var body: some View {
-    HStack(spacing: 12) {
+    // #4346 UX pass: icon, title and status share the row's top line, as the consent rows do,
+    // so a long German line does not push them down to its middle.
+    HStack(alignment: .top, spacing: 12) {
       Image(systemName: icon)
         .font(.system(size: 14, weight: .semibold))
         .foregroundStyle(allowed ? Color.obSuccess : Color.obAccent)
@@ -551,7 +553,7 @@ private struct MeetingSetupPermissionRow: View {
         }
       }
       Spacer(minLength: 8)
-      trailing
+      trailing.frame(minHeight: 34)
     }
     .padding(.vertical, 16)
     .overlay(alignment: .top) { Divider().opacity(0.6) }
