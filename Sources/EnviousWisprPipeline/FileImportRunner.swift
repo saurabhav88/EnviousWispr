@@ -415,8 +415,9 @@ public final class FileImportRunner {
     if let makePolisher { llmPolish.makePolisher = makePolisher }
     llmPolish.s1MiniRuntime = s1MiniRuntime
     llmPolish.llmProvider = LLMProvider(rawValue: settings.llmProvider) ?? .none
-    llmPolish.llmModel = LLMProvider.replacingRetiredModel(
-      settings.llmModel, for: llmPolish.llmProvider)
+    // #4353 decision 4: the chosen model is requested as chosen, retired or not; a model
+    // that no longer works fails at request time and the user picks a new one.
+    llmPolish.llmModel = settings.llmModel
     llmPolish.backend = settings.backendType
     llmPolish.s1Control = settings.s1Control ?? .default
     llmPolish.languageDetection = nil

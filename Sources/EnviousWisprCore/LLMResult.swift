@@ -107,13 +107,10 @@ extension LLMProvider {
   /// Model ids the provider has WITHDRAWN, which must be swept off a user's
   /// saved settings rather than left to fail forever (#1770).
   ///
-  /// Lives in Core, not privately in `SettingsManager`, because a saved model
-  /// reaches the polish path through TWO production seams and both need the
-  /// same authority: the live setting (`SettingsManager
-  /// .canonicalizeLLMModelForProvider`) and a crash-recovery replay, which
-  /// deliberately restores the model recorded in the spool at capture time
-  /// (`RecoveryTextProcessor`). Duplicating the set in Pipeline would be the
-  /// exact drift this design removes.
+  /// #4353: its one remaining reader is `SettingsManager.normalizedModel`, and a remembered
+  /// pick now overrides it (decision 3: nobody's stored selection changes). Request-time
+  /// swaps in Transcribe a File and crash recovery were removed (decision 4: never swap a
+  /// chosen model). PR 2 of #4353 removes the remaining launch-time use.
   ///
   /// Deliberately an EXPLICIT set, never a predicate: we only ever replace ids
   /// the provider has actually withdrawn, never a model the user legitimately
@@ -121,8 +118,7 @@ extension LLMProvider {
   ///
   /// KEYED BY PROVIDER, not a flat set of ids. An Ollama model is named by the
   /// user, so a local model called `gemini-2.0-flash` is a perfectly legitimate
-  /// choice that a flat set would silently rewrite to the shipped default on a recovery
-  /// replay. Keying also keeps the next entry honest: under a flat set plus a
+  /// choice that a flat set would silently rewrite to the shipped default. Keying also keeps the next entry honest: under a flat set plus a
   /// `provider == .gemini` guard, a future OpenAI retirement added here would be
   /// silently ignored — it would LOOK registered and do nothing.
   ///
@@ -137,22 +133,9 @@ extension LLMProvider {
     ]
   ]
 
-  /// Whether `provider` has WITHDRAWN `modelID`. The single membership test both
-  /// repair seams read, so neither can drift from the other.
+  /// Whether `provider` has WITHDRAWN `modelID`.
   public static func isRetiredModel(_ modelID: String, for provider: LLMProvider) -> Bool {
     retiredModelIDs[provider]?.contains(modelID) ?? false
-  }
-
-  /// Substitute the provider's current default for a WITHDRAWN model id,
-  /// leaving every live id untouched (#1770).
-  ///
-  /// The shared authority is `retiredModelIDs` above, which both repair seams
-  /// read through `isRetiredModel`. This helper is `RecoveryTextProcessor`'s
-  /// convenience for the standalone substitution; `SettingsManager` calls the
-  /// membership test directly inside its larger canonicalization branch, which
-  /// is clearer there.
-  public static func replacingRetiredModel(_ modelID: String, for provider: LLMProvider) -> String {
-    isRetiredModel(modelID, for: provider) ? defaultModel(for: provider) : modelID
   }
 
   /// Coarse "does this model id look like it could belong to `provider`"
