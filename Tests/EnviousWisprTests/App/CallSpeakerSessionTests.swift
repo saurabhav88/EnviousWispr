@@ -5,6 +5,7 @@ import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
+@testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 
 #if DEBUG
@@ -1209,6 +1210,69 @@ import os
       #expect(focus.requested == [Self.textEdit], "only the second probe asks, once")
       #expect(focus.removed == 2)
       session.cancel()
+    }
+
+    // MARK: - From the probe to the guest's name (#4356 §11 namer case)
+
+    /// The session's saved log, through the saved file's JSON, given to the real namer with one
+    /// call voice speaking through the two-person stretch.
+    private func namesFromProbe(learned: String?) async throws -> (
+      log: CallSpeakerLog, result: MeetingNamingResult
+    ) {
+      let clock = Clock()
+      let rig = ZoomRig()
+      let probe = Probe()
+      probe.next.withLock {
+        $0 = ZoomSelfProbe.Result(
+          refusal: nil, pressedOpen: true, learned: learned, panelClosed: true,
+          userClosed: false, elapsedMs: 120)
+      }
+      let session = try zoomSession(Sources(Self.zoom), clock: clock, rig: rig, probe: probe)
+      session.start()
+      await tickZoom(session, probe: probe)  // the first valid reading
+      await tickZoom(session, probe: probe)  // the probe
+      #expect(probe.count == 1)
+      // Ordinary readings every 500 ms, as the observer ticks: two tiles, the closed panel's
+      // count of two, no (me) mark, no talking flag.
+      for ms in stride(from: 2_000, through: 30_000, by: 500) {
+        clock.ms.withLock { $0 = ms }
+        await tickZoom(session, probe: probe)
+      }
+      #expect(await session.finish())
+      let saved = try #require(rig.saves.last)
+      let log = try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(saved))
+      let remote = "sys:S1"
+      let turn = Turn(
+        id: "t1", speakerId: remote, startMs: 2_500, endMs: 29_000, originalTextRange: 0..<1,
+        wasPolished: true, granularity: .word)
+      let result = MeetingSpeakerNamer.propose(
+        composition: MeetingComposition(
+          text: "x", turns: [turn], speakerNames: [remote: "Speaker 1"], echoTurnIDs: [],
+          speakerCount: 1),
+        eligibility: MeetingNamingEligibility(
+          callSpeakerIDs: [remote], callSpeech: [MeetingNamingInterval(startMs: 0, endMs: 60_000)!],
+          markers: []),
+        log: log)
+      return (log, result)
+    }
+
+    @Test("the probed name, not the different account name, lets the namer name the guest")
+    func probedNameNamesTheGuest() async throws {
+      // Account "Saurabh A Vaish" (zoomCopy), Zoom tile "Saurabh Vaish", guest "Bea Chen".
+      let (log, result) = try await namesFromProbe(learned: "Saurabh Vaish")
+      let pairs = try #require(log.segments.last?.pairs)
+      let learned = try #require(pairs.last)
+      #expect(learned.accountNames == ["Saurabh Vaish"])
+      #expect(learned.selfNames == [], "no self mark is made up from the probe")
+      #expect(learned.lastMs - learned.firstMs >= 15_000)
+      #expect(log.segments.last?.roster.selfNames == [])
+      #expect(result.proposals == ["sys:S1": "Bea Chen"])
+      #expect(result.pairProposals == 1)
+
+      // The same call without a learned name: the account name matches no tile, so nothing.
+      let (fallbackLog, fallback) = try await namesFromProbe(learned: nil)
+      #expect(fallbackLog.segments.last?.pairs?.last?.accountNames == ["Saurabh A Vaish"])
+      #expect(fallback.proposals.isEmpty)
     }
   }
 #endif
