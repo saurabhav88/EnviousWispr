@@ -2638,12 +2638,17 @@ package final class WisprBootstrapper {
       restoreSelection: { [weak settingsSync, settings] in
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })
-    let refreshTalkerRules: @Sendable () -> Void = {
-      Task.detached(priority: .utility) { _ = await TalkerRulesStore.live.refreshIfDue() }
+    let refreshRules: @Sendable () -> Void = {
+      Task.detached(priority: .utility) {
+        // Independent stores: one document's failure never delays the other.
+        async let talker = RemoteRules.talker.refreshIfDue()
+        async let mute = RemoteRules.mute.refreshIfDue()
+        _ = await (talker, mute)
+      }
     }
-    meetingInputs.refreshTalkerRules = refreshTalkerRules
-    // The day's talker-rules download at launch, off the launch path.
-    refreshTalkerRules()
+    meetingInputs.refreshRules = refreshRules
+    // The day's rules downloads at launch, off the launch path.
+    refreshRules()
     let callDetectionNow: @MainActor () -> Date = {
       Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
     }

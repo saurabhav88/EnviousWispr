@@ -1,0 +1,214 @@
+{
+ "source": "Zoom Workplace live AX copy",
+ "windows": [
+  {
+   "title": "zoom floating video window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom floating video window",
+    "children": [
+     {
+      "role": "AXTabGroup",
+      "description": "Saurabh A Vaish, Computer audio unmuted, Video off",
+      "children": [
+       {
+        "role": "AXImage"
+       },
+       {
+        "role": "AXButton",
+        "description": "Saurabh A Vaish"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Hide thumbnail video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show active speaker video"
+     },
+     {
+      "role": "AXButton",
+      "description": "Show grid video"
+     }
+    ]
+   }
+  },
+  {
+   "title": null,
+   "root": {
+    "role": "AXWindow",
+    "description": "Running out of time?\nStay connected to what matters most with Zoom Workplace Pro. Get meetings up to 30 hours, 10GB Cloud Storage, unlimited AI note-taking with My Notes, and more when you upgrade.",
+    "identifier": "in meeting gift panel",
+    "children": [
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXUnknown"
+     },
+     {
+      "role": "AXStaticText",
+      "value": "Running out of time?"
+     },
+     {
+      "role": "AXStaticText",
+      "value": "Stay connected to what matters most with Zoom Workplace Pro. Get meetings up to 30 hours, 10GB Cloud Storage, unlimited AI note-taking with My Notes, and more when you upgrade."
+     },
+     {
+      "role": "AXLink",
+      "description": "Upgrade today",
+      "identifier": "gift panel button"
+     }
+    ]
+   }
+  },
+  {
+   "title": null,
+   "root": {
+    "role": "AXWindow",
+    "description": "Not hearing anything?, Close, Turn up volume, Press CMD + tilde to open popup"
+   }
+  },
+  {
+   "title": "Zoom Meeting  40-minutes",
+   "root": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting  40-minutes",
+    "identifier": "zm.meeting.window.main",
+    "children": [
+     {
+      "role": "AXTabGroup",
+      "description": "Alex Rivera, Computer audio unmuted",
+      "children": [
+       {
+        "role": "AXStaticText",
+        "value": "Alex Rivera"
+       },
+       {
+        "role": "AXButton",
+        "description": "Alex Rivera"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Mute my audio",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Start video",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "End",
+      "identifier": "leave"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open participants panel, closed, 2 participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Participants options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open chat panel ",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Share",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Share options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "React",
+      "identifier": "react",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "React options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "More meeting controls, collapsed",
+      "identifier": "more"
+     },
+     {
+      "role": "AXButton",
+      "description": "Meeting  40-minutes",
+      "identifier": "MeetingTopBarInfoButton"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Notes pop-up; My Notes is on"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Zoom AI pop-up; Zoom AI is off"
+     },
+     {
+      "role": "AXButton",
+      "description": "View options, Speaker"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open meeting security popup"
+     },
+     {
+      "role": "AXUnknown"
+     },
+     {
+      "role": "AXTextArea",
+      "value": "Time left   07:55",
+      "children": [
+       {
+        "role": "AXTextArea",
+        "description": "Time left   09:59"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Upgrade to Zoom Pro",
+      "identifier": "upgrade button"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -54,3 +54,10 @@
 /meet/talker-rules.json
   Cache-Control: public, max-age=3600
   X-Robots-Tag: noindex
+
+# #4013 reading resilience: the self-mute rules the app downloads at most once a day, replaced in
+# place under a fixed name like the talker rules. Correct a bad file by publishing a fixed one with
+# a higher revision; the app never takes a lower or equal revision.
+/meet/call-mute-rules.json
+  Cache-Control: public, max-age=3600
+  X-Robots-Tag: noindex

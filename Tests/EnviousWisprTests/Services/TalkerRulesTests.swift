@@ -23,7 +23,7 @@ struct TalkerRulesTests {
 
   @Test("the packaged rules file resolves through the app's own lookup and validates")
   func packagedResource() throws {
-    let url = try #require(TalkerRulesStore.bundledURL)
+    let url = try #require(TalkerRulesSnapshot.bundledURL)
     let snapshot = try TalkerRulesSnapshot(validating: Data(contentsOf: url), origin: .bundled)
     #expect(snapshot.rules.schema == TalkerRules.supportedSchema)
   }
@@ -32,7 +32,7 @@ struct TalkerRulesTests {
   func hostedMatchesBundled() throws {
     let hosted = try repoFile(Self.hostedPath)
     #expect(hosted == (try repoFile(Self.bundledPath)))
-    let packaged = try Data(contentsOf: #require(TalkerRulesStore.bundledURL))
+    let packaged = try Data(contentsOf: #require(TalkerRulesSnapshot.bundledURL))
     #expect(hosted == packaged)
     _ = try TalkerRules.decode(hosted)
   }

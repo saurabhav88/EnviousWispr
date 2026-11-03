@@ -28,8 +28,10 @@ struct CallMuteCopy: Equatable, Sendable {
   let completeness: CallCaptureContext.Completeness
   let nodes: Int
   let generation: UInt64
-  /// The copy's failed reads and where its time went (DEBUG timing receipt only).
+  /// The copy's failed reads, those it tolerated, and where its time went (DEBUG timing
+  /// receipt only).
   var failedReads = 0
+  var toleratedFailures = 0
   var cost = CallAXCopyCost()
 }
 
@@ -92,6 +94,9 @@ final class CallSpeakerObserver {
     var sourceRevision: @MainActor () -> Int = { 0 }
     /// One bounded copy of that app, run on the lane's queue.
     var capture: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture
+    /// The recording's frozen self-mute rules, the same ones `capture` protects (#4248, #4013
+    /// reading resilience §3.5).
+    var muteRules: CallMuteRules
     var isTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
     /// Read inside Observation tracking, so any change to what it reads invalidates copies in
     /// flight at once, even a whole dictation that starts and ends between two ticks.
@@ -277,6 +282,7 @@ final class CallSpeakerObserver {
       namingGeneration: namingGeneration,
       dictation: dictationChanges.withLock { $0 }, source: deps.sourceRevision())
     let capture = deps.capture
+    let muteRules = deps.muteRules
     let isTrusted = deps.isTrusted
     let rules = forNaming ? naming?.rules : nil
     deps.lane.queue.async { [weak self] in
@@ -293,7 +299,9 @@ final class CallSpeakerObserver {
           completeness: copy.completeness,
           scope: CallSpeakerSurfaceReader.scope(
             surface: binding.surface, capture: copy, family: binding.source.family)),
-        mute: binding.mute ? CallSelfMuteReader.read(surface: binding.surface, capture: copy) : nil)
+        mute: binding.mute
+          ? CallSelfMuteReader.read(surface: binding.surface, capture: copy, rules: muteRules)
+          : nil)
       // The lane frees only once the physical work returned.
       busy.withLock { $0 = false }
       Task { @MainActor [weak self] in
@@ -333,7 +341,8 @@ final class CallSpeakerObserver {
         durationUs: CallSpeakerTimeline.microseconds(
           from: copy.readStartHostTime, to: copy.readEndHostTime),
         nodes: copy.nodesVisited, failedReads: copy.failedReads,
-        prunedControls: copy.prunedControls, skippedWindows: copy.skippedWindows)
+        prunedControls: copy.prunedControls, skippedWindows: copy.skippedWindows,
+        toleratedFailures: copy.toleratedFailures)
     }
     // Read again at delivery: nothing that would have stopped the copy may have happened since,
     // and the copy's whole binding is still the live one.
@@ -351,7 +360,8 @@ final class CallSpeakerObserver {
           reading: mute, surface: taken.binding.surface, copyStart: copy.readStartHostTime,
           copyEnd: copy.readEndHostTime, received: received, completeness: copy.completeness,
           nodes: copy.nodesVisited, generation: taken.binding.generation,
-          failedReads: copy.failedReads, cost: copy.cost))
+          failedReads: copy.failedReads, toleratedFailures: copy.toleratedFailures,
+          cost: copy.cost))
     }
     guard taken.forNaming else { return }
     // A different answer while naming settles drops naming's copy, not mute's.

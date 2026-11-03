@@ -59,11 +59,90 @@ public struct SpeakerNamingSummary: Equatable, Sendable {
   public let outcome: Outcome?
   /// Committed call-sound names with automatic provenance; a known zero stays 0.
   public let autoNamedCount: Int?
+  /// How the speaker reads went (`speaker_reads_*`); nil when the log had no capture attempt.
+  public let readHealth: SpeakerReadHealth?
 
-  public init(surface: Surface?, outcome: Outcome?, autoNamedCount: Int?) {
+  public init(
+    surface: Surface?, outcome: Outcome?, autoNamedCount: Int?,
+    readHealth: SpeakerReadHealth? = nil
+  ) {
     self.surface = surface
     self.outcome = outcome
     self.autoNamedCount = autoNamedCount
+    self.readHealth = readHealth
+  }
+}
+
+/// How one recording's speaker reads went, as counts only (#4013 reading resilience §3.4), summed
+/// over its saved log's segments. `meeting.ended` reports them as buckets
+/// (`speaker_reads_unusable_share_bucket`, `speaker_reads_unusable_reason`,
+/// `speaker_reads_tolerated_bucket`). The denominator is capture attempts: ticks skipped before a
+/// copy (busy lane, dictation, no permission) are not attempts, so a low share says reads were
+/// healthy when reading happened, not that reading happened.
+public struct SpeakerReadHealth: Equatable, Sendable {
+  /// Which kind of unusable copy was most common (`speaker_reads_unusable_reason`).
+  public enum Reason: String, Sendable, CaseIterable {
+    case unreadable
+    case truncated
+    case unresolvedScope = "unresolved_scope"
+    case none
+  }
+
+  public let captureAttempts: Int
+  public let unreadableCaptures: Int
+  public let truncatedCaptures: Int
+  /// Complete copies whose call could not be told (`CallSpeakerAdmission` scope).
+  public let unresolvedScopeCaptures: Int
+  /// Failed reads the capture policy tolerated; nil when a segment with attempts was saved
+  /// before the counter existed.
+  public let toleratedFailures: Int?
+
+  /// Counts as given; nil when `captureAttempts` is not above zero.
+  public init?(
+    captureAttempts: Int, unreadableCaptures: Int, truncatedCaptures: Int,
+    unresolvedScopeCaptures: Int, toleratedFailures: Int?
+  ) {
+    guard captureAttempts > 0 else { return nil }
+    self.captureAttempts = captureAttempts
+    self.unreadableCaptures = unreadableCaptures
+    self.truncatedCaptures = truncatedCaptures
+    self.unresolvedScopeCaptures = unresolvedScopeCaptures
+    self.toleratedFailures = toleratedFailures
+  }
+
+  /// The log's summed segment health, or nil when it holds no capture attempt. Tolerated
+  /// failures are summed over every segment, one whose copies were all dropped at delivery
+  /// included (its walks are counted before the drop, `CallSpeakerObserver`); a segment that
+  /// walked but predates the counter makes the sum unknown.
+  public init?(log: CallSpeakerLog) {
+    let healths = log.segments.compactMap(\.health)
+    self.init(
+      captureAttempts: healths.reduce(0) { $0 + $1.captureAttempts },
+      unreadableCaptures: healths.reduce(0) { $0 + $1.unreadableCaptures },
+      truncatedCaptures: healths.reduce(0) { $0 + $1.truncatedCaptures },
+      unresolvedScopeCaptures: healths.reduce(0) { $0 + $1.unresolvedScopeCaptures },
+      toleratedFailures: healths.reduce(Optional(0)) { sum, health in
+        let walked = health.walkDurationCount > 0 || health.captureAttempts > 0
+        let known = health.toleratedFailures ?? (walked ? nil : 0)
+        return sum.flatMap { total in known.map { total + $0 } }
+      })
+  }
+
+  /// Unreadable, truncated or out-of-scope copies over capture attempts.
+  public var unusableShare: Double {
+    Double(unreadableCaptures + truncatedCaptures + unresolvedScopeCaptures)
+      / Double(captureAttempts)
+  }
+
+  /// The most common unusable kind; ties go unreadable, truncated, unresolved scope; `none`
+  /// when every copy was usable.
+  public var unusableReason: Reason {
+    let counts: [(Reason, Int)] = [
+      (.unreadable, unreadableCaptures), (.truncated, truncatedCaptures),
+      (.unresolvedScope, unresolvedScopeCaptures),
+    ]
+    guard let most = counts.map(\.1).max(), most > 0 else { return .none }
+    return counts.first { $0.1 == most }!.0
   }
 }
 
@@ -72,11 +151,15 @@ public struct SpeakerNamingSummary: Equatable, Sendable {
 public enum SpeakerNamingPass: Equatable, Sendable {
   /// Positively known: the meeting was not a call.
   case notACall
-  /// The namer proposed `count` (more than zero) automatic names.
-  case proposed(surface: SpeakerNamingSummary.Surface?, count: Int)
+  /// The namer proposed `count` (more than zero) automatic names. `readHealth` is the saved
+  /// log's read health, nil without capture attempts.
+  case proposed(
+    surface: SpeakerNamingSummary.Surface?, count: Int, readHealth: SpeakerReadHealth? = nil)
   /// The namer proposed nothing. `outcome` is why, or `nil` when the inputs cannot say; it is
   /// never `named`, `manualOnly` or `notACall`.
-  case abstained(surface: SpeakerNamingSummary.Surface?, outcome: SpeakerNamingSummary.Outcome?)
+  case abstained(
+    surface: SpeakerNamingSummary.Surface?, outcome: SpeakerNamingSummary.Outcome?,
+    readHealth: SpeakerReadHealth? = nil)
 }
 
 /// How the durable History write of the reconciled row ended.
@@ -110,7 +193,7 @@ public struct PendingSpeakerNamingSummary: Equatable, Sendable {
       summary = SpeakerNamingSummary(
         surface: SpeakerNamingSummary.Surface.none, outcome: count == 0 ? .notACall : nil,
         autoNamedCount: count)
-    case .proposed(let surface, let proposals):
+    case .proposed(let surface, let proposals, let health):
       let outcome: SpeakerNamingSummary.Outcome?
       if proposals <= 0 {
         outcome = nil
@@ -121,14 +204,16 @@ public struct PendingSpeakerNamingSummary: Equatable, Sendable {
           Self.everyProposalDisplaced(proposed: proposed, reconciled: reconciled)
           ? .manualOnly : nil
       }
-      summary = SpeakerNamingSummary(surface: surface, outcome: outcome, autoNamedCount: count)
-    case .abstained(let surface, let reason):
+      summary = SpeakerNamingSummary(
+        surface: surface, outcome: outcome, autoNamedCount: count, readHealth: health)
+    case .abstained(let surface, let reason, let health):
       let outcome: SpeakerNamingSummary.Outcome?
       switch reason {
       case .named?, .manualOnly?, .notACall?, nil: outcome = nil
       case let reason?: outcome = count == 0 ? reason : nil
       }
-      summary = SpeakerNamingSummary(surface: surface, outcome: outcome, autoNamedCount: count)
+      summary = SpeakerNamingSummary(
+        surface: surface, outcome: outcome, autoNamedCount: count, readHealth: health)
     }
   }
 

@@ -345,7 +345,9 @@ struct CallSpeakerCaptureTests {
   /// pruned control's children).
   @Test("each element is read in role-ordered batches; prohibited attributes are never asked")
   func batchedReads() {
-    let common = ["AXRole", "AXTitle", "AXDescription", "AXValue", "AXIdentifier", "AXDOMClassList", "AXSize"]
+    let common = [
+      "AXRole", "AXTitle", "AXDescription", "AXValue", "AXIdentifier", "AXDOMClassList", "AXSize",
+    ]
     let tree = Tree()
     tree.node(1, "AXWindow", children: [2, 3, 5])
     tree.node(2, "AXButton")
@@ -359,22 +361,26 @@ struct CallSpeakerCaptureTests {
     // The timing receipt's cost counts every message the fake answered and every copied element.
     #expect(copy.cost.messages == tree.ticks)
     #expect(copy.cost.windows.map(\.nodes) == [copy.nodesVisited])
-    #expect(copy.cost.windows.map(\.messages) == [copy.cost.messages], "one window holds every message")
+    #expect(
+      copy.cost.windows.map(\.messages) == [copy.cost.messages], "one window holds every message")
     // Five elements: five role batches, five role-dependent batches, one kept page's children
     // and the window title read singly.
     #expect(copy.cost.byKind[.common]?.messages == 5)
     #expect(copy.cost.byKind[.dependent]?.messages == 5)
     #expect(copy.cost.byKind[.single]?.messages == 2)
     let asked = tree.batches.map { "\($0.0):\($0.1.joined(separator: ","))" }
-    #expect(asked == [
-      "1:" + common.joined(separator: ","), "1:AXChildren",
-      "2:" + common.joined(separator: ","), "2:AXDOMIdentifier,AXChildren",
-      "3:" + common.joined(separator: ","), "3:AXURL",
-      "5:" + common.joined(separator: ","), "5:AXURL",
-      "6:" + common.joined(separator: ","), "6:AXChildren",
-    ])
-    #expect(tree.queried.contains("3.AXChildren") == false, "a filtered page's children are never asked")
-    #expect(tree.queried.contains("5.AXChildren"), "a kept page's children are read after its address")
+    #expect(
+      asked == [
+        "1:" + common.joined(separator: ","), "1:AXChildren",
+        "2:" + common.joined(separator: ","), "2:AXDOMIdentifier,AXChildren",
+        "3:" + common.joined(separator: ","), "3:AXURL",
+        "5:" + common.joined(separator: ","), "5:AXURL",
+        "6:" + common.joined(separator: ","), "6:AXChildren",
+      ])
+    #expect(
+      tree.queried.contains("3.AXChildren") == false, "a filtered page's children are never asked")
+    #expect(
+      tree.queried.contains("5.AXChildren"), "a kept page's children are read after its address")
     #expect(tree.queried.contains("4.AXRole") == false)
 
     // Zoom: no DOM id anywhere; a toolbar button's children are never asked.
@@ -395,12 +401,16 @@ struct CallSpeakerCaptureTests {
     tree.node(1, "AXWindow")
     let base = tree.access()
     let short = CallAXTreeAccess<Int>(
-      read: base.read, readMany: { id, attributes in attributes.dropLast().map { base.read(id, $0) } },
+      read: base.read,
+      readMany: { id, attributes in attributes.dropLast().map { base.read(id, $0) } },
       hash: base.hash, same: base.same, now: base.now)
     var host: UInt64 = 0
     let copy = CallSpeakerCapture.capture(
       windows: [1], access: short, bounds: .standard, keepPage: { _ in true },
-      hostTime: { host += 1; return host })
+      hostTime: {
+        host += 1
+        return host
+      })
     #expect(copy.completeness == .unreadable)
     #expect(copy.failedReads == 7)
   }
@@ -416,9 +426,15 @@ struct CallSpeakerCaptureTests {
     let attributes: [CallAXAttribute] = [.role, .title, .description, .value, .size, .domClassList]
     let decoded = CallSpeakerCapture.decodeBatch(
       attributes, status: .success,
-      values: ["AXButton" as NSString, NSNull(), try axError(.noValue), try axError(.cannotComplete), sizeValue,
-               ["a", "b"] as NSArray])
-    #expect(decoded.map(describe) == ["text AXButton", "missing", "missing", "failed", "size 40x20", "texts a,b"])
+      values: [
+        "AXButton" as NSString, NSNull(), try axError(.noValue), try axError(.cannotComplete),
+        sizeValue,
+        ["a", "b"] as NSArray,
+      ])
+    #expect(
+      decoded.map(describe) == [
+        "text AXButton", "missing", "missing", "failed", "size 40x20", "texts a,b",
+      ])
     #expect(
       CallSpeakerCapture.decodeBatch(attributes, status: .cannotComplete, values: nil).map(describe)
         == Array(repeating: "failed", count: attributes.count))
@@ -426,8 +442,10 @@ struct CallSpeakerCaptureTests {
       CallSpeakerCapture.decodeBatch(attributes, status: .success, values: ["AXButton" as NSString])
         .map(describe) == Array(repeating: "failed", count: attributes.count))
     #expect(
-      CallSpeakerCapture.decodeBatch([.title], status: .success, values: [try axError(.attributeUnsupported)])
-        .map(describe) == ["missing"])
+      CallSpeakerCapture.decodeBatch(
+        [.title], status: .success, values: [try axError(.attributeUnsupported)]
+      )
+      .map(describe) == ["missing"])
   }
 
   private func describe(_ read: CallAXRead<AXUIElement>) -> String {
@@ -443,10 +461,15 @@ struct CallSpeakerCaptureTests {
 
   @Test("only the Teams app's copies get the slower-answering bound")
   func teamsAppBounds() {
-    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callApp(.teams)) == .teamsApp)
-    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callWindow(.teams)) == .teamsApp)
-    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .browser(.chrome)) == .standard)
-    #expect(CallSpeakerSurfaceChoice.captureBounds(family: .zoom, rule: .callApp(.zoom)) == .standard)
+    #expect(
+      CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callApp(.teams)) == .teamsApp)
+    #expect(
+      CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .callWindow(.teams)) == .teamsApp
+    )
+    #expect(
+      CallSpeakerSurfaceChoice.captureBounds(family: .teams, rule: .browser(.chrome)) == .standard)
+    #expect(
+      CallSpeakerSurfaceChoice.captureBounds(family: .zoom, rule: .callApp(.zoom)) == .standard)
     #expect(CallAXBounds.teamsApp.budget == .milliseconds(1_000))
     #expect(CallAXBounds.teamsApp.maxNodes == CallAXBounds.standard.maxNodes)
   }
@@ -470,11 +493,11 @@ struct CallSpeakerCaptureTests {
       tree, policy: CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: rule),
       keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: .teams, rule: rule) })
     #expect(copy.completeness == .complete)
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy) == .muted)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: copy, rules: .testPackaged) == .muted)
     // The meeting-page filter alone (before #4248) never copies the page: unknown.
     let filtered = capture(
       tree, keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .teams) })
-    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered) == .unknown)
+    #expect(CallSelfMuteReader.read(surface: .teamsApp, capture: filtered, rules: .testPackaged) == .unknown)
   }
 
   // MARK: - Timeline
@@ -818,7 +841,10 @@ struct CallSpeakerCaptureTests {
     #expect(scope([meeting(), home]) == .resolved)
     #expect(scope([meeting(), meeting()]) == .unresolved, "two meeting windows")
     #expect(scope([home]) == .unresolved, "no meeting window")
-    #expect(scope([meeting(), panel]) == .unresolved, "meeting content in another window")
+    // #4013 reading resilience §3.2 (intentional change): the meeting window shows no tile, so
+    // the one other window with tiles supplies them instead of withholding the capture.
+    #expect(scope([meeting(), panel]) == .resolved, "tiles only in another window")
+    #expect(scope([meeting(), panel, panel]) == .unresolved, "a tie for most tiles")
   }
 
   @Test("the surface comes from the call family and whether a browser held the microphone")
@@ -981,10 +1007,19 @@ struct CallSpeakerCaptureTests {
         capture(tree, windows: [1, 20], policy: .zoomApp).completeness == .unreadable,
         "\(failing)")
     }
-    // A window that only looks like home (it has an identifier) is walked.
+    // A window that only looks like home (it has an identifier) is walked. Its banner's failed
+    // identifier is a label no reader uses, so it is tolerated and counted (#4013 reading
+    // resilience §3.1); its failed children are not.
     let tree = Self.zoomTree()
     tree.texts[20] = [.title: "Zoom Workplace", .identifier: "zm.other"]
-    #expect(capture(tree, windows: [1, 20], policy: .zoomApp).completeness == .unreadable)
+    let walked = capture(tree, windows: [1, 20], policy: .zoomApp)
+    #expect(tree.queried.contains("21.AXIdentifier"))
+    #expect(walked.completeness == .complete)
+    #expect(walked.toleratedFailures == 1)
+    let broken = Self.zoomTree()
+    broken.texts[20] = [.title: "Zoom Workplace", .identifier: "zm.other"]
+    broken.failing.insert("21.AXChildren")
+    #expect(capture(broken, windows: [1, 20], policy: .zoomApp).completeness == .unreadable)
     // Each failed read counts once.
     let titled = Self.zoomTree()
     titled.failing.insert("1.AXTitle")
@@ -1001,7 +1036,7 @@ struct CallSpeakerCaptureTests {
         as? [String: Any])
     for key in [
       "invalidNameReadings", "evidenceCapacityDrops", "failedReads", "prunedControls",
-      "skippedWindows",
+      "skippedWindows", "toleratedFailures",
     ] {
       #expect(object.removeValue(forKey: key) != nil, "\(key)")
     }
@@ -1010,9 +1045,12 @@ struct CallSpeakerCaptureTests {
     #expect(health.failedReads == nil)
     #expect(health.invalidNameReadings == nil)
     #expect(CallCaptureHealth().failedReads == 0, "a new one starts at zero")
+    #expect(health.toleratedFailures == nil)
+    #expect(CallCaptureHealth().toleratedFailures == 0)
     var counting = health
-    counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2)
+    counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2, toleratedFailures: 1)
     #expect(counting.failedReads == 2)
+    #expect(counting.toleratedFailures == 1)
   }
 
   @Test("only the Zoom app gets the Zoom policy")

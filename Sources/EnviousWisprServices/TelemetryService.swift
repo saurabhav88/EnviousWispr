@@ -4135,7 +4135,10 @@ public final class TelemetryService {
   /// #4121: `call_output_transport` (string), `call_capture_rate_hz`, `call_rebuilds` and
   /// `call_reports_omitted` (`Int`) are omitted when the attempt has no call-sound summary.
   /// #4013: `speaker_names_surface` and `speaker_names_outcome` (strings) and `auto_named_count`
-  /// (`Int`) are each omitted when not known.
+  /// (`Int`) are each omitted when not known. `speaker_reads_unusable_share_bucket`,
+  /// `speaker_reads_unusable_reason` and `speaker_reads_tolerated_bucket` (strings) are omitted
+  /// without a committed naming summary or capture attempts; the tolerated bucket also when a
+  /// segment predates its counter.
   /// #4248: `mute_follow_enabled` (`Bool`), `mute_eligible_seconds_bucket`, `mute_reads_bucket`
   /// and, when anything was eligible, `mute_silenced_share_bucket` and `mute_unknown_share_bucket`
   /// (strings); all omitted when the attempt has no mute summary.
@@ -4165,6 +4168,13 @@ public final class TelemetryService {
     if let surface = event.speakerNamesSurface { props["speaker_names_surface"] = surface.rawValue }
     if let outcome = event.speakerNamesOutcome { props["speaker_names_outcome"] = outcome.rawValue }
     if let count = event.autoNamedCount { props["auto_named_count"] = count }
+    if let reads = event.speakerReadHealth {
+      props["speaker_reads_unusable_share_bucket"] = meetingShareBucket(reads.unusableShare)
+      props["speaker_reads_unusable_reason"] = reads.unusableReason.rawValue
+      if let tolerated = reads.toleratedFailures {
+        props["speaker_reads_tolerated_bucket"] = speakerToleratedBucket(tolerated)
+      }
+    }
     if let mute = event.muteFollow {
       props["mute_follow_enabled"] = mute.enabledAtStop
       props["mute_eligible_seconds_bucket"] =
@@ -4190,6 +4200,17 @@ public final class TelemetryService {
     case 1: return "1"
     case 2: return "2"
     default: return "3+"
+    }
+  }
+
+  /// #4013 reading resilience §3.4: failed reads tolerated in one recording: `0`, `1-99`,
+  /// `100-999`, `1000+`.
+  static func speakerToleratedBucket(_ count: Int) -> String {
+    switch count {
+    case ...0: return "0"
+    case 1...99: return "1-99"
+    case 100...999: return "100-999"
+    default: return "1000+"
     }
   }
 

@@ -35,8 +35,15 @@ import Foundation
 final class CallSpeakerSession {
   struct Dependencies {
     var sources: any CallSpeakerSources
-    /// One bounded copy of a call app instance for a family, run off the main actor.
-    var capture: @Sendable (CallSpeakerTarget, CallAppFamily) -> CallAXCapture
+    /// One bounded copy of a call app instance for a family, run off the main actor, keeping
+    /// every read on the given roles strict (the mute rules' roles, #4013 reading resilience
+    /// §3.1).
+    var capture: @Sendable (CallSpeakerTarget, CallAppFamily, Set<String>) -> CallAXCapture
+    /// The self-mute rules frozen at recording start (#4248; downloadable since #4013 reading
+    /// resilience §3.5). Every copy is taken protecting their roles and read with them, so the
+    /// capture and the mute reader always use the same rules; a download during the recording
+    /// applies to the next one.
+    var muteRules: CallMuteRules
     var isTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
     var isDictationIdle: @MainActor () -> Bool
     /// Writes the whole log; throws when it could not (recording goes on).
@@ -242,8 +249,10 @@ final class CallSpeakerSession {
         else { return nil }
         return binding
       },
-      sourceRevision: { sources.speakerSourceRevision }, capture: deps.capture,
-      isTrusted: deps.isTrusted, isDictationIdle: deps.isDictationIdle, lane: deps.lane,
+      sourceRevision: { sources.speakerSourceRevision },
+      capture: { [capture = deps.capture, roles = deps.muteRules.protectedRoles] target, family in
+        capture(target, family, roles)
+      }, muteRules: deps.muteRules, isTrusted: deps.isTrusted, isDictationIdle: deps.isDictationIdle, lane: deps.lane,
       tick: deps.observerTick, sleep: deps.sleep,
       mute: { [weak self] copy in self?.deps.muteReading(copy) },
       muteEvent: { [weak self] event in self?.deps.muteEvent(event) }, hostTime: deps.hostTime)

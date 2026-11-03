@@ -98,10 +98,11 @@ package enum CallSpeakerSurfaceReader {
     surface: CallSpeakerSurface, capture: CallAXCapture, rules: TalkerRules
   ) -> CallSpeakerReading? {
     switch surface {
-    // Only the meeting window; `scope` withholds a capture with meeting content elsewhere.
+    // Only the windows `zoomWindows` chooses; `nil` when it cannot choose (`scope` unresolved).
     case .zoomApp:
-      ZoomAppSpeakerReader.read(
-        windows: capture.windows.filter(isZoomMeeting), accountTitles: capture.accountTitles)
+      zoomWindows(capture.windows).map {
+        ZoomAppSpeakerReader.read(windows: $0, accountTitles: capture.accountTitles)
+      }
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -115,9 +116,9 @@ package enum CallSpeakerSurfaceReader {
   /// Whether the capture is about one call. A browser capture: exactly one meeting page of the
   /// family. The Teams app: every window showing meeting content belongs to one meeting, the
   /// compact view matched to its main window by title (observed 2026-10-27: "Meeting with
-  /// <title>" and "Meeting compact view | Meeting with <title>"). The Zoom app: exactly one
-  /// meeting window (`ZoomCallWindow`) and no meeting content in any other window. Any other app
-  /// capture comes from the one app instance resolved for the recording.
+  /// <title>" and "Meeting compact view | Meeting with <title>"). The Zoom app: `zoomWindows`
+  /// can choose the windows to read. Any other app capture comes from the one app instance
+  /// resolved for the recording.
   package static func scope(
     surface: CallSpeakerSurface, capture: CallAXCapture, family: CallAppFamily
   ) -> CallCaptureContext.Scope {
@@ -133,18 +134,56 @@ package enum CallSpeakerSurfaceReader {
       }
       return titles.count <= 1 ? .resolved : .unresolved
     case .zoomApp:
-      // Exactly one meeting window, and no other window showing tiles, a talker or a
-      // participants list (a popped-out panel or a second meeting's content is not matched).
-      let meetings = capture.windows.filter(isZoomMeeting)
-      let elsewhere = capture.windows.filter { !isZoomMeeting($0) }.contains { window in
-        let reading = ZoomAppSpeakerReader.read(windows: [window])
-        return !reading.participants.isEmpty || !reading.speaking.isEmpty
-          || !reading.roster.names.isEmpty
-      }
-      return meetings.count == 1 && !elsewhere ? .resolved : .unresolved
+      return zoomWindows(capture.windows) == nil ? .unresolved : .resolved
     default:
       return .resolved
     }
+  }
+
+  /// The Zoom app windows one reading uses, or `nil` when they cannot be chosen (#4013 reading
+  /// resilience §3.2). Ported from Granola's `ZoomSpeakerSceneReader.acquire` and
+  /// `fallbackWindows`: the meeting window is read; only when it shows no participant tile
+  /// (`zoomTileCount`: thumbnails, not the large Speaker-view tile) does the single other window
+  /// with strictly the most tiles supply them (full screen's floating video window, a popped-out
+  /// video, the screen-share strip). Thumbnails therefore come from one window only; the
+  /// meeting window adds at most its large tile and toolbar count.
+  /// - Several meeting windows: `nil` (Granola takes the first; which call is ours cannot be
+  ///   told).
+  /// - The meeting window shows a tile: that window alone; other windows are ignored.
+  /// - The meeting window shows none: it plus the strict winner, so its toolbar count stays in
+  ///   the reading; with no other window showing tiles, the meeting window alone.
+  /// - No meeting window: the strict winner alone.
+  /// - A tie for most tiles, or no window at all with tiles when there is no meeting window:
+  ///   `nil`.
+  /// A popped-out participants list shows no tile, so it is never chosen. The capture comes from
+  /// the one Zoom app instance resolved for the recording, so no other app is read.
+  package static func zoomWindows(_ windows: [CallAXWindow]) -> [CallAXWindow]? {
+    let meetings = windows.filter(isZoomMeeting)
+    guard meetings.count <= 1 else { return nil }
+    if let meeting = meetings.first, zoomTileCount(meeting) > 0 { return [meeting] }
+    let others = windows.filter { !isZoomMeeting($0) }.map { ($0, zoomTileCount($0)) }
+      .filter { $0.1 > 0 }
+    let most = others.map(\.1).max()
+    let winners = others.filter { $0.1 == most }
+    if let meeting = meetings.first {
+      if others.isEmpty { return [meeting] }
+      return winners.count == 1 ? [meeting, winners[0].0] : nil
+    }
+    return winners.count == 1 ? [winners[0].0] : nil
+  }
+
+  /// The participant tiles a window shows: every `AXTabGroup` labelled with Zoom's tile
+  /// structure (`ZoomAppSpeakerReader.parseTile`) that carries a video state, named or not.
+  /// The large Speaker-view tile (no video state) is left out: it repeats a participant and
+  /// identifies no one alone. In full screen Zoom keeps only that large tile in the meeting
+  /// window and moves the thumbnails to its floating video window (live take 2026-11-02, #4013
+  /// reading resilience UAT), so counting the large tile kept the meeting window alone and
+  /// withheld every reading.
+  static func zoomTileCount(_ window: CallAXWindow) -> Int {
+    window.root.allNodes.filter { node in
+      node.role == "AXTabGroup"
+        && node.label.flatMap(ZoomAppSpeakerReader.parseTile)?.hasVideoState == true
+    }.count
   }
 
   static func isZoomMeeting(_ window: CallAXWindow) -> Bool {
@@ -589,11 +628,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// One copy's walk time and size.
   package mutating func noteWalk(
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
-    skippedWindows: Int = 0
+    skippedWindows: Int = 0, toleratedFailures: Int = 0
   ) {
     health.noteWalk(
       durationUs: durationUs, nodes: nodes, failedReads: failedReads,
-      prunedControls: prunedControls, skippedWindows: skippedWindows)
+      prunedControls: prunedControls, skippedWindows: skippedWindows,
+      toleratedFailures: toleratedFailures)
   }
 
   /// The log of this one segment, still open.

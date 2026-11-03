@@ -13,15 +13,17 @@ extension MeetingNamingResult {
   /// - `rulesUnusable`: frozen rules that no longer decode, or rules that forbid a talker.
   /// - `lagUnmeasured`: no saved indicator correction (an older log, or none configured).
   /// - `noEligibleSpeakers`: no one else spoke, or eligibility was not supplied.
+  /// The log's read health (#4013 reading resilience §3.4) rides on every pass from a log.
   package func pass(log: CallSpeakerLog?) -> SpeakerNamingPass {
     // A recording read from more than one surface reports none, never its last.
     let surface = SpeakerNamingSummary.Surface(log?.singleSurface)
+    let health = log.flatMap(SpeakerReadHealth.init(log:))
     let reason: SpeakerNamingSummary.Outcome?
     switch outcome {
     case .named:
       return proposals.isEmpty
-        ? .abstained(surface: surface, outcome: nil)
-        : .proposed(surface: surface, count: proposals.count)
+        ? .abstained(surface: surface, outcome: nil, readHealth: health)
+        : .proposed(surface: surface, count: proposals.count, readHealth: health)
     case .noPermission: reason = .noPermission
     case .unsupported: reason = .unsupported
     case .noSignal: reason = .noSignal
@@ -29,6 +31,6 @@ extension MeetingNamingResult {
     case .noLog, .unreadable, .rulesUnusable, .statusUnknown, .lagUnmeasured, .noEligibleSpeakers:
       reason = nil
     }
-    return .abstained(surface: surface, outcome: reason)
+    return .abstained(surface: surface, outcome: reason, readHealth: health)
   }
 }

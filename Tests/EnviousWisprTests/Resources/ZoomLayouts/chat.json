@@ -1,0 +1,306 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py)",
+ "windows": [
+  {
+   "title": null,
+   "root": {
+    "role": "AXWindow",
+    "description": "Not hearing anything?, Close, Turn up volume, Press CMD + tilde to open popup"
+   }
+  },
+  {
+   "title": "Zoom Meeting  40-minutes",
+   "root": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting  40-minutes",
+    "identifier": "zm.meeting.window.main",
+    "children": [
+     {
+      "role": "AXTabGroup",
+      "description": "Alex Rivera, Computer audio unmuted",
+      "children": [
+       {
+        "role": "AXStaticText",
+        "value": "Alex Rivera"
+       },
+       {
+        "role": "AXButton",
+        "description": "Alex Rivera"
+       }
+      ]
+     },
+     {
+      "role": "AXTabGroup",
+      "description": "Saurabh A Vaish, Computer audio muted, Video off",
+      "children": [
+       {
+        "role": "AXImage"
+       },
+       {
+        "role": "AXButton",
+        "description": "Saurabh A Vaish"
+       }
+      ]
+     },
+     {
+      "role": "AXSplitter"
+     },
+     {
+      "role": "AXButton",
+      "description": "Unmute my audio",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Start video",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "End",
+      "identifier": "leave",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open participants panel, closed, 2 participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Participants options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Close chat panel",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Share",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Share options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "React",
+      "identifier": "react",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "React options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "More meeting controls, collapsed",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXUnknown",
+      "description": "Meeting chat tab control, Shift+Command+L",
+      "children": [
+       {
+        "role": "AXUnknown",
+        "description": "Everyone, selected, 1 of 2",
+        "children": [
+         {
+          "role": "AXUnknown"
+         },
+         {
+          "role": "AXUnknown",
+          "value": "Everyone",
+          "children": [
+           {
+            "role": "AXStaticText",
+            "value": "Everyone"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "role": "AXUnknown",
+        "description": "New chat, 2 of 2",
+        "children": [
+         {
+          "role": "AXUnknown"
+         },
+         {
+          "role": "AXUnknown",
+          "value": "New chat",
+          "children": [
+           {
+            "role": "AXStaticText",
+            "value": "New chat"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "role": "AXSplitGroup",
+      "children": [
+       {
+        "role": "AXScrollArea",
+        "children": [
+         {
+          "role": "AXTable",
+          "description": "Chat list, Shift+Command+U"
+         }
+        ]
+       },
+       {
+        "role": "AXButton",
+        "description": "Who can see your messages?"
+       },
+       {
+        "role": "AXSplitter"
+       },
+       {
+        "role": "AXGroup",
+        "children": [
+         {
+          "role": "AXScrollArea",
+          "children": [
+           {
+            "role": "AXUnknown",
+            "title": "File and image input area",
+            "failed": [
+             "AXDescription"
+            ]
+           }
+          ]
+         },
+         {
+          "role": "AXScrollArea",
+          "children": [
+           {
+            "role": "AXTextArea",
+            "description": "Message everyone",
+            "failed": [
+             "AXIdentifier"
+            ]
+           }
+          ]
+         },
+         {
+          "role": "AXButton",
+          "description": "Format"
+         },
+         {
+          "role": "AXButton",
+          "description": "File"
+         },
+         {
+          "role": "AXButton",
+          "description": "Giphy"
+         },
+         {
+          "role": "AXButton",
+          "description": "Send"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "role": "AXUnknown",
+      "description": "Saurabh A Vaish's Zoom Meeting",
+      "children": [
+       {
+        "role": "AXButton",
+        "title": "Close",
+        "description": "Button"
+       },
+       {
+        "role": "AXButton",
+        "title": "Pop out",
+        "description": "Button"
+       },
+       {
+        "role": "AXStaticText",
+        "value": "Saurabh A Vaish's Zoom Meeting"
+       },
+       {
+        "role": "AXButton",
+        "description": "More"
+       }
+      ]
+     },
+     {
+      "role": "AXSplitter"
+     },
+     {
+      "role": "AXButton",
+      "description": "Meeting  40-minutes",
+      "identifier": "MeetingTopBarInfoButton"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Notes pop-up; My Notes is on"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open Zoom AI pop-up; Zoom AI is off"
+     },
+     {
+      "role": "AXButton",
+      "description": "View options, Speaker"
+     },
+     {
+      "role": "AXButton",
+      "description": "Open meeting security popup"
+     },
+     {
+      "role": "AXButton",
+      "description": "Upgrade to Zoom Pro",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     }
+    ]
+   }
+  }
+ ]
+}

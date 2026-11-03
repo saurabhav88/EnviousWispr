@@ -113,6 +113,93 @@ import Testing
       #expect(partial.intProps["auto_named_count"] == 2)
     }
 
+    private static let readHealthKeys: Set<String> = [
+      "speaker_reads_unusable_share_bucket", "speaker_reads_unusable_reason",
+      "speaker_reads_tolerated_bucket",
+    ]
+
+    private func reads(
+      attempts: Int = 100, unreadable: Int = 0, truncated: Int = 0, unresolved: Int = 0,
+      tolerated: Int? = 0
+    ) -> SpeakerNamingSummary {
+      SpeakerNamingSummary(
+        surface: .zoomApp, outcome: .named, autoNamedCount: 1,
+        readHealth: SpeakerReadHealth(
+          captureAttempts: attempts, unreadableCaptures: unreadable, truncatedCaptures: truncated,
+          unresolvedScopeCaptures: unresolved, toleratedFailures: tolerated))
+    }
+
+    @Test("#4013 reading resilience: read health adds three closed strings and nothing else")
+    func readHealthFields() throws {
+      let row = try #require(capture(event(speakerNaming: reads(unreadable: 3, tolerated: 250))))
+      #expect(row.stringProps["speaker_reads_unusable_share_bucket"] == "<5%")
+      #expect(row.stringProps["speaker_reads_unusable_reason"] == "unreadable")
+      #expect(row.stringProps["speaker_reads_tolerated_bucket"] == "100-999")
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(Self.speakerNameKeys).union(Self.readHealthKeys))
+    }
+
+    @Test(
+      "#4013 reading resilience: the unusable share uses the #4248 share scale at every edge",
+      arguments: [
+        (0, "0"), (1, "<5%"), (4, "<5%"), (5, "5-25%"), (24, "5-25%"), (25, "25-50%"),
+        (49, "25-50%"), (50, "50-75%"), (74, "50-75%"), (75, "75%+"), (100, "75%+"),
+      ])
+    func readHealthShareEdges(unusable: Int, bucket: String) {
+      let props = TelemetryService.meetingEndedProperties(
+        event(speakerNaming: reads(truncated: unusable)))
+      #expect(props["speaker_reads_unusable_share_bucket"] as? String == bucket)
+    }
+
+    @Test(
+      "#4013 reading resilience: tolerated failures travel as a bucket at every edge",
+      arguments: [
+        (0, "0"), (1, "1-99"), (99, "1-99"), (100, "100-999"), (999, "100-999"), (1000, "1000+"),
+      ])
+    func readHealthToleratedEdges(count: Int, bucket: String) {
+      let props = TelemetryService.meetingEndedProperties(
+        event(speakerNaming: reads(tolerated: count)))
+      #expect(props["speaker_reads_tolerated_bucket"] as? String == bucket)
+    }
+
+    @Test("#4013 reading resilience: the reason is the largest kind; ties go in the fixed order")
+    func readHealthReason() {
+      func reason(_ u: Int, _ t: Int, _ s: Int) -> String? {
+        TelemetryService.meetingEndedProperties(
+          event(speakerNaming: reads(unreadable: u, truncated: t, unresolved: s)))[
+            "speaker_reads_unusable_reason"] as? String
+      }
+      #expect(reason(0, 0, 0) == "none")
+      #expect(reason(1, 0, 0) == "unreadable")
+      #expect(reason(0, 2, 1) == "truncated")
+      #expect(reason(0, 0, 3) == "unresolved_scope")
+      #expect(reason(2, 2, 2) == "unreadable")
+      #expect(reason(0, 2, 2) == "truncated")
+      #expect(reason(1, 2, 2) == "truncated")
+      #expect(SpeakerReadHealth.Reason.allCases.map(\.rawValue) == [
+        "unreadable", "truncated", "unresolved_scope", "none",
+      ])
+    }
+
+    @Test("#4013 reading resilience: no summary, no attempts or an old counter omits the keys")
+    func readHealthOmitted() throws {
+      let none = try #require(capture(event()))
+      #expect(Set(none.stringProps.keys).isDisjoint(with: Self.readHealthKeys))
+      let noHealth = try #require(
+        capture(
+          event(speakerNaming: SpeakerNamingSummary(surface: .zoomApp, outcome: nil, autoNamedCount: 0))))
+      #expect(Set(noHealth.stringProps.keys).isDisjoint(with: Self.readHealthKeys))
+      #expect(
+        SpeakerReadHealth(
+          captureAttempts: 0, unreadableCaptures: 0, truncatedCaptures: 0,
+          unresolvedScopeCaptures: 0, toleratedFailures: 0) == nil)
+      let old = try #require(capture(event(speakerNaming: reads(tolerated: nil))))
+      #expect(old.stringProps["speaker_reads_tolerated_bucket"] == nil)
+      #expect(old.stringProps["speaker_reads_unusable_reason"] == "none")
+      #expect(old.stringProps["speaker_reads_unusable_share_bucket"] == "0")
+    }
+
     @Test("#4013: every surface and outcome travels as its closed spelling and nothing else")
     func speakerNameVocabulary() throws {
       for surface in SpeakerNamingSummary.Surface.allCases {

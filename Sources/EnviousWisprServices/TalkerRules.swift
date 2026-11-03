@@ -253,26 +253,30 @@ package struct TalkerRules: Sendable, Equatable {
 }
 
 /// The rules in force at one moment, ready to freeze into a recording (#4013 r1 R7). A value: a
-/// later refresh never changes a snapshot already handed out.
-package struct TalkerRulesSnapshot: Sendable, Equatable {
-  package enum Origin: String, Sendable, Equatable {
-    /// The copy inside the app.
-    case bundled
-    /// The last good download, read from Application Support.
-    case cached
-    /// Downloaded in this run.
-    case downloaded
-    /// Neither the bundle nor the cache held valid rules: every surface is unconfigured.
-    case empty
+/// later refresh never changes a snapshot already handed out. Its store is
+/// `RemoteRules.talker`; `.empty` origin means every surface is unconfigured.
+package struct TalkerRulesSnapshot: RemoteRulesDocument {
+  package static let endpoint = URL(string: "https://enviouswispr.com/meet/talker-rules.json")!
+  package static let cacheFileName = "talker-rules.json"
+  package static let attemptFileName = "talker-rules-attempt.json"
+  package static let maximumBytes = TalkerRules.maximumBytes
+
+  /// The packaged `talker-rules.json`, or `nil` if the resource bundle did not ship. The same
+  /// lookup the live store uses, so a test can prove the shipped resource resolves and
+  /// validates.
+  package static var bundledURL: URL? {
+    Bundle.module.url(forResource: "talker-rules", withExtension: "json")
   }
 
   package let rules: TalkerRules
   /// The exact validated document text, so a later pass decodes the same rules.
   package let frozen: FrozenTalkerRules
-  package let origin: Origin
+  package let origin: RemoteRulesOrigin
+
+  package var revision: Int { rules.revision }
 
   /// Validates `data` and keeps its exact text.
-  package init(validating data: Data, origin: Origin) throws(TalkerRules.DecodeError) {
+  package init(validating data: Data, origin: RemoteRulesOrigin) throws(TalkerRules.DecodeError) {
     let rules = try TalkerRules.decode(data)
     self.rules = rules
     self.frozen = FrozenTalkerRules(
@@ -289,7 +293,7 @@ package struct TalkerRulesSnapshot: Sendable, Equatable {
       payload: #"{"schema":1,"revision":0,"lagMs":{},"selectors":[]}"#),
     origin: .empty)
 
-  private init(rules: TalkerRules, frozen: FrozenTalkerRules, origin: Origin) {
+  private init(rules: TalkerRules, frozen: FrozenTalkerRules, origin: RemoteRulesOrigin) {
     self.rules = rules
     self.frozen = frozen
     self.origin = origin

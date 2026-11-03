@@ -93,15 +93,45 @@ package struct CallAXBounds: Sendable, Equatable {
 /// outside a participant tile or the participants list, the structures `ZoomAppSpeakerReader`
 /// uses. Every read still made fails as before; any other element is read whole. Other providers
 /// read everything.
+///
+/// Tolerated failures (#4013 reading resilience §3.1, 2026-11-02 receipt): with its chat panel
+/// open the Zoom app answers a generic failure, every time, for the identifier of the chat input
+/// (`AXTextArea`) and the description of an `AXUnknown` in the chat list, which made every copy
+/// unreadable. Under the Zoom policy a failed label (`zoomToleratedAttributes`) is copied as
+/// nothing and counted (`CallAXCapture.toleratedFailures`) when no reader could use it: the role
+/// was read, it is not a role any consumer reads (`zoomProtectedRoles`, plus the roles the
+/// recording's mute rules select), the element is not inside a tile or the participants list,
+/// and it is not a window. A failed role, children, page address or window label, and any failed
+/// read on a protected role or inside evidence, still makes the copy unreadable, as does every
+/// failure under any other policy (Superwhisper and Granola likewise skip only failed reads
+/// outside speaker elements).
 package enum CallAXCapturePolicy: Sendable, Equatable {
   case standard
   case zoomApp
 
   static let zoomHomeTitle = "Zoom Workplace"
-  /// The toolbar buttons whose children Zoom never answers for (measured 2026-10-29).
-  static let zoomToolbarIdentifiers: Set<String> = ["leave", "more"]
+  /// The toolbar buttons whose children Zoom never answers for: "End" and "More meeting
+  /// controls" (measured 2026-10-29), and the screen-share toolbar's Pause, Layout, Annotate,
+  /// Remote control and "Show meeting" buttons while the user shares (live take 2026-11-02, #4013
+  /// reading resilience UAT: every copy was unreadable until these were left unread).
+  static let zoomToolbarIdentifiers: Set<String> = [
+    "leave", "more", "ZMMTToolbarContentIdentifierPauseShare",
+    "ZMMTToolbarContentIdentifierShareLayout", "ZMMTToolbarContentIdentifierAnnotate",
+    "ZMMTToolbarContentIdentifierRemoteControl", "ZMMTToolbarContentIdentifierStage",
+  ]
   /// The roles whose subtrees hold Zoom's speaker evidence: tiles and the participants list.
   static let zoomEvidenceRoles: Set<String> = ["AXTabGroup", "AXOutline"]
+  /// The roles whose labels or identifiers a Zoom consumer reads outside evidence: tiles and the
+  /// list (`ZoomAppSpeakerReader`), toolbar and mute buttons (pruning, the closed panel count,
+  /// `CallSelfMuteReader`), the count and entry texts, and the list's cells and row buttons.
+  static let zoomProtectedRoles: Set<String> = [
+    "AXTabGroup", "AXOutline", "AXButton", "AXStaticText", "AXCell", "AXMenuButton",
+  ]
+  /// The attributes whose failed read can be tolerated: labels, identifiers and size. Never the
+  /// role, children or a page's address, which decide what else is read.
+  static let zoomToleratedAttributes: Set<CallAXAttribute> = [
+    .title, .description, .value, .identifier, .domClassList, .domIdentifier, .size,
+  ]
 
   /// Whether a window is skipped before anything below it is read.
   func skipsWindow(identifier: String?, title: String?) -> Bool {
@@ -125,6 +155,18 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
 
   func isEvidence(role: String) -> Bool {
     self == .zoomApp && Self.zoomEvidenceRoles.contains(role)
+  }
+
+  /// Whether a failed read of `attribute` on an element whose `role` was read is copied as
+  /// nothing instead of making the copy unreadable. `protectedRoles` are the extra roles the
+  /// recording's mute rules select; a window (`isWindow`) is never tolerated.
+  func tolerates(
+    attribute: CallAXAttribute, role: String, insideEvidence: Bool, isWindow: Bool,
+    protectedRoles: Set<String>
+  ) -> Bool {
+    self == .zoomApp && !isWindow && !insideEvidence
+      && Self.zoomToleratedAttributes.contains(attribute)
+      && !Self.zoomProtectedRoles.contains(role) && !protectedRoles.contains(role)
   }
 }
 
@@ -167,6 +209,9 @@ package struct CallAXCapture: Sendable, Equatable {
   package let nodesVisited: Int
   /// Reads that failed, button subtrees left unread, and windows skipped (`CallAXCapturePolicy`).
   package let failedReads: Int
+  /// The failed reads the policy tolerated (`CallAXCapturePolicy.tolerates`), also counted in
+  /// `failedReads`; they never decide completeness.
+  package let toleratedFailures: Int
   package let prunedControls: Int
   package let skippedWindows: Int
   /// The titles of the call app's checked accounts (`CallAccountMenu`), read from its menu bar
@@ -179,9 +224,10 @@ package struct CallAXCapture: Sendable, Equatable {
     windows: [CallAXWindow], documents: [CallAXDocument],
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
     readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
-    prunedControls: Int = 0, skippedWindows: Int = 0, accountTitles: [String]? = nil,
-    cost: CallAXCopyCost = .init()
+    prunedControls: Int = 0, skippedWindows: Int = 0, toleratedFailures: Int = 0,
+    accountTitles: [String]? = nil, cost: CallAXCopyCost = .init()
   ) {
+    self.toleratedFailures = toleratedFailures
     self.accountTitles = accountTitles
     self.cost = cost
     self.nodesVisited = nodesVisited
@@ -200,18 +246,21 @@ package enum CallSpeakerCapture {
   /// Copies `windows` of one app within `bounds`. `keepPage` says, from a page's address,
   /// whether a web area is the meeting; any other page is cut at its own node, so no other
   /// page's content is copied. A required read that fails (a role, children, the window list)
-  /// or an optional read that fails makes the copy unreadable; reaching a bound makes it
+  /// or an optional read that fails makes the copy unreadable, unless the policy tolerates that
+  /// failure (`CallAXCapturePolicy.tolerates`, with `protectedRoles` the recording's mute-rule
+  /// roles), which is counted and copied as nothing; reaching a bound makes it
   /// truncated, as does a copy whose reads ran past the time budget; an element already copied
   /// (a cycle) is not copied again.
   package static func capture<Element>(
     windows: [Element], access: CallAXTreeAccess<Element>, bounds: CallAXBounds,
-    policy: CallAXCapturePolicy = .standard, keepPage: @escaping (String) -> Bool,
-    app: Element? = nil, hostTime: () -> UInt64
+    policy: CallAXCapturePolicy = .standard, protectedRoles: Set<String> = [],
+    keepPage: @escaping (String) -> Bool, app: Element? = nil, hostTime: () -> UInt64
   ) -> CallAXCapture {
     let started = hostTime()
     let deadline = access.now().advanced(by: bounds.budget)
     var walk = Walk(
-      access: access, bounds: bounds, deadline: deadline, policy: policy, keepPage: keepPage)
+      access: access, bounds: bounds, deadline: deadline, policy: policy,
+      protectedRoles: protectedRoles, keepPage: keepPage)
     var copied: [CallAXWindow] = []
     var skippedWindows = 0
     var windowCosts: [CallAXCopyCost.Window] = []
@@ -269,7 +318,8 @@ package enum CallSpeakerCapture {
       windows: copied, documents: walk.documents, completeness: completeness,
       readStartHostTime: started, readEndHostTime: ended, nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
-      skippedWindows: skippedWindows, accountTitles: accountTitles,
+      skippedWindows: skippedWindows, toleratedFailures: walk.toleratedFailures,
+      accountTitles: accountTitles,
       cost: {
         var cost = CallAXCopyCost()
         cost.windows = windowCosts
@@ -285,12 +335,14 @@ package enum CallSpeakerCapture {
     let bounds: CallAXBounds
     let deadline: ContinuousClock.Instant
     let policy: CallAXCapturePolicy
+    let protectedRoles: Set<String>
     let keepPage: (String) -> Bool
     var visited: [Int: [Element]] = [:]
     var count = 0
     var truncated = false
     var unreadable = false
     var failedReads = 0
+    var toleratedFailures = 0
     var prunedControls = 0
     var documents: [CallAXDocument] = []
     var messages = 0
@@ -307,12 +359,14 @@ package enum CallSpeakerCapture {
 
     init(
       access: CallAXTreeAccess<Element>, bounds: CallAXBounds, deadline: ContinuousClock.Instant,
-      policy: CallAXCapturePolicy, keepPage: @escaping (String) -> Bool
+      policy: CallAXCapturePolicy, protectedRoles: Set<String>,
+      keepPage: @escaping (String) -> Bool
     ) {
       self.access = access
       self.bounds = bounds
       self.deadline = deadline
       self.policy = policy
+      self.protectedRoles = protectedRoles
       self.keepPage = keepPage
     }
 
@@ -349,15 +403,21 @@ package enum CallSpeakerCapture {
       return results
     }
 
-    /// A text attribute from a batch: a failed read makes the copy unreadable.
-    mutating func text(_ read: CallAXRead<Element>?) -> String? {
+    /// A text attribute from a batch: a failed read makes the copy unreadable, unless
+    /// `tolerated`, when it is counted and copied as nothing.
+    mutating func text(_ read: CallAXRead<Element>?, tolerated: Bool = false) -> String? {
       switch read {
       case .text(let text)?: return text
       case .failed?:
-        unreadable = true
+        failed(tolerated: tolerated)
         return nil
       default: return nil
       }
+    }
+
+    /// A failed read already counted in `failedReads`: tolerated, or the copy is unreadable.
+    mutating func failed(tolerated: Bool) {
+      if tolerated { toleratedFailures += 1 } else { unreadable = true }
     }
 
     /// Whether `element` was copied already; records it when not.
@@ -395,15 +455,22 @@ package enum CallSpeakerCapture {
         unreadable = true
         return nil
       }
-      let title = text(first[1])
-      let description = text(first[2])
-      let value = text(first[3])
-      let identifier = text(first[4])
+      // Whether a failed read of `attribute` on this element may be copied as nothing. A window
+      // is told by its place (depth 0), not by the role it reports.
+      let tolerates = { [policy, protectedRoles] (attribute: CallAXAttribute) in
+        policy.tolerates(
+          attribute: attribute, role: role, insideEvidence: insideEvidence, isWindow: depth == 0,
+          protectedRoles: protectedRoles)
+      }
+      let title = text(first[1], tolerated: tolerates(.title))
+      let description = text(first[2], tolerated: tolerates(.description))
+      let value = text(first[3], tolerated: tolerates(.value))
+      let identifier = text(first[4], tolerated: tolerates(.identifier))
       var classes: [String] = []
       switch first[5] {
       case .texts(let list): classes = list
       case .text(let one): classes = [one]
-      case .failed: unreadable = true
+      case .failed: failed(tolerated: tolerates(.domClassList))
       default: break
       }
       var width: Double?
@@ -412,7 +479,7 @@ package enum CallSpeakerCapture {
       case .size(let w, let h):
         width = w
         height = h
-      case .failed: unreadable = true
+      case .failed: failed(tolerated: tolerates(.size))
       default: break
       }
       // Message 2: what the role allows. A DOM id is asked only where the policy reads it; a
@@ -429,7 +496,7 @@ package enum CallSpeakerCapture {
       func answer(_ attribute: CallAXAttribute) -> CallAXRead<Element>? {
         second.firstIndex(of: attribute).flatMap { index in answers.map { $0[index] } }
       }
-      let domIdentifier = text(answer(.domIdentifier))
+      let domIdentifier = text(answer(.domIdentifier), tolerated: tolerates(.domIdentifier))
       var url: String?
       var keptPage = true
       var childrenRead = answer(.children)
@@ -564,7 +631,7 @@ package enum CallSpeakerCapture {
   /// itself cannot be read; an app with no windows gives an empty, complete copy.
   package static func live(
     pid: pid_t, bounds: CallAXBounds, policy: CallAXCapturePolicy = .standard,
-    keepPage: @escaping (String) -> Bool
+    protectedRoles: Set<String> = [], keepPage: @escaping (String) -> Bool
   ) -> CallAXCapture {
     let app = AXUIElementCreateApplication(pid)
     // Reading the role first wakes a Chromium browser's tree (#3802), as call detection does.
@@ -572,8 +639,9 @@ package enum CallSpeakerCapture {
     switch liveRead(app, .windows) {
     case .elements(let windows):
       return capture(
-        windows: windows, access: liveAccess, bounds: bounds, policy: policy, keepPage: keepPage,
-        app: app, hostTime: { mach_absolute_time() })
+        windows: windows, access: liveAccess, bounds: bounds, policy: policy,
+        protectedRoles: protectedRoles, keepPage: keepPage, app: app,
+        hostTime: { mach_absolute_time() })
     case .missing:
       let now = mach_absolute_time()
       return CallAXCapture(
