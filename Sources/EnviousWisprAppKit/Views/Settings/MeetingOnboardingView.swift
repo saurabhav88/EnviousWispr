@@ -254,10 +254,17 @@ private struct MeetingSetupPermissions: View {
       .foregroundStyle(Color.obTextPrimary)
       .kerning(-0.4)
       .padding(.bottom, 8)
-      Text(
-        "You can say no to any of them and turn it on later.",
-        comment: "EnviousMeet setup: the line under the permissions title."
-      )
+      Group {
+        if model.callSoundRequired {
+          Text(
+            "EnviousMeet needs the microphone and call sound to record. Calendar is optional.",
+            comment: "EnviousMeet setup: the line under the permissions title.")
+        } else {
+          Text(
+            "EnviousMeet needs the microphone to record. Calendar is optional.",
+            comment: "EnviousMeet setup: the line under the permissions title on a Mac that cannot record the call sound (below macOS 14.2).")
+        }
+      }
       .font(.setupLead)
       .foregroundStyle(Color.obTextSecondary)
       .padding(.bottom, 20)
@@ -271,16 +278,21 @@ private struct MeetingSetupPermissions: View {
             "To hear your voice.", comment: "EnviousMeet setup: why the microphone."),
           state: model.microphone, busy: model.asking,
           allow: { Task { await model.allowMicrophone() } }, skip: nil, openSettings: { Task { await model.allowMicrophone() } })
-        MeetingSetupPermissionRow(
-          icon: "speaker.wave.2.fill",
-          title: LocalizedStringResource(
-            "Call sound", comment: "EnviousMeet setup: a permission name."),
-          line: LocalizedStringResource(
-            "To hear the other people, also with AirPods. Only the sound, never your screen.",
-            comment: "EnviousMeet setup: why the call sound."),
-          state: model.callSound, busy: model.asking,
-          allow: { Task { await model.allowCallSound() } }, skip: { model.skipCallSound() },
-          openSettings: { model.openCallSoundSettings() })
+        if model.callSoundRequired {
+          // #4346: required, so no Not now.
+          MeetingSetupPermissionRow(
+            icon: "speaker.wave.2.fill",
+            title: LocalizedStringResource(
+              "Call sound", comment: "EnviousMeet setup: a permission name."),
+            line: LocalizedStringResource(
+              "To hear the other people, also with AirPods. Only the sound, never your screen.",
+              comment: "EnviousMeet setup: why the call sound."),
+            state: model.callSound, busy: model.asking,
+            allow: { Task { await model.allowCallSound() } }, skip: nil,
+            openSettings: { model.openCallSoundSettings() })
+        } else {
+          MeetingSetupOlderMacNote()
+        }
         MeetingSetupPermissionRow(
           icon: "calendar",
           title: LocalizedStringResource(
@@ -300,11 +312,70 @@ private struct MeetingSetupPermissions: View {
       } label: {
         Text("Continue", comment: "EnviousMeet setup: leaves the permissions screen.")
       }
-      .buttonStyle(OnboardingButtonStyle())
+      .buttonStyle(
+        OnboardingButtonStyle(color: model.canContinue ? .obButtonFill : .obButtonFill.opacity(0.4))
+      )
+      .disabled(!model.canContinue)
       .keyboardShortcut(.defaultAction)
       .accessibilityIdentifier("meetings.setup.continue")
+
+      if let blocked = blockedReason {
+        Text(blocked)
+          .font(.setupRowLine)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.top, 10)
+      }
     }
     .frame(maxWidth: 600, alignment: .leading)
+  }
+
+  /// Why Continue is off (#4346 plan §8), or nil when it is on.
+  private var blockedReason: LocalizedStringResource? {
+    if model.microphone == .unavailable {
+      return LocalizedStringResource(
+        "This Mac does not allow the microphone, so EnviousMeet cannot record here.",
+        comment: "EnviousMeet setup: under Continue when a device profile blocks the microphone.")
+    }
+    switch (model.microphoneSatisfied, model.callSoundSatisfied) {
+    case (true, true): return nil
+    case (false, false):
+      return LocalizedStringResource(
+        "Allow the microphone and call sound to continue.",
+        comment: "EnviousMeet setup: under Continue while both required permissions are missing.")
+    case (false, true):
+      return LocalizedStringResource(
+        "Allow the microphone to continue.",
+        comment: "EnviousMeet setup: under Continue while the microphone is missing.")
+    case (true, false):
+      return LocalizedStringResource(
+        "Allow call sound to continue.",
+        comment: "EnviousMeet setup: under Continue while the call sound is missing.")
+    }
+  }
+}
+
+/// Below macOS 14.2 the Mac cannot record the call sound, so setup shows this note in place of
+/// the call-sound row (#4346 plan §3.3).
+private struct MeetingSetupOlderMacNote: View {
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: "info.circle")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(Color.obTextSecondary)
+        .frame(width: 34, height: 34)
+        .background(Color.obAccentSoft, in: RoundedRectangle(cornerRadius: 9))
+        .accessibilityHidden(true)
+      Text(
+        "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar.",
+        comment: "EnviousMeet setup: in place of the call-sound row below macOS 14.2.")
+        .font(.setupRowLine)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 8)
+    }
+    .padding(.vertical, 16)
+    .overlay(alignment: .top) { Divider().opacity(0.6) }
   }
 }
 
@@ -454,7 +525,19 @@ private struct MeetingSetupDone: View {
       )
       .font(.setupBody)
       .foregroundStyle(Color.obTextSecondary)
-      .padding(.bottom, model.unresolved.isEmpty ? 28 : 12)
+      .padding(.bottom, model.unresolved.isEmpty && !model.callSoundMayAskLater ? 28 : 12)
+
+      // #4346 §16.2: shown independently of the Calendar line; both can show.
+      if model.callSoundMayAskLater {
+        Text(
+          "macOS may ask about call sound the first time you record.",
+          comment: "EnviousMeet setup: last screen, when macOS could not confirm the call-sound answer yet."
+        )
+        .font(.setupRowLine)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.bottom, model.unresolved.isEmpty ? 18 : 8)
+      }
 
       if !model.unresolved.isEmpty {
         Text(

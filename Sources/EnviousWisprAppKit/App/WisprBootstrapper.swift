@@ -2783,6 +2783,7 @@ package final class WisprBootstrapper {
         },
         openCallSoundSettings: { [permissions] in permissions.openSystemAudioRecordingSettings() },
         openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
+        callSoundSupported: { CallMicrophoneWatcher.isSupported },
         settings: settings,
         emit: { TelemetryService.shared.trackMeetingSetup($0) }))
     let callDetection = CallDetectionCoordinator(

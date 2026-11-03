@@ -38,6 +38,9 @@ final class MeetingOnboardingModel {
     var requestCalendar: @MainActor () async -> CalendarAccess.Status
     var openCallSoundSettings: @MainActor () -> Void
     var openCalendarSettings: @MainActor () -> Void
+    /// Whether this Mac can record the call sound at all (#4346: macOS 14.2+, the same floor as
+    /// `CallMicrophoneWatcher.isSupported`). Below it, setup does not require call sound.
+    var callSoundSupported: @MainActor () -> Bool
     var settings: SettingsManager
     var emit: @MainActor (MeetingSetupTelemetry) -> Void
     var now: @MainActor () -> Date = { Date() }
@@ -174,36 +177,49 @@ final class MeetingOnboardingModel {
     }
   }
 
-  /// Not now: the call sound is not recorded until the user turns it on in settings.
-  /// Not now is refused while macOS is asking: the answer would overwrite the choice.
-  func skipCallSound() {
-    guard callSound != .granted, !asking else { return }
-    callSound = .skipped
-    deps.settings.meetingCaptureCallSound = false
-  }
   func skipCalendar() { if calendar != .granted, !asking { calendar = .skipped } }
 
   func openCallSoundSettings() { deps.openCallSoundSettings() }
   func openCalendarSettings() { deps.openCalendarSettings() }
 
-  /// Continue on the permissions screen: always possible (O5).
-  func continueToDone() { move(to: .done) }
+  /// #4346 (founder 2026-11-02, reverses #4017 O5): setup needs the microphone and, where this
+  /// Mac can record it, the call sound. Calendar never blocks.
+  var callSoundRequired: Bool { deps.callSoundSupported() }
 
-  /// The permissions that are not allowed, for the done screen (R7).
+  /// The microphone is allowed; every other state blocks.
+  var microphoneSatisfied: Bool { microphone == .granted }
+
+  /// The call sound is allowed, asked with an answer that cannot be read, or cannot be asked
+  /// ahead (macOS asks at the first recording); or this Mac cannot record it at all. These
+  /// exceptions let setup continue; they do not mean recording permission is granted.
+  var callSoundSatisfied: Bool {
+    guard callSoundRequired else { return true }
+    switch callSound {
+    case .granted, .requested, .askedAtFirstRecording: return true
+    case .denied, .skipped, .notAsked, .unavailable: return false
+    }
+  }
+
+  /// The single gate for the Continue button and `continueToDone()`.
+  var canContinue: Bool { microphoneSatisfied && callSoundSatisfied }
+
+  /// Continue on the permissions screen: only once `canContinue` holds.
+  func continueToDone() {
+    guard canContinue else { return }
+    move(to: .done)
+  }
+
+  /// macOS may still ask about the call sound at the first recording (#4346 §16.2): shown on the
+  /// done screen independently of `unresolved`.
+  var callSoundMayAskLater: Bool {
+    callSoundRequired && (callSound == .requested || callSound == .askedAtFirstRecording)
+  }
+
+  /// The optional permissions that are not allowed, for the done screen (R7). Only Calendar can
+  /// be unresolved once `canContinue` let the user through.
   var unresolved: [String] {
-    var names: [String] = []
-    if microphone != .granted {
-      names.append(
-        String(localized: "Microphone", comment: "EnviousMeet setup: a permission name."))
-    }
-    if callSound != .granted && callSound != .requested {
-      names.append(
-        String(localized: "Call sound", comment: "EnviousMeet setup: a permission name."))
-    }
-    if calendar != .granted {
-      names.append(String(localized: "Calendar", comment: "EnviousMeet setup: a permission name."))
-    }
-    return names
+    calendar == .granted
+      ? [] : [String(localized: "Calendar", comment: "EnviousMeet setup: a permission name.")]
   }
 
   /// "Open EnviousMeet": the lock opens and the page shows the settings.

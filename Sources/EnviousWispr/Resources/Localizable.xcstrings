@@ -3034,12 +3034,45 @@
         }
       }
     },
+    "Allow call sound to continue." : {
+      "comment" : "EnviousMeet setup: under Continue while the call sound is missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Zugriff auf den Ton vom Mac, um fortzufahren."
+          }
+        }
+      }
+    },
     "Allow microphone access so EnviousWispr can record your voice. If access was denied, Request Access opens System Settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erlaube den Mikrofonzugriff, damit EnviousWispr deine Stimme aufnehmen kann. Wurde der Zugriff abgelehnt, öffnet „Zugriff anfordern“ die Systemeinstellungen."
+          }
+        }
+      }
+    },
+    "Allow the microphone and call sound to continue." : {
+      "comment" : "EnviousMeet setup: under Continue while both required permissions are missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Zugriff auf das Mikrofon und den Ton vom Mac, um fortzufahren."
+          }
+        }
+      }
+    },
+    "Allow the microphone to continue." : {
+      "comment" : "EnviousMeet setup: under Continue while the microphone is missing.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Zugriff auf das Mikrofon, um fortzufahren."
           }
         }
       }
@@ -8145,6 +8178,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousMeet konnte die Aufnahme nicht starten"
+          }
+        }
+      }
+    },
+    "EnviousMeet needs the microphone and call sound to record. Calendar is optional." : {
+      "comment" : "EnviousMeet setup: the line under the permissions title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet braucht das Mikrofon und den Ton vom Mac, um aufzunehmen. Der Kalender ist optional."
+          }
+        }
+      }
+    },
+    "EnviousMeet needs the microphone to record. Calendar is optional." : {
+      "comment" : "EnviousMeet setup: the line under the permissions title on a Mac that cannot record the call sound (below macOS 14.2).",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet braucht das Mikrofon, um aufzunehmen. Der Kalender ist optional."
           }
         }
       }
@@ -14308,7 +14363,7 @@
       }
     },
     "Noticing calls needs macOS 14.2 or later. You can still start recordings from the menu bar." : {
-      "comment" : "EnviousMeet page: below macOS 14.2 call detection cannot run.",
+      "comment" : "EnviousMeet page: below macOS 14.2 call detection cannot run.\nEnviousMeet setup: in place of the call-sound row below macOS 14.2.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21315,6 +21370,17 @@
         }
       }
     },
+    "This Mac does not allow the microphone, so EnviousMeet cannot record here." : {
+      "comment" : "EnviousMeet setup: under Continue when a device profile blocks the microphone.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac erlaubt keinen Zugriff auf das Mikrofon, deshalb kann EnviousMeet hier nicht aufnehmen."
+          }
+        }
+      }
+    },
     "This Mac does not support Apple Intelligence." : {
       "comment" : "AI Polish, leave pop-up. Apple Intelligence is a product name.",
       "localizations" : {
@@ -24367,17 +24433,6 @@
         }
       }
     },
-    "You can say no to any of them and turn it on later." : {
-      "comment" : "EnviousMeet setup: the line under the permissions title.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Du kannst jede davon ablehnen und sie später einschalten."
-          }
-        }
-      }
-    },
     "You can try again, or skip ahead. Your first shortcut press may just wake the engine up, and the one after it will dictate." : {
       "comment" : "Setup: shown when the speech engine did not finish warming up.",
       "localizations" : {
@@ -27028,6 +27083,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS verwendet die Globus-Taste möglicherweise bereits zum Wechseln der Tastatursprache, zum Öffnen der Emoji-Auswahl oder für die eigene Diktierfunktion. Falls das beim Diktieren passiert, kannst du diese Aktion ausschalten:"
+          }
+        }
+      }
+    },
+    "macOS may ask about call sound the first time you record." : {
+      "comment" : "EnviousMeet setup: last screen, when macOS could not confirm the call-sound answer yet.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt beim ersten Aufnehmen eventuell nach dem Ton vom Mac."
           }
         }
       }
