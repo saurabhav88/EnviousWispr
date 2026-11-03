@@ -132,8 +132,8 @@ private struct MeetingSetupWelcome: View {
       title: LocalizedStringResource(
         "Notices your calls", comment: "EnviousMeet setup: welcome tile title."),
       line: LocalizedStringResource(
-        "It can offer to record Zoom, Meet and Teams calls. When it detects a call ending, it shows a stop countdown or asks whether to keep recording.",
-        comment: "EnviousMeet setup: welcome tile line under Notices your calls. App names are not translated.")),
+        "It can offer to record your calls. When a call ends, it counts down to stop or asks whether to keep recording.",
+        comment: "EnviousMeet setup: welcome tile line under Notices your calls.")),
     Tile(
       icon: "play.circle",
       title: LocalizedStringResource(

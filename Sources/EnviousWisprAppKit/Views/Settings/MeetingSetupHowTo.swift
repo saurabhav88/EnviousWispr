@@ -81,52 +81,27 @@ struct MeetingSetupHowTo: View {
             .onChange(of: geo.size.width) { _, value in width = value }
         })
 
-      // Both button sides take equal shares of the row, so the dots sit on the card's centre
-      // line whatever the buttons' widths; a side too wide for its half (German at the narrowest
-      // window) pushes the dots over instead of covering them.
-      HStack(spacing: 10) {
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Back", comment: "EnviousMeet setup: shows the previous how-it-works card."),
-          isEnabled: true, emphasis: .quiet, size: .medium
-        ) {
-          model.previous()
-        }
-        .fixedSize()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        HStack(spacing: 6) {
-          ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
-            Circle()
-              .fill(index == model.index ? Color.obAccent : Color.obTextTertiary.opacity(0.35))
-              .frame(width: 7, height: 7)
+      // One row with the dots on the card's centre line while Back and Pause plus Next both fit
+      // beside them; otherwise (German at the narrowest window) the dots get a row of their own
+      // above the buttons, so they are never pushed off centre or covered.
+      ViewThatFits(in: .horizontal) {
+        MeetingHowToFooterLayout(spacing: 10) {
+          backButton
+          dots
+          HStack(spacing: 10) {
+            pauseButton
+            nextButton
           }
         }
-        .fixedSize()
-        .accessibilityHidden(true)
-        HStack(spacing: 10) {
-          SettingsActionButton(
-            title: model.paused
-              ? LocalizedStringResource(
-                "Play",
-                comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
-              : LocalizedStringResource(
-                "Pause",
-                comment:
-                  "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
-            isEnabled: true, emphasis: .quiet, size: .medium
-          ) {
-            model.togglePause()
-          }
-          SettingsActionButton(
-            title: LocalizedStringResource(
-              "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
-            isEnabled: true, emphasis: .quiet, size: .medium
-          ) {
-            model.next()
+        VStack(spacing: 10) {
+          dots
+          HStack(spacing: 10) {
+            backButton
+            Spacer(minLength: 0)
+            pauseButton
+            nextButton
           }
         }
-        .fixedSize()
-        .frame(maxWidth: .infinity, alignment: .trailing)
       }
       .frame(maxWidth: .infinity)
       .padding(.horizontal, MeetingSetupHowToCard.padding)
@@ -154,6 +129,89 @@ struct MeetingSetupHowTo: View {
     .onChange(of: reduceMotion) { _, on in if on { model.pause() } }
     .task(id: TaskKey(index: model.index, paused: model.paused, reduceMotion: reduceMotion)) {
       await model.autoAdvance(reduceMotion: reduceMotion)
+    }
+  }
+
+  private var backButton: some View {
+    SettingsActionButton(
+      title: LocalizedStringResource(
+        "Back", comment: "EnviousMeet setup: shows the previous how-it-works card."),
+      isEnabled: true, emphasis: .quiet, size: .medium
+    ) {
+      model.previous()
+    }
+    .fixedSize()
+  }
+
+  private var pauseButton: some View {
+    SettingsActionButton(
+      title: model.paused
+        ? LocalizedStringResource(
+          "Play",
+          comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
+        : LocalizedStringResource(
+          "Pause",
+          comment: "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
+      isEnabled: true, emphasis: .quiet, size: .medium
+    ) {
+      model.togglePause()
+    }
+    .fixedSize()
+  }
+
+  private var nextButton: some View {
+    SettingsActionButton(
+      title: LocalizedStringResource(
+        "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
+      isEnabled: true, emphasis: .quiet, size: .medium
+    ) {
+      model.next()
+    }
+    .fixedSize()
+  }
+
+  private var dots: some View {
+    HStack(spacing: 6) {
+      ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
+        Circle()
+          .fill(index == model.index ? Color.obAccent : Color.obTextTertiary.opacity(0.35))
+          .frame(width: 7, height: 7)
+      }
+    }
+    .fixedSize()
+    .accessibilityHidden(true)
+  }
+}
+
+/// The carousel's footer row: the first view at the leading edge, the second on the centre
+/// line, the third at the trailing edge. Its ideal width leaves each side room for the wider
+/// of the two outer views, so `ViewThatFits` drops to the stacked footer before the centre
+/// view would have to move or overlap.
+struct MeetingHowToFooterLayout: Layout {
+  var spacing: CGFloat
+
+  private func needed(_ subviews: Subviews) -> (width: CGFloat, height: CGFloat) {
+    let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+    guard sizes.count == 3 else {
+      return (sizes.map(\.width).reduce(0, +), sizes.map(\.height).max() ?? 0)
+    }
+    let side = max(sizes[0].width, sizes[2].width)
+    return (2 * side + sizes[1].width + 2 * spacing, sizes.map(\.height).max() ?? 0)
+  }
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let need = needed(subviews)
+    return CGSize(width: max(need.width, proposal.width ?? 0), height: need.height)
+  }
+
+  func placeSubviews(
+    in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+  ) {
+    let anchors: [(CGFloat, UnitPoint)] = [
+      (bounds.minX, .leading), (bounds.midX, .center), (bounds.maxX, .trailing),
+    ]
+    for (subview, (x, anchor)) in zip(subviews, anchors) {
+      subview.place(at: CGPoint(x: x, y: bounds.midY), anchor: anchor, proposal: .unspecified)
     }
   }
 }
@@ -295,7 +353,7 @@ enum MeetingSetupHowToCopy {
         "Watch the live transcript in History",
         comment: "EnviousMeet setup: how-it-works card 5 title."),
       line: LocalizedStringResource(
-        "Open History and click M. The meeting you are recording shows its words as people talk. Turn on Live Preview first, in EnviousMeet settings under Models.",
+        "First turn on Live Preview in EnviousMeet settings under Models. Then open History and click M: the meeting you are recording shows its words as people talk.",
         comment: "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter."),
       illustration: LocalizedStringResource(
         "Example: History's Meetings tab with a recording in progress and its words appearing.",
@@ -598,9 +656,11 @@ private struct MeetingHowToSummaries: View {
     HStack(alignment: .top, spacing: 8) {
       ForEach(groups, id: \.heading) { group in
         VStack(alignment: .leading, spacing: 6) {
+          // Every heading keeps two lines' room, so the names below start on one line.
           Text(group.heading)
             .font(.system(size: 14, weight: .bold))
             .foregroundStyle(Color.obTextSecondary)
+            .lineLimit(2, reservesSpace: true)
           ForEach(group.names, id: \.self) { name in
             Text(verbatim: name)
               .font(.system(size: 14, weight: .semibold))

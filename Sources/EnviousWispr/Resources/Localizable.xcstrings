@@ -9235,6 +9235,17 @@
         }
       }
     },
+    "First turn on Live Preview in EnviousMeet settings under Models. Then open History and click M: the meeting you are recording shows its words as people talk." : {
+      "comment" : "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviere zuerst die Live-Vorschau in den EnviousMeet-Einstellungen unter „Modelle“. Öffne dann den Verlauf und klicke auf M: Beim laufenden Meeting erscheint das Gesagte, während die Teilnehmenden sprechen."
+          }
+        }
+      }
+    },
     "Fits text to the spacing and capitals around your cursor." : {
       "comment" : "Clipboard settings: short line under Smart insertion.",
       "localizations" : {
@@ -10794,13 +10805,13 @@
         }
       }
     },
-    "It can offer to record Zoom, Meet and Teams calls. When it detects a call ending, it shows a stop countdown or asks whether to keep recording." : {
-      "comment" : "EnviousMeet setup: welcome tile line under Notices your calls. App names are not translated.",
+    "It can offer to record your calls. When a call ends, it counts down to stop or asks whether to keep recording." : {
+      "comment" : "EnviousMeet setup: welcome tile line under Notices your calls.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es kann anbieten, Anrufe in Zoom, Meet und Teams aufzunehmen. Wenn es das Ende eines Anrufs erkennt, zeigt es einen Stopp-Countdown oder fragt, ob die Aufnahme weiterlaufen soll."
+            "value" : "Es kann anbieten, deine Anrufe aufzunehmen. Endet ein Anruf, zählt es bis zum Stopp herunter oder fragt, ob die Aufnahme weiterlaufen soll."
           }
         }
       }
@@ -15191,17 +15202,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffne EnviousMeet, um den Grund zu erfahren."
-          }
-        }
-      }
-    },
-    "Open History and click M. The meeting you are recording shows its words as people talk. Turn on Live Preview first, in EnviousMeet settings under Models." : {
-      "comment" : "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffne den Verlauf und klicke auf M. Beim laufenden Meeting erscheint das Gesagte, während die Teilnehmenden sprechen. Aktiviere dafür zuerst die Live-Vorschau in den EnviousMeet-Einstellungen unter „Modelle“."
           }
         }
       }
