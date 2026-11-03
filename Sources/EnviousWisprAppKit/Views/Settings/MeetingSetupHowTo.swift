@@ -54,32 +54,32 @@ struct MeetingSetupHowTo: View {
   /// The carousel's width, measured; every card is laid out for it.
   @State private var width: CGFloat = 0
 
-  private struct WidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-  }
-
   var body: some View {
     VStack(spacing: 0) {
       // The row is as tall as its tallest card, so a narrow window grows it instead of clipping.
-      HStack(alignment: .top, spacing: 0) {
-        if width > 0 {
-          ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
-            MeetingSetupHowToCard(index: index, isVisible: index == model.index, width: width)
-              .frame(width: width, alignment: .topLeading)
-              .accessibilityHidden(index != model.index)
-          }
+      // Every card is always drawn, so the row has a size before its width is known; a row
+      // that waited for the width stayed 0 points tall and never measured it (#4346 UAT).
+      // Each card sits one row-width to the side of the shown one, outside the clip.
+      ZStack(alignment: .topLeading) {
+        ForEach(0..<MeetingSetupHowToModel.cardCount, id: \.self) { index in
+          MeetingSetupHowToCard(index: index, isVisible: index == model.index, width: width)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .offset(x: CGFloat(index - model.index) * width)
+            // Until the width is known every card would sit in the same place.
+            .opacity(width > 0 || index == model.index ? 1 : 0)
+            .accessibilityHidden(index != model.index)
         }
       }
-      .frame(width: max(width, 1), alignment: .leading)
-      .offset(x: -CGFloat(model.index) * width)
       .animation(
         reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.9), value: model.index)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
       .clipped()
       .background(
-        GeometryReader { geo in Color.clear.preference(key: WidthKey.self, value: geo.size.width) })
-      .onPreferenceChange(WidthKey.self) { value in width = value }
+        GeometryReader { geo in
+          Color.clear
+            .onAppear { width = geo.size.width }
+            .onChange(of: geo.size.width) { _, value in width = value }
+        })
 
       HStack(spacing: 10) {
         SettingsActionButton(

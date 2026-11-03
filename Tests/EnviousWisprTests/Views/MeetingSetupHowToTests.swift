@@ -191,6 +191,32 @@ struct MeetingSetupHowToTests {
     #expect(control.size.width > 300, "the width probe cannot see a picture that does not fit")
   }
 
+  @Test("the real carousel draws its card at a wide and the narrowest window, not only its buttons")
+  func carouselShowsACard() {
+    _ = NSApplication.shared
+    // #4346 UAT: a card row that waited for its measured width stayed 0 points tall, so the
+    // last setup screen showed only Back, the dots, Pause and Next (49 points in all).
+    var heights: [CGFloat: CGFloat] = [:]
+    for width: CGFloat in [900, 424] {
+      let host = NSHostingView(rootView: MeetingSetupHowTo().frame(width: width))
+      let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: width, height: 900), styleMask: [.borderless],
+        backing: .buffered, defer: false)
+      window.contentView = host
+      host.layoutSubtreeIfNeeded()
+      let height = host.fittingSize.height
+      window.contentView = nil
+      print("HowToCarousel width=\(width) height=\(height)")
+      heights[width] = height
+      // The buttons row alone is about 49 points; a card adds its picture (the call card alone
+      // is well over 150 points).
+      #expect(height > 200, "at \(width) the carousel is \(height) tall: no card is drawn")
+    }
+    // A width that never arrived lays every card out at 0 points wide, thousands of points tall.
+    let wide = heights[900] ?? 0
+    #expect(wide < 900, "at 900 the carousel is \(wide) tall: the cards never got their width")
+  }
+
   @Test("Reduce Motion pauses the cards")
   func pauseIsSticky() {
     let model = MeetingSetupHowToModel(sleep: { _ in })
