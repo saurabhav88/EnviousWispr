@@ -11,8 +11,22 @@ public struct LLMModelDiscovery: Sendable {
   /// Claude probe's request shape read it, so one run asks one set of rules.
   private let cloudModelList: CloudModelList?
 
+  /// #4353 PR 5: one physical HTTP exchange. Every request this type sends (catalog pages and
+  /// availability probes) goes through it. Production always uses the shared session; the
+  /// weekly routine's catalog tests inject a scripted transport, so a test request can never
+  /// reach a real provider.
+  typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  private let transport: Transport
+
   public init(cloudModelList: CloudModelList?) {
     self.cloudModelList = cloudModelList
+    self.transport = { request in try await LLMNetworkSession.shared.session.data(for: request) }
+  }
+
+  /// Test seam. Production callers use the public init.
+  init(cloudModelList: CloudModelList?, transport: @escaping Transport) {
+    self.cloudModelList = cloudModelList
+    self.transport = transport
   }
 
   /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
@@ -52,9 +66,10 @@ public struct LLMModelDiscovery: Sendable {
   /// build candidates directly (`openAICandidates`, `claudeCandidates`, `geminiCandidates`), so
   /// the provider's release date travels the same way.
   /// `internal`, not `private`, so the pure mapping below is directly testable.
-  /// This file has no HTTP mock for its fetchers and never has (see
-  /// `LLMModelDiscoveryTests`), so the established answer here is to extract the
-  /// pure decision and test that — the same shape as `claudePaginationDecision`.
+  /// The picker's fetchers had no HTTP mock (see `LLMModelDiscoveryTests`), so the
+  /// established answer here is to extract the pure decision and test that — the same shape
+  /// as `claudePaginationDecision`. #4353 PR 5 added the `Transport` seam for the routine's
+  /// catalog tests (`CloudModelRoutineCatalogTests`).
   struct DiscoveryCandidate: Sendable, Equatable {
     let id: String
     let displayName: String
@@ -179,14 +194,22 @@ public struct LLMModelDiscovery: Sendable {
   /// date, so the rows are undated (PR 4's model list supplies dates).
   static func geminiCandidates(fromModels models: [[String: Any]]) -> [DiscoveryCandidate] {
     models.compactMap { model -> DiscoveryCandidate? in
-      guard let name = model["name"] as? String,
-        let displayName = model["displayName"] as? String,
-        let methods = model["supportedGenerationMethods"] as? [String],
-        methods.contains("generateContent")
+      guard let name = model["name"] as? String, geminiExclusion(model) == nil,
+        let displayName = model["displayName"] as? String
       else { return nil }
       let id = name.replacingOccurrences(of: "models/", with: "")
       return DiscoveryCandidate(id: id, displayName: displayName, isRemote: false)
     }
+  }
+
+  /// #4353 PR 5: why `geminiCandidates` drops a Gemini row, nil when it keeps it. The one
+  /// owner of that decision, so the routine's catalog reports the same reason the picker acts on.
+  static func geminiExclusion(_ model: [String: Any]) -> CatalogExclusion? {
+    guard let methods = model["supportedGenerationMethods"] as? [String],
+      methods.contains("generateContent")
+    else { return .noGenerateContent }
+    guard model["displayName"] is String else { return .incompleteMetadata }
+    return nil
   }
 
   /// A JSON number of Unix seconds as a known date; nil for a boolean (which `NSNumber`
@@ -335,14 +358,33 @@ public struct LLMModelDiscovery: Sendable {
   }
 
   private func fetchGeminiModels(apiKey: String) async throws -> [DiscoveryCandidate] {
-    guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
-      throw ModelDiscoveryFailure.invalidURL
+    // One page, as before #4353 PR 5; the routine's catalog follows every page.
+    Self.geminiCandidates(
+      fromModels: try await geminiModelPage(apiKey: apiKey, pageToken: nil, strict: false).rows)
+  }
+
+  /// One Gemini `/v1beta/models` page. `pageToken == nil && !strict` sends the exact request
+  /// the picker always sent (no query). `strict` (the routine's catalog, #4353 PR 5) asks for
+  /// the largest page, and refuses a reply that is not a JSON object or whose `models` is not a
+  /// list of objects, instead of reading it as an empty catalog. Google omits an empty list, so
+  /// a missing `models` is a valid empty page in both modes.
+  private func geminiModelPage(apiKey: String, pageToken: String?, strict: Bool) async throws
+    -> (rows: [[String: Any]], nextPageToken: Any?)
+  {
+    guard var components = URLComponents(
+      string: "https://generativelanguage.googleapis.com/v1beta/models")
+    else { throw ModelDiscoveryFailure.invalidURL }
+    if strict {
+      components.queryItems =
+        [URLQueryItem(name: "pageSize", value: "1000")]
+        + (pageToken.map { [URLQueryItem(name: "pageToken", value: $0)] } ?? [])
     }
+    guard let url = components.url else { throw ModelDiscoveryFailure.invalidURL }
     var request = URLRequest(url: url)
     request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
     request.timeoutInterval = 15
 
-    let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+    let (data, response) = try await transport(request)
     guard let httpResponse = response as? HTTPURLResponse else {
       throw ModelDiscoveryFailure.invalidResponse
     }
@@ -354,8 +396,14 @@ public struct LLMModelDiscovery: Sendable {
     }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let models = json?["models"] as? [[String: Any]] else { return [] }
-    return Self.geminiCandidates(fromModels: models)
+    if strict {
+      guard let json else { throw CatalogFailure.malformedResponse }
+      guard let value = json["models"] else { return ([], json["nextPageToken"]) }
+      guard let models = value as? [[String: Any]] else { throw CatalogFailure.malformedResponse }
+      return (models, json["nextPageToken"])
+    }
+    guard let models = json?["models"] as? [[String: Any]] else { return ([], nil) }
+    return (models, nil)
   }
 
   private func probeGemini(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -372,7 +420,7 @@ public struct LLMModelDiscovery: Sendable {
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
     request.timeoutInterval = 10
 
-    guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+    guard let (data, response) = try? await transport(request),
       let httpResponse = response as? HTTPURLResponse
     else { return .inconclusive }
     return Self.probeAvailability(
@@ -391,6 +439,13 @@ public struct LLMModelDiscovery: Sendable {
   // MARK: - OpenAI
 
   private func fetchOpenAIModels(apiKey: String) async throws -> [DiscoveryCandidate] {
+    Self.openAICandidates(
+      fromModels: try await openAIModelRows(apiKey: apiKey, strict: false), list: cloudModelList)
+  }
+
+  /// The OpenAI `/v1/models` rows. `strict` (the routine's catalog, #4353 PR 5) refuses a reply
+  /// without a `data` list of objects instead of reading it as an empty catalog.
+  private func openAIModelRows(apiKey: String, strict: Bool) async throws -> [[String: Any]] {
     guard let url = URL(string: "https://api.openai.com/v1/models") else {
       throw ModelDiscoveryFailure.invalidURL
     }
@@ -398,7 +453,7 @@ public struct LLMModelDiscovery: Sendable {
     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
     request.timeoutInterval = 15
 
-    let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+    let (data, response) = try await transport(request)
     guard let httpResponse = response as? HTTPURLResponse else {
       throw ModelDiscoveryFailure.invalidResponse
     }
@@ -409,8 +464,11 @@ public struct LLMModelDiscovery: Sendable {
     }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-    guard let models = json?["data"] as? [[String: Any]] else { return [] }
-    return Self.openAICandidates(fromModels: models, list: cloudModelList)
+    guard let models = json?["data"] as? [[String: Any]] else {
+      if strict { throw CatalogFailure.malformedResponse }
+      return []
+    }
+    return models
   }
 
   /// Whether an OpenAI model id belongs in the picker's candidate list.
@@ -420,16 +478,24 @@ public struct LLMModelDiscovery: Sendable {
   /// Shared alias ("latest") and version-duplicate ("-001") filtering stays
   /// in `filterModels` — it applies to every provider, not just OpenAI.
   static func isOpenAIChatCompletionCandidate(_ modelID: String, list: CloudModelList?) -> Bool {
+    openAIExclusion(modelID, list: list) == nil
+  }
+
+  /// #4353 PR 5: why `isOpenAIChatCompletionCandidate` refuses an id, nil when it accepts it.
+  /// The predicate is defined as "no reason", so the routine's catalog and the picker share
+  /// one decision.
+  static func openAIExclusion(_ modelID: String, list: CloudModelList?) -> CatalogExclusion? {
     let id = modelID.lowercased()
     // Only chat-capable text models (gpt- and o- prefixes).
     guard
       id.hasPrefix("gpt-") || id.hasPrefix("o-") || id.hasPrefix("o1") || id.hasPrefix("o3")
         || id.hasPrefix("o4")
-    else { return false }
+    else { return .notChatTextFamily }
     // Skip non-text modalities.
     let skipPatterns = ["realtime", "audio", "search", "transcribe"]
-    if skipPatterns.contains(where: { id.contains($0) }) { return false }
+    if skipPatterns.contains(where: { id.contains($0) }) { return .nonTextModality }
     return LLMProvider.openAI.modelCapabilities(model: id, list: list).supportsChatCompletions
+      ? nil : .noChatCompletions
   }
 
   private func probeOpenAI(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -445,7 +511,7 @@ public struct LLMModelDiscovery: Sendable {
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
     request.timeoutInterval = 10
 
-    guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+    guard let (data, response) = try? await transport(request),
       let httpResponse = response as? HTTPURLResponse
     else { return .inconclusive }
     return Self.probeAvailability(
@@ -490,7 +556,14 @@ public struct LLMModelDiscovery: Sendable {
   /// growing catalog, so a single-page assumption would silently truncate
   /// the picker once the account has more models than fit on one page.
   private func fetchClaudeModels(apiKey: String) async throws -> [DiscoveryCandidate] {
-    var allModels: [DiscoveryCandidate] = []
+    Self.claudeCandidates(fromModels: try await claudeModelRows(apiKey: apiKey, strict: false))
+  }
+
+  /// Every Claude catalog row across every page. `strict` (the routine's catalog, #4353 PR 5)
+  /// refuses a page without a `data` list of objects or without a boolean `has_more`, where the
+  /// picker stops early (keeping the rows so far) or reads "no more pages".
+  private func claudeModelRows(apiKey: String, strict: Bool) async throws -> [[String: Any]] {
+    var allModels: [[String: Any]] = []
     var afterID: String?
     var seenCursors: Set<String> = []
 
@@ -507,7 +580,7 @@ public struct LLMModelDiscovery: Sendable {
       request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
       request.timeoutInterval = 15
 
-      let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+      let (data, response) = try await transport(request)
       guard let httpResponse = response as? HTTPURLResponse else {
         throw ModelDiscoveryFailure.invalidResponse
       }
@@ -518,9 +591,20 @@ public struct LLMModelDiscovery: Sendable {
       }
 
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      guard let models = json?["data"] as? [[String: Any]] else { break }
+      guard let models = json?["data"] as? [[String: Any]] else {
+        if strict { throw CatalogFailure.malformedResponse }
+        break
+      }
+      // An exact JSON boolean: `is Bool` would also accept a bridged number such as 0, and a
+      // malformed `has_more: 0` must not end the catalog early (the shape `CloudModelList` reads
+      // booleans with).
+      if strict {
+        guard let value = json?["has_more"] as? NSNumber,
+          CFGetTypeID(value) == CFBooleanGetTypeID()
+        else { throw CatalogFailure.malformedResponse }
+      }
 
-      allModels.append(contentsOf: Self.claudeCandidates(fromModels: models))
+      allModels.append(contentsOf: models)
 
       switch Self.claudePaginationDecision(
         hasMore: json?["has_more"] as? Bool ?? false,
@@ -555,7 +639,7 @@ public struct LLMModelDiscovery: Sendable {
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
     request.timeoutInterval = 10
 
-    guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+    guard let (data, response) = try? await transport(request),
       let httpResponse = response as? HTTPURLResponse
     else { return .inconclusive }
     // A transient rate limit or server-side overload is not proof the key lacks access to
@@ -577,7 +661,7 @@ public struct LLMModelDiscovery: Sendable {
     request.timeoutInterval = 5
 
     do {
-      let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+      let (data, response) = try await transport(request)
       guard let httpResponse = response as? HTTPURLResponse,
         httpResponse.statusCode == 200
       else {
@@ -656,6 +740,163 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
+  // MARK: - Catalog only (#4353 PR 5)
+
+  /// Why a fetched cloud model id is not one the picker would offer. Each case is produced by
+  /// exactly one shipped decision: `openAIExclusion`, `geminiExclusion` or `sharedExclusion`.
+  enum CatalogExclusion: String, Sendable, Equatable, CaseIterable {
+    /// OpenAI: not a `gpt-`/`o`-family text model.
+    case notChatTextFamily
+    /// OpenAI: a realtime, audio, search or transcription model.
+    case nonTextModality
+    /// OpenAI: the capability rules say it has no chat-completions endpoint (#1330).
+    case noChatCompletions
+    /// Gemini: does not list `generateContent`.
+    case noGenerateContent
+    /// Gemini: has no display name, which the picker requires.
+    case incompleteMetadata
+    /// Every provider: an `excludePatterns` id (tts, image, audio input, ...).
+    case excludedPattern
+    /// Every provider: a `-001`-style versioned duplicate.
+    case versionedDuplicate
+    /// Every provider: a `latest` alias.
+    case alias
+  }
+
+  /// One provider's complete catalog for the weekly cloud model routine (D7 detail, Stage 1
+  /// harness item 2), read WITHOUT availability probes: the routine pays only for the
+  /// dictations it runs on the new models it selects.
+  struct CloudCatalog: Sendable, Equatable {
+    struct Excluded: Sendable, Equatable {
+      let id: String
+      let reason: CatalogExclusion
+    }
+
+    let provider: LLMProvider
+    /// Every id the provider listed, across every page, in first-seen order, BEFORE any
+    /// eligibility rule. Absence accounting reads this population, so a model the picker
+    /// excludes still counts as present.
+    let identities: [String]
+    /// Exactly the rows ordinary discovery would go on to probe: the provider's parser, then
+    /// `filterModels`, with a repeated id kept once.
+    let eligible: [DiscoveryCandidate]
+    /// Every identity not in `eligible`, with the first shipped rule that removed it.
+    let excluded: [Excluded]
+  }
+
+  /// A catalog that could not be read completely. Never an empty catalog: a routine that
+  /// mistook a broken reply for "no models" would mark every listed model missing.
+  enum CatalogFailure: Error, Equatable {
+    case unsupportedProvider
+    /// A reply that is not the documented shape, or a row without an id.
+    case malformedResponse
+    /// A next-page cursor that is empty, not text, or already followed.
+    case malformedPagination
+  }
+
+  /// Read one cloud provider's whole catalog through the shared parsers and eligibility rules,
+  /// following every page, with no probe and no generation request. Throws instead of
+  /// returning a partial catalog: HTTP failures keep their discovery errors
+  /// (`LLMError.invalidAPIKey`, `ModelDiscoveryFailure`), shape failures are `CatalogFailure`.
+  func fetchCatalog(provider: LLMProvider, apiKey: String) async throws -> CloudCatalog {
+    let rows: [[String: Any]]
+    switch provider {
+    case .openAI: rows = try await openAIModelRows(apiKey: apiKey, strict: true)
+    case .claude: rows = try await claudeModelRows(apiKey: apiKey, strict: true)
+    case .gemini: rows = try await geminiCatalogRows(apiKey: apiKey)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      throw CatalogFailure.unsupportedProvider
+    }
+    return try Self.catalog(provider: provider, rows: rows, list: cloudModelList)
+  }
+
+  /// Every Gemini page, following `nextPageToken` (ordinary discovery reads one page).
+  private func geminiCatalogRows(apiKey: String) async throws -> [[String: Any]] {
+    var rows: [[String: Any]] = []
+    var token: String?
+    var seenTokens: Set<String> = []
+    while true {
+      let page = try await geminiModelPage(apiKey: apiKey, pageToken: token, strict: true)
+      rows.append(contentsOf: page.rows)
+      switch Self.geminiPageDecision(nextPageToken: page.nextPageToken, seenTokens: seenTokens) {
+      case .stop: return rows
+      case .malformed: throw CatalogFailure.malformedPagination
+      case .next(let next):
+        seenTokens.insert(next)
+        token = next
+      }
+    }
+  }
+
+  enum GeminiPageDecision: Equatable {
+    case next(String)
+    case stop
+    case malformed
+  }
+
+  /// Gemini omits `nextPageToken` (or sends it empty) on the last page. Any other value must
+  /// be text not followed before, or the catalog is refused rather than looped or truncated.
+  static func geminiPageDecision(nextPageToken: Any?, seenTokens: Set<String>)
+    -> GeminiPageDecision
+  {
+    guard let value = nextPageToken else { return .stop }
+    guard let token = value as? String else { return .malformed }
+    if token.isEmpty { return .stop }
+    return seenTokens.contains(token) ? .malformed : .next(token)
+  }
+
+  /// The catalog from raw rows. Each row goes through the same parser the picker uses, one row
+  /// at a time, so eligibility is the shipped decision and not a copy of it.
+  static func catalog(provider: LLMProvider, rows: [[String: Any]], list: CloudModelList?)
+    throws -> CloudCatalog
+  {
+    var identities: [String] = []
+    var seen: Set<String> = []
+    var eligible: [DiscoveryCandidate] = []
+    var excluded: [CloudCatalog.Excluded] = []
+    for row in rows {
+      let id: String
+      let parsed: DiscoveryCandidate?
+      let providerReason: CatalogExclusion?
+      switch provider {
+      case .openAI:
+        guard let raw = row["id"] as? String else { throw CatalogFailure.malformedResponse }
+        id = raw
+        providerReason = openAIExclusion(raw, list: list)
+        parsed = openAICandidates(fromModels: [row], list: list).first
+      case .claude:
+        guard let raw = row["id"] as? String else { throw CatalogFailure.malformedResponse }
+        id = raw
+        providerReason = nil
+        parsed = claudeCandidates(fromModels: [row]).first
+      case .gemini:
+        guard let name = row["name"] as? String else { throw CatalogFailure.malformedResponse }
+        id = name.replacingOccurrences(of: "models/", with: "")
+        providerReason = geminiExclusion(row)
+        parsed = geminiCandidates(fromModels: [row]).first
+      case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+        throw CatalogFailure.unsupportedProvider
+      }
+      guard !id.isEmpty else { throw CatalogFailure.malformedResponse }
+      guard seen.insert(id).inserted else { continue }
+      identities.append(id)
+      if let providerReason {
+        excluded.append(.init(id: id, reason: providerReason))
+        continue
+      }
+      // The parser keeps every row its exclusion function passes; a nil here means the two
+      // disagree, which must fail loudly rather than drop a model from the population.
+      guard let parsed else { throw CatalogFailure.malformedResponse }
+      if let sharedReason = sharedExclusion(id) {
+        excluded.append(.init(id: id, reason: sharedReason))
+        continue
+      }
+      eligible.append(parsed)
+    }
+    return CloudCatalog(
+      provider: provider, identities: identities, eligible: eligible, excluded: excluded)
+  }
+
   // MARK: - Shared Helpers
 
   private func probeModel(id: String, provider: LLMProvider, apiKey: String) async
@@ -685,23 +926,27 @@ public struct LLMModelDiscovery: Sendable {
   /// `internal`, not `private`, so the pure exclusion decision is directly
   /// testable (#2884) — same reasoning as `DiscoveryCandidate` above.
   func filterModels(_ models: [DiscoveryCandidate]) -> [DiscoveryCandidate] {
-    models.filter { model in
-      let lowered = model.id.lowercased()
+    models.filter { Self.sharedExclusion($0.id) == nil }
+  }
 
-      if Self.isExcludedModelID(model.id) { return false }
+  /// #4353 PR 5: why `filterModels` drops an id, nil when it keeps it; the one owner of the
+  /// every-provider exclusions, so the routine's catalog reports the reason the picker acts on.
+  static func sharedExclusion(_ id: String) -> CatalogExclusion? {
+    let lowered = id.lowercased()
 
-      // Exclude versioned duplicates (-001, -002, etc.)
-      for suffix in Self.versionedSuffixes {
-        if lowered.hasSuffix(suffix) { return false }
-      }
+    if isExcludedModelID(id) { return .excludedPattern }
 
-      // Exclude alias names containing "latest"
-      for alias in Self.aliasPatterns {
-        if lowered.contains(alias) { return false }
-      }
-
-      return true
+    // Exclude versioned duplicates (-001, -002, etc.)
+    for suffix in versionedSuffixes {
+      if lowered.hasSuffix(suffix) { return .versionedDuplicate }
     }
+
+    // Exclude alias names containing "latest"
+    for alias in aliasPatterns {
+      if lowered.contains(alias) { return .alias }
+    }
+
+    return nil
   }
 }
 
