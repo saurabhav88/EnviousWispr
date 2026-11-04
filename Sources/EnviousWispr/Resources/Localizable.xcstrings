@@ -12424,13 +12424,13 @@
         }
       }
     },
-    "Long meeting: this summary was written in parts. The default OpenAI, Gemini and Claude models fit much longer meetings in one piece." : {
-      "comment" : "History, a meeting summarized in parts by Apple Intelligence. Explains that the default models of the three named providers support much longer meetings in a single summary call. This does not promise unlimited meeting length.",
+    "Long meeting: this summary was written in parts. Some cloud models can fit longer meetings in one piece." : {
+      "comment" : "History, a meeting summarized in parts by Apple Intelligence. Explains that some cloud AI models (OpenAI, Gemini, Claude) can summarize longer meetings in a single pass. Says some, not all, and does not promise unlimited meeting length.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Die Standardmodelle von OpenAI, Gemini und Claude fassen viel längere Meetings in einem Durchgang zusammen."
+            "value" : "Langes Meeting: Diese Zusammenfassung wurde in Teilen erstellt. Manche Cloud-Modelle fassen auch längere Meetings in einem Durchgang zusammen."
           }
         }
       }
