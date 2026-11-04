@@ -45,6 +45,8 @@ struct ZoomSelfProbeTests {
     /// Rows the panel shows once it has been open this long.
     var rowsDelay: Duration = .zero
     var rows: [CallAXNode] = []
+    /// The Zoom words the probe reads the rows with (#4350).
+    var labels: ZoomLabels = .builtIn
     var openedAt: Duration?
     /// Runs at each pause, to script the user or Zoom changing things mid-probe.
     var onPause: (FakeZoom) -> Void = { _ in }
@@ -130,7 +132,7 @@ struct ZoomSelfProbeTests {
           pauses.append(offset)
           offset += gap
           onPause(self)
-        }, protectedRoles: [], shouldStop: stop)
+        }, protectedRoles: [], shouldStop: stop, labels: labels)
     }
   }
 
@@ -391,5 +393,99 @@ struct ZoomSelfProbeTests {
     #expect(result.learned == nil)
     #expect(result.panelClosed == nil)
     #expect(zoom.presses == [FakeZoom.button], "the replacement's button is never pressed")
+  }
+
+  // MARK: - Other Zoom languages (#4350 §16)
+
+  /// A bound row with its own menu wording.
+  static func languageRow(_ entry: String, menu: String) -> CallAXNode {
+    CallAXNode(
+      role: "AXRow",
+      children: [
+        CallAXNode(
+          role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+          children: [
+            CallAXNode(role: "AXStaticText", value: entry),
+            CallAXNode(role: "AXMenuButton", description: menu),
+          ])
+      ])
+  }
+
+  @Test("learns the user from a German (Host, Ich) or Japanese (ホスト, 自分) row")
+  func learnsInOtherLanguages() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let german = FakeZoom()
+    german.labels = labels
+    german.texts[FakeZoom.panel]?[.description] = "Teilnehmerliste"
+    german.rows = [
+      Self.languageRow(
+        "Saurabh A Vaish (Host, Ich)", menu: "Weitere Optionen für Saurabh A Vaish, eingeklappt"),
+      Self.languageRow("Anna (EU)", menu: "Weitere Optionen für Anna (EU), eingeklappt"),
+    ]
+    let result = german.run()
+    #expect(result.learned == "Saurabh A Vaish")
+    #expect(result.panelClosed == true)
+
+    let japanese = FakeZoom()
+    japanese.labels = labels
+    japanese.texts[FakeZoom.panel]?[.description] = "参加者リスト"
+    japanese.rows = [
+      Self.languageRow(
+        "Saurabh A Vaish (ホスト, 自分)", menu: "Saurabh A Vaish のその他のオプション、折りたたみ済み")
+    ]
+    #expect(japanese.run().learned == "Saurabh A Vaish")
+
+    // The same German list read with English words alone learns nothing (before #4350).
+    let english = FakeZoom()
+    english.texts[FakeZoom.panel]?[.description] = "Teilnehmerliste"
+    english.rows = german.rows
+    #expect(english.run().learned == nil)
+  }
+
+  @Test("a nickname or two self rows in a German list teach nothing")
+  func refusesNicknameAndTwoSelfRows() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let nickname = FakeZoom()
+    nickname.labels = labels
+    nickname.texts[FakeZoom.panel]?[.description] = "Teilnehmerliste"
+    nickname.rows = [
+      Self.languageRow("Dana (ME)", menu: "Weitere Optionen für Dana (ME), eingeklappt"),
+      Self.languageRow("Anna (EU)", menu: "Weitere Optionen für Anna (EU), eingeklappt"),
+    ]
+    #expect(nickname.run().learned == nil)
+
+    let twice = FakeZoom()
+    twice.labels = labels
+    twice.texts[FakeZoom.panel]?[.description] = "Teilnehmerliste"
+    let me = Self.languageRow(
+      "Saurabh A Vaish (Host, Ich)", menu: "Weitere Optionen für Saurabh A Vaish, eingeklappt")
+    twice.rows = [me, me]
+    #expect(twice.run().learned == nil)
+  }
+
+  @Test("probe readiness: a German tile with the English closed-panel button")
+  func readyInGerman() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let window = CallAXWindow(
+      title: "Zoom Meeting",
+      root: CallAXNode(
+        role: "AXWindow", identifier: "zm.meeting.window.main",
+        children: [
+          CallAXNode(
+            role: "AXTabGroup",
+            description: "Saurabh A Vaish, Bei Computeraudio Stummschaltung aktiviert"),
+          CallAXNode(
+            role: "AXButton", description: "Open participants panel, closed, 2 participants"),
+        ]))
+    #expect(ZoomAppSpeakerReader.selfProbeReady(windows: [window], labels: labels))
+    #expect(ZoomAppSpeakerReader.selfProbeReady(windows: [window]) == false)  // English only
+    let open = CallAXWindow(
+      title: window.title,
+      root: CallAXNode(
+        role: "AXWindow", identifier: "zm.meeting.window.main",
+        children: window.root.children + [
+          CallAXNode(role: "AXOutline", description: "Teilnehmerliste")
+        ]))
+    #expect(ZoomAppSpeakerReader.selfProbeReady(windows: [open], labels: labels) == false)
   }
 }

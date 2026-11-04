@@ -95,16 +95,17 @@ package enum CallSpeakerSurfaceChoice {
 /// (no meeting page, two meeting pages, or no reader for the surface).
 package enum CallSpeakerSurfaceReader {
   /// `knownSelf` is the Zoom app's learned in-call identity (#4356); other surfaces ignore it.
+  /// `zoomLabels` are the recording's frozen Zoom words (#4350); other surfaces ignore them.
   package static func read(
     surface: CallSpeakerSurface, capture: CallAXCapture, rules: TalkerRules,
-    knownSelf: String? = nil
+    zoomLabels: ZoomLabels, knownSelf: String? = nil
   ) -> CallSpeakerReading? {
     switch surface {
     // Only the windows `zoomWindows` chooses; `nil` when it cannot choose (`scope` unresolved).
     case .zoomApp:
       // Share and count evidence come from the whole copy, before window choice (#4013 share
       // plan §3.0): the windows that carry them are not the ones the reading uses.
-      zoomReading(capture, knownSelf: knownSelf)
+      zoomReading(capture, knownSelf: knownSelf, labels: zoomLabels)
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -117,13 +118,14 @@ package enum CallSpeakerSurfaceReader {
 
   /// The Zoom app reading: the share context is read once from the whole copy and given to both
   /// window choice and the reader (#4013 share plan §3.0, review r2 R1).
-  static func zoomReading(_ capture: CallAXCapture, knownSelf: String? = nil)
-    -> CallSpeakerReading?
-  {
-    let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows)
-    return zoomWindows(capture.windows, share: share).map {
+  static func zoomReading(
+    _ capture: CallAXCapture, knownSelf: String? = nil, labels: ZoomLabels
+  ) -> CallSpeakerReading? {
+    let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows, labels: labels)
+    return zoomWindows(capture.windows, share: share, labels: labels).map {
       ZoomAppSpeakerReader.read(
-        windows: $0, accountTitles: capture.accountTitles, share: share, knownSelf: knownSelf)
+        windows: $0, accountTitles: capture.accountTitles, share: share, knownSelf: knownSelf,
+        labels: labels)
     }
   }
 
@@ -134,7 +136,8 @@ package enum CallSpeakerSurfaceReader {
   /// can choose the windows to read. Any other app capture comes from the one app instance
   /// resolved for the recording.
   package static func scope(
-    surface: CallSpeakerSurface, capture: CallAXCapture, family: CallAppFamily
+    surface: CallSpeakerSurface, capture: CallAXCapture, family: CallAppFamily,
+    zoomLabels: ZoomLabels
   ) -> CallCaptureContext.Scope {
     switch surface {
     case .zoomWeb, .teamsWeb, .meet, .slackWeb:
@@ -148,8 +151,9 @@ package enum CallSpeakerSurfaceReader {
       }
       return titles.count <= 1 ? .resolved : .unresolved
     case .zoomApp:
-      let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows)
-      return zoomWindows(capture.windows, share: share) == nil ? .unresolved : .resolved
+      let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows, labels: zoomLabels)
+      return zoomWindows(capture.windows, share: share, labels: zoomLabels) == nil
+        ? .unresolved : .resolved
     default:
       return .resolved
     }
@@ -180,23 +184,30 @@ package enum CallSpeakerSurfaceReader {
   /// windows or two labels: `nil`. It runs after the thumbnail rules and before the tile-free
   /// meeting window is read alone.
   package static func zoomWindows(
-    _ windows: [CallAXWindow], share: ZoomAppSpeakerReader.ShareContext
+    _ windows: [CallAXWindow], share: ZoomAppSpeakerReader.ShareContext,
+    labels: ZoomLabels = .builtIn
   )
     -> [CallAXWindow]?
   {
     let meetings = windows.filter(isZoomMeeting)
     guard meetings.count <= 1 else { return nil }
-    if let meeting = meetings.first, zoomTileCount(meeting) > 0 { return [meeting] }
-    let others = windows.filter { !isZoomMeeting($0) }.map { ($0, zoomTileCount($0)) }
-      .filter { $0.1 > 0 }
+    if let meeting = meetings.first, zoomTileCount(meeting, labels: labels) > 0 {
+      return [meeting]
+    }
+    let others = windows.filter { !isZoomMeeting($0) }.map {
+      ($0, zoomTileCount($0, labels: labels))
+    }
+    .filter { $0.1 > 0 }
     let most = others.map(\.1).max()
     let winners = others.filter { $0.1 == most }
-    if others.isEmpty, share.isSharing, !windows.contains(where: showsAnyTile) {
-      let labelled = windows.filter(ZoomAppSpeakerReader.isCompactWindow).filter {
-        !ZoomAppSpeakerReader.talkingLabels($0).isEmpty
-      }
+    if others.isEmpty, share.isSharing,
+      !windows.contains(where: { showsAnyTile($0, labels: labels) })
+    {
+      let labelled = windows.filter { ZoomAppSpeakerReader.isCompactWindow($0, labels: labels) }
+        .filter { !ZoomAppSpeakerReader.talkingLabels($0, labels: labels).isEmpty }
       if !labelled.isEmpty {
-        guard labelled.count == 1, ZoomAppSpeakerReader.talkingLabels(labelled[0]).count == 1
+        guard labelled.count == 1,
+          ZoomAppSpeakerReader.talkingLabels(labelled[0], labels: labels).count == 1
         else { return nil }
         return (meetings.first.map { [$0] } ?? []) + labelled
       }
@@ -209,9 +220,10 @@ package enum CallSpeakerSurfaceReader {
   }
 
   /// Whether a window shows any participant tile, the large Speaker-view tile included.
-  static func showsAnyTile(_ window: CallAXWindow) -> Bool {
+  static func showsAnyTile(_ window: CallAXWindow, labels: ZoomLabels = .builtIn) -> Bool {
     window.root.allNodes.contains { node in
-      node.role == "AXTabGroup" && node.label.flatMap(ZoomAppSpeakerReader.parseTile) != nil
+      node.role == "AXTabGroup"
+        && node.label.flatMap { ZoomAppSpeakerReader.parseTile($0, labels: labels) } != nil
     }
   }
 
@@ -222,10 +234,11 @@ package enum CallSpeakerSurfaceReader {
   /// window and moves the thumbnails to its floating video window (live take 2026-11-02, #4013
   /// reading resilience UAT), so counting the large tile kept the meeting window alone and
   /// withheld every reading.
-  static func zoomTileCount(_ window: CallAXWindow) -> Int {
+  static func zoomTileCount(_ window: CallAXWindow, labels: ZoomLabels = .builtIn) -> Int {
     window.root.allNodes.filter { node in
       node.role == "AXTabGroup"
-        && node.label.flatMap(ZoomAppSpeakerReader.parseTile)?.hasVideoState == true
+        && node.label.flatMap { ZoomAppSpeakerReader.parseTile($0, labels: labels) }?
+          .hasVideoState == true
     }.count
   }
 

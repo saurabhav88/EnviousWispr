@@ -329,6 +329,11 @@ package struct ZoomLabels: Sendable, Equatable {
     return words.values.contains { $0[role]?.contains(word) == true }
   }
 
+  /// Every bracket tag word (host, co-host, guest, self) in `language`.
+  package func tags(in language: String) -> Set<String> {
+    Role.tags.reduce(into: Set<String>()) { $0.formUnion(words($1, in: language)) }
+  }
+
   /// The words for `role` in `language` (normalised).
   package func words(_ role: Role, in language: String) -> Set<String> {
     words[language]?[role] ?? []
@@ -357,17 +362,24 @@ package struct ZoomLabels: Sendable, Equatable {
 
   /// The talker names a Talking label can mean, trimmed from the original text (plan §3.4):
   /// `Talking: Bea Chen` → {`Bea Chen`}; `Talking: ` or `発言中:` → {""} (nobody talking); any
-  /// other text → {}. The template prefix is compared with its trailing space trimmed. More
-  /// than one name means the label is ambiguous; the caller refuses it.
+  /// other text → {}. A name follows the template's own words exactly (`Talking:Bea` is not
+  /// read, as before #4350); only the quiet form compares the prefix with its trailing space
+  /// trimmed (live ja `発言中:` against table `発言中: %@`). More than one name means the label
+  /// is ambiguous; the caller refuses it.
   package func talkingNames(_ label: String) -> Set<String> {
     let candidates = templates.values.flatMap { $0[.talking] ?? [] }
     guard !candidates.isEmpty else { return [] }
+    var names: Set<String> = []
+    let quiet = Self.normalized(label)
+    if candidates.contains(where: { $0.suffix.isEmpty && Self.trailingTrimmed($0.prefix) == quiet })
+    {
+      names.insert("")
+    }
     // Every split of the original label into (Zoom's words, name, Zoom's words).
     let splits = Array(label.indices) + [label.endIndex]
-    var names: Set<String> = []
     for (startOffset, start) in splits.enumerated() {
-      let before = Self.trailingTrimmed(Self.normalizedPiece(String(label[..<start])))
-      let matching = candidates.filter { Self.trailingTrimmed($0.prefix) == before }
+      let before = Self.normalizedPiece(String(label[..<start]))
+      let matching = candidates.filter { $0.prefix == before }
       guard !matching.isEmpty else { continue }
       for end in splits[startOffset...] {
         let after = Self.normalizedPiece(String(label[end...]))

@@ -1,0 +1,218 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py); #4350 discovery run 20261103-131437-4350-zoom-languages-discovery-83ca, Zoom 7.1.9 (88375), Home window removed",
+ "windows": [
+  {
+   "title": "Zoom ミーティング",
+   "root": {
+    "role": "AXWindow",
+    "title": "Zoom ミーティング",
+    "identifier": "zm.meeting.window.main",
+    "children": [
+     {
+      "role": "AXTabGroup",
+      "description": "Saurabh A Vaish, ミュートされたコンピュータ オーディオ",
+      "children": [
+       {
+        "role": "AXImage"
+       },
+       {
+        "role": "AXButton",
+        "description": "Saurabh A Vaish"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "自分のオーディオをミュート解除する",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "ビデオをオンにする",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "終了",
+      "identifier": "leave",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Close participants panel, opened, 1 participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "参加者 options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "[チャット] パネルを開く ",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "チャット options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "共有",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "共有 options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "リアクション",
+      "identifier": "react",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "React options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "その他のミーティング コントロール、折りたたみ済み",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXScrollArea",
+      "children": [
+       {
+        "role": "AXOutline",
+        "description": "参加者リスト",
+        "children": [
+         {
+          "role": "AXRow",
+          "children": [
+           {
+            "role": "AXCell",
+            "identifier": "ZMHCTableItemType_PANELIST",
+            "children": [
+             {
+              "role": "AXStaticText",
+              "value": "Saurabh A Vaish (ホスト, 自分)"
+             },
+             {
+              "role": "AXMenuButton",
+              "description": "Saurabh A Vaish のその他のオプション、折りたたみ済み"
+             },
+             {
+              "role": "AXButton",
+              "description": "ビデオをオンにする"
+             },
+             {
+              "role": "AXButton",
+              "description": "ミュート解除"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "招待"
+     },
+     {
+      "role": "AXButton",
+      "description": "全員をミュート"
+     },
+     {
+      "role": "AXButton",
+      "description": "More options to manage all participants"
+     },
+     {
+      "role": "AXUnknown",
+      "description": "参加者 (1)",
+      "children": [
+       {
+        "role": "AXButton",
+        "title": "閉じる",
+        "description": "Button"
+       },
+       {
+        "role": "AXButton",
+        "title": "ポップアウト",
+        "description": "Button"
+       },
+       {
+        "role": "AXStaticText",
+        "value": "参加者 (1)"
+       }
+      ]
+     },
+     {
+      "role": "AXSplitter"
+     },
+     {
+      "role": "AXButton",
+      "description": "Saurabh A VaishのZoomミーティング",
+      "identifier": "MeetingTopBarInfoButton"
+     },
+     {
+      "role": "AXButton",
+      "description": "Notesポップアップを開きます、My Notesは有効になっています"
+     },
+     {
+      "role": "AXButton",
+      "description": "Zoom AIのポップアップを開きます、Zoom AIは無効になっています"
+     },
+     {
+      "role": "AXButton",
+      "description": "ビュー オプション, スピーカー"
+     },
+     {
+      "role": "AXButton",
+      "description": "ミーティングのセキュリティポップアップを開く"
+     },
+     {
+      "role": "AXButton",
+      "description": "Zoomプロにアップグレード",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     }
+    ]
+   }
+  }
+ ]
+}

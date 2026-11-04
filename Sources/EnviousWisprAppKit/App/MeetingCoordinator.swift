@@ -390,8 +390,10 @@ final class MeetingCoordinator {
     /// it), run on the speaker lane, keeping `protectedRoles` strict like `captureCallApp`.
     var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
       { target, protectedRoles, shouldStop in
+        // #4350 chunk 2: built-in Zoom words until chunk 4 passes the recording's frozen labels.
         ZoomSelfProbe.live(
-          pid: target.pid, protectedRoles: protectedRoles, shouldStop: shouldStop)
+          pid: target.pid, protectedRoles: protectedRoles, labels: .builtIn,
+          shouldStop: shouldStop)
       }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared

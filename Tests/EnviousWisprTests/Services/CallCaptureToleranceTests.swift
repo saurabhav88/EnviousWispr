@@ -89,7 +89,8 @@ struct CallCaptureToleranceTests {
     #expect(reading.speaking == ["Alex Rivera"])
     #expect(reading.roster.names == ["Alex Rivera", "Saurabh A Vaish"])
     #expect(reading.participantListComplete)
-    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: copy, rules: .testPackaged) == .muted)
+    #expect(
+      CallSelfMuteReader.read(surface: .zoomApp, capture: copy, rules: .testPackaged) == .muted)
     // Control: the same failures under the standard policy are unreadable, as before.
     let whole = meetingTree()
     chatFailures(whole)
@@ -211,7 +212,8 @@ struct CallCaptureToleranceTests {
     tree.failing.insert("13.AXIdentifier")
     let copy = capture(tree)
     #expect(copy.completeness == .unreadable)
-    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: copy, rules: .testPackaged) == .unknown)
+    #expect(
+      CallSelfMuteReader.read(surface: .zoomApp, capture: copy, rules: .testPackaged) == .unknown)
   }
 
   // MARK: - Consumer inventory
@@ -258,7 +260,8 @@ struct CallCaptureToleranceTests {
       readEndHostTime: 0)
     return (
       ZoomAppSpeakerReader.read(windows: [window]),
-      CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: capture, family: .zoom),
+      CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp, capture: capture, family: .zoom, zoomLabels: .builtIn),
       CallSelfMuteReader.read(surface: .zoomApp, capture: capture, rules: .testPackaged)
     )
   }

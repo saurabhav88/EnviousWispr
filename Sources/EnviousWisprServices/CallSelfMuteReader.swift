@@ -176,8 +176,9 @@ package enum CallSelfMuteReader {
   ) -> CallSelfMute {
     guard let family = CallMuteRules.families[surface], let rule = rules.rules[surface],
       capture.completeness == .complete,
-      CallSpeakerSurfaceReader.scope(surface: surface, capture: capture, family: family)
-        == .resolved
+      // #4350 chunk 2: built-in words until chunk 3 passes the recording's frozen labels.
+      CallSpeakerSurfaceReader.scope(
+        surface: surface, capture: capture, family: family, zoomLabels: .builtIn) == .resolved
     else { return .unknown }
     // Where the button may be: the one Zoom meeting window (never a window whose tiles the
     // reading borrows; with no meeting window the state is unknown, #4013 reading resilience

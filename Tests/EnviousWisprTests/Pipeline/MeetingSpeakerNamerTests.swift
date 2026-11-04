@@ -602,10 +602,12 @@ struct MeetingSpeakerNamerTests {
     var accumulator = CallSpeakerAccumulator(
       surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
     func add(_ copy: CallAXCapture, at ms: Int) {
-      let scope = CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom)
+      let scope = CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: .builtIn)
       accumulator.add(
         CallSpeakerSurfaceReader.read(
-          surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules),
+          surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+          zoomLabels: .builtIn),
         context: CallCaptureContext(completeness: .complete, scope: scope), observationMs: ms)
     }
     // Bea talks 1-3 s by label, the user talks 4-5 s, Alex talks 6-8 s by the lone tile.

@@ -311,7 +311,8 @@ struct MeetingSpeakerPairNamerTests {
 
   private static func reading(_ copy: CallAXCapture) -> CallSpeakerReading? {
     CallSpeakerSurfaceReader.read(
-      surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules)
+      surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules, zoomLabels: .builtIn
+    )
   }
 
   @Test("a two-person call during the user's share names the other voice after the minimum")
@@ -319,7 +320,8 @@ struct MeetingSpeakerPairNamerTests {
     var accumulator = CallSpeakerAccumulator(
       surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
     let copy = Self.sharingCopy()
-    let scope = CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom)
+    let scope = CallSpeakerSurfaceReader.scope(
+      surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: .builtIn)
     #expect(scope == .resolved)
     // One copy every second for 20 s: a stretch past the unchanged 15 s minimum.
     for ms in stride(from: 0, through: 20_000, by: 1_000) {

@@ -1,0 +1,145 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py); #4350 discovery run 20261103-131437-4350-zoom-languages-discovery-83ca, Zoom 7.1.9 (88375), Home window removed",
+ "windows": [
+  {
+   "title": "Zoom Meeting",
+   "root": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting",
+    "identifier": "zm.meeting.window.main",
+    "children": [
+     {
+      "role": "AXTabGroup",
+      "description": "Saurabh A Vaish, Bei Computeraudio Stummschaltung aktiviert",
+      "children": [
+       {
+        "role": "AXImage"
+       },
+       {
+        "role": "AXButton",
+        "description": "Saurabh A Vaish"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Stummschaltung für Audio aufheben",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Video starten",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Beenden",
+      "identifier": "leave",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Open participants panel, closed, 1 participants",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Teilnehmer options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Bereich Chat öffnen ",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Freigeben",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Freigeben options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Reagieren",
+      "identifier": "react",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "React options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Weitere Meetingleitungen, eingeklappt",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Zoom Meeting von Saurabh A Vaish",
+      "identifier": "MeetingTopBarInfoButton"
+     },
+     {
+      "role": "AXButton",
+      "description": "„Notes öffnen“-Pop-up; „Meine Notizen“ ist aktiviert"
+     },
+     {
+      "role": "AXButton",
+      "description": "Öffnen Sie das Zoom AI-Pop-up; Zoom AI ist deaktiviert"
+     },
+     {
+      "role": "AXButton",
+      "description": "Ansicht Optionen, Sprecher"
+     },
+     {
+      "role": "AXButton",
+      "description": "„Meeting öffnen“, Sicherheits-Pop-up"
+     },
+     {
+      "role": "AXButton",
+      "description": "Zu Zoom Pro wechseln",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     },
+     {
+      "role": "AXButton"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,187 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py); #4350 discovery run 20261103-131437-4350-zoom-languages-discovery-83ca, Zoom 7.1.9 (88375), Home window removed",
+ "windows": [
+  {
+   "title": "zoom share statusbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share statusbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Freigabe stoppen"
+     },
+     {
+      "role": "AXButton",
+      "description": "Am oberen Bildschirmrand festmachen"
+     },
+     {
+      "role": "AXImage",
+      "description": "Sie verwenden die erweiterte Verschlüsselung"
+     },
+     {
+      "role": "AXButton",
+      "description": "Zu Zoom Pro wechseln",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXImage"
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom share toolbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share toolbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Stummschaltung für Audio aufheben",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Video starten",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Teilnehmer",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Teilnehmer options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Chat",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Chat options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Freigeben",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Freigeben options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Pause",
+      "identifier": "ZMMTToolbarContentIdentifierPauseShare",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Layout, press to open presenter layout",
+      "identifier": "ZMMTToolbarContentIdentifierShareLayout",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Kommentieren",
+      "identifier": "ZMMTToolbarContentIdentifierAnnotate",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Meeting anzeigen, Teilnehmer und Inhalte anzeigen",
+      "identifier": "ZMMTToolbarContentIdentifierStage",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Weitere Meetingleitungen, eingeklappt",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom annotation entrypoint",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom annotation entrypoint",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "Kommentieren, current location: left-bottom corner, press arrow keys to change location"
+     }
+    ]
+   }
+  },
+  {
+   "title": "Annotation - Zoom",
+   "root": {
+    "role": "AXWindow",
+    "title": "Annotation - Zoom"
+   }
+  },
+  {
+   "title": "zoom floating video window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom floating video window",
+    "children": [
+     {
+      "role": "AXStaticText",
+      "value": "Sprechen: "
+     },
+     {
+      "role": "AXButton",
+      "description": "Videominiaturansicht ausblenden"
+     },
+     {
+      "role": "AXButton",
+      "description": "Aktives Sprechervideo anzeigen"
+     },
+     {
+      "role": "AXButton",
+      "description": "Videominiaturansicht anzeigen"
+     },
+     {
+      "role": "AXButton",
+      "description": "Vollständiges Meeting-Fenster anzeigen"
+     }
+    ]
+   }
+  }
+ ]
+}
