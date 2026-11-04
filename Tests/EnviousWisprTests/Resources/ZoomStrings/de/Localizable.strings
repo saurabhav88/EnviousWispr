@@ -1,0 +1,24 @@
+/* #4350 test fixture: the listed keys only, copied from Zoom 7.1.9 (88375) de.lproj (fixture folder has no .lproj suffix). */
+"LN_Plist_Accessibility_VoIP_Muted_20044" = "Bei Computeraudio Stummschaltung aktiviert";
+"LN_Plist_Accessibility_VoIP_Unmuted_20044" = "Bei Computeraudio Stummschaltung deaktiviert";
+"LN_Plist_Accessibility_No_Audio_20044" = "Kein Audio angeschlossen";
+"LN_No_Audio_Connected_907832" = "Kein Audio angeschlossen";
+"LN_Plist_Accessibility_Video_On_20044" = "Video an";
+"LN_Plist_Accessibility_Video_Off_20044" = "Video aus";
+"Participants list" = "Teilnehmerliste";
+"LN_Meeting_Slide_Remote_Control_Plist_AX_Description_424289" = "Teilnehmerliste";
+"LN_PBO_Panelist_Count_353951" = "Teilnehmer (%d)";
+"Host" = "Host";
+"Co-host" = "Co-Host";
+"Co-Host" = "Co-Host";
+"Guest" = "Gast";
+"LN_Plist_Guest_110290" = "Gast";
+"me" = "Ich";
+"LN_Accessibility_More_Managing_Options_58425" = "Weitere Optionen für %@, eingeklappt";
+"LN_Meeting_Share_Content_Area_AX_422450" = "Inhalte freigeben";
+"Hide thumbnail video" = "Videominiaturansicht ausblenden";
+"LN_Floating_Bar_Tip_Active_Video_68385" = "Aktives Sprechervideo anzeigen";
+"LN_Accessibility_Active_Speaker_Name_69648" = "Sprechen: %@";
+"Talking: " = "Sprechen: ";
+"Mute My Audio" = "Mein Audio stummschalten";
+"Unmute My Audio" = "Stummschaltung für Audio aufheben";

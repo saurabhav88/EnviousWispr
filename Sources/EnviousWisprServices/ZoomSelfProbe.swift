@@ -80,7 +80,7 @@ package enum ZoomSelfProbe {
   package static func run<Element>(
     app: Element, access: CallAXTreeAccess<Element>, press: (Element) -> PressAnswer,
     pause: (Duration) -> Void, protectedRoles: Set<String>, shouldStop: () -> Bool,
-    hostTime: () -> UInt64 = { 0 }
+    hostTime: () -> UInt64 = { 0 }, labels: ZoomLabels = .builtIn
   ) -> Result {
     let start = access.now()
     func elapsed() -> Int {
@@ -130,7 +130,7 @@ package enum ZoomSelfProbe {
       let copy = CallSpeakerCapture.capture(
         windows: [window], access: access, bounds: bounds, policy: .zoomApp,
         protectedRoles: protectedRoles, keepPage: { _ in false }, app: nil, hostTime: hostTime)
-      if copy.completeness == .complete, let name = oneSelfRow(copy.windows) {
+      if copy.completeness == .complete, let name = oneSelfRow(copy.windows, labels: labels) {
         learned = name
         break
       }
@@ -158,10 +158,13 @@ package enum ZoomSelfProbe {
 
   /// The name of the one bound participants-list row marked `(me)`, or `nil` when there is
   /// none or more than one row (a name the reader's helper would de-duplicate still counts
-  /// twice here). Uses the reader's own row binding and `(me)` parsing.
-  static func oneSelfRow(_ windows: [CallAXWindow]) -> String? {
-    let rows = ZoomAppSpeakerReader.listEntries(windows.flatMap { $0.root.allNodes })
-      .flatMap { $0.compactMap(ZoomAppSpeakerReader.selfName(fromParticipantEntry:)) }
+  /// twice here). Uses the reader's own bound-row parser (`ZoomAppSpeakerReader.boundEntry`),
+  /// so a German `(Host, Ich)` or Japanese `(ホスト, 自分)` row counts too (#4350).
+  static func oneSelfRow(_ windows: [CallAXWindow], labels: ZoomLabels) -> String? {
+    let rows = ZoomAppSpeakerReader.listEntries(
+      windows.flatMap { $0.root.allNodes }, labels: labels
+    )
+    .flatMap { $0.filter(\.isSelf).map(\.name) }
     return rows.count == 1 ? rows[0] : nil
   }
 
@@ -249,7 +252,7 @@ package enum ZoomSelfProbe {
   /// The transaction against the Zoom app `pid`, with the live tree access (0.1 s messaging
   /// timeout on every element, `CallSpeakerCapture.liveAccess`) and a real AXPress.
   package static func live(
-    pid: pid_t, protectedRoles: Set<String>, shouldStop: () -> Bool
+    pid: pid_t, protectedRoles: Set<String>, labels: ZoomLabels, shouldStop: () -> Bool
   ) -> Result {
     run(
       app: AXUIElementCreateApplication(pid), access: CallSpeakerCapture.liveAccess,
@@ -258,7 +261,8 @@ package enum ZoomSelfProbe {
         let c = $0.components
         Thread.sleep(forTimeInterval: Double(c.seconds) + Double(c.attoseconds) / 1e18)
       },
-      protectedRoles: protectedRoles, shouldStop: shouldStop, hostTime: { mach_absolute_time() })
+      protectedRoles: protectedRoles, shouldStop: shouldStop, hostTime: { mach_absolute_time() },
+      labels: labels)
   }
 
   static func livePress(_ element: AXUIElement) -> PressAnswer {

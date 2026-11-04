@@ -106,10 +106,12 @@ struct ZoomLayoutSnapshotTests {
     #expect(copy.completeness == .complete)
     #expect(copy.toleratedFailures == layout.tolerated)
     #expect(
-      CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom) == .resolved)
+      CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: .builtIn) == .resolved)
     let reading = try #require(
       CallSpeakerSurfaceReader.read(
-        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules))
+        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+        zoomLabels: .builtIn))
     #expect(reading.participants.compactMap(\.name) == layout.people)
     #expect(reading.participantIdentityEstablished)
     let context = CallCaptureContext(completeness: copy.completeness, scope: .resolved)
@@ -190,10 +192,12 @@ struct ZoomLayoutSnapshotTests {
     let copy = try shareCapture(layout.file, account: Self.accountTitles)
     #expect(copy.completeness == .complete)
     #expect(
-      CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: copy, family: .zoom) == .resolved)
+      CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: .builtIn) == .resolved)
     let reading = try #require(
       CallSpeakerSurfaceReader.read(
-        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules))
+        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+        zoomLabels: .builtIn))
     #expect(reading.participants.compactMap(\.name) == layout.people)
     #expect(reading.speaking == layout.talking)
     #expect(reading.participantIdentityEstablished == true)
@@ -208,7 +212,8 @@ struct ZoomLayoutSnapshotTests {
     let copy = try shareCapture(layout.file, account: nil)
     let reading = try #require(
       CallSpeakerSurfaceReader.read(
-        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules))
+        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+        zoomLabels: .builtIn))
     // Flagged tiles (gallery and thumbnails) still read as before; label and lone-tile readings
     // need the user's name and are quiet without it.
     switch reading.talkerSource {
@@ -224,10 +229,99 @@ struct ZoomLayoutSnapshotTests {
       #expect(ZoomAppSpeakerReader.shareContext(windows: copy.windows).isSharing == false)
       let reading = try #require(
         CallSpeakerSurfaceReader.read(
-          surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules))
+          surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+          zoomLabels: .builtIn))
       #expect(reading.countHiddenByShare == false)
       #expect(reading.talkerSource != .label)
       #expect(reading.talkerSource != .loneTile)
+    }
+  }
+
+  // MARK: - Other Zoom languages (#4350)
+
+  /// One German or Japanese layout from the #4350 discovery (solo meeting, Zoom 7.1.9 (88375),
+  /// run `20261103-131437-4350-zoom-languages-discovery-83ca`; Home window removed).
+  struct LanguageLayout: Sendable, CustomTestStringConvertible {
+    enum Shape: Sendable {
+      /// The meeting window: one large tile; `listed` when the participants list is open.
+      case meeting(listed: Bool)
+      /// The user shares: the floating window's one tile (video state `Video off`, English).
+      case hostShareTile
+      /// The user shares, floating window collapsed: one quiet Talking text, no tile.
+      case collapsed
+    }
+    let file: String
+    let shape: Shape
+    var testDescription: String { file }
+  }
+
+  static let languageLayouts: [LanguageLayout] = [
+    LanguageLayout(file: "de-2-meeting", shape: .meeting(listed: false)),
+    LanguageLayout(file: "de-3-panel", shape: .meeting(listed: true)),
+    LanguageLayout(file: "ja-3-panel", shape: .meeting(listed: true)),
+    LanguageLayout(file: "de-5-share", shape: .hostShareTile),
+    LanguageLayout(file: "de-7-speaker", shape: .hostShareTile),
+    LanguageLayout(file: "ja-5-share", shape: .hostShareTile),
+    LanguageLayout(file: "de-6-collapsed", shape: .collapsed),
+    LanguageLayout(file: "ja-6-collapsed", shape: .collapsed),
+    LanguageLayout(file: "ja-6b-toolbar", shape: .collapsed),
+  ]
+
+  @Test("German and Japanese layouts read with Zoom's own words", arguments: languageLayouts)
+  func languageLayoutReads(layout: LanguageLayout) throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let copy = try shareCapture(layout.file, account: nil)
+    #expect(copy.completeness == .complete)
+    #expect(
+      CallSpeakerSurfaceReader.scope(
+        surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: labels) == .resolved)
+    let reading = try #require(
+      CallSpeakerSurfaceReader.read(
+        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+        zoomLabels: labels))
+    let share = ZoomAppSpeakerReader.shareContext(windows: copy.windows, labels: labels)
+    // Mute (§3.6): the meeting window's translated button; with no meeting window (the user
+    // shares) it is unknown by design, so the microphone stays live.
+    let mute = CallSelfMuteReader.read(
+      surface: .zoomApp, capture: copy, rules: CallMuteRules.testPackaged.withZoomLabels(labels))
+    switch layout.shape {
+    case .meeting: #expect(mute == .muted)
+    case .hostShareTile, .collapsed: #expect(mute == .unknown)
+    }
+    switch layout.shape {
+    case .meeting(let listed):
+      #expect(share.isSharing == false)
+      #expect(reading.participants.compactMap(\.name) == [Self.user])
+      #expect(reading.participantCount == 1)
+      #expect(reading.rosterFromParticipantList == listed)
+      #expect(reading.participantListComplete == listed)
+      #expect(reading.roster.selfNames == (listed ? [Self.user] : []))
+      #expect(reading.boundSelfMarks == (listed ? [Self.user] : []))
+      #expect(reading.participants.first?.isSelf == listed)
+      #expect(share.countShown)
+    case .hostShareTile:
+      #expect(share.hostShare)
+      #expect(share.tileCount == 1)
+      // The lone tile is the user's own: with no account and no list it names no one.
+      #expect(reading.talkerSource == .loneTile)
+      #expect(reading.participants.isEmpty)
+    case .collapsed:
+      #expect(share.hostShare)
+      #expect(share.tileCount == 0)
+      #expect(reading.talkerSource == .label)
+      #expect(reading.speaking.isEmpty)
+    }
+  }
+
+  @Test("Before #4350 these layouts read nothing: English words alone find no tile")
+  func languageLayoutsNeedLabels() throws {
+    for file in ["de-3-panel", "ja-3-panel", "de-5-share"] {
+      let copy = try shareCapture(file, account: nil)
+      let reading = CallSpeakerSurfaceReader.read(
+        surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
+        zoomLabels: .builtIn)
+      #expect(reading?.participants.isEmpty ?? true, "\(file)")
+      #expect(reading?.roster.selfNames.isEmpty ?? true, "\(file)")
     }
   }
 }

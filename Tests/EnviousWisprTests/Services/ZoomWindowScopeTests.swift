@@ -45,12 +45,14 @@ struct ZoomWindowScopeTests {
   }
 
   private func scope(_ windows: [CallAXWindow]) -> CallCaptureContext.Scope {
-    CallSpeakerSurfaceReader.scope(surface: .zoomApp, capture: capture(windows), family: .zoom)
+    CallSpeakerSurfaceReader.scope(
+      surface: .zoomApp, capture: capture(windows), family: .zoom, zoomLabels: .builtIn)
   }
 
   private func reading(_ windows: [CallAXWindow]) -> CallSpeakerReading? {
     CallSpeakerSurfaceReader.read(
-      surface: .zoomApp, capture: capture(windows), rules: TalkerRulesSnapshot.empty.rules)
+      surface: .zoomApp, capture: capture(windows), rules: TalkerRulesSnapshot.empty.rules,
+      zoomLabels: .builtIn)
   }
 
   private func chosen(_ windows: [CallAXWindow]) -> [CallAXWindow]? {
@@ -444,5 +446,39 @@ struct ZoomWindowScopeTests {
     #expect(
       mute([meeting(extra: [Self.muteButton, Self.receiving]), compact(["Talking: Bea Chen"])])
         == .muted)
+  }
+
+  // MARK: - Other Zoom languages (#4350)
+
+  @Test("a compact window in German or Japanese needs one hide and one show-active button")
+  func compactRecognitionInOtherLanguages() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let german = compact(
+      [],
+      modes: Self.modeButtons(["Videominiaturansicht ausblenden", "Aktives Sprechervideo anzeigen"])
+    )
+    let japanese = compact(
+      [], modes: Self.modeButtons(["サムネイル ビデオの非表示", "アクティブ スピーカー ビデオを表示"]))
+    let incomplete = compact(
+      [],
+      modes: Self.modeButtons(["Videominiaturansicht ausblenden", "Videominiaturansicht anzeigen"]))
+    #expect(ZoomAppSpeakerReader.isCompactWindow(german, labels: labels))
+    #expect(ZoomAppSpeakerReader.isCompactWindow(japanese, labels: labels))
+    #expect(ZoomAppSpeakerReader.isCompactWindow(incomplete, labels: labels) == false)
+    #expect(ZoomAppSpeakerReader.isCompactWindow(german) == false)  // English words only
+    #expect(ZoomAppSpeakerReader.talkingName("Sprechen: Bea", labels: labels) == "Bea")
+    #expect(ZoomAppSpeakerReader.talkingName("発言中:", labels: labels) == "")
+    #expect(ZoomAppSpeakerReader.talkingName("Talking:Bea", labels: labels) == nil)
+  }
+
+  @Test("a Talking text two wordings read as different names is refused by the reader")
+  func ambiguousTalkingRefused() {
+    let key = "LN_Accessibility_Active_Speaker_Name_69648"
+    let labels = ZoomLabels(tables: [("xx", [key: "A: %@"]), ("yy", [key: "A: B: %@"])])
+    #expect(labels.talkingNames("A: B: Dana").count == 2)
+    #expect(ZoomAppSpeakerReader.talkingName("A: B: Dana", labels: labels) == nil)
+    let window = compact(["A: B: Dana"])
+    #expect(ZoomAppSpeakerReader.talkingLabels(window, labels: labels).isEmpty)
+    #expect(ZoomAppSpeakerReader.talkingLabels(compact(["A: Dana"]), labels: labels) == ["Dana"])
   }
 }

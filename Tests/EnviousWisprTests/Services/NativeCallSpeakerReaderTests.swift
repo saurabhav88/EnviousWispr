@@ -998,7 +998,7 @@ struct NativeCallSpeakerReaderTests {
         capture: CallAXCapture(
           windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
           readEndHostTime: 0, accountTitles: account),
-        rules: TalkerRulesSnapshot.empty.rules)
+        rules: TalkerRulesSnapshot.empty.rules, zoomLabels: .builtIn)
     }
     let context = CallCaptureContext(completeness: .complete, scope: .resolved)
     // Two people named Bea in the popped-out list: the label's name is shared, never voted.
@@ -1029,14 +1029,15 @@ struct NativeCallSpeakerReaderTests {
   }
 
   private func surfaceRead(
-    _ windows: [CallAXWindow], account: [String]?, knownSelf: String? = nil
+    _ windows: [CallAXWindow], account: [String]?, knownSelf: String? = nil,
+    labels: ZoomLabels = .builtIn
   ) -> CallSpeakerReading? {
     CallSpeakerSurfaceReader.read(
       surface: .zoomApp,
       capture: CallAXCapture(
         windows: windows, documents: [], completeness: .complete, readStartHostTime: 0,
         readEndHostTime: 0, accountTitles: account),
-      rules: TalkerRulesSnapshot.empty.rules, knownSelf: knownSelf)
+      rules: TalkerRulesSnapshot.empty.rules, zoomLabels: labels, knownSelf: knownSelf)
   }
 
   @Test("Zoom share: a bound (me) row wins over a different account name; unbound text does not")
@@ -1115,5 +1116,241 @@ struct NativeCallSpeakerReaderTests {
     let direct = ZoomAppSpeakerReader.read(
       windows: [meeting, popped(["Dana Lee (me)", "Bea Chen"])])
     #expect(direct.boundSelfMarks == ["Dana Lee"])
+  }
+
+  // MARK: - Other Zoom languages (#4350)
+
+  /// A joined row with its own menu button wording (`menu` is the full button label).
+  private func languageRow(_ entry: String, menu: String) -> CallAXNode {
+    CallAXNode(
+      role: "AXRow",
+      children: [
+        CallAXNode(
+          role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier,
+          children: [
+            CallAXNode(role: "AXStaticText", value: entry),
+            CallAXNode(role: "AXMenuButton", description: menu),
+          ])
+      ])
+  }
+
+  /// SYNTHETIC rows in a German list (labels from the live de receipt): nicknames in brackets
+  /// stay names; only the list language's own self word marks the user.
+  @Test("Zoom de: nicknames keep their full names; (Host, Ich) marks the user")
+  func germanListRows() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let rows = [
+      ("Saurabh A Vaish (Host, Ich)", "Saurabh A Vaish"),
+      ("Benjamin Lee (Ben)", "Benjamin Lee (Ben)"),
+      ("Dana (ME)", "Dana (ME)"), ("Anna (EU)", "Anna (EU)"),
+    ]
+    let window = window(
+      "Zoom Meeting",
+      [
+        zoomTile("Saurabh A Vaish, Bei Computeraudio Stummschaltung aktiviert, Video aus"),
+        CallAXNode(role: "AXStaticText", value: "Teilnehmer (4)"),
+        CallAXNode(
+          role: "AXOutline", description: "Teilnehmerliste",
+          children: rows.map {
+            languageRow($0.0, menu: "Weitere Optionen für \($0.1), eingeklappt")
+          }),
+      ])
+    let reading = ZoomAppSpeakerReader.read(windows: [window], labels: labels)
+    #expect(reading.rosterFromParticipantList)
+    #expect(reading.roster.names == rows.map(\.1))
+    #expect(reading.participantCount == 4)
+    #expect(reading.roster.selfNames == ["Saurabh A Vaish"])
+    #expect(reading.boundSelfMarks == ["Saurabh A Vaish"])
+    // The same rows in an English list: `Ich` is not an English tag, so that row keeps it.
+    let english = self.window(
+      "Zoom Meeting",
+      [
+        CallAXNode(role: "AXStaticText", value: "Participants (3)"),
+        CallAXNode(
+          role: "AXOutline", description: "Participants list",
+          children: [
+            languageRow(
+              "Benjamin Lee (Ben)", menu: "More options for Benjamin Lee (Ben), collapsed"),
+            languageRow("Dana (ME)", menu: "More options for Dana (ME), collapsed"),
+            languageRow("Anna (EU)", menu: "More options for Anna (EU), collapsed"),
+          ]),
+      ])
+    let englishReading = ZoomAppSpeakerReader.read(windows: [english], labels: labels)
+    #expect(englishReading.roster.names == ["Benjamin Lee (Ben)", "Dana (ME)", "Anna (EU)"])
+    #expect(englishReading.roster.selfNames == [])
+    #expect(englishReading.participantListComplete)
+  }
+
+  @Test("Zoom ja: the name-first row menu binds; (ホスト, 自分) marks the user")
+  func japaneseListRow() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let window = window(
+      "Zoom ミーティング",
+      [
+        CallAXNode(role: "AXStaticText", value: "参加者 (1)"),
+        CallAXNode(
+          role: "AXOutline", description: "参加者リスト",
+          children: [
+            languageRow(
+              "Saurabh A Vaish (ホスト, 自分)",
+              menu: "Saurabh A Vaish のその他のオプション、折りたたみ済み")
+          ]),
+      ])
+    let reading = ZoomAppSpeakerReader.read(windows: [window], labels: labels)
+    #expect(reading.roster.names == ["Saurabh A Vaish"])
+    #expect(reading.participantCount == 1)
+    #expect(reading.boundSelfMarks == ["Saurabh A Vaish"])
+    // A foreign self word in a text outside a bound row is not read (English `me` only).
+    let loose = self.window(
+      "Zoom ミーティング", [CallAXNode(role: "AXStaticText", value: "Dana (自分)")])
+    #expect(ZoomAppSpeakerReader.read(windows: [loose], labels: labels).roster.selfNames == [])
+  }
+
+  /// SYNTHETIC: two languages share the list label, and each binds the row's menu button to a
+  /// different name (es takes `(yo)` off as its self word, pt-PT keeps it in the name). The row
+  /// is left unresolved. (A tag word meaning two roles never gets here: `ZoomLabels` drops it.)
+  @Test("Zoom: a row two list languages read differently is unresolved and marks no one")
+  func ambiguousRowLanguages() {
+    let menuKey = "LN_Accessibility_More_Managing_Options_58425"
+    let listKey = "LN_Meeting_Slide_Remote_Control_Plist_AX_Description_424289"
+    let labels = ZoomLabels(tables: [
+      ("es", [listKey: "Lista de participantes", menuKey: "Opciones para %@ (yo)", "me": "yo"]),
+      ("pt-PT", [listKey: "Lista de participantes", menuKey: "Opciones para %@"]),
+    ])
+    let window = window(
+      "Zoom Meeting",
+      [
+        CallAXNode(role: "AXStaticText", value: "Participants (1)"),
+        CallAXNode(
+          role: "AXOutline", description: "Lista de participantes",
+          children: [languageRow("Ana (yo)", menu: "Opciones para Ana (yo)")]),
+      ])
+    #expect(labels.report.collisions == 0)
+    let reading = ZoomAppSpeakerReader.read(windows: [window], labels: labels)
+    #expect(reading.participantListComplete == false)
+    #expect(reading.boundSelfMarks == [])
+    #expect(reading.roster.selfNames == [])
+  }
+
+  /// SYNTHETIC: a bound row whose self tag or bracket Zoom drew full width.
+  @Test("Zoom: full-width self tags and brackets mark the user; the name keeps its characters")
+  func fullWidthTags() {
+    let list = window(
+      "Participants",
+      [
+        CallAXNode(role: "AXStaticText", value: "Participants (2)"),
+        CallAXNode(
+          role: "AXOutline", description: "Participants list",
+          children: [
+            languageRow("Ｄａｎａ  Lee (ｍｅ)", menu: "More options for Ｄａｎａ  Lee, collapsed"),
+            languageRow("Bea （Host）", menu: "More options for Bea, collapsed"),
+          ]),
+      ])
+    let reading = ZoomAppSpeakerReader.read(windows: [list])
+    #expect(reading.roster.names == ["Ｄａｎａ  Lee", "Bea"])
+    #expect(reading.boundSelfMarks == ["Ｄａｎａ  Lee"])
+    #expect(reading.roster.selfNames == ["Ｄａｎａ  Lee"])
+    #expect(reading.participantListComplete)
+  }
+
+  /// SYNTHETIC: a list row reading `Dana (me)` whose menu button names someone else.
+  @Test("Zoom: a list row the menu button does not bind never marks the user")
+  func rejectedRowMarksNoOne() throws {
+    let list = window(
+      "Participants",
+      [
+        CallAXNode(role: "AXStaticText", value: "Participants (1)"),
+        CallAXNode(
+          role: "AXOutline", description: "Participants list",
+          children: [languageRow("Dana (me)", menu: "More options for Bea, collapsed")]),
+      ])
+    let reading = ZoomAppSpeakerReader.read(windows: [list])
+    #expect(reading.participantListComplete == false)
+    #expect(reading.roster.selfNames == [])
+    #expect(reading.boundSelfMarks == [])
+    #expect(ZoomSelfProbe.oneSelfRow([list], labels: .builtIn) == nil)
+    // The same words as loose text outside any list keep the old rule.
+    let loose = window("Zoom Meeting", [CallAXNode(role: "AXStaticText", value: "Dana (me)")])
+    #expect(ZoomAppSpeakerReader.read(windows: [loose]).roster.selfNames == ["Dana"])
+  }
+
+  // German share and account cases (#4350 §11): synthetic windows, German words from the live
+  // receipt. Production German account-menu reading is NOT VERIFIED until the Live UAT.
+
+  private func germanFloating(_ talking: String) -> CallAXWindow {
+    window(
+      "zoom floating video window",
+      [
+        CallAXNode(role: "AXStaticText", value: talking),
+        CallAXNode(role: "AXButton", description: "Videominiaturansicht ausblenden"),
+        CallAXNode(role: "AXButton", description: "Aktives Sprechervideo anzeigen"),
+      ])
+  }
+
+  private func germanList(_ rows: [(entry: String, name: String)]) -> CallAXWindow {
+    window(
+      "Teilnehmer",
+      [
+        CallAXNode(
+          role: "AXOutline", description: "Teilnehmerliste",
+          children: rows.map {
+            languageRow($0.entry, menu: "Weitere Optionen für \($0.name), eingeklappt")
+          })
+      ])
+  }
+
+  private func germanGuestShare(tile: String) -> CallAXWindow {
+    meetingWindow([
+      CallAXNode(role: "AXUnknown", description: "Inhalte freigeben"),
+      zoomTile(tile),
+    ])
+  }
+
+  @Test("Zoom de share: a bound (Host, Ich) row wins over a different account name")
+  func germanBoundMarkBeatsAccount() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let toolbar = window("zoom share toolbar window", [])
+    let bound = surfaceRead(
+      [
+        toolbar, germanFloating("Sprechen: Bea Chen"),
+        germanList([("Dana Lee (Host, Ich)", "Dana Lee"), ("Bea Chen", "Bea Chen")]),
+      ], account: Self.account, labels: labels)
+    #expect(bound?.speaking == ["Bea Chen"])
+    #expect(bound?.boundSelfMarks == ["Dana Lee"])
+    #expect(bound?.talkerSource == .label)
+    // Two different bound self rows: who the user is cannot be told.
+    let two = surfaceRead(
+      [
+        toolbar, germanFloating("Sprechen: Bea Chen"),
+        germanList([("Dana Lee (Host, Ich)", "Dana Lee")]),
+        germanList([("Sam Ortiz (Ich)", "Sam Ortiz")]),
+      ], account: Self.account, labels: labels)
+    #expect(two?.speaking == [])
+  }
+
+  @Test("Zoom de guest share: one account names the guest; the user's own tile stays quiet")
+  func germanGuestShareAccount() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let guest = surfaceRead(
+      [germanGuestShare(tile: "Bea Chen, Bei Computeraudio Stummschaltung deaktiviert")],
+      account: Self.account, labels: labels)
+    #expect(guest?.talkerSource == .loneTile)
+    #expect(guest?.speaking == ["Bea Chen"])
+    #expect(guest?.participants.compactMap(\.name) == ["Bea Chen"])
+    let mine = surfaceRead(
+      [germanGuestShare(tile: "Saurabh A Vaish, Bei Computeraudio Stummschaltung deaktiviert")],
+      account: Self.account, labels: labels)
+    #expect(mine?.speaking == [])
+    #expect(mine?.participants.isEmpty == true)
+    // Two checked accounts: conflicting evidence, so no one is named.
+    let conflicting = surfaceRead(
+      [germanGuestShare(tile: "Bea Chen, Bei Computeraudio Stummschaltung deaktiviert")],
+      account: Self.account + ["Dana Lee(dana@example.com)"], labels: labels)
+    #expect(conflicting?.speaking == [])
+    // No account at all: quiet.
+    let none = surfaceRead(
+      [germanGuestShare(tile: "Bea Chen, Bei Computeraudio Stummschaltung deaktiviert")],
+      account: nil, labels: labels)
+    #expect(none?.speaking == [])
   }
 }

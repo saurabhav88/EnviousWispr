@@ -1,0 +1,187 @@
+{
+ "source": "Zoom Workplace live AX copy (zsnap.py); #4350 discovery run 20261103-131437-4350-zoom-languages-discovery-83ca, Zoom 7.1.9 (88375), Home window removed",
+ "windows": [
+  {
+   "title": "zoom share statusbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share statusbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "共有の停止"
+     },
+     {
+      "role": "AXButton",
+      "description": "上部にドッキング"
+     },
+     {
+      "role": "AXImage",
+      "description": "強化暗号化を使用しています"
+     },
+     {
+      "role": "AXButton",
+      "description": "Zoomプロにアップグレード",
+      "identifier": "upgrade button"
+     },
+     {
+      "role": "AXImage"
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom share toolbar window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom share toolbar window",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "自分のオーディオをミュート解除する",
+      "identifier": "audio",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Audio options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "ビデオをオンにする",
+      "identifier": "video",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "Video options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "参加者",
+      "identifier": "participant",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "参加者 options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "チャット",
+      "identifier": "chat",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "チャット options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "共有",
+      "identifier": "share",
+      "children": [
+       {
+        "role": "AXButton",
+        "description": "共有 options"
+       }
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "一時停止",
+      "identifier": "ZMMTToolbarContentIdentifierPauseShare",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "Layout, press to open presenter layout",
+      "identifier": "ZMMTToolbarContentIdentifierShareLayout",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "注釈",
+      "identifier": "ZMMTToolbarContentIdentifierAnnotate",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "ミーティングを表示する, 参加者とコンテンツを表示します",
+      "identifier": "ZMMTToolbarContentIdentifierStage",
+      "failed": [
+       "AXChildren"
+      ]
+     },
+     {
+      "role": "AXButton",
+      "description": "その他のミーティング コントロール、折りたたみ済み",
+      "identifier": "more",
+      "failed": [
+       "AXChildren"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "title": "zoom annotation entrypoint",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom annotation entrypoint",
+    "children": [
+     {
+      "role": "AXButton",
+      "description": "注釈, current location: left-bottom corner, press arrow keys to change location"
+     }
+    ]
+   }
+  },
+  {
+   "title": "Annotation - Zoom",
+   "root": {
+    "role": "AXWindow",
+    "title": "Annotation - Zoom"
+   }
+  },
+  {
+   "title": "zoom floating video window",
+   "root": {
+    "role": "AXWindow",
+    "title": "zoom floating video window",
+    "children": [
+     {
+      "role": "AXStaticText",
+      "value": "発言中:"
+     },
+     {
+      "role": "AXButton",
+      "description": "サムネイル ビデオの非表示"
+     },
+     {
+      "role": "AXButton",
+      "description": "アクティブ スピーカー ビデオを表示"
+     },
+     {
+      "role": "AXButton",
+      "description": "サムネイル ビデオの表示"
+     },
+     {
+      "role": "AXButton",
+      "description": "フルサイズのミーティング ウィンドウを表示します"
+     }
+    ]
+   }
+  }
+ ]
+}

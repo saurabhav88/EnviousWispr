@@ -1,0 +1,24 @@
+/* #4350 test fixture: the listed keys only, copied from Zoom 7.1.9 (88375) zh-Hant.lproj (fixture folder has no .lproj suffix). */
+"LN_Plist_Accessibility_VoIP_Muted_20044" = "電腦音訊靜音";
+"LN_Plist_Accessibility_VoIP_Unmuted_20044" = "電腦音訊開啟";
+"LN_Plist_Accessibility_No_Audio_20044" = "未連接音訊";
+"LN_No_Audio_Connected_907832" = "未連接音訊";
+"LN_Plist_Accessibility_Video_On_20044" = "開啟視訊";
+"LN_Plist_Accessibility_Video_Off_20044" = "關閉視訊";
+"Participants list" = "與會者清單";
+"LN_Meeting_Slide_Remote_Control_Plist_AX_Description_424289" = "與會者清單";
+"LN_PBO_Panelist_Count_353951" = "與會者（%d）";
+"Host" = "主持人";
+"Co-host" = "聯席主持人";
+"Co-Host" = "聯席主持人";
+"Guest" = "來賓";
+"LN_Plist_Guest_110290" = "來賓";
+"me" = "我";
+"LN_Accessibility_More_Managing_Options_58425" = "更多%@選項，已摺疊";
+"LN_Meeting_Share_Content_Area_AX_422450" = "分享內容";
+"Hide thumbnail video" = "隱藏視訊縮圖";
+"LN_Floating_Bar_Tip_Active_Video_68385" = "顯示目前演講者的視訊";
+"LN_Accessibility_Active_Speaker_Name_69648" = "正在發言：%@";
+"Talking: " = "正在發言：";
+"Mute My Audio" = "靜音";
+"Unmute My Audio" = "解除靜音";

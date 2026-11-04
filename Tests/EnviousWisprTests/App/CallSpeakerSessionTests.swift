@@ -590,9 +590,10 @@ import os
       let release = DispatchSemaphore(value: 0)
       let stopped = OSAllocatedUnfairLock(initialState: [Bool]())
 
-      func run(_ target: CallSpeakerTarget, _ roles: Set<String>, _ stop: () -> Bool)
-        -> ZoomSelfProbe.Result
-      {
+      func run(
+        _ target: CallSpeakerTarget, _ roles: Set<String>, _ labels: ZoomLabels,
+        _ stop: () -> Bool
+      ) -> ZoomSelfProbe.Result {
         calls.withLock { $0.append((target.pid, roles)) }
         let holding = hold.withLock { $0 }
         let late = holdAfterStop.withLock { $0 }
@@ -696,7 +697,7 @@ import os
           tick: .seconds(3_600), settle: .milliseconds(2_000), observerTick: .seconds(3_600),
           saveEvery: 1_000, muteFollowing: { following },
           muteEvent: { rig.muteEvents.append($0) },
-          selfProbe: { target, roles, stop in probe.run(target, roles, stop) },
+          selfProbe: { target, roles, labels, stop in probe.run(target, roles, labels, stop) },
           focus: focus.access))
     }
 

@@ -323,21 +323,25 @@ final class CallSpeakerObserver {
       // Trust is read again the moment the reads end, not only at the next tick.
       let trustedAfter = isTrusted()
       // Parsing happens here too, off the main actor.
+      // #4350: the recording's frozen Zoom words, carried in its merged mute rules.
+      let zoomLabels = muteRules.zoomLabels
       let parsed = Parsed(
         copy: copy,
         reading: rules.flatMap {
           CallSpeakerSurfaceReader.read(
-            surface: binding.surface, capture: copy, rules: $0, knownSelf: knownSelf)
+            surface: binding.surface, capture: copy, rules: $0, zoomLabels: zoomLabels,
+            knownSelf: knownSelf)
         },
         context: CallCaptureContext(
           completeness: copy.completeness,
           scope: CallSpeakerSurfaceReader.scope(
-            surface: binding.surface, capture: copy, family: binding.source.family)),
+            surface: binding.surface, capture: copy, family: binding.source.family,
+            zoomLabels: zoomLabels)),
         mute: binding.mute
           ? CallSelfMuteReader.read(surface: binding.surface, capture: copy, rules: muteRules)
           : nil,
         probeFacts: rules != nil && binding.surface == .zoomApp
-          ? ZoomSelfProbeFacts(capture: copy) : nil)
+          ? ZoomSelfProbeFacts(capture: copy, labels: zoomLabels) : nil)
       // The lane frees only once the physical work returned.
       busy.withLock { $0 = false }
       Task { @MainActor [weak self] in
@@ -492,10 +496,11 @@ struct ZoomSelfProbeFacts: Equatable, Sendable {
     self.boundSelfMarks = boundSelfMarks
   }
 
-  init(capture: CallAXCapture) {
+  /// `labels`: the recording's Zoom words (#4350 §16), so a German or Japanese list counts.
+  init(capture: CallAXCapture, labels: ZoomLabels) {
     self.init(
       ready: capture.completeness == .complete
-        && ZoomAppSpeakerReader.selfProbeReady(windows: capture.windows),
-      boundSelfMarks: ZoomAppSpeakerReader.boundSelfMarks(windows: capture.windows))
+        && ZoomAppSpeakerReader.selfProbeReady(windows: capture.windows, labels: labels),
+      boundSelfMarks: ZoomAppSpeakerReader.boundSelfMarks(windows: capture.windows, labels: labels))
   }
 }

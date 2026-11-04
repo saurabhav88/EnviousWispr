@@ -1,0 +1,24 @@
+/* #4350 test fixture: the listed keys only, copied from Zoom 7.1.9 (88375) en.lproj (fixture folder has no .lproj suffix). */
+"LN_Plist_Accessibility_VoIP_Muted_20044" = "Computer audio muted";
+"LN_Plist_Accessibility_VoIP_Unmuted_20044" = "Computer audio unmuted";
+"LN_Plist_Accessibility_No_Audio_20044" = "No audio connected";
+"LN_No_Audio_Connected_907832" = "No audio connected";
+"LN_Plist_Accessibility_Video_On_20044" = "Video on";
+"LN_Plist_Accessibility_Video_Off_20044" = "Video off";
+"Participants list" = "Participants list";
+"LN_Meeting_Slide_Remote_Control_Plist_AX_Description_424289" = "Participants list";
+"LN_PBO_Panelist_Count_353951" = "Participants (%d)";
+"Host" = "Host";
+"Co-host" = "Co-host";
+"Co-Host" = "Co-host";
+"Guest" = "Guest";
+"LN_Plist_Guest_110290" = "Guest";
+"me" = "me";
+"LN_Accessibility_More_Managing_Options_58425" = "More options for %@, collapsed";
+"LN_Meeting_Share_Content_Area_AX_422450" = "Share content";
+"Hide thumbnail video" = "Hide thumbnail video";
+"LN_Floating_Bar_Tip_Active_Video_68385" = "Show active speaker video";
+"LN_Accessibility_Active_Speaker_Name_69648" = "Talking: %@";
+"Talking: " = "Talking: ";
+"Mute My Audio" = "Mute my audio";
+"Unmute My Audio" = "Unmute my audio";

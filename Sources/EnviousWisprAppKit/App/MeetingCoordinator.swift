@@ -372,6 +372,10 @@ final class MeetingCoordinator {
     /// network (`RemoteRules.mute.current()`); frozen at recording start for its capture
     /// protection and mute reading. The default follows no button, so the microphone stays live.
     var muteRules: @MainActor () async -> CallMuteRules = { .empty }
+    /// #4350: the Zoom app's words in every installed Zoom language (`ZoomLabelsStore`), read
+    /// from Zoom's own files off the main actor; frozen at recording start inside the mute rules
+    /// (`CallMuteRules.withZoomLabels`). The default is the English floor.
+    var zoomLabels: @MainActor () async -> ZoomLabels = { .builtIn }
     /// #4013 chunk 13A: whether this app may read other apps through Accessibility.
     var isAccessibilityTrusted: @Sendable () -> Bool = { AXIsProcessTrusted() }
     /// #4013 chunk 13A: one bounded copy of a call app (run off the main actor), keeping every
@@ -388,11 +392,14 @@ final class MeetingCoordinator {
     }
     /// #4356: the Zoom self probe (opens Zoom's Participants panel, reads the `(me)` row, closes
     /// it), run on the speaker lane, keeping `protectedRoles` strict like `captureCallApp`.
-    var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
-      { target, protectedRoles, shouldStop in
-        ZoomSelfProbe.live(
-          pid: target.pid, protectedRoles: protectedRoles, shouldStop: shouldStop)
-      }
+    /// #4350 §16: `labels` are the recording's frozen Zoom words.
+    var selfProbe:
+      @Sendable (CallSpeakerTarget, Set<String>, ZoomLabels, () -> Bool) -> ZoomSelfProbe.Result =
+        { target, protectedRoles, labels, shouldStop in
+          ZoomSelfProbe.live(
+            pid: target.pid, protectedRoles: protectedRoles, labels: labels,
+            shouldStop: shouldStop)
+        }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared
     /// #4248: whether "Leave my voice out when I'm muted" is on (`meetingFollowsCallMute`); the
@@ -984,6 +991,11 @@ final class MeetingCoordinator {
     /// #4013: called when a roster read has passed its first check and is about to wait on the
     /// file queue, so a test can start a deletion exactly then.
     @ObservationIgnored var rosterReadAdmittedForTesting: (@MainActor () -> Void)?
+    /// #4350: called when `startSpeakerSession` returns for a recording, on every path (a late
+    /// result from a stopped recording included).
+    @ObservationIgnored var speakerSessionStartFinishedForTesting: (@MainActor (UUID) -> Void)?
+    /// #4350: the frozen mute rules (with the recording's Zoom words) and whose they are.
+    var speakerMuteRulesForTesting: (meetingID: UUID, rules: CallMuteRules)? { speakerMuteRules }
   #endif
 
   // MARK: - Start and stop
@@ -2668,11 +2680,17 @@ final class MeetingCoordinator {
   /// reads the mute button; naming attaches to it when the rules arrive (no rules: naming
   /// stays off). With following off, the session waits for the rules as before.
   private func startSpeakerSession(meetingID: UUID, recorder: MeetingRecording) async {
+    #if DEBUG
+      defer { speakerSessionStartFinishedForTesting?(meetingID) }
+    #endif
     guard deps.callSources != nil else { return }
     // Frozen first, whether or not names are on: a mute-only session reads with them too.
+    // #4350: the Zoom words go inside the same frozen value (one load per recording, from
+    // Zoom's installed files, so a recording started before Zoom opens has them too).
     let muteRules = await deps.muteRules()
+    let zoomLabels = await deps.zoomLabels()
     guard case .recording(let current, _) = phase, current == meetingID, !quitting else { return }
-    speakerMuteRules = (meetingID, muteRules)
+    speakerMuteRules = (meetingID, muteRules.withZoomLabels(zoomLabels))
     if deps.muteFollowingEnabled() {
       makeSpeakerSession(meetingID: meetingID, recorder: recorder, rules: nil)
     }
