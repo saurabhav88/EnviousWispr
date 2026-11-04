@@ -24,7 +24,16 @@ import Foundation
 /// unsupported-param strip-and-retry: an id whose shape we got wrong gets an
 /// HTTP 400, which the picker probe turns into "not offered".
 public struct ClaudeConnector: TranscriptPolisher {
+  /// Transport seam (#4353 PR 5): one physical batch HTTP exchange, as `OpenAIConnector`
+  /// has. The weekly cloud model routine and scripted tests inject it; production always
+  /// uses the shared session.
+  typealias RequestExecutor = @Sendable (
+    URLRequest,
+    LLMTaskMetricsCollector
+  ) async throws -> (Data, URLResponse)
+
   private let keychainManager: KeychainManager
+  private let requestExecutor: RequestExecutor
   /// #4353 D6: the cloud model list the operation that built this connector captured.
   private let cloudModelList: CloudModelList?
   private let baseURL = "https://api.anthropic.com/v1/messages"
@@ -33,6 +42,19 @@ public struct ClaudeConnector: TranscriptPolisher {
   public init(keychainManager: KeychainManager = KeychainManager(), cloudModelList: CloudModelList?) {
     self.keychainManager = keychainManager
     self.cloudModelList = cloudModelList
+    self.requestExecutor = { request, collector in
+      try await LLMNetworkSession.shared.session.data(for: request, delegate: collector)
+    }
+  }
+
+  /// Test seam. Production callers use the public init.
+  init(
+    keychainManager: KeychainManager, cloudModelList: CloudModelList?,
+    requestExecutor: @escaping RequestExecutor
+  ) {
+    self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
+    self.requestExecutor = requestExecutor
   }
 
   public func polish(
@@ -199,7 +221,6 @@ public struct ClaudeConnector: TranscriptPolisher {
     config: LLMProviderConfig,
     callNumber: Int
   ) async throws -> LLMResult {
-    let session = LLMNetworkSession.shared.session
     let collector = LLMTaskMetricsCollector()
     var statusForLog = "pending"
     defer {
@@ -213,7 +234,7 @@ public struct ClaudeConnector: TranscriptPolisher {
     let data: Data
     let response: URLResponse
     do {
-      (data, response) = try await session.data(for: request, delegate: collector)
+      (data, response) = try await requestExecutor(request, collector)
     } catch {
       statusForLog = "error:\(Self.shortError(error))"
       throw error
