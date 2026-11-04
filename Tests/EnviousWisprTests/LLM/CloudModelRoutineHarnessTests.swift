@@ -247,7 +247,7 @@ struct CloudModelRoutineHarnessTests {
     #expect(encoded.contains(#""openAIEffort":"omit""#))
   }
 
-  @Test("a final bad request is recorded as requestRejected; no row, no search")
+  @Test("a final bad request is recorded as requestRejected; every alternative rejected, no row")
   func requestRejected() async throws {
     let vendors = Self.vendorsWithNewModels()
     vendors.responder = { provider, request, _ in
@@ -265,8 +265,9 @@ struct CloudModelRoutineHarnessTests {
     #expect(claude.errorClass == .requestRejected)
     #expect(claude.row == nil)
     #expect(receipt.outcome == "partial")
-    // A 400 is not retried and the sweep stops at the first failed dictation.
-    #expect(vendors.polishRequests.filter { $0.contains("anthropic") }.count == 1)
+    // A 400 is not retried: one fallback POST, then one screening POST per alternative (2).
+    #expect(vendors.polishRequests.filter { $0.contains("anthropic") }.count == 3)
+    #expect(claude.search?.outcome == .requestRejectedSearchExhausted)
     // The key in the error body never reaches the receipt.
     _ = try receipt.encoded(refusing: Array(Self.keys.values.values))
   }

@@ -67,10 +67,15 @@ struct CloudModelRoutineReceipt: Encodable {
 
   struct CandidateResult: Encodable {
     let id: String
+    /// The FALLBACK setting (the compiled rule for this unlisted id).
     let setting: String?
-    /// `pass`, `fail`, or `notTried` (no list spelling for the compiled fallback).
+    /// `pass` (fallback), `passViaSearch` (the fallback was rejected and a searched setting
+    /// proved itself; `row` carries that setting), `fail`, or `notTried` (no list spelling
+    /// for the compiled fallback).
     let outcome: String
+    /// The fallback's closed failure class; a `passViaSearch` keeps `requestRejected` here.
     let errorClass: CloudModelRoutine.ErrorClass?
+    /// The fallback's timings; a searched setting's timings are in `search`.
     let perInputMs: [Int]
     let medianMs: Int?
     /// Every success needed an OpenAI parameter strip. The row still records the unchanged
@@ -78,9 +83,15 @@ struct CloudModelRoutineReceipt: Encodable {
     let passViaAdaptation: Bool
     /// The provider's own date as it came (ISO 8601), apart from the `released` day.
     let sourceDate: String?
-    /// The proposed list resolves this id like the captured list does (nil when not checked).
+    /// For a fallback pass: the proposed list resolves this id like the captured list does.
+    /// For a searched pass: it resolves exactly the chosen setting with the fallback's chat
+    /// eligibility and file batching. Nil when not checked.
     let resolvesTheSame: Bool?
     let row: CloudModelRoutine.ProposedRow?
+    /// The fallback phase as measured; never replaced by a search result.
+    let fallback: CloudModelRoutine.PhaseResult?
+    /// Present only when the fallback ended in `requestRejected`.
+    let search: CloudModelRoutine.SearchEvidence?
   }
 
   struct ExcludedModel: Encodable {
@@ -110,8 +121,11 @@ struct CloudModelRoutineReceipt: Encodable {
   let observedAt: Date
   let list: ListEvidence
   let inputs: [InputEvidence]
-  /// `success`, `partial` (some candidate failed), `failure` (a catalog failed or the ledger
-  /// refused a call) or `nochange` (nothing to propose).
+  /// The instrument's view: `success`, `partial` (some candidate failed), `failure` (a
+  /// catalog failed or the ledger refused a call) or `nochange` (nothing this receipt
+  /// proposes). Not final: the proposal step (Chunk 6, `propose.py`) owns the final proposal or
+  /// no-change classification, including routine un-hides (founder decision 13), and never
+  /// upgrades `failure` or `partial`.
   let outcome: String
   let providers: [ProviderResult]
   let calls: [CloudModelRoutineCalls.ExchangeRecord]
@@ -207,7 +221,9 @@ extension CloudModelRoutine {
           let result = await sweep(
             candidate, provider: provider, keychain: keychain, list: list, meter: meter,
             transports: transports)
-          if result.outcome != "pass" { anyCandidateFailed = true }
+          if result.outcome != "pass" && result.outcome != "passViaSearch" {
+            anyCandidateFailed = true
+          }
           if result.row != nil { anyProposal = true }
           candidates.append(result)
         }
@@ -247,7 +263,8 @@ extension CloudModelRoutine {
       publicationReady: false)
   }
 
-  /// The fallback sweep of one candidate: three fixed dictations with the shipped setting.
+  /// One candidate: three fixed dictations with the shipped (fallback) setting, then the
+  /// settings search only if the fallback ended in `requestRejected`.
   static func sweep(
     _ candidate: LLMModelDiscovery.DiscoveryCandidate, provider: LLMProvider,
     keychain: KeychainManager, list: CloudModelList, meter: Meter, transports: Transports
@@ -258,67 +275,59 @@ extension CloudModelRoutine {
     let sourceDate = candidate.releaseDate.map { ISO8601DateFormatter().string(from: $0) }
     guard let policy = fallbackPolicy(provider, capabilities: capabilities),
       let setting = CloudModelRoutineCalls.Setting(policy, provider: provider),
-      let keyID = keyID(provider),
-      let connector = connector(
-        provider, keychain: keychain, list: list,
-        executor: meter.wrap(transports.polish(provider), provider: provider))
+      keyID(provider) != nil
     else {
       return .init(
         id: id, setting: nil, outcome: "notTried", errorClass: nil, perInputMs: [], medianMs: nil,
-        passViaAdaptation: false, sourceDate: sourceDate, resolvesTheSame: nil, row: nil)
+        passViaAdaptation: false, sourceDate: sourceDate, resolvesTheSame: nil, row: nil,
+        fallback: nil, search: nil)
     }
-    // The omission memo starts empty for the tested setting; never cleared inside a call.
-    if provider == .openAI { OpenAIConnector.resetOmissions(model: id) }
+    let fallback = await runPhase(
+      id: id, provider: provider, setting: setting, phase: .fallback, inputIndices: inputIndices,
+      list: list, keychain: keychain, meter: meter, transports: transports)
+    let adapted = fallback.memoAdapted
+    let released = releasedDay(candidate.releaseDate)
 
-    var times: [Double] = []
-    var failure: ErrorClass?
-    for (index, input) in inputs.enumerated() {
-      let call = CloudModelRoutineCalls.LogicalCallID(
-        provider: provider, model: id, setting: setting, phase: .fallback, input: index)
-      do {
-        try meter.begin(call)
-      } catch {
-        failure = .harnessRefused
-        break
+    guard fallback.completed else {
+      guard fallback.errorClass == .requestRejected else {
+        return .init(
+          id: id, setting: setting.label, outcome: "fail",
+          errorClass: fallback.errorClass ?? .other, perInputMs: fallback.perInputMs,
+          medianMs: fallback.medianMs, passViaAdaptation: adapted, sourceDate: sourceDate,
+          resolvesTheSame: nil, row: nil, fallback: fallback, search: nil)
       }
-      let config = LLMProviderConfig(
-        model: id, apiKeyKeychainId: keyID,
-        outputTokens: LLMPolishStep.outputTokenPolicy(
-          provider: provider, textCount: input.text.count, thinks: nil),
-        temperature: 0, thinking: capabilities.thinkingControl.resolved)
-      let envelope = LiveSweepSupport.productionEnvelope(
-        provider: provider, modelID: id, transcript: input.text)
-      let start = ContinuousClock.now
-      do {
-        let result = try await connector.polish(envelope: envelope, config: config, onToken: nil)
-        meter.end()
-        let elapsed = ContinuousClock.now - start
-        times.append(
-          Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1e15)
-        if LiveSweepSupport.problem(input: input.text, output: result.polishedText) != nil {
-          failure = .unusableOutput
-          break
-        }
-      } catch {
-        meter.end()
-        failure = errorClass(error)
-        break
+      let (evidence, chosen) = await search(
+        id: id, provider: provider, fallback: setting, fallbackCapabilities: capabilities,
+        allowsFileBatch: allowsFileBatch, released: released, list: list, keychain: keychain,
+        meter: meter, transports: transports)
+      var row: ProposedRow?
+      var resolves: Bool?
+      if let (chosenSetting, confirmation) = chosen {
+        let candidateRow = searchRow(
+          provider: provider, id: id, released: released, policy: chosenSetting.policy,
+          fallback: capabilities, allowsFileBatch: allowsFileBatch,
+          medianMs: confirmation.medianMs)
+        let proposed = try? listAdding(candidateRow, to: list)
+        let ok =
+          proposed.map {
+            resolvesSetting(
+              provider, id: id, policy: chosenSetting.policy,
+              supportsChatCompletions: capabilities.supportsChatCompletions,
+              allowsFileBatch: allowsFileBatch, in: $0)
+          } ?? false
+        resolves = ok
+        row = ok ? candidateRow : nil
       }
-    }
-
-    let adapted =
-      provider == .openAI && !OpenAIConnector.memoizedOmissions(model: id).isEmpty
-    let perInputMs = times.map { Int($0.rounded()) }
-    let median = times.isEmpty ? nil : Int(LiveSweepSupport.medianMs(times).rounded())
-    guard failure == nil, times.count == inputs.count else {
       return .init(
-        id: id, setting: setting.label, outcome: "fail", errorClass: failure ?? .other,
-        perInputMs: perInputMs, medianMs: median, passViaAdaptation: adapted,
-        sourceDate: sourceDate, resolvesTheSame: nil, row: nil)
+        id: id, setting: setting.label, outcome: row == nil ? "fail" : "passViaSearch",
+        errorClass: .requestRejected, perInputMs: fallback.perInputMs,
+        medianMs: fallback.medianMs, passViaAdaptation: adapted, sourceDate: sourceDate,
+        resolvesTheSame: resolves, row: row, fallback: fallback, search: evidence)
     }
 
+    let median = fallback.medianMs
     let row = ProposedRow(
-      provider: provider.rawValue, id: id, released: releasedDay(candidate.releaseDate),
+      provider: provider.rawValue, id: id, released: released,
       recommended: false, hidden: false, request: RequestJSON(policy),
       supportsChatCompletions: capabilities.supportsChatCompletions,
       allowsFileBatch: allowsFileBatch,
@@ -331,8 +340,8 @@ extension CloudModelRoutine {
     }
     return .init(
       id: id, setting: setting.label, outcome: same ? "pass" : "fail",
-      errorClass: same ? nil : .other, perInputMs: perInputMs, medianMs: median,
+      errorClass: same ? nil : .other, perInputMs: fallback.perInputMs, medianMs: median,
       passViaAdaptation: adapted, sourceDate: sourceDate, resolvesTheSame: same,
-      row: same ? row : nil)
+      row: same ? row : nil, fallback: fallback, search: nil)
   }
 }

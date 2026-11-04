@@ -68,6 +68,27 @@ enum CloudModelRoutineCalls {
     let provider: LLMProvider
     /// Closed label, such as `openAI:low/omit`, `gemini:level:low`, `claude:effortLow`.
     let label: String
+    /// The typed list policy this setting was built from; the search sends exactly this.
+    /// Identity and encoding use `provider` and `label` only (the label is built from the
+    /// policy one-to-one), so records keep their shape.
+    let policy: CloudModelList.RequestPolicy
+
+    static func == (lhs: Setting, rhs: Setting) -> Bool {
+      lhs.provider == rhs.provider && lhs.label == rhs.label
+    }
+
+    func hash(into hasher: inout Hasher) {
+      hasher.combine(provider)
+      hasher.combine(label)
+    }
+
+    private enum CodingKeys: String, CodingKey { case provider, label }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      try container.encode(provider, forKey: .provider)
+      try container.encode(label, forKey: .label)
+    }
 
     init?(_ policy: CloudModelList.RequestPolicy, provider: LLMProvider) {
       switch (policy, provider) {
@@ -93,6 +114,7 @@ enum CloudModelRoutineCalls {
         return nil
       }
       self.provider = provider
+      self.policy = policy
     }
 
     /// The settings search's fixed subset of the closed request menu, in D7 order. The one

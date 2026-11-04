@@ -10,7 +10,8 @@ import Foundation
 /// It reads each provider's complete catalog (Chunk 1), applies absence history and picks new
 /// models (Chunk 2), then polishes three fixed real dictations per picked model through the
 /// SHIPPED connectors with the SHIPPED request policy for that id. Every physical request goes
-/// through the call ledger (Chunk 3) first. The settings search is not run here (Chunk 5).
+/// through the call ledger (Chunk 3) first. The settings search lives in
+/// `CloudModelRoutineSearch.swift`.
 enum CloudModelRoutine {
 
   // MARK: - Inputs and keys
@@ -365,7 +366,8 @@ enum CloudModelRoutine {
   // MARK: - Outcomes
 
   enum ErrorClass: String, Encodable, Sendable {
-    /// The connector's final error was `LLMError.classified(.badRequest)`: Chunk 5 searches.
+    /// The connector's final error was `LLMError.classified(.badRequest)`: the settings
+    /// search starts.
     case requestRejected
     case notAvailable
     case keyRejected
