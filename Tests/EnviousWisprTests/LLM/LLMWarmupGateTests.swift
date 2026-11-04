@@ -73,6 +73,24 @@ struct LLMWarmupGateTests {
     #expect(session.claimWarmupSlot(provider: .gemini, model: "gemini-3.6-flash", now: Date()))
   }
 
+  /// #4353 D2: with no default model, an empty cloud choice reaches every pre-warm caller
+  /// (launch, foreground, each take). The shared door stops it before the key, the request and
+  /// the slot, so the slot stays claimable afterwards.
+  @Test("#4353 an empty cloud model pre-warms nothing and leaves no in-flight marker", arguments: [
+    LLMProvider.openAI, .claude,
+  ])
+  func emptyModelLeavesNoState(provider: LLMProvider) {
+    let session = freshSession()
+    // An isolated key folder, never the real Keychain, in case the guard ever moves.
+    let keys = KeychainManager(
+      backend: .legacyFiles,
+      legacyStore: FileLegacyKeyStore(
+        storageDirectory: FileManager.default.temporaryDirectory
+          .appending(path: "ew-tests-4353-warmup-\(UUID().uuidString)")))
+    session.preWarmModel(provider: provider, model: "", keychainManager: keys)
+    #expect(session.claimWarmupSlot(provider: provider, model: "", now: Date()))
+  }
+
   // MARK: - The cold window
 
   @Test("a cold (provider, model) may warm; a warm one may not")

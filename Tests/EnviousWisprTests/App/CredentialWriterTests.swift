@@ -315,7 +315,7 @@ struct CredentialWriterTests {
     }
     try #require(await storage.entered.wait())
     #expect(fx.discovery.keyValidationState == .idle)
-    fx.discovery.loadCachedModels(for: .openAI, settings: fx.settings, surface: .dictation)
+    fx.discovery.loadCachedModels(for: .openAI)
     storage.release()
     await saving.value
     #expect(fx.discovery.keyValidationState == .idle)

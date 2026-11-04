@@ -18,7 +18,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
   public var llmProvider: LLMProvider = .none
-  public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
+  /// #4353 D2: no model until the session's settings set one; never a preselected default.
+  public var llmModel: String = ""
   public var polishInstructions: PolishInstructions = .default
   /// #2649: the user's S1-mini control-line picks. Frozen per recording like
   /// provider and model (`DictationSessionConfig`), replayed from the spool on

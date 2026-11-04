@@ -72,7 +72,7 @@ struct FileImportBatchTests {
     language: LanguageMode = .locked("en"), correction: Bool = false, model: String? = nil
   ) -> RecordingSettingsSnapshot {
     let batchModel = provider == .openAI ? "gpt-6.1-sol"
-      : provider == .claude ? "claude-sonnet-4-6" : LLMProvider.defaultModel(for: provider)
+      : provider == .claude ? "claude-sonnet-4-6" : "gemini-3.7-flash"
     return RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: language,
       wordCorrectionEnabled: correction, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
@@ -135,7 +135,7 @@ struct FileImportBatchTests {
   @Test("Qualified Gemini and Sonnet selections retain one request and ordered cleanup outcomes",
     arguments: [LLMProvider.gemini, .claude])
   func qualifiedProvidersKeepBatching(provider: LLMProvider) async throws {
-    let model = provider == .claude ? "claude-sonnet-4-6" : LLMProvider.defaultModel(for: provider)
+    let model = provider == .claude ? "claude-sonnet-4-6" : "gemini-3.7-flash"
     let capture = Capture(); let subject = runner(capture)
     subject.freeze(settings: snapshot(provider: provider, model: model), vocabulary: nil)
     var indices: [Int] = []; var outcomes: [FileImportRunner.PartOutcome] = []

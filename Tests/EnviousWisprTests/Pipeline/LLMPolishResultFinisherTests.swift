@@ -186,7 +186,7 @@ struct LLMPolishResultFinisherTests {
       recordPolishSkipped: { _, _, _ in }, recordPolishLanguageHint: { _, _ in })
     let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: seams)
     step.llmProvider = provider
-    step.llmModel = LLMProvider.defaultModel(for: provider)
+    step.llmModel = try #require(LLMProvider.localModel(for: provider, ollamaModel: ""))
     step.egOneRuntime = ReadyEGOneRuntime()
     step.s1MiniRuntime = ReadyEGOneRuntime()
     step.makeEGOnePolisher = { _ in CannedPolisher(result: LLMResult(polishedText: "Here is the cleaned text:")) }

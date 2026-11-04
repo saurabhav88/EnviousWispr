@@ -60,7 +60,8 @@ struct MeetingSummarySurfaceRoutingTests {
       if key == .meetingSummaryLLMProvider { modelSeenByObserver = settings.meetingSummaryLLMModel }
     }
     settings.meetingSummaryLLMProvider = .openAI
-    #expect(modelSeenByObserver == LLMProvider.defaultModel(for: .openAI))
+    // #4353 D2: the EG-1 name is swept to empty before observers hear the change.
+    #expect(modelSeenByObserver == "")
   }
 
   @Test("each summary field emits its own change")
@@ -189,7 +190,7 @@ struct MeetingSummarySurfaceRoutingTests {
     settings.meetingSummaryLLMProvider = .openAI
     settings.meetingSummaryLLMModel = "gpt-image-1"
     let discovery = Self.coordinator(cache: cache) { _, _ in [] }
-    discovery.loadCachedModels(for: .openAI, settings: settings, surface: .meetingSummary)
+    discovery.loadCachedModels(for: .openAI)
     #expect(settings.meetingSummaryLLMModel == "gpt-image-1")
     #expect(settings.llmModel == "gpt-4o-mini")
   }

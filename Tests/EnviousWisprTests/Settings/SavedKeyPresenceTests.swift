@@ -423,7 +423,7 @@ struct SavedKeyPresenceTests {
     }
     #expect(discovery.cloudVerdict?.result == .rejected)
     // Transcribe a File shows Gemini: what is SHOWN is Gemini's (nothing yet)...
-    discovery.loadCachedModels(for: .gemini, settings: Self.settings(), surface: .dictation)
+    discovery.loadCachedModels(for: .gemini)
     #expect(discovery.cloudVerdict == nil)
     // ...but dictation's OpenAI key is still known to be rejected (#3438 final review).
     #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
@@ -483,7 +483,7 @@ struct SavedKeyPresenceTests {
     defer { release.open() }
     #expect(await entered.wait(), "the recheck never reached the provider")
     #expect(discovery.cloudVerdicts[.openAI]?.result == .checking)
-    discovery.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    discovery.loadCachedModels(for: .gemini)
     #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected, "the rejection was lost")
     release.open()
     await recheck.value

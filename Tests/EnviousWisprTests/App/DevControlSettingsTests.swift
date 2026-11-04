@@ -600,7 +600,7 @@
       channels: [String: Int] = [:]
     ) -> DevControlSettings.WriteContext {
       DevControlSettings.WriteContext(
-        modelCatalog: { catalog }, loadCachedModelCatalog: { _, _ in },
+        modelCatalog: { catalog }, loadCachedModelCatalog: { _ in },
         connectedInputUIDs: { connected },
         inputChannelCounts: { channels },
         pillWordsCapability: { pill })
@@ -1306,7 +1306,7 @@
         let (_, cache, settings) = Self.fixture()
         let discovery = LLMModelDiscoveryCoordinator(
           keychainManager: KeychainManager(), cacheDefaults: cache)
-        discovery.loadCachedModels(for: .claude, settings: settings, surface: .dictation)
+        discovery.loadCachedModels(for: .claude)
 
         let providerKey: SettingsManager.SettingKey =
           surface == .dictation ? .llmProvider : .fileImportLLMProvider
@@ -1325,13 +1325,11 @@
         context.modelCatalog = {
           .init(provider: discovery.stateProvider, models: discovery.discoveredModels)
         }
-        context.loadCachedModelCatalog = { requestedProvider, requestedSurface in
+        context.loadCachedModelCatalog = { requestedProvider in
           loads += 1
           #expect(requestedProvider == provider)
-          #expect(requestedSurface == surface)
           #expect(settings.isDevControlWrite)
-          discovery.loadCachedModels(
-            for: requestedProvider, settings: settings, surface: requestedSurface)
+          discovery.loadCachedModels(for: requestedProvider)
         }
 
         #expect(
@@ -1369,7 +1367,7 @@
       for catalog in unusable {
         var loads = 0
         var context = Self.context(catalog: catalog)
-        context.loadCachedModelCatalog = { _, _ in loads += 1 }
+        context.loadCachedModelCatalog = { _ in loads += 1 }
         let result = DevControlSettings.write(
           .llmModel, value: "missing", force: false, context: context, to: settings)
         #expect(result.code == "catalogUnavailable")
@@ -1380,7 +1378,7 @@
 
       var loads = 0
       var context = Self.context()
-      context.loadCachedModelCatalog = { _, _ in loads += 1 }
+      context.loadCachedModelCatalog = { _ in loads += 1 }
       #expect(
         DevControlSettings.write(
           .llmModel, value: 7, force: false, context: context, to: settings
@@ -1422,7 +1420,7 @@
           .init(provider: discovery.stateProvider, models: discovery.discoveredModels)
         }
         context.loadCachedModelCatalog = {
-          discovery.loadCachedModels(for: $0, settings: settings, surface: $1)
+          discovery.loadCachedModels(for: $0)
         }
         var fired: [(SettingsManager.SettingKey, Bool)] = []
         settings.onChange = { fired.append(($0, settings.isDevControlWrite)) }

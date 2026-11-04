@@ -58,11 +58,11 @@ struct LLMDiscoveryAttributionTests {
   @Test("taking a new owner drops the previous owner's models and verdict")
   func aNewOwnerLabelsNothing() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .gemini, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .gemini)
     c.discoveredModels = [Self.row("gemini-3-flash", provider: .gemini)]
     c.keyValidationState = .valid
 
-    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .openAI)
 
     #expect(c.stateProvider == .openAI)
     #expect(c.discoveredModels.isEmpty, "Gemini's catalog is sitting under OpenAI's name")
@@ -76,10 +76,10 @@ struct LLMDiscoveryAttributionTests {
   @Test("re-loading the same owner keeps a verdict it already reached")
   func aSameProviderReloadKeepsItsVerdict() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .openAI)
     c.keyValidationState = .valid
 
-    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .openAI)
 
     #expect(c.keyValidationState == .valid, "a completed verdict was discarded by a refresh")
   }
@@ -90,13 +90,13 @@ struct LLMDiscoveryAttributionTests {
   @Test("dismissing a request in flight also drops the verdict it was going to reach")
   func aDismissedRequestLeavesNoPendingVerdict() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .openAI)
     c.keyValidationState = .validating
     c.isDiscoveringModels = true
 
     // Same provider, so the owner does NOT change: this is the case a rule keyed on the
     // owner alone cannot see.
-    c.loadCachedModels(for: .openAI, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .openAI)
 
     #expect(c.keyValidationState == .idle, "the gate is stuck on Checking with nothing running")
     #expect(!c.isDiscoveringModels, "the spinner outlived the request that raised it")
@@ -105,7 +105,7 @@ struct LLMDiscoveryAttributionTests {
   @Test("reset leaves no owner and nothing labelled")
   func resetClearsEverything() {
     let c = Self.coordinator()
-    c.loadCachedModels(for: .claude, settings: Self.settings(), surface: .dictation)
+    c.loadCachedModels(for: .claude)
     c.discoveredModels = [Self.row("claude-haiku-4-5", provider: .claude)]
     c.keyValidationState = .validating
     c.isDiscoveringModels = true
@@ -157,7 +157,7 @@ struct LLMDiscoveryCachePruneTests {
       ["gemini-3.7-flash", "gemini-3.5-transcribe", "gemini-2.5-flash-native-audio-preview"],
       provider: .gemini, in: cache)
 
-    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .gemini)
 
     #expect(c.discoveredModels.map(\.id) == ["gemini-3.7-flash"])
     #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
@@ -171,7 +171,7 @@ struct LLMDiscoveryCachePruneTests {
     settings.llmModel = "gemini-3.5-transcribe"
     Self.cache(["gemini-3.5-transcribe", "gemini-3.7-flash"], provider: .gemini, in: cache)
 
-    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .gemini)
 
     #expect(settings.llmModel == "gemini-3.5-transcribe")
     #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
@@ -190,12 +190,29 @@ struct LLMDiscoveryCachePruneTests {
     settings.fileImportLLMModel = "gemini-3.5-transcribe"
     Self.cache(["gemini-3.5-transcribe", "gemini-3.7-flash"], provider: .gemini, in: cache)
 
-    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .gemini)
     #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
     #expect(settings.fileImportLLMModel == "gemini-3.5-transcribe", "the import was repaired by dictation's load")
 
-    c.loadCachedModels(for: .gemini, settings: settings, surface: .fileImport)
+    c.loadCachedModels(for: .gemini)
     #expect(settings.fileImportLLMModel == "gemini-3.5-transcribe")
+  }
+
+  /// #4353 D2: with no model chosen and nothing remembered, pruning a cloud cache fills nothing in.
+  @Test("#4353 pruning a cloud cache never fills an empty choice")
+  func pruningNeverFillsAnEmptyChoice() {
+    let (c, cache, settings) = Self.fixture()
+    settings.llmProvider = .gemini
+    settings.llmModel = ""
+    settings.fileImportLLMProvider = .gemini
+    settings.fileImportLLMModel = ""
+    Self.cache(["gemini-3.5-transcribe", "gemini-3.7-flash"], provider: .gemini, in: cache)
+
+    c.loadCachedModels(for: .gemini)
+
+    #expect(Self.cachedIDs(.gemini, in: cache) == ["gemini-3.7-flash"])
+    #expect(settings.llmModel == "")
+    #expect(settings.fileImportLLMModel == "")
   }
 
   @Test("a clean cache is left alone: no rewrite, no repair")
@@ -206,7 +223,7 @@ struct LLMDiscoveryCachePruneTests {
     Self.cache(["gemini-3.7-flash", "gemini-3.7-pro"], provider: .gemini, in: cache)
     let before = cache.data(forKey: "cachedModels_gemini")
 
-    c.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .gemini)
 
     #expect(c.discoveredModels.map(\.id) == ["gemini-3.7-flash", "gemini-3.7-pro"])
     #expect(cache.data(forKey: "cachedModels_gemini") == before, "a clean cache was rewritten")
@@ -218,7 +235,7 @@ struct LLMDiscoveryCachePruneTests {
     let (c, cache, settings) = Self.fixture()
     Self.cache(["whisper-audio-tts:latest"], provider: .ollama, in: cache)
 
-    c.loadCachedModels(for: .ollama, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .ollama)
 
     #expect(c.discoveredModels.map(\.id) == ["whisper-audio-tts:latest"])
   }
@@ -238,7 +255,7 @@ struct LLMDiscoveryCachePruneTests {
 
     let settings = SettingsManager(
       defaults: TestDefaults.suite("ew.tests.discovery-attribution.ai.settings.\(UUID().uuidString)")!)
-    c.loadCachedModels(for: .appleIntelligence, settings: settings, surface: .dictation)
+    c.loadCachedModels(for: .appleIntelligence)
 
     #expect(c.discoveredModels.count == 1)
     #expect(c.discoveredModels.first?.appleIntelligenceStatus != nil)

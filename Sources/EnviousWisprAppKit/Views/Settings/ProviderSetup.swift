@@ -174,7 +174,7 @@ enum ProviderSetupSurface {
   /// model, or, when this surface does not offer it (a kept EG-1 summary model, plan I5),
   /// the shipped recommended model.
   func guidedDownloadModel(remembered: String) -> String {
-    offersOllamaModel(named: remembered) ? remembered : LLMProvider.defaultModel(for: .ollama)
+    offersOllamaModel(named: remembered) ? remembered : SettingsManager.recommendedOllamaModel
   }
 }
 
@@ -3102,7 +3102,7 @@ struct ProviderSetupLifecycle: ViewModifier {
     .onAppear {
       ProviderSetupKeys.load(into: model, using: keychainManager, presence: savedKeyPresence)
       if provider == .ollama {
-        llmDiscovery.loadCachedModels(for: .ollama, settings: settings, surface: surface)
+        llmDiscovery.loadCachedModels(for: .ollama)
         setup.startOllamaStatusWatch()
         Task {
           await FileImportPolishGate.armImport(
@@ -3144,7 +3144,7 @@ struct ProviderSetupLifecycle: ViewModifier {
         // engine"; without this arm S1-mini fell through to model discovery.
         if surface == .dictation { localPolishRuntimes.s1Mini.activateAndProbe() }
       } else if provider != .none {
-        llmDiscovery.loadCachedModels(for: provider, settings: settings, surface: surface)
+        llmDiscovery.loadCachedModels(for: provider)
       }
     }
     .onDisappear {
@@ -3231,7 +3231,7 @@ struct ProviderSetupLifecycle: ViewModifier {
       // engine fell into a `default:`. Twice is the argument for the compiler
       // asking instead.
       case .openAI, .gemini, .claude:
-        llmDiscovery.loadCachedModels(for: newProvider, settings: settings, surface: surface)
+        llmDiscovery.loadCachedModels(for: newProvider)
         Task {
           await llmDiscovery.validateKeyAndDiscoverModels(
             provider: newProvider, settings: settings, surface: surface)

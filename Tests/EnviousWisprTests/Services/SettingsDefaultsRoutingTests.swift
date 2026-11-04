@@ -77,14 +77,6 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.meetingLiveWordsLanguage == nil)
   }
 
-  @Test("the Ollama default and the Core fallback cannot drift apart")
-  func ollamaDefaultMatchesCoreFallback() {
-    // Two sites hold this string: the settings authority, and `defaultModel`'s fallback parameter
-    // for callers with no saved value. Changing one alone means the fallback path quietly serves a
-    // different model than a fresh install does, which is invisible until someone hits that path.
-    #expect(SettingsDefaultValues.ollamaModel == LLMProvider.defaultModel(for: .ollama))
-  }
-
   @Test("a model the user already chose survives the default move")
   func storedOllamaModelSurvives() {
     // Deliberately neither the old nor the new default, so this cannot pass by coincidence if the

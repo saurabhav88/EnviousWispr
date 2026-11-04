@@ -2450,8 +2450,8 @@ package final class WisprBootstrapper {
               DevControlSettings.ModelCatalog(
                 provider: llmDiscovery.stateProvider, models: llmDiscovery.discoveredModels)
             },
-            loadCachedModelCatalog: { [llmDiscovery, settings] provider, surface in
-              llmDiscovery.loadCachedModels(for: provider, settings: settings, surface: surface)
+            loadCachedModelCatalog: { [llmDiscovery] provider in
+              llmDiscovery.loadCachedModels(for: provider)
             },
             connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
             inputChannelCounts: {

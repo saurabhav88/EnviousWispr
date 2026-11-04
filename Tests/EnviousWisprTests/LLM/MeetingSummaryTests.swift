@@ -940,7 +940,10 @@ struct MeetingSummaryTests {
     // #4044: "The default OpenAI, Gemini and Claude models fit much longer meetings in one
     // piece." This binds their minimum planning capacity.
     for provider: LLMProvider in [.openAI, .gemini, .claude] {
-      let model = LLMProvider.defaultModel(for: provider)
+      // #4353 D2 retired the defaults this hint names; these are the last shipped defaults,
+      // pending the hint's rewording (reported in the chunk 6 receipt).
+      let model = ["openAI": "gpt-4o-mini", "gemini": "gemini-3.7-flash", "claude": "claude-haiku-4-5"][
+        provider.rawValue]!
       #expect(
         MeetingSummaryProviders.hostedContextTokens(provider, model: model) >= 128_000,
         "\(provider.rawValue) default \(model) no longer supports the hint's capacity claim")
