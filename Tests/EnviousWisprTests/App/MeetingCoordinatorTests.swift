@@ -50,6 +50,9 @@ struct MeetingCoordinatorTests {
       self.start = start
     }
 
+    static let echoProvenance = MeetingEchoProvenance(
+      library: "webrtc-audio-processing 2.1 846fe90 ew-4355.3", configuration: "test")
+
     func start() async throws -> MeetingRecorder.StartResult {
       if case .failEmpty = start {
         throw MeetingRecorder.RecorderError.microphoneUnavailable("no_device")
@@ -59,7 +62,10 @@ struct MeetingCoordinatorTests {
         in: configuration.folder, index: 1, startMs: 0, frames: 16_000)
       switch start {
       case .succeed(let callSound):
-        return MeetingRecorder.StartResult(microphone: .captured, callSound: callSound)
+        // #4355 PR B: as the real recorder, provenance only when the call sound was captured.
+        return MeetingRecorder.StartResult(
+          microphone: .captured, callSound: callSound,
+          echoProvenance: callSound == .captured ? Self.echoProvenance : nil)
       case .fail, .failEmpty:
         throw MeetingRecorder.RecorderError.microphoneUnavailable("microphone_lost")
       case .hold:
@@ -1290,6 +1296,28 @@ struct MeetingCoordinatorTests {
     await coordinator.stop(reason: .user)
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(try harness.store.load(id: meetingID).trackStatus[.microphone] == .failed)
+  }
+
+  @Test("#4355: the echo provenance the recorder froze at Start is saved with the meeting; none without call sound")
+  func startSavesEchoProvenance() async throws {
+    for callSound in [MeetingTrackStatus.captured, .off] {
+      let harness = try Harness()
+      harness.callSound = callSound == .captured
+      harness.recorderStart = .succeed(callSound: callSound)
+      let coordinator = harness.coordinator
+      let outcome = await coordinator.start(from: .history)
+      guard case .recording(let meetingID) = outcome else {
+        Issue.record("the Start did not record: \(outcome)")
+        return
+      }
+      let expected = callSound == .captured ? FakeRecorder.echoProvenance : nil
+      #expect(coordinator.record(id: meetingID)?.echoProvenance == expected)
+      await Self.eventually("saved") {
+        (try? harness.store.load(id: meetingID))?.echoProvenance == expected
+      }
+      #expect(try harness.store.load(id: meetingID).echoProvenance == expected)
+      await coordinator.stop(reason: .user)
+    }
   }
 
   @Test(

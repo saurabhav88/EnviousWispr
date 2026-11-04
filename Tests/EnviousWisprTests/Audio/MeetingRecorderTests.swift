@@ -319,7 +319,11 @@ struct MeetingRecorderTests {
   func startStopRecordsBothTracks() async throws {
     let r = try rig()
     let result = try await r.recorder.start()
-    #expect(result == .init(microphone: .captured, callSound: .captured))
+    #expect(
+      result
+        == .init(
+          microphone: .captured, callSound: .captured,
+          echoProvenance: MeetingRecorder.echoProvenance))
     #expect(r.recorder.boundMicrophoneUID == "BuiltInMicrophoneDevice")
     #expect(r.microphones[0].openTargets == ["Chosen"])
     speak(r.microphones[0], r.clock, seconds: 1)

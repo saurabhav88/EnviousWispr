@@ -1180,6 +1180,10 @@ final class MeetingCoordinator {
     let callSound: MeetingTrackStatus =
       callSoundFailedWhileStarting ? .failed : result.callSound
     record.trackStatus[.callSound] = callSound
+    // #4355 PR B: the echo cleaner this recording ran with, frozen at Start and saved with the
+    // record, so the final pass never reconstructs it. A call sound that failed meanwhile has
+    // none (its cleaned copy was stopped).
+    record.echoProvenance = callSound == .captured ? result.echoProvenance : nil
     callSoundStatus = callSound
     if callSound == .failed { notice = .callSoundFailed }
     if callSound == .unsupported { notice = .callSoundUnavailable }

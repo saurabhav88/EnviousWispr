@@ -118,6 +118,10 @@ public enum MeetingEchoAdmission: Sendable, Hashable {
 public enum MeetingEchoResetReason: Sendable, Hashable {
   case microphoneReopened
   case callSoundRebuilt
+  /// The call sound stopped or could not be rebuilt: no reference follows, so what AEC3 learned
+  /// must not keep marking microphone audio as cleaned (it is substituted raw until reference
+  /// arrives again).
+  case callSoundLost
   case sampleRateChanged
   case wake
   case divergence
@@ -325,7 +329,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
       $0.resetRequested = true
       $0.counters.resetRequests[reason, default: 0] += 1
       switch reason {
-      case .callSoundRebuilt, .sampleRateChanged, .wake:
+      case .callSoundRebuilt, .callSoundLost, .sampleRateChanged, .wake:
         // Reference admitted before this point does not continue into what follows: drop it
         // here, so only reference admitted after the request reaches AEC3.
         $0.counters.renderSamplesDropped += $0.renderInboxSamples
