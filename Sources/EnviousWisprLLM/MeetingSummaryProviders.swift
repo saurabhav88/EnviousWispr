@@ -64,6 +64,9 @@ public enum MeetingSummaryProviders {
     /// The Ollama app is older than 0.12.6, which cannot be asked to report a prompt that does
     /// not fit instead of cutting it.
     case ollamaTooOld
+    /// #4353 D9: OpenAI, Gemini or Claude with no model chosen. Found before any key read,
+    /// planning or connector, so no request is sent; the caller knows which provider it asked.
+    case noModelChosen
   }
 
   /// The window Ollama runs a summary call with, sent as `num_ctx` with `truncate` and `shift`
@@ -143,6 +146,9 @@ public enum MeetingSummaryProviders {
     ollamaVersion: @Sendable () async -> String? = { await OllamaConnector().serverVersion() },
     ollamaExecutor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
   ) async -> Result<Prepared, Unavailable> {
+    // #4353 D9: an empty cloud selection is a setup state, never a request: checked before the
+    // capability, the planning window and the connector, so nothing reads the key or calls out.
+    if Self.isCloudWithNoModel(provider, model: model) { return .failure(.noModelChosen) }
     switch MeetingSummary.capability(provider, model: model, ollamaModelIsRemote: nil) {
     case .noProvider: return .failure(.noProvider)
     case .notForSummaries: return .failure(.notForSummaries)
@@ -210,6 +216,16 @@ public enum MeetingSummaryProviders {
     // a server nobody reserved.
     case .egOne, .s1Mini, .none:
       return .failure(.notForSummaries)
+    }
+  }
+
+  /// #4353 D9: OpenAI, Gemini or Claude with no model chosen (blank counts as none).
+  public static func isCloudWithNoModel(_ provider: LLMProvider, model: String) -> Bool {
+    switch provider {
+    case .openAI, .gemini, .claude:
+      return model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      return false
     }
   }
 

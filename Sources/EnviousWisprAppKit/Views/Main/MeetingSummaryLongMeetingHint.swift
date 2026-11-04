@@ -64,3 +64,24 @@ struct MeetingSummarySettingsLink: View {
     .buttonStyle(.link)
   }
 }
+
+/// #4353 D9: opens EnviousMeet's Summaries tab with the summary engine's model menu open, for a
+/// summary that found no cloud model or a model that no longer works. It changes no setting and
+/// writes nothing; the person picks a model, then Write again.
+struct MeetingSummaryModelMenuLink: View {
+  @Environment(NavigationCoordinator.self) private var navigation
+
+  /// The link's action, for tests: the destination, then the summary card's model menu.
+  static func open(_ navigation: NavigationCoordinator) {
+    navigation.request(.meetings(.summaries))
+    navigation.requestModelMenu(on: .meetingSummary)
+  }
+
+  var body: some View {
+    Button(PolishSetupSurfaceCopy.selectNewCloudModel) {
+      Self.open(navigation)
+    }
+    .buttonStyle(.link)
+    .accessibilityIdentifier("history.meeting.summarySelectModel")
+  }
+}

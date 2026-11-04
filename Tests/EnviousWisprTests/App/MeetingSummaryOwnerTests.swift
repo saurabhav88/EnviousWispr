@@ -75,6 +75,9 @@ struct MeetingSummaryOwnerTests {
 
     /// #4286: when true, the next call answers that its input was too long (once).
     var overflowNext = false
+    /// #4353: errors the next calls throw, in order, after any hold (so a held call can fail
+    /// once the test has changed the setting under it).
+    @ObservationIgnored var callFailures: [Error] = []
     /// #4319: how often a prepared attempt's cleanup ran, and its borrow step's answers in
     /// order (nil: the attempt borrows nothing, as for every provider but EG-1).
     var finishes = 0
@@ -114,6 +117,7 @@ struct MeetingSummaryOwnerTests {
         await withCheckedContinuation { heldCalls.append($0) }
         callsWaiting -= 1
       }
+      if !callFailures.isEmpty { throw callFailures.removeFirst() }
       return answer
     }
 
@@ -1755,5 +1759,140 @@ struct MeetingSummaryOwnerTests {
       #expect(rig.summaryOnDisk(id) == "Edited at quit")
       #expect(try rig.manifest(id).summary?.writtenInParts == inParts)
     }
+  }
+
+  // MARK: - #4353 D9: no cloud model chosen, or a model that no longer works
+
+  /// A ready meeting with a summary written by `gpt-4o-mini`, settled.
+  private static func writtenMeeting(_ rig: Rig) async throws -> (UUID, String) {
+    let id = try rig.readyMeeting()
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("first summary written") { rig.world.finished.count == 1 }
+    let saved = try #require(rig.summaryOnDisk(id))
+    rig.world.finished = []
+    return (id, saved)
+  }
+
+  @Test("#4353 no cloud model chosen: nothing scheduled, explained from the setting, nothing sent")
+  func emptyCloudSelection() async throws {
+    for provider in [LLMProvider.openAI, .gemini, .claude] {
+      let rig = try Rig()
+      let (id, saved) = try await Self.writtenMeeting(rig)
+      let callsBefore = rig.world.calls.count
+      rig.world.provider = provider
+      rig.world.model = ""
+      #expect(rig.owner.decide() == .unsupported, "\(provider)")
+      #expect(rig.owner.configurationProblem() == .cloudNoModel(provider))
+      rig.world.model = "  "
+      #expect(rig.owner.configurationProblem() == .cloudNoModel(provider), "blank is none")
+
+      // An attempt that still reaches preparation with no model (the real preparation's answer,
+      // `MeetingSummaryTests.emptyCloudModelIsRefusedFirst`) ends as a setup state.
+      rig.world.unavailable = .noModelChosen
+      rig.owner.writeAgain(id, replacing: nil)
+      await Self.eventually("settled") { rig.world.finished.count == 1 }
+      #expect(rig.world.finished == [Self.row(.unsupported, .hosted)], "never a provider failure")
+      #expect(rig.owner.activity[id] == .failed(.cloudNoModel(provider)))
+      #expect(rig.world.calls.count == callsBefore, "no request")
+      #expect(rig.summaryOnDisk(id) == saved, "the summary written before stays")
+      #expect(try rig.manifest(id).summaryPending == nil)
+    }
+  }
+
+  @Test("#4353 a gone cloud model: one call, the attempt's model named, the old summary kept")
+  func goneCloudModel() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    let callsBefore = rig.world.calls.count
+    let finishesBefore = rig.world.finishes
+    rig.world.callFailures = [LLMError.classified(.modelUnavailable)]
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.world.calls.count == callsBefore + 1, "not retried")
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)])
+    #expect(rig.owner.activity[id] == .failed(.cloudModelUnavailable(.openAI, "gpt-4o-mini")))
+    #expect(rig.summaryOnDisk(id) == saved)
+    #expect(try rig.manifest(id).summary?.inputs?.providerID == LLMProvider.openAI.rawValue)
+    #expect(rig.world.finishes == finishesBefore + 1, "cleanup ran once")
+    #expect(try rig.manifest(id).summaryPending == nil)
+
+    // A new choice and Write again writes, and the old problem is gone.
+    rig.world.model = "gpt-new"
+    rig.world.finished = []
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("rewritten") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .hosted)])
+    #expect(rig.owner.activity[id] == nil)
+  }
+
+  @Test("#4353 the failure names the model the attempt used, even after the setting changed")
+  func goneModelIsTheAttemptsOwn() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.holdCalls = true
+    rig.world.callFailures = [LLMError.classified(.modelUnavailable)]
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("call held") { rig.world.callsWaiting == 1 }
+    rig.world.provider = .claude
+    rig.world.model = "claude-new"
+    rig.world.releaseCall()
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.owner.activity[id] == .failed(.cloudModelUnavailable(.openAI, "gpt-4o-mini")))
+    #expect(rig.summaryOnDisk(id) == saved)
+  }
+
+  @Test("#4353 a local missing model, a rejected key and a network failure stay ordinary failures")
+  func notCloudModelProblems() async throws {
+    let cases: [(LLMProvider, String, MeetingSummary.Execution, [Error])] = [
+      (.ollama, "llama3.2", .local, [LLMError.classified(.modelUnavailable)]),
+      (.openAI, "gpt-4o-mini", .hosted, [LLMError.classified(.apiKeyRejected)]),
+      (.openAI, "gpt-4o-mini", .hosted, Array(repeating: URLError(.notConnectedToInternet), count: 3)),
+    ]
+    for (provider, model, execution, failures) in cases {
+      let rig = try Rig()
+      rig.world.provider = provider
+      rig.world.model = model
+      rig.world.execution = execution
+      let (id, saved) = try await Self.writtenMeeting(rig)
+      rig.world.callFailures = failures
+      rig.owner.writeAgain(id, replacing: nil)
+      await Self.eventually("settled") { rig.world.finished.count == 1 }
+      #expect(rig.owner.activity[id] == .failed(.providerFailed), "\(provider) \(failures)")
+      #expect(rig.summaryOnDisk(id) == saved)
+    }
+  }
+
+  @Test("#4353 a held gone-model answer cannot touch a newer attempt or a deleted meeting")
+  func heldGoneModelAnswerIsFenced() async throws {
+    let rig = try Rig()
+    let (id, _) = try await Self.writtenMeeting(rig)
+    rig.world.holdCalls = true
+    rig.world.callFailures = [LLMError.classified(.modelUnavailable)]
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("first call held") { rig.world.callsWaiting == 1 }
+    rig.world.model = "gpt-new"
+    rig.world.answer = "## Overview\nNewer."
+    rig.owner.writeAgain(id, replacing: nil)
+    // Both calls held: the older one is released first and fails, then the newer one answers.
+    await Self.eventually("newer call held too") { rig.world.callsWaiting == 2 }
+    rig.world.releaseCall()
+    await Self.eventually("older settled") { rig.world.finished.count == 1 }
+    #expect(rig.owner.activity[id] != .failed(.cloudModelUnavailable(.openAI, "gpt-4o-mini")))
+    rig.world.releaseCall()
+    await Self.eventually("both settled") { rig.world.finished.count == 2 }
+    #expect(rig.owner.activity[id] == nil, "the older attempt's failure replaced the newer result")
+    #expect(rig.summaryOnDisk(id) == "## Overview\nNewer.")
+
+    // Deletion while a gone-model answer is held: nothing is shown or written afterwards.
+    let other = try Rig()
+    let (otherID, _) = try await Self.writtenMeeting(other)
+    other.world.holdCalls = true
+    other.world.callFailures = [LLMError.classified(.modelUnavailable)]
+    other.owner.writeAgain(otherID, replacing: nil)
+    await Self.eventually("held") { other.world.callsWaiting == 1 }
+    async let drained: Void = other.owner.cancelAndWait(otherID)
+    other.world.releaseCall()
+    await drained
+    #expect(other.owner.activity[otherID] == nil)
   }
 }
