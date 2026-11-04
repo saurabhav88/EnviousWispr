@@ -528,7 +528,7 @@ import EnviousWisprAppKitTestSupport
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
-      text: "let preparation = await deps.prepare(selection.provider, selection.model)",
+      text: "let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
       classification: .unrelatedDomain),
     // MARK: ActiveEngineOperation — the one door for crash-recovery + the
     // Diagnostics benchmark. Not itself gated. `load` is called from BOTH
