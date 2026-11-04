@@ -1,0 +1,206 @@
+name: Cloud model routine sweep
+
+# #4353 PR 5 (D7 detail): the weekly cloud model routine, Stage 1. New models from the three
+# providers' catalogs are polished three times through the shipped Swift connectors with the
+# routine's own capped keys; a list-only PR adds the rows that passed (founder decisions 10-14:
+# additions only, never hiding). Stage 2 (a separate Claude cloud session) reviews and merges.
+#
+# Trust boundaries:
+# - `sweep` is the only job with the provider keys, and only its one sweep step reads them.
+#   It runs only for this repository's schedule or manual run on main, on the triggering
+#   commit, with no persisted checkout credentials and read-only repository access.
+# - `publish` has no provider keys. It mints the routine App's installation token, re-derives
+#   the proposal from this run's evidence with propose.py and opens one routine PR. It never
+#   merges and never enables auto-merge.
+# - `report-failure` has no provider keys and runs no artifact-supplied code; it reports a
+#   closed failure stage on one deduplicated issue.
+# Activation prerequisites (not set by this file): the `cloud-model-routine` Environment with
+# the three provider keys, restricted to the `main` branch; the `cloud-model-routine-publish`
+# Environment with the App private key, restricted to `main`; repository variables
+# CLOUD_MODEL_ROUTINE_APP_ID and CLOUD_MODEL_ROUTINE_APP_BOT. Owner: scripts/cloud-models/README.md.
+
+on:
+  schedule:
+    # Mondays 06:17 UTC.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+# One sweep at a time; a queued run never cancels a paid sweep in progress.
+concurrency:
+  group: cloud-model-routine
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: sweep
+    if: >-
+      github.repository == 'saurabhav88/EnviousWispr' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: xcode-27
+    timeout-minutes: 90
+    environment: cloud-model-routine
+    permissions:
+      contents: read
+    outputs:
+      stage: ${{ steps.stage.outputs.stage }}
+    steps:
+      - name: Checkout the triggering commit
+        id: checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authorize
+        id: authorize
+        run: python3 -I scripts/cloud-models/workflow.py authorize
+
+      - name: Xcode CI setup
+        id: setup
+        uses: ./.github/actions/xcode-ci-setup
+        with:
+          derived-data-path: .derivedData/CI
+          configuration: release-onone
+
+      # The only step with the provider keys. The test process gets them through Xcode's
+      # TEST_RUNNER_ prefix (stripped in-process). The full log stays on this runner; only the
+      # lane summary lines are printed, and the receipt is scanned for the keys before staging.
+      - name: Sweep
+        id: sweep
+        env:
+          TEST_RUNNER_EW_CLOUD_ROUTINE: "1"
+          TEST_RUNNER_EW_ROUTINE_OPENAI_KEY: ${{ secrets.EW_ROUTINE_OPENAI_KEY }}
+          TEST_RUNNER_EW_ROUTINE_CLAUDE_KEY: ${{ secrets.EW_ROUTINE_CLAUDE_KEY }}
+          TEST_RUNNER_EW_ROUTINE_GEMINI_KEY: ${{ secrets.EW_ROUTINE_GEMINI_KEY }}
+          TEST_RUNNER_GITHUB_REPOSITORY: ${{ github.repository }}
+          TEST_RUNNER_GITHUB_WORKFLOW: ${{ github.workflow }}
+          TEST_RUNNER_GITHUB_RUN_ID: ${{ github.run_id }}
+          TEST_RUNNER_GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TEST_RUNNER_GITHUB_EVENT_NAME: ${{ github.event_name }}
+          TEST_RUNNER_GITHUB_REF: ${{ github.ref }}
+          TEST_RUNNER_GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/routine"
+          mkdir -p "$work"
+          export TEST_RUNNER_EW_ROUTINE_RECEIPT_OUT="$work/receipt.json"
+          if scripts/xcode-test.sh --real-boundary --filter EnviousWisprTests/CloudModelRoutineSweepTests > "$work/sweep.log" 2>&1; then
+            status=0
+          else
+            status=$?
+          fi
+          grep -E '^==> [A-Za-z]+ lane (executed|verdict|ran all)' "$work/sweep.log" || true
+          if [ "$status" -ne 0 ]; then
+            echo "::error::the sweep test run failed"
+            exit 1
+          fi
+          python3 -I scripts/cloud-models/workflow.py finish-sweep \
+            --log "$work/sweep.log" --receipt "$work/receipt.json" --out "$RUNNER_TEMP/evidence"
+
+      - name: Upload evidence
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cloud-model-routine-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/evidence/receipt.json
+            ${{ runner.temp }}/evidence/context.json
+            ${{ runner.temp }}/evidence/result.json
+            ${{ runner.temp }}/evidence/pr-body.md
+            ${{ runner.temp }}/evidence/manifest.json
+            ${{ runner.temp }}/evidence/cloud-models.json
+
+      - name: Failure stage
+        id: stage
+        if: failure()
+        env:
+          AUTHORIZE: ${{ steps.authorize.outcome }}
+          SETUP: ${{ steps.setup.outcome }}
+          SWEEP: ${{ steps.sweep.outcome }}
+        run: |
+          if [ "$AUTHORIZE" != success ]; then echo "stage=authorize" >> "$GITHUB_OUTPUT"
+          elif [ "$SETUP" != success ] || [ "$SWEEP" != success ]; then echo "stage=sweep" >> "$GITHUB_OUTPUT"
+          else echo "stage=receipt" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: publish
+    needs: sweep
+    if: needs.sweep.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: cloud-model-routine-publish
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.publish.outputs.outcome }}
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download this run's evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cloud-model-routine-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence
+
+      - name: Routine App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CLOUD_MODEL_ROUTINE_APP_ID }}
+          private-key: ${{ secrets.CLOUD_MODEL_ROUTINE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Publish
+        id: publish
+        env:
+          ROUTINE_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          ROUTINE_APP_BOT: ${{ vars.CLOUD_MODEL_ROUTINE_APP_BOT }}
+        run: |
+          set -euo pipefail
+          python3 -I scripts/cloud-models/workflow.py publish \
+            --evidence "$RUNNER_TEMP/evidence" --checkout "$GITHUB_WORKSPACE"
+
+  report-failure:
+    name: report-failure
+    needs: [sweep, publish]
+    if: >-
+      always() &&
+      github.repository == 'saurabhav88/EnviousWispr' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      (needs.sweep.result != 'success' || needs.publish.result != 'success' ||
+       needs.publish.outputs.outcome == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SWEEP_RESULT: ${{ needs.sweep.result }}
+          SWEEP_STAGE: ${{ needs.sweep.outputs.stage }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          PUBLISH_OUTCOME: ${{ needs.publish.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          python3 -I scripts/cloud-models/workflow.py report-failure

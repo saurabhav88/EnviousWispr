@@ -49,3 +49,32 @@ It also requires the list at `--target-base` (the PR's current base) to be the r
 **Exit status:** 0 when generated or checked, 1 when refused (one line on stderr), 2 for a usage error.
 
 **Tests:** `propose.py --self-test` runs `propose_test.py`, which covers four categories against throwaway git repositories. `CloudModelRoutineProposalTests` (Swift) passes real receipts from the fake-run harness through this script.
+
+## The weekly workflow (`workflow.py`)
+
+`.github/workflows/cloud-models-sweep.yml` runs the routine every Monday at 06:17 UTC, and also when started by hand. `workflow.py` is the helper each job calls. It never decides what a row may be. That is always `propose.py`.
+
+| Job | Credentials | What it does |
+|---|---|---|
+| `sweep` | The three provider keys, only in its `Sweep` step. Repository read only. | Runs `workflow.py authorize` (this repository, `schedule` or `workflow_dispatch`, `refs/heads/main`, the routine workflow file, a full commit id). Then it runs the paid Swift sweep with `--real-boundary` and `finish-sweep`. `finish-sweep` checks that the named test `weeklySweep()` passed in a lane that executed at least one test with verdict PASS. It scans the receipt for the injected keys, builds the checker context from GitHub's own run facts and runs `propose.py generate`. It then scans every staged file again and uploads only the allowlisted evidence files. |
+| `publish` | The routine App token, minted here only, with contents, pull requests and issues write. No provider keys. | Checks the evidence (allowlisted files, size limits, manifest hashes, this run's context) and regenerates the proposal from the receipt. It refuses any difference. It files one deduplicated issue per failed model, and the call-recipe issue when every setting was rejected. For a proposal, it pushes `cloud-model-routine/run-<id>-<attempt>` and opens one PR. A rerun reuses an identical branch and the App's open PR. Another author, other content or a closed PR is refused. It never merges or enables auto-merge. |
+| `report-failure` | `GITHUB_TOKEN` with issues write. No provider keys. Runs only for this repository's schedule or manual run on main, and `authorize` runs again before any request. | Works out a closed stage (`authorize`, `sweep`, `receipt`, `publication`, `outcome`, `cancelled`) from job results only. It comments once per run on the open `Cloud model routine: run failed` issue. It cannot report a run that never started; Stage 2 and the digest detect missing runs. |
+
+Issue and comment lookups read every page; a failed page refuses before any write, and only the reporting bot's own issue body and comments count as an earlier report. The token is sent as an unredirected header, so it never follows the artifact download's redirect to signed storage. Later jobs never see the provider keys. They read only the evidence files the `sweep` step already scanned. Every public body (list rows, the result, the PR body, issue bodies) is built from those files.
+
+**PR check:** the `routine-pr-check` job in `pr-check.yml` feeds `build-check`. It treats a PR as a routine PR only when its author is the App's bot login (`CLOUD_MODEL_ROUTINE_APP_BOT`) with type `Bot`. Labels, titles, branches and bodies decide nothing. For a routine PR, the trusted tooling comes from the PR base and the PR head is checked out separately, as data only. The job then refuses the PR unless all of these hold:
+- the source run is `cloud-models-sweep.yml` on main, started by a schedule or by hand, with its `sweep` job succeeded
+- the run has exactly one current evidence artifact for that run and attempt
+- the evidence context matches the run's own GitHub facts
+- the PR changes only the two list copies, at the current head
+- `propose.py check` passes against the recorded base and the PR's current base
+
+Every other PR passes this job and keeps the ordinary list validation in `website-check`.
+
+**Activation prerequisites:** this file does not set any of these.
+- The `cloud-model-routine` Environment, restricted to `main`, holding the secrets `EW_ROUTINE_OPENAI_KEY`, `EW_ROUTINE_CLAUDE_KEY` and `EW_ROUTINE_GEMINI_KEY`.
+- The `cloud-model-routine-publish` Environment, restricted to `main`, holding `CLOUD_MODEL_ROUTINE_APP_PRIVATE_KEY`.
+- The repository variables `CLOUD_MODEL_ROUTINE_APP_ID` and `CLOUD_MODEL_ROUTINE_APP_BOT`.
+- The App installed on this repository only. Until `CLOUD_MODEL_ROUTINE_APP_BOT` is set, no PR counts as a routine PR.
+
+**Tests:** `workflow.py --self-test` runs `workflow_test.py`. It covers twelve groups against throwaway git repositories and a fake GitHub. It needs PyYAML, and it fails on any skip or on fewer than 20 tests. Not verified locally: live GitHub publication, whether required checks start on an App-created PR, Environment restrictions and the paid sweep.

@@ -431,6 +431,69 @@ jobs:
           python3 -I scripts/cloud-models/validate-list.py --same website/public/cloud-models.json Sources/EnviousWispr/Resources/cloud-models.json
 
 
+  # #4353 PR 5: a PR opened by the cloud model routine's App must be exactly what its
+  # authenticated source run's evidence permits (scripts/cloud-models/workflow.py check-pr,
+  # which runs propose.py check). Identity is the App's bot login and Bot type, never a
+  # label, title, branch or body. Every other PR passes this job untouched; its list
+  # changes keep the ordinary validation in website-check. The trusted tooling is the PR
+  # BASE (main); the PR head is checked out separately and only read, never executed.
+  # Before CLOUD_MODEL_ROUTINE_APP_BOT is set, no PR is treated as a routine PR.
+  routine-pr-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Identify a routine PR
+        id: identify
+        env:
+          BOT: ${{ vars.CLOUD_MODEL_ROUTINE_APP_BOT }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BOT" ] && [ "$AUTHOR" = "$BOT" ] && [ "$AUTHOR_TYPE" = "Bot" ]; then
+            echo "routine=true" >> "$GITHUB_OUTPUT"
+            echo "==> routine App PR: checking it against its source run"
+          else
+            echo "routine=false" >> "$GITHUB_OUTPUT"
+            echo "==> not a routine App PR"
+          fi
+
+      - name: Checkout trusted tooling (PR base)
+        if: steps.identify.outputs.routine == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          # Full history: the run's source commit and the PR base must both resolve.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout the PR head (data only)
+        if: steps.identify.outputs.routine == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          # Full history: the base..head file list needs both commits.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the routine PR
+        if: steps.identify.outputs.routine == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTINE_APP_BOT: ${{ vars.CLOUD_MODEL_ROUTINE_APP_BOT }}
+        run: |
+          set -euo pipefail
+          test -f trusted/scripts/cloud-models/workflow.py || { echo "::error::the base has no routine checker"; exit 1; }
+          python3 -I trusted/scripts/cloud-models/workflow.py check-pr \
+            --event "$GITHUB_EVENT_PATH" --trusted trusted --pr pr --work "$RUNNER_TEMP/routine-check"
+          python3 -I trusted/scripts/cloud-models/validate-list.py --same \
+            pr/website/public/cloud-models.json pr/Sources/EnviousWispr/Resources/cloud-models.json
+
   # A PR adding more than a floor of test lines and touching core-path source
   # (CORE_PATHS in the script, founder 2026-10-19) must name how those tests are
   # bound (#2868): a `Recipe: #N` whose recipe VALIDATES against the checkout,
@@ -478,7 +541,7 @@ jobs:
   # fail closed), but is skipped when the whole run is cancelled (a superseded
   # push) so the obsolete SHA shows "cancelled", not a false "Failure".
   build-check:
-    needs: [build-and-test, worker-tests, website-check, recipe-check]
+    needs: [build-and-test, worker-tests, website-check, routine-pr-check, recipe-check]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -531,15 +594,16 @@ jobs:
           BUILD: ${{ needs.build-and-test.result }}
           WORKER: ${{ needs.worker-tests.result }}
           WEBSITE: ${{ needs.website-check.result }}
+          ROUTINE: ${{ needs.routine-pr-check.result }}
           RECIPE: ${{ needs.recipe-check.result }}
         run: |
           set -euo pipefail
           rc=0
-          for pair in "build-and-test=$BUILD" "worker-tests=$WORKER" "website-check=$WEBSITE" "recipe-check=$RECIPE"; do
+          for pair in "build-and-test=$BUILD" "worker-tests=$WORKER" "website-check=$WEBSITE" "routine-pr-check=$ROUTINE" "recipe-check=$RECIPE"; do
             [ "${pair#*=}" = success ] || { echo "::error::lane did not succeed: $pair"; rc=1; }
           done
           [ "$rc" -eq 0 ] || exit 1
-          echo "==> The build-and-test lane, the worker unit suites, the website check and the recipe check passed."
+          echo "==> The build-and-test lane, the worker unit suites, the website check, the routine PR check and the recipe check passed."
 
       - name: Report build status
         env:
