@@ -250,15 +250,14 @@ final class MeetingLiveWords {
       tracks: [.microphone: .init(status: .starting), .callSound: .init(status: .starting)])
     let micPump = mic.pump
     let callPump = call.pump
-    // A track writer's queue (both tracks deliver from writer release, #4355): the pump copies and
-    // returns; nothing else runs here. The chunk metadata (#4248) is not used: a session is fed
-    // samples only (`LivePreviewEngineSession.feed`), and display times come from the meeting
-    // clock (`LiveWordsAssembler`), so live words had no use for capture times or run breaks
-    // before the hold either.
-    return { track, samples, _ in
+    // A track writer's queue (both tracks deliver from writer release, #4355): the pump copies
+    // the samples and their written span and returns; nothing else runs here. Display times
+    // still come from the meeting clock (`LiveWordsAssembler`); the span travels toward the
+    // engine handoff for attribution.
+    return { track, samples, info in
       switch track {
-      case .microphone: micPump.admit(samples)
-      case .callSound: callPump.admit(samples)
+      case .microphone: micPump.admit(samples, span: info.span)
+      case .callSound: callPump.admit(samples, span: info.span)
       }
     }
   }
@@ -671,12 +670,14 @@ final class MeetingLiveWords {
     }
     slot.session = session
     let target = slot.target
-    let feed: @Sendable ([Float]) async -> Void
+    let feed: @Sendable (LiveAudioChunk) async -> Void
     if current.engine == .apple {
       feed = restartingFeed(track, generation: gen, target: target)
     } else {
       feed = { chunk in
-        if let session = target.current?.session { await session.feed(chunk) }
+        // #4355: the written positions stop here until the Universal adapter records what it
+        // actually submits (PR A chunk 7); the engine API takes samples only.
+        if let session = target.current?.session { await session.feed(chunk.samples) }
       }
     }
     guard slot.pump.startConsumer(feed: feed) else {
@@ -697,7 +698,7 @@ final class MeetingLiveWords {
   /// replacement. Every sample is fed once, in order.
   private func restartingFeed(
     _ track: MeetingTrackKind, generation gen: Int, target: SessionTarget
-  ) -> @Sendable ([Float]) async -> Void {
+  ) -> @Sendable (LiveAudioChunk) async -> Void {
     let feeder = RestartFeeder(
       meter: RestartMeter(threshold: deps.appleRestartAfterSamples, quietRMS: deps.restartQuietRMS))
     return { [weak self] chunk in
@@ -706,7 +707,9 @@ final class MeetingLiveWords {
         chunk,
         send: { part in
           guard let current = target.current else { return false }  // the track stopped
-          await current.session.feed(part)
+          // #4355: the part's written positions stop here until the Apple adapter records what
+          // it actually submits (PR A chunk 6); the engine API takes samples only.
+          await current.session.feed(part.samples)
           return true
         },
         restart: {
@@ -1256,22 +1259,24 @@ final class RestartMeter: @unchecked Sendable {
 
 /// Feeds one Apple track's chunks: up to the meter's restart point to the current session, then
 /// the restart, then the rest to whichever session is current afterwards. Every sample is sent
-/// once, in order; `send` returns false once the track has no session (it stopped).
+/// once, in order, with its written positions cut at the same point (#4355); `send` returns false
+/// once the track has no session (it stopped).
 final class RestartFeeder: @unchecked Sendable {
   private let meter: RestartMeter
 
   init(meter: RestartMeter) { self.meter = meter }
 
   func run(
-    _ chunk: [Float], send: @Sendable ([Float]) async -> Bool,
+    _ chunk: LiveAudioChunk, send: @Sendable (LiveAudioChunk) async -> Bool,
     restart: @Sendable () async -> Void
   ) async {
     var start = 0
-    while start < chunk.count {
-      let quietEnd = meter.advance(through: chunk, from: start)
-      let end = quietEnd ?? chunk.count
+    let count = chunk.samples.count
+    while start < count {
+      let quietEnd = meter.advance(through: chunk.samples, from: start)
+      let end = quietEnd ?? count
       if end > start {
-        guard await send(Array(chunk[start..<end])) else { return }
+        guard await send(chunk.subrange(start..<end)) else { return }
       }
       start = end
       guard quietEnd != nil else { return }

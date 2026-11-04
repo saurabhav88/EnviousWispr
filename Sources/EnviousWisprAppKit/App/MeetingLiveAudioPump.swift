@@ -1,11 +1,48 @@
+import EnviousWisprCore
 import Foundation
 import os
 
+/// Where a stretch of live samples sits on the written timeline (#4355): `count` samples from
+/// `offset` in their chunk are `span`. Only exactly adjacent written audio of one recording,
+/// track and run shares a slice, so a gap, a refused chunk, an eviction or a run break always
+/// starts a new one.
+struct LiveAudioSlice: Equatable, Sendable {
+  let offset: Int
+  let span: MeetingAudioSpan
+  var count: Int { span.sampleCount }
+}
+
+/// Live samples with their written positions, in order. The slices cover `samples` in order;
+/// a stretch no slice covers has no known position (the bank's slice list was full), and
+/// attribution abstains for it rather than guessing.
+struct LiveAudioChunk: Equatable, Sendable {
+  let samples: [Float]
+  let slices: [LiveAudioSlice]
+
+  /// The samples in `range` with their slices cut to match: a slice's span advances by exactly
+  /// the samples cut from its front.
+  func subrange(_ range: Range<Int>) -> LiveAudioChunk {
+    var cut: [LiveAudioSlice] = []
+    for slice in slices {
+      let lower = max(slice.offset, range.lowerBound)
+      let upper = min(slice.offset + slice.count, range.upperBound)
+      guard upper > lower,
+        let span = MeetingAudioSpan(
+          recording: slice.span.recording, track: slice.span.track, run: slice.span.run,
+          startSample: slice.span.startSample + (lower - slice.offset), sampleCount: upper - lower)
+      else { continue }
+      cut.append(LiveAudioSlice(offset: lower - range.lowerBound, span: span))
+    }
+    return LiveAudioChunk(samples: Array(samples[range]), slices: cut)
+  }
+}
+
 /// One meeting track's live audio on its way to a live-words session (#3973 plan §3.3).
 ///
-/// **The producer side runs on the real-time capture thread** (`MeetingRecorder.liveSamples`,
-/// right after the writer), so it may only copy borrowed samples into storage this pump already
-/// owns: no await, task, dispatch, growth or waiting. It takes the state lock with
+/// **The producer side runs on a track writer's queue** (`MeetingRecorder.liveSamples`, at
+/// writer release), and it is held to the capture-thread rules all the same: it may only copy
+/// borrowed samples and their span into storage this pump already owns: no await, task,
+/// dispatch, growth or waiting. It takes the state lock with
 /// `withLockIfAvailable`; when that lock is busy, the chunk is dropped and counted with a
 /// lock-free atomic add rather than waited for. Everything is allocated in `init`.
 ///
@@ -39,8 +76,11 @@ import os
 /// never waits for a `feed` that does not return; later producer calls are refused and counted.
 /// Storage is freed when the last holder (the recorder's observer, the consumer task) lets go.
 ///
-/// The producer runs on the real-time capture thread for the call sound and on the microphone
-/// writer's queue for the microphone (`MeetingRecorder.liveSamples`).
+/// **Written positions (#4355).** Each bank keeps the slices of its samples (at most
+/// `slicesPerBank`, reserved in `init`); they move, requeue, evict and free with the bank.
+/// Metadata never changes what audio is kept: when a bank's slice list is full, later
+/// non-adjacent audio in that bank is stored without a position and counted
+/// (`Accounting.unpositioned`).
 final class MeetingLiveAudioPump: @unchecked Sendable {
 
   /// 1.6 s at 16 kHz.
@@ -49,6 +89,9 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
   static let queuedBanks = 17
   /// Queued + producer + consumer.
   static let banks = queuedBanks + 2
+  /// Slices one bank can describe. Writer release hands over contiguous audio, so a bank
+  /// normally holds one; each gap, drop or run break adds one.
+  static let slicesPerBank = 64
 
   /// What happened to every sample offered to `admit`, for owners and tests.
   struct Accounting: Equatable, Sendable {
@@ -60,12 +103,16 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     var refused = 0
     /// Taken by the consumer and fed (a stopped consumer's copy is put back, not counted).
     var delivered = 0
+    /// Admitted without a written position: its bank's slice list was full (#4355).
+    var unpositioned = 0
     /// Samples a live-words session will never see.
     var dropped: Int { evicted + refused }
   }
 
   private struct State {
     var counts: [Int]
+    /// Each bank's slices, offsets into that bank; capacity reserved in `init`.
+    var slices: [[LiveAudioSlice]]
     var free: [Int]
     var freeCount: Int
     var ring: [Int]
@@ -89,6 +136,7 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
 
     mutating func pushFree(_ bank: Int) {
       counts[bank] = 0
+      slices[bank].removeAll(keepingCapacity: true)
       free[freeCount] = bank
       freeCount += 1
     }
@@ -145,9 +193,16 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     busyRefusals = .allocate(capacity: 1)
     busyRefusals.initialize(to: 0)
     // Bank 0 starts as the producer's; the rest are free.
+    var slices: [[LiveAudioSlice]] = []
+    for _ in 0..<Self.banks {
+      var bank: [LiveAudioSlice] = []
+      bank.reserveCapacity(Self.slicesPerBank)
+      slices.append(bank)
+    }
     state = OSAllocatedUnfairLock(
       initialState: State(
         counts: [Int](repeating: 0, count: Self.banks),
+        slices: slices,
         free: Array((1..<Self.banks).reversed()) + [0],
         freeCount: Self.banks - 1,
         ring: [Int](repeating: 0, count: Self.queuedBanks),
@@ -163,12 +218,14 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
 
   // MARK: - Producer (capture thread)
 
-  /// Copies a borrowed chunk into the pump, or drops it and counts it. Never waits.
-  func admit(_ samples: UnsafeBufferPointer<Float>) {
+  /// Copies a borrowed chunk and its written span into the pump, or drops it and counts it.
+  /// Never waits. A span that does not name exactly these samples is refused and counted.
+  func admit(_ samples: UnsafeBufferPointer<Float>, span: MeetingAudioSpan) {
     guard let source = samples.baseAddress, !samples.isEmpty else { return }
     let storage = self.storage
     let taken: Bool? = state.withLockIfAvailableUnchecked { s in
-      guard s.open, s.admitting else {
+      guard s.open, s.admitting, span.sampleCount == samples.count else {
+        assert(span.sampleCount == samples.count, "a live span must name exactly its samples")
         s.accounting.refused += samples.count
         return true
       }
@@ -176,8 +233,28 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
       while offset < samples.count {
         let bank = s.producer
         let filled = s.counts[bank]
+        let start = span.startSample + offset
+        let joins = s.slices[bank].last.map {
+          $0.offset + $0.count == filled && $0.span.recording == span.recording
+            && $0.span.track == span.track && $0.span.run == span.run
+            && $0.span.endSample == start
+        } ?? false
         let n = min(Self.bankSamples - filled, samples.count - offset)
         (storage + bank * Self.bankSamples + filled).update(from: source + offset, count: n)
+        if joins, let last = s.slices[bank].last,
+          let grown = MeetingAudioSpan(
+            recording: span.recording, track: span.track, run: span.run,
+            startSample: last.span.startSample, sampleCount: last.count + n)
+        {
+          s.slices[bank][s.slices[bank].count - 1] = LiveAudioSlice(offset: last.offset, span: grown)
+        } else if s.slices[bank].count == Self.slicesPerBank {
+          s.accounting.unpositioned += n  // kept, without a position: no room to describe it
+        } else if let piece = MeetingAudioSpan(
+          recording: span.recording, track: span.track, run: span.run, startSample: start,
+          sampleCount: n)
+        {
+          s.slices[bank].append(LiveAudioSlice(offset: filled, span: piece))
+        }
         s.counts[bank] = filled + n
         offset += n
         if s.counts[bank] == Self.bankSamples { s.rotateProducer() }
@@ -190,11 +267,11 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
 
   // MARK: - Consumer
 
-  /// The next chunk, oldest first, or nil when there is nothing to take, the pump is retired,
-  /// or `generation` (the calling consumer's) was stopped, including during the copy. The bank
-  /// is back in the pump before this returns.
-  func takeChunk(generation: Int? = nil) -> [Float]? {
-    let taken: (bank: Int, count: Int)? = state.withLock { s in
+  /// The next chunk with its written positions, oldest first, or nil when there is nothing to
+  /// take, the pump is retired, or `generation` (the calling consumer's) was stopped, including
+  /// during the copy. The bank is back in the pump before this returns.
+  func takeChunk(generation: Int? = nil) -> LiveAudioChunk? {
+    let taken: (bank: Int, count: Int, slices: [LiveAudioSlice])? = state.withLock { s in
       guard s.open, s.consumerBank == nil else { return nil }
       if let generation, generation != s.consumerGeneration { return nil }
       let bank: Int
@@ -210,14 +287,16 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
         return nil
       }
       s.consumerBank = bank
-      return (bank, s.counts[bank])
+      // A copy of the bank's slices travels with its samples; the bank keeps its own for a
+      // requeue.
+      return (bank, s.counts[bank], s.slices[bank])
     }
     guard let taken else { return nil }
     consumerOwnsBank?()
     // Outside the lock: the producer keeps admitting into other banks meanwhile.
     let chunk = Array(
       UnsafeBufferPointer(start: storage + taken.bank * Self.bankSamples, count: taken.count))
-    return state.withLock { s -> [Float]? in
+    return state.withLock { s -> LiveAudioChunk? in
       s.consumerBank = nil
       guard s.open else {
         s.pushFree(taken.bank)  // retired: nothing more is delivered
@@ -229,14 +308,14 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
       }
       s.accounting.delivered += taken.count
       s.pushFree(taken.bank)
-      return chunk
+      return LiveAudioChunk(samples: chunk, slices: taken.slices)
     }
   }
 
   /// Starts the one consumer, feeding every chunk to `feed` in order. False while a previous
   /// consumer's task has not exited yet, or once the pump is retired.
   @discardableResult
-  func startConsumer(feed: @escaping @Sendable ([Float]) async -> Void) -> Bool {
+  func startConsumer(feed: @escaping @Sendable (LiveAudioChunk) async -> Void) -> Bool {
     let cadence = self.cadence
     return state.withLock { s -> Bool in
       guard s.open, s.consumerTask == nil else { return false }

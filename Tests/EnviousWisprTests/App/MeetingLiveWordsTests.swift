@@ -389,8 +389,8 @@ struct MeetingLiveWordsTests {
     _ owner: MeetingLiveWords, _ id: UUID = UUID(),
     tracks: Set<MeetingTrackKind> = [.microphone, .callSound],
     clock: @escaping @Sendable () -> Int = { 1_000 }
-  ) -> MeetingRecorder.LiveSamplesObserver {
-    let observer = owner.prepareCapture(meetingID: id)
+  ) -> LiveCapture {
+    let observer = LiveCapture(recording: id, observer: owner.prepareCapture(meetingID: id))
     owner.captureStarted(
       meetingID: id, captured: tracks, vocabulary: vocabulary, clock: clock)
     return observer
@@ -666,9 +666,9 @@ struct MeetingLiveWordsTests {
     world.apple = .ready(world.appleCandidate())
     let owner = Self.owner(world)
     let id = UUID()
-    let observer = owner.prepareCapture(meetingID: id)
+    let observer = LiveCapture(recording: id, observer: owner.prepareCapture(meetingID: id))
     let early: [Float] = (0..<1_600).map(Float.init)
-    early.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, early)
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty, "nothing resolved yet")
     owner.captureStarted(
       meetingID: id, captured: [.microphone, .callSound], vocabulary: Self.vocabulary,
@@ -837,13 +837,15 @@ struct MeetingLiveWordsTests {
     let owner = Self.owner(world)
     Self.record(owner, tracks: [.microphone])
     await PreviewWait.within("the open held", onExpiry: open.open) { await open.reached(1) }
-    let observer = owner.prepareCapture(meetingID: UUID())  // a new recording replaces it
+    let replacement = UUID()  // a new recording replaces it
+    let observer = LiveCapture(
+      recording: replacement, observer: owner.prepareCapture(meetingID: replacement))
     open.open()
     #expect(await owner.waitForCleanups(seconds: 10))
     let late = try #require(world.appleEngines.first?.sessions.first)
     #expect(late.ends == 1, "ended once by the old recording's cleanup")
     let samples: [Float] = [1, 2, 3]
-    samples.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, samples)
     #expect(late.fed.isEmpty, "never fed: it was never the recording's session")
     owner.stop()
   }
@@ -962,11 +964,11 @@ struct MeetingLiveWordsTests {
     let mic = try #require(world.appleEngines[0].sessions.first)
     let call = try #require(world.appleEngines[1].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, first)
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     // The tail arrives while the feed is held (the recorder's released 3 s), then Stop.
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, tail)
     owner.stop()
     await PreviewWait.within("the other track ended", onExpiry: feed.open) {
       await call.until { call.ends == 1 }
@@ -994,10 +996,10 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, first)
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, tail)
     let meetingID = try #require(owner.transcript?.meetingID)
     owner.delete(meetingID: meetingID)
     await PreviewWait.within("the end started", onExpiry: feed.open) {
@@ -1098,7 +1100,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     let second = [Float](repeating: 0.1, count: 16_000)
-    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0, .test) } }
+    for _ in 0..<40 { observer.offer(.microphone, second) }
     await Self.until("the dropped flag", owner, release: feed.open) {
       $0.transcript?.tracks[.microphone]?.droppedAudio == true
     }
@@ -1184,9 +1186,9 @@ struct MeetingLiveWordsTests {
   private static let quiet = [Float](repeating: 0, count: 1_600)
 
   private static func speak(
-    _ observer: MeetingRecorder.LiveSamplesObserver, _ track: MeetingTrackKind, _ samples: [Float]
+    _ observer: LiveCapture, _ track: MeetingTrackKind, _ samples: [Float]
   ) {
-    samples.withUnsafeBufferPointer { observer(track, $0, .test) }
+    observer.offer(track, samples)
   }
 
   @Test("no restart before the audio threshold, and voiced audio postpones it to the first quiet window")
@@ -1456,18 +1458,53 @@ struct MeetingLiveWordsTests {
   private static func sessions(
     _ chunks: [[Float]], threshold: Int
   ) async -> [[Float]] {
+    await sessionParts(chunks, threshold: threshold).map { $0.flatMap(\.samples) }
+  }
+
+  /// The parts `RestartFeeder` sends for `chunks` (each offered as contiguous written audio
+  /// from sample 0 of one run), grouped per session.
+  private static func sessionParts(
+    _ chunks: [[Float]], threshold: Int
+  ) async -> [[LiveAudioChunk]] {
     let feeder = RestartFeeder(meter: RestartMeter(threshold: threshold, quietRMS: 0.001))
-    let sent = OSAllocatedUnfairLock<[[Float]]>(initialState: [[]])
+    let sent = OSAllocatedUnfairLock<[[LiveAudioChunk]]>(initialState: [[]])
+    let recording = UUID()
+    var position = 0
     for chunk in chunks {
+      let span = MeetingAudioSpan(
+        recording: recording, track: .callSound, run: 0, startSample: position,
+        sampleCount: chunk.count)!
+      position += chunk.count
       await feeder.run(
-        chunk,
+        LiveAudioChunk(samples: chunk, slices: [LiveAudioSlice(offset: 0, span: span)]),
         send: { part in
-          sent.withLock { $0[$0.count - 1] += part }
+          sent.withLock { $0[$0.count - 1].append(part) }
           return true
         },
         restart: { sent.withLock { $0.append([]) } })
     }
     return sent.withLock { $0 }
+  }
+
+  @Test("a restart cuts the written positions with the samples: the two sessions get complementary spans")
+  func restartCutsSpansWithSamples() async {
+    let audio = Self.voiced(1_600) + [Float](repeating: 0, count: 4_000)
+    let chunks = stride(from: 0, to: audio.count, by: 1_000).map {
+      Array(audio[$0..<min($0 + 1_000, audio.count)])
+    }
+    let sessions = await Self.sessionParts(chunks, threshold: 1_600)
+    #expect(sessions.count >= 2, "a restart happened")
+    let parts = sessions.flatMap { $0 }
+    for part in parts {
+      #expect(part.slices.reduce(0) { $0 + $1.count } == part.samples.count, "slices tile the part")
+      #expect(part.slices.first?.offset == 0)
+    }
+    let spans = parts.flatMap(\.slices).map(\.span)
+    #expect(spans.first?.startSample == 0)
+    #expect(zip(spans, spans.dropFirst()).allSatisfy { $0.endSample == $1.startSample }, "no gap, no overlap")
+    #expect(spans.last?.endSample == audio.count, "every written sample once")
+    let firstSessionEnd = sessions[0].flatMap(\.slices).last?.span.endSample
+    #expect(firstSessionEnd == sessions[0].flatMap(\.samples).count, "the cut is where the samples are cut")
   }
 
   @Test("continuous quiet audio in chunks smaller than 100 ms still restarts")
@@ -1778,14 +1815,38 @@ struct MeetingLiveWordsTests {
   }
 }
 
-extension MeetingReleasedChunk {
-  /// Metadata for a chunk a test offers directly (live words do not read it).
-  static let test: MeetingReleasedChunk = {
-    let id = UUID()
-    return MeetingReleasedChunk(
+/// One recording's live-audio observer with fixture-owned metadata (#4355): every offer is
+/// handed over with a written span in that recording (the same id `prepareCapture` got), each
+/// track's offers contiguous from 0, and an acquisition time read from the host clock when it is
+/// offered (never derived from the position).
+final class LiveCapture: Sendable {
+  let recording: UUID
+  let observer: MeetingRecorder.LiveSamplesObserver
+  private let next = OSAllocatedUnfairLock<[MeetingTrackKind: Int]>(initialState: [:])
+
+  init(recording: UUID, observer: @escaping MeetingRecorder.LiveSamplesObserver) {
+    self.recording = recording
+    self.observer = observer
+  }
+
+  func offer(_ track: MeetingTrackKind, _ samples: UnsafeBufferPointer<Float>) {
+    guard !samples.isEmpty else { return }
+    let count = samples.count
+    let start = next.withLock { n -> Int in
+      defer { n[track, default: 0] += count }
+      return n[track, default: 0]
+    }
+    let chunk = MeetingReleasedChunk(
       span: MeetingAudioSpan(
-        recording: id, track: .callSound, run: 0, startSample: 0, sampleCount: 1)!,
-      acquired: MeetingAcquisitionTime(recording: id, hostTicks: 0, provenance: .estimated),
+        recording: recording, track: track, run: 0, startSample: start,
+        sampleCount: samples.count)!,
+      acquired: MeetingAcquisitionTime(
+        recording: recording, hostTicks: mach_absolute_time(), provenance: .estimated),
       afterDrop: false, sourceBreak: false)
-  }()
+    observer(track, samples, chunk)
+  }
+
+  func offer(_ track: MeetingTrackKind, _ samples: [Float]) {
+    samples.withUnsafeBufferPointer { offer(track, $0) }
+  }
 }

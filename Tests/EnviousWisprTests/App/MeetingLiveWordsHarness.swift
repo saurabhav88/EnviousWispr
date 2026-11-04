@@ -113,7 +113,8 @@ struct MeetingLiveWordsHarness {
 
     let meetingID = UUID()
     let clock = ContinuousClock()
-    let observer = owner.prepareCapture(meetingID: meetingID)
+    let observer = LiveCapture(
+      recording: meetingID, observer: owner.prepareCapture(meetingID: meetingID))
     let start = clock.now
     owner.captureStarted(
       meetingID: meetingID, captured: [.microphone, .callSound],
@@ -169,7 +170,7 @@ struct MeetingLiveWordsHarness {
         for (track, samples) in [(MeetingTrackKind.microphone, mic), (.callSound, call)]
         where lo < samples.count {
           samples[lo..<min(samples.count, lo + chunk)].withUnsafeBufferPointer {
-            observer(track, $0, .test)
+            observer.offer(track, $0)
           }
         }
         i += 1
