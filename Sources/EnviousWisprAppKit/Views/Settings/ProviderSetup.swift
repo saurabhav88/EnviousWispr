@@ -1562,13 +1562,14 @@ private func keyBadge(_ text: String, tone: Color) -> some View {
 /// chosen, so nobody picks something the API will reject.
 ///
 /// Ollama (#3385 design): ON THIS MAC with each model's measured verdict, then the hosted
-/// models under their dated tier headings. Cloud: the models our classifier recognises as
-/// the fast tier carry "Fast tier · recommended for cleanup"; others carry no note, because
-/// "not recognised" says nothing about size, speed or cost.
+/// models under their dated tier headings. Cloud (#4353 D5): one sequence, newest first, with
+/// dated copies hidden unless chosen here; the models our classifier recognises as the fast
+/// tier carry "Fast tier · recommended for cleanup" as a note only; others carry no note,
+/// because "not recognised" says nothing about size, speed or cost.
 @ViewBuilder
 private var modelPickerSections: some View {
   let groups = OllamaModelPickerPresentation.groups(
-    from: surfaceDiscoveredModels, provider: provider)
+    from: surfaceDiscoveredModels, provider: provider, chosenModel: surfaceCloudModel)
 
   if provider == .ollama {
     let local = groups.recommended + groups.other
@@ -1607,8 +1608,7 @@ private var modelPickerSections: some View {
       }
     }
   } else {
-    ForEach(groups.recommended) { modelRow($0) }
-    ForEach(groups.other) { modelRow($0) }
+    ForEach(groups.selectable) { modelRow($0) }
   }
   if !groups.locked.isEmpty {
     SettingsDropdownHeading(

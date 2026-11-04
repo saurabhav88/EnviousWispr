@@ -176,7 +176,7 @@ struct OllamaSetupServiceLibraryFeedTests {
     let info = LLMModelInfo(
       id: "olmo2:7b", displayName: "olmo2:7b", provider: .ollama, availability: .available,
       isRemote: false)
-    let groups = OllamaModelPickerPresentation.groups(from: [info], provider: .ollama)
+    let groups = OllamaModelPickerPresentation.groups(from: [info], provider: .ollama, chosenModel: "")
     #expect(groups.recommended.isEmpty)
     #expect(groups.other.map(\.id) == ["olmo2:7b"])
   }
