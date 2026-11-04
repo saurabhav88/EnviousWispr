@@ -17,7 +17,7 @@ The routine only adds rows for new models. It never hides, un-hides or edits a r
 
 No Stage 2 routine exists. Everything below is the contract it must follow once it is created. None of it is verified until the activation proofs listed below pass. These parts are separated:
 
-- **Verified in the repository:** the Stage 1 workflow, `workflow.py`, `propose.py` and their offline tests (`workflow.py --self-test`, `propose.py --self-test`).
+- **Verified in the repository:** the Stage 1 workflow, `workflow.py` (including `verify-run`), `propose.py` and their offline tests (`workflow.py --self-test`, `propose.py --self-test`).
 - **Not verified:** routine creation, its environment, its GitHub write route, the Codex cloud reviewer's behavior on routine PRs, the durable run-log issue and every live merge.
 
 ## Merge authorization (narrow)
@@ -51,7 +51,7 @@ Use a new, isolated claude.ai cloud environment for this routine. Do not use `en
 2. One hidden state block, `<!-- cloud-routine-record {...} -->`, holding the JSON record. Example (a real record has real values):
 
    ```json
-   {"schema": 1, "repository": "saurabhav88/EnviousWispr", "runID": "101", "runDate": "2026-11-09", "runLogCommentID": 3400000001, "state": "merged", "attempts": [{"attempt": "1", "artifact": "cloud-model-routine-evidence-101-1", "sourceSHA": "0123456789abcdef0123456789abcdef01234567", "receiptSHA256": "9f2c0d1e4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0", "outcome": "partial", "candidates": 2, "added": 1, "failed": 1}], "pr": {"attempt": "1", "number": 4400, "url": "https://github.com/saurabhav88/EnviousWispr/pull/4400", "head": "89abcdef0123456789abcdef0123456789abcdef"}, "review": {"state": "requested", "pr": 4400, "requestedHead": "89abcdef0123456789abcdef0123456789abcdef", "requestCommentID": 3500000001, "reposted": false, "verdict": "clean", "evidence": "issue comment 3500000002 by the activation-verified Codex bot"}, "merge": {"state": "armed", "head": "89abcdef0123456789abcdef0123456789abcdef", "base": "76543210fedcba9876543210fedcba9876543210"}, "mergedSHA": "fedcba9876543210fedcba9876543210fedcba98"}
+   {"schema": 1, "repository": "saurabhav88/EnviousWispr", "runID": "101", "runDate": "2026-11-09", "runLogCommentID": 3400000001, "state": "merged", "attempts": [{"attempt": "1", "artifact": "cloud-model-routine-evidence-101-1", "sourceSHA": "0123456789abcdef0123456789abcdef01234567", "receiptSHA256": "9f2c0d1e4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0", "completedAt": "2026-11-09T07:44:10Z", "firstPendingAt": "2026-11-09T07:50:12Z", "runOutcome": "partial", "evidenceOutcome": "partial", "candidates": 2, "added": 1, "failed": 1}], "pr": {"attempt": "1", "number": 4400, "url": "https://github.com/saurabhav88/EnviousWispr/pull/4400", "head": "89abcdef0123456789abcdef0123456789abcdef"}, "review": {"state": "requested", "pr": 4400, "requestedHead": "89abcdef0123456789abcdef0123456789abcdef", "requestCommentID": 3500000001, "reposted": false, "verdict": "clean", "evidence": "issue comment 3500000002 by the activation-verified Codex bot"}, "merge": {"state": "armed", "head": "89abcdef0123456789abcdef0123456789abcdef", "base": "76543210fedcba9876543210fedcba9876543210"}, "mergedSHA": "fedcba9876543210fedcba9876543210fedcba98"}
    ```
 
 **Field meanings:**
@@ -60,12 +60,12 @@ Use a new, isolated claude.ai cloud environment for this routine. Do not use `en
 - `candidates`: new models the authenticated receipt tested, counted across providers. `0` when no usable receipt exists.
 - `added`: rows the evidenced proposal adds. This is a proposal fact. It does not mean the rows are on main. `0` without usable evidence.
 - `failed`: candidates whose outcome is `fail` or `notTried`. `0` without usable evidence.
-- `outcome`: the final outcome in the evidence's `result.json` (`success`, `partial`, `failure`, `nochange`). It is `failure` when the run has no usable evidence, for example a run that failed before its receipt or has a missing artifact.
+- `outcome`: the run's own outcome, `verify-run`'s `runOutcome` (`success`, `partial`, `failure`, `nochange`). It is the evidence outcome from `result.json` when the run and its publish job succeeded. It is `failure` when any of these happened, even if the measurement found nothing to change or rows that passed: the run failed, the publish job did not succeed, or the run has no usable evidence (it failed before its receipt, or its artifact is missing). The record keeps the measured counts and the evidence outcome (`receipt.outcome`) separately in its attempt entry.
 - `result`:
   - `merged`: the PR merged, and the merged list bytes were verified on main.
   - `review-blocked`: a gate refused the PR, or the reviewer had findings.
   - `none`: there is no PR, or the PR is still pending.
-- `state`: `pending`, `review-blocked`, `merged` or `terminal` (no PR and nothing more to do for its newest attempt). The digest reads the receipt line. A pending run shows `result=none`, and `state` says pending. A temporary GitHub read or download failure keeps a run `pending`; only confirmed missing or failed evidence makes it `terminal`.
+- `state`: `pending`, `review-blocked`, `merged` or `terminal` (no PR and nothing more to do for its newest attempt). The digest reads the receipt line. A pending run shows `result=none`, and `state` says pending. A temporary GitHub read or download failure keeps a run `pending`; only confirmed missing or failed evidence makes it `terminal`. Each attempt entry has its own `firstPendingAt`, set once when that attempt first becomes pending and never changed afterwards. An attempt's 7-day deadline starts at its own `completedAt`, or else at its own `firstPendingAt`. A newer attempt never inherits an older attempt's deadline and never resets an older attempt's evidence.
 
 **Recovery:** before every write, Stage 2 re-reads the issue's comments, all pages. A write that succeeded while the session stopped before reading the reply is found on the next invocation by its marker and is reused. A second comment is never created for the same run ID. Stage 2 creates or recovers the pending record before its first write to a PR. Before posting a review request, the one permitted repost, or arming the merge, it saves the intent (PR, exact head, and base for the merge) and reads it back. After the action, it reconciles GitHub's state and saves what came back. Recovery uses only the saved intent, never a head guessed from timestamps. Stage 2 finds an earlier request by the writer before ever posting one, and recovers a PR that already merged instead of reviewing or merging it again. Every pending state has a deadline: after it, the run becomes `review-blocked` with a reason.
 
@@ -90,15 +90,36 @@ Asking the prompt to drop the footer is not proof that a connector drops it. Unt
 
 **Merge route:** D7 requires squash auto-merge with an expected-head condition. Use only an activation-proven, footer-free route that arms squash auto-merge with the expected head. If that route is unavailable, activation remains blocked. GitHub enables auto-merge only through GraphQL, which cloud sessions cannot reach, so this may need a tool route. A direct REST squash merge with `sha` (`PUT /repos/{owner}/{repo}/pulls/{n}/merge`) is a proposed alternative, not an authorized fallback. It needs a founder-approved plan revision before use.
 
-## Required helper (Chunk 8b, before activation)
+## Run verification (`workflow.py verify-run`)
 
-Mandatory Chunk 8b adds authenticated run verification before digest integration. It separates two jobs:
-- authenticating the run's metadata
-- validating evidence from a successful sweep
+`workflow.py verify-run --run ID --attempt N --trusted DIR --work DIR` classifies one completed Stage 1 run from GitHub's own facts and the run's own evidence. It sends GET requests only, and it writes only under `--work`.
 
-So a failed run can be classified without pretending it passed the sweep. For usable evidence, the helper rebuilds the context from authenticated metadata and regenerates the permitted proposal in scratch space. It then compares that result and list with the artifact's bytes. It never compares a proposed list with the unchanged base as though the base contained that proposal.
+**How it works:**
+- It authenticates the run's metadata first, separately from whether the sweep succeeded. So a failed run is classified without pretending it passed.
+- For usable evidence, it rebuilds the context from the authenticated metadata and regenerates the permitted proposal in scratch space with `propose.py`. Then it compares the result, list and PR-body bytes with the artifact.
+- The recorded source commit is resolved in the trusted checkout. A main that has moved on does not invalidate a run measured earlier.
+- It never compares a proposed list with the unchanged base. Current PR and base compatibility stays `check-pr`'s job.
 
-The helper also tells a confirmed missing or failed evidence artifact apart from a temporary GitHub read or download failure. A temporary failure keeps the run pending. PR validation remains `workflow.py check-pr`. The exact command and its output fields will be documented here after the helper is built and reviewed. Until then, Stage 2 stops at the verification step and does not authenticate runs or count rows by hand.
+**Credentials:** `GH_TOKEN` must be a token with repository read access (actions and contents). `DIR` for `--trusted` is a checkout of main with full history.
+
+**Output:** a JSON object (schema 1), on stdout and in `<work>/verify-run.json`. It holds:
+- `status` and `reason`
+- `run`: id, attempt, source SHA, event, `createdAt` (the run's creation), `completedAt` (when this attempt's last job finished, or `null` when GitHub does not report it for every job), run status and conclusion, and the `sweep` and `publish` job conclusions
+- `evidence`: artifact, receipt hash, list hash and `proposal`
+- `receipt`: `providers`, `candidates`, `added`, `failed` and `outcome` (the evidence outcome)
+- `runOutcome`: the outcome for the run-log receipt (see "Field meanings"); `null` when the result is `temporary` or `refused`
+- `measured`: whether the counts come from authenticated measurement evidence
+
+Fields that are not available are `null`. The output never carries GitHub response bodies, error text, tokens or artifact contents.
+
+| `status` | Exit | `reason` values | Stage 2 does |
+|---|---|---|---|
+| `verified` | 0 | `evidence-verified` | Use `receipt`, `runOutcome` and `evidence.proposal`. If `run.publish` is not `success`, record `review-blocked`, reason `publication-failed`. A failed publish job does not prove no PR exists, because the PR may have been created before a reply was lost. So Stage 2 still looks up the attempt's App PR in every state and records it, but never merges through this path. |
+| `failure` | 10 | `sweep-failure`, `sweep-cancelled`, `sweep-timed_out`, `sweep-skipped`, `artifact-missing`, `artifact-expired` | Record `providers=3 candidates=0 added=0 failed=0 outcome=failure result=none`, `state: terminal` (`measured: false`). |
+| `temporary` | 75 | `github-unavailable`, `github-malformed`, `run-incomplete` | Stay `pending`, with the 7-day deadline. |
+| `refused` | 1 | `not-a-routine-run`, `evidence-invalid`, `evidence-mismatch`, `bad-arguments` | Record `review-blocked` with the reason. Never treat it as no-change. |
+
+A complete, well-formed artifact listing with no match confirms `artifact-missing`. An unreadable item in any reply is `github-malformed`, never absence. A timeout, a rate limit, a server error, an ambiguous 403 or 404, or a list that does not add up to its stated total is `temporary`, never confirmed missing.
 
 ## Activation checklist (Stage 2)
 
@@ -107,7 +128,7 @@ All of these must hold before the first scheduled Stage 2 run. Each needs read-b
 1. The isolated environment exists, with no provider keys, no GCP credentials and no vault access.
 2. `RUN_LOG_ISSUE` is created. `STAGE2_WRITER_LOGIN`, the App bot login (`CLOUD_MODEL_ROUTINE_APP_BOT`) and `ACTIVATION_DAY` are recorded here.
 3. The footer-free write route is proven, as described above.
-4. The Chunk 8b run-verification helper exists, is reviewed, and this file names its exact command.
+4. `workflow.py verify-run` runs in the Stage 2 environment against one real completed run with that environment's read token, and its output is read back.
 5. The review route is proven: a test routine PR gets one `@codex review` request from the Stage 2 writer, and the bot answers on the current head. The Codex bot's exact GitHub account ID, login and type (`CODEX_BOT_ID`, `CODEX_BOT_LOGIN`, `Bot`) are read from that answer and recorded here.
 6. A rehearsal on a test run walks through creating the record, an interrupted rerun (the record is reused) and a head change (the new head is checked again).
 7. The schedule is set to run after Stage 1, for example Mondays 09:00 UTC, plus one later weekly run to revisit pending records. This is an activation value.

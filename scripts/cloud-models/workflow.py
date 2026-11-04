@@ -13,6 +13,9 @@ Standard library only.
                                             PR check: a routine App PR must be exactly what its
                                             authenticated run's evidence permits
   workflow.py report-failure                failure job: one deduplicated, sanitized report
+  workflow.py verify-run --run ID --attempt N --trusted DIR --work DIR
+                                            Stage 2: classify a completed run from GitHub's facts
+                                            and its own evidence (GET only; JSON on stdout)
   workflow.py --self-test
 
 `propose.py` stays the only owner of permitted list changes; this file never decides what a
@@ -20,6 +23,7 @@ row may be. Every GitHub call goes through `GitHub` (tests inject a fake). Outpu
 from allowlisted facts and closed stage names, never from logs, provider text or errors.
 """
 
+import datetime
 import hashlib
 import io
 import json
@@ -68,6 +72,31 @@ MAX_ZIP_BYTES = 8_000_000
 
 class Refused(Exception):
     """A controlled refusal; the message names a rule, never a secret or provider text."""
+
+
+class Temporary(Refused):
+    """GitHub could not answer for certain (no reply, rate limit, server error, an ambiguous
+    403/404, or an incomplete list). Never evidence that something is missing."""
+
+
+class NoReply(Temporary):
+    """A request got no HTTP reply at all."""
+
+
+class Malformed(Temporary):
+    """GitHub answered with a shape this code cannot read. Never evidence of absence."""
+
+
+class NotRoutine(Refused):
+    """The run is not this repository's routine run on main."""
+
+
+class EvidenceInvalid(Refused):
+    """The run's evidence is malformed, contradictory or not what its receipt produces."""
+
+
+# HTTP statuses that say nothing certain about the resource.
+TEMPORARY_STATUSES = {403, 404, 408, 409, 429, 500, 502, 503, 504}
 
 
 def sha256(data):
@@ -313,7 +342,7 @@ class GitHub:
         except urllib.error.HTTPError as error:
             return error.code, None
         except (urllib.error.URLError, TimeoutError, ValueError):
-            raise Refused(f"GitHub {method} failed without a reply")
+            raise NoReply(f"GitHub {method} failed without a reply")
 
 
 def gh_ok(status, what):
@@ -495,38 +524,250 @@ def identify(event, bot):
     return match.group(1), match.group(2)
 
 
+def read_answer(github, path, what, raw=False):
+    """A 2xx payload, Temporary for an uncertain answer, Refused for any other failure."""
+    status, payload = github.call("GET", path, raw=raw)
+    if status is not None and 200 <= status <= 299:
+        return payload
+    if status is None or status in TEMPORARY_STATUSES:
+        raise Temporary(f"GitHub could not answer for {what}")
+    raise Refused(f"GitHub refused {what}")
+
+
+def every_counted(github, path, key, what):
+    """Every item of a `{total_count, <key>: [...]}` endpoint; Temporary unless the pages add
+    up to the stated total."""
+    items, total = [], None
+    for page in range(1, MAX_PAGES + 1):
+        payload = read_answer(github, f"{path}{'&' if '?' in path else '?'}per_page={PAGE_SIZE}&page={page}", what)
+        chunk = (payload or {}).get(key) if isinstance(payload, dict) else None
+        count = (payload or {}).get("total_count") if isinstance(payload, dict) else None
+        if not isinstance(chunk, list) or isinstance(count, bool) or not isinstance(count, int) \
+                or count < 0:
+            raise Malformed(f"GitHub returned an unreadable {what}")
+        total = count if total is None else total
+        if count != total:
+            raise Temporary(f"the {what} changed while it was read")
+        items.extend(chunk)
+        if len(items) >= total or not chunk:
+            break
+    if len(items) != total:
+        raise Temporary(f"the {what} is incomplete")
+    return items
+
+
+INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+
+
+def text_or_none(value, what):
+    if value is not None and not isinstance(value, str):
+        raise Malformed(f"GitHub returned an unreadable {what}")
+    return value
+
+
+def is_instant(value):
+    """A canonical UTC instant that is also a real date and time."""
+    if not isinstance(value, str) or not INSTANT_RE.fullmatch(value):
+        return False
+    try:
+        datetime.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return True
+
+
+def instant_or_none(value, what):
+    if value is not None and not is_instant(value):
+        raise Malformed(f"GitHub returned an unreadable {what}")
+    return value
+
+
+def whole_number(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+# Every field of the attempt object this path reads, with the type it must have. Each is
+# checked before any value is compared, so a wrong shape is `Malformed`, never a crash.
+RUN_FIELD_TYPES = {"path": str, "event": str, "head_branch": str, "head_sha": str,
+                   "status": str, "name": str}
+
+
+def run_facts(github, run_id, attempt):
+    """The run's own GitHub facts and job conclusions. NotRoutine unless it is this workflow
+    on main by an allowed event; Malformed for an unreadable shape; does not judge whether
+    its sweep succeeded."""
+    run = read_answer(github, f"/repos/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}",
+                      "the source run")
+    repository = run.get("repository") if isinstance(run, dict) else None
+    if not isinstance(run, dict) or not isinstance(repository, dict) \
+            or not isinstance(repository.get("full_name"), str) \
+            or any(not isinstance(run.get(field), kind) for field, kind in RUN_FIELD_TYPES.items()) \
+            or not whole_number(run.get("id")) or not whole_number(run.get("run_attempt")) \
+            or not is_instant(run.get("created_at")):
+        raise Malformed("GitHub returned an unreadable source run")
+    conclusion = text_or_none(run.get("conclusion"), "source run")
+    if repository["full_name"] != REPOSITORY or run["path"] != WORKFLOW_PATH \
+            or run["event"] not in EVENTS or run["head_branch"] != "main" \
+            or str(run["id"]) != run_id or str(run["run_attempt"]) != attempt \
+            or not COMMIT_RE.fullmatch(run["head_sha"]):
+        raise NotRoutine("the source run is not a routine run on main")
+    status, created = run["status"], run["created_at"]
+    jobs = every_counted(github, f"/repos/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}/jobs",
+                         "jobs", "source run jobs")
+    conclusions, completions = {}, []
+    for job in jobs:
+        if not isinstance(job, dict) or not isinstance(job.get("name"), str) \
+                or not isinstance(job.get("status"), str):
+            raise Malformed("GitHub returned an unreadable job")
+        name = job["name"]
+        if name in conclusions:
+            raise NotRoutine("the source run has two jobs with one name")
+        conclusions[name] = text_or_none(job.get("conclusion"), "job") or job["status"]
+        completions.append(instant_or_none(job.get("completed_at"), "job"))
+    # The attempt's completion: when its last job finished. Unknown (None) unless every job
+    # reports a completion time; it is never the run's creation time.
+    completed = max(completions) if completions and all(completions) else None
+    return {"repository": REPOSITORY, "workflow": run["name"], "runID": run_id,
+            "runAttempt": attempt, "event": run["event"], "ref": MAIN_REF,
+            "sourceSHA": run["head_sha"], "status": status, "conclusion": conclusion,
+            "createdAt": created, "completedAt": completed if status == "completed" else None,
+            "jobs": conclusions}
+
+
+def context_facts(facts):
+    return {field: facts[field] for field in ("repository", "workflow", "runID", "runAttempt",
+                                                "event", "ref", "sourceSHA")}
+
+
 def authenticated_run(github, run_id, attempt):
     """The run's own GitHub facts, refused unless it is this workflow on main by an allowed
-    event with its sweep job succeeded."""
-    status, run = github.call("GET", f"/repos/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}")
-    gh_ok(status, "the source run")
-    if (run.get("repository") or {}).get("full_name") != REPOSITORY or run.get("path") != WORKFLOW_PATH \
-            or run.get("event") not in EVENTS or run.get("head_branch") != "main" \
-            or str(run.get("id")) != run_id or str(run.get("run_attempt")) != attempt \
-            or not COMMIT_RE.fullmatch(run.get("head_sha") or ""):
-        raise Refused("the source run is not a routine run on main")
-    status, jobs = github.call(
-        "GET", f"/repos/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
-    gh_ok(status, "the source run jobs")
-    sweeps = [job for job in (jobs or {}).get("jobs", []) if job.get("name") == SWEEP_JOB]
-    if len(sweeps) != 1 or sweeps[0].get("conclusion") != "success":
+    event with its sweep job succeeded. Used by the PR check, while the run may still be
+    publishing."""
+    facts = run_facts(github, run_id, attempt)
+    if facts["jobs"].get(SWEEP_JOB) != "success":
         raise Refused("the source run's sweep did not succeed")
-    return {"repository": REPOSITORY, "workflow": run.get("name"), "runID": run_id,
-            "runAttempt": attempt, "event": run.get("event"), "ref": MAIN_REF,
-            "sourceSHA": run["head_sha"]}
+    return context_facts(facts)
+
+
+class ArtifactGone(Refused):
+    """A complete artifact listing confirms the evidence is missing or expired."""
+
+    def __init__(self, reason):
+        super().__init__(f"the run's evidence artifact is {reason.split('-')[1]}")
+        self.reason = reason
 
 
 def download_evidence(github, run_id, attempt, folder):
     name = artifact_name(run_id, attempt)
-    status, listing = github.call("GET", f"/repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?name={name}")
-    gh_ok(status, "the run's artifacts")
-    matches = [a for a in (listing or {}).get("artifacts", []) if a.get("name") == name]
-    if len(matches) != 1 or matches[0].get("expired"):
-        raise Refused("the run has no single current evidence artifact")
-    status, data = github.call(
-        "GET", f"/repos/{REPOSITORY}/actions/artifacts/{matches[0]['id']}/zip", raw=True)
-    gh_ok(status, "the evidence archive")
-    return extract_zip(data, folder)
+    listing = every_counted(github, f"/repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?name={name}",
+                            "artifacts", "run's artifacts")
+    for item in listing:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str) \
+                or isinstance(item.get("id"), bool) or not isinstance(item.get("id"), int) \
+                or not isinstance(item.get("expired"), bool):
+            raise Malformed("GitHub returned an unreadable artifact")
+    matches = [a for a in listing if a["name"] == name]
+    if not matches:
+        raise ArtifactGone("artifact-missing")
+    if len(matches) != 1:
+        raise EvidenceInvalid("the run has more than one evidence artifact")
+    if matches[0]["expired"]:
+        raise ArtifactGone("artifact-expired")
+    data = read_answer(github, f"/repos/{REPOSITORY}/actions/artifacts/{matches[0]['id']}/zip",
+                       "the evidence archive", raw=True)
+    try:
+        return extract_zip(data, folder)
+    except Temporary:
+        raise
+    except Refused as error:
+        raise EvidenceInvalid(str(error))
+
+
+# MARK: - Run verification (Stage 2)
+
+VERIFY_SCHEMA = 1
+# Exit statuses of `verify-run`; the JSON `status` says the same.
+VERIFY_EXIT = {"verified": 0, "failure": 10, "temporary": 75, "refused": 1}
+FAILED_CONCLUSIONS = {"failure", "cancelled", "skipped", "timed_out"}
+RUN_ARG_RE = re.compile(r"[1-9][0-9]{0,19}")
+ATTEMPT_ARG_RE = re.compile(r"[1-9][0-9]{0,3}")
+
+
+def receipt_counts(receipt, result):
+    candidates = [c for p in receipt["providers"] for c in p["candidates"]]
+    return {"providers": len(receipt["providers"]), "candidates": len(candidates),
+            "added": sum(1 for op in result["operations"] if op.get("op") == "add"),
+            "failed": sum(1 for c in candidates if c.get("outcome") in ("fail", "notTried")),
+            "outcome": result["outcome"]}
+
+
+def verify_run(github, run_id, attempt, trusted, work):
+    """One closed classification of a completed Stage 1 run, from GitHub's facts and the
+    run's own evidence only. GET requests only; writes only under `work`."""
+    out = {"schema": VERIFY_SCHEMA, "status": "refused", "reason": "bad-arguments", "run": None,
+           "evidence": None, "receipt": None, "measured": False, "runOutcome": None}
+    if not RUN_ARG_RE.fullmatch(run_id or "") or not ATTEMPT_ARG_RE.fullmatch(attempt or ""):
+        return out
+    try:
+        facts = run_facts(github, run_id, attempt)
+    except Malformed:
+        return dict(out, status="temporary", reason="github-malformed")
+    except Temporary:
+        return dict(out, status="temporary", reason="github-unavailable")
+    except NotRoutine:
+        return dict(out, reason="not-a-routine-run")
+    except Refused:
+        return dict(out, status="temporary", reason="github-unavailable")
+    out["run"] = {"runID": run_id, "attempt": attempt, "sourceSHA": facts["sourceSHA"],
+                  "event": facts["event"], "createdAt": facts["createdAt"],
+                  "completedAt": facts["completedAt"], "status": facts["status"],
+                  "conclusion": facts["conclusion"], "sweep": facts["jobs"].get(SWEEP_JOB),
+                  "publish": facts["jobs"].get("publish")}
+    if facts["status"] != "completed":
+        return dict(out, status="temporary", reason="run-incomplete")
+    sweep = facts["jobs"].get(SWEEP_JOB)
+    no_evidence = {"providers": 3, "candidates": 0, "added": 0, "failed": 0, "outcome": "failure"}
+    if sweep in FAILED_CONCLUSIONS:
+        return dict(out, status="failure", reason=f"sweep-{sweep}", receipt=no_evidence,
+                    runOutcome="failure")
+    if sweep != "success":
+        return dict(out, reason="not-a-routine-run")
+    work = Path(work)
+    try:
+        found = download_evidence(github, run_id, attempt, work / "evidence")
+    except Malformed:
+        return dict(out, status="temporary", reason="github-malformed")
+    except Temporary:
+        return dict(out, status="temporary", reason="github-unavailable")
+    except ArtifactGone as gone:
+        return dict(out, status="failure", reason=gone.reason, receipt=no_evidence,
+                    runOutcome="failure")
+    except Refused:
+        return dict(out, reason="evidence-invalid")
+    context = context_for(context_facts(facts), found["receipt.json"])
+    try:
+        if json.loads(found["context.json"]) != context:
+            return dict(out, reason="evidence-mismatch")
+        (work / "context.json").write_text(json.dumps(context, indent=2, sort_keys=True) + "\n")
+        (work / "receipt.json").write_bytes(found["receipt.json"])
+        result, result_bytes, listed = generate(trusted, facts["sourceSHA"], work / "receipt.json",
+                                                work / "context.json", work)
+        if result_bytes != found["result.json"] or listed != found.get("cloud-models.json") \
+                or pr_body(result, context_facts(facts)) != found["pr-body.md"]:
+            return dict(out, reason="evidence-mismatch")
+        counts = receipt_counts(json.loads(found["receipt.json"]), result)
+    except Refused:
+        return dict(out, reason="evidence-invalid")
+    except (ValueError, KeyError, TypeError):
+        return dict(out, reason="evidence-invalid")
+    # The run's own outcome: any job or the run failing makes it a failure, whatever the
+    # measurement says; the evidence outcome stays in `receipt.outcome`.
+    executed = facts["conclusion"] == "success" and facts["jobs"].get("publish") == "success"
+    return dict(out, status="verified", reason="evidence-verified", measured=True, receipt=counts,
+                runOutcome=counts["outcome"] if executed else "failure",
+                evidence={"artifact": artifact_name(run_id, attempt),
+                          "receiptSHA256": sha256(found["receipt.json"]),
+                          "listSHA256": result["listSHA256"], "proposal": result["proposal"]})
 
 
 def check_pr(event, github, bot, trusted, pr_checkout, work):
@@ -619,6 +860,9 @@ def main(argv):
     for flag in ("--event", "--trusted", "--pr", "--work"):
         pr.add_argument(flag, required=True)
     commands.add_parser("report-failure")
+    verify = commands.add_parser("verify-run")
+    for flag in ("--run", "--attempt", "--trusted", "--work"):
+        verify.add_argument(flag, required=True)
     try:
         args = parser.parse_args(argv)
     except SystemExit as exit_:
@@ -644,6 +888,14 @@ def main(argv):
             summary = publish(env, args.evidence, args.checkout, GitHub(token), remote, bot)
             print(f"published: outcome {summary['outcome']}, PR {summary['pr']}")
             write_output(env, "outcome", summary["outcome"])
+        elif args.command == "verify-run":
+            result = verify_run(GitHub(env.get("GH_TOKEN", "")), args.run, args.attempt,
+                                args.trusted, args.work)
+            text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+            Path(args.work).mkdir(parents=True, exist_ok=True)
+            (Path(args.work) / "verify-run.json").write_text(text)
+            sys.stdout.write(text)
+            return VERIFY_EXIT[result["status"]]
         elif args.command == "check-pr":
             event = json.loads(Path(args.event).read_text())
             message = check_pr(event, GitHub(env.get("GH_TOKEN", "")), env.get("ROUTINE_APP_BOT", ""),

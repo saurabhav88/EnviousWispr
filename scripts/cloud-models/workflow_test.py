@@ -163,14 +163,22 @@ class Case(unittest.TestCase):
         base = f"/repos/{workflow.REPOSITORY}/actions"
         run = run or {"id": 101, "run_attempt": 1, "path": workflow.WORKFLOW_PATH, "event": "schedule",
                       "head_branch": "main", "head_sha": self.commit, "name": "Cloud model routine sweep",
-                      "repository": {"full_name": workflow.REPOSITORY}}
+                      "repository": {"full_name": workflow.REPOSITORY}, "status": "completed",
+                      "conclusion": "success", "created_at": "2026-11-09T06:17:03Z"}
         name = workflow.artifact_name("101", "1")
+        jobs = jobs or {"jobs": [{"name": "sweep", "conclusion": "success"},
+                                 {"name": "publish", "conclusion": "success"}]}
+        jobs.setdefault("total_count", len(jobs["jobs"]))
+        for job in jobs["jobs"]:
+            # GitHub reports every job's status; fixtures that only name a conclusion are done.
+            if isinstance(job, dict) and "conclusion" in job and not isinstance(job.get("name"), int):
+                job.setdefault("status", "completed")
+        artifacts = artifacts or {"artifacts": [{"id": 9, "name": name, "expired": False}]}
+        artifacts.setdefault("total_count", len(artifacts["artifacts"]))
         return {
             ("GET", f"{base}/runs/101/attempts/1"): (200, run),
-            ("GET", f"{base}/runs/101/attempts/1/jobs?per_page=100"):
-                (200, jobs or {"jobs": [{"name": "sweep", "conclusion": "success"}]}),
-            ("GET", f"{base}/runs/101/artifacts?name={name}"):
-                (200, artifacts or {"artifacts": [{"id": 9, "name": name, "expired": False}]}),
+            ("GET", f"{base}/runs/101/attempts/1/jobs?per_page=100&page=1"): (200, jobs),
+            ("GET", f"{base}/runs/101/artifacts?name={name}&per_page=100&page=1"): (200, artifacts),
             ("GET", f"{base}/artifacts/9/zip"): (200, archive),
         }
 
@@ -301,11 +309,11 @@ class Binding(Case):
         listing = {"artifacts": [{"id": 9, "name": workflow.artifact_name("101", "2"), "expired": False}]}
         github = FakeGitHub(self.run_routes(artifacts=listing))
         self.refused(lambda: workflow.download_evidence(github, "101", "1", self.root / "e"),
-                     "single current evidence")
+                     "artifact is missing")
         expired = {"artifacts": [{"id": 9, "name": workflow.artifact_name("101", "1"), "expired": True}]}
         github = FakeGitHub(self.run_routes(artifacts=expired))
         self.refused(lambda: workflow.download_evidence(github, "101", "1", self.root / "f"),
-                     "single current evidence")
+                     "artifact is expired")
 
 
 def zip_of(files):
@@ -660,6 +668,362 @@ class Redirects(Case):
         self.assertEqual(set(extracted), set(workflow.EVIDENCE_LIMITS))
 
 
+class VerifyRun(Case):
+    """`verify-run`: one closed classification of a completed run, from GitHub facts and
+    the run's own evidence."""
+
+    BASE = f"/repos/{workflow.REPOSITORY}/actions"
+
+    def evidence_routes(self, built=None, **changes):
+        _, out = self.stage(built)
+        archive = zip_of({p.name: p.read_bytes() for p in out.iterdir()})
+        return self.run_routes(archive=archive, **changes), out
+
+    def verify(self, routes, run="101", attempt="1"):
+        github = FakeGitHub(routes)
+        result = workflow.verify_run(github, run, attempt, self.repo, self.root / f"v-{len(os.listdir(self.root))}")
+        self.assertEqual(github.writes(), [])
+        return result
+
+    def test_verified_proposal_and_searched_addition(self):
+        for build, setting in ((lambda r: r.fallback_pass(), "fallback"),
+                               (lambda r: r.search_pass(), "search")):
+            with self.subTest(via=setting):
+                routes, _ = self.evidence_routes(self.receipt(build=build))
+                result = self.verify(routes)
+                self.assertEqual((result["status"], result["reason"], result["measured"]),
+                                 ("verified", "evidence-verified", True))
+                self.assertEqual(result["receipt"], {"providers": 3, "candidates": 1, "added": 1,
+                                                     "failed": 0, "outcome": "success"})
+                self.assertTrue(result["evidence"]["proposal"])
+                self.assertEqual(result["run"]["createdAt"], "2026-11-09T06:17:03Z")
+                self.assertEqual((result["run"]["sweep"], result["run"]["publish"]), ("success", "success"))
+
+    def test_verified_no_change(self):
+        routes, _ = self.evidence_routes(self.receipt(build=lambda r: None))
+        result = self.verify(routes)
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(result["receipt"], {"providers": 3, "candidates": 0, "added": 0, "failed": 0,
+                                             "outcome": "nochange"})
+        self.assertFalse(result["evidence"]["proposal"])
+
+    def test_partial_and_failure_evidence_keep_their_outcomes(self):
+        routes, _ = self.evidence_routes(self.receipt(build=lambda r: (r.fallback_pass(), r.failed_candidate())))
+        self.assertEqual(self.verify(routes)["receipt"], {"providers": 3, "candidates": 2, "added": 1,
+                                                          "failed": 1, "outcome": "partial"})
+
+        def failed(receipt):
+            receipt.failed.add("gemini")
+            receipt.fallback_pass()
+        routes, _ = self.evidence_routes(self.receipt(build=failed))
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["measured"]), ("verified", True))
+        self.assertEqual(result["receipt"], {"providers": 3, "candidates": 1, "added": 0, "failed": 0,
+                                             "outcome": "failure"})
+
+    def test_failed_sweep_without_evidence(self):
+        for conclusion in ("failure", "cancelled", "timed_out", "skipped"):
+            with self.subTest(conclusion=conclusion):
+                routes = self.run_routes(jobs={"jobs": [{"name": "sweep", "conclusion": conclusion}]})
+                github = FakeGitHub(routes)
+                result = workflow.verify_run(github, "101", "1", self.repo, self.root / f"f-{conclusion}")
+                self.assertEqual((result["status"], result["reason"], result["measured"]),
+                                 ("failure", f"sweep-{conclusion}", False))
+                self.assertEqual(result["receipt"], {"providers": 3, "candidates": 0, "added": 0,
+                                                     "failed": 0, "outcome": "failure"})
+                self.assertFalse([c for c in github.calls if "artifacts" in c[1]])
+
+    def test_publication_failure_is_surfaced(self):
+        jobs = {"jobs": [{"name": "sweep", "conclusion": "success"}, {"name": "publish", "conclusion": "failure"}]}
+        routes, _ = self.evidence_routes(jobs=jobs)
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["run"]["publish"]), ("verified", "failure"))
+
+    def test_wrong_identity_is_refused(self):
+        good = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        for change in ({"repository": {"full_name": "someone/fork"}}, {"path": ".github/workflows/x.yml"},
+                       {"head_branch": "dev"}, {"event": "push"}, {"head_sha": "abc"}, {"run_attempt": 2},
+                       {"id": 102}):
+            with self.subTest(change=change):
+                result = self.verify(self.run_routes(run=dict(good, **change)))
+                self.assertEqual((result["status"], result["reason"]), ("refused", "not-a-routine-run"))
+                self.assertIsNone(result["receipt"])
+        for run, attempt in (("1/../x", "1"), ("101", "0"), ("", "1"), ("101", "a")):
+            with self.subTest(run=run, attempt=attempt):
+                github = FakeGitHub()
+                result = workflow.verify_run(github, run, attempt, self.repo, self.root / "bad")
+                self.assertEqual((result["status"], result["reason"]), ("refused", "bad-arguments"))
+                self.assertEqual(github.calls, [])
+
+    def test_incomplete_run_is_temporary(self):
+        good = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        result = self.verify(self.run_routes(run=dict(good, status="in_progress", conclusion=None)))
+        self.assertEqual((result["status"], result["reason"]), ("temporary", "run-incomplete"))
+        self.assertIsNone(result["receipt"])
+
+    def test_missing_and_expired_artifacts_are_confirmed_failures(self):
+        routes = self.run_routes(artifacts={"artifacts": []})
+        self.assertEqual(self.verify(routes)["reason"], "artifact-missing")
+        name = workflow.artifact_name("101", "1")
+        routes = self.run_routes(artifacts={"artifacts": [{"id": 9, "name": name, "expired": True}]})
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["reason"], result["measured"]),
+                         ("failure", "artifact-expired", False))
+
+    def test_uncertain_answers_are_temporary(self):
+        name = workflow.artifact_name("101", "1")
+        endpoints = [f"{self.BASE}/runs/101/attempts/1", f"{self.BASE}/runs/101/attempts/1/jobs?per_page=100&page=1",
+                     f"{self.BASE}/runs/101/artifacts?name={name}&per_page=100&page=1", f"{self.BASE}/artifacts/9/zip"]
+
+        def no_reply(_body):
+            raise workflow.NoReply("no reply")
+        for endpoint in endpoints:
+            for answer in ((429, None), (500, None), (502, None), (403, None), (404, None), no_reply):
+                with self.subTest(endpoint=endpoint.rsplit("/", 1)[-1], answer=getattr(answer, "__name__", answer)):
+                    routes, _ = self.evidence_routes()
+                    routes[("GET", endpoint)] = answer
+                    result = self.verify(routes)
+                    self.assertEqual((result["status"], result["reason"]), ("temporary", "github-unavailable"))
+                    self.assertIsNone(result["receipt"])
+
+    def test_incomplete_enumeration_is_temporary(self):
+        jobs = {"jobs": [{"name": "sweep", "conclusion": "success"}], "total_count": 3}
+        self.assertEqual(self.verify(self.run_routes(jobs=jobs))["status"], "temporary")
+        name = workflow.artifact_name("101", "1")
+        listing = {"artifacts": [{"id": 9, "name": name, "expired": False}], "total_count": 2}
+        routes, _ = self.evidence_routes(artifacts=listing)
+        self.assertEqual(self.verify(routes)["status"], "temporary")
+
+    def test_tampered_evidence_is_refused(self):
+        def rezip(out, change):
+            files = {p.name: p.read_bytes() for p in out.iterdir()}
+            change(files)
+            return zip_of(files)
+
+        def edit_result(files):
+            result = json.loads(files["result.json"])
+            result["operations"] = []
+            files["result.json"] = (json.dumps(result) + "\n").encode()
+            manifest = json.loads(files["manifest.json"])
+            manifest["files"]["result.json"] = workflow.sha256(files["result.json"])
+            files["manifest.json"] = json.dumps(manifest).encode()
+
+        def edit_list(files):
+            listed = json.loads(files["cloud-models.json"])
+            listed["models"][0]["recommended"] = True
+            files["cloud-models.json"] = propose.encode_list(listed)
+            manifest = json.loads(files["manifest.json"])
+            manifest["files"]["cloud-models.json"] = workflow.sha256(files["cloud-models.json"])
+            files["manifest.json"] = json.dumps(manifest).encode()
+
+        def edit_context(files):
+            context = json.loads(files["context.json"])
+            context["workflow"] = "Other workflow"
+            files["context.json"] = json.dumps(context).encode()
+            manifest = json.loads(files["manifest.json"])
+            manifest["files"]["context.json"] = workflow.sha256(files["context.json"])
+            files["manifest.json"] = json.dumps(manifest).encode()
+
+        def edit_without_manifest(files):
+            files["pr-body.md"] = b"edited\n"
+
+        cases = [(edit_result, "evidence-mismatch"), (edit_list, "evidence-mismatch"),
+                 (edit_context, "evidence-mismatch"), (edit_without_manifest, "evidence-invalid")]
+        for change, reason in cases:
+            with self.subTest(change=change.__name__):
+                _, out = self.stage()
+                routes = self.run_routes(archive=rezip(out, change))
+                result = self.verify(routes)
+                self.assertEqual((result["status"], result["reason"]), ("refused", reason))
+                self.assertIsNone(result["receipt"])
+
+    def test_historical_source_stays_valid_after_main_moves(self):
+        routes, _ = self.evidence_routes()
+        manual = copy.deepcopy(propose_test.BASE_MODELS)
+        manual[0]["recommended"] = True
+        propose_test.commit_list(self.repo, propose_test.list_bytes(manual), "later list change")
+        head_before = git(self.repo, "rev-parse", "HEAD")
+        result = self.verify(routes)
+        self.assertEqual(result["status"], "verified")
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), head_before)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+
+    def test_cli_json_and_exit_contract(self):
+        routes, _ = self.evidence_routes()
+        good = routes[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        cases = [(routes, 0, "verified"),
+                 ({**routes, ("GET", f"{self.BASE}/runs/101/attempts/1"): (503, {"message": "canary-err-55"})},
+                  75, "temporary"),
+                 (self.run_routes(run=dict(good, event="push")), 1, "refused"),
+                 (self.run_routes(jobs={"jobs": [{"name": "sweep", "conclusion": "failure"}]}), 10, "failure")]
+        original = workflow.GitHub
+        try:
+            for number, (answers, code, status) in enumerate(cases):
+                with self.subTest(status=status):
+                    workflow.GitHub = lambda token, answers=answers: FakeGitHub(answers)
+                    work = self.root / f"cli-{number}"
+                    out = io.StringIO()
+                    with __import__("contextlib").redirect_stdout(out):
+                        exit_code = workflow.main(["verify-run", "--run", "101", "--attempt", "1",
+                                                   "--trusted", str(self.repo), "--work", str(work)])
+                    self.assertEqual(exit_code, code)
+                    printed = json.loads(out.getvalue())
+                    self.assertEqual(printed["status"], status)
+                    self.assertEqual(printed["schema"], 1)
+                    self.assertEqual(json.loads((work / "verify-run.json").read_text()), printed)
+                    for canary in ("canary-err-55", "fake-gh-token", *KEYS.values()):
+                        self.assertNotIn(canary, out.getvalue())
+        finally:
+            workflow.GitHub = original
+
+    def jobs(self, publish="success", sweep="success", completed=("2026-11-09T07:40:00Z", "2026-11-09T07:44:10Z")):
+        return {"jobs": [{"name": "sweep", "status": "completed", "conclusion": sweep, "completed_at": completed[0]},
+                         {"name": "publish", "status": "completed", "conclusion": publish,
+                          "completed_at": completed[1]}]}
+
+    def test_publication_failure_with_no_change_keeps_both_outcomes(self):
+        routes, _ = self.evidence_routes(self.receipt(build=lambda r: None), jobs=self.jobs(publish="failure"))
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["runOutcome"]), ("verified", "failure"))
+        self.assertEqual(result["receipt"]["outcome"], "nochange")
+        self.assertEqual(result["run"]["publish"], "failure")
+
+    def test_publication_failure_with_a_proposal_is_a_run_failure(self):
+        routes, _ = self.evidence_routes(jobs=self.jobs(publish="cancelled"))
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["runOutcome"], result["evidence"]["proposal"]),
+                         ("verified", "failure", True))
+        self.assertEqual(result["receipt"]["outcome"], "success")
+
+    def test_run_conclusion_failure_with_measured_evidence(self):
+        routes, _ = self.evidence_routes(jobs=self.jobs())
+        run = routes[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        routes[("GET", f"{self.BASE}/runs/101/attempts/1")] = (200, dict(run, conclusion="failure"))
+        result = self.verify(routes)
+        self.assertEqual((result["status"], result["runOutcome"], result["measured"]), ("verified", "failure", True))
+        healthy, _ = self.evidence_routes(jobs=self.jobs())
+        self.assertEqual(self.verify(healthy)["runOutcome"], "success")
+
+    def test_malformed_replies_are_temporary_never_absence(self):
+        name = workflow.artifact_name("101", "1")
+        good_run = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        cases = {
+            "null job": {"jobs": {"jobs": [None], "total_count": 1}},
+            "job name not text": {"jobs": {"jobs": [{"name": 5, "conclusion": "success", "status": "completed"}],
+                                           "total_count": 1}},
+            "conclusion not text": {"jobs": {"jobs": [{"name": "sweep", "conclusion": 1, "status": "completed"}],
+                                             "total_count": 1}},
+            "count is a boolean": {"jobs": {"jobs": [], "total_count": True}},
+            "null artifact": {"artifacts": {"artifacts": [None], "total_count": 1}},
+            "artifact id a boolean": {"artifacts": {"artifacts": [{"id": True, "name": name, "expired": False}],
+                                                    "total_count": 1}},
+            "expired not a boolean": {"artifacts": {"artifacts": [{"id": 9, "name": name, "expired": "no"}],
+                                                    "total_count": 1}},
+            "artifact name missing": {"artifacts": {"artifacts": [{"id": 9, "expired": False}], "total_count": 1}},
+            "run status missing": {"run": {k: v for k, v in good_run.items() if k != "status"}},
+            "created_at not text": {"run": dict(good_run, created_at=17)},
+        }
+        for label, change in cases.items():
+            with self.subTest(case=label):
+                routes, _ = self.evidence_routes(**change)
+                result = self.verify(routes)
+                self.assertEqual((result["status"], result["reason"]), ("temporary", "github-malformed"), label)
+                self.assertIsNone(result["receipt"])
+
+    def test_completion_time_is_the_attempts_own(self):
+        good_run = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        routes, _ = self.evidence_routes(
+            jobs=self.jobs(completed=("2026-11-12T10:00:00Z", "2026-11-12T10:05:30Z")),
+            run=dict(good_run, created_at="2026-11-09T06:17:03Z"))
+        result = self.verify(routes)
+        self.assertEqual(result["run"]["createdAt"], "2026-11-09T06:17:03Z")
+        self.assertEqual(result["run"]["completedAt"], "2026-11-12T10:05:30Z")
+
+    def test_unknown_completion_time_is_null_not_guessed(self):
+        jobs = self.jobs()
+        del jobs["jobs"][1]["completed_at"]
+        routes, _ = self.evidence_routes(jobs=jobs)
+        result = self.verify(routes)
+        self.assertEqual(result["status"], "verified")
+        self.assertIsNone(result["run"]["completedAt"])
+        self.assertNotEqual(result["run"]["completedAt"], result["run"]["createdAt"])
+
+    def test_cli_contract_for_publication_failure_and_malformed_replies(self):
+        publication, _ = self.evidence_routes(jobs=self.jobs(publish="failure"))
+        malformed = self.run_routes(jobs={"jobs": [None], "total_count": 1})
+        original = workflow.GitHub
+        try:
+            for number, (answers, code, status) in enumerate(((publication, 0, "verified"),
+                                                             (malformed, 75, "temporary"))):
+                with self.subTest(status=status):
+                    fake = FakeGitHub(answers)
+                    workflow.GitHub = lambda token, fake=fake: fake
+                    out = io.StringIO()
+                    with __import__("contextlib").redirect_stdout(out):
+                        code_seen = workflow.main(["verify-run", "--run", "101", "--attempt", "1", "--trusted",
+                                                   str(self.repo), "--work", str(self.root / f"cli2-{number}")])
+                    self.assertEqual(code_seen, code)
+                    self.assertEqual(json.loads(out.getvalue())["status"], status)
+                    self.assertEqual(fake.writes(), [])
+                    for canary in (*KEYS.values(), "fake-gh-token"):
+                        self.assertNotIn(canary, out.getvalue())
+        finally:
+            workflow.GitHub = original
+
+    def test_malformed_identity_fields_and_impossible_times(self):
+        good = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        run_cases = {
+            "repository is text": {"repository": "bad"}, "repository without name": {"repository": {}},
+            "repository name not text": {"repository": {"full_name": 7}}, "event a list": {"event": []},
+            "head_sha a number": {"head_sha": 17}, "id as text": {"id": "101"},
+            "attempt a boolean": {"run_attempt": True}, "path missing": {"path": None},
+            "branch a number": {"head_branch": 5}, "name missing": {"name": None},
+            "impossible created_at": {"created_at": "2026-99-99T99:99:99Z"},
+            "created_at not canonical": {"created_at": "2026-11-09 06:17:03"},
+            "conclusion a number": {"conclusion": 0},
+        }
+        for label, change in run_cases.items():
+            with self.subTest(case=label):
+                result = self.verify(self.run_routes(run=dict(good, **change)))
+                self.assertEqual((result["status"], result["reason"]), ("temporary", "github-malformed"), label)
+        jobs = self.jobs()
+        jobs["jobs"][0]["completed_at"] = "2026-02-30T10:00:00Z"
+        with self.subTest(case="impossible job completion"):
+            self.assertEqual(self.verify(self.run_routes(jobs=jobs))["reason"], "github-malformed")
+        # Valid controls: right types with wrong values are refused, right values verify.
+        for change in ({"event": "push"}, {"repository": {"full_name": "someone/fork"}}, {"head_sha": "abc"}):
+            with self.subTest(control=change):
+                self.assertEqual(self.verify(self.run_routes(run=dict(good, **change)))["reason"],
+                                 "not-a-routine-run")
+        routes, _ = self.evidence_routes(jobs=self.jobs())
+        self.assertEqual(self.verify(routes)["status"], "verified")
+
+    def test_cli_contract_for_malformed_identity(self):
+        good = self.run_routes()[("GET", f"{self.BASE}/runs/101/attempts/1")][1]
+        original = workflow.GitHub
+        try:
+            for number, change in enumerate(({"repository": "bad"}, {"event": []}, {"head_sha": 17},
+                                              {"created_at": "2026-99-99T99:99:99Z"})):
+                with self.subTest(change=change):
+                    fake = FakeGitHub(self.run_routes(run=dict(good, **change)))
+                    workflow.GitHub = lambda token, fake=fake: fake
+                    out = io.StringIO()
+                    with __import__("contextlib").redirect_stdout(out):
+                        code = workflow.main(["verify-run", "--run", "101", "--attempt", "1", "--trusted",
+                                              str(self.repo), "--work", str(self.root / f"cli3-{number}")])
+                    self.assertEqual(code, 75)
+                    printed = json.loads(out.getvalue())
+                    self.assertEqual((printed["status"], printed["reason"]), ("temporary", "github-malformed"))
+                    self.assertEqual(fake.writes(), [])
+                    self.assertNotIn("fake-gh-token", out.getvalue())
+        finally:
+            workflow.GitHub = original
+
+    def test_pr_check_still_requires_a_successful_sweep(self):
+        github = FakeGitHub(self.run_routes(jobs={"jobs": [{"name": "sweep", "conclusion": "failure"}]}))
+        self.refused(lambda: workflow.authenticated_run(github, "101", "1"), "sweep did not succeed")
+
+
 class Canaries(Case):
     def test_a_key_in_the_receipt_is_refused_before_staging(self):
         built = self.receipt()
@@ -681,7 +1045,8 @@ class Canaries(Case):
 
 
 GROUPS = (Events, Scoping, SweepRun, Binding, Artifacts, Publication, Outcomes, Identity,
-          HeadAndBase, Ownership, FailureReports, Pagination, Unauthorized, Redirects, Canaries)
+          HeadAndBase, Ownership, FailureReports, Pagination, Unauthorized, Redirects, VerifyRun,
+          Canaries)
 
 
 def run():
@@ -701,8 +1066,8 @@ def run():
         if bad:
             print(stream.getvalue(), file=sys.stderr)
         failures += bad
-    if total < 34:
+    if total < 57:
         failures += 1
-        print(f"only {total} tests ran; at least 34 are required", file=sys.stderr)
+        print(f"only {total} tests ran; at least 57 are required", file=sys.stderr)
     print(f"self-test: {total} tests,", "PASS" if failures == 0 else f"FAIL ({failures})")
     return 1 if failures else 0
