@@ -997,7 +997,7 @@ struct TranscribeCppPreviewRecognizerTests {
 
   private static func openTranscript(
     _ recognizer: WhisperPreviewRecognizer, _ received: Received, _ driver: FakeDriver
-  ) async throws -> any LivePreviewEngineSession {
+  ) async throws -> any LiveTranscriptSession {
     try await Self.step("the transcript open", driver) {
       try await recognizer.openTranscriptSession(
         vocabulary: .init(lookups: nil, contextualPhrases: [], dictionaryEnabled: true),

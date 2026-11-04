@@ -67,9 +67,10 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  final class FakeSession: LivePreviewEngineSession, @unchecked Sendable {
+  final class FakeSession: LiveTranscriptSession, @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var _fed: [Float] = []
+    private var _fedChunks: [MeetingLiveAudioChunk] = []
     private var _ends = 0
     private var _endsCompleted = 0
     private var waiters: [(() -> Bool, CheckedContinuation<Void, Never>)] = []
@@ -85,6 +86,8 @@ struct MeetingLiveWordsTests {
       self.feedGate = feedGate
     }
     var fed: [Float] { lock.withLock { _fed } }
+    /// Every chunk fed through the typed meeting feed, written positions included (#4355).
+    var fedChunks: [MeetingLiveAudioChunk] { lock.withLock { _fedChunks } }
     var ends: Int { lock.withLock { _ends } }
     #if DEBUG
       /// #4254: what `detectionReport()` returns (nil: no speech detection).
@@ -107,7 +110,15 @@ struct MeetingLiveWordsTests {
     /// Ends that have returned.
     var endsCompleted: Int { lock.withLock { _endsCompleted } }
     func feed(_ samples: [Float]) async {
+      Issue.record("the meeting feeds transcript sessions only through the typed feed")
       changed { _fed += samples }
+      await feedGate.pass()
+    }
+    func feed(_ chunk: MeetingLiveAudioChunk) async {
+      changed {
+        _fed += chunk.samples
+        _fedChunks.append(chunk)
+      }
       await feedGate.pass()
     }
     /// Like Apple's collector: an end delivers `.ended(.requested)` after the last event.
@@ -197,7 +208,7 @@ struct MeetingLiveWordsTests {
     }
     func openTranscriptSession(
       vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-    ) async throws -> any LivePreviewEngineSession {
+    ) async throws -> any LiveTranscriptSession {
       let first = lock.withLock { () -> Bool in
         _vocabularies.append(vocabulary)
         _openEvents.append(onEvent)
@@ -1472,9 +1483,9 @@ struct MeetingLiveWordsTests {
   /// from sample 0 of one run), grouped per session.
   private static func sessionParts(
     _ chunks: [[Float]], threshold: Int
-  ) async -> [[LiveAudioChunk]] {
+  ) async -> [[MeetingLiveAudioChunk]] {
     let feeder = RestartFeeder(meter: RestartMeter(threshold: threshold, quietRMS: 0.001))
-    let sent = OSAllocatedUnfairLock<[[LiveAudioChunk]]>(initialState: [[]])
+    let sent = OSAllocatedUnfairLock<[[MeetingLiveAudioChunk]]>(initialState: [[]])
     let recording = UUID()
     var position = 0
     for chunk in chunks {
@@ -1483,7 +1494,7 @@ struct MeetingLiveWordsTests {
         sampleCount: chunk.count)!
       position += chunk.count
       await feeder.run(
-        LiveAudioChunk(samples: chunk, slices: [LiveAudioSlice(offset: 0, span: span)]),
+        MeetingLiveAudioChunk(samples: chunk, slices: [MeetingLiveAudioSlice(offset: 0, span: span)]),
         send: { part in
           sent.withLock { $0[$0.count - 1].append(part) }
           return true

@@ -182,7 +182,7 @@ final class MeetingLiveWords {
     let pump: MeetingLiveAudioPump
     /// The current session's epoch in the bridge (0 before the first open).
     var epoch = 0
-    var session: (any LivePreviewEngineSession)? {
+    var session: (any LiveTranscriptSession)? {
       didSet { target.set(session, epoch: epoch) }
     }
     /// What the pump's consumer feeds: the current session and its epoch.
@@ -228,7 +228,7 @@ final class MeetingLiveWords {
 
   /// What a start created but could not hand to its recording (it ended meanwhile).
   struct Leftovers: Sendable {
-    var sessions: [any LivePreviewEngineSession] = []
+    var sessions: [any LiveTranscriptSession] = []
     var universal: (any MeetingSharedEngine)?
   }
 
@@ -357,7 +357,7 @@ final class MeetingLiveWords {
     guard let current = recording, current.engine == .universal else { return }
     let final = current.bridge?.closeAllAndTake() ?? []
     apply(final, to: current)
-    var sessions: [any LivePreviewEngineSession] = []
+    var sessions: [any LiveTranscriptSession] = []
     for (track, slot) in current.tracks where !slot.finished {
       slot.finished = true
       // A pending open returns into a new epoch, so its handle goes to the start's leftovers,
@@ -649,7 +649,7 @@ final class MeetingLiveWords {
     slot.epoch += 1
     let epoch = slot.epoch
     bridge.openEpoch(epoch, for: track)
-    let session: any LivePreviewEngineSession
+    let session: any LiveTranscriptSession
     do {
       session = try await engine.openTranscriptSession(
         vocabulary: vocabulary,
@@ -670,14 +670,13 @@ final class MeetingLiveWords {
     }
     slot.session = session
     let target = slot.target
-    let feed: @Sendable (LiveAudioChunk) async -> Void
+    let feed: @Sendable (MeetingLiveAudioChunk) async -> Void
     if current.engine == .apple {
       feed = restartingFeed(track, generation: gen, target: target)
     } else {
       feed = { chunk in
-        // #4355: the written positions stop here until the Universal adapter records what it
-        // actually submits (PR A chunk 7); the engine API takes samples only.
-        if let session = target.current?.session { await session.feed(chunk.samples) }
+        // #4355: the chunk carries its written positions to the session.
+        if let session = target.current?.session { await session.feed(chunk) }
       }
     }
     guard slot.pump.startConsumer(feed: feed) else {
@@ -698,7 +697,7 @@ final class MeetingLiveWords {
   /// replacement. Every sample is fed once, in order.
   private func restartingFeed(
     _ track: MeetingTrackKind, generation gen: Int, target: SessionTarget
-  ) -> @Sendable (LiveAudioChunk) async -> Void {
+  ) -> @Sendable (MeetingLiveAudioChunk) async -> Void {
     let feeder = RestartFeeder(
       meter: RestartMeter(threshold: deps.appleRestartAfterSamples, quietRMS: deps.restartQuietRMS))
     return { [weak self] chunk in
@@ -707,9 +706,8 @@ final class MeetingLiveWords {
         chunk,
         send: { part in
           guard let current = target.current else { return false }  // the track stopped
-          // #4355: the part's written positions stop here until the Apple adapter records what
-          // it actually submits (PR A chunk 6); the engine API takes samples only.
-          await current.session.feed(part.samples)
+          // #4355: the part keeps its written positions; the session maps what it consumes.
+          await current.session.feed(part)
           return true
         },
         restart: {
@@ -774,7 +772,7 @@ final class MeetingLiveWords {
     slot.epoch += 1
     let next = slot.epoch
     bridge.openEpoch(next, for: track)
-    let session: any LivePreviewEngineSession
+    let session: any LiveTranscriptSession
     do {
       session = try await engine.openTranscriptSession(
         vocabulary: vocabulary,
@@ -827,7 +825,7 @@ final class MeetingLiveWords {
     releaseIfNoTrackIsLive(current)
   }
 
-  private func endNow(_ session: any LivePreviewEngineSession, in current: Recording) {
+  private func endNow(_ session: any LiveTranscriptSession, in current: Recording) {
     current.endings.append(Task { await session.end() })
   }
 
@@ -913,7 +911,7 @@ final class MeetingLiveWords {
     generation += 1
     current.drain?.cancel()
     current.monitor?.cancel()
-    var sessions: [any LivePreviewEngineSession] = []
+    var sessions: [any LiveTranscriptSession] = []
     for slot in current.tracks.values {
       slot.finished = true
       if drainHeldAudio, slot.session != nil || slot.restarting,
@@ -984,7 +982,7 @@ final class MeetingLiveWords {
   /// release this cleanup starts (an earlier release already under way is joined).
   @MainActor
   final class Cleanup {
-    private var sessions: [any LivePreviewEngineSession]
+    private var sessions: [any LiveTranscriptSession]
     private var joins: [Task<Void, Never>]
     private var start: Task<Leftovers, Never>?
     private var universal: (any MeetingSharedEngine)?
@@ -994,7 +992,7 @@ final class MeetingLiveWords {
     fileprivate(set) var engine: EngineKind?
 
     init(
-      sessions: [any LivePreviewEngineSession], joins: [Task<Void, Never>],
+      sessions: [any LiveTranscriptSession], joins: [Task<Void, Never>],
       start: Task<Leftovers, Never>?, universal: (any MeetingSharedEngine)?,
       late: (@MainActor (_ last: Bool) -> Void)? = nil
     ) {
@@ -1196,12 +1194,12 @@ final class LiveWordsBridge: @unchecked Sendable {
 /// What a track's pump consumer feeds: the current session and its bridge epoch.
 final class SessionTarget: @unchecked Sendable {
   struct Current {
-    let session: any LivePreviewEngineSession
+    let session: any LiveTranscriptSession
     let epoch: Int
   }
   private let state = OSAllocatedUnfairLock<Current?>(initialState: nil)
   var current: Current? { state.withLock { $0 } }
-  func set(_ session: (any LivePreviewEngineSession)?, epoch: Int) {
+  func set(_ session: (any LiveTranscriptSession)?, epoch: Int) {
     let value = session.map { Current(session: $0, epoch: epoch) }
     state.withLock { $0 = value }
   }
@@ -1268,7 +1266,7 @@ final class RestartFeeder: @unchecked Sendable {
   init(meter: RestartMeter) { self.meter = meter }
 
   func run(
-    _ chunk: LiveAudioChunk, send: @Sendable (LiveAudioChunk) async -> Bool,
+    _ chunk: MeetingLiveAudioChunk, send: @Sendable (MeetingLiveAudioChunk) async -> Bool,
     restart: @Sendable () async -> Void
   ) async {
     var start = 0

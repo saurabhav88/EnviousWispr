@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
+import EnviousWisprCore
 import Foundation
 import os
 
@@ -23,7 +24,7 @@ import os
 /// words) delivers every finalized delta in order through a `LiveWordsQueue`, and ends with
 /// exactly one `.ended`: `.requested` from `end()`, `.failed("ceiling")` when the retained audio
 /// reaches the ceiling, `.failed("backlog")` from the queue's budget; the first one wins.
-package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unchecked Sendable {
+package final class TranscribeCppPreviewSession: LiveTranscriptSession, @unchecked Sendable {
 
   /// Ceiling on RETAINED preview audio, in samples: 2 minutes at 16 kHz mono (~7.7 MB).
   ///
@@ -245,6 +246,13 @@ package final class TranscribeCppPreviewSession: LivePreviewEngineSession, @unch
         completedDecodes: snapshot.completedDecodes)
     }
   #endif
+
+  /// #4355: the written positions are not yet used here. Mapping Universal's segment times onto
+  /// written audio is PR A chunk 7; until then this session hears the samples and its pieces
+  /// stay untimed.
+  package func feed(_ chunk: MeetingLiveAudioChunk) async {
+    await feed(chunk.samples)
+  }
 
   package func feed(_ newSamples: [Float]) async {
     let justCapped: Bool = state.withLock { s in

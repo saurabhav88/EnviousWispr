@@ -182,7 +182,7 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   package func openTranscriptSession(
     vocabulary: LivePreviewVocabulary,
     onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-  ) async throws -> any LivePreviewEngineSession {
+  ) async throws -> any LiveTranscriptSession {
     let handle = TranscribeCppPreviewSession(lookups: vocabulary.lookups, onEvent: onEvent)
     let session: any WhisperIncrementalSession
     do {

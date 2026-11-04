@@ -2,41 +2,6 @@ import EnviousWisprCore
 import Foundation
 import os
 
-/// Where a stretch of live samples sits on the written timeline (#4355): `count` samples from
-/// `offset` in their chunk are `span`. Only exactly adjacent written audio of one recording,
-/// track and run shares a slice, so a gap, a refused chunk, an eviction or a run break always
-/// starts a new one.
-struct LiveAudioSlice: Equatable, Sendable {
-  let offset: Int
-  let span: MeetingAudioSpan
-  var count: Int { span.sampleCount }
-}
-
-/// Live samples with their written positions, in order. The slices cover `samples` in order;
-/// a stretch no slice covers has no known position (the bank's slice list was full), and
-/// attribution abstains for it rather than guessing.
-struct LiveAudioChunk: Equatable, Sendable {
-  let samples: [Float]
-  let slices: [LiveAudioSlice]
-
-  /// The samples in `range` with their slices cut to match: a slice's span advances by exactly
-  /// the samples cut from its front.
-  func subrange(_ range: Range<Int>) -> LiveAudioChunk {
-    var cut: [LiveAudioSlice] = []
-    for slice in slices {
-      let lower = max(slice.offset, range.lowerBound)
-      let upper = min(slice.offset + slice.count, range.upperBound)
-      guard upper > lower,
-        let span = MeetingAudioSpan(
-          recording: slice.span.recording, track: slice.span.track, run: slice.span.run,
-          startSample: slice.span.startSample + (lower - slice.offset), sampleCount: upper - lower)
-      else { continue }
-      cut.append(LiveAudioSlice(offset: lower - range.lowerBound, span: span))
-    }
-    return LiveAudioChunk(samples: Array(samples[range]), slices: cut)
-  }
-}
-
 /// One meeting track's live audio on its way to a live-words session (#3973 plan §3.3).
 ///
 /// **The producer side runs on a track writer's queue** (`MeetingRecorder.liveSamples`, at
@@ -112,7 +77,7 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
   private struct State {
     var counts: [Int]
     /// Each bank's slices, offsets into that bank; capacity reserved in `init`.
-    var slices: [[LiveAudioSlice]]
+    var slices: [[MeetingLiveAudioSlice]]
     var free: [Int]
     var freeCount: Int
     var ring: [Int]
@@ -193,9 +158,9 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     busyRefusals = .allocate(capacity: 1)
     busyRefusals.initialize(to: 0)
     // Bank 0 starts as the producer's; the rest are free.
-    var slices: [[LiveAudioSlice]] = []
+    var slices: [[MeetingLiveAudioSlice]] = []
     for _ in 0..<Self.banks {
-      var bank: [LiveAudioSlice] = []
+      var bank: [MeetingLiveAudioSlice] = []
       bank.reserveCapacity(Self.slicesPerBank)
       slices.append(bank)
     }
@@ -246,14 +211,14 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
             recording: span.recording, track: span.track, run: span.run,
             startSample: last.span.startSample, sampleCount: last.count + n)
         {
-          s.slices[bank][s.slices[bank].count - 1] = LiveAudioSlice(offset: last.offset, span: grown)
+          s.slices[bank][s.slices[bank].count - 1] = MeetingLiveAudioSlice(offset: last.offset, span: grown)
         } else if s.slices[bank].count == Self.slicesPerBank {
           s.accounting.unpositioned += n  // kept, without a position: no room to describe it
         } else if let piece = MeetingAudioSpan(
           recording: span.recording, track: span.track, run: span.run, startSample: start,
           sampleCount: n)
         {
-          s.slices[bank].append(LiveAudioSlice(offset: filled, span: piece))
+          s.slices[bank].append(MeetingLiveAudioSlice(offset: filled, span: piece))
         }
         s.counts[bank] = filled + n
         offset += n
@@ -270,8 +235,8 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
   /// The next chunk with its written positions, oldest first, or nil when there is nothing to
   /// take, the pump is retired, or `generation` (the calling consumer's) was stopped, including
   /// during the copy. The bank is back in the pump before this returns.
-  func takeChunk(generation: Int? = nil) -> LiveAudioChunk? {
-    let taken: (bank: Int, count: Int, slices: [LiveAudioSlice])? = state.withLock { s in
+  func takeChunk(generation: Int? = nil) -> MeetingLiveAudioChunk? {
+    let taken: (bank: Int, count: Int, slices: [MeetingLiveAudioSlice])? = state.withLock { s in
       guard s.open, s.consumerBank == nil else { return nil }
       if let generation, generation != s.consumerGeneration { return nil }
       let bank: Int
@@ -296,7 +261,7 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
     // Outside the lock: the producer keeps admitting into other banks meanwhile.
     let chunk = Array(
       UnsafeBufferPointer(start: storage + taken.bank * Self.bankSamples, count: taken.count))
-    return state.withLock { s -> LiveAudioChunk? in
+    return state.withLock { s -> MeetingLiveAudioChunk? in
       s.consumerBank = nil
       guard s.open else {
         s.pushFree(taken.bank)  // retired: nothing more is delivered
@@ -308,14 +273,14 @@ final class MeetingLiveAudioPump: @unchecked Sendable {
       }
       s.accounting.delivered += taken.count
       s.pushFree(taken.bank)
-      return LiveAudioChunk(samples: chunk, slices: taken.slices)
+      return MeetingLiveAudioChunk(samples: chunk, slices: taken.slices)
     }
   }
 
   /// Starts the one consumer, feeding every chunk to `feed` in order. False while a previous
   /// consumer's task has not exited yet, or once the pump is retired.
   @discardableResult
-  func startConsumer(feed: @escaping @Sendable (LiveAudioChunk) async -> Void) -> Bool {
+  func startConsumer(feed: @escaping @Sendable (MeetingLiveAudioChunk) async -> Void) -> Bool {
     let cadence = self.cadence
     return state.withLock { s -> Bool in
       guard s.open, s.consumerTask == nil else { return false }

@@ -100,7 +100,15 @@ package protocol LivePreviewEngine: Sendable {
   func openTranscriptSession(
     vocabulary: LivePreviewVocabulary,
     onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-  ) async throws -> any LivePreviewEngineSession
+  ) async throws -> any LiveTranscriptSession
+}
+
+/// A transcript session (#3973) that takes live audio WITH its written positions (#4355), so
+/// the engine can map its own result times back onto written audio. EnviousMeet feeds only
+/// through `feed(_ chunk:)`; dictation's samples-only `feed(_:)` stays the preview's path.
+package protocol LiveTranscriptSession: LivePreviewEngineSession {
+  /// Hand over newly written 16 kHz mono samples and the written slices they are.
+  func feed(_ chunk: MeetingLiveAudioChunk) async
 }
 
 /// One live preview session.

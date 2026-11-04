@@ -56,8 +56,8 @@ struct MeetingLiveWordsPumpTests {
     drainChunks(pump).map(\.samples)
   }
 
-  private static func drainChunks(_ pump: MeetingLiveAudioPump) -> [LiveAudioChunk] {
-    var chunks: [LiveAudioChunk] = []
+  private static func drainChunks(_ pump: MeetingLiveAudioPump) -> [MeetingLiveAudioChunk] {
+    var chunks: [MeetingLiveAudioChunk] = []
     while let chunk = pump.takeChunk() { chunks.append(chunk) }
     return chunks
   }
@@ -88,10 +88,10 @@ struct MeetingLiveWordsPumpTests {
     init(hold: Bool = false) { holding = hold }
     var all: [[Float]] { lock.withLock { chunks } }
     /// The chunks as fed, written positions included.
-    var fedChunks: [LiveAudioChunk] { lock.withLock { full } }
-    private var full: [LiveAudioChunk] = []
+    var fedChunks: [MeetingLiveAudioChunk] { lock.withLock { full } }
+    private var full: [MeetingLiveAudioChunk] = []
 
-    @Sendable func feed(_ chunk: LiveAudioChunk) async {
+    @Sendable func feed(_ chunk: MeetingLiveAudioChunk) async {
       let (ready, hold) = lock.withLock { () -> ([CheckedContinuation<Void, Never>], Bool) in
         chunks.append(chunk.samples)
         full.append(chunk)
@@ -149,7 +149,7 @@ struct MeetingLiveWordsPumpTests {
   // MARK: - Written positions (#4355)
 
   /// A chunk's slices as (offset, start, count, run).
-  private static func layout(_ chunk: LiveAudioChunk) -> [[Int]] {
+  private static func layout(_ chunk: MeetingLiveAudioChunk) -> [[Int]] {
     chunk.slices.map { [$0.offset, $0.span.startSample, $0.count, $0.span.run] }
   }
 

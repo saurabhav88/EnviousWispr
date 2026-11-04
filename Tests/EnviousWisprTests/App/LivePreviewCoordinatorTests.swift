@@ -137,7 +137,7 @@ struct LivePreviewCoordinatorTests {
     final class StuckEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let stuck: Gate
@@ -234,7 +234,7 @@ struct LivePreviewCoordinatorTests {
     final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let gate: Gate
@@ -303,7 +303,7 @@ struct LivePreviewCoordinatorTests {
     final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let opens: Opens
@@ -432,7 +432,7 @@ struct LivePreviewCoordinatorTests {
       final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-        ) async throws -> any LivePreviewEngineSession {
+        ) async throws -> any LiveTranscriptSession {
           throw displayOnlyTranscriptOpen(Self.self)
         }
         func prepare() async throws {}
@@ -523,7 +523,7 @@ struct LivePreviewCoordinatorTests {
       final class SlowOpenEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-        ) async throws -> any LivePreviewEngineSession {
+        ) async throws -> any LiveTranscriptSession {
           throw displayOnlyTranscriptOpen(Self.self)
         }
         let gate: Gate
@@ -582,7 +582,7 @@ struct LivePreviewCoordinatorTests {
       final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-        ) async throws -> any LivePreviewEngineSession {
+        ) async throws -> any LiveTranscriptSession {
           throw displayOnlyTranscriptOpen(Self.self)
         }
         func prepare() async throws { throw Boom() }
@@ -627,7 +627,7 @@ struct LivePreviewCoordinatorTests {
       final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-        ) async throws -> any LivePreviewEngineSession {
+        ) async throws -> any LiveTranscriptSession {
           throw displayOnlyTranscriptOpen(Self.self)
         }
         func prepare() async throws {}
@@ -725,7 +725,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       func prepare() async throws {}
@@ -774,7 +774,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       func prepare() async throws {}
@@ -880,7 +880,7 @@ struct LivePreviewCoordinatorTests {
     final class CountingEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let opens: Opens
@@ -1574,7 +1574,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       func prepare() async throws {}
@@ -1680,7 +1680,7 @@ struct LivePreviewCoordinatorTests {
     final class GatedEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let gate: Gate
@@ -1815,7 +1815,7 @@ struct LivePreviewCoordinatorTests {
     final class MaybeStuckEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let hangs: Bool
@@ -1943,7 +1943,7 @@ struct LivePreviewCoordinatorTests {
     final class MaybeSlowEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let hangs: Bool
@@ -2030,7 +2030,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       func prepare() async throws {}
@@ -2090,7 +2090,7 @@ struct LivePreviewCoordinatorTests {
     final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let onPrepared: @Sendable () -> Void
@@ -2150,7 +2150,7 @@ struct LivePreviewCoordinatorTests {
     final class ReadyEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let onPrepared: @Sendable () -> Void
@@ -2197,7 +2197,7 @@ struct LivePreviewCoordinatorTests {
     final class ReleasableEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let onPrepared: @Sendable () -> Void
@@ -2513,7 +2513,7 @@ func displayOnlyTranscriptOpen(
 private struct FakePreviewEngine: LivePreviewEngine {
   func openTranscriptSession(
     vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-  ) async throws -> any LivePreviewEngineSession {
+  ) async throws -> any LiveTranscriptSession {
     throw displayOnlyTranscriptOpen(Self.self)
   }
   let probe: PreviewEngineProbe
@@ -2614,7 +2614,7 @@ struct LivePreviewAppleStandInTests {
     struct Refused: Error {}
     func openTranscriptSession(
       vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-    ) async throws -> any LivePreviewEngineSession {
+    ) async throws -> any LiveTranscriptSession {
       throw displayOnlyTranscriptOpen(Self.self)
     }
     func prepare() async throws { if prepareFails { throw Refused() } }
