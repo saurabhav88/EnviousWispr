@@ -43,8 +43,9 @@ public struct LLMModelDiscovery: Sendable {
   /// Replaces the bare `(id:displayName:)` tuple the fetchers used to hand
   /// around, because remoteness now has to survive the trip from `/api/tags` to
   /// the selection dropdown and a tuple cannot carry it without every cloud
-  /// fetcher also growing a field it has no answer for. The cloud fetchers keep
-  /// returning pairs and are adapted by `cloudCandidates`.
+  /// fetcher also growing a field it has no answer for. #4353 D5: the cloud fetchers now
+  /// build candidates directly (`openAICandidates`, `claudeCandidates`, `geminiCandidates`), so
+  /// the provider's release date travels the same way.
   /// `internal`, not `private`, so the pure mapping below is directly testable.
   /// This file has no HTTP mock for its fetchers and never has (see
   /// `LLMModelDiscoveryTests`), so the established answer here is to extract the
@@ -54,6 +55,9 @@ public struct LLMModelDiscovery: Sendable {
     let displayName: String
     /// Meaningful for `.ollama` only — see `LLMModelInfo.isRemote`.
     let isRemote: Bool
+    /// #4353 D5: the provider's own release date, nil when it gives none; see
+    /// `LLMModelInfo.releaseDate`.
+    var releaseDate: Date? = nil
   }
 
   /// #1914: the FINAL handoff — a candidate becomes the row selection and
@@ -76,7 +80,8 @@ public struct LLMModelDiscovery: Sendable {
       provider: provider,
       availability: availability,
       isRemote: candidate.isRemote,
-      availabilityObservedAt: observedAt
+      availabilityObservedAt: observedAt,
+      releaseDate: candidate.releaseDate
     )
   }
 
@@ -133,13 +138,73 @@ public struct LLMModelDiscovery: Sendable {
       }
   }
 
-  /// Adapts a cloud provider's `(id, displayName)` rows. `isRemote` is `false`
-  /// by definition here: it answers "does the Ollama daemon proxy this model",
-  /// and a cloud provider has no Ollama daemon in its path at all.
-  private static func cloudCandidates(
-    _ rows: [(id: String, displayName: String)]
-  ) -> [DiscoveryCandidate] {
-    rows.map { DiscoveryCandidate(id: $0.id, displayName: $0.displayName, isRemote: false) }
+  // #4353 D5: the three cloud list parsers, pure so the date's trip from the wire format to
+  // the row is testable without HTTP (as `ollamaCandidates` is). Cloud candidates are never
+  // remote in the Ollama sense: no Ollama daemon is in their path. A missing or unusable date
+  // keeps the row, undated.
+
+  /// OpenAI `/v1/models` `data` rows: `created` is Unix seconds.
+  static func openAICandidates(fromModels models: [[String: Any]]) -> [DiscoveryCandidate] {
+    models.compactMap { model -> DiscoveryCandidate? in
+      guard let id = model["id"] as? String else { return nil }
+      guard isOpenAIChatCompletionCandidate(id) else { return nil }
+      let displayName = id.replacingOccurrences(of: "-", with: " ")
+        .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(
+          separator: " ")
+      let released = unixSecondsDate(model["created"])
+      return DiscoveryCandidate(
+        id: id, displayName: displayName, isRemote: false, releaseDate: released)
+    }
+  }
+
+  /// Anthropic `/v1/models` `data` rows (one page): `created_at` is an RFC 3339 date-time.
+  static func claudeCandidates(fromModels models: [[String: Any]]) -> [DiscoveryCandidate] {
+    models.compactMap { model -> DiscoveryCandidate? in
+      guard let id = model["id"] as? String else { return nil }
+      let displayName = model["display_name"] as? String ?? id
+      return DiscoveryCandidate(
+        id: id, displayName: displayName, isRemote: false,
+        releaseDate: (model["created_at"] as? String).flatMap(rfc3339Date).flatMap(knownDate))
+    }
+  }
+
+  /// Gemini `/v1beta/models` rows that can generate content. Gemini publishes no release
+  /// date, so the rows are undated (PR 4's model list supplies dates).
+  static func geminiCandidates(fromModels models: [[String: Any]]) -> [DiscoveryCandidate] {
+    models.compactMap { model -> DiscoveryCandidate? in
+      guard let name = model["name"] as? String,
+        let displayName = model["displayName"] as? String,
+        let methods = model["supportedGenerationMethods"] as? [String],
+        methods.contains("generateContent")
+      else { return nil }
+      let id = name.replacingOccurrences(of: "models/", with: "")
+      return DiscoveryCandidate(id: id, displayName: displayName, isRemote: false)
+    }
+  }
+
+  /// A JSON number of Unix seconds as a known date; nil for a boolean (which `NSNumber`
+  /// would otherwise accept), a non-finite value or anything else.
+  static func unixSecondsDate(_ value: Any?) -> Date? {
+    guard let number = value as? NSNumber,
+      CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite
+    else { return nil }
+    return knownDate(Date(timeIntervalSince1970: number.doubleValue))
+  }
+
+  /// A provider's "release date unknown" marker is the Unix epoch (Anthropic documents an
+  /// epoch value for an unknown date); that and anything earlier is no date at all.
+  static func knownDate(_ date: Date) -> Date? {
+    date.timeIntervalSince1970 > 0 ? date : nil
+  }
+
+  /// An RFC 3339 date-time, with or without fractional seconds; nil for anything else.
+  static func rfc3339Date(_ text: String) -> Date? {
+    let whole = ISO8601DateFormatter()
+    whole.formatOptions = [.withInternetDateTime]
+    if let date = whole.date(from: text) { return date }
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: text)
   }
 
   // MARK: - Public API
@@ -156,11 +221,11 @@ public struct LLMModelDiscovery: Sendable {
     // what they return.
     switch provider {
     case .gemini:
-      candidates = Self.cloudCandidates(filterModels(try await fetchGeminiModels(apiKey: apiKey)))
+      candidates = filterModels(try await fetchGeminiModels(apiKey: apiKey))
     case .openAI:
-      candidates = Self.cloudCandidates(filterModels(try await fetchOpenAIModels(apiKey: apiKey)))
+      candidates = filterModels(try await fetchOpenAIModels(apiKey: apiKey))
     case .claude:
-      candidates = Self.cloudCandidates(filterModels(try await fetchClaudeModels(apiKey: apiKey)))
+      candidates = filterModels(try await fetchClaudeModels(apiKey: apiKey))
     case .ollama:
       candidates = try await fetchOllamaModels()
     case .appleIntelligence:
@@ -262,8 +327,7 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
-  private func fetchGeminiModels(apiKey: String) async throws -> [(id: String, displayName: String)]
-  {
+  private func fetchGeminiModels(apiKey: String) async throws -> [DiscoveryCandidate] {
     guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
       throw ModelDiscoveryFailure.invalidURL
     }
@@ -284,16 +348,7 @@ public struct LLMModelDiscovery: Sendable {
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     guard let models = json?["models"] as? [[String: Any]] else { return [] }
-
-    return models.compactMap { model -> (id: String, displayName: String)? in
-      guard let name = model["name"] as? String,
-        let displayName = model["displayName"] as? String,
-        let methods = model["supportedGenerationMethods"] as? [String],
-        methods.contains("generateContent")
-      else { return nil }
-      let id = name.replacingOccurrences(of: "models/", with: "")
-      return (id: id, displayName: displayName)
-    }
+    return Self.geminiCandidates(fromModels: models)
   }
 
   private func probeGemini(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -328,8 +383,7 @@ public struct LLMModelDiscovery: Sendable {
 
   // MARK: - OpenAI
 
-  private func fetchOpenAIModels(apiKey: String) async throws -> [(id: String, displayName: String)]
-  {
+  private func fetchOpenAIModels(apiKey: String) async throws -> [DiscoveryCandidate] {
     guard let url = URL(string: "https://api.openai.com/v1/models") else {
       throw ModelDiscoveryFailure.invalidURL
     }
@@ -349,15 +403,7 @@ public struct LLMModelDiscovery: Sendable {
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     guard let models = json?["data"] as? [[String: Any]] else { return [] }
-
-    return models.compactMap { model -> (id: String, displayName: String)? in
-      guard let id = model["id"] as? String else { return nil }
-      guard Self.isOpenAIChatCompletionCandidate(id) else { return nil }
-      let displayName = id.replacingOccurrences(of: "-", with: " ")
-        .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(
-          separator: " ")
-      return (id: id, displayName: displayName)
-    }
+    return Self.openAICandidates(fromModels: models)
   }
 
   /// Whether an OpenAI model id belongs in the picker's candidate list.
@@ -436,9 +482,8 @@ public struct LLMModelDiscovery: Sendable {
   /// Anthropic's documented default page size (20) is smaller than a
   /// growing catalog, so a single-page assumption would silently truncate
   /// the picker once the account has more models than fit on one page.
-  private func fetchClaudeModels(apiKey: String) async throws -> [(id: String, displayName: String)]
-  {
-    var allModels: [(id: String, displayName: String)] = []
+  private func fetchClaudeModels(apiKey: String) async throws -> [DiscoveryCandidate] {
+    var allModels: [DiscoveryCandidate] = []
     var afterID: String?
     var seenCursors: Set<String> = []
 
@@ -468,12 +513,7 @@ public struct LLMModelDiscovery: Sendable {
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["data"] as? [[String: Any]] else { break }
 
-      allModels.append(
-        contentsOf: models.compactMap { model -> (id: String, displayName: String)? in
-          guard let id = model["id"] as? String else { return nil }
-          let displayName = model["display_name"] as? String ?? id
-          return (id: id, displayName: displayName)
-        })
+      allModels.append(contentsOf: Self.claudeCandidates(fromModels: models))
 
       switch Self.claudePaginationDecision(
         hasMore: json?["has_more"] as? Bool ?? false,
@@ -637,9 +677,7 @@ public struct LLMModelDiscovery: Sendable {
 
   /// `internal`, not `private`, so the pure exclusion decision is directly
   /// testable (#2884) — same reasoning as `DiscoveryCandidate` above.
-  func filterModels(_ models: [(id: String, displayName: String)]) -> [(
-    id: String, displayName: String
-  )] {
+  func filterModels(_ models: [DiscoveryCandidate]) -> [DiscoveryCandidate] {
     models.filter { model in
       let lowered = model.id.lowercased()
 

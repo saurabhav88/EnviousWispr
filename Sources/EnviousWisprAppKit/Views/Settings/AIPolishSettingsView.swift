@@ -223,20 +223,30 @@ enum AIPolishModelClassifier {
 /// real split rather than a copy of it.
 enum OllamaModelPickerPresentation {
 
-  /// The dropdown, split for display. Every input row lands in exactly one
-  /// array, and that is structural rather than tested-for: `groups(from:)`
-  /// assigns each row in a single pass with no overlapping filters.
+  /// The dropdown, split for display. For Ollama (and the fixed engines) each input row lands in
+  /// exactly one of `recommended`, `other`, `hosted` or `locked`, assigned in a single pass with
+  /// no overlapping filters, and `selectable` repeats the first three in that order. For OpenAI,
+  /// Gemini and Claude (#4353 D5) a dated copy hidden behind its base lands in no array, and
+  /// every other row is in exactly one of `selectable` or `locked`.
   ///
   /// Deliberately NOT `Equatable`: `LLMModelInfo` is not, and conforming it
   /// would widen a public Core type to serve a test's convenience. Tests
   /// compare `.map(\.id)`, which is what they actually mean anyway.
   struct Groups {
+    /// Ollama only: local models with a measured Recommended verdict. Empty for OpenAI, Gemini
+    /// and Claude, whose choosable rows are one sequence (`selectable`).
     let recommended: [LLMModelInfo]
+    /// Ollama only: the other local models. Empty for the cloud providers.
     let other: [LLMModelInfo]
     /// Ollama models the daemon proxies to Ollama's servers. Always empty for
     /// every other provider.
     let hosted: [LLMModelInfo]
     let locked: [LLMModelInfo]
+    /// Every row a person may choose, in the order the menu shows it. For OpenAI, Gemini and
+    /// Claude this is the one cloud sequence (#4353 D5: newest first, undated last); for
+    /// Ollama it is local recommended, local other, then hosted, which the menu splits into
+    /// its own headings.
+    let selectable: [LLMModelInfo]
   }
 
   /// One heading, one string. Sharing it with the Models sheet list is the
@@ -285,7 +295,17 @@ enum OllamaModelPickerPresentation {
     )
   }
 
-  static func groups(from models: [LLMModelInfo], provider: LLMProvider) -> Groups {
+  /// `chosenModel` is the surface's own chosen id: a dated copy that would be hidden stays
+  /// visible when it is the one chosen there (#4353 D5).
+  static func groups(
+    from models: [LLMModelInfo], provider: LLMProvider, chosenModel: String
+  ) -> Groups {
+    switch provider {
+    case .openAI, .gemini, .claude:
+      return cloudGroups(from: models, chosenModel: chosenModel)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      break
+    }
     var recommended: [LLMModelInfo] = []
     var other: [LLMModelInfo] = []
     var hosted: [LLMModelInfo] = []
@@ -332,7 +352,45 @@ enum OllamaModelPickerPresentation {
       }
     }
 
-    return Groups(recommended: recommended, other: other, hosted: hosted, locked: locked)
+    return Groups(
+      recommended: recommended, other: other, hosted: hosted, locked: locked,
+      selectable: recommended + other + hosted)
+  }
+
+  /// #4353 D5 (decisions 8 and 9): a cloud provider's menu.
+  ///
+  /// - A dated copy (`ProviderModelID.withoutDateSnapshot`) is hidden when its exact base id is
+  ///   in the same catalog, in either availability group, unless it is the surface's chosen
+  ///   id. A dated-only model stays. Presentation only: the catalog, cache and choice are
+  ///   untouched.
+  /// - Choosable rows (inconclusive included) come first as one sequence, then confirmed-locked
+  ///   rows. Each is newest first by `releaseDate`, undated rows after dated ones, and id
+  ///   descending breaks ties, so the input order never matters.
+  /// - "Recommended for cleanup" is the row's note only (`ProviderSetup.modelNote`); it never
+  ///   moves a model ahead of a newer one.
+  static func cloudGroups(from models: [LLMModelInfo], chosenModel: String) -> Groups {
+    let ids = Set(models.map(\.id))
+    let shown = models.filter { model in
+      guard model.id != chosenModel, let base = ProviderModelID.withoutDateSnapshot(model.id)
+      else { return true }
+      return !ids.contains(base)
+    }
+    let selectable = newestFirst(shown.filter(\.isSelectable))
+    let locked = newestFirst(shown.filter { !$0.isSelectable })
+    return Groups(
+      recommended: [], other: [], hosted: [], locked: locked, selectable: selectable)
+  }
+
+  /// Newest release date first, undated rows last, id descending among equals.
+  static func newestFirst(_ models: [LLMModelInfo]) -> [LLMModelInfo] {
+    models.sorted { lhs, rhs in
+      switch (lhs.releaseDate, rhs.releaseDate) {
+      case (let left?, let right?) where left != right: return left > right
+      case (.some, .none): return true
+      case (.none, .some): return false
+      default: return lhs.id > rhs.id
+      }
+    }
   }
 }
 

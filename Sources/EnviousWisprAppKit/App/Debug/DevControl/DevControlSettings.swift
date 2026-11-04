@@ -906,9 +906,12 @@
       }
       // #4287: the same offered list the surface's menu shows (the summary surface leaves
       // out the first-party Ollama models).
+      // #4353 D5: with the surface's own choice, so a hidden dated copy is offered exactly when
+      // the menu shows it.
       let groups = OllamaModelPickerPresentation.groups(
-        from: surface.offeredModels(catalog.models, provider: provider), provider: provider)
-      let offered = (groups.recommended + groups.other + groups.hosted).map(\.id)
+        from: surface.offeredModels(catalog.models, provider: provider), provider: provider,
+        chosenModel: PolishSettings.cloudModel(on: surface, in: settings))
+      let offered = groups.selectable.map(\.id)
       guard offered.contains(id) else {
         let locked = groups.locked.contains { $0.id == id }
         return .refused(

@@ -1,3 +1,5 @@
+import EnviousWisprCore
+import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
@@ -242,7 +244,9 @@ struct LLMModelDiscoveryExclusionTests {
   private func survivingIDs(_ ids: [String]) -> [String] {
     // A fixed display name, never the id: the filter reads the id, and a fixture
     // whose two fields agree cannot tell which one production consulted.
-    LLMModelDiscovery().filterModels(ids.map { (id: $0, displayName: "Text model") }).map(\.id)
+    LLMModelDiscovery().filterModels(
+      ids.map { .init(id: $0, displayName: "Text model", isRemote: false) }
+    ).map(\.id)
   }
 
   @Test(
@@ -268,5 +272,86 @@ struct LLMModelDiscoveryExclusionTests {
     #expect(
       survivingIDs(["gemini-3.7-flash", "gemini-3.5-transcribe", "gemini-3.7-pro"])
         == ["gemini-3.7-flash", "gemini-3.7-pro"])
+  }
+}
+
+/// #4353 D5: a provider's release date survives from its own list format to the final row and
+/// through the cache; a missing or unusable date keeps the row, undated.
+@Suite("Cloud model release dates (#4353)", .tags(.productOutcome))
+struct LLMModelReleaseDateTests {
+  private static func row(_ candidate: LLMModelDiscovery.DiscoveryCandidate, _ provider: LLMProvider)
+    -> LLMModelInfo
+  {
+    LLMModelDiscovery.modelInfo(
+      from: candidate, provider: provider, availability: .available, observedAt: .now)
+  }
+
+  @Test("OpenAI's created (Unix seconds) reaches the final row; a missing one keeps the row undated")
+  func openAIDate() throws {
+    let candidates = LLMModelDiscovery.openAICandidates(fromModels: [
+      ["id": "gpt-4.1-mini", "created": 1_744_316_542, "object": "model"],
+      ["id": "gpt-5-mini", "object": "model"],
+      ["id": "gpt-4o-mini", "created": "yesterday", "object": "model"],
+      ["id": "gpt-4.1-nano", "created": true, "object": "model"],
+      ["id": "gpt-5-nano", "created": Double.infinity, "object": "model"],
+      ["id": "gpt-4.1", "created": 0, "object": "model"],
+    ])
+    let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+    let dated = try #require(byID["gpt-4.1-mini"])
+    #expect(Self.row(dated, .openAI).releaseDate == Date(timeIntervalSince1970: 1_744_316_542))
+    #expect(try #require(byID["gpt-5-mini"]).releaseDate == nil)
+    #expect(try #require(byID["gpt-4o-mini"]).releaseDate == nil, "an unusable date keeps the row")
+    #expect(try #require(byID["gpt-4.1-nano"]).releaseDate == nil, "a JSON boolean is no date")
+    #expect(try #require(byID["gpt-5-nano"]).releaseDate == nil, "a non-finite number is no date")
+    #expect(try #require(byID["gpt-4.1"]).releaseDate == nil, "the epoch is no date")
+  }
+
+  @Test("Anthropic's created_at (RFC 3339) reaches the final row; the epoch marker is no date")
+  func claudeDate() throws {
+    // Two parsed pages concatenated as `fetchClaudeModels` appends them (the parser, not the
+    // HTTP pagination loop, which `LLMModelDiscoveryTests` covers through its pure decision).
+    let page1 = LLMModelDiscovery.claudeCandidates(fromModels: [
+      ["id": "claude-haiku-4-5-20251001", "display_name": "Claude Haiku 4.5",
+       "created_at": "2025-10-01T00:00:00Z"],
+    ])
+    let page2 = LLMModelDiscovery.claudeCandidates(fromModels: [
+      ["id": "claude-opus-4-8", "display_name": "Claude Opus 4.8",
+       "created_at": "2026-06-12T09:30:00.250Z"],
+      ["id": "claude-old", "display_name": "Old", "created_at": "not a date"],
+      ["id": "claude-undated", "display_name": "Undated"],
+      ["id": "claude-unknown", "display_name": "Unknown", "created_at": "1970-01-01T00:00:00Z"],
+    ])
+    let rows = (page1 + page2).map { Self.row($0, .claude) }
+    #expect(
+      rows.map(\.id) == [
+        "claude-haiku-4-5-20251001", "claude-opus-4-8", "claude-old", "claude-undated",
+        "claude-unknown",
+      ])
+    #expect(rows[4].releaseDate == nil, "Anthropic's unknown-date epoch keeps the row, undated")
+    #expect(rows[0].releaseDate == Date(timeIntervalSince1970: 1_759_276_800))
+    #expect(rows[1].releaseDate == Date(timeIntervalSince1970: 1_781_256_600.25))
+    #expect(rows[2].releaseDate == nil)
+    #expect(rows[3].releaseDate == nil)
+  }
+
+  @Test("Gemini rows stay undated")
+  func geminiUndated() {
+    let rows = LLMModelDiscovery.geminiCandidates(fromModels: [
+      ["name": "models/gemini-3.7-flash", "displayName": "Gemini 3.7 Flash",
+       "supportedGenerationMethods": ["generateContent"], "createTime": "2026-01-01T00:00:00Z"],
+    ]).map { Self.row($0, .gemini) }
+    #expect(rows.map(\.id) == ["gemini-3.7-flash"])
+    #expect(rows.allSatisfy { $0.releaseDate == nil })
+  }
+
+  @Test("the filter keeps a surviving row's date")
+  func filterKeepsDate() {
+    let date = Date(timeIntervalSince1970: 1_744_316_542)
+    let kept = LLMModelDiscovery().filterModels([
+      .init(id: "gpt-4.1-mini", displayName: "G", isRemote: false, releaseDate: date),
+      .init(id: "gpt-4o-audio-preview", displayName: "A", isRemote: false, releaseDate: date),
+    ])
+    #expect(kept.map(\.id) == ["gpt-4.1-mini"])
+    #expect(kept.first?.releaseDate == date)
   }
 }

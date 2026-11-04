@@ -353,6 +353,12 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// shown. `displayName` keeps the English it always had; every other provider leaves this nil.
   public let appleIntelligenceStatus: AppleIntelligenceModelStatus?
 
+  /// #4353 D5: when the provider says it released this model (OpenAI `created`, Anthropic
+  /// `created_at`), nil when it says nothing (Gemini, Ollama, the bundled engines) or says
+  /// something unusable. Never derived from the id, discovery, a probe or the cache time.
+  /// Persisted with the cached catalog, unlike the transient `availabilityObservedAt`.
+  public let releaseDate: Date?
+
   /// The label a screen shows: the translated Apple Intelligence label when this row has a
   /// status, otherwise `displayName` (a model name).
   public var localizedDisplayName: String {
@@ -368,9 +374,10 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   public init(
     id: String, displayName: String, provider: LLMProvider, availability: LLMModelAvailability,
     isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil,
-    availabilityObservedAt: ContinuousClock.Instant? = nil
+    availabilityObservedAt: ContinuousClock.Instant? = nil, releaseDate: Date? = nil
   ) {
     self.availabilityObservedAt = availabilityObservedAt
+    self.releaseDate = releaseDate
     self.id = id
     self.displayName = displayName
     self.provider = provider
@@ -425,6 +432,9 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
     // #3142: absent in caches written before the field existed; nil means "a model name".
     appleIntelligenceStatus = try container.decodeIfPresent(
       AppleIntelligenceModelStatus.self, forKey: .appleIntelligenceStatus)
+    // #4353 D5: absent in caches written before the field existed. An unreadable value is
+    // dropped rather than thrown, because one bad row would empty the whole cached list.
+    releaseDate = (try? container.decodeIfPresent(Date.self, forKey: .releaseDate)) ?? nil
     if let decoded = try container.decodeIfPresent(Bool.self, forKey: .isRemote) {
       isRemote = decoded
     } else if provider == .ollama {
@@ -444,6 +454,7 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case id, displayName, provider, availability, isAvailable, isRemote, appleIntelligenceStatus
+    case releaseDate
   }
 
   /// Writes `isAvailable` beside `availability` so a build from before #4353 can still read
@@ -457,6 +468,7 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
     try container.encode(isAvailable, forKey: .isAvailable)
     try container.encode(isRemote, forKey: .isRemote)
     try container.encodeIfPresent(appleIntelligenceStatus, forKey: .appleIntelligenceStatus)
+    try container.encodeIfPresent(releaseDate, forKey: .releaseDate)
   }
 }
 

@@ -1463,6 +1463,16 @@
       #expect(write("gpt-dev-a", catalog) == .written(forced: false))
       #expect(settings.llmModel == "gpt-dev-a")
 
+      // #4353 D5: the same rows the menu offers. A dated copy hidden behind its base is not
+      // offered; once it is the surface's choice the menu shows it, and the door accepts it.
+      let dated = DevControlSettings.ModelCatalog(
+        provider: .openAI,
+        models: [Self.model("gpt-5-mini", .openAI), Self.model("gpt-5-mini-2025-08-07", .openAI)])
+      #expect(write("gpt-5-mini-2025-08-07", dated).code == "badValue")
+      #expect(write("gpt-5-mini", dated) == .written(forced: false))
+      settings.llmModel = "gpt-5-mini-2025-08-07"
+      #expect(write("gpt-5-mini-2025-08-07", dated) == .written(forced: false))
+
       settings.llmProvider = .ollama
       let ollama = DevControlSettings.ModelCatalog(
         provider: .ollama,
