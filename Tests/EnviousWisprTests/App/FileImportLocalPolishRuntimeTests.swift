@@ -57,7 +57,7 @@ struct FileImportLocalPolishRuntimeTests {
       whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
+      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()), cloudModelList: { nil },
       egOneRuntime: egOne,
       s1MiniRuntime: s1Mini,
       ollamaRemotenessLookup: { _ in nil },

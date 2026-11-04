@@ -43,7 +43,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
       whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
+      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()), cloudModelList: { nil },
       ollamaRemotenessLookup: { _ in nil })
     return (sync, settings, parakeet, whisperDriver)
   }

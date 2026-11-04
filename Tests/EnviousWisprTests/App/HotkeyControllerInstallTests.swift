@@ -54,7 +54,7 @@ import Testing
       whisperKernelDriver: whisperKernelDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: hotkey,
+      hotkeyService: hotkey, cloudModelList: { nil },
       // #1914: required, no default. These suites do not exercise eviction, so
       // "absent from the catalog" is the honest answer — and it is the
       // fail-open one, preserving today's local-eviction behaviour.

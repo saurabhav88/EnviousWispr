@@ -230,22 +230,54 @@ struct CloudModelListTests {
         == .unsupported, "a row for another provider never applies")
   }
 
-  @Test("the seed's batching, recommendation and telemetry match today's compiled rules")
+  /// Frozen copies of the compiled sets #4353 D6 deleted, taken from `9ad123ad`: the telemetry
+  /// allowlist (`SettingsProjection.geminiModelIDs` plus `cloudModelAllowlist`) and the named
+  /// fast tier (`AIPolishModelClassifier.namedFastTierIDs`). They are the oracle the list must
+  /// reproduce, so the list is never checked against itself.
+  private static let deletedTelemetryAllowlist: [String] = [
+    "chatgpt-4o-latest", "claude-fable-5", "claude-fable-5-1", "claude-haiku-4-5",
+    "claude-opus-4-1", "claude-opus-4-5", "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8",
+    "claude-opus-5", "claude-opus-5-5", "claude-sonnet-4-5", "claude-sonnet-4-6", "claude-sonnet-5",
+    "claude-sonnet-5-5", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro",
+    "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+    "gemini-2.5-pro", "gemini-3-flash-preview", "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
+    "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash",
+    "gemini-3.8-flash", "gpt-4", "gpt-4-turbo", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o",
+    "gpt-4o-mini", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro", "gpt-5.1", "gpt-5.2",
+    "gpt-5.2-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.5",
+    "gpt-5.5-pro", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-astra", "gpt-6-luna",
+    "gpt-6-sol", "gpt-6.1-sol", "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini",
+  ]
+  private static let deletedNamedFastTier: Set<String> = ["gpt-5.6-luna"]
+
+  private static func provider(of id: String) -> LLMProvider {
+    id.hasPrefix("gemini") ? .gemini : id.hasPrefix("claude") ? .claude : .openAI
+  }
+
+  @Test("the seed reproduces the deleted telemetry allowlist and recommendation rule")
   @MainActor
-  func seedMatchesCompiledPresentation() throws {
-    let rows = try Self.seed().models
-    // #2905: GPT-4o mini and Haiku 4.5 keep ordinary requests (`LLMPolishStep.fileBatchMember`).
+  func seedMatchesDeletedPresentationSets() throws {
+    let seed = try Self.seed()
+    let rows = seed.models
+    // #2905: GPT-4o mini and Haiku 4.5 keep ordinary requests.
     let ordinaryOnly = Set(rows.filter { !$0.allowsFileBatch }.map(\.id))
     #expect(ordinaryOnly == ["gpt-4o-mini", "claude-haiku-4-5"])
-    for row in rows {
+    // Every id the deleted allowlist recognised is still recognised, for its own provider, and
+    // the list recognises nothing the allowlist did not.
+    #expect(Self.deletedTelemetryAllowlist.count == 66)
+    for id in Self.deletedTelemetryAllowlist {
       #expect(
-        row.recommended == AIPolishModelClassifier.isRecommendedForCleanup(row.id),
-        "\(row.id) recommended")
-      #expect(
-        SettingsProjection.model(provider: row.provider, id: row.id) == row.id,
-        "\(row.id) is recognized by telemetry today")
+        SettingsProjection.model(provider: Self.provider(of: id), id: id, list: seed) == id,
+        "\(id) is recognised by telemetry")
     }
-    let geminiIDs = Set(rows.filter { $0.provider == .gemini }.map(\.id))
-    #expect(geminiIDs == SettingsProjection.geminiModelIDs)
+    #expect(Set(rows.map(\.id)) == Set(Self.deletedTelemetryAllowlist))
+    // The deleted recommendation rule: tier words and disqualifiers, plus the named fast tier.
+    for row in rows {
+      let old =
+        AIPolishModelClassifier.isRecommendedForCleanup(row.id)
+        || Self.deletedNamedFastTier.contains(row.id)
+      #expect(row.recommended == old, "\(row.id) recommended")
+    }
   }
 }

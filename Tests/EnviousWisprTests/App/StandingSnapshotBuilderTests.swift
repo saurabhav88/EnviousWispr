@@ -36,7 +36,7 @@ import Testing
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: customWords,
-        permissions: permissions,
+        permissions: permissions, cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
       )
 
@@ -98,7 +98,7 @@ import Testing
         settings: settings,
         keychainManager: keychain,
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true }),
+        permissions: PermissionsService(accessibilityReader: { true }), cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
       )
 
@@ -128,7 +128,7 @@ import Testing
         settings: SettingsManager(defaults: suite),
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true }),
+        permissions: PermissionsService(accessibilityReader: { true }), cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 7 }, snippetsKeywordIsDefault: { false }
       )
 

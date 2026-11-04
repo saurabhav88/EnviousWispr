@@ -176,15 +176,15 @@ struct OllamaSetupServiceLibraryFeedTests {
     let info = LLMModelInfo(
       id: "olmo2:7b", displayName: "olmo2:7b", provider: .ollama, availability: .available,
       isRemote: false)
-    let groups = OllamaModelPickerPresentation.groups(from: [info], provider: .ollama, chosenModel: "")
+    let groups = OllamaModelPickerPresentation.groups(from: [info], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.recommended.isEmpty)
     #expect(groups.other.map(\.id) == ["olmo2:7b"])
   }
 
   @Test("settings telemetry reports a feed model as custom, never by its name")
   func telemetryRedactsFeedModelNames() {
-    #expect(SettingsProjection.model(provider: .ollama, id: "olmo2:7b") == "custom")
-    #expect(SettingsProjection.model(provider: .ollama, id: "gemma4:e4b") == "custom")
+    #expect(SettingsProjection.model(provider: .ollama, id: "olmo2:7b", list: CloudModelListSeed.current) == "custom")
+    #expect(SettingsProjection.model(provider: .ollama, id: "gemma4:e4b", list: CloudModelListSeed.current) == "custom")
   }
 
   // MARK: - Service lifecycle

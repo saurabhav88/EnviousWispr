@@ -902,6 +902,7 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: { [checkerEligibility] provider, language in
@@ -1183,12 +1184,14 @@ package final class WisprBootstrapper {
     let standingSnapshotBuilder = StandingSnapshotBuilder(
       settings: settings, keychainManager: keychainManager,
       customWordsCoordinator: customWordsCoordinator, permissions: permissions,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       snippetsCount: { [snippetsCoordinator] in snippetsCoordinator.snippets.count },
       snippetsKeywordIsDefault: { [snippetsCoordinator] in
         snippetsCoordinator.keyword == SnippetVocabulary.defaultKeyword
       })
     let settingsChangeTelemetry = SettingsChangeTelemetry(
       settings: settings,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       emitBaseline: { standingSnapshotBuilder.emit() })
     // #1173: drain a pending settings delta before any telemetry flush (quit /
     // update-relaunch) so a change made inside the debounce window isn't lost.
@@ -1643,6 +1646,7 @@ package final class WisprBootstrapper {
     let backendMetadata = BackendMetadata(
       settings: settings,
       llmDiscovery: llmDiscovery,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       // The coordinator's published snapshot covers BOTH engines; the manager's
       // own flag is Parakeet-only since #1386 (cloud review P2).
       activeModelLoaded: { [engineCoordinator] in engineCoordinator.status.activeModelLoaded },
@@ -2467,6 +2471,7 @@ package final class WisprBootstrapper {
             loadCachedModelCatalog: { [llmDiscovery] provider in
               llmDiscovery.loadCachedModels(for: provider)
             },
+            cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
             connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
             inputChannelCounts: {
               Dictionary(
@@ -3419,6 +3424,8 @@ private struct MainWindowRoot: View {
       )
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
+      // #4353 D6: the cloud model list the model menus and labels read.
+      .environment(b.cloudModelList)
       .environment(b.polishSetup.savedKeyPresence)
       .environment(b.polishSetup.monitor)
       .environment(b.polishSetup.summary)
@@ -3477,6 +3484,8 @@ private struct OnboardingWindowRoot: View {
     .environment(b.audioDeviceList)
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
+    // #4353 D6: the cloud model list the model menus and labels read.
+    .environment(b.cloudModelList)
     .environment(b.polishSetup.savedKeyPresence)
     .environment(b.polishSetup.monitor)
     .environment(b.polishSetup.summary)

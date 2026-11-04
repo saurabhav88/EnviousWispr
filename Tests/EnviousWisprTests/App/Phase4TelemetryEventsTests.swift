@@ -114,7 +114,7 @@ import EnviousWisprAppKitTestSupport
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: permissions,
+        permissions: permissions, cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
       let box = capture { builder.emit() }
       let snap = box.named("settings.snapshot").first
@@ -142,7 +142,7 @@ import EnviousWisprAppKitTestSupport
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true }),
+        permissions: PermissionsService(accessibilityReader: { true }), cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
       let snap = capture { builder.emit() }.named("settings.snapshot").first
       #expect(snap?.stringProps["llm_model"] == "custom")  // deny-by-default, never the raw name
@@ -153,7 +153,7 @@ import EnviousWisprAppKitTestSupport
       let suite = TestDefaults.suite("P4Flush-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       settings.onboardingState = .completed
-      let telemetry = SettingsChangeTelemetry(settings: settings, emitBaseline: {})
+      let telemetry = SettingsChangeTelemetry(settings: settings, cloudModelList: { CloudModelListSeed.current }, emitBaseline: {})
       settings.onChange = { [weak telemetry] key in telemetry?.handle(key) }
       TelemetryService.shared.flushContextProvider = nil
       TelemetryService.shared.onBeforeFlush = { [weak telemetry] in telemetry?.flush() }

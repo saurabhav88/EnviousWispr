@@ -55,7 +55,7 @@ struct DictationSettingsRenderHarness {
       pid: 0, isProcessAlive: { _ in false }))
     let sync = PipelineSettingsSync(kernelDriver: recording.kernelDriver,
       whisperKernelDriver: recording.whisperKernelDriver, audioCapture: audio,
-      asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil })
+      asrManager: asr, hotkeyService: hotkey, cloudModelList: { nil }, ollamaRemotenessLookup: { _ in nil })
     let last = LastRecordingResult()
     let locked = DictationLifecycleCoordinator.RecordingLockedAccess(get: { false }, set: { _ in })
     let lease = EngineLease()

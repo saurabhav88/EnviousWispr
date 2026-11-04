@@ -597,10 +597,10 @@
     private static func context(
       catalog: DevControlSettings.ModelCatalog = .init(provider: nil, models: []),
       connected: [String] = [], pill: PillWordsCapability = .available,
-      channels: [String: Int] = [:]
+      channels: [String: Int] = [:], list: CloudModelList? = nil
     ) -> DevControlSettings.WriteContext {
       DevControlSettings.WriteContext(
-        modelCatalog: { catalog }, loadCachedModelCatalog: { _ in },
+        modelCatalog: { catalog }, loadCachedModelCatalog: { _ in }, cloudModelList: { list },
         connectedInputUIDs: { connected },
         inputChannelCounts: { channels },
         pillWordsCapability: { pill })
@@ -1132,6 +1132,59 @@
       -> LLMModelInfo
     {
       LLMModelInfo(id: id, displayName: id, provider: provider, availability: available ? .available : .confirmedUnavailable, isRemote: remote)
+    }
+
+    /// #4353 D6: an ordinary model write is admitted exactly when the menu offers the row; a
+    /// row the cloud model list hides is refused, and a forced write is unchanged.
+    @Test("an ordinary model write refuses a row the cloud model list hides; forced writes still land")
+    func hiddenListRowIsNotAdmitted() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      let list = try CloudModelList.validated(
+        from: Data(
+          #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"openAI","id":"gpt-hidden","recommended":false,"hidden":true,"request":{"openAIEffort":"omit","temperature":"include"},"supportsChatCompletions":true,"allowsFileBatch":true}]}"#
+            .utf8)
+      ).get()
+      let catalog = DevControlSettings.ModelCatalog(
+        provider: .openAI, models: [Self.model("gpt-hidden", .openAI), Self.model("gpt-open", .openAI)])
+      func write(_ id: String, force: Bool = false) throws -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .llmModel, value: try Self.wire("\"\(id)\""), force: force,
+          context: Self.context(catalog: catalog, list: list), to: settings)
+      }
+      #expect(try write("gpt-hidden").code == "badValue")
+      #expect(try write("gpt-open") == .written(forced: false))
+      #expect(settings.llmModel == "gpt-open")
+      #expect(try write("gpt-hidden", force: true) == .written(forced: true))
+      #expect(settings.llmModel == "gpt-hidden")
+    }
+
+    /// #4353 D6: endpoint eligibility from a refreshed list reaches ordinary admission at once.
+    @Test("an ordinary write follows the list's endpoint eligibility for a cached row")
+    func ineligibleListRowIsNotAdmitted() throws {
+      let (_, _, settings) = Self.fixture()
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-kept"
+      func list(chat: Bool) throws -> CloudModelList {
+        try CloudModelList.validated(
+          from: Data(
+            #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"openAI","id":"gpt-maybe","recommended":false,"hidden":false,"request":{"openAIEffort":"omit","temperature":"include"},"supportsChatCompletions":\#(chat),"allowsFileBatch":true}]}"#
+              .utf8)
+        ).get()
+      }
+      let catalog = DevControlSettings.ModelCatalog(
+        provider: .openAI, models: [Self.model("gpt-maybe", .openAI)])
+      func write(_ list: CloudModelList, force: Bool = false) throws -> DevControlSettings.SetOutcome {
+        DevControlSettings.write(
+          .llmModel, value: try Self.wire(#""gpt-maybe""#), force: force,
+          context: Self.context(catalog: catalog, list: list), to: settings)
+      }
+      #expect(try write(list(chat: false)).code == "badValue")
+      #expect(settings.llmModel == "gpt-kept", "the stored choice is retained")
+      #expect(try write(list(chat: true)) == .written(forced: false))
+      settings.llmModel = "gpt-kept"
+      #expect(try write(list(chat: false), force: true) == .written(forced: true))
+      #expect(settings.llmModel == "gpt-maybe")
     }
 
     @Test("the import provider: a pick seeds then overrides, null follows dictation, none is its own choice")

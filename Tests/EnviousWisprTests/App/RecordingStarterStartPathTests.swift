@@ -236,7 +236,7 @@ import Testing
         hotkeyService: hotkey,
         settingsSync: PipelineSettingsSync(
           kernelDriver: pipeline, whisperKernelDriver: whisperKernelDriver, audioCapture: audio,
-          asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil }),
+          asrManager: asr, hotkeyService: hotkey, cloudModelList: { nil }, ollamaRemotenessLookup: { _ in nil }),
         audioCapture: audio,
         transcriptCoordinator: TranscriptCoordinator(store: store),
         settings: settings,

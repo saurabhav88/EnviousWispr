@@ -44,7 +44,7 @@ import Testing
       settings.onboardingState = onboarding
       let spy = BaselineSpy()
       let telemetry = SettingsChangeTelemetry(
-        settings: settings, emitBaseline: { spy.bump() })
+        settings: settings, cloudModelList: { CloudModelListSeed.current }, emitBaseline: { spy.bump() })
       settings.onChange = { [weak telemetry] key in telemetry?.handle(key) }
       let box = DeltaBox()
       TelemetryService.shared.testEventHook = { @Sendable event in
@@ -55,6 +55,93 @@ import Testing
 
     private func deltas(_ box: DeltaBox, setting: String) -> [CapturedTelemetryEvent] {
       box.all.filter { $0.stringProps["setting"] == setting }
+    }
+
+    // MARK: - #4353 D6: model recognition from the cloud model list
+
+    @MainActor final class ListBox { var list: CloudModelList? }
+
+    static func telemetryList(_ ids: [(String, String, Bool)]) -> CloudModelList? {
+      let rows = ids.map { provider, id, hidden in
+        let request =
+          provider == "openAI"
+          ? #"{"openAIEffort":"omit","temperature":"include"}"#
+          : provider == "gemini" ? #"{"geminiThinking":"none"}"# : #"{"claudeShape":"thinkingDisabled"}"#
+        let chat = provider == "openAI" ? "true" : "false"
+        return #"{"provider":"\#(provider)","id":"\#(id)","recommended":false,"hidden":\#(hidden),"request":\#(request),"supportsChatCompletions":\#(chat),"allowsFileBatch":true}"#
+      }.joined(separator: ",")
+      return try? CloudModelList.validated(
+        from: Data(#"{"schema":1,"updated":"2026-11-04","models":[\#(rows)]}"#.utf8)
+      ).get()
+    }
+
+    @Test("cloud ids project per provider, case-sensitively, with hidden and dated rows recognised")
+    func cloudModelProjectionFromList() throws {
+      let list = Self.telemetryList([
+        ("openAI", "gpt-listed", false), ("openAI", "gpt-secret-row", true),
+        ("claude", "claude-new", false), ("claude", "claude-new-20260101", false),
+      ])
+      func model(_ provider: LLMProvider, _ id: String) -> String {
+        SettingsProjection.model(provider: provider, id: id, list: list)
+      }
+      #expect(model(.openAI, "gpt-listed") == "gpt-listed")
+      #expect(model(.openAI, "GPT-LISTED") == "custom", "case-sensitive")
+      #expect(model(.claude, "gpt-listed") == "custom", "another provider's row never applies")
+      #expect(model(.openAI, "gpt-secret-row") == "gpt-secret-row", "hidden rows stay recognised")
+      #expect(model(.openAI, "gpt-listed-2026-04-23") == "gpt-listed", "dated id inherits its base")
+      #expect(model(.claude, "claude-new-20260101") == "claude-new-20260101", "an exact dated row")
+      #expect(model(.claude, "claude-new-20260202") == "claude-new")
+      #expect(model(.openAI, "gpt-my-private-tune") == "custom")
+      #expect(model(.openAI, "") == "none")
+      #expect(SettingsProjection.model(provider: .openAI, id: "gpt-listed", list: nil) == "custom")
+
+      let settings = SettingsManager(defaults: TestDefaults.suite("SCT-4353-\(UUID().uuidString)")!)
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-listed"
+      #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings, list: list) == "follows_dictation")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: list) == "gpt-listed")
+      #expect(
+        SettingsProjection.snapshotConfig(settings, list: list)["llm_model"]
+          == SettingsProjection.value(for: .llmModel, settings: settings, list: list),
+        "standing snapshot and change events share one projection")
+    }
+
+    @Test("a list refresh is not a model change; a real change near a refresh is still reported")
+    func listRefreshIsNotAModelChange() throws {
+      let suite = TestDefaults.suite("SCT-4353-refresh-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      settings.onboardingState = .completed
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-new"
+      let lists = ListBox()
+      lists.list = Self.telemetryList([("openAI", "gpt-old", false)])
+      let telemetry = SettingsChangeTelemetry(
+        settings: settings, cloudModelList: { lists.list }, emitBaseline: {})
+      settings.onChange = { [weak telemetry] key in telemetry?.handle(key) }
+      let box = DeltaBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "settings.changed" { box.add(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      // The list now recognises `gpt-new` (it read `custom` before). The user then writes the
+      // same model again and switches provider and back: nothing about the model changed.
+      lists.list = Self.telemetryList([("openAI", "gpt-old", false), ("openAI", "gpt-new", false)])
+      settings.llmModel = "gpt-new"
+      settings.llmProvider = .gemini
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-new"
+      telemetry.flush()
+      #expect(deltas(box, setting: "llm_model").isEmpty, "no fabricated delta: \(box.all)")
+
+      // A real change right after another refresh is reported, under the current list.
+      lists.list = Self.telemetryList([("openAI", "gpt-new", false), ("openAI", "gpt-old", false)])
+      settings.llmModel = "gpt-old"
+      telemetry.flush()
+      let changed = deltas(box, setting: "llm_model")
+      #expect(changed.count == 1)
+      #expect(changed.first?.stringProps["from"] == "gpt-new")
+      #expect(changed.first?.stringProps["to"] == "gpt-old")
     }
 
     @Test("Smart insertion emits one privacy-safe on-to-off delta")
@@ -70,7 +157,7 @@ import Testing
       #expect(d.first?.stringProps["from"] == "on")
       #expect(d.first?.stringProps["to"] == "off")
       #expect(d.first?.stringProps["source"] == "user")
-      #expect(SettingsProjection.value(for: .smartInsertion, settings: settings) == "off")
+      #expect(SettingsProjection.value(for: .smartInsertion, settings: settings, list: CloudModelListSeed.current) == "off")
     }
 
     /// #3269: the privacy switches are never reported, so turning metrics off sends no final
@@ -102,7 +189,7 @@ import Testing
       let unmigrated = SettingsManager(
         defaults: TestDefaults.suite("ew.tests.4287.telemetry.\(UUID().uuidString)")!)
       #expect(
-        SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: unmigrated) == "unset")
+        SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: unmigrated, list: CloudModelListSeed.current) == "unset")
 
       settings.meetingSummaryLLMProvider = .claude
       settings.meetingSummaryLLMModel = "claude-private-name"
@@ -112,7 +199,7 @@ import Testing
 
       #expect(SettingsProjection.logicals(for: .meetingSummaryLLMModel) == [])
       #expect(SettingsProjection.logicals(for: .meetingSummaryOllamaModel) == [])
-      #expect(SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: settings) == "claude")
+      #expect(SettingsProjection.value(for: .meetingSummaryLLMProvider, settings: settings, list: CloudModelListSeed.current) == "claude")
       let summary = deltas(box, setting: "meeting_summary_llm_provider")
       #expect(summary.count == 1)
       #expect(summary.first?.stringProps["to"] == "claude")
@@ -140,7 +227,7 @@ import Testing
       #expect(d.first?.stringProps["from"] == "on", "ships on — that is the baseline")
       #expect(d.first?.stringProps["to"] == "off")
       #expect(d.first?.stringProps["source"] == "user")
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings, list: CloudModelListSeed.current) == "off")
     }
 
     /// The projection must follow the SETTING, not a constant. A value hard-wired
@@ -150,11 +237,11 @@ import Testing
       let (settings, _, _, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings, list: CloudModelListSeed.current) == "on")
       settings.escapeRecoveryEnabled = false
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "off")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings, list: CloudModelListSeed.current) == "off")
       settings.escapeRecoveryEnabled = true
-      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings) == "on")
+      #expect(SettingsProjection.value(for: .escapeRecovery, settings: settings, list: CloudModelListSeed.current) == "on")
     }
 
     // MARK: - #2450 spoken punctuation start word
@@ -223,7 +310,7 @@ import Testing
         settings: settings,
         keychainManager: KeychainManager(),
         customWordsCoordinator: CustomWordsCoordinator(),
-        permissions: PermissionsService(accessibilityReader: { true }),
+        permissions: PermissionsService(accessibilityReader: { true }), cloudModelList: { CloudModelListSeed.current },
         snippetsCount: { 0 }, snippetsKeywordIsDefault: { true })
       let box = DeltaBox()
       TelemetryService.shared.testEventHook = { @Sendable event in
@@ -295,14 +382,14 @@ import Testing
       let (settings, _, _, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
 
-      let atDefault = SettingsProjection.snapshotConfig(settings)
+      let atDefault = SettingsProjection.snapshotConfig(settings, list: CloudModelListSeed.current)
       #expect(atDefault["spoken_punctuation"] == "off")
       #expect(atDefault["spoken_punctuation_start_word"] == "default")
       #expect(atDefault["spoken_punctuation_period_word"] == "on")
 
       settings.spokenPunctuation.enabled = true
       settings.commitSpokenPunctuationStartWord("Sprich", language: "de")
-      let changed = SettingsProjection.snapshotConfig(settings)
+      let changed = SettingsProjection.snapshotConfig(settings, list: CloudModelListSeed.current)
       #expect(changed["spoken_punctuation"] == "on")
       #expect(changed["spoken_punctuation_start_word"] == "customised")
       #expect(changed["spoken_punctuation_period_word"] == "on", "the start word left it alone")
@@ -460,7 +547,7 @@ import Testing
           settings: settings,
           keychainManager: KeychainManager(),
           customWordsCoordinator: CustomWordsCoordinator(),
-          permissions: PermissionsService(accessibilityReader: { true }),
+          permissions: PermissionsService(accessibilityReader: { true }), cloudModelList: { CloudModelListSeed.current },
           snippetsCount: { 0 }, snippetsKeywordIsDefault: { true }
         ).emit()
         return box.value
@@ -600,9 +687,9 @@ import Testing
       #expect(pairingDeltas.first?.stringProps["to"] == "velvetTap")
 
       #expect(
-        SettingsProjection.value(for: .playRecordingSounds, settings: settings) == "off")
+        SettingsProjection.value(for: .playRecordingSounds, settings: settings, list: CloudModelListSeed.current) == "off")
       #expect(
-        SettingsProjection.value(for: .recordingSoundPairing, settings: settings)
+        SettingsProjection.value(for: .recordingSoundPairing, settings: settings, list: CloudModelListSeed.current)
           == "velvetTap")
     }
 
@@ -648,7 +735,7 @@ import Testing
       #expect(modeDeltas.first?.stringProps["from"] == "nothing")
       #expect(modeDeltas.first?.stringProps["to"] == "pauseMusic")
       #expect(
-        SettingsProjection.value(for: .otherAudioWhileDictating, settings: settings)
+        SettingsProjection.value(for: .otherAudioWhileDictating, settings: settings, list: CloudModelListSeed.current)
           == "pauseMusic")
     }
 
@@ -813,7 +900,7 @@ import Testing
       // Simulate the lag: llmModel still holds a cloud id, ollamaModel is the real one.
       settings.llmModel = "gpt-4o-mini"
       settings.ollamaModel = "llama3.2"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "llama3.2")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "llama3.2")
     }
 
     @Test("EG-1 projection: published verbatim, lookalikes get the fixed variant label (#1269)")
@@ -823,7 +910,7 @@ import Testing
         let settings = SettingsManager(defaults: suite)
         settings.llmProvider = .ollama
         settings.ollamaModel = model
-        return SettingsProjection.value(for: .llmModel, settings: settings)
+        return SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current)
       }
       // Published first-party name: verbatim (canonicalized).
       #expect(project("eg-1") == "eg-1")
@@ -851,7 +938,7 @@ import Testing
         let settings = SettingsManager(defaults: suite)
         settings.llmProvider = .gemini
         settings.llmModel = model
-        return SettingsProjection.value(for: .llmModel, settings: settings)
+        return SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current)
       }
       for id in [
         "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
@@ -970,10 +1057,10 @@ import Testing
       settings.llmProvider = .ollama
       settings.ollamaModel = "llama3.2:latest"  // standard install tag
       // Canonicalizes to the catalog's "llama3.2" — NOT reported as "custom".
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "llama3.2")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "llama3.2")
       // A non-catalog private pull still collapses to custom.
       settings.ollamaModel = "my-private:latest"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "custom")
     }
 
     @Test("Cloud projection is deny-by-default: stale/private id → custom, known id passes")
@@ -984,13 +1071,13 @@ import Testing
       // P1 leak scenario: a private Ollama name carried over before discovery
       // corrects llmModel. It is NOT on the cloud allowlist → custom, never raw.
       settings.llmModel = "acme-internal-finetune"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "custom")
       // A recognized public cloud id passes through.
       settings.llmModel = "gpt-4o-mini"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "gpt-4o-mini")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "gpt-4o-mini")
       // A dated snapshot of a known model normalizes to its base id.
       settings.llmModel = "gpt-5-mini-2025-08-07"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "gpt-5-mini")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "gpt-5-mini")
     }
 
     @Test(
@@ -1002,18 +1089,18 @@ import Testing
       settings.llmProvider = .claude
       // A recognized public cloud id passes through verbatim.
       settings.llmModel = "claude-haiku-4-5"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-haiku-4-5")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "claude-haiku-4-5")
       // Anthropic's dated snapshot uses a COMPACT, undashed suffix (-YYYYMMDD),
       // a different shape from OpenAI/Gemini's dashed -YYYY-MM-DD — both forms
       // must normalize to the same allowlisted base id.
       settings.llmModel = "claude-haiku-4-5-20251001"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-haiku-4-5")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "claude-haiku-4-5")
       settings.llmModel = "claude-opus-4-1-20250805"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "claude-opus-4-1")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "claude-opus-4-1")
       // Negative: an ordinary non-date numeric segment must NOT be truncated —
       // widening the regex to match compact dates must not over-match.
       settings.llmModel = "claude-haiku-4-5-thinking"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "custom")
     }
 
     @Test("EG-1's fixed literal never leaks into a cloud provider's model")
@@ -1040,17 +1127,17 @@ import Testing
       for provider in [LLMProvider.openAI, .gemini, .claude] {
         settings.llmProvider = provider
         settings.llmModel = ""
-        #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "none")
-        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings) == "follows_dictation")
+        #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "none")
+        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings, list: CloudModelListSeed.current) == "follows_dictation")
         settings.fileImportLLMProvider = provider
         settings.fileImportLLMModel = ""
-        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings) == "none")
+        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings, list: CloudModelListSeed.current) == "none")
         settings.fileImportLLMProvider = nil
       }
       // A nonempty custom id is still redacted, never sent.
       settings.llmProvider = .openAI
       settings.llmModel = "gpt-private-finetune"
-      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current) == "custom")
     }
 
     @Test("Language lock projects to mode only, never the code")
@@ -1099,7 +1186,7 @@ import Testing
 
     private static let noContext = DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      loadCachedModelCatalog: { _ in },
+      loadCachedModelCatalog: { _ in }, cloudModelList: { CloudModelListSeed.current },
       connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available })
 
     /// Starts `model_unload_policy` at a known value with nothing pending, so each test
@@ -1202,7 +1289,7 @@ import Testing
       settings.llmModel = "gpt-4o-mini"
       telemetry.flush()
       box.clear()
-      let before = SettingsProjection.value(for: .llmModel, settings: settings)
+      let before = SettingsProjection.value(for: .llmModel, settings: settings, list: CloudModelListSeed.current)
       #expect(
         DevControlSettings.forceWrite(.llmProvider, value: "none", to: settings)
           == .written(forced: true))

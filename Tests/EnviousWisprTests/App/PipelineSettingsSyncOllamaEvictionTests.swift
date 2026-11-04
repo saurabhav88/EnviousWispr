@@ -68,7 +68,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
       whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
+      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()), cloudModelList: { nil },
       ollamaRemotenessLookup: { model in
         lookupCounter?()
         return PipelineSettingsSync.ollamaRemoteness(of: model, in: catalog)

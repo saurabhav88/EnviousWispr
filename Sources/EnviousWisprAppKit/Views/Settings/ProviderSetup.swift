@@ -742,6 +742,9 @@ struct ProviderSetupSection: View {
   @Environment(SetupCoordinator.self) private var setup
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
+  /// #4353 D6: the cloud model list; absent (nil) in render tests, which then show every id as
+  /// unlisted. Each projection below reads `snapshot` once.
+  @Environment(CloudModelListHolder.self) private var cloudModelListHolder: CloudModelListHolder?
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
   @Environment(EGOneRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
@@ -1278,29 +1281,9 @@ private var modelRowSubtitle: String {
 /// What the closed dropdown says: the chosen model, "No model selected" when models exist
 /// and none is armed (#1914: a blank field reads as broken), or why there are none yet.
 private var modelFieldLabel: String {
-  if surfaceDiscoveredModels.isEmpty {
-    if surfaceIsDiscovering {
-      return String(
-        localized: "Refreshing models…",
-        comment: "AI Polish model menu: models are being loaded.")
-    }
-    if !surfaceCloudModel.isEmpty { return surfaceCloudModel }
-    return provider == .ollama
-      ? String(
-        localized: "No models found",
-        comment: "AI Polish model picker: Ollama has no models downloaded.")
-      : String(
-        localized: "Save API key to discover models",
-        comment:
-          "AI Polish model picker: a cloud provider's models appear after its key is saved.")
-  }
-  // #4353 D4: nothing is preselected, so an empty field asks for the first choice.
-  if surfaceCloudModel.isEmpty {
-    return provider == .ollama
-      ? String(localized: "No model selected") : PolishSetupSurfaceCopy.chooseAModel
-  }
-  return surfaceDiscoveredModels.first { $0.id == surfaceCloudModel }?.localizedDisplayName
-    ?? surfaceCloudModel
+  ModelFieldLabel.text(
+    provider: provider, chosen: surfaceCloudModel, models: surfaceDiscoveredModels,
+    isDiscovering: surfaceIsDiscovering, list: cloudModelListHolder?.snapshot?.list)
 }
   // MARK: - API Key Row
 
@@ -1568,8 +1551,9 @@ private func keyBadge(_ text: String, tone: Color) -> some View {
 /// because "not recognised" says nothing about size, speed or cost.
 @ViewBuilder
 private var modelPickerSections: some View {
+  let list = cloudModelListHolder?.snapshot?.list
   let groups = OllamaModelPickerPresentation.groups(
-    from: surfaceDiscoveredModels, provider: provider, chosenModel: surfaceCloudModel)
+    from: surfaceDiscoveredModels, provider: provider, chosenModel: surfaceCloudModel, list: list)
 
   if provider == .ollama {
     let local = groups.recommended + groups.other
@@ -1578,7 +1562,7 @@ private var modelPickerSections: some View {
         title: String(
           localized: "On this Mac",
           comment: "AI Polish, Ollama model menu: heading for models that run on this Mac."))
-      ForEach(local) { modelRow($0) }
+      ForEach(local) { modelRow($0, list: list) }
     }
     // #1914: hosted models stay fully selectable. The group states where they run so the
     // choice is visible while scanning; it is not a warning and not a gate.
@@ -1592,23 +1576,23 @@ private var modelPickerSections: some View {
             title: OllamaModelPickerPresentation.tierSectionTitle(
               OllamaModelPickerPresentation.freeVerifiedGroupTitle, checkedAt: tiers.checkedAt),
             showsDivider: !local.isEmpty)
-          ForEach(tiers.free) { modelRow($0) }
+          ForEach(tiers.free) { modelRow($0, list: list) }
         }
         if !tiers.mayNeedPaid.isEmpty {
           SettingsDropdownHeading(
             title: OllamaModelPickerPresentation.tierSectionTitle(
               OllamaModelPickerPresentation.mayNeedPaidGroupTitle, checkedAt: tiers.checkedAt),
             showsDivider: !local.isEmpty || !tiers.free.isEmpty)
-          ForEach(tiers.mayNeedPaid) { modelRow($0) }
+          ForEach(tiers.mayNeedPaid) { modelRow($0, list: list) }
         }
       } else {
         SettingsDropdownHeading(
           title: OllamaModelPickerPresentation.hostedGroupTitle, showsDivider: !local.isEmpty)
-        ForEach(groups.hosted) { modelRow($0) }
+        ForEach(groups.hosted) { modelRow($0, list: list) }
       }
     }
   } else {
-    ForEach(groups.selectable) { modelRow($0) }
+    ForEach(groups.selectable) { modelRow($0, list: list) }
   }
   if !groups.locked.isEmpty {
     SettingsDropdownHeading(
@@ -1616,13 +1600,15 @@ private var modelPickerSections: some View {
         localized: "Not available with your API key",
         comment: "AI Polish model menu: heading for models the user's API key cannot use."),
       showsDivider: true)
-    ForEach(groups.locked) { modelRow($0, isEnabled: false) }
+    ForEach(groups.locked) { modelRow($0, list: list, isEnabled: false) }
   }
 }
 
-private func modelRow(_ info: LLMModelInfo, isEnabled: Bool = true) -> some View {
+private func modelRow(
+  _ info: LLMModelInfo, list: CloudModelList?, isEnabled: Bool = true
+) -> some View {
   let isChosen = info.id == surfaceCloudModel
-  let note = modelNote(info)
+  let note = modelNote(info, list: list)
   let verdict: OllamaModelVerdict? =
     provider == .ollama && !info.isRemote ? OllamaModelVerdicts.verdict(for: info.id) : nil
   return SettingsDropdownRow(
@@ -1655,8 +1641,9 @@ private func modelRow(_ info: LLMModelInfo, isEnabled: Bool = true) -> some View
 }
 
 /// The line under a model in the menu. Hosted Ollama models say where they run; a cloud
-/// model our classifier recognises as the fast tier says so; nothing else is claimed.
-private func modelNote(_ info: LLMModelInfo) -> String? {
+/// model the list recommends (or, unlisted, our classifier recognises as the fast tier) says
+/// so; nothing else is claimed.
+private func modelNote(_ info: LLMModelInfo, list: CloudModelList?) -> String? {
   if provider == .ollama {
     return info.isRemote
       ? String(
@@ -1664,7 +1651,7 @@ private func modelNote(_ info: LLMModelInfo) -> String? {
         comment: "AI Polish, Ollama model menu: the line under a hosted model.")
       : nil
   }
-  return AIPolishModelClassifier.isRecommendedForCleanup(info.id)
+  return CloudModelPresentation.isRecommended(info.id, provider: info.provider, list: list)
     ? String(
       localized: "Fast tier · recommended for cleanup",
       comment: "AI Polish, cloud model menu: the line under a model recognised as the fast tier.")
@@ -3272,5 +3259,41 @@ struct ProviderSetupLifecycle: ViewModifier {
         setup.ollamaSetup.warmUpModel(newModel)
       }
     }
+  }
+}
+
+/// The closed model menu's text, as one decision a test can drive (#4353 D6). `list` is the
+/// caller's one captured cloud model list snapshot; a chosen model is always named through
+/// `CloudModelPresentation.label`, also while the catalog is empty.
+enum ModelFieldLabel {
+  static func text(
+    provider: LLMProvider, chosen: String, models: [LLMModelInfo], isDiscovering: Bool,
+    list: CloudModelList?
+  ) -> String {
+    if models.isEmpty {
+      if isDiscovering {
+        return String(
+          localized: "Refreshing models…",
+          comment: "AI Polish model menu: models are being loaded.")
+      }
+      if !chosen.isEmpty {
+        return CloudModelPresentation.label(
+          for: chosen, provider: provider, models: models, list: list)
+      }
+      return provider == .ollama
+        ? String(
+          localized: "No models found",
+          comment: "AI Polish model picker: Ollama has no models downloaded.")
+        : String(
+          localized: "Save API key to discover models",
+          comment:
+            "AI Polish model picker: a cloud provider's models appear after its key is saved.")
+    }
+    // #4353 D4: nothing is preselected, so an empty field asks for the first choice.
+    if chosen.isEmpty {
+      return provider == .ollama
+        ? String(localized: "No model selected") : PolishSetupSurfaceCopy.chooseAModel
+    }
+    return CloudModelPresentation.label(for: chosen, provider: provider, models: models, list: list)
   }
 }

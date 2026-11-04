@@ -240,7 +240,7 @@ struct BackendMetadataTests {
     let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), discoverModels: { _, _ in [] })
     return BackendMetadata(
       settings: settings,
-      llmDiscovery: llmDiscovery,
+      llmDiscovery: llmDiscovery, cloudModelList: { nil },
       activeModelLoaded: { modelLoaded },
       parakeetModelLabel: { parakeetModel }
     )

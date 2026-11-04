@@ -29,7 +29,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          loadCachedModelCatalog: { _ in },
+          loadCachedModelCatalog: { _ in }, cloudModelList: { nil },
           connectedInputUIDs: { ["mic-a"] }, inputChannelCounts: { [:] },
           pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
@@ -135,7 +135,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          loadCachedModelCatalog: { _ in },
+          loadCachedModelCatalog: { _ in }, cloudModelList: { nil },
           connectedInputUIDs: { [] }, inputChannelCounts: { ["mic-a": 4] },
           pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
@@ -362,7 +362,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          loadCachedModelCatalog: { _ in },
+          loadCachedModelCatalog: { _ in }, cloudModelList: { nil },
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
           pillWordsCapability: { .available }),
         status: status.sources,
@@ -713,7 +713,7 @@
         settings: settings,
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          loadCachedModelCatalog: { _ in },
+          loadCachedModelCatalog: { _ in }, cloudModelList: { nil },
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
           pillWordsCapability: { .available }),
         status: DevControlFixtures.StatusFake().sources,
