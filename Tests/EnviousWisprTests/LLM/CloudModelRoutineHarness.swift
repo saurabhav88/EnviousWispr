@@ -344,12 +344,53 @@ enum CloudModelRoutine {
     }
   }
 
+  /// The id and the two dated spellings the list resolves to it (a `-YYYY-MM-DD` and a
+  /// `-YYYYMMDD` snapshot suffix, `ProviderModelID.withoutDateSnapshot`). The one owner of
+  /// that variant set for the routine.
+  static func supportedSpellings(_ id: String) -> [String] {
+    [id, "\(id)-2030-01-01", "\(id)-20300101"]
+  }
+
+  /// How one spelling resolves in one list, as the shipped code answers.
+  struct Resolved: Encodable, Equatable, Sendable {
+    /// The request setting label, or nil when the compiled answer has no list spelling.
+    let setting: String?
+    let supportsChatCompletions: Bool
+    let allowsFileBatch: Bool
+
+    init(_ provider: LLMProvider, model: String, list: CloudModelList) {
+      let capabilities = provider.modelCapabilities(model: model, list: list)
+      let policy =
+        provider.listedRow(model: model, list: list)?.request
+        ?? CloudModelRoutine.fallbackPolicy(provider, capabilities: capabilities)
+      setting = policy.flatMap { CloudModelRoutineCalls.Setting($0, provider: provider) }?.label
+      supportsChatCompletions = capabilities.supportsChatCompletions
+      allowsFileBatch = provider.allowsFileBatch(model: model, list: list)
+    }
+  }
+
+  struct VariantResolution: Encodable, Equatable, Sendable {
+    let id: String
+    let before: Resolved
+    let after: Resolved
+  }
+
+  static func resolution(
+    _ provider: LLMProvider, id: String, before: CloudModelList, after: CloudModelList
+  ) -> [VariantResolution] {
+    supportedSpellings(id).map {
+      VariantResolution(
+        id: $0, before: Resolved(provider, model: $0, list: before),
+        after: Resolved(provider, model: $0, list: after))
+    }
+  }
+
   /// The proposed list resolves the same request policy and file batching as today, for the
   /// id and for both supported dated spellings of it.
   static func resolvesTheSame(
     _ provider: LLMProvider, id: String, before: CloudModelList, after: CloudModelList
   ) -> Bool {
-    [id, "\(id)-2030-01-01", "\(id)-20300101"].allSatisfy { variant in
+    supportedSpellings(id).allSatisfy { variant in
       provider.modelCapabilities(model: variant, list: before)
         == provider.modelCapabilities(model: variant, list: after)
         && provider.allowsFileBatch(model: variant, list: before)

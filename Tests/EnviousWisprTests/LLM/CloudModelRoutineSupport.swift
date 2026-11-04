@@ -119,10 +119,11 @@ enum CloudModelRoutinePolicy {
     case missingForRoutineKey(firstMissingDay: String, weeks: Int)
     /// Missing for two distinct weekly observations with no successful sighting between.
     case hide(HideProposal)
-    /// Was pending and is back; the pending history is cleared. A hidden row is never
-    /// unhidden automatically.
+    /// Was pending and is back; the pending history is cleared.
     case reappeared
-    /// The list already hides this row; absence is reported, nothing is proposed.
+    /// The list already hides this row; nothing is proposed here. Under founder decision 13
+    /// the proposal step (`scripts/cloud-models/propose.py`) un-hides a routine-hidden row
+    /// reported `present: true`.
     case alreadyHidden(present: Bool)
   }
 

@@ -166,6 +166,9 @@ extension CloudModelRoutine {
     /// Always `requestRejected`: the fallback's final class that started the search.
     let trigger: ErrorClass
     let fallbackSetting: String
+    /// The approved alternatives in search order (the menu minus the fallback). Empty for
+    /// `fallbackOutsideMenu`.
+    let alternatives: [String]
     let attempts: [SettingAttempt]
     let outcome: SearchOutcome
     let interruption: ErrorClass?
@@ -203,7 +206,7 @@ extension CloudModelRoutine {
     _ provider: LLMProvider, id: String, policy: CloudModelList.RequestPolicy,
     supportsChatCompletions: Bool, allowsFileBatch: Bool, in list: CloudModelList
   ) -> Bool {
-    [id, "\(id)-2030-01-01", "\(id)-20300101"].allSatisfy { variant in
+    supportedSpellings(id).allSatisfy { variant in
       provider.listedRow(model: variant, list: list)?.request == policy
         && provider.modelCapabilities(model: variant, list: list).supportsChatCompletions
           == supportsChatCompletions
@@ -219,16 +222,18 @@ extension CloudModelRoutine {
     list: CloudModelList, keychain: KeychainManager, meter: Meter, transports: Transports
   ) async -> (SearchEvidence, chosen: (CloudModelRoutineCalls.Setting, PhaseResult)?) {
     let menu = CloudModelRoutineCalls.Setting.searchMenu(provider)
+    let alternatives = menu.filter { $0 != fallback }
     func evidence(
       _ attempts: [SettingAttempt], _ outcome: SearchOutcome, interruption: ErrorClass? = nil,
       chosen: String? = nil
     ) -> SearchEvidence {
       SearchEvidence(
-        trigger: .requestRejected, fallbackSetting: fallback.label, attempts: attempts,
+        trigger: .requestRejected, fallbackSetting: fallback.label,
+        alternatives: outcome == .fallbackOutsideMenu ? [] : alternatives.map(\.label),
+        attempts: attempts,
         outcome: outcome, interruption: interruption, chosenSetting: chosen,
         issueIntent: outcome == .requestRejectedSearchExhausted ? callRecipeIssueTitle : nil)
     }
-    let alternatives = menu.filter { $0 != fallback }
     guard menu.contains(fallback),
       alternatives.count == CloudModelRoutineCalls.Limits.alternativeSettings(provider)
     else { return (evidence([], .fallbackOutsideMenu), nil) }

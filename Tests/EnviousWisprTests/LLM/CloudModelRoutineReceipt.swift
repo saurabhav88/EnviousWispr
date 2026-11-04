@@ -19,6 +19,7 @@ struct CloudModelRoutineReceipt: Encodable {
     let runID: String?
     let runAttempt: String?
     let event: String?
+    let ref: String?
     let sourceSHA: String?
 
     /// GitHub Actions' own variables, when present. Nothing else from the environment.
@@ -26,7 +27,8 @@ struct CloudModelRoutineReceipt: Encodable {
       Provenance(
         repository: environment["GITHUB_REPOSITORY"], workflow: environment["GITHUB_WORKFLOW"],
         runID: environment["GITHUB_RUN_ID"], runAttempt: environment["GITHUB_RUN_ATTEMPT"],
-        event: environment["GITHUB_EVENT_NAME"], sourceSHA: environment["GITHUB_SHA"])
+        event: environment["GITHUB_EVENT_NAME"], ref: environment["GITHUB_REF"],
+        sourceSHA: environment["GITHUB_SHA"])
     }
   }
 
@@ -92,6 +94,10 @@ struct CloudModelRoutineReceipt: Encodable {
     let fallback: CloudModelRoutine.PhaseResult?
     /// Present only when the fallback ended in `requestRejected`.
     let search: CloudModelRoutine.SearchEvidence?
+    /// For a proposed row: how the id and its supported dated spellings resolve in the
+    /// captured list (`before`) and in the list with the row added (`after`). The proposal
+    /// checker compares these; it never re-derives capability or dated-id rules.
+    let resolution: [CloudModelRoutine.VariantResolution]?
   }
 
   struct ExcludedModel: Encodable {
@@ -280,7 +286,7 @@ extension CloudModelRoutine {
       return .init(
         id: id, setting: nil, outcome: "notTried", errorClass: nil, perInputMs: [], medianMs: nil,
         passViaAdaptation: false, sourceDate: sourceDate, resolvesTheSame: nil, row: nil,
-        fallback: nil, search: nil)
+        fallback: nil, search: nil, resolution: nil)
     }
     let fallback = await runPhase(
       id: id, provider: provider, setting: setting, phase: .fallback, inputIndices: inputIndices,
@@ -294,7 +300,7 @@ extension CloudModelRoutine {
           id: id, setting: setting.label, outcome: "fail",
           errorClass: fallback.errorClass ?? .other, perInputMs: fallback.perInputMs,
           medianMs: fallback.medianMs, passViaAdaptation: adapted, sourceDate: sourceDate,
-          resolvesTheSame: nil, row: nil, fallback: fallback, search: nil)
+          resolvesTheSame: nil, row: nil, fallback: fallback, search: nil, resolution: nil)
       }
       let (evidence, chosen) = await search(
         id: id, provider: provider, fallback: setting, fallbackCapabilities: capabilities,
@@ -302,6 +308,7 @@ extension CloudModelRoutine {
         meter: meter, transports: transports)
       var row: ProposedRow?
       var resolves: Bool?
+      var resolution: [VariantResolution]?
       if let (chosenSetting, confirmation) = chosen {
         let candidateRow = searchRow(
           provider: provider, id: id, released: released, policy: chosenSetting.policy,
@@ -317,12 +324,16 @@ extension CloudModelRoutine {
           } ?? false
         resolves = ok
         row = ok ? candidateRow : nil
+        if ok, let proposed {
+          resolution = Self.resolution(provider, id: id, before: list, after: proposed)
+        }
       }
       return .init(
         id: id, setting: setting.label, outcome: row == nil ? "fail" : "passViaSearch",
         errorClass: .requestRejected, perInputMs: fallback.perInputMs,
         medianMs: fallback.medianMs, passViaAdaptation: adapted, sourceDate: sourceDate,
-        resolvesTheSame: resolves, row: row, fallback: fallback, search: evidence)
+        resolvesTheSame: resolves, row: row, fallback: fallback, search: evidence,
+        resolution: resolution)
     }
 
     let median = fallback.medianMs
@@ -333,8 +344,10 @@ extension CloudModelRoutine {
       allowsFileBatch: allowsFileBatch,
       medianPolishMs: median.flatMap { CloudModelList.medianPolishMsRange.contains($0) ? $0 : nil })
     let same: Bool
+    var resolution: [VariantResolution]?
     if let proposed = try? listAdding(row, to: list) {
       same = resolvesTheSame(provider, id: id, before: list, after: proposed)
+      if same { resolution = Self.resolution(provider, id: id, before: list, after: proposed) }
     } else {
       same = false
     }
@@ -342,6 +355,6 @@ extension CloudModelRoutine {
       id: id, setting: setting.label, outcome: same ? "pass" : "fail",
       errorClass: same ? nil : .other, perInputMs: fallback.perInputMs, medianMs: median,
       passViaAdaptation: adapted, sourceDate: sourceDate, resolvesTheSame: same,
-      row: same ? row : nil, fallback: fallback, search: nil)
+      row: same ? row : nil, fallback: fallback, search: nil, resolution: resolution)
   }
 }
