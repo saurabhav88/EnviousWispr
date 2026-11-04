@@ -427,6 +427,19 @@ struct OllamaModelPickerPresentationTests {
       from: rows, provider: .openAI, chosenModel: "gpt-4.1-2025-04-14")
     #expect(groups.selectable.map(\.id) == ["gpt-4.1"], "a selectable copy hides behind a locked base")
     #expect(groups.locked.map(\.id) == ["gpt-5-mini", "gpt-4.1-2025-04-14"])
+
+    // Locked rows arriving oldest first, with an undated one first of all: the locked group is
+    // sorted the same way (newest first, undated last), never left in input order.
+    let lockedOutOfOrder = [
+      cloud("gpt-old-locked", nil, available: .confirmedUnavailable),
+      cloud("gpt-3.5-turbo", 100, available: .confirmedUnavailable),
+      cloud("gpt-4-turbo", 200, available: .confirmedUnavailable),
+      cloud("gpt-6-sol", 400, available: .confirmedUnavailable),
+    ]
+    let sorted = OllamaModelPickerPresentation.groups(
+      from: lockedOutOfOrder, provider: .openAI, chosenModel: "")
+    #expect(sorted.selectable.isEmpty)
+    #expect(sorted.locked.map(\.id) == ["gpt-6-sol", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-old-locked"])
   }
 
   @Test("numeric versions and invalid dates are not dated copies")

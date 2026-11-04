@@ -223,9 +223,11 @@ enum AIPolishModelClassifier {
 /// real split rather than a copy of it.
 enum OllamaModelPickerPresentation {
 
-  /// The dropdown, split for display. Every input row lands in exactly one
-  /// array, and that is structural rather than tested-for: `groups(from:)`
-  /// assigns each row in a single pass with no overlapping filters.
+  /// The dropdown, split for display. For Ollama (and the fixed engines) each input row lands in
+  /// exactly one of `recommended`, `other`, `hosted` or `locked`, assigned in a single pass with
+  /// no overlapping filters, and `selectable` repeats the first three in that order. For OpenAI,
+  /// Gemini and Claude (#4353 D5) a dated copy hidden behind its base lands in no array, and
+  /// every other row is in exactly one of `selectable` or `locked`.
   ///
   /// Deliberately NOT `Equatable`: `LLMModelInfo` is not, and conforming it
   /// would widen a public Core type to serve a test's convenience. Tests
