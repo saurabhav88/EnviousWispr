@@ -48,7 +48,7 @@ It also requires the list at `--target-base` (the PR's current base) to be the r
 
 **Exit status:** 0 when generated or checked, 1 when refused (one line on stderr), 2 for a usage error.
 
-**Tests:** `propose.py --self-test` runs `propose_test.py`, which covers four categories against throwaway git repositories. `CloudModelRoutineProposalTests` (Swift) passes real receipts from the fake-run harness through this script.
+**Tests:** `propose.py --self-test` runs `propose_test.py`, which runs every category in its `CATEGORIES` tuple against throwaway git repositories. `CloudModelRoutineProposalTests` (Swift) passes real receipts from the fake-run harness through this script.
 
 ## The weekly workflow (`workflow.py`)
 
@@ -78,4 +78,4 @@ Every other PR passes this job and keeps the ordinary list validation in `websit
 - The repository variables `CLOUD_MODEL_ROUTINE_APP_ID` and `CLOUD_MODEL_ROUTINE_APP_BOT`.
 - The App installed on this repository only. Until `CLOUD_MODEL_ROUTINE_APP_BOT` is set, no PR counts as a routine PR.
 
-**Tests:** `workflow.py --self-test` runs `workflow_test.py`. It covers twelve groups against throwaway git repositories and a fake GitHub. It needs PyYAML, and it fails on any skip or on fewer than 20 tests. Not verified locally: live GitHub publication, whether required checks start on an App-created PR, Environment restrictions and the paid sweep.
+**Tests:** `workflow.py --self-test` runs `workflow_test.py`. It runs every group in its `GROUPS` tuple against throwaway git repositories and a fake GitHub. It needs PyYAML, and it fails on any skip, any empty group, or fewer tests than the floor in its `run()`. Not verified locally: live GitHub publication, whether required checks start on an App-created PR, Environment restrictions and the paid sweep.
