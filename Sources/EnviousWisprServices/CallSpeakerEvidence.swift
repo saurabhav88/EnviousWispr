@@ -94,15 +94,17 @@ package enum CallSpeakerSurfaceChoice {
 /// Reads one capture with the surface's reader. `nil` when the reader found nothing to read
 /// (no meeting page, two meeting pages, or no reader for the surface).
 package enum CallSpeakerSurfaceReader {
+  /// `knownSelf` is the Zoom app's learned in-call identity (#4356); other surfaces ignore it.
   package static func read(
-    surface: CallSpeakerSurface, capture: CallAXCapture, rules: TalkerRules
+    surface: CallSpeakerSurface, capture: CallAXCapture, rules: TalkerRules,
+    knownSelf: String? = nil
   ) -> CallSpeakerReading? {
     switch surface {
     // Only the windows `zoomWindows` chooses; `nil` when it cannot choose (`scope` unresolved).
     case .zoomApp:
       // Share and count evidence come from the whole copy, before window choice (#4013 share
       // plan §3.0): the windows that carry them are not the ones the reading uses.
-      zoomReading(capture)
+      zoomReading(capture, knownSelf: knownSelf)
     case .teamsApp: TeamsAppSpeakerReader.read(windows: capture.windows)
     case .zoomWeb: ZoomWebSpeakerReader.read(documents: capture.documents)
     case .meet, .teamsWeb, .slackWeb:
@@ -115,10 +117,13 @@ package enum CallSpeakerSurfaceReader {
 
   /// The Zoom app reading: the share context is read once from the whole copy and given to both
   /// window choice and the reader (#4013 share plan §3.0, review r2 R1).
-  static func zoomReading(_ capture: CallAXCapture) -> CallSpeakerReading? {
+  static func zoomReading(_ capture: CallAXCapture, knownSelf: String? = nil)
+    -> CallSpeakerReading?
+  {
     let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows)
     return zoomWindows(capture.windows, share: share).map {
-      ZoomAppSpeakerReader.read(windows: $0, accountTitles: capture.accountTitles, share: share)
+      ZoomAppSpeakerReader.read(
+        windows: $0, accountTitles: capture.accountTitles, share: share, knownSelf: knownSelf)
     }
   }
 

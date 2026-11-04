@@ -124,10 +124,12 @@ public struct CallPairStretch: Sendable, Equatable, Codable {
   public let names: [String]
   /// Names the app itself marked as the user in these readings (at most two, normally one).
   public let selfNames: [String]
-  /// The display name of the account signed in to the call app during these readings, at most
-  /// one (Zoom's menu bar). Not a meeting marking: the namer uses it only to tell the user from
-  /// the other person when no app marking says, under the founder's recorded D5 exception
-  /// (#4013 plan r4); votes and rename suggestions never use it. Empty when not read.
+  /// The user's in-call identity during these readings, at most one: the name Zoom marked
+  /// `(me)` in its participants list earlier in the recording (#4356), else the display name of
+  /// the account signed in to the call app (Zoom's menu bar). Not a meeting marking in these
+  /// readings: the namer uses it only to tell the user from the other person when no app
+  /// marking says, under the founder's recorded D5 exception (#4013 plan r4); votes and rename
+  /// suggestions never use it. Empty when not known. The stored key stays `accountNames`.
   public let accountNames: [String]
   public let firstMs: Int
   public let lastMs: Int

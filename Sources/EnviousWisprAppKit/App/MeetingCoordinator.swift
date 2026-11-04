@@ -386,6 +386,13 @@ final class MeetingCoordinator {
         protectedRoles: protectedRoles,
         keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
+    /// #4356: the Zoom self probe (opens Zoom's Participants panel, reads the `(me)` row, closes
+    /// it), run on the speaker lane, keeping `protectedRoles` strict like `captureCallApp`.
+    var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
+      { target, protectedRoles, shouldStop in
+        ZoomSelfProbe.live(
+          pid: target.pid, protectedRoles: protectedRoles, shouldStop: shouldStop)
+      }
     /// #4013 chunk 13A: where speaker copies run; the app shares one, a test makes its own.
     var speakerCaptureLane: CallSpeakerObserver.Lane = .shared
     /// #4248: whether "Leave my voice out when I'm muted" is on (`meetingFollowsCallMute`); the
@@ -2707,7 +2714,8 @@ final class MeetingCoordinator {
         muteBinding: { [weak self] binding in self?.muteBind(binding, meetingID: meetingID) },
         muteReading: { [weak self] copy in self?.muteRead(copy, meetingID: meetingID) },
         muteEvent: { [weak self] event in self?.muteCaptureEvent(event, meetingID: meetingID) },
-        muteTick: { [weak self] in self?.muteSend(.advance, meetingID: meetingID) }))
+        muteTick: { [weak self] in self?.muteSend(.advance, meetingID: meetingID) },
+        selfProbe: deps.selfProbe))
     speakerSession = (meetingID, session)
     deps.log("meeting speaker session started")
     session.start()

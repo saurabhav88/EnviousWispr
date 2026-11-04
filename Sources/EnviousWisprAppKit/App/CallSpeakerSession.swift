@@ -1,8 +1,10 @@
+import AppKit
 import ApplicationServices
 import Darwin
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+import os
 
 /// One recording's speaker evidence, whatever started the recording (#4013 13B): a manual
 /// Start, the call prompt's Yes, or Start by itself all get exactly one session.
@@ -68,6 +70,73 @@ final class CallSpeakerSession {
     var muteEvent: @MainActor (CallMuteCaptureEvent) -> Void = { _ in }
     /// Every check: time passed, so an expired mute reading closes even with no copy.
     var muteTick: @MainActor () -> Void = {}
+    /// #4356: the Zoom self probe against one call app instance, run on the lane, keeping the
+    /// recording's mute-rule roles strict; the closure says right before the press whether to
+    /// stop. The default presses nothing.
+    var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
+      { _, _, _ in .refused(.notFound, elapsedMs: 0) }
+    /// #4356 plan §3.4: the frontmost app and app activations, for the focus hand-back.
+    var focus: FocusAccess = .live
+  }
+
+  /// #4356 plan §3.4: what the focus hand-back reads and asks of macOS, by process id. Every
+  /// call runs on the main actor (the app's run loop keeps NSWorkspace current).
+  struct FocusAccess {
+    /// The frontmost app's process id; nil when there is none.
+    var frontmost: @MainActor () -> pid_t?
+    /// Starts counting app activations; the handler gets each activated app's process id.
+    var watch: @MainActor (@escaping @MainActor (pid_t) -> Void) -> NSObjectProtocol
+    var stopWatching: @MainActor (NSObjectProtocol) -> Void
+    /// Asks macOS to bring `pid` to the front; never a guarantee (the outcome is read after).
+    var activate: @MainActor (pid_t) -> Void
+    /// Runs `body` on the next pass of the main run loop.
+    var nextTurn: @MainActor (@escaping @MainActor () -> Void) -> Void
+
+    static let live = FocusAccess(
+      frontmost: { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+      watch: { handler in
+        NSWorkspace.shared.notificationCenter.addObserver(
+          forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+          // Read the payload before `assumeIsolated` (see `AccessibilityWarmupObserver`).
+          let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+            .processIdentifier
+          MainActor.assumeIsolated {
+            if let pid { handler(pid) }
+          }
+        }
+      },
+      stopWatching: { NSWorkspace.shared.notificationCenter.removeObserver($0) },
+      // `NSRunningApplication.activate()` from this background menu-bar app was refused live
+      // (macOS 26, Zoom stayed in front, run 20261103-184451-4356-zoom-self-probe-live-uat-1bfa
+      // take a); the paste cascade's Accessibility activation (`AXFrontmost`) is the app's proven
+      // way to bring another app forward.
+      activate: { pid in _ = PasteService.forceActivateApp(pid: pid) },
+      nextTurn: { body in DispatchQueue.main.async { MainActor.assumeIsolated { body() } } })
+  }
+
+  /// #4356 plan §3.4: one ticket's hand-back: the app to ask back, and every app activation
+  /// since the ticket was made, in order.
+  private struct HandBack {
+    let ticketID: Int
+    let returnTo: pid_t?
+    var activations: [pid_t] = []
+    var watch: NSObjectProtocol?
+  }
+
+  /// #4356 plan §3.3: what this recording knows about the user in one Zoom app call. Kept across
+  /// naming segments of the same call; a segment for another call starts it again.
+  struct ZoomSelfIdentity {
+    let source: CallSpeakerSourceAnswer.Source
+    /// Set once, from a probe or a valid reading's one bound `(me)` row; never replaced.
+    var knownSelf: String?
+    /// Open presses sent (a press that could not complete counts).
+    var opensUsed = 0
+    var lastProbeAtMs: Int?
+    /// A probe could not confirm that the panel it opened was closed again: no more presses.
+    var pressesStopped = false
+    /// The last valid reading showed the moment a probe may open the panel.
+    var ready = false
   }
 
   /// `finishing`: Stop is saving the final log. `saved`: the final log is on disk, or was handed
@@ -103,6 +172,25 @@ final class CallSpeakerSession {
   private var muteBound: CallCaptureBinding?
   /// The copy taker while no naming segment is open.
   private var muteOnly: CallSpeakerObserver?
+  /// #4356: the user's identity in the Zoom app call being read.
+  private var identity: ZoomSelfIdentity?
+  /// #4356: where the open naming segment started (its probe tickets carry it).
+  private var currentStartMs: Int?
+  /// #4356: the one probe dispatched and not yet settled, for the whole recording: a change of
+  /// call never clears it, and no other probe starts while it is out.
+  private var pendingProbe: ZoomSelfProbeTicket?
+  private var nextProbeID = 0
+  /// #4356: moves whenever a probe ticket must stop counting (a different binding, a source
+  /// interruption, admission closed); the lane reads it right before the open press.
+  private let probeToken = OSAllocatedUnfairLock(initialState: 0)
+  /// Waiting for `pendingProbe` to settle (`finish`).
+  private var probeWaiters: [CheckedContinuation<Void, Never>] = []
+  /// #4356: the pending probe's focus hand-back context; not part of the call's identity.
+  private var handBack: HandBack?
+
+  /// #4356: probes at least this far apart, and at most this many open presses per call.
+  static let probeSpacingMs = 2_000
+  static let maximumProbeOpens = 3
 
   init(
     anchor: UInt64, rules: TalkerRulesSnapshot?, bundled: TalkerRules?, dependencies: Dependencies
@@ -172,6 +260,7 @@ final class CallSpeakerSession {
     // Any other answer interrupts the segment's reading at once, even one that settles back:
     // copies in flight no longer count and runs of missing names start again.
     current?.observer.noteSourceInterruption()
+    probeToken.withLock { $0 += 1 }
     guard current != nil else {
       // Nothing is being read: a single call is read at once.
       pending = nil
@@ -205,6 +294,9 @@ final class CallSpeakerSession {
     else { return }
     let lag = TalkerRules.recordingStartLag(
       for: surface, selected: rules.rules, bundled: bundled)
+    if identity?.source != source {
+      identity = surface == .zoomApp ? ZoomSelfIdentity(source: source) : nil
+    }
     // One copy taker at a time on the lane: a running mute-only observer becomes this
     // segment's, keeping its copy loop.
     if let observer = muteOnly {
@@ -213,6 +305,7 @@ final class CallSpeakerSession {
         surface: surface, source: source, startMs: startMs, rules: rules,
         presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage)
       current = (source, observer)
+      currentStartMs = startMs
       deps.log("meeting speaker segment started surface=\(surface.rawValue)")
       return
     }
@@ -221,6 +314,7 @@ final class CallSpeakerSession {
       presencePolicy: presencePolicy, lag: lag, limits: deps.limits, baseline: closedUsage,
       dependencies: observerDependencies())
     current = (source, observer)
+    currentStartMs = startMs
     deps.log("meeting speaker segment started surface=\(surface.rawValue)")
     observer.start()
   }
@@ -234,6 +328,7 @@ final class CallSpeakerSession {
       closedUsage.add(segment)
     }
     self.current = nil
+    currentStartMs = nil
   }
 
   // MARK: - Capture binding (#4248)
@@ -255,7 +350,138 @@ final class CallSpeakerSession {
       }, muteRules: deps.muteRules, isTrusted: deps.isTrusted, isDictationIdle: deps.isDictationIdle, lane: deps.lane,
       tick: deps.observerTick, sleep: deps.sleep,
       mute: { [weak self] copy in self?.deps.muteReading(copy) },
-      muteEvent: { [weak self] event in self?.deps.muteEvent(event) }, hostTime: deps.hostTime)
+      muteEvent: { [weak self] event in self?.deps.muteEvent(event) }, hostTime: deps.hostTime,
+      knownSelf: { [weak self] binding in
+        guard let identity = self?.identity, identity.source == binding.source else { return nil }
+        return identity.knownSelf
+      },
+      probeRequest: { [weak self] binding in self?.requestProbe(for: binding) },
+      selfProbe: { [probe = deps.selfProbe, roles = deps.muteRules.protectedRoles] target, stop in
+        probe(target, roles, stop)
+      },
+      probeCurrent: { [token = probeToken] ticket in token.withLock { $0 } == ticket.token },
+      probeFinished: { [weak self] ticket in
+        guard let self else { return { _ in } }
+        // Held by the lane job until its result lands, then released (no lasting cycle).
+        return { [self] result in self.probeFinished(ticket: ticket, result: result) }
+      },
+      probeInvalidated: { [token = probeToken] in token.withLock { $0 += 1 } },
+      readingAdmitted: { [weak self] binding, facts in self?.readingAdmitted(binding, facts) })
+  }
+
+  // MARK: - Zoom self probe (#4356)
+
+  /// A ticket for the lane slot an observer just claimed, when this call's user is unknown and
+  /// the last valid reading showed the moment to open the panel; nil otherwise.
+  private func requestProbe(for binding: CallCaptureBinding) -> ZoomSelfProbeTicket? {
+    guard lifecycle == .open, stoppedAtMs == nil, binding.surface == .zoomApp,
+      pendingProbe == nil, current?.source == binding.source, let segmentStartMs = currentStartMs,
+      var identity, identity.source == binding.source,
+      identity.knownSelf == nil, identity.ready, !identity.pressesStopped,
+      identity.opensUsed < Self.maximumProbeOpens, deps.isDictationIdle()
+    else { return nil }
+    let now = nowMs
+    if let last = identity.lastProbeAtMs, now - last < Self.probeSpacingMs { return nil }
+    nextProbeID += 1
+    let ticket = ZoomSelfProbeTicket(
+      id: nextProbeID, source: binding.source, segmentStartMs: segmentStartMs,
+      token: probeToken.withLock { $0 }, sourceRevision: deps.sources.speakerSourceRevision)
+    beginHandBack(ticket: nextProbeID, zoom: binding.source.target.pid)
+    // The next probe needs a fresh valid reading that shows the moment again.
+    identity.ready = false
+    identity.lastProbeAtMs = now
+    self.identity = identity
+    pendingProbe = ticket
+    return ticket
+  }
+
+  /// A valid Zoom app reading of the bound call: its readiness, and the user's name when one
+  /// bound `(me)` row shows it and none is known yet.
+  private func readingAdmitted(_ binding: CallCaptureBinding, _ facts: ZoomSelfProbeFacts) {
+    guard lifecycle == .open, var identity, identity.source == binding.source else { return }
+    identity.ready = facts.ready
+    if identity.knownSelf == nil, facts.boundSelfMarks.count == 1 {
+      identity.knownSelf = facts.boundSelfMarks[0]
+      deps.log("meeting zoom self known source=list")
+    }
+    self.identity = identity
+  }
+
+  /// Settles the matching ticket once. A result for another call settles its own ticket but
+  /// changes nothing else; after Stop, Delete or a token move it teaches no name.
+  private func probeFinished(ticket: ZoomSelfProbeTicket, result: ZoomSelfProbe.Result) {
+    guard pendingProbe == ticket else { return }
+    pendingProbe = nil
+    let waiters = probeWaiters
+    probeWaiters = []
+    for waiter in waiters { waiter.resume() }
+    deps.log(
+      "meeting zoom self probe opened=\(result.pressedOpen) learned=\(result.learned != nil)"
+        + " closed=\(result.panelClosed.map { String($0) } ?? "unknown")"
+        + " user_closed=\(result.userClosed) refusal=\(result.refusal?.rawValue ?? "none")"
+        + " ms=\(result.elapsedMs)")
+    finishHandBack(ticket: ticket, result: result)
+    // Everything below needs a live recording; the hand-back above also runs after Delete.
+    guard lifecycle == .open || lifecycle == .finishing, var identity,
+      identity.source == ticket.source
+    else { return }
+    if result.pressedOpen {
+      identity.opensUsed += 1
+      if !result.userClosed, result.panelClosed != true { identity.pressesStopped = true }
+    }
+    if identity.knownSelf == nil, let name = result.learned,
+      probeToken.withLock({ $0 }) == ticket.token,
+      deps.sources.speakerSourceRevision == ticket.sourceRevision
+    {
+      identity.knownSelf = name
+      deps.log("meeting zoom self known source=probe")
+    }
+    self.identity = identity
+  }
+
+  /// Saves the app to ask back (never Zoom, never EnviousWispr) and starts counting
+  /// activations, before the lane job can press anything.
+  private func beginHandBack(ticket id: Int, zoom: pid_t) {
+    if let old = handBack?.watch { deps.focus.stopWatching(old) }
+    let front = deps.focus.frontmost()
+    let returnTo = front.flatMap { $0 == zoom || $0 == getpid() ? nil : $0 }
+    var context = HandBack(ticketID: id, returnTo: returnTo)
+    if returnTo != nil {
+      context.watch = deps.focus.watch { [weak self] pid in
+        guard self?.handBack?.ticketID == id else { return }
+        self?.handBack?.activations.append(pid)
+      }
+    }
+    handBack = context
+  }
+
+  /// After the probe returned: asks the saved app back once, only when the probe pressed, the
+  /// one activation since the ticket was Zoom's, and Zoom is still in front. Anything else the
+  /// user did in between wins. The outcome is read on the next run-loop pass.
+  private func finishHandBack(ticket: ZoomSelfProbeTicket, result: ZoomSelfProbe.Result) {
+    guard let context = handBack, context.ticketID == ticket.id else { return }
+    handBack = nil
+    if let watch = context.watch { deps.focus.stopWatching(watch) }
+    let zoom = ticket.source.target.pid
+    guard result.pressedOpen, let returnTo = context.returnTo else {
+      deps.log("meeting zoom self handback=not_needed")
+      return
+    }
+    guard context.activations == [zoom], deps.focus.frontmost() == zoom else {
+      deps.log("meeting zoom self handback=skipped_user_moved")
+      return
+    }
+    deps.focus.activate(returnTo)
+    deps.focus.nextTurn { [self] in
+      let restored = deps.focus.frontmost() == returnTo
+      deps.log("meeting zoom self handback=\(restored ? "restored" : "refused")")
+    }
+  }
+
+  /// Returns once no probe is out.
+  private func probeSettled() async {
+    guard pendingProbe != nil else { return }
+    await withCheckedContinuation { probeWaiters.append($0) }
   }
 
   /// Binds the live call from `answer`, at once.
@@ -270,6 +496,7 @@ final class CallSpeakerSession {
         source: source, surface: surface, generation: bindingGeneration,
         mute: deps.muteFollowing() && CallMuteRules.families[surface] != nil)
     }
+    if next != binding { probeToken.withLock { $0 += 1 } }
     binding = next
     let mute = next?.mute == true ? next : nil
     guard mute != muteBound else { return }
@@ -368,6 +595,7 @@ final class CallSpeakerSession {
   /// and the stop time is fixed. Synchronous, so a Stop calls it before its first wait.
   func closeAdmission() {
     if stoppedAtMs == nil { stoppedAtMs = nowMs }
+    probeToken.withLock { $0 += 1 }
     loop?.cancel()
     loop = nil
     current?.observer.closeAdmission()
@@ -383,6 +611,8 @@ final class CallSpeakerSession {
     guard lifecycle == .open else { return lifecycle == .saved }
     lifecycle = .finishing
     await saving?.value
+    // A probe still out finishes its own close; its result settles before the final save.
+    await probeSettled()
     guard lifecycle == .finishing else { return lifecycle == .saved }
     closeCurrent(at: stoppedAtMs ?? nowMs, reason: .recordingEnded)
     endDemand()
@@ -428,5 +658,7 @@ final class CallSpeakerSession {
     func saveNowForTesting() { requestSave() }
     /// Waits for the save running now, if any.
     func savesSettledForTesting() async { await saving?.value }
+    var zoomIdentityForTesting: ZoomSelfIdentity? { identity }
+    var pendingProbeForTesting: ZoomSelfProbeTicket? { pendingProbe }
   #endif
 }

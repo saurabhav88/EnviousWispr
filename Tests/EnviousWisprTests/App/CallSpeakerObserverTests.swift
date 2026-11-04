@@ -393,6 +393,37 @@ import os
       #expect(coordinator.muteCallApp == nil)
     }
 
+    /// #4356: the coordinator's Zoom self probe reaches the recording's session, for the bound
+    /// Zoom call's process, keeping the recording's frozen mute-rule roles strict.
+    @Test("a Zoom recording runs the coordinator's self probe for its call with its frozen roles")
+    func selfProbeWiring() async throws {
+      let harness = try Harness()
+      let rules = try Self.bundled()
+      let probed = OSAllocatedUnfairLock<[(pid_t, Set<String>)]>(initialState: [])
+      var deps = harness.dependencies()
+      deps.muteFollowingEnabled = { false }
+      deps.callSources = Sources(
+        .unique(.init(family: .zoom, target: CallSpeakerTarget(pid: 7, rule: .callApp(.zoom)))))
+      deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(100))
+      deps.talkerRules = { (rules, rules.rules) }
+      deps.muteRules = { .testPackaged }
+      deps.speakerCaptureLane = .init()
+      deps.captureCallApp = { _, _, _ in
+        CallSpeakerSessionTests.zoomCopy(host: mach_absolute_time())
+      }
+      deps.selfProbe = { target, roles, _ in
+        probed.withLock { $0.append((target.pid, roles)) }
+        return .refused(.notInState, elapsedMs: 1)
+      }
+      deps.isAccessibilityTrusted = { true }
+      let coordinator = MeetingCoordinator(dependencies: deps)
+      _ = await coordinator.start(from: .detected, callApp: .zoom)
+      await eventually("the probe ran") { probed.withLock { !$0.isEmpty } }
+      #expect(probed.withLock { $0.first?.0 } == 7)
+      #expect(probed.withLock { $0.first?.1 } == CallMuteRules.testPackaged.protectedRoles)
+      await coordinator.stop(reason: .user)
+    }
+
     /// #4013 reading resilience §3.5: the mute rules are frozen when the recording starts, the
     /// copy protects exactly their roles, and a newer download reaches only the next recording,
     /// whether or not names are on.

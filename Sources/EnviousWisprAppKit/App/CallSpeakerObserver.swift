@@ -108,6 +108,32 @@ final class CallSpeakerObserver {
     var mute: @MainActor (CallMuteCopy) -> Void = { _ in }
     var muteEvent: @MainActor (CallMuteCaptureEvent) -> Void = { _ in }
     var hostTime: @Sendable () -> UInt64 = { mach_absolute_time() }
+    /// #4356: the user's in-call identity the session learned for this binding's call, given to
+    /// the Zoom reader in place of the signed-in account name.
+    var knownSelf: @MainActor (CallCaptureBinding) -> String? = { _ in nil }
+    /// #4356: a probe ticket when the session wants the Zoom self probe in the lane slot just
+    /// claimed; the session records it as pending. The default never asks.
+    var probeRequest: @MainActor (CallCaptureBinding) -> ZoomSelfProbeTicket? = { _ in nil }
+    /// #4356: the probe itself, run on the lane's queue; the closure says, right before the open
+    /// press, whether to stop. The default presses nothing.
+    var selfProbe: @Sendable (CallSpeakerTarget, () -> Bool) -> ZoomSelfProbe.Result = { _, _ in
+      .refused(.notFound, elapsedMs: 0)
+    }
+    /// #4356: whether nothing that invalidates `ticket` happened since it was issued (binding,
+    /// source interruption, admission). Read on the lane.
+    var probeCurrent: @Sendable (ZoomSelfProbeTicket) -> Bool = { _ in false }
+    /// #4356: the completion for one dispatched probe, taken before dispatch. It keeps its
+    /// receiver until the result is delivered, so the result settles even after this observer
+    /// closed or the recording was deleted.
+    var probeFinished:
+      @MainActor (ZoomSelfProbeTicket) -> (@MainActor @Sendable (ZoomSelfProbe.Result) -> Void) =
+        { _ in { _ in } }
+    /// #4356: called synchronously whenever dictation starts or ends (the same Observation
+    /// change that drops copies in flight), so a probe dispatched before it cannot teach a name.
+    var probeInvalidated: @Sendable () -> Void = {}
+    /// #4356: what a valid Zoom app reading tells the session (its readiness for a probe and the
+    /// bound `(me)` marks), only after every validity check a reading passes.
+    var readingAdmitted: @MainActor (CallCaptureBinding, ZoomSelfProbeFacts) -> Void = { _, _ in }
   }
 
   /// One segment's speaker evidence.
@@ -224,10 +250,12 @@ final class CallSpeakerObserver {
   private func watchDictation() {
     guard open else { return }
     let changes = dictationChanges
+    let invalidateProbe = deps.probeInvalidated
     withObservationTracking {
       _ = deps.isDictationIdle()
     } onChange: { [weak self] in
       changes.withLock { $0 += 1 }
+      invalidateProbe()
       Task { @MainActor [weak self] in self?.watchDictation() }
     }
   }
@@ -276,6 +304,10 @@ final class CallSpeakerObserver {
       if binding.mute { deps.muteEvent(.busySkip) }
       return
     }
+    if forNaming, binding.surface == .zoomApp, let ticket = deps.probeRequest(binding) {
+      runProbe(ticket, binding: binding)
+      return
+    }
     if binding.mute { deps.muteEvent(.started) }
     let taken = Taken(
       binding: binding, forNaming: forNaming, generation: generation,
@@ -285,6 +317,7 @@ final class CallSpeakerObserver {
     let muteRules = deps.muteRules
     let isTrusted = deps.isTrusted
     let rules = forNaming ? naming?.rules : nil
+    let knownSelf = forNaming ? deps.knownSelf(binding) : nil
     deps.lane.queue.async { [weak self] in
       let copy = capture(binding.source.target, binding.source.family)
       // Trust is read again the moment the reads end, not only at the next tick.
@@ -293,7 +326,8 @@ final class CallSpeakerObserver {
       let parsed = Parsed(
         copy: copy,
         reading: rules.flatMap {
-          CallSpeakerSurfaceReader.read(surface: binding.surface, capture: copy, rules: $0)
+          CallSpeakerSurfaceReader.read(
+            surface: binding.surface, capture: copy, rules: $0, knownSelf: knownSelf)
         },
         context: CallCaptureContext(
           completeness: copy.completeness,
@@ -301,7 +335,9 @@ final class CallSpeakerObserver {
             surface: binding.surface, capture: copy, family: binding.source.family)),
         mute: binding.mute
           ? CallSelfMuteReader.read(surface: binding.surface, capture: copy, rules: muteRules)
-          : nil)
+          : nil,
+        probeFacts: rules != nil && binding.surface == .zoomApp
+          ? ZoomSelfProbeFacts(capture: copy) : nil)
       // The lane frees only once the physical work returned.
       busy.withLock { $0 = false }
       Task { @MainActor [weak self] in
@@ -327,6 +363,31 @@ final class CallSpeakerObserver {
     let context: CallCaptureContext
     /// Nil when the binding does not follow the mute button.
     let mute: CallSelfMute?
+    /// #4356: nil unless naming read a Zoom app copy.
+    let probeFacts: ZoomSelfProbeFacts?
+  }
+
+  /// #4356 plan §3.2: the claimed slot runs the Zoom self probe instead of a copy. The displaced
+  /// copy is recorded like a lane-busy tick (a pause in naming's runs; a busy skip for mute),
+  /// never as a copy taken; the lane frees only once the probe, its close step included,
+  /// returned. The result goes to the session even if this observer closed meanwhile.
+  private func runProbe(_ ticket: ZoomSelfProbeTicket, binding: CallCaptureBinding) {
+    naming?.accumulator.noteInterruption()
+    if binding.mute { deps.muteEvent(.busySkip) }
+    let busy = deps.lane.busy
+    let probe = deps.selfProbe
+    let current = deps.probeCurrent
+    let isTrusted = deps.isTrusted
+    let finished = deps.probeFinished(ticket)
+    let dictation = dictationChanges
+    let seenDictation = dictation.withLock { $0 }
+    deps.lane.queue.async {
+      let result = probe(binding.source.target) {
+        !current(ticket) || dictation.withLock { $0 } != seenDictation || !isTrusted()
+      }
+      busy.withLock { $0 = false }
+      Task { @MainActor in finished(result) }
+    }
   }
 
   private func captured(_ parsed: Parsed, taken: Taken, trustedAfter: Bool) {
@@ -374,6 +435,11 @@ final class CallSpeakerObserver {
         readStart: copy.readStartHostTime, readEnd: copy.readEndHostTime, anchor: anchor),
       ms >= startMs
     else { return }
+    if let facts = parsed.probeFacts, parsed.reading != nil,
+      parsed.context.completeness == .complete, parsed.context.scope == .resolved
+    {
+      deps.readingAdmitted(taken.binding, facts)
+    }
     naming?.accumulator.add(parsed.reading, context: parsed.context, observationMs: ms)
   }
 
@@ -399,4 +465,37 @@ final class CallSpeakerObserver {
     private(set) var deliveriesForTesting = 0
     var laneBusy: Bool { deps.lane.isBusy }
   #endif
+}
+
+/// #4356: one dispatched Zoom self probe, issued by the session for one call (`source`) and
+/// its naming segment (`segmentStartMs`) under its invalidation token at that moment.
+struct ZoomSelfProbeTicket: Equatable, Sendable {
+  let id: Int
+  let source: CallSpeakerSourceAnswer.Source
+  let segmentStartMs: Int
+  let token: Int
+  /// Discovery's source revision at issue: a call that went away and came back between two
+  /// session checks moves it even when the call is the same (as ordinary copies check).
+  let sourceRevision: Int
+}
+
+/// #4356: what one valid Zoom app copy tells the self probe's owner.
+struct ZoomSelfProbeFacts: Equatable, Sendable {
+  /// The copy is complete and shows the moment a probe may open the panel
+  /// (`ZoomAppSpeakerReader.selfProbeReady`).
+  let ready: Bool
+  /// Bound participants-list `(me)` names anywhere in the copy.
+  let boundSelfMarks: [String]
+
+  init(ready: Bool, boundSelfMarks: [String]) {
+    self.ready = ready
+    self.boundSelfMarks = boundSelfMarks
+  }
+
+  init(capture: CallAXCapture) {
+    self.init(
+      ready: capture.completeness == .complete
+        && ZoomAppSpeakerReader.selfProbeReady(windows: capture.windows),
+      boundSelfMarks: ZoomAppSpeakerReader.boundSelfMarks(windows: capture.windows))
+  }
 }

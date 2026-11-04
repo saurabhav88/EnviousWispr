@@ -95,12 +95,18 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// count it showed agreed; `nil` when it showed none, the counts disagreed, or a list it
   /// showed did not match its own count. Never a count of what was read.
   package let participantCount: Int?
-  /// The call app's signed-in account display name (Zoom's menu bar, `CallAccountMenu`), at most
-  /// one; empty when not read. Not a meeting marking (#4013 plan r4): the 1-on-1 rule may use it
-  /// only when no app marking says who the user is, and the Zoom screen-share readings
-  /// (#4013 share plan §3.0) use it, with any `(me)` mark, to keep the user's own name out of
-  /// their talker signal. It never names anyone as a far-side speaker.
+  /// The user's in-call identity, at most one; empty when not known: the name Zoom marked `(me)`
+  /// in its participants list earlier in the recording (#4356), else the call app's signed-in
+  /// account display name (Zoom's menu bar, `CallAccountMenu`). Not a meeting marking in this
+  /// reading (#4013 plan r4): the 1-on-1 rule may use it only when no app marking says who the
+  /// user is, and the Zoom screen-share readings (#4013 share plan §3.0) use it, with any `(me)`
+  /// mark, to keep the user's own name out of their talker signal. It never names anyone as a
+  /// far-side speaker.
   package let accountSelfNames: [String]
+  /// The `(me)` names of bound participants-list rows anywhere in the copy, every window
+  /// included (#4356, `ZoomAppSpeakerReader.boundSelfMarks`); empty when none or not Zoom.
+  /// Only the session's identity learning reads it.
+  package let boundSelfMarks: [String]
   /// Which Zoom signal said who talks (#4013 share plan §3.0, review r1 Q3): kept for tests and
   /// diagnosis only, never saved, logged with names or sent. `nil` when nothing was shown talking
   /// by a flag and no share signal applied.
@@ -125,8 +131,9 @@ package struct CallSpeakerReading: Sendable, Equatable {
     participants: [CallParticipant], participantIdentityEstablished: Bool,
     sharedNames: Set<String>, participantListComplete: Bool = false, participantCount: Int? = nil,
     accountSelfNames: [String] = [], talkerSource: TalkerSource? = nil,
-    countHiddenByShare: Bool = false
+    countHiddenByShare: Bool = false, boundSelfMarks: [String] = []
   ) {
+    self.boundSelfMarks = boundSelfMarks
     self.countHiddenByShare = countHiddenByShare
     self.accountSelfNames = accountSelfNames
     self.talkerSource = talkerSource
