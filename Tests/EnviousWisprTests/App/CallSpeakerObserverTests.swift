@@ -411,7 +411,7 @@ import os
       deps.captureCallApp = { _, _, _ in
         CallSpeakerSessionTests.zoomCopy(host: mach_absolute_time())
       }
-      deps.selfProbe = { target, roles, _ in
+      deps.selfProbe = { target, roles, _, _ in
         probed.withLock { $0.append((target.pid, roles)) }
         return .refused(.notInState, elapsedMs: 1)
       }
@@ -759,6 +759,186 @@ import os
       }
       #expect(!log.observations.isEmpty)
       #expect(log.observations.allSatisfy { $0.speaking == ["Alex Rivera"] })
+    }
+
+    // MARK: - Zoom words frozen per recording (#4350)
+
+    /// A German Zoom meeting window (words from the live de receipt): two tiles, the English
+    /// closed Participants button, and the user's German mute button showing muted.
+    nonisolated static func germanZoomCopy(host: UInt64) -> CallAXCapture {
+      let window = CallAXWindow(
+        title: "Zoom Meeting",
+        root: CallAXNode(
+          role: "AXWindow", identifier: "zm.meeting.window.main",
+          children: [
+            CallAXNode(
+              role: "AXTabGroup",
+              description: "Saurabh Vaish, Bei Computeraudio Stummschaltung aktiviert, Video aus"),
+            CallAXNode(
+              role: "AXTabGroup",
+              description: "Bea Chen, Bei Computeraudio Stummschaltung deaktiviert, Video aus"),
+            CallAXNode(
+              role: "AXButton", description: "Open participants panel, closed, 2 participants",
+              identifier: "participant"),
+            CallAXNode(
+              role: "AXButton", description: "Stummschaltung für Audio aufheben",
+              identifier: "audio"),
+          ]))
+      return CallAXCapture(
+        windows: [window], documents: [], completeness: .complete, readStartHostTime: host,
+        readEndHostTime: host)
+    }
+
+    static let zoomCall = CallSpeakerSourceAnswer.unique(
+      .init(family: .zoom, target: CallSpeakerTarget(pid: 7, rule: .callApp(.zoom))))
+
+    /// The recording loads Zoom's words once at its start; its probe, its probe-readiness facts
+    /// and its mute reading all use that one value, even when the Zoom call appears only after
+    /// the start; a change reaches only the next recording.
+    @Test("each recording freezes its Zoom words for reading, mute and the probe")
+    func zoomLabelsFrozenPerRecording() async throws {
+      let harness = try Harness()
+      let rules = try Self.bundled()
+      let german = try ZoomLabelsTests.fixtures()
+      // Different from `german` and from the floor, and still German.
+      let later = ZoomLabels(
+        tables: try ZoomLabelsTests.fixtureLanguages.map {
+          ($0, try ZoomLabelsTests.fixtureTable($0))
+        } + [("xx", ["Guest": "Besucherin"])])
+      #expect(later != german)
+      let current = OSAllocatedUnfairLock(initialState: german)
+      let loads = OSAllocatedUnfairLock(initialState: 0)
+      let probed = OSAllocatedUnfairLock<[ZoomLabels]>(initialState: [])
+      let sources = Sources(.none)
+      var deps = harness.dependencies()
+      deps.muteFollowingEnabled = { true }
+      deps.callSources = sources
+      deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(100))
+      deps.talkerRules = { (rules, rules.rules) }
+      deps.muteRules = { .testPackaged }
+      deps.zoomLabels = {
+        loads.withLock { $0 += 1 }
+        return current.withLock { $0 }
+      }
+      deps.speakerCaptureLane = .init()
+      deps.captureCallApp = { _, _, _ in Self.germanZoomCopy(host: mach_absolute_time()) }
+      deps.selfProbe = { _, _, labels, _ in
+        probed.withLock { $0.append(labels) }
+        return .refused(.notInState, elapsedMs: 1)
+      }
+      deps.isAccessibilityTrusted = { true }
+      let coordinator = MeetingCoordinator(dependencies: deps)
+
+      // Started before any Zoom call is found: the words come from Zoom's files at the start.
+      _ = await coordinator.start(from: .detected, callApp: .zoom)
+      await eventually("words loaded") { loads.withLock { $0 } == 1 }
+      current.withLock { $0 = later }  // a Zoom update mid-recording
+      sources.answer = Self.zoomCall
+      sources.speakerSourceRevision += 1
+      // The German readiness facts only hold with the German words: the probe runs.
+      await eventually("the probe ran") { probed.withLock { !$0.isEmpty } }
+      #expect(probed.withLock { $0.allSatisfy { $0 == german } })
+      // The German mute button reads with the same frozen words.
+      // The writer applies mute readings when its queued steps run (as `recordingFollowsMute`).
+      let recorder = try #require(harness.recorders.last)
+      await eventually("muted from the German button") {
+        recorder.runSteps(now: mach_absolute_time())
+        return coordinator.muteState == .muted
+      }
+      #expect(loads.withLock { $0 } == 1)
+      await coordinator.stop(reason: .user)
+      await eventually("idle") { coordinator.phase == .idle }
+
+      probed.withLock { $0 = [] }
+      _ = await coordinator.start(from: .detected, callApp: .zoom)
+      await eventually("the next recording's probe ran") { probed.withLock { !$0.isEmpty } }
+      #expect(probed.withLock { $0.allSatisfy { $0 == later } })
+      #expect(loads.withLock { $0 } == 2)
+      await coordinator.stop(reason: .user)
+    }
+
+    /// A Stop while Zoom's words are still loading: the late result starts nothing, and the next
+    /// recording uses its own load.
+    @Test("a Stop during the Zoom words load leaves nothing behind for the next recording")
+    func staleZoomLabelsLoad() async throws {
+      let harness = try Harness()
+      let rules = try Self.bundled()
+      let german = try ZoomLabelsTests.fixtures()
+      let (gate, open) = AsyncStream<Void>.makeStream()
+      let loads = OSAllocatedUnfairLock(initialState: 0)
+      let probed = OSAllocatedUnfairLock<[ZoomLabels]>(initialState: [])
+      var deps = harness.dependencies()
+      deps.muteFollowingEnabled = { true }
+      deps.callSources = Sources(Self.zoomCall)
+      deps.speakerSessionTiming = (.milliseconds(100), .zero, .milliseconds(100))
+      deps.talkerRules = { (rules, rules.rules) }
+      deps.muteRules = { .testPackaged }
+      deps.zoomLabels = {
+        let first = loads.withLock { count -> Bool in
+          count += 1
+          return count == 1
+        }
+        if first {
+          for await _ in gate { break }
+          return .builtIn
+        }
+        return german
+      }
+      deps.speakerCaptureLane = .init()
+      deps.captureCallApp = { _, _, _ in Self.germanZoomCopy(host: mach_absolute_time()) }
+      deps.selfProbe = { _, _, labels, _ in
+        probed.withLock { $0.append(labels) }
+        return .refused(.notInState, elapsedMs: 1)
+      }
+      deps.isAccessibilityTrusted = { true }
+      let coordinator = MeetingCoordinator(dependencies: deps)
+      let (finished, finish) = AsyncStream<UUID>.makeStream()
+      coordinator.speakerSessionStartFinishedForTesting = { finish.yield($0) }
+      defer { coordinator.speakerSessionStartFinishedForTesting = nil }
+      func recordingID() -> UUID? {
+        if case .recording(let id, _) = coordinator.phase { id } else { nil }
+      }
+
+      _ = await coordinator.start(from: .detected, callApp: .zoom)
+      let first = try #require(recordingID())
+      await eventually("first load waiting") { loads.withLock { $0 } == 1 }
+      await coordinator.stop(reason: .user)
+      await eventually("idle") { coordinator.phase == .idle }
+      // The next recording loads again and starts its session with its own words.
+      _ = await coordinator.start(from: .detected, callApp: .zoom)
+      let second = try #require(recordingID())
+      #expect(first != second)
+      await eventually("second load") { loads.withLock { $0 } == 2 }
+      await eventually("the second recording's probe ran") { probed.withLock { !$0.isEmpty } }
+      // Now the first, stale load returns the floor: once the first recording's start has
+      // finished, the frozen value is still the second recording's, with its own words.
+      open.yield()
+      open.finish()
+      let firstFinished = await withTaskGroup(of: Bool.self) { group in
+        group.addTask {
+          for await id in finished where id == first { return true }
+          return false
+        }
+        group.addTask {
+          try? await Task.sleep(for: .seconds(10))  // deadline-fallback: bounds the signal wait
+          return false
+        }
+        let result = await group.next() ?? false
+        group.cancelAll()
+        return result
+      }
+      #expect(firstFinished, "the first recording's start never finished")
+      let frozen = try #require(coordinator.speakerMuteRulesForTesting)
+      #expect(frozen.meetingID == second)
+      #expect(frozen.rules.zoomLabels == german)
+      #expect(probed.withLock { $0.allSatisfy { $0 == german } })
+      // The writer applies mute readings when its queued steps run (as `recordingFollowsMute`).
+      let recorder = try #require(harness.recorders.last)
+      await eventually("muted from the German button") {
+        recorder.runSteps(now: mach_absolute_time())
+        return coordinator.muteState == .muted
+      }
+      await coordinator.stop(reason: .user)
     }
   }
 #endif

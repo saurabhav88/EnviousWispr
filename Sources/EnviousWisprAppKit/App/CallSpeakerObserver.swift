@@ -323,8 +323,8 @@ final class CallSpeakerObserver {
       // Trust is read again the moment the reads end, not only at the next tick.
       let trustedAfter = isTrusted()
       // Parsing happens here too, off the main actor.
-      // #4350 chunk 2: built-in Zoom words until chunk 4 passes the recording's frozen labels.
-      let zoomLabels = ZoomLabels.builtIn
+      // #4350: the recording's frozen Zoom words, carried in its merged mute rules.
+      let zoomLabels = muteRules.zoomLabels
       let parsed = Parsed(
         copy: copy,
         reading: rules.flatMap {

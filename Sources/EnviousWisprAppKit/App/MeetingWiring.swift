@@ -275,6 +275,8 @@ enum MeetingWiring {
         },
         // #4248, #4013 reading resilience §3.5: frozen at recording start, names on or off.
         muteRules: { await RemoteRules.mute.current() },
+        // #4350: Zoom's own words, parsed on the store's worker queue, cached per Zoom install.
+        zoomLabels: { await ZoomLabelsStore.shared.current() },
         // #4248: "Leave my voice out when I'm muted"; changes reach `muteFollowingChanged()`.
         muteFollowingEnabled: { [settings = inputs.settings] in settings.meetingFollowsCallMute }))
     inputs.transcriptCoordinator.deleteMeeting = {

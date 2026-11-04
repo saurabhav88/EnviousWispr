@@ -72,9 +72,11 @@ final class CallSpeakerSession {
     var muteTick: @MainActor () -> Void = {}
     /// #4356: the Zoom self probe against one call app instance, run on the lane, keeping the
     /// recording's mute-rule roles strict; the closure says right before the press whether to
-    /// stop. The default presses nothing.
-    var selfProbe: @Sendable (CallSpeakerTarget, Set<String>, () -> Bool) -> ZoomSelfProbe.Result =
-      { _, _, _ in .refused(.notFound, elapsedMs: 0) }
+    /// stop. #4350 §16: it reads the rows with the recording's frozen Zoom words
+    /// (`muteRules.zoomLabels`). The default presses nothing.
+    var selfProbe:
+      @Sendable (CallSpeakerTarget, Set<String>, ZoomLabels, () -> Bool) -> ZoomSelfProbe.Result =
+        { _, _, _, _ in .refused(.notFound, elapsedMs: 0) }
     /// #4356 plan §3.4: the frontmost app and app activations, for the focus hand-back.
     var focus: FocusAccess = .live
   }
@@ -356,8 +358,10 @@ final class CallSpeakerSession {
         return identity.knownSelf
       },
       probeRequest: { [weak self] binding in self?.requestProbe(for: binding) },
-      selfProbe: { [probe = deps.selfProbe, roles = deps.muteRules.protectedRoles] target, stop in
-        probe(target, roles, stop)
+      selfProbe: {
+        [probe = deps.selfProbe, roles = deps.muteRules.protectedRoles,
+        labels = deps.muteRules.zoomLabels] target, stop in
+        probe(target, roles, labels, stop)
       },
       probeCurrent: { [token = probeToken] ticket in token.withLock { $0 } == ticket.token },
       probeFinished: { [weak self] ticket in
