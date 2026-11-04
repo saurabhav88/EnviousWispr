@@ -452,4 +452,153 @@ struct CallSelfMuteReaderTests {
         return host
       })
   }
+
+  // MARK: - Zoom in other languages (#4350)
+
+  private func germanTile(_ name: String) -> CallAXNode {
+    CallAXNode(
+      role: "AXTabGroup",
+      description: "\(name), Bei Computeraudio Stummschaltung aktiviert, Video aus")
+  }
+
+  @Test("Zoom de/ja: the meeting window's translated button gives both states")
+  func zoomTranslatedStates() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let rules = CallMuteRules.testPackaged.withZoomLabels(labels)
+    let cases: [(String, CallSelfMute)] = [
+      ("Stummschaltung für Audio aufheben", .muted), ("Mein Audio stummschalten", .unmuted),
+      ("自分のオーディオをミュート解除する", .muted), ("自分のオーディオをミュートする", .unmuted),
+      ("Unmute my audio", .muted), ("Mute my audio", .unmuted),
+      // Zoom's words compared normalised: a doubled space still reads.
+      ("Mein  Audio stummschalten", .unmuted),
+    ]
+    for (label, expected) in cases {
+      let window = zoomWindow([germanTile("Bea Chen"), zoomButton(label)])
+      #expect(
+        CallSelfMuteReader.read(
+          surface: .zoomApp, capture: capture(windows: [window]), rules: rules)
+          == expected, "\(label)")
+      // Without the merge the translated words stay unknown, as before #4350.
+      if !label.hasPrefix("Unmute"), !label.hasPrefix("Mute") {
+        #expect(
+          CallSelfMuteReader.read(
+            surface: .zoomApp, capture: capture(windows: [window]), rules: .testPackaged)
+            == .unknown, "\(label)")
+      }
+    }
+  }
+
+  @Test("Zoom de: the scope check reads tiles with the merged rules' Zoom words")
+  func zoomScopeUsesLabels() throws {
+    let labels = try ZoomLabelsTests.fixtures()
+    let rules = CallMuteRules.testPackaged.withZoomLabels(labels)
+    // Two non-meeting windows tie on German thumbnails: which call is read cannot be told.
+    func other(_ tiles: [String]) -> CallAXWindow {
+      CallAXWindow(title: nil, root: CallAXNode(role: "AXWindow", children: tiles.map(germanTile)))
+    }
+    let tied = capture(windows: [
+      zoomWindow([zoomButton("Mein Audio stummschalten")]), other(["Bea Chen"]),
+      other(["Alex Rivera"]),
+    ])
+    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: tied, rules: rules) == .unknown)
+    // English words alone see no German tile, so the scope check passes and the English button
+    // reads; this is the scope result the German words change.
+    let english = capture(windows: [
+      zoomWindow([zoomButton("Mute my audio")]), other(["Bea Chen"]), other(["Alex Rivera"]),
+    ])
+    #expect(
+      CallSelfMuteReader.read(surface: .zoomApp, capture: english, rules: .testPackaged) == .unmuted
+    )
+    #expect(CallSelfMuteReader.read(surface: .zoomApp, capture: english, rules: rules) == .unknown)
+  }
+
+  @Test("Zoom de: two buttons or a title and description that disagree stay unknown")
+  func zoomTranslatedAmbiguous() throws {
+    let rules = CallMuteRules.testPackaged.withZoomLabels(try ZoomLabelsTests.fixtures())
+    let two = zoomWindow([
+      zoomButton("Mein Audio stummschalten"), zoomButton("Mein Audio stummschalten"),
+    ])
+    #expect(
+      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [two]), rules: rules)
+        == .unknown)
+    let disagreeing = CallAXNode(
+      role: "AXButton", title: "Mein Audio stummschalten",
+      description: "Stummschaltung für Audio aufheben", identifier: "audio")
+    #expect(
+      CallSelfMuteReader.read(
+        surface: .zoomApp, capture: capture(windows: [zoomWindow([disagreeing])]), rules: rules)
+        == .unknown)
+    // An incomplete copy, or a button outside the meeting window, stays unknown too.
+    let window = zoomWindow([zoomButton("Mein Audio stummschalten")])
+    #expect(
+      CallSelfMuteReader.read(
+        surface: .zoomApp, capture: capture(windows: [window], completeness: .truncated),
+        rules: rules)
+        == .unknown)
+    let floating = CallAXWindow(
+      title: "zoom floating video window",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [germanTile("Bea Chen"), zoomButton("Mein Audio stummschalten")]))
+    #expect(
+      CallSelfMuteReader.read(
+        surface: .zoomApp, capture: capture(windows: [floating]), rules: rules) == .unknown)
+  }
+
+  @Test("Zoom: the rules file wins over a translation; a word for both states reads unknown")
+  func zoomMergeConflicts() throws {
+    let json = """
+      {"schema": 1, "revision": 7, "surfaces": {
+        "zoom_app": {"role": "AXButton", "identifier": "audio", "labels": {
+          "Unmute my audio": "muted", "Mute my audio": "unmuted",
+          "Mein Audio stummschalten": "muted",
+          "Stummschaltung für Audio aufheben": "muted",
+          "Mein  eigenes  Audio": "muted", "Mein eigenes Audio": "unmuted",
+          "Stummschaltung  für  Audio aufheben": "muted"}},
+        "teams_app": {"role": "AXButton", "domIdentifier": "microphone-button",
+          "labels": {"Unmute mic": "muted", "Mute mic": "unmuted"}}}}
+      """
+    let remote = try CallMuteRules(validating: Data(json.utf8), origin: .downloaded)
+    let merged = remote.withZoomLabels(try ZoomLabelsTests.fixtures())
+    #expect(merged.revision == 7)
+    #expect(merged.origin == .downloaded)
+    #expect(merged.rules[.teamsApp] == remote.rules[.teamsApp])
+    let zoom = try #require(merged.rules[.zoomApp])
+    // Remote says muted, the translation says unmuted: the word is removed, never flipped.
+    #expect(zoom.labels["Mein Audio stummschalten"] == nil)
+    // The same state on both sides stays.
+    #expect(zoom.labels["Stummschaltung für Audio aufheben"] == .muted)
+    #expect(zoom.labels["自分のオーディオをミュートする"] == .unmuted)
+    let window = zoomWindow([zoomButton("Mein Audio stummschalten")])
+    #expect(
+      CallSelfMuteReader.read(surface: .zoomApp, capture: capture(windows: [window]), rules: merged)
+        == .unknown)
+    // Two spellings of one wording with different states: both read unknown.
+    for label in ["Mein  eigenes  Audio", "Mein eigenes Audio", "Mein   eigenes Audio"] {
+      #expect(
+        CallSelfMuteReader.read(
+          surface: .zoomApp, capture: capture(windows: [zoomWindow([zoomButton(label)])]),
+          rules: merged) == .unknown, "\(label)")
+    }
+    // A differently spaced alias with the same state stays accepted.
+    #expect(
+      CallSelfMuteReader.read(
+        surface: .zoomApp,
+        capture: capture(windows: [zoomWindow([zoomButton("Stummschaltung  für  Audio aufheben")])]),
+        rules: merged) == .muted)
+    // A translated word meaning both states never reaches the rule (ZoomLabels drops it).
+    let both = ZoomLabels(tables: [("xx", ["Mute My Audio": "Ton", "Unmute My Audio": "Ton"])])
+    #expect(CallMuteRules.testPackaged.withZoomLabels(both).rules[.zoomApp]?.labels["Ton"] == nil)
+    // Teams keeps exact matching: Zoom's normalisation is only on the Zoom rule.
+    let teams = CallAXWindow(
+      title: "Meeting with Sam",
+      root: CallAXNode(
+        role: "AXWindow",
+        children: [
+          CallAXNode(role: "AXButton", description: "Mute  mic", domIdentifier: "microphone-button")
+        ]))
+    #expect(
+      CallSelfMuteReader.read(surface: .teamsApp, capture: capture(windows: [teams]), rules: merged)
+        == .unknown)
+  }
 }

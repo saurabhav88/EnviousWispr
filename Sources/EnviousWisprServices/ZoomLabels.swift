@@ -329,6 +329,11 @@ package struct ZoomLabels: Sendable, Equatable {
     return words.values.contains { $0[role]?.contains(word) == true }
   }
 
+  /// The words for `role` in every loaded language (normalised).
+  package func allWords(_ role: Role) -> Set<String> {
+    words.values.reduce(into: Set<String>()) { $0.formUnion($1[role] ?? []) }
+  }
+
   /// Every bracket tag word (host, co-host, guest, self) in `language`.
   package func tags(in language: String) -> Set<String> {
     Role.tags.reduce(into: Set<String>()) { $0.formUnion(words($1, in: language)) }

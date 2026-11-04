@@ -280,6 +280,14 @@ struct ZoomLayoutSnapshotTests {
         surface: .zoomApp, capture: copy, rules: TalkerRulesSnapshot.empty.rules,
         zoomLabels: labels))
     let share = ZoomAppSpeakerReader.shareContext(windows: copy.windows, labels: labels)
+    // Mute (§3.6): the meeting window's translated button; with no meeting window (the user
+    // shares) it is unknown by design, so the microphone stays live.
+    let mute = CallSelfMuteReader.read(
+      surface: .zoomApp, capture: copy, rules: CallMuteRules.testPackaged.withZoomLabels(labels))
+    switch layout.shape {
+    case .meeting: #expect(mute == .muted)
+    case .hostShareTile, .collapsed: #expect(mute == .unknown)
+    }
     switch layout.shape {
     case .meeting(let listed):
       #expect(share.isSharing == false)

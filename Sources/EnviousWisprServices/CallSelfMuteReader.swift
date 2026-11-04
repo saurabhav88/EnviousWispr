@@ -13,8 +13,9 @@ package enum CallSelfMute: String, Sendable, Equatable {
 /// bundled `call-mute-rules.json` or its newer download (`RemoteRules.mute`, #4013 reading
 /// resilience §3.5). A recording freezes the rules in force at its start. The labels are exactly
 /// the English ones read live on 2026-10-30 (`docs/audits/2026-10-30-4248/live-ax-probes.md`):
-/// Zoom 7.1.9, Teams 26276.505 and Google Meet in Chrome 156. Any other label, language included,
-/// reads as unknown.
+/// Zoom 7.1.9, Teams 26276.505 and Google Meet in Chrome 156. Any other label reads as unknown,
+/// except Zoom's own translated mute-button words that `withZoomLabels` adds at recording start
+/// (#4350).
 ///
 /// The file is validated strictly, the same way `website/scripts/check-call-mute-rules.mjs`
 /// checks the hosted copy against the shared fixtures: `schema` must be `supportedSchema`; a
@@ -33,6 +34,9 @@ package struct CallMuteRules: RemoteRulesDocument {
     package let identifier: String?
     package let domIdentifier: String?
     package let labels: [String: State]
+    /// Whether a label is also looked up in `ZoomLabels.normalized` form (#4350: Zoom's own
+    /// translated words, added by `withZoomLabels`). Other apps compare the exact text.
+    var normalizesLabels = false
 
     /// Whether `node` is this surface's mute button.
     func selects(_ node: CallAXNode) -> Bool {
@@ -44,7 +48,12 @@ package struct CallMuteRules: RemoteRulesDocument {
 
     /// The states the button's title and description show. A text outside the table shows none.
     func states(of node: CallAXNode) -> Set<State> {
-      Set([node.title, node.description].compactMap { $0.flatMap { labels[$0] } })
+      Set(
+        [node.title, node.description].compactMap {
+          $0.flatMap { text in
+            labels[text] ?? (normalizesLabels ? labels[ZoomLabels.normalized(text)] : nil)
+          }
+        })
     }
   }
 
@@ -85,6 +94,9 @@ package struct CallMuteRules: RemoteRulesDocument {
   package let revision: Int
   package let rules: [CallSpeakerSurface: Rule]
   package let origin: RemoteRulesOrigin
+  /// The Zoom words the Zoom scope check reads with (#4350): the English floor until
+  /// `withZoomLabels` freezes the recording's labels beside the merged mute labels.
+  package private(set) var zoomLabels: ZoomLabels = .builtIn
 
   /// The roles the rules select. A speaker capture keeps every read on them strict, so a
   /// downloaded role can never be read through a tolerated failure (#4013 reading resilience
@@ -95,6 +107,38 @@ package struct CallMuteRules: RemoteRulesDocument {
     self.revision = revision
     self.rules = rules
     self.origin = origin
+  }
+
+  /// A copy whose Zoom rule also knows Zoom's own mute-button words in every installed language
+  /// (#4350 plan §3.6): `unmuteMyAudio` words mean muted, `muteMyAudio` words mean unmuted. The
+  /// rules file stays the authority: an existing label keeps its state, and a word that would
+  /// mean both states (in the translations, or against an existing label) is removed so it reads
+  /// unknown and the microphone stays live. Identifier, role, scope and single-control checks
+  /// are unchanged. Other surfaces and the revision are untouched. Built once per recording.
+  package func withZoomLabels(_ zoom: ZoomLabels) -> CallMuteRules {
+    var copy = self
+    copy.zoomLabels = zoom
+    guard let rule = rules[.zoomApp] else { return copy }
+    // Grouped by the same normalised word the Zoom rule matches with, so two spellings of one
+    // Zoom wording can never read two states.
+    var statesByWord: [String: Set<State>] = [:]
+    for (word, state) in rule.labels {
+      statesByWord[ZoomLabels.normalized(word), default: []].insert(state)
+    }
+    for word in zoom.allWords(.unmuteMyAudio) { statesByWord[word, default: []].insert(.muted) }
+    for word in zoom.allWords(.muteMyAudio) { statesByWord[word, default: []].insert(.unmuted) }
+    let conflicts = Set(statesByWord.compactMap { word, states in states.count > 1 ? word : nil })
+    var labels = rule.labels.filter { conflicts.contains(ZoomLabels.normalized($0.key)) == false }
+    for (word, states) in statesByWord where states.count == 1 { labels[word] = states.first }
+    var merged = Rule(
+      role: rule.role, identifier: rule.identifier, domIdentifier: rule.domIdentifier,
+      labels: labels)
+    merged.normalizesLabels = true
+    var rules = rules
+    rules[.zoomApp] = merged
+    copy = CallMuteRules(revision: revision, rules: rules, origin: origin)
+    copy.zoomLabels = zoom
+    return copy
   }
 
   /// Decodes and checks a rules file: the supported schema, a positive revision, only supported
@@ -170,15 +214,16 @@ package struct CallMuteRules: RemoteRulesDocument {
 /// copy: it never messages the app. Only a whole copy of one call, holding exactly one mute
 /// button with a known label, gives `muted` or `unmuted`; anything else is `unknown`.
 package enum CallSelfMuteReader {
-  /// `rules` are the recording's frozen rules (`RemoteRules.mute`); `.empty` reads unknown.
+  /// `rules` are the recording's frozen rules (`RemoteRules.mute`, merged with the recording's
+  /// Zoom words by `withZoomLabels`); `.empty` reads unknown.
   package static func read(
     surface: CallSpeakerSurface, capture: CallAXCapture, rules: CallMuteRules
   ) -> CallSelfMute {
     guard let family = CallMuteRules.families[surface], let rule = rules.rules[surface],
       capture.completeness == .complete,
-      // #4350 chunk 2: built-in words until chunk 3 passes the recording's frozen labels.
       CallSpeakerSurfaceReader.scope(
-        surface: surface, capture: capture, family: family, zoomLabels: .builtIn) == .resolved
+        surface: surface, capture: capture, family: family, zoomLabels: rules.zoomLabels)
+        == .resolved
     else { return .unknown }
     // Where the button may be: the one Zoom meeting window (never a window whose tiles the
     // reading borrows; with no meeting window the state is unknown, #4013 reading resilience
