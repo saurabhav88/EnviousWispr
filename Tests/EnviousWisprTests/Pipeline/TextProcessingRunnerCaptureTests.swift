@@ -1111,12 +1111,12 @@ struct TextProcessingRunnerCaptureTests {
   @Test("typed errors map to evidence; messages never do")
   func evidenceIsTyped() {
     #expect(
-      TextProcessingRunner.setupEvidence(from: LLMError.requestFailed("invalid api key"), provider: .openAI) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: LLMError.classified(.accessDenied), provider: .openAI) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: LLMError.modelNotFound("x"), provider: .openAI) == nil)
-    #expect(TextProcessingRunner.setupEvidence(from: URLError(.notConnectedToInternet), provider: .openAI) == nil)
+      TextProcessingRunner.setupEvidence(from: LLMError.requestFailed("invalid api key"), provider: .openAI, model: "gpt-x") == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.classified(.accessDenied), provider: .openAI, model: "gpt-x") == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: LLMError.modelNotFound("x"), provider: .openAI, model: "gpt-x") == nil)
+    #expect(TextProcessingRunner.setupEvidence(from: URLError(.notConnectedToInternet), provider: .openAI, model: "gpt-x") == nil)
     #expect(
-      TextProcessingRunner.setupEvidence(from: LLMError.egOneSkipped(.notReady), provider: .openAI)
+      TextProcessingRunner.setupEvidence(from: LLMError.egOneSkipped(.notReady), provider: .openAI, model: "gpt-x")
         == .localEngineNotReady)
   }
 

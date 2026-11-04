@@ -541,10 +541,10 @@ final class MeetingSummaryOwner {
       case .windowTooSmall: return Ending(end: .problem(.notForSummaries))
       case .providerFailed, .empty, .truncated, .timedOut:
         return Ending(end: .problem(.providerFailed))
-      case .modelUnavailable:
-        // #4353 D9: a cloud model problem only for a cloud provider, named by this attempt's
-        // captured selection; a local engine's missing model keeps its existing explanation.
-        return Ending(end: .problem(Self.modelUnavailableProblem(selection)))
+      case .rejected(let reason):
+        // #4353 D9: a cloud model problem only when the shared reading says this attempt's
+        // captured model cannot be used; anything else keeps its existing explanation.
+        return Ending(end: .problem(Self.rejectedProblem(reason, selection)))
       }
     } catch {
       if local {
@@ -747,14 +747,13 @@ final class MeetingSummaryOwner {
     return .started
   }
 
-  /// #4353 D9: what a "model does not exist" answer means for the attempt that got it.
-  static func modelUnavailableProblem(_ selection: (provider: LLMProvider, model: String))
-    -> Problem
-  {
-    switch selection.provider {
-    case .openAI, .gemini, .claude: return .cloudModelUnavailable(selection.provider, selection.model)
-    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .providerFailed
-    }
+  /// #4353 D9: what a refused request means for the attempt that got it, read with its own
+  /// captured provider and model.
+  static func rejectedProblem(
+    _ reason: PolishFailureReason, _ selection: (provider: LLMProvider, model: String)
+  ) -> Problem {
+    reason.meansCloudModelUnavailable(provider: selection.provider, model: selection.model)
+      ? .cloudModelUnavailable(selection.provider, selection.model) : .providerFailed
   }
 
   static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind

@@ -26,10 +26,11 @@ struct FileImportCloudSetupTests {
     var users: [String] = []
     var models: [String] = []
     var refuse: (String) -> Bool = { _ in false }
+    var refusal: Error = LLMError.classified(.modelUnavailable)
     func answer(user: String, config: LLMProviderConfig) throws -> LLMResult {
       users.append(user)
       models.append(config.model)
-      if refuse(user) { throw LLMError.classified(.modelUnavailable) }
+      if refuse(user) { throw refusal }
       let prefix = "Transcript to clean:\n\n"
       let text = user.hasPrefix(prefix) ? String(user.dropFirst(prefix.count)) : user
       return LLMResult(polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".")
@@ -146,5 +147,26 @@ struct FileImportCloudSetupTests {
       .process(part: Self.passages[1])
     #expect(single.cloudSetup == .modelUnavailable(provider: .openAI, model: "gpt-4o-mini"))
     #expect(single.text == Self.passages[1])
+  }
+
+  @Test("#4353 G5 a leftover audio model's 400 names it on every part; an ordinary 400 does not")
+  func audioModelRejection() async throws {
+    let capture = Capture()
+    capture.refuse = { _ in true }
+    capture.refusal = LLMError.classified(.badRequest)
+    let outcomes = try await run(runner(capture, provider: .gemini, model: "gemini-3.5-transcribe"))
+    #expect(outcomes.map(\.text) == Self.passages)
+    #expect(outcomes.allSatisfy {
+      $0.cloudSetup == .modelUnavailable(provider: .gemini, model: "gemini-3.5-transcribe")
+    })
+    #expect(outcomes.allSatisfy { $0.isUnpolished })
+
+    let plain = Capture()
+    plain.refuse = { _ in true }
+    plain.refusal = LLMError.classified(.badRequest)
+    let ordinary = try await run(runner(plain, provider: .gemini, model: "gemini-3.7-flash"))
+    #expect(ordinary.map(\.text) == Self.passages)
+    #expect(ordinary.allSatisfy { $0.cloudSetup == nil })
+    #expect(ordinary.allSatisfy { $0.isUnpolished }, "a failed request stays marked")
   }
 }

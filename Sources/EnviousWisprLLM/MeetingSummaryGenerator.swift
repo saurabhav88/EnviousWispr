@@ -112,10 +112,12 @@ public enum MeetingSummary {
     case cancelled
     /// One call took longer than its time limit; not tried again.
     case timedOut
-    /// #4353 D9: the provider answered that the model does not exist; not tried again. Which
-    /// provider and model is the caller's frozen selection, and only a cloud provider makes it
-    /// a cloud model problem (an Ollama model that is not pulled is the caller's other case).
-    case modelUnavailable
+    /// #4353 D9: the provider refused the request outright, as "this model does not exist"
+    /// (`.modelUnavailable`) or a bad request (`.badRequest`); not tried again. The caller reads
+    /// it with its frozen provider and model through `meansCloudModelUnavailable`: a cloud model
+    /// that cannot be used (including a leftover audio-input model's 400) is a model problem,
+    /// anything else an ordinary failure.
+    case rejected(PolishFailureReason)
   }
 
   /// Thrown by a call whose prompt the model said was too long for its window; never leaves
@@ -686,7 +688,9 @@ public enum MeetingSummary {
       } catch LLMError.classified(.outputTruncated) {
         throw Failure.truncated
       } catch LLMError.classified(.modelUnavailable) {
-        throw Failure.modelUnavailable
+        throw Failure.rejected(.modelUnavailable)
+      } catch LLMError.classified(.badRequest) {
+        throw Failure.rejected(.badRequest)
       } catch is TimeoutError {
         throw Failure.timedOut
       } catch let error where isCancellation(error) {

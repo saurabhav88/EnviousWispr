@@ -475,9 +475,9 @@ internal final class TextProcessingRunner {
         if let llmError = error as? LLMError, case .cloudModelNotSelected(let provider) = llmError {
           cloudNoModelProvider = provider
           cloudSetupOutcome = .noModelChosen(provider: provider)
-        } else if let provider = polishProviderAtStart, LLMPolishStep.cloudProviders.contains(provider),
-          let attempted = polishModelAtStart, !attempted.isEmpty,
-          PolishFailureReason.from(error) == .modelUnavailable
+        } else if let provider = polishProviderAtStart, let attempted = polishModelAtStart,
+          PolishFailureReason.from(error).meansCloudModelUnavailable(
+            provider: provider, model: attempted)
         {
           cloudSetupOutcome = .modelUnavailable(provider: provider, model: attempted)
         }
@@ -595,8 +595,8 @@ internal final class TextProcessingRunner {
             let reason = PolishFailureReason.from(error)
             // #4353 D4: a cloud model the provider says no longer exists is named, from the
             // model this take asked for (the step's entry snapshot), never current settings.
-            if reason == .modelUnavailable, LLMPolishStep.cloudProviders.contains(provider),
-              let attempted = polishModelAtStart, !attempted.isEmpty
+            if let attempted = polishModelAtStart,
+              reason.meansCloudModelUnavailable(provider: provider, model: attempted)
             {
               polishNotice = PolishNotice(
                 leadIn: .failed, text: CloudModelNoticeCopy.noLongerWorks(attempted))
@@ -673,7 +673,8 @@ internal final class TextProcessingRunner {
           } else {
             result = .failed
           }
-          let evidence = Self.setupEvidence(from: error, provider: polishProviderAtStart)
+          let evidence = Self.setupEvidence(
+            from: error, provider: polishProviderAtStart, model: polishModelAtStart)
           settlePolishOutcome(
             result, evidence,
             observedAt: Self.observationStamp(
@@ -792,17 +793,21 @@ internal final class TextProcessingRunner {
   /// Nil for every error that is not about setup: timeouts, length limits, server errors,
   /// crashes, output rejection, a missing Apple Intelligence.
   ///
-  /// `provider` is the step's entry snapshot. It is read for ONE question: a model the provider
-  /// says does not exist (`.modelUnavailable`, HTTP 404) is a cloud model problem only for a
-  /// cloud provider. A 403 (`.accessDenied`) is not counted: at request time it can be about
-  /// the whole key or project, not this model.
-  static func setupEvidence(from error: any Error, provider: LLMProvider?) -> PolishSetupEvidence? {
+  /// `provider` and `model` are the step's entry snapshot. They are read for ONE question, through
+  /// the shared `meansCloudModelUnavailable`: whether a cloud request's failure means the chosen
+  /// model cannot be used (a 404, or a leftover audio-input model's 400). A 403 (`.accessDenied`)
+  /// is not counted: at request time it can be about the whole key or project, not this model.
+  static func setupEvidence(
+    from error: any Error, provider: LLMProvider?, model: String?
+  ) -> PolishSetupEvidence? {
     guard let llmError = error as? LLMError else { return nil }
+    if case .classified(let reason) = llmError, let provider, let model,
+      reason.meansCloudModelUnavailable(provider: provider, model: model)
+    {
+      return .cloudModelUnavailable
+    }
     switch llmError {
     case .cloudModelNotSelected: return .cloudNoModel
-    case .classified(.modelUnavailable):
-      guard let provider, LLMPolishStep.cloudProviders.contains(provider) else { return nil }
-      return .cloudModelUnavailable
     case .classified(.apiKeyMissing): return .cloudKeyMissing
     case .classified(.apiKeyUnreadable): return .cloudKeyUnreadable
     case .invalidAPIKey: return .cloudKeyRejected

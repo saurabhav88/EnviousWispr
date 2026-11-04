@@ -117,13 +117,40 @@ struct CloudModelPreflightTests {
   func requestTimeUnavailability() {
     #expect(
       TextProcessingRunner.setupEvidence(
-        from: LLMError.classified(.modelUnavailable), provider: .gemini) == .cloudModelUnavailable)
+        from: LLMError.classified(.modelUnavailable), provider: .gemini, model: "gemini-x")
+        == .cloudModelUnavailable)
     #expect(
       TextProcessingRunner.setupEvidence(
-        from: LLMError.classified(.modelUnavailable), provider: .ollama) == nil)
+        from: LLMError.classified(.modelUnavailable), provider: .ollama, model: "llama3.2") == nil)
     #expect(
       TextProcessingRunner.setupEvidence(
-        from: LLMError.classified(.accessDenied), provider: .openAI) == nil)
+        from: LLMError.classified(.accessDenied), provider: .openAI, model: "gpt-x") == nil)
+    // #4353 G5: a leftover audio-input model's 400 is the same problem; an ordinary 400 is not.
+    #expect(
+      TextProcessingRunner.setupEvidence(
+        from: LLMError.classified(.badRequest), provider: .gemini, model: "gemini-3.5-transcribe")
+        == .cloudModelUnavailable)
+    #expect(
+      TextProcessingRunner.setupEvidence(
+        from: LLMError.classified(.badRequest), provider: .gemini, model: "gemini-3.7-flash") == nil)
+  }
+
+  /// #4353 G5: the one shared reading, over every failure reason and provider.
+  @Test("only a gone model or a leftover audio model's 400 means the cloud model cannot be used")
+  func sharedReading() {
+    for reason in PolishFailureReason.allCases {
+      for provider in LLMProvider.allCases {
+        let cloud = [LLMProvider.openAI, .gemini, .claude].contains(provider)
+        let ordinary = reason.meansCloudModelUnavailable(provider: provider, model: "some-model")
+        let audio = reason.meansCloudModelUnavailable(
+          provider: provider, model: "gpt-4o-audio-preview")
+        #expect(ordinary == (cloud && reason == .modelUnavailable), "\(reason) \(provider)")
+        #expect(
+          audio == (cloud && (reason == .modelUnavailable || reason == .badRequest)),
+          "\(reason) \(provider) audio")
+        #expect(reason.meansCloudModelUnavailable(provider: provider, model: " ") == false)
+      }
+    }
   }
 
   @Test("an empty selection is never retried")
@@ -138,6 +165,36 @@ struct CloudModelPreflightTests {
     ) async throws -> LLMResult {
       throw LLMError.classified(.modelUnavailable)
     }
+  }
+
+  private struct BadRequestPolisher: TranscriptPolisher {
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      throw LLMError.classified(.badRequest)
+    }
+  }
+
+  @Test("#4353 G5 a leftover audio model's 400 gets the named notice; an ordinary 400 does not")
+  func audioModelRejectionIsNamed() async throws {
+    let spies = Spies()
+    let audio = makeStep(.gemini, model: "gemini-3.5-transcribe", spies)
+    audio.makePolisher = { _, _, _ in BadRequestPolisher() }
+    let take = PolishSetupTakeContext(
+      provider: .gemini, model: "gemini-3.5-transcribe", configurationRevision: 1, episode: nil)
+    let result = try await run(audio, spies, take: take)
+    #expect(result.polishNotice?.text == "gemini-3.5-transcribe no longer works. Select a new cloud model.")
+    #expect(result.polishTakeOutcome?.evidence == .cloudModelUnavailable)
+    #expect(result.cloudSetupOutcome == .modelUnavailable(provider: .gemini, model: "gemini-3.5-transcribe"))
+    #expect(result.context.text == Self.longTranscript)
+
+    let ordinary = makeStep(.gemini, model: "gemini-3.7-flash", spies)
+    ordinary.makePolisher = { _, _, _ in BadRequestPolisher() }
+    let plain = try await run(ordinary, spies)
+    #expect(plain.polishNotice?.text != "gemini-3.7-flash no longer works. Select a new cloud model.")
+    #expect(plain.cloudSetupOutcome == nil)
+    #expect(plain.context.text == Self.longTranscript)
   }
 
   @Test("a cloud model the provider says is gone is named in the notice, from the take's model")

@@ -10,16 +10,27 @@ public struct LLMModelDiscovery: Sendable {
 
   public init() {}
 
-  /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
   /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
   /// the native-audio Live models) that advertise `generateContent` and so pass
   /// `fetchGeminiModels`, then reject a text polish request with 400. The OpenAI
-  /// branch's `isOpenAIChatCompletionCandidate` already skipped both.
-  static let excludePatterns = [
-    "tts", "image", "robotics", "computer-use", "deep-research",
-    "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
-    "lyria", "transcribe", "audio",
-  ]
+  /// branch's `isOpenAIChatCompletionCandidate` already skipped both. Named on its own so
+  /// a leftover pick's 400 can be read as "this model cannot be used" (#4353 G5).
+  static let audioInputPatterns = ["transcribe", "audio"]
+
+  /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
+  static let excludePatterns =
+    [
+      "tts", "image", "robotics", "computer-use", "deep-research",
+      "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
+      "lyria",
+    ] + audioInputPatterns
+
+  /// #4353 G5: an audio-input model id (`gemini-3.5-transcribe`, `gpt-4o-audio-preview`), which
+  /// rejects a text polish request with HTTP 400.
+  public static func isAudioInputModelID(_ id: String) -> Bool {
+    let lowered = id.lowercased()
+    return audioInputPatterns.contains { lowered.contains($0) }
+  }
 
   /// Suffixes that indicate versioned duplicates (keep only the base model).
   private static let versionedSuffixes = ["-001", "-002", "-003"]

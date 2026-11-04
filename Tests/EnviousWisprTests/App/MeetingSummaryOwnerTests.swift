@@ -1862,6 +1862,29 @@ struct MeetingSummaryOwnerTests {
     }
   }
 
+  @Test("#4353 G5 a leftover audio model's 400 is a model problem; an ordinary 400 is not")
+  func audioModelRejection() async throws {
+    let rig = try Rig()
+    rig.world.provider = .gemini
+    rig.world.model = "gemini-3.5-transcribe"
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.callFailures = [LLMError.classified(.badRequest)]
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.owner.activity[id] == .failed(.cloudModelUnavailable(.gemini, "gemini-3.5-transcribe")))
+    #expect(rig.summaryOnDisk(id) == saved)
+
+    let plain = try Rig()
+    plain.world.provider = .gemini
+    plain.world.model = "gemini-3.7-flash"
+    let (plainID, plainSaved) = try await Self.writtenMeeting(plain)
+    plain.world.callFailures = [LLMError.classified(.badRequest)]
+    plain.owner.writeAgain(plainID, replacing: nil)
+    await Self.eventually("settled") { plain.world.finished.count == 1 }
+    #expect(plain.owner.activity[plainID] == .failed(.providerFailed))
+    #expect(plain.summaryOnDisk(plainID) == plainSaved)
+  }
+
   @Test("#4353 a held gone-model answer cannot touch a newer attempt or a deleted meeting")
   func heldGoneModelAnswerIsFenced() async throws {
     let rig = try Rig()

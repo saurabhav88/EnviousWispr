@@ -1035,7 +1035,7 @@ struct MeetingSummaryTests {
   func modelUnavailableIsTypedAndNotRetried() async throws {
     let gone = Calls()
     gone.answers = Array(repeating: .failure(LLMError.classified(.modelUnavailable)), count: 3)
-    await #expect(throws: MeetingSummary.Failure.modelUnavailable) {
+    await #expect(throws: MeetingSummary.Failure.rejected(.modelUnavailable)) {
       _ = try await Self.write(gone, transcript: "t")
     }
     #expect(gone.prompts.count == 1)
@@ -1045,12 +1045,20 @@ struct MeetingSummaryTests {
     let local = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
     let prepared = try #require(await Self.prepare(.ollama, "llama3.2", local).successValue)
     local.replies = Array(repeating: .http(404, "{\"error\":\"model not found\"}"), count: 3)
-    await #expect(throws: MeetingSummary.Failure.modelUnavailable) {
+    await #expect(throws: MeetingSummary.Failure.rejected(.modelUnavailable)) {
       _ = try await MeetingSummary.write(
         transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60,
         admit: {}, complete: prepared.complete)
     }
     #expect(local.requests.count == 1)
+
+    // #4353 G5: a bad request is passed on typed too, once, for the owner to read with its model.
+    let refused = Calls()
+    refused.answers = Array(repeating: .failure(LLMError.classified(.badRequest)), count: 3)
+    await #expect(throws: MeetingSummary.Failure.rejected(.badRequest)) {
+      _ = try await Self.write(refused, transcript: "t")
+    }
+    #expect(refused.prompts.count == 1)
   }
 }
 
