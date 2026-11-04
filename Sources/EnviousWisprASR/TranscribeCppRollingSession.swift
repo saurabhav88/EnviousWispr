@@ -48,9 +48,11 @@ import Foundation
 /// Preview mode's lossless transcript output (#3973), next to the bounded display tail: what an
 /// owner needs to build a growing transcript (EnviousMeet's live words).
 package enum TranscriptEvent: Sendable, Equatable {
-  /// `finalized`: text that became final in this decode, never repeated. `inProgress`: the
-  /// words still held back, replacing the previous ones (empty when none).
-  case update(finalized: String, inProgress: String)
+  /// `finalized`: text that became final in this decode, never repeated, as timed pieces
+  /// (#4355; native segment spans arrive in PR A chunk 7, until then each delta is one piece
+  /// with unknown timing). `inProgress`: the words still held back, replacing the previous ones
+  /// (empty when none).
+  case update(finalized: [MeetingTimedPiece], inProgress: String)
   /// A forced advance discarded the agreement state of words that never committed: the
   /// held-back words shown so far are not promoted to finalized. The audio retained after the
   /// new origin is decoded again, so later decodes may recognize some of the same words.
@@ -759,7 +761,7 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     guard let onTranscript = publication?.onTranscript else { return }
     guard !finalized.isEmpty || inProgress != lastTranscriptInProgress else { return }
     lastTranscriptInProgress = inProgress
-    onTranscript(.update(finalized: finalized, inProgress: inProgress))
+    onTranscript(.update(finalized: MeetingTimedPiece.untimed(finalized), inProgress: inProgress))
   }
 
   /// Preview mode: tells the owner the audio before the new origin is never read again. The

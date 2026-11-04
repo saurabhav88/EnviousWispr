@@ -21,13 +21,14 @@ package struct LivePreviewVocabulary: Sendable {
 /// the bounded display string of `openSession(onText:)` cannot carry.
 ///
 /// Producer obligations (each engine's transcript session meets them; the meeting relies on
-/// them): events arrive in order. `finalized` is text that became final since the previous
-/// update and is never repeated; `inProgress` replaces the previous not-yet-final words.
-/// Consecutive `.update`s may be coalesced (finalized texts joined in order, the latest
-/// `inProgress` kept) but never across a `.discontinuity` or `.ended`. Exactly one `.ended`
-/// arrives, after every finalized delta the session accepted has been delivered.
+/// them): events arrive in order. `finalized` is the text that became final since the previous
+/// update, as ordered timed pieces (#4355), never repeated; `inProgress` replaces the previous
+/// not-yet-final words. Consecutive `.update`s may be coalesced (piece lists concatenated in
+/// order with `LiveWordsAssembler.join(_:_:)`'s spacing, never merging two pieces' spans; the
+/// latest `inProgress` kept) but never across a `.discontinuity` or `.ended`. Exactly one
+/// `.ended` arrives, after every finalized delta the session accepted has been delivered.
 package enum LiveWordsEvent: Sendable, Equatable {
-  case update(finalized: String, inProgress: String)
+  case update(finalized: [MeetingTimedPiece], inProgress: String)
   /// The engine dropped the agreement state behind the words in progress: they will not be
   /// finalized, and later words may recognize some of the same audio again.
   case discontinuity

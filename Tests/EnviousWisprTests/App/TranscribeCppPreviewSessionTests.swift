@@ -543,26 +543,29 @@ struct LiveWordsTranscriptSessionTests {
   func orderedCoalescedDelivery() async {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "One.", inProgress: "two"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("One."), inProgress: "two"))
     await PreviewWait.within("the consumer inside the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
     // Queued behind the stuck consumer.
-    handle.publish(.update(finalized: " Two.", inProgress: "three"))
-    handle.publish(.update(finalized: " Three.", inProgress: "four"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Two."), inProgress: "three"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Three."), inProgress: "four"))
     handle.publish(.discontinuity)
-    handle.publish(.update(finalized: "", inProgress: "five"))
-    handle.publish(.update(finalized: " Five.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(""), inProgress: "five"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Five."), inProgress: ""))
     handle.publish(.discontinuity)
     received.release()
     await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
-    handle.publish(.update(finalized: " Late.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Late."), inProgress: ""))
     #expect(
       received.all == [
-        .update(finalized: "One.", inProgress: "two"),
-        .update(finalized: " Two. Three.", inProgress: "four"),
+        .update(finalized: MeetingTimedPiece.untimed("One."), inProgress: "two"),
+        // Coalesced: the two deltas stay two pieces (#4355).
+        .update(
+          finalized: MeetingTimedPiece.untimed(" Two.") + MeetingTimedPiece.untimed(" Three."),
+          inProgress: "four"),
         .discontinuity,
-        .update(finalized: " Five.", inProgress: ""),
+        .update(finalized: MeetingTimedPiece.untimed(" Five."), inProgress: ""),
         .discontinuity,
         .ended(.requested),
       ])
@@ -572,12 +575,12 @@ struct LiveWordsTranscriptSessionTests {
   func endDrainsBeforeTerminal() async throws {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "A.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("A."), inProgress: ""))
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
     handle.publish(.discontinuity)
-    handle.publish(.update(finalized: " B.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" B."), inProgress: ""))
     // What had been delivered when end() returned: an ordering record.
     let atReturn = Task { () -> [LiveWordsEvent] in
       await handle.end()
@@ -588,8 +591,8 @@ struct LiveWordsTranscriptSessionTests {
       await atReturn.value
     }
     let expected: [LiveWordsEvent] = [
-      .update(finalized: "A.", inProgress: ""), .discontinuity,
-      .update(finalized: " B.", inProgress: ""), .ended(.requested),
+      .update(finalized: MeetingTimedPiece.untimed("A."), inProgress: ""), .discontinuity,
+      .update(finalized: MeetingTimedPiece.untimed(" B."), inProgress: ""), .ended(.requested),
     ]
     #expect(seen == expected, "end() returned only after the terminal")
     await PreviewWait.within("a second end") { await handle.end() }
@@ -600,46 +603,79 @@ struct LiveWordsTranscriptSessionTests {
   func budgetBoundary() async throws {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "x", inProgress: ""))  // in flight: 64 + 1
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("x"), inProgress: ""))  // in flight: 64 + 1
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
-    let inFlight = LiveWordsQueue.entryCost + 1
-    let fits = LiveWordsQueue.budget - inFlight - LiveWordsQueue.entryCost
-    let big = Self.text(fits)
+    // #4355: each finalized piece is charged `pieceCharge` on top of its text.
+    let inFlight = LiveWordsQueue.entryCost + LiveWordsAssembler.pieceCharge + 1
+    let fits =
+      LiveWordsQueue.budget - inFlight - LiveWordsQueue.entryCost - LiveWordsAssembler.pieceCharge
+    let big = MeetingTimedPiece.untimed(Self.text(fits))
     handle.publish(.update(finalized: big, inProgress: ""))
     // One more byte of anything is refused; a barrier costs 64.
     handle.publish(.discontinuity)
-    handle.publish(.update(finalized: "never", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("never"), inProgress: ""))
     received.release()
     await PreviewWait.within("the backlog terminal", onExpiry: received.release) {
       await received.until(3)
     }
     #expect(
       received.all == [
-        .update(finalized: "x", inProgress: ""), .update(finalized: big, inProgress: ""),
+        .update(finalized: MeetingTimedPiece.untimed("x"), inProgress: ""), .update(finalized: big, inProgress: ""),
         .ended(.failed("backlog")),
       ])
     await PreviewWait.within("the end") { await handle.end() }
     #expect(received.all.count == 3, "end() after the backlog keeps that one terminal")
   }
 
+  @Test("coalescing in the real queue keeps every piece's own span, untimed pieces included")
+  func coalescedPiecesKeepOwnership() async {
+    let received = Received(holdFirst: true)
+    let handle = Self.handle(received)
+    let recording = UUID()
+    func timed(_ text: String, _ start: Int) -> MeetingTimedPiece {
+      MeetingTimedPiece(
+        text: text,
+        span: MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: start, sampleCount: 1_600))
+    }
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("First."), inProgress: ""))  // held
+    await PreviewWait.within("the first delivery", onExpiry: received.release) {
+      await received.until(1)
+    }
+    handle.publish(.update(finalized: [timed("One", 0), timed(" two", 1_600)], inProgress: "x"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("three"), inProgress: ""))
+    handle.publish(.update(finalized: [timed(" four.", 4_800)], inProgress: ""))
+    received.release()
+    await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
+    #expect(received.all.count >= 2)
+    guard received.all.count >= 2, case .update(let merged, _) = received.all[1] else { return }
+    #expect(MeetingTimedPiece.text(of: merged) == "One two three four.")
+    #expect(merged.map(\.text) == ["One", " two", " three", " four."])
+    #expect(merged.map(\.span) == [timed("One", 0).span, timed(" two", 1_600).span, nil, timed(" four.", 4_800).span])
+  }
+
   @Test("queued finals merge with the assembler's spacing, never running words together")
   func coalescedFinalsKeepTheirSpace() async {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "First.", inProgress: ""))  // held in flight
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("First."), inProgress: ""))  // held in flight
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
-    handle.publish(.update(finalized: "Hello world.", inProgress: "x"))
-    handle.publish(.update(finalized: "How are you?", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Hello world."), inProgress: "x"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("How are you?"), inProgress: ""))
     received.release()
     await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
     #expect(
       Array(received.all.prefix(2)) == [
-        .update(finalized: "First.", inProgress: ""),
-        .update(finalized: "Hello world. How are you?", inProgress: ""),
+        .update(finalized: MeetingTimedPiece.untimed("First."), inProgress: ""),
+        // The space the assembler's rule adds belongs to the later piece (#4355).
+        .update(
+          finalized: MeetingTimedPiece.untimed("Hello world.")
+            + MeetingTimedPiece.untimed(" How are you?"),
+          inProgress: ""),
       ])
   }
 
@@ -647,19 +683,19 @@ struct LiveWordsTranscriptSessionTests {
   func oversizedFinalRefusedWhole() async {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "Kept.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Kept."), inProgress: ""))
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
-    handle.publish(.update(finalized: " Also kept.", inProgress: "x"))
-    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
-    handle.publish(.update(finalized: " After.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Also kept."), inProgress: "x"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(Self.text(LiveWordsQueue.budget)), inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" After."), inProgress: ""))
     received.release()
     await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
     #expect(
       received.all == [
-        .update(finalized: "Kept.", inProgress: ""),
-        .update(finalized: " Also kept.", inProgress: "x"),
+        .update(finalized: MeetingTimedPiece.untimed("Kept."), inProgress: ""),
+        .update(finalized: MeetingTimedPiece.untimed(" Also kept."), inProgress: "x"),
         .ended(.failed("backlog")),
       ], "nothing of the oversized final, nothing after it")
   }
@@ -674,7 +710,7 @@ struct LiveWordsTranscriptSessionTests {
     }
     let room = (LiveWordsQueue.budget - LiveWordsQueue.entryCost) / LiveWordsQueue.entryCost
     for i in 0..<(room + 50) {
-      handle.publish(i.isMultiple(of: 2) ? .update(finalized: "", inProgress: "") : .discontinuity)
+      handle.publish(i.isMultiple(of: 2) ? .update(finalized: MeetingTimedPiece.untimed(""), inProgress: "") : .discontinuity)
     }
     received.release()
     await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
@@ -690,14 +726,14 @@ struct LiveWordsTranscriptSessionTests {
     let handle = Self.handle(received)
     let session = IdleSession()
     await PreviewWait.within("the attach") { await handle.attach(session) }
-    handle.publish(.update(finalized: "Before.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Before."), inProgress: ""))
     let overCap = [Float](repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
     await PreviewWait.within("the capping feed") { await handle.feed(overCap) }
     await PreviewWait.within("the ceiling terminal") { await received.until(2) }
-    handle.publish(.update(finalized: " After.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" After."), inProgress: ""))
     await PreviewWait.within("the end") { await handle.end() }
     #expect(
-      received.all == [.update(finalized: "Before.", inProgress: ""), .ended(.failed("ceiling"))])
+      received.all == [.update(finalized: MeetingTimedPiece.untimed("Before."), inProgress: ""), .ended(.failed("ceiling"))])
     #expect(session.cancelCount == 1, "decoding stopped once")
   }
 
@@ -707,13 +743,13 @@ struct LiveWordsTranscriptSessionTests {
     let handle = Self.handle(received)
     let session = IdleSession()
     await PreviewWait.within("the attach", onExpiry: received.release) { await handle.attach(session) }
-    handle.publish(.update(finalized: "First.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("First."), inProgress: ""))
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
     let overCap = [Float](repeating: 0, count: TranscribeCppPreviewSession.maxRetainedSamples + 1)
     async let backlog: Void = handle.publish(
-      .update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
+      .update(finalized: MeetingTimedPiece.untimed(Self.text(LiveWordsQueue.budget)), inProgress: ""))
     async let ceiling: Void = handle.feed(overCap)
     let ends = (0..<3).map { _ in Task { await handle.end() } }
     _ = await (backlog, ceiling)
@@ -723,7 +759,7 @@ struct LiveWordsTranscriptSessionTests {
     }
     let terminals = received.all.filter { if case .ended = $0 { true } else { false } }
     #expect(terminals.count == 1, "one terminal: \(received.all)")
-    #expect(received.all.first == .update(finalized: "First.", inProgress: ""))
+    #expect(received.all.first == .update(finalized: MeetingTimedPiece.untimed("First."), inProgress: ""))
     #expect(session.cancelCount == 1, "one physical cleanup")
   }
 
@@ -758,11 +794,11 @@ struct LiveWordsTranscriptSessionTests {
   func discardDeliversNothing() async {
     let received = Received()
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "Unseen.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Unseen."), inProgress: ""))
     // discard() returns only after the queue's consumer exited, so no event can follow.
     await PreviewWait.within("the discard") { await handle.discard() }
     let afterDiscard = received.all
-    handle.publish(.update(finalized: "Late.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Late."), inProgress: ""))
     await PreviewWait.within("an end after it") { await handle.end() }
     #expect(!afterDiscard.contains { if case .ended = $0 { true } else { false } })
     #expect(received.all == afterDiscard, "nothing after the discard, not even a terminal")
@@ -772,19 +808,19 @@ struct LiveWordsTranscriptSessionTests {
   func oversizedCoalescingRefused() async {
     let received = Received(holdFirst: true)
     let handle = Self.handle(received)
-    handle.publish(.update(finalized: "x", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("x"), inProgress: ""))
     await PreviewWait.within("the first delivery", onExpiry: received.release) {
       await received.until(1)
     }
     // Queued tail an oversized update would merge into.
-    handle.publish(.update(finalized: " Queued.", inProgress: "held"))
-    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: "y"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Queued."), inProgress: "held"))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(Self.text(LiveWordsQueue.budget)), inProgress: "y"))
     received.release()
     await PreviewWait.within("the end", onExpiry: received.release) { await handle.end() }
     #expect(
       received.all == [
-        .update(finalized: "x", inProgress: ""),
-        .update(finalized: " Queued.", inProgress: "held"),
+        .update(finalized: MeetingTimedPiece.untimed("x"), inProgress: ""),
+        .update(finalized: MeetingTimedPiece.untimed(" Queued."), inProgress: "held"),
         .ended(.failed("backlog")),
       ], "the queued update is delivered exactly as queued")
   }
@@ -801,21 +837,21 @@ struct LiveWordsTranscriptSessionTests {
     await PreviewWait.within("the start's entry", onExpiry: session.open) {
       _ = await session.entered.value()
     }
-    handle.publish(.update(finalized: "Accepted.", inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed("Accepted."), inProgress: ""))
     let ending = Task { await handle.end() }
     // Cleanup is held behind the start: the stop has begun, decoding has not stopped yet.
     await PreviewWait.within("teardown's entry", onExpiry: session.open) {
       _ = await teardownStarted.value()
     }
-    handle.publish(.update(finalized: " Late.", inProgress: ""))
-    handle.publish(.update(finalized: Self.text(LiveWordsQueue.budget), inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(" Late."), inProgress: ""))
+    handle.publish(.update(finalized: MeetingTimedPiece.untimed(Self.text(LiveWordsQueue.budget)), inProgress: ""))
     session.open()
     await PreviewWait.within("attach and end", onExpiry: session.open) {
       await attaching.value
       await ending.value
     }
     #expect(
-      received.all == [.update(finalized: "Accepted.", inProgress: ""), .ended(.requested)])
+      received.all == [.update(finalized: MeetingTimedPiece.untimed("Accepted."), inProgress: ""), .ended(.requested)])
   }
 
   /// `start` signals entry and holds until `open()`; every signal comes from the subject.

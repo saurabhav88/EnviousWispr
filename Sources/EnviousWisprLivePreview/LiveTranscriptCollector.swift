@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 
@@ -55,7 +56,12 @@ final class LiveTranscriptCollector: @unchecked Sendable {
       do {
         try await consume { text, isFinal in
           let piece = Self.corrected(text, corrector: corrector, lookups: lookups)
-          self.emit(.update(finalized: isFinal ? piece : "", inProgress: isFinal ? "" : piece))
+          // #4355: Apple's per-run times arrive in PR A chunk 6; until then a final result is
+          // one piece with unknown timing.
+          self.emit(
+            .update(
+              finalized: isFinal ? MeetingTimedPiece.untimed(piece) : [],
+              inProgress: isFinal ? "" : piece))
         }
         finish(error: nil)
       } catch {

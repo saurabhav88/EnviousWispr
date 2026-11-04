@@ -1225,7 +1225,7 @@ struct TranscribeCppRollingSessionTests {
     /// Every finalized delta, joined: the whole confirmed transcript.
     var finalized: String {
       all.reduce(into: "") { text, event in
-        if case .update(let finalized, _) = event { text += finalized }
+        if case .update(let finalized, _) = event { text += MeetingTimedPiece.text(of: finalized) }
       }
     }
   }
@@ -1251,8 +1251,8 @@ struct TranscribeCppRollingSessionTests {
       [Self.seg(0, 1.5, " Hello world. How"), Self.seg(1.5, 3.0, " are you")], realAudioEnd: 3)
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " Hello world. How are"),
-        .update(finalized: " Hello world. How", inProgress: " are you"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " Hello world. How are"),
+        .update(finalized: MeetingTimedPiece.untimed(" Hello world. How"), inProgress: " are you"),
       ])
   }
 
@@ -1266,8 +1266,8 @@ struct TranscribeCppRollingSessionTests {
     await s.apply([Self.seg(0, 1, " no"), Self.seg(1, 2, " no")], realAudioEnd: 2)
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " no"),
-        .update(finalized: " no", inProgress: " no"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " no"),
+        .update(finalized: MeetingTimedPiece.untimed(" no"), inProgress: " no"),
       ])
   }
 
@@ -1293,7 +1293,7 @@ struct TranscribeCppRollingSessionTests {
     let s = Self.transcriptSession(Self.noDecode, events: events)
     await s.apply([Self.seg(0, 31, " unstable words")], realAudioEnd: 31)
     #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
-    #expect(events.all == [.update(finalized: "", inProgress: " unstable words"), .discontinuity])
+    #expect(events.all == [.update(finalized: MeetingTimedPiece.untimed(""), inProgress: " unstable words"), .discontinuity])
   }
 
   @Test("a genuine commit in the same decode arrives once before the forced advance")
@@ -1310,8 +1310,8 @@ struct TranscribeCppRollingSessionTests {
     #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " Yes. and then"),
-        .update(finalized: " Yes.", inProgress: " and then something long"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " Yes. and then"),
+        .update(finalized: MeetingTimedPiece.untimed(" Yes."), inProgress: " and then something long"),
         .discontinuity,
       ])
   }

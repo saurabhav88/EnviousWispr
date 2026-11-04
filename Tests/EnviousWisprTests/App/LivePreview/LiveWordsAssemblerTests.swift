@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import Foundation
 import Testing
 
 @testable import EnviousWisprLivePreview
@@ -30,7 +31,7 @@ struct LiveWordsAssemblerTests {
   }
 
   private static func update(_ finalized: String, _ inProgress: String) -> LiveWordsEvent {
-    .update(finalized: finalized, inProgress: inProgress)
+    .update(finalized: MeetingTimedPiece.untimed(finalized), inProgress: inProgress)
   }
 
   @Test("finalized text is appended once and the words in progress are replaced")
@@ -183,5 +184,132 @@ struct LiveWordsAssemblerTests {
     a.apply(Self.update(" two", ""), track: .microphone, atMs: 2_000)
     #expect(first != nil && a.lines.first?.id == first)
     #expect(a.lines.first?.startMs == 1_000 && a.lines.first?.endMs == 2_000)
+  }
+
+  // MARK: - Timed pieces (#4355)
+
+  private static let recording = UUID()
+  private static func timed(_ text: String, _ start: Int) -> MeetingTimedPiece {
+    MeetingTimedPiece(
+      text: text,
+      span: MeetingAudioSpan(
+        recording: recording, track: .callSound, run: 0, startSample: start, sampleCount: 160))
+  }
+
+  @Test("joining two updates keeps every piece and its span; the added space joins the later piece")
+  func pieceJoinKeepsSpans() {
+    let a = [Self.timed("Hello", 0)]
+    let b = [Self.timed("there", 1_600), Self.timed(".", 3_200)]
+    let joined = LiveWordsAssembler.join(a, b)
+    #expect(MeetingTimedPiece.text(of: joined) == LiveWordsAssembler.join("Hello", "there."))
+    #expect(joined.map(\.text) == ["Hello", " there", "."])
+    #expect(joined.map(\.span) == [a[0].span, b[0].span, b[1].span], "no span merged or widened")
+    #expect(LiveWordsAssembler.join(a, []) == a)
+  }
+
+  @Test("a line keeps its finalized pieces in order, untimed ones included, and has no speaker in PR A")
+  func linesKeepPieces() {
+    var a = LiveWordsAssembler()
+    a.apply(.update(finalized: [Self.timed("One", 0)], inProgress: ""), track: .callSound, atMs: 0)
+    a.apply(.update(finalized: MeetingTimedPiece.untimed("two"), inProgress: "thr"), track: .callSound, atMs: 1)
+    let lines = a.lines
+    #expect(lines.map(\.kind) == [.confirmed, .provisional])
+    let confirmed = lines[0]
+    #expect(confirmed.text == "One two")
+    #expect(MeetingTimedPiece.text(of: confirmed.pieces) == "One two", "pieces agree with the text")
+    #expect(confirmed.pieces.map(\.span) == [Self.timed("One", 0).span, nil])
+    #expect(lines[1].pieces == MeetingTimedPiece.untimed("thr"), "provisional words carry no timing")
+    #expect(lines.allSatisfy { $0.speakerKey == nil })
+  }
+
+  @Test("correction inside one piece keeps every span, even when it changes the length")
+  func correctionKeepsOwnership() {
+    let pieces = [Self.timed(" teh", 0), Self.timed(" cat", 160)]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "teh", with: "the very")
+    }
+    #expect(fixed.map(\.text) == [" the very", " cat"])
+    #expect(fixed.map(\.span) == pieces.map(\.span))
+  }
+
+  @Test("a correction across a piece boundary shows the corrected words and gives up their timing")
+  func correctionAcrossBoundaryUntimed() {
+    let pieces = [Self.timed(" new", 0), Self.timed(" york", 160)]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "new york", with: "New York")
+    }
+    #expect(MeetingTimedPiece.text(of: fixed) == " New York", "the visible text as a whole correction")
+    #expect(fixed == MeetingTimedPiece.untimed(" New York"), "never credited to one piece's audio")
+  }
+
+  @Test("a correction across a boundary leaves the pieces around it, spans included, untouched")
+  func correctionKeepsUnaffectedPieces() {
+    let pieces = [
+      Self.timed("I flew", 0), Self.timed(" to new", 160), Self.timed(" york", 320),
+      MeetingTimedPiece(text: " today.", span: nil), Self.timed(" Then home.", 480),
+    ]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "new york", with: "New York")
+    }
+    #expect(MeetingTimedPiece.text(of: fixed) == "I flew to New York today. Then home.")
+    #expect(fixed.map(\.text) == ["I flew", " to New York", " today.", " Then home."])
+    #expect(fixed.map(\.span) == [pieces[0].span, nil, nil, pieces[4].span])
+  }
+
+  @Test("an insertion or deletion inside one piece keeps that piece's span")
+  func insertionAndDeletionKeepSpan() {
+    let pieces = [Self.timed("Hello", 0), Self.timed(" wrld", 160), Self.timed(" again", 320)]
+    // Context-dependent rule: only the whole text sees "Hello wrld", so per-piece correction differs.
+    let inserted = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "Hello wrld", with: "Hello world")
+    }
+    #expect(MeetingTimedPiece.text(of: inserted) == "Hello world again")
+    #expect(inserted.map(\.span) == pieces.map(\.span), "the change sits inside one piece")
+    let deleted = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "Hello wrld again", with: "Hello wrl again")
+    }
+    #expect(MeetingTimedPiece.text(of: deleted) == "Hello wrl again")
+    #expect(deleted.map(\.span) == pieces.map(\.span))
+  }
+
+  @Test("two separated cross-boundary corrections give up timing from the first through the last touched piece, as the plan's coverage rule says")
+  func separatedCorrectionsCoverageRule() {
+    let pieces = [
+      Self.timed("I like new", 0), Self.timed(" york", 160), Self.timed(" and the beach in", 320),
+      Self.timed(" los", 480), Self.timed(" angeles.", 640),
+    ]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "new york", with: "New York")
+        .replacingOccurrences(of: "los angeles", with: "Los Angeles")
+    }
+    #expect(MeetingTimedPiece.text(of: fixed) == "I like New York and the beach in Los Angeles.")
+    #expect(fixed.count == 1 && fixed.first?.span == nil, "every piece is touched: no timing guessed")
+  }
+
+  @Test("piece bounds are bytes: a character combining across a piece boundary never breaks the mapping")
+  func combiningMarkAcrossBoundary() {
+    let pieces = [Self.timed("Cafe", 0), Self.timed("\u{0301} cat", 160), Self.timed(" again", 320)]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) {
+      $0.replacingOccurrences(of: "Cafe\u{0301} cat", with: "Cafe\u{0301} dog")
+    }
+    #expect(Array(MeetingTimedPiece.text(of: fixed).utf8) == Array("Cafe\u{0301} dog again".utf8))
+    #expect(fixed.map(\.span) == pieces.map(\.span), "the change sits inside the second piece")
+  }
+
+  @Test("a correction to a canonically equal but different spelling is applied byte for byte")
+  func canonicalSpellingIsBytes() {
+    let decomposed = "Cafe\u{0301}"
+    let composed = "Caf\u{00E9}"
+    let pieces = [Self.timed(decomposed, 0)]
+    let fixed = LiveWordsPieceCorrection.corrected(pieces) { $0 == decomposed ? composed : $0 }
+    #expect(Array(MeetingTimedPiece.text(of: fixed).utf8) == Array(composed.utf8))
+    #expect(fixed.first?.span == pieces[0].span)
+  }
+
+  @Test("queues charge every piece, so many tiny timed pieces cannot slip under a text budget")
+  func pieceCharge() {
+    let tiny = (0..<1_000).map { Self.timed("a", $0 * 160) }
+    #expect(LiveWordsAssembler.charge(of: tiny) == 1_000 * (LiveWordsAssembler.pieceCharge + 1))
+    #expect(LiveWordsAssembler.charge(of: []) == 0)
   }
 }

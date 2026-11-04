@@ -192,7 +192,8 @@ struct MeetingMuteSilenceRealBoundaryTests {
       onEvent: { event in
         switch event {
         // Each update carries only the newly finalized words (a delta), in order.
-        case .update(let done, _):
+        case .update(let pieces, _):
+          let done = MeetingTimedPiece.text(of: pieces)
           updates.withLock { $0 += 1 }
           if !done.isEmpty { finalized.withLock { $0 += ($0.isEmpty ? "" : " ") + done } }
         case .ended(let reason): ended.withLock { $0 = reason }

@@ -34,7 +34,7 @@ struct MeetingLiveWordsPresentationTests {
   }
 
   static let line = LiveWordsAssembler.Line(
-    id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 900, text: "Hello there.")
+    id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 900, text: "Hello there.", pieces: MeetingTimedPiece.untimed("Hello there."), speakerKey: nil)
 
   /// #4325: when this fails, Apple shows a meeting's live words for a Universal choice and the
   /// page does not say why, so the user thinks Universal is running.

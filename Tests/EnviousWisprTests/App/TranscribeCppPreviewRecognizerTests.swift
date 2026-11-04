@@ -526,7 +526,7 @@ struct TranscribeCppPreviewRecognizerTests {
     }
     var finalized: String {
       allEvents.reduce(into: "") { text, event in
-        if case .update(let finalized, _) = event { text += finalized }
+        if case .update(let finalized, _) = event { text += MeetingTimedPiece.text(of: finalized) }
       }
     }
   }
@@ -634,7 +634,7 @@ struct TranscribeCppPreviewRecognizerTests {
       await outputs.until { outputs.finalized.contains("Hello there.") }
     }
     try await Self.step("the cancel", driver) { await session.cancel() }
-    #expect(outputs.allEvents.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(outputs.allEvents.first == .update(finalized: MeetingTimedPiece.untimed(""), inProgress: "Hello there."))
     #expect(outputs.finalized == "Hello there.", "finalized exactly once")
   }
 
@@ -679,7 +679,7 @@ struct TranscribeCppPreviewRecognizerTests {
       await outputs.until { !outputs.allEvents.isEmpty }
     }
     try await Self.step("the cancel", driver) { await session.cancel() }
-    #expect(outputs.allEvents.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(outputs.allEvents.first == .update(finalized: MeetingTimedPiece.untimed(""), inProgress: "Hello there."))
     #expect(driver.loads == 1, "the same session and model, never reloaded")
   }
 
@@ -1007,7 +1007,7 @@ struct TranscribeCppPreviewRecognizerTests {
 
   private static func finalized(_ events: [LiveWordsEvent]) -> String {
     events.reduce(into: "") { text, event in
-      if case .update(let finalized, _) = event { text += finalized }
+      if case .update(let finalized, _) = event { text += MeetingTimedPiece.text(of: finalized) }
     }
   }
 
@@ -1085,7 +1085,7 @@ struct TranscribeCppPreviewRecognizerTests {
     #expect(driver.entered == 0 && received.all.isEmpty, "refused decodes publish nothing")
     admission.allow()
     await Self.within("the first words", driver) { await received.until(1) }
-    #expect(received.all.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(received.all.first == .update(finalized: MeetingTimedPiece.untimed(""), inProgress: "Hello there."))
     try await Self.step("the end", driver) { await session.end() }
     #expect(received.all.last == .ended(.requested))
     #expect(driver.loads == 1)
@@ -1150,7 +1150,7 @@ struct TranscribeCppPreviewRecognizerTests {
     try await Self.step("the feed", driver) { await session.feed(Self.speech) }
     await Self.within("the first words", driver) { await received.until(1) }
     try await Self.step("the end", driver) { await session.end() }
-    #expect(received.all.first == .update(finalized: "", inProgress: "Hello there."))
+    #expect(received.all.first == .update(finalized: MeetingTimedPiece.untimed(""), inProgress: "Hello there."))
     #expect(received.all.last == .ended(.requested))
   }
 

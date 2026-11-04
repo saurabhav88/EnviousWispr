@@ -1136,11 +1136,12 @@ final class LiveWordsBridge: @unchecked Sendable {
         let last = s.entries.last, last.track == track, last.epoch == epoch,
         case .update(let earlier, let replaced) = last.event
       {
-        // Joined as the assembler joins two updates' finals, so a merge never runs words together.
+        // Joined as the assembler joins two updates' finals, so a merge never runs words together
+        // and never merges two pieces' spans (#4355).
         let merged = LiveWordsAssembler.join(earlier, finalized)
         let bytes =
-          used + merged.utf8.count - earlier.utf8.count + inProgress.utf8.count
-          - replaced.utf8.count
+          used + LiveWordsAssembler.charge(of: merged) - LiveWordsAssembler.charge(of: earlier)
+          + inProgress.utf8.count - replaced.utf8.count
         guard bytes <= Self.budgetPerTrack else {
           return Self.overflow(&s, track: track, epoch: epoch, atMs: atMs)
         }
@@ -1177,7 +1178,7 @@ final class LiveWordsBridge: @unchecked Sendable {
   private static func cost(_ event: LiveWordsEvent) -> Int {
     switch event {
     case .update(let finalized, let inProgress):
-      entryCost + finalized.utf8.count + inProgress.utf8.count
+      entryCost + LiveWordsAssembler.charge(of: finalized) + inProgress.utf8.count
     case .discontinuity, .ended: entryCost
     }
   }

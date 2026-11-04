@@ -46,7 +46,8 @@ struct ApplePreviewTranscriptTests {
     }
     func event(_ event: LiveWordsEvent) {
       switch event {
-      case .update(let finalized, let inProgress): append("update[\(finalized)|\(inProgress)]")
+      case .update(let finalized, let inProgress):
+        append("update[\(MeetingTimedPiece.text(of: finalized))|\(inProgress)]")
       case .discontinuity: append("discontinuity")
       case .ended(.requested): append("ended:requested")
       case .ended(.failed(let reason)): append("ended:failed:\(reason)")
@@ -431,7 +432,8 @@ struct ApplePreviewTranscriptTests {
             vocabulary: vocabulary,
             onEvent: { event in
               if case .update(let finalized, let inProgress) = event {
-                shown.update(name, finalized: finalized, inProgress: inProgress)
+                shown.update(
+                  name, finalized: MeetingTimedPiece.text(of: finalized), inProgress: inProgress)
               }
             }))
       }
