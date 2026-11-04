@@ -5586,6 +5586,17 @@
         }
       }
     },
+    "Choose a model to turn on AI Polish for files. Files are still transcribed until you do." : {
+      "comment" : "Transcribe a File, Polish step: under the model menu after an API key is saved and no model is chosen. AI Polish names a feature.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell, um die KI-Nachbearbeitung für Dateien einzuschalten. Bis dahin werden Dateien weiterhin transkribiert."
+          }
+        }
+      }
+    },
     "Choose a model to turn on AI Polish. Dictation still works until you do." : {
       "comment" : "AI Polish, under the model menu after an API key is saved and no model is chosen. AI Polish names a feature.",
       "localizations" : {
@@ -5593,6 +5604,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle ein Modell, um die KI-Nachbearbeitung einzuschalten. Bis dahin funktioniert das Diktieren weiter."
+          }
+        }
+      }
+    },
+    "Choose a model to write meeting summaries." : {
+      "comment" : "EnviousMeet, Summaries tab: under the model menu after an API key is saved and no model is chosen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Modell, um Meeting-Zusammenfassungen zu erstellen."
           }
         }
       }
