@@ -244,7 +244,7 @@ struct LLMModelDiscoveryExclusionTests {
   private func survivingIDs(_ ids: [String]) -> [String] {
     // A fixed display name, never the id: the filter reads the id, and a fixture
     // whose two fields agree cannot tell which one production consulted.
-    LLMModelDiscovery().filterModels(
+    LLMModelDiscovery(cloudModelList: CloudModelListSeed.current).filterModels(
       ids.map { .init(id: $0, displayName: "Text model", isRemote: false) }
     ).map(\.id)
   }
@@ -295,7 +295,7 @@ struct LLMModelReleaseDateTests {
       ["id": "gpt-4.1-nano", "created": true, "object": "model"],
       ["id": "gpt-5-nano", "created": Double.infinity, "object": "model"],
       ["id": "gpt-4.1", "created": 0, "object": "model"],
-    ])
+    ], list: CloudModelListSeed.current)
     let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
     let dated = try #require(byID["gpt-4.1-mini"])
     #expect(Self.row(dated, .openAI).releaseDate == Date(timeIntervalSince1970: 1_744_316_542))
@@ -347,7 +347,7 @@ struct LLMModelReleaseDateTests {
   @Test("the filter keeps a surviving row's date")
   func filterKeepsDate() {
     let date = Date(timeIntervalSince1970: 1_744_316_542)
-    let kept = LLMModelDiscovery().filterModels([
+    let kept = LLMModelDiscovery(cloudModelList: CloudModelListSeed.current).filterModels([
       .init(id: "gpt-4.1-mini", displayName: "G", isRemote: false, releaseDate: date),
       .init(id: "gpt-4o-audio-preview", displayName: "A", isRemote: false, releaseDate: date),
     ])

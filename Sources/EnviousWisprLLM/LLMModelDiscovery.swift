@@ -7,8 +7,13 @@ import Foundation
 
 /// Discovers available LLM models from provider APIs and probes their availability.
 public struct LLMModelDiscovery: Sendable {
+  /// #4353 D6: the cloud model list this discovery run captured. Endpoint eligibility and the
+  /// Claude probe's request shape read it, so one run asks one set of rules.
+  private let cloudModelList: CloudModelList?
 
-  public init() {}
+  public init(cloudModelList: CloudModelList?) {
+    self.cloudModelList = cloudModelList
+  }
 
   /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
   /// the native-audio Live models) that advertise `generateContent` and so pass
@@ -144,10 +149,12 @@ public struct LLMModelDiscovery: Sendable {
   // keeps the row, undated.
 
   /// OpenAI `/v1/models` `data` rows: `created` is Unix seconds.
-  static func openAICandidates(fromModels models: [[String: Any]]) -> [DiscoveryCandidate] {
+  static func openAICandidates(
+    fromModels models: [[String: Any]], list: CloudModelList?
+  ) -> [DiscoveryCandidate] {
     models.compactMap { model -> DiscoveryCandidate? in
       guard let id = model["id"] as? String else { return nil }
-      guard isOpenAIChatCompletionCandidate(id) else { return nil }
+      guard isOpenAIChatCompletionCandidate(id, list: list) else { return nil }
       let displayName = id.replacingOccurrences(of: "-", with: " ")
         .split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(
           separator: " ")
@@ -403,7 +410,7 @@ public struct LLMModelDiscovery: Sendable {
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     guard let models = json?["data"] as? [[String: Any]] else { return [] }
-    return Self.openAICandidates(fromModels: models)
+    return Self.openAICandidates(fromModels: models, list: cloudModelList)
   }
 
   /// Whether an OpenAI model id belongs in the picker's candidate list.
@@ -412,7 +419,7 @@ public struct LLMModelDiscovery: Sendable {
   /// families (-pro, codex) never appear as permanently locked rows (#1330).
   /// Shared alias ("latest") and version-duplicate ("-001") filtering stays
   /// in `filterModels` — it applies to every provider, not just OpenAI.
-  static func isOpenAIChatCompletionCandidate(_ modelID: String) -> Bool {
+  static func isOpenAIChatCompletionCandidate(_ modelID: String, list: CloudModelList?) -> Bool {
     let id = modelID.lowercased()
     // Only chat-capable text models (gpt- and o- prefixes).
     guard
@@ -422,7 +429,7 @@ public struct LLMModelDiscovery: Sendable {
     // Skip non-text modalities.
     let skipPatterns = ["realtime", "audio", "search", "transcribe"]
     if skipPatterns.contains(where: { id.contains($0) }) { return false }
-    return LLMProvider.openAI.modelCapabilities(model: id).supportsChatCompletions
+    return LLMProvider.openAI.modelCapabilities(model: id, list: list).supportsChatCompletions
   }
 
   private func probeOpenAI(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -538,7 +545,7 @@ public struct LLMModelDiscovery: Sendable {
       return .inconclusive
     }
     let body = ClaudeConnector.makeRequestBody(
-      model: modelID, maxTokens: 5, system: nil, userText: "Hi")
+      model: modelID, list: cloudModelList, maxTokens: 5, system: nil, userText: "Hi")
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"

@@ -3,6 +3,7 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprPipeline
 
@@ -88,7 +89,7 @@ struct LLMPolishReentrancyTests {
     let started = AsyncStream.makeStream(of: Void.self)
     let cont = started.continuation
     let gate = ReleaseGate()
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       GatePolisher(
         onStart: {
           cont.yield(())
@@ -145,7 +146,7 @@ struct LLMPolishReentrancyTests {
 
     let gate = ReleaseGate()
     await gate.release()  // no mutation: let polish run straight through
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       GatePolisher(onStart: {}, gate: gate, result: Self.polishedSentence)
     }
 
@@ -156,12 +157,78 @@ struct LLMPolishReentrancyTests {
     #expect(ctx.llmModel == "gpt-4o-mini")
   }
 
+  /// #4353 D6: what the step's polisher received for one process() call.
+  @MainActor private final class ListSeen {
+    var factoryLists: [String?] = []
+    /// Written by the polisher off the main actor, before the polish returns.
+    let thinking = OSAllocatedUnfairLock<[ResolvedThinking?]>(initialState: [])
+  }
+
+  private struct ConfigRecordingPolisher: TranscriptPolisher {
+    let record: @Sendable (LLMProviderConfig) -> Void
+    let onStart: @Sendable () -> Void
+    let gate: ReleaseGate
+    let result: String
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      record(config)
+      onStart()
+      await gate.wait()
+      return LLMResult(polishedText: result)
+    }
+  }
+
+  private static func geminiList(_ thinking: String) throws -> CloudModelList {
+    try CloudModelList.validated(
+      from: Data(
+        #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"gemini","id":"gemini-x","recommended":false,"hidden":false,"request":{"geminiThinking":\#(thinking)},"supportsChatCompletions":false,"allowsFileBatch":true}]}"#
+          .utf8)
+    ).get()
+  }
+
+  @Test("a list refresh during a polish never reaches that request; the next one uses it")
+  func heldOperationKeepsItsCloudModelList() async throws {
+    let held = try Self.geminiList(#"{"level":"low"}"#)
+    let refreshed = try Self.geminiList(#"{"budget":0}"#)
+    let step = LLMPolishStep(keychainManager: KeychainManager())
+    step.llmProvider = .gemini
+    step.llmModel = "gemini-x"
+    step.cloudModelList = held
+
+    let seen = ListSeen()
+    let started = AsyncStream.makeStream(of: Void.self)
+    let gate = ReleaseGate()
+    step.makePolisher = { _, _, _, list in
+      seen.factoryLists.append(list?.revision)
+      return ConfigRecordingPolisher(
+        record: { [thinking = seen.thinking] config in
+          thinking.withLock { $0.append(config.thinking) }
+        },
+        onStart: { started.continuation.yield(()) }, gate: gate,
+        result: Self.polishedSentence)
+    }
+
+    let context = TextProcessingContext(text: Self.inputSentence, language: "en")
+    let task = Task { @MainActor in try await step.process(context) }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    step.cloudModelList = refreshed  // the holder refreshed while the request is in flight
+    await gate.release()
+    _ = try await task.value
+    _ = try await step.process(context)
+
+    #expect(seen.factoryLists == [held.revision, refreshed.revision])
+    #expect(seen.thinking.withLock { $0 } == [.level("low"), .budget(0)])
+  }
+
   @Test("nil polisher factory throws providerUnavailable (so the runner keeps raw text)")
   func nilFactoryThrowsProviderUnavailable() async throws {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
-    step.makePolisher = { _, _, _ in nil }
+    step.makePolisher = { _, _, _, _ in nil }
 
     let context = TextProcessingContext(text: Self.inputSentence, language: "en")
     do {

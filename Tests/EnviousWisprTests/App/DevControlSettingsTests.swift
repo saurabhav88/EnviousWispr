@@ -1305,7 +1305,7 @@
       for (key, provider, surface) in routes {
         let (_, cache, settings) = Self.fixture()
         let discovery = LLMModelDiscoveryCoordinator(
-          keychainManager: KeychainManager(), cacheDefaults: cache)
+          keychainManager: KeychainManager(), cacheDefaults: cache, discoverModels: { _, _ in [] })
         discovery.loadCachedModels(for: .claude)
 
         let providerKey: SettingsManager.SettingKey =
@@ -1414,7 +1414,7 @@
           ]),
           forKey: "cachedModels_gemini")
         let discovery = LLMModelDiscoveryCoordinator(
-          keychainManager: KeychainManager(), cacheDefaults: cache)
+          keychainManager: KeychainManager(), cacheDefaults: cache, discoverModels: { _, _ in [] })
         var context = Self.context()
         context.modelCatalog = {
           .init(provider: discovery.stateProvider, models: discovery.discoveredModels)

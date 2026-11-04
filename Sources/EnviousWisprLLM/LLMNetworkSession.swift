@@ -192,7 +192,8 @@ public final class LLMNetworkSession: Sendable {
   /// decision lives here, with the state that informs it, rather than being
   /// duplicated at the three call sites.
   public func preWarmModel(
-    provider: LLMProvider, model: String, keychainManager: KeychainManager
+    provider: LLMProvider, model: String, keychainManager: KeychainManager,
+    cloudModelList: CloudModelList?
   ) {
     // #2093: FIRST, before key lookup, request construction, state mutation or
     // telemetry. A Gemini caller must leave this function having touched
@@ -209,7 +210,7 @@ public final class LLMNetworkSession: Sendable {
 
     guard
       let request = buildWarmupRequest(
-        provider: provider, model: model, apiKey: key
+        provider: provider, model: model, apiKey: key, cloudModelList: cloudModelList
       )
     else { return }
 
@@ -409,8 +410,10 @@ public final class LLMNetworkSession: Sendable {
   /// fix for it.
   static let openAIWarmupMaxCompletionTokens = 16
 
+  /// `cloudModelList` is the list the caller's warm-up operation captured (#4353 D6); only the
+  /// Claude body reads it, for its request shape.
   func buildWarmupRequest(
-    provider: LLMProvider, model: String, apiKey: String
+    provider: LLMProvider, model: String, apiKey: String, cloudModelList: CloudModelList?
   ) -> URLRequest? {
     switch provider {
     case .gemini:
@@ -453,7 +456,7 @@ public final class LLMNetworkSession: Sendable {
       request.setValue("application/json", forHTTPHeaderField: "content-type")
       request.timeoutInterval = 5
       let body = ClaudeConnector.makeRequestBody(
-        model: model, maxTokens: 1, system: nil, userText: ".")
+        model: model, list: cloudModelList, maxTokens: 1, system: nil, userText: ".")
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
       return request
 

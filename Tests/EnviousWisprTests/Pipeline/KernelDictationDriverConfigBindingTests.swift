@@ -102,6 +102,52 @@ import Testing
       // No equality on PolishInstructions to assert further.
     }
 
+    /// #4353 D6: a take polishes under the cloud model list it started with. The start
+    /// dispatch reads it once; a refresh during the take and the stop toggle change nothing;
+    /// the next take reads the refreshed list.
+    @Test("a take captures the cloud model list at its start and keeps it until the next take")
+    func takeCapturesCloudModelListAtStart() async throws {
+      @MainActor final class Box {
+        var list: CloudModelList?
+        var reads = 0
+      }
+      func list(_ id: String) throws -> CloudModelList {
+        try CloudModelList.validated(
+          from: Data(
+            #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"claude","id":"\#(id)","recommended":false,"hidden":false,"request":{"claudeShape":"effortLow"},"supportsChatCompletions":false,"allowsFileBatch":true}]}"#
+              .utf8)
+        ).get()
+      }
+      let fx = makeFixture()
+      let box = Box()
+      fx.driver.captureCloudModelList = {
+        box.reads += 1
+        return box.list
+      }
+      let first = try list("claude-first")
+      let refreshed = try list("claude-refreshed")
+      box.list = first
+
+      try await fx.driver.handle(event: .toggleRecording(.testDefault(llmProvider: .claude)))
+      #expect(fx.steps.llmPolish.cloudModelList?.revision == first.revision)
+      #expect(box.reads == 1)
+
+      // The holder refreshes mid-take, then the user stops: the take keeps its list.
+      box.list = refreshed
+      fx.kernel.testForceState(.live)
+      await drain()
+      try await fx.driver.handle(event: .toggleRecording(.testDefault(llmProvider: .claude)))
+      #expect(fx.steps.llmPolish.cloudModelList?.revision == first.revision)
+      #expect(box.reads == 1, "a stop toggle never reads the list")
+
+      // The next take reads the refreshed list.
+      fx.kernel.testForceConclude(.completed)
+      await drain()
+      try await fx.driver.handle(event: .toggleRecording(.testDefault(llmProvider: .claude)))
+      #expect(fx.steps.llmPolish.cloudModelList?.revision == refreshed.revision)
+      #expect(box.reads == 2)
+    }
+
     // MARK: 2. currentSessionConfig clears on each ending outcome (#1548 D1)
     // The ending category moved onto `recordingOutcome`; a conclusion returns
     // the FSM to `.idle`, which is the "no in-flight session" state that clears

@@ -69,7 +69,7 @@ struct LLMWarmupGateTests {
   func geminiLeavesNoState() {
     let session = freshSession()
     session.preWarmModel(
-      provider: .gemini, model: "gemini-3.6-flash", keychainManager: KeychainManager())
+      provider: .gemini, model: "gemini-3.6-flash", keychainManager: KeychainManager(), cloudModelList: CloudModelListSeed.current)
     #expect(session.claimWarmupSlot(provider: .gemini, model: "gemini-3.6-flash", now: Date()))
   }
 

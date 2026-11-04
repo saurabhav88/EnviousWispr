@@ -38,7 +38,7 @@ struct CloudModelPreflightTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = provider
     step.llmModel = model
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       spies.factoryCalls += 1
       return CannedPolisher()
     }
@@ -180,7 +180,7 @@ struct CloudModelPreflightTests {
   func audioModelRejectionIsNamed() async throws {
     let spies = Spies()
     let audio = makeStep(.gemini, model: "gemini-3.5-transcribe", spies)
-    audio.makePolisher = { _, _, _ in BadRequestPolisher() }
+    audio.makePolisher = { _, _, _, _ in BadRequestPolisher() }
     let take = PolishSetupTakeContext(
       provider: .gemini, model: "gemini-3.5-transcribe", configurationRevision: 1, episode: nil)
     let result = try await run(audio, spies, take: take)
@@ -190,7 +190,7 @@ struct CloudModelPreflightTests {
     #expect(result.context.text == Self.longTranscript)
 
     let ordinary = makeStep(.gemini, model: "gemini-3.7-flash", spies)
-    ordinary.makePolisher = { _, _, _ in BadRequestPolisher() }
+    ordinary.makePolisher = { _, _, _, _ in BadRequestPolisher() }
     let plain = try await run(ordinary, spies)
     #expect(plain.polishNotice?.text != "gemini-3.7-flash no longer works. Select a new cloud model.")
     #expect(plain.cloudSetupOutcome == nil)
@@ -201,7 +201,7 @@ struct CloudModelPreflightTests {
   func goneModelIsNamed() async throws {
     let spies = Spies()
     let step = makeStep(.openAI, model: "gpt-x", spies)
-    step.makePolisher = { _, _, _ in GonePolisher() }
+    step.makePolisher = { _, _, _, _ in GonePolisher() }
     let result = try await run(step, spies)
     #expect(result.polishNotice?.leadIn == .failed)
     #expect(result.polishNotice?.text == "gpt-x no longer works. Select a new cloud model.")
@@ -210,7 +210,7 @@ struct CloudModelPreflightTests {
     // Ollama's own missing model keeps its own sentence.
     let local = makeStep(.ollama, model: "llama3.2", spies)
     local.ollamaReadinessProbe = { _ in .ready(facts: OllamaModelFacts(isRemote: false, thinks: false)) }
-    local.makePolisher = { _, _, _ in GonePolisher() }
+    local.makePolisher = { _, _, _, _ in GonePolisher() }
     let ollama = try await run(local, spies)
     #expect(ollama.polishNotice?.text != "llama3.2 no longer works. Select a new cloud model.")
   }

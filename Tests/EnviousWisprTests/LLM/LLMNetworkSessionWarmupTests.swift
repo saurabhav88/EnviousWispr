@@ -37,7 +37,7 @@ struct LLMNetworkSessionWarmupTests {
 
   @Test func claudeWarmupRequestCarriesAnthropicHeaders() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test-key")
+      provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test-key", cloudModelList: CloudModelListSeed.current)
     #expect(request?.url?.absoluteString == "https://api.anthropic.com/v1/messages")
     #expect(request?.value(forHTTPHeaderField: "x-api-key") == "sk-ant-test-key")
     #expect(request?.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
@@ -49,14 +49,14 @@ struct LLMNetworkSessionWarmupTests {
 
   @Test func openAIWarmupRequestCarriesBearerHeader() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-openai-test-key")
+      provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-openai-test-key", cloudModelList: CloudModelListSeed.current)
     #expect(request?.value(forHTTPHeaderField: "Authorization") == "Bearer sk-openai-test-key")
     #expect(request?.value(forHTTPHeaderField: "x-api-key") == nil)
   }
 
   @Test func geminiWarmupRequestCarriesGoogleHeader() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .gemini, model: "gemini-2.0-flash", apiKey: "gemini-test-key")
+      provider: .gemini, model: "gemini-2.0-flash", apiKey: "gemini-test-key", cloudModelList: CloudModelListSeed.current)
     #expect(request?.value(forHTTPHeaderField: "x-goog-api-key") == "gemini-test-key")
     #expect(request?.value(forHTTPHeaderField: "Authorization") == nil)
   }
@@ -78,7 +78,7 @@ struct LLMNetworkSessionWarmupTests {
   /// one, so a revert to any sub-cliff literal turns this red.
   @Test func openAIWarmupBodyCapClearsTheReasoningModelFloor() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-test")
+      provider: .openAI, model: "gpt-4o-mini", apiKey: "sk-test", cloudModelList: CloudModelListSeed.current)
     let cap = bodyJSON(request)?["max_completion_tokens"] as? Int
     #expect(cap == LLMNetworkSession.openAIWarmupMaxCompletionTokens)
     // Independent of the constant, so this cannot pass by restating the
@@ -97,13 +97,13 @@ struct LLMNetworkSessionWarmupTests {
     let gemini = LLMNetworkSession.makeGeminiWarmupRequestBody()
     #expect((gemini["generationConfig"] as? [String: Any])?["maxOutputTokens"] as? Int == 1)
     let claude = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test")
+      provider: .claude, model: "claude-haiku-4-5", apiKey: "sk-ant-test", cloudModelList: CloudModelListSeed.current)
     #expect(bodyJSON(claude)?["max_tokens"] as? Int == 1)
   }
 
   @Test func nonCloudProviderBuildsNoWarmupRequest() {
     let request = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .ollama, model: "llama3.2", apiKey: "unused")
+      provider: .ollama, model: "llama3.2", apiKey: "unused", cloudModelList: CloudModelListSeed.current)
     #expect(request == nil)
   }
 

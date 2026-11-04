@@ -55,7 +55,7 @@ struct CheckerSelectionPathTests {
     for choice in choices {
       var calls: [(LLMProvider, String?)] = []
       let processor = RecoveryTextProcessor(
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), cloudModelList: nil,
         checkerSelectionProvider: { provider, language in
           calls.append((provider, language))
           return choice
@@ -79,7 +79,7 @@ struct CheckerSelectionPathTests {
           calls.append((provider, language))
           return choice
         })
-      runner.freeze(settings: snapshot(backend: .whisper), vocabulary: vocabulary)
+      runner.freeze(settings: snapshot(backend: .whisper), vocabulary: vocabulary, cloudModelList: nil)
       let result = try await runner.process(part: spoken)
       #expect(result.text.contains("Tuist") == (choice.checker != nil))
       #expect(calls.count == 1)
@@ -98,7 +98,7 @@ struct CheckerSelectionPathTests {
           ? .init(absence: .adapterDownloading)
           : .init(checker: Approver(), identity: "test_ready")
       })
-    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     let first = try await runner.process(part: spoken)
     let second = try await runner.process(part: spoken)
     #expect(first.text == second.text)
@@ -119,7 +119,7 @@ struct CheckerSelectionPathTests {
       })
     runner.freeze(
       settings: snapshot(backend: .whisper, languageMode: .auto, engineDetectsLanguage: true),
-      vocabulary: vocabulary)
+      vocabulary: vocabulary, cloudModelList: nil)
     let english = try await runner.process(part: spoken, engineLanguage: "en")
     let spanish = try await runner.process(part: spoken, engineLanguage: "es")
     let englishAgain = try await runner.process(part: spoken, engineLanguage: "en")
@@ -214,7 +214,7 @@ struct CheckerSelectionPathTests {
   func frozenProvider() {
     let runner = FileImportRunner(keychainManager: KeychainManager())
     #expect(runner.frozenLLMProvider == nil)
-    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     #expect(runner.frozenLLMProvider == .egOne)
   }
 
@@ -230,7 +230,7 @@ struct CheckerSelectionPathTests {
         held = checker
         return .init(checker: checker, identity: "test_tracked")
       })
-    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     let first = try await runner.process(part: spoken)
     #expect(first.text.contains("Tuist"))
     #expect(held != nil, "fixture: between parts the run's cache holds the checker")
@@ -261,11 +261,11 @@ struct CheckerSelectionPathTests {
         }
         return .init(checker: Approver(), identity: "test_ready")
       })
-    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     let part = Task { try await runner.process(part: spoken) }
     #expect(await arrives(entered, within: 5), "fixture: the first selection never started")
     if newerFreeze {
-      runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+      runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     } else {
       runner.releaseCheckerSelections()
     }
@@ -291,7 +291,7 @@ struct CheckerSelectionPathTests {
           checker: TrackedChecker(gate: gate, onDeinit: { goneSignal.yield() }),
           identity: "test_tracked")
       })
-    runner.freeze(settings: snapshot(), vocabulary: vocabulary)
+    runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     // The answer is held past the step's deadline, so the part finishes unchanged.
     let result = try await runner.process(part: spoken)
     #expect(result.text.contains("Tuist") == false, "fixture: the held answer must miss its deadline")

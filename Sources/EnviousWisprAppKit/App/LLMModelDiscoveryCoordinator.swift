@@ -219,7 +219,8 @@ final class LLMModelDiscoveryCoordinator {
   private let savedKeyPresence: SavedKeyPresence?
 
   /// The network call, injectable so a test drives every publication path below with a
-  /// scripted answer instead of a provider. Production takes `LLMModelDiscovery`.
+  /// scripted answer instead of a provider. Required: production passes a closure that builds
+  /// `LLMModelDiscovery` around the cloud model list read once per discovery run (#4353 D6).
   private let discoverModels: @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
 
   init(
@@ -227,10 +228,7 @@ final class LLMModelDiscoveryCoordinator {
     savedKeyPresence: SavedKeyPresence? = nil,
     credentialAccess: CredentialAccessLane = .live,
     validationEmitter: ValidationEmitter? = nil,
-    discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo] = {
-      provider, apiKey in
-      try await LLMModelDiscovery().discoverModels(provider: provider, apiKey: apiKey)
-    }
+    discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
   ) {
     self.keychainManager = keychainManager
     self.credentialAccess = credentialAccess

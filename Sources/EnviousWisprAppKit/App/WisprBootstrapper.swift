@@ -393,10 +393,15 @@ package final class WisprBootstrapper {
     }
 
     let savedKeyPresence = SavedKeyPresence()
-    let llmDiscovery = LLMModelDiscoveryCoordinator(
-      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence)
     // #4353 D6: reads the local copies now (a few milliseconds); the network waits for launch.
     let cloudModelList = CloudModelListHolder.live()
+    let llmDiscovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence,
+      discoverModels: { [cloudModelList] provider, apiKey in
+        // One read per discovery run: the probes and filters of this run share one list.
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .discoverModels(provider: provider, apiKey: apiKey)
+      })
 
     let transcriptStore = TranscriptStore()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
@@ -1423,6 +1428,7 @@ package final class WisprBootstrapper {
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
+      currentCloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       currentVocabulary: { [customWordsCoordinator] in
         LanePartitioner.split(
           customWordsCoordinator.customWords,
@@ -1960,6 +1966,7 @@ package final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
@@ -2265,7 +2272,10 @@ package final class WisprBootstrapper {
         [settings, customWordsPropagator, localPolishRuntimes, kernelDriver, whisperKernelDriver]
         in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
-        fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        // #4353 D6: the list is captured here, with the settings, for the whole run.
+        fileImportRunner.freeze(
+          settings: snapshot, vocabulary: customWordsPropagator.corrector,
+          cloudModelList: cloudModelList.snapshot?.list)
         // #3289: Start and Clean it again both come through here, after the claim; preload the word
         // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
         // it loading or ready. Opening the page or a refused claim never reaches this line.
@@ -2627,6 +2637,7 @@ package final class WisprBootstrapper {
         Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
       },
       keychain: keychainManager,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       detectedStartWanted: { [meetingBox] in
         meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
@@ -2972,6 +2983,12 @@ package final class WisprBootstrapper {
       })
     kernelDriver.polishSetupHooks = polishSetupTakeHooks
     whisperKernelDriver.polishSetupHooks = polishSetupTakeHooks
+    // #4353 D6: each take reads the cloud model list once, at its start.
+    let captureCloudModelList: @MainActor () -> CloudModelList? = { [cloudModelList] in
+      cloudModelList.snapshot?.list
+    }
+    kernelDriver.captureCloudModelList = captureCloudModelList
+    whisperKernelDriver.captureCloudModelList = captureCloudModelList
     self.polishSetup = PolishSetupWiring(
       savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard,
       summary: SummarySetupMonitorHolder(monitor: summarySetupMonitor))

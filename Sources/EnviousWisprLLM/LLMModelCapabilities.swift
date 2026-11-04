@@ -26,9 +26,9 @@ public struct LLMModelCapabilities: Sendable, Equatable {
   /// bit is the #1330 conflation this type exists to prevent. #1831 collapsed
   /// only the pair, never the dialect.
   ///
-  /// Keyed on EXACT model ids, never prefixes. A `gemini-3` prefix row would
-  /// silently capture a future `gemini-3.7-flash` we have never tested and send
-  /// it an unverified value; with exact ids anything unknown reaches
+  /// Keyed on EXACT model ids (a cloud model list row, #4353 D6), never prefixes. A
+  /// `gemini-3` prefix row would silently capture a future `gemini-3.7-flash` we have never
+  /// tested and send it an unverified value; with exact ids anything unknown reaches
   /// `.unsupported`, which sends no thinking field at all. That shape succeeded
   /// on all eleven working Gemini models measured on 2026-07-28/29; future
   /// models are unverified by construction, so it is the safest first attempt
@@ -37,7 +37,8 @@ public struct LLMModelCapabilities: Sendable, Equatable {
     /// Send no thinking parameter. Covers two different situations: providers
     /// that have no thinking control in the pipeline's sense (Claude takes its thinking
     /// part from `claudeRequestShape` instead, #3425; Ollama, Apple
-    /// Intelligence, EG-1 have none) and Gemini/OpenAI ids absent from the tables below.
+    /// Intelligence, EG-1 have none), Gemini ids the cloud model list does not name, and
+    /// list rows that say `"none"` or `"omit"`.
     /// What the provider then does is its own business — Gemini 3 Flash, for
     /// instance, thinks by default and is measurably slower for it.
     case unsupported
@@ -116,15 +117,86 @@ public struct LLMModelCapabilities: Sendable, Equatable {
 }
 
 extension LLMProvider {
-  /// Resolve the request-shape capability profile for `model`.
+  /// Resolve the request-shape capability profile for `model` from one operation's captured
+  /// cloud model list (#4353 D6).
   ///
-  /// Static knowledge, deliberately: OpenAI publishes no machine-readable
-  /// per-model parameter rules (their models endpoint returns IDs only), so
-  /// a "live rules lookup" cannot exist. The runtime containment for this
-  /// table going stale is `OpenAIConnector`'s unsupported-param
-  /// strip-and-retry, which self-heals a mismatch in one extra round-trip
-  /// and memoizes it for the rest of the process.
-  public func modelCapabilities(model: String) -> LLMModelCapabilities {
+  /// For a cloud provider: the list row for the exact id, else the row for its dated base
+  /// (`ProviderModelID.withoutDateSnapshot`), else the compiled fallback for unlisted ids. A
+  /// listed row decides every field, so a listed `false` or "no thinking" never falls through
+  /// to a heuristic. `list` is required: every caller names the snapshot its operation
+  /// captured, and `nil` (no list was available) means every id is unlisted. The request keeps
+  /// the original id; only this lookup uses the base.
+  ///
+  /// Static knowledge, deliberately: OpenAI publishes no machine-readable per-model parameter
+  /// rules (their models endpoint returns IDs only). The runtime containment for a stale row
+  /// is `OpenAIConnector`'s unsupported-param strip-and-retry, which self-heals a mismatch in
+  /// one extra round-trip and memoizes it for the rest of the process.
+  public func modelCapabilities(model: String, list: CloudModelList?) -> LLMModelCapabilities {
+    if let row = listedRow(model: model, list: list) {
+      return Self.capabilities(of: row)
+    }
+    return unlistedCapabilities(model: model)
+  }
+
+  /// Whether file import may send this model several parts in one request (#2905). A listed
+  /// row answers with its `allowsFileBatch`; an unlisted id uses the compiled fallback below.
+  public func allowsFileBatch(model: String, list: CloudModelList?) -> Bool {
+    if let row = listedRow(model: model, list: list) { return row.allowsFileBatch }
+    // #2905 prepared-input checks found a lost speaker-leading word in GPT-4o mini
+    // batches and a changed source noun in Haiku 4.5, retained by matched ordinary
+    // requests. Keep these families, including dated aliases, on individual calls:
+    // valid section tags alone cannot establish that cleanup preserved meaning.
+    // Prefixes on purpose, so any suffix (dated or not) of an unlisted id inherits.
+    let id = model.lowercased()
+    switch self {
+    case .openAI: return !id.hasPrefix("gpt-4o-mini")
+    case .claude: return !id.hasPrefix("claude-haiku-4-5")
+    case .gemini: return true
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
+  }
+
+  /// The list row that decides `model` for this provider: exact id first, then the dated
+  /// base. Nil for a non-cloud provider, a missing list, or an unlisted id.
+  public func listedRow(model: String, list: CloudModelList?) -> CloudModelList.Row? {
+    guard let list, [.openAI, .gemini, .claude].contains(self) else { return nil }
+    let id = model.lowercased()
+    func row(_ candidate: String) -> CloudModelList.Row? {
+      list.models.first { $0.provider == self && $0.id == candidate }
+    }
+    if let exact = row(id) { return exact }
+    return ProviderModelID.withoutDateSnapshot(id).flatMap(row)
+  }
+
+  private static func capabilities(of row: CloudModelList.Row) -> LLMModelCapabilities {
+    switch row.request {
+    case .openAI(let effort, let temperature):
+      let thinking: LLMModelCapabilities.ThinkingControl =
+        switch effort {
+        case .omit: .unsupported
+        case .none, .low, .minimal: .effort(effort.rawValue)
+        }
+      return LLMModelCapabilities(
+        thinkingControl: thinking, temperaturePolicy: temperature,
+        supportsChatCompletions: row.supportsChatCompletions)
+    case .gemini(let geminiThinking):
+      let thinking: LLMModelCapabilities.ThinkingControl =
+        switch geminiThinking {
+        case .none: .unsupported
+        case .budget(let budget): .budget(budget)
+        case .level(let level): .level(level)
+        }
+      return LLMModelCapabilities(
+        thinkingControl: thinking, temperaturePolicy: .include, supportsChatCompletions: false)
+    case .claude(let shape):
+      return LLMModelCapabilities(
+        thinkingControl: .unsupported, temperaturePolicy: .omit, supportsChatCompletions: false,
+        claudeRequestShape: shape)
+    }
+  }
+
+  /// The compiled rule for an id the list does not name (plan D6 decision 4).
+  private func unlistedCapabilities(model: String) -> LLMModelCapabilities {
     let id = model.lowercased()
 
     switch self {
@@ -144,16 +216,24 @@ extension LLMProvider {
 
       let isResponsesOnly = id.contains("codex") || id.contains("-pro")
 
+      // `low` is what every user has always received for an unprobed reasoning id: it was
+      // the Deep-reasoning toggle's OFF value, the toggle shipped OFF by default (#1831),
+      // and the prior resolver sent it before the toggle existed (#1330).
       return LLMModelCapabilities(
-        thinkingControl: isReasoning
-          ? .effort(LLMModelCapabilities.openAIReasoningEffort(id)) : .unsupported,
+        thinkingControl: isReasoning ? .effort("low") : .unsupported,
         temperaturePolicy: isReasoning ? .omit : .include,
         supportsChatCompletions: !isResponsesOnly
       )
 
     case .gemini:
+      // Deliberately NOT prefix-matched. `gemini-3` would capture an untested future id and
+      // hand it an unverified value. Unlisted ids send no thinking field — a shape that
+      // succeeded on all eleven working Gemini models measured on 2026-07-28/29. Future
+      // models are unverified by construction, so that is the safest first attempt, not a
+      // guarantee. Note the Gemini 3 default is `medium`: an unlisted Gemini 3 id thinks
+      // by default and is billed for it until a list row is added.
       return LLMModelCapabilities(
-        thinkingControl: LLMModelCapabilities.geminiThinkingControl(id),
+        thinkingControl: .unsupported,
         temperaturePolicy: .include,
         supportsChatCompletions: false
       )
@@ -166,11 +246,12 @@ extension LLMProvider {
       // `temperature`, including 0, with an HTTP 400 — the same
       // unconditional-omit shape #1330 established for OpenAI's reasoning
       // family, applied here so a future catalog model doesn't silently break.
+      // Everything unlisted keeps `thinking: disabled`, today's body.
       return LLMModelCapabilities(
         thinkingControl: .unsupported,
         temperaturePolicy: .omit,
         supportsChatCompletions: false,
-        claudeRequestShape: LLMModelCapabilities.claudeShape(forModel: id)
+        claudeRequestShape: .thinkingDisabled
       )
 
     // #2649: `.s1Mini` joins this arm rather than getting one of its own. The
@@ -189,171 +270,66 @@ extension LLMProvider {
   }
 }
 
-extension LLMModelCapabilities {
-  /// Gemini's thinking dialect, keyed on EXACT model ids (#1770).
-  ///
-  /// Every value here was verified against the live API on 2026-07-28/29 by
-  /// issuing the real request shape; none is inferred from documentation, which
-  /// is wrong in both directions (it claims Gemini 3 Flash cannot disable
-  /// thinking — `minimal` measurably spends zero thinking tokens — and it lists
-  /// `gemini-3.1-flash-lite-preview` as withdrawn when it returns 200).
-  ///
-  /// Deliberately NOT prefix-matched. `gemini-3` would capture an untested
-  /// future id and hand it an unverified value. Unlisted ids fall through to
-  /// `.unsupported`, which sends no thinking field — a shape that succeeded on
-  /// all eleven working Gemini models measured on 2026-07-28/29. Future models
-  /// are unverified by construction, so that is the safest first attempt, not a
-  /// guarantee; an unlisted model also loses the Deep-reasoning toggle until a
-  /// row is added here.
-  ///
-  /// Every value below is the one the Deep-reasoning toggle sent in its OFF
-  /// position, which was the shipped default, so this table is byte-identical
-  /// on the wire for every user who never flipped it. The `deep:` half was
-  /// removed by #1831 after #1832 measured it. Scope matters and is easy to
-  /// overstate: 100 `topic_shift` cases from `type_b_parakeet`, NOT the
-  /// 1,462-case `sealed_v1` run that chose this model. Pass rate 57.0 / 58.0 /
-  /// 61.0% for low / medium / high, McNemar exact two-sided p=0.42 for low vs
-  /// high, so the nominal edge is not distinguishable from chance at n=100;
-  /// p90 2.83x. CRITICAL failures moved the other way, 1 -> 2 -> 3. Table:
-  /// `benchmark-results/eval/runs/1832-gemini-thinking-topicshift-2026-08-23/`.
-  fileprivate static func geminiThinkingControl(_ id: String) -> ThinkingControl {
-    switch id {
-    // Gemini 3 Flash tier: `minimal` returns 200 and spends 0 thinking tokens.
-    case "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
-      "gemini-3-flash-preview":
-      return .level("minimal")
-
-    // 3.7 Flash sits in the Pro tier's shape despite the Flash name: `minimal`
-    // -> 400 "Thinking level MINIMAL is not supported for this model", verified
-    // live 2026-08-16 and confirmed against Google's per-model table (3.7 Flash
-    // accepts low/medium/high; 3.6 Flash still accepts minimal). It is the first
-    // Flash-tier id that cannot reach zero thinking, so it must NOT join the
-    // Flash `case` above — that would send `minimal` and 400 every request.
-    //
-    // This row is load-bearing for cost, not just correctness. An unlisted id
-    // falls through to `.unsupported`, which sends no thinking field, and the
-    // Gemini 3 default is now `medium`. Measured on sealed_v1 at `low`: 147
-    // thinking tokens per dictation, billed at the OUTPUT rate. Defaulting to
-    // medium would silently spend more than that on every polish, and the 93.5%
-    // score this model was chosen on was measured at `low`, not at medium.
-    case "gemini-3.7-flash":
-      return .level("low")
-
-    // 3.8 Flash has 3.7 Flash's shape: `minimal` -> 400 "Thinking level MINIMAL
-    // is not supported for this model", `low` accepted, verified live 2026-10-03
-    // (#3425). With no row it fell through to `.unsupported` and thought by
-    // default: 3.2 to 6.0s and 600 to 1,200 thinking tokens per short dictation,
-    // against 0.7 to 1.4s and 0 tokens at `low` (3 requests per cell).
-    case "gemini-3.8-flash":
-      return .level("low")
-
-    // Gemini 3 Pro tier: `minimal` -> 400 "Thinking level MINIMAL is not
-    // supported for this model", so `low` is the floor Google permits.
-    case "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools":
-      return .level("low")
-
-    // Gemini 2.5 Flash tier: budget 0 is legal and spends 0 thinking tokens.
-    // NOTE 2.5-flash-lite rejects 128 ("choose a value between 512 and 24576")
-    // while accepting 0 — which is why this value is per-model here and not a
-    // per-tier rule.
-    case "gemini-2.5-flash", "gemini-2.5-flash-lite":
-      return .budget(0)
-
-    // Gemini 2.5 Pro: budget 0 -> 400 "This model only works in thinking
-    // mode"; 128 is the documented and measured minimum.
-    case "gemini-2.5-pro":
-      return .budget(128)
-
-    default:
-      return .unsupported
-    }
-  }
-
-  /// Gemini ids the app knows that take NO thinking parameter at all (#3425).
-  /// They exist so "no row" is a recorded decision rather than an omission:
-  /// `SettingsChangeTelemetryTests` requires every curated Gemini id to either
-  /// resolve a thinking value or appear here. All five predate thinking.
-  public static let geminiIDsWithoutThinkingControl: Set<String> = [
-    "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
-    "gemini-2.0-flash", "gemini-2.0-flash-lite",
-  ]
-
-  /// OpenAI reasoning effort, keyed on EXACT model ids (#3425).
-  ///
-  /// `low` is what every user has always received here: it was the toggle's OFF
-  /// value, the toggle shipped OFF by default (#1831), and the prior resolver
-  /// sent it before the toggle existed (#1330). It stays the answer for every id
-  /// not listed, including every id nobody has probed.
-  ///
-  /// `none` (the fastest setting) goes to every id the 2026-10-03 live probe
-  /// confirmed returns 200 at `none` (3 requests per cell, short dictation text):
-  /// `gpt-6-luna`, `gpt-6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`,
-  /// `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`. Four of them already spent zero
-  /// reasoning tokens at `low`, so for those `none` is a guaranteed floor rather than
-  /// a measured gain; three requests per cell cannot prove that on future dictations.
-  /// `gpt-6-astra` and `gpt-6.1-sol` REJECT `none` (400) and OpenAI documents `low` as
-  /// their floor, so they stay on `low`.
-  ///
-  /// A dated snapshot of a listed id (`gpt-5.5-2026-04-23`) gets its alias's value: a
-  /// snapshot is an immutable copy of the alias, the model picker offers snapshots, and
-  /// the live sweep polishes every offered id. Only a trailing `-YYYY-MM-DD` is removed,
-  /// and only for this lookup; the request keeps the original id.
-  ///
-  /// Cleanup quality at `none` is NOT VERIFIED: the founder waived the check for
-  /// speed (#3425). The 2026-09 bench scored `gpt-5.4-mini` at `none` lowest of
-  /// four models.
-  fileprivate static func openAIReasoningEffort(_ id: String) -> String {
-    switch withoutTrailingISODate(id) {
-    case "gpt-6-luna", "gpt-6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
-      "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2":
-      return "none"
-    default:
-      return "low"
-    }
-  }
-
-  /// `gpt-5.5-2026-04-23` -> `gpt-5.5`. Only a trailing `-YYYY-MM-DD` made of ASCII digits and
-  /// naming a real Gregorian date (month lengths, leap years) is removed; anything else,
-  /// including `-2026-02-31` and a signed component such as `-+1`, is returned unchanged.
-  fileprivate static func withoutTrailingISODate(_ id: String) -> String {
-    let parts = id.split(separator: "-", omittingEmptySubsequences: false)
-    guard parts.count >= 4 else { return id }
-    func digits(_ part: Substring, count: Int) -> Int? {
-      guard part.count == count, part.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
-      return Int(part)
-    }
-    guard let year = digits(parts[parts.count - 3], count: 4), year >= 2000,
-      let month = digits(parts[parts.count - 2], count: 2), (1...12).contains(month),
-      let day = digits(parts[parts.count - 1], count: 2)
-    else { return id }
-    let isLeap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-    let monthLengths = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    guard (1...monthLengths[month - 1]).contains(day) else { return id }
-    return parts.dropLast(3).joined(separator: "-")
-  }
-
-  /// Claude's request shape, keyed on EXACT model ids (#3425). Everything not
-  /// listed keeps `thinking: disabled`, today's body.
-  ///
-  /// Verified live 2026-10-03: `thinking: disabled` returns 200 on
-  /// `claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-opus-4-5`
-  /// through `-4-8`, `claude-sonnet-4-5` and `-4-6`. It returns 400 on the four
-  /// ids below, whose 400 bodies name the replacement. `between_tools` works
-  /// only on Sonnet 5.5 (Opus 5.5 rejects it). `output_config.effort: "low"` with
-  /// no `thinking` field returns 200 on Opus 5.5, Fable 5 and Fable 5.1, which
-  /// think regardless; `minimal` is not a legal effort value.
-  fileprivate static func claudeShape(forModel id: String) -> ClaudeRequestShape {
-    switch id {
-    case "claude-sonnet-5-5":
-      return .thinkingBetweenTools
-    case "claude-opus-5-5", "claude-fable-5", "claude-fable-5-1":
-      return .effortLow
-    default:
-      return .thinkingDisabled
-    }
-  }
-}
+// MARK: - Seed provenance
+//
+// #4353 D6 moved the exact-id tables below into `cloud-models.json` (bundled copy
+// `Sources/EnviousWispr/Resources/cloud-models.json`). Their evidence stays here, verbatim,
+// because the JSON cannot carry it. Change a row's value in the list only with new live
+// evidence (plan D7: a failing-then-passing sweep receipt).
+//
+// Gemini thinking (#1770). Every value was verified against the live API on 2026-07-28/29 by
+// issuing the real request shape; none is inferred from documentation, which is wrong in both
+// directions (it claims Gemini 3 Flash cannot disable thinking — `minimal` measurably spends
+// zero thinking tokens — and it lists `gemini-3.1-flash-lite-preview` as withdrawn when it
+// returns 200). Every value is the one the Deep-reasoning toggle sent in its OFF position,
+// which was the shipped default, so the table was byte-identical on the wire for every user
+// who never flipped it. The `deep:` half was removed by #1831 after #1832 measured it: 100
+// `topic_shift` cases from `type_b_parakeet`, NOT the 1,462-case `sealed_v1` run; pass rate
+// 57.0 / 58.0 / 61.0% for low / medium / high, McNemar exact two-sided p=0.42 for low vs high,
+// p90 2.83x; CRITICAL failures moved the other way, 1 -> 2 -> 3. Table:
+// `benchmark-results/eval/runs/1832-gemini-thinking-topicshift-2026-08-23/`.
+// - Gemini 3 Flash tier (`gemini-3.6-flash`, `3.5-flash`, `3.5-flash-lite`, `3.1-flash-lite`,
+//   `3.1-flash-lite-preview`, `3-flash-preview`): `minimal` returns 200 and spends 0 thinking
+//   tokens.
+// - `gemini-3.7-flash` sits in the Pro tier's shape despite the Flash name: `minimal` -> 400
+//   "Thinking level MINIMAL is not supported for this model", verified live 2026-08-16 and
+//   confirmed against Google's per-model table (3.7 Flash accepts low/medium/high; 3.6 Flash
+//   still accepts minimal). Load-bearing for cost: with no row the Gemini 3 default is
+//   `medium`; measured on sealed_v1 at `low`: 147 thinking tokens per dictation, billed at the
+//   OUTPUT rate, and the 93.5% score this model was chosen on was measured at `low`.
+// - `gemini-3.8-flash` has 3.7 Flash's shape: `minimal` -> 400, `low` accepted, verified live
+//   2026-10-03 (#3425). With no row it thought by default: 3.2 to 6.0s and 600 to 1,200
+//   thinking tokens per short dictation, against 0.7 to 1.4s and 0 tokens at `low` (3 requests
+//   per cell).
+// - Gemini 3 Pro tier (`gemini-3.1-pro-preview`, `-customtools`): `minimal` -> 400, so `low`
+//   is the floor Google permits.
+// - Gemini 2.5 Flash tier (`gemini-2.5-flash`, `-lite`): budget 0 is legal and spends 0
+//   thinking tokens. 2.5-flash-lite rejects 128 ("choose a value between 512 and 24576") while
+//   accepting 0, which is why the value is per model and not a per-tier rule.
+// - `gemini-2.5-pro`: budget 0 -> 400 "This model only works in thinking mode"; 128 is the
+//   documented and measured minimum.
+// - The five ids that predate thinking (`gemini-1.5-pro`, `1.5-flash`, `1.5-flash-8b`,
+//   `2.0-flash`, `2.0-flash-lite`) take no thinking parameter: their rows say `"none"`.
+//
+// OpenAI reasoning effort (#3425). `none` (the fastest setting) goes to every id the
+// 2026-10-03 live probe confirmed returns 200 at `none` (3 requests per cell, short dictation
+// text): `gpt-6-luna`, `gpt-6-sol`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.5`,
+// `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`. Four of them already spent zero reasoning tokens at
+// `low`, so for those `none` is a guaranteed floor rather than a measured gain; three requests
+// per cell cannot prove that on future dictations. `gpt-6-astra` and `gpt-6.1-sol` REJECT
+// `none` (400) and OpenAI documents `low` as their floor, so they stay on `low`. A dated
+// snapshot of a listed id gets its alias's value: a snapshot is an immutable copy of the
+// alias, the model picker offers snapshots, and the live sweep polishes every offered id.
+// Cleanup quality at `none` is NOT VERIFIED: the founder waived the check for speed (#3425).
+// The 2026-09 bench scored `gpt-5.4-mini` at `none` lowest of four models.
+//
+// Claude request shape (#3425). Verified live 2026-10-03: `thinking: disabled` returns 200 on
+// `claude-haiku-4-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-opus-4-5` through `-4-8`,
+// `claude-sonnet-4-5` and `-4-6`. It returns 400 on `claude-sonnet-5-5`, `claude-opus-5-5`,
+// `claude-fable-5` and `claude-fable-5-1`, whose 400 bodies name the replacement.
+// `between_tools` works only on Sonnet 5.5 (Opus 5.5 rejects it). `output_config.effort:
+// "low"` with no `thinking` field returns 200 on Opus 5.5, Fable 5 and Fable 5.1, which think
+// regardless; `minimal` is not a legal effort value.
 
 extension LLMModelCapabilities.ThinkingControl {
   /// The thinking value a request sends for this control: the dialect and its value as the

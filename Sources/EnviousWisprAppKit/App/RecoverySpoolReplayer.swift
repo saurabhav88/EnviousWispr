@@ -137,6 +137,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// flaky by construction and would take a day to exercise the case that
   /// matters.
   private let now: @Sendable () -> Date
+  /// #4353 D6: the cloud model list in use now, read ONCE at the start of each replay.
+  private let currentCloudModelList: @MainActor () -> CloudModelList?
 
   init(
     activeEngine: ActiveEngineOperation,
@@ -152,6 +154,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
     onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
+    currentCloudModelList: @escaping @MainActor () -> CloudModelList?,
     currentVocabulary: @escaping @MainActor () -> (
       corrector: CorrectorVocabulary, polish: PolishVocabulary
     ),
@@ -172,6 +175,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.onReplayFinished = onReplayFinished
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
+    self.currentCloudModelList = currentCloudModelList
   }
 
   /// #2207 test seam: invoked synchronously the instant the readiness-retry
@@ -196,6 +200,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   func replay(recoverySessionID id: String, isAborted: @MainActor () -> Bool) async
     -> RecoveryReplayOutcome
   {
+    // #4353 D6: the replay's cloud model list, captured before any decrypt or transcribe
+    // await and carried to the polish below; a refresh during the replay does not reach it.
+    let cloudModelList = currentCloudModelList()
     let spoolStore = makeSpoolStore()
 
     // One-attempt guard: a marker already present means a recovery attempt was
@@ -450,7 +457,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // Polish under the recording's record-time settings (raw-fallback floor
     // guaranteed: a failed/skipped polish lands raw text, still saved + labeled).
     let processor = RecoveryTextProcessor(
-      keychainManager: keychainManager, outputClassifierHolder: outputClassifierHolder,
+      keychainManager: keychainManager, cloudModelList: cloudModelList,
+      outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: checkerSelectionProvider)

@@ -184,7 +184,7 @@ import EnviousWisprAppKitTestSupport
       defer { try? FileManager.default.removeItem(at: dir) }
       let keychain = KeychainManager(
         backend: .legacyFiles, legacyStore: FileLegacyKeyStore(storageDirectory: dir))
-      let coordinator = LLMModelDiscoveryCoordinator(keychainManager: keychain)
+      let coordinator = LLMModelDiscoveryCoordinator(keychainManager: keychain, discoverModels: { _, _ in [] })
       let suite = TestDefaults.suite("P4Guard-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
       let box = Box()

@@ -150,7 +150,7 @@ struct LLMPolishStepTelemetryTests {
     let step = makeStep(
       provider: .appleIntelligence, model: "apple-intelligence", telemetry: spy.seams)
     let underlying = LLMError.outputLanguageDrift(expected: "en", actual: "de")
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       ThrowingPolisher(makeError: { AFMPolishError(underlying: underlying) })
     }
 
@@ -169,7 +169,7 @@ struct LLMPolishStepTelemetryTests {
     let step = makeStep(
       provider: .appleIntelligence, model: "apple-intelligence", telemetry: spy.seams)
     let underlying = LLMError.frameworkUnavailable("re-check failed")
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       ThrowingPolisher(makeError: { AFMPolishError(underlying: underlying) })
     }
 
@@ -186,7 +186,7 @@ struct LLMPolishStepTelemetryTests {
     let step = makeStep(
       provider: .appleIntelligence, model: "apple-intelligence", telemetry: spy.seams)
     let underlying = LLMError.modelNotReady(.downloadingOrRestricted)
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       ThrowingPolisher(makeError: { AFMPolishError(underlying: underlying) })
     }
 
@@ -206,7 +206,7 @@ struct LLMPolishStepTelemetryTests {
     // No egOneRuntime injected -> egOneSkipped(.notReady), not providerInitFailed.
     // Use a provider whose makePolisher legitimately returns nil instead.
     step.llmProvider = .openAI
-    step.makePolisher = { _, _, _ in nil }
+    step.makePolisher = { _, _, _, _ in nil }
 
     await #expect(throws: LLMError.self) {
       _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
@@ -240,7 +240,7 @@ struct LLMPolishStepTelemetryTests {
     let successSpy = Spy()
     do {
       let step = makeStep(provider: .openAI, telemetry: .silent(wrapping: successSpy.seams))
-      step.makePolisher = { _, _, _ in SucceedingPolisher() }
+      step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
       _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
     }
     #expect(successSpy.startedCalls.isEmpty)
@@ -250,7 +250,7 @@ struct LLMPolishStepTelemetryTests {
     let providerInitSpy = Spy()
     do {
       let step = makeStep(provider: .openAI, telemetry: .silent(wrapping: providerInitSpy.seams))
-      step.makePolisher = { _, _, _ in nil }
+      step.makePolisher = { _, _, _, _ in nil }
       await #expect(throws: LLMError.self) {
         _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
       }
@@ -263,7 +263,7 @@ struct LLMPolishStepTelemetryTests {
       let step = makeStep(
         provider: .appleIntelligence, model: "apple-intelligence",
         telemetry: .silent(wrapping: afmSpy.seams))
-      step.makePolisher = { _, _, _ in
+      step.makePolisher = { _, _, _, _ in
         ThrowingPolisher(makeError: {
           AFMPolishError(underlying: LLMError.modelNotReady(.downloadingOrRestricted))
         })
@@ -539,7 +539,7 @@ struct LLMPolishStepTelemetryTests {
   func successfulPolishFiresCompletedOnly() async throws {
     let spy = Spy()
     let step = makeStep(provider: .openAI, telemetry: spy.seams)
-    step.makePolisher = { _, _, _ in SucceedingPolisher() }
+    step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
 
     _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
 

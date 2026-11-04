@@ -93,6 +93,9 @@ public final class FileImportRunner {
   /// already the single authority for "the settings a text-processing run
   /// needs", and a second one would be a second thing to keep in step.
   private var frozenSettings: RecordingSettingsSnapshot?
+  /// #4353 D6: the cloud model list captured beside the settings freeze; every part, batch and
+  /// retry of this run polishes under it. Nil means no list (every id unlisted).
+  private var frozenCloudModelList: CloudModelList?
 
   /// The custom-words vocabulary, frozen with the settings for the same reason.
   private var frozenVocabulary: CorrectorVocabulary?
@@ -151,9 +154,13 @@ public final class FileImportRunner {
 
   /// Freezes the configuration this import runs under. Called once, before the
   /// first part.
-  public func freeze(settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?) {
+  public func freeze(
+    settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?,
+    cloudModelList: CloudModelList?
+  ) {
     frozenSettings = settings
     frozenVocabulary = vocabulary
+    frozenCloudModelList = cloudModelList
     frozenCheckerSelections = [:]
     checkerSelectionGeneration &+= 1
   }
@@ -437,6 +444,7 @@ public final class FileImportRunner {
     // #4353 decision 4: the chosen model is requested as chosen, retired or not; a model
     // that no longer works fails at request time and the user picks a new one.
     llmPolish.llmModel = settings.llmModel
+    llmPolish.cloudModelList = frozenCloudModelList
     llmPolish.backend = settings.backendType
     llmPolish.s1Control = settings.s1Control ?? .default
     llmPolish.languageDetection = nil

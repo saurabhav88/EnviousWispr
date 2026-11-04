@@ -1132,6 +1132,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// #3438: the app's AI polish setup hooks. Set once by the composition root for BOTH drivers;
   /// nil (tests, early launch) means takes freeze, classify and record nothing.
   public var polishSetupHooks: PolishSetupTakeHooks?
+
+  /// #4353 D6: reads the cloud model list in use now (`CloudModelListHolder.snapshot`). Called
+  /// once per take, at the start dispatch beside the session config, so the take polishes
+  /// under the list it started with; a stop toggle never calls it. Nil (unwired) gives the
+  /// take no list, so every id is unlisted. Set by the composition root like
+  /// `polishSetupHooks`.
+  public var captureCloudModelList: (@MainActor () -> CloudModelList?)?
   /// The take whose polish outcome was already handed on.
   private var deliveredPolishTakeID: String?
 
@@ -1891,6 +1898,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
     steps.llmPolish.llmProvider = config.llmProvider
     steps.llmPolish.llmModel = config.llmModel
+    steps.llmPolish.cloudModelList = captureCloudModelList?()
     steps.llmPolish.polishInstructions = config.polishInstructions
     steps.llmPolish.s1Control = config.s1Control
   }

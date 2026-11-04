@@ -85,7 +85,7 @@ struct LLMPolishStepAFMPrewarmTests {
     let step = appleStep { _ in "unused" }
     await filled(step, take: "take-1")
     let box = TextBox()
-    step.makePolisher = { _, _, _ in RecordingPolisher(box: box) }
+    step.makePolisher = { _, _, _, _ in RecordingPolisher(box: box) }
     let out = try await step.process(TextProcessingContext(text: transcript, language: "en"))
     #expect(box.text == transcript)
     #expect(out.afmPrewarmOutcome == nil)
@@ -97,7 +97,7 @@ struct LLMPolishStepAFMPrewarmTests {
     let step = appleStep { _ in "unused" }
     await filled(step, take: "take-1")
     let box = TextBox()
-    step.makePolisher = { _, _, _ in RecordingPolisher(box: box) }
+    step.makePolisher = { _, _, _, _ in RecordingPolisher(box: box) }
     var context = TextProcessingContext(text: transcript, language: "en")
     context.takeID = "take-1"
     let out = try await step.process(context)
@@ -121,7 +121,7 @@ struct LLMPolishStepAFMPrewarmTests {
     cloud.llmProvider = .openAI
     cloud.llmModel = "gpt-4o-mini"  // #4353 D2: no implicit model
     let box = TextBox()
-    cloud.makePolisher = { _, _, _ in RecordingPolisher(box: box) }
+    cloud.makePolisher = { _, _, _, _ in RecordingPolisher(box: box) }
     let polished = try await cloud.process(long)
     #expect(box.text != nil, "control: the non-Apple polish actually ran")
     #expect(polished.afmPrewarmOutcome == nil)

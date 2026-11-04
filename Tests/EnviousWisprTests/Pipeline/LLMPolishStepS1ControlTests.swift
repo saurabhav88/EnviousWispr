@@ -59,7 +59,7 @@ struct LLMPolishStepS1ControlTests {
     step.s1Control = picks
     let capture = PlannerCapture()
     step.promptPlanner = CapturingPlanner(capture: capture)
-    step.makePolisher = { _, _, _ in FixedPolisher(result: Self.polished) }
+    step.makePolisher = { _, _, _, _ in FixedPolisher(result: Self.polished) }
 
     _ = try await step.process(TextProcessingContext(text: Self.spoken, language: nil))
 
