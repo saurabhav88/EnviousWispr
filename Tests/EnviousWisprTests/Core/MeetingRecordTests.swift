@@ -112,7 +112,7 @@ struct MeetingRecordTests {
     #expect(name == "system-00012-s000720500.caf.partial")
     #expect(
       MeetingSegmentNaming.parse(name)
-        == .init(track: .callSound, index: 12, startMs: 720_500, partial: true))
+        == .init(track: .callSound, variant: .raw, index: 12, startMs: 720_500, partial: true))
     let big = MeetingSegmentNaming.fileName(
       track: .microphone, index: 123_456, startMs: 0, partial: false)
     #expect(MeetingSegmentNaming.parse(big)?.index == 123_456)

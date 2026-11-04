@@ -208,15 +208,26 @@ public enum MeetingTrackRecovery {
     case emptyFinal(fileName: String)
     /// Two files of one track share an index (different start times): both are kept and listed.
     case duplicateIndex(track: MeetingTrackKind, index: Int)
+    /// #4355 PR B: a cleaned-copy proof that could not be read; it confirms nothing.
+    case unreadableProof(fileName: String)
   }
 
   public struct Report: Sendable, Equatable {
-    /// Readable finals per track, by start time then index.
+    /// Readable RAW finals per track, by start time then index: the recording's audio.
     public var segments: [MeetingTrackKind: [MeetingSegmentInfo]] = [:]
-    /// The highest index any recognized file uses per track, readable or not.
+    /// #4355 PR B: readable finals of the microphone's echo-cleaned copy, by start then index.
+    /// Never part of `segments`: a derivative that playback and damage marking never read.
+    public var cleanedSegments: [MeetingSegmentInfo] = []
+    /// The highest index any recognized file uses per track (either copy), readable or not.
     public var highestIndex: [MeetingTrackKind: Int] = [:]
     public var promoted: [String] = []
+    /// Problems of raw files: these can mean lost recording audio.
     public var problems: [Problem] = []
+    /// #4355 PR B: problems of cleaned-copy files. They only disable the cleaned copy for the
+    /// final pass; they never mark recording audio as damaged.
+    public var cleanedProblems: [Problem] = []
+    /// #4355 PR B: the twins the cleaned-copy proofs in the folder list as finished whole.
+    public var cleanedConfirmed: [MeetingSegmentInfo] = []
 
     public init() {}
   }
@@ -247,12 +258,19 @@ public enum MeetingTrackRecovery {
     // 1. Promote readable partials, never over an existing file.
     var finals = Set(recognized.filter { !$0.parsed.partial }.map(\.name))
     var promotedAny = false
+    func note(_ problem: Problem, _ variant: MeetingSegmentVariant) {
+      if variant == .cleaned {
+        report.cleanedProblems.append(problem)
+      } else {
+        report.problems.append(problem)
+      }
+    }
     for file in recognized where file.parsed.partial {
       let finalName = MeetingSegmentNaming.fileName(
-        track: file.parsed.track, index: file.parsed.index, startMs: file.parsed.startMs,
-        partial: false)
+        track: file.parsed.track, variant: file.parsed.variant, index: file.parsed.index,
+        startMs: file.parsed.startMs, partial: false)
       if finals.contains(finalName) {
-        report.problems.append(.partialBesideFinal(fileName: file.name))
+        note(.partialBesideFinal(fileName: file.name), file.parsed.variant)
         continue
       }
       switch MeetingTrackAudio.inspect(folder.appendingPathComponent(file.name)) {
@@ -264,11 +282,11 @@ public enum MeetingTrackRecovery {
           report.promoted.append(finalName)
           promotedAny = true
         } else {
-          report.problems.append(.promotionFailed(fileName: file.name, errno: errno))
+          note(.promotionFailed(fileName: file.name, errno: errno), file.parsed.variant)
         }
-      case .empty: report.problems.append(.emptyPartial(fileName: file.name))
+      case .empty: note(.emptyPartial(fileName: file.name), file.parsed.variant)
       case .incompatible, .unreadable:
-        report.problems.append(.unreadablePartial(fileName: file.name))
+        note(.unreadablePartial(fileName: file.name), file.parsed.variant)
       }
     }
     if promotedAny, let code = syncDirectory(folder) {
@@ -279,24 +297,93 @@ public enum MeetingTrackRecovery {
     var seen: [String: Int] = [:]
     for name in finals.sorted() {
       guard let parsed = MeetingSegmentNaming.parse(name) else { continue }
-      let key = "\(parsed.track.rawValue)-\(parsed.index)"
+      let key = "\(parsed.track.rawValue)-\(parsed.variant.rawValue)-\(parsed.index)"
       seen[key, default: 0] += 1
       if seen[key] == 2 {
-        report.problems.append(.duplicateIndex(track: parsed.track, index: parsed.index))
+        note(.duplicateIndex(track: parsed.track, index: parsed.index), parsed.variant)
       }
       switch MeetingTrackAudio.inspect(folder.appendingPathComponent(name)) {
       case .readable(let frames):
-        report.segments[parsed.track, default: []].append(
-          MeetingSegmentInfo(
-            index: parsed.index, fileName: name, startMs: parsed.startMs, frameCount: frames))
-      case .empty: report.problems.append(.emptyFinal(fileName: name))
-      case .incompatible: report.problems.append(.incompatibleFinal(fileName: name))
-      case .unreadable: report.problems.append(.unreadableFinal(fileName: name))
+        let info = MeetingSegmentInfo(
+          index: parsed.index, fileName: name, startMs: parsed.startMs, frameCount: frames)
+        if parsed.variant == .cleaned {
+          report.cleanedSegments.append(info)
+        } else {
+          report.segments[parsed.track, default: []].append(info)
+        }
+      case .empty: note(.emptyFinal(fileName: name), parsed.variant)
+      case .incompatible: note(.incompatibleFinal(fileName: name), parsed.variant)
+      case .unreadable: note(.unreadableFinal(fileName: name), parsed.variant)
       }
     }
     for track in report.segments.keys {
       report.segments[track]?.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
     }
+    report.cleanedSegments.sort { ($0.startMs, $0.index) < ($1.startMs, $1.index) }
+
+    // 3. The cleaned-copy proofs: only twins one of them lists may be used (#4355 PR B).
+    for name in names.filter(MeetingSegmentNaming.isCleanedProof).sorted() {
+      guard let data = FileManager.default.contents(atPath: folder.appendingPathComponent(name).path),
+        let proof = try? JSONDecoder().decode(MeetingCleanedProof.self, from: data)
+      else {
+        report.cleanedProblems.append(.unreadableProof(fileName: name))
+        continue
+      }
+      report.cleanedConfirmed.append(contentsOf: proof.segments)
+    }
     return report
+  }
+}
+
+/// #4355 PR B: which microphone copy one final-transcript attempt reads, decided once per attempt
+/// from what recovery found. The cleaned copy is used only as a complete set: every raw
+/// microphone segment has exactly one readable cleaned twin with the same index, start and frame
+/// count, a cleaned-copy proof lists that twin as finished, no cleaned file had a problem, and the
+/// recording's echo provenance is known. Anything less reads the whole raw set; the two copies are
+/// never mixed segment by segment.
+public enum MeetingMicrophoneSelection {
+  public enum RawReason: String, Sendable, Equatable {
+    case noProvenance, noCleanedCopy, cleanedProblem, incomplete, mismatch
+    /// The twins exist but no proof lists every one as finished whole (a cleaned-copy failure,
+    /// a crash, or a close that could not write the proof).
+    case unconfirmed
+  }
+
+  public enum Decision: Sendable, Equatable {
+    case cleaned([MeetingSegmentInfo], MeetingEchoProvenance)
+    case raw(RawReason)
+  }
+
+  public static func decide(
+    raw: [MeetingSegmentInfo], report: MeetingTrackRecovery.Report,
+    provenance: MeetingEchoProvenance?
+  ) -> Decision {
+    guard let provenance else { return .raw(.noProvenance) }
+    guard !report.cleanedSegments.isEmpty else { return .raw(.noCleanedCopy) }
+    guard report.cleanedProblems.isEmpty else { return .raw(.cleanedProblem) }
+    guard report.cleanedSegments.count == raw.count else { return .raw(.incomplete) }
+    let twins = Dictionary(grouping: report.cleanedSegments, by: \.index)
+    for segment in raw {
+      guard let found = twins[segment.index], found.count == 1, let twin = found.first,
+        twin.startMs == segment.startMs, twin.frameCount == segment.frameCount
+      else { return .raw(.mismatch) }
+    }
+    let confirmed = Set(
+      report.cleanedConfirmed.map { "\($0.fileName)|\($0.startMs)|\($0.frameCount)" })
+    for twin in report.cleanedSegments
+    where !confirmed.contains("\(twin.fileName)|\(twin.startMs)|\(twin.frameCount)") {
+      return .raw(.unconfirmed)
+    }
+    return .cleaned(report.cleanedSegments, provenance)
+  }
+
+  /// The cleaned set as read: every file inspected clean and placed exactly where its raw twin
+  /// was. Checked after reading, because a file can fail between recovery and the read.
+  public static func readMatches(_ cleaned: MeetingTrackAudio, raw: MeetingTrackAudio) -> Bool {
+    cleaned.problems.isEmpty && cleaned.segments.count == raw.segments.count
+      && zip(cleaned.segments, raw.segments).allSatisfy {
+        $0.startSample == $1.startSample && $0.frameCount == $1.frameCount
+          && $0.readStartSample == $1.readStartSample
+      }
   }
 }

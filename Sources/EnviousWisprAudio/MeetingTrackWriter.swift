@@ -40,6 +40,17 @@ import os
 /// handed to `onReleased` with its original metadata. Release is scheduled queue work, never a
 /// wait. `finish`, `close(until:)` and `waitUntilWritten` release everything held first. Other
 /// writers (call sound) write each chunk at once, as before.
+///
+/// **Cleaned copy (#4355 PR B).** A microphone writer configured with `cleanedCopy` also takes an
+/// echo-cleaned copy of every chunk (`append(_:cleaned:...)`). Both copies go through the same
+/// hold, masking, pre-anchor trim and placement, decided once for the raw audio, and the cleaned
+/// copy is written to a twin file per segment (`micclean-<n>-s<ms>.caf`, same index and start)
+/// with the same durability order. The cleaned copy is derivative: a failure creating, writing or
+/// finalizing it never touches the raw audio, never trips `onFailure` and never stops the writer.
+/// It is counted (`Health.cleanedFailed`), its unfinished twin is removed where it can be, and no
+/// further cleaned segment is written. Eligibility never depends on that cleanup: only a close
+/// that finished every twin without any cleaned-copy failure writes the durable proof
+/// (`MeetingSegmentNaming.cleanedProofName`), and the final pass uses only twins a proof lists.
 public final class MeetingTrackWriter: @unchecked Sendable {
   public typealias SegmentHandler = @Sendable (MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @Sendable (Error) -> Void
@@ -67,14 +78,18 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     /// The microphone silence hold in seconds (#4248); nil writes each chunk at once. Ignored
     /// for any track but the microphone.
     public let silenceHoldSeconds: Double?
+    /// #4355 PR B: the microphone also writes an echo-cleaned twin of every segment. Ignored for
+    /// any track but the microphone.
+    public let cleanedCopy: Bool
 
     public init(
       meetingID: UUID, track: MeetingTrackKind, folder: URL, anchorHostTime: UInt64,
       segmentSeconds: Double = MeetingAudioFormat.segmentSeconds, gapThresholdMs: Int = 1_500,
       bufferCapacity: Int = Int(MeetingAudioFormat.sampleRate * 20),
-      maxPendingChunks: Int = 8_192, silenceHoldSeconds: Double? = nil
+      maxPendingChunks: Int = 8_192, silenceHoldSeconds: Double? = nil, cleanedCopy: Bool = false
     ) {
       self.silenceHoldSeconds = silenceHoldSeconds
+      self.cleanedCopy = cleanedCopy && track == .microphone
       self.meetingID = meetingID
       self.track = track
       self.folder = folder
@@ -132,6 +147,10 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     /// released audio; judged as live (#4248 arrival contract).
     public var silenceLateFrames = 0
     public var failed = false
+    /// #4355 PR B: cleaned twins finalized, and whether the cleaned copy stopped (a failed twin,
+    /// or a chunk handed over without its copy). Raw writing is never affected by either.
+    public var cleanedSegmentsFinalized = 0
+    public var cleanedFailed = false
   }
 
   #if DEBUG
@@ -151,10 +170,14 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     var afterDrop: Bool
     /// The producer says this chunk does not continue the previous one.
     var sourceBreak: Bool
+    /// A cleaned-copy writer only: the producer gave this chunk's cleaned copy.
+    var hasCleaned: Bool
   }
 
   private struct Pending {
     var samples: [Float]
+    /// The cleaned copy beside `samples`, sample for sample; empty without `cleanedCopy`.
+    var cleaned: [Float]
     var chunks: [Chunk]
     var droppedFrames = 0
     var rejectedFrames = 0
@@ -179,8 +202,17 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   // Queue-confined state.
   private var scratchSamples: [Float] = []
+  private var scratchCleaned: [Float] = []
   private var scratchChunks: [Chunk] = []
   private var file: ExtAudioFileRef?
+  /// #4355 PR B: the open cleaned twin of `file`, and whether the cleaned copy stopped for good.
+  private var cleanedFile: ExtAudioFileRef?
+  private var cleanedStopped = false
+  /// Twins this writer finalized, for the proof written at a clean close.
+  private var cleanedFinalized: [MeetingSegmentInfo] = []
+  /// Set once the proof is published: a repeated close (`finish` after `finish`, or
+  /// `close(until:)` after it) has nothing more to prove.
+  private var cleanedProofWritten = false
   private var segmentIndex = 0
   private var indexScanned = false
   private var listingErrno: Int32 = 0
@@ -236,13 +268,17 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       MeetingMicrophoneSilence(
         recording: configuration.meetingID, holdSeconds: hold,
         sampleCapacity: Int((hold + 2) * MeetingAudioFormat.sampleRate),
-        chunkCapacity: configuration.maxPendingChunks)
+        chunkCapacity: configuration.maxPendingChunks, paired: configuration.cleanedCopy)
     }
     self.queue = DispatchQueue(
       label: "com.enviouswispr.meeting.writer.\(configuration.track.fileStem)", qos: .utility)
-    var initial = Pending(samples: [], chunks: [])
+    var initial = Pending(samples: [], cleaned: [], chunks: [])
     initial.samples.reserveCapacity(configuration.bufferCapacity)
     initial.chunks.reserveCapacity(configuration.maxPendingChunks)
+    if configuration.cleanedCopy {
+      initial.cleaned.reserveCapacity(configuration.bufferCapacity)
+      scratchCleaned.reserveCapacity(configuration.bufferCapacity)
+    }
     self.pending = OSAllocatedUnfairLock(initialState: initial)
     scratchSamples.reserveCapacity(configuration.bufferCapacity)
     scratchChunks.reserveCapacity(configuration.maxPendingChunks)
@@ -308,10 +344,16 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// `startsNewRun`: the producer knows this audio does not continue what it handed over before
   /// (the call-sound pipeline's run boundary). It starts a new segment at `hostTime` whatever
   /// the gap, so a break the producer detected is never closed up here.
+  ///
+  /// `cleaned` (#4355 PR B, `cleanedCopy` writers only): the echo-cleaned copy of exactly these
+  /// samples. Nil, or another count, writes the raw audio as always and stops the cleaned copy
+  /// for the rest of the recording.
   public func append(
-    _ samples: UnsafeBufferPointer<Float>, hostTime: UInt64, startsNewRun: Bool = false
+    _ samples: UnsafeBufferPointer<Float>, cleaned: UnsafeBufferPointer<Float>? = nil,
+    hostTime: UInt64, startsNewRun: Bool = false
   ) {
     guard !samples.isEmpty else { return }
+    let pair = config.cleanedCopy ? cleaned.flatMap { $0.count == samples.count ? $0 : nil } : nil
     // `withLockUnchecked`: the body copies from a caller-owned pointer that never escapes the
     // lock. The append stays inside the capacity reserved at init, so it does not allocate.
     let schedule = pending.withLockUnchecked { state -> Bool in
@@ -329,9 +371,14 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       state.chunks.append(
         Chunk(
           offset: state.samples.count, hostTime: hostTime, afterDrop: state.dropOpen,
-          sourceBreak: startsNewRun))
+          sourceBreak: startsNewRun, hasCleaned: pair != nil))
       state.dropOpen = false
       state.samples.append(contentsOf: UnsafeBufferPointer(rebasing: samples[0..<take]))
+      if config.cleanedCopy {
+        // Kept the same length as `samples`; a chunk without its copy holds raw here and says so.
+        let source = pair ?? samples
+        state.cleaned.append(contentsOf: UnsafeBufferPointer(rebasing: source[0..<take]))
+      }
       if take < samples.count {
         state.droppedFrames += samples.count - take
         state.dropOpen = true
@@ -344,7 +391,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   }
 
   public func append(_ samples: [Float], hostTime: UInt64) {
-    samples.withUnsafeBufferPointer { append($0, hostTime: hostTime) }
+    samples.withUnsafeBufferPointer { append($0, cleaned: nil, hostTime: hostTime) }
   }
 
   // MARK: - Owner side
@@ -420,12 +467,15 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       }
       return .failed
     }
-    return finalizeSegment() ? .finalized : .failed
+    guard finalizeSegment() else { return .failed }
+    writeCleanedProof()
+    return .finalized
   }
 
   private func drain() {
     let (dropped, rejected) = pending.withLockUnchecked { state -> (Int, Int) in
       swap(&state.samples, &scratchSamples)
+      swap(&state.cleaned, &scratchCleaned)
       swap(&state.chunks, &scratchChunks)
       let counts = (state.droppedFrames, state.rejectedFrames)
       state.droppedFrames = 0
@@ -441,14 +491,20 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     }
     defer {
       scratchSamples.removeAll(keepingCapacity: true)
+      scratchCleaned.removeAll(keepingCapacity: true)
       scratchChunks.removeAll(keepingCapacity: true)
     }
     guard !failed, !scratchSamples.isEmpty else { return }
     scratchSamples.withUnsafeBufferPointer { all in
+      scratchCleaned.withUnsafeBufferPointer { twins in
       for (i, chunk) in scratchChunks.enumerated() {
         let end = i + 1 < scratchChunks.count ? scratchChunks[i + 1].offset : all.count
         guard end > chunk.offset else { continue }
         let frames = UnsafeBufferPointer(rebasing: all[chunk.offset..<end])
+        let twin =
+          config.cleanedCopy && chunk.hasCleaned
+          ? UnsafeBufferPointer(rebasing: twins[chunk.offset..<end]) : nil
+        if config.cleanedCopy, !chunk.hasCleaned { stopCleaned(reason: "copy missing") }
         // The append adapter: the producers hand scalar host ticks without saying how they got
         // them (the microphone estimates from arrival, `MeetingRecorder`; the call-sound tap's
         // validity is not passed through yet), so nothing here may claim hardware acquisition.
@@ -459,12 +515,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
         if let silence {
           // The hold copies the chunk; nothing keeps a pointer into the handoff buffer.
           silence.accept(
-            frames, acquired: info.acquired, afterDrop: info.afterDrop,
+            frames, cleaned: twin, acquired: info.acquired, afterDrop: info.afterDrop,
             sourceBreak: info.sourceBreak, emit: emitHeld)
         } else {
-          writeReleased(frames, info)
+          writeReleased(frames, twin, info)
         }
         if failed { return }
+      }
       }
     }
     releaseDueHeld()
@@ -474,10 +531,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   /// One released chunk. C is published first, so anything that sees this chunk downstream
   /// also sees a watermark that covers it.
-  private func emitHeld(_ frames: UnsafeBufferPointer<Float>, _ info: MeetingHeldChunk) {
+  private func emitHeld(
+    _ frames: UnsafeBufferPointer<Float>, _ cleaned: UnsafeBufferPointer<Float>?,
+    _ info: MeetingHeldChunk
+  ) {
     if let end = silence?.released { publishReleased(end) }
     guard !failed else { return }
-    writeReleased(frames, info)
+    writeReleased(frames, cleaned, info)
   }
 
   /// Releases what is due now and schedules the next release; a no-op without a hold.
@@ -538,14 +598,20 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   /// Trims audio from before the anchor, writes the rest, and hands what was written to
   /// `onReleased` with its span. The acquisition time moves with the trim; it is never derived
-  /// from the written position.
-  private func writeReleased(_ chunk: UnsafeBufferPointer<Float>, _ info: MeetingHeldChunk) {
+  /// from the written position. A cleaned copy is trimmed and placed with the raw audio; live
+  /// words get the cleaned samples while the cleaned copy is being written, raw otherwise.
+  private func writeReleased(
+    _ chunk: UnsafeBufferPointer<Float>, _ cleanedChunk: UnsafeBufferPointer<Float>?,
+    _ info: MeetingHeldChunk
+  ) {
     var frames = chunk
+    var twin = cleanedChunk
     var acquired = info.acquired
     var arrival = Self.samples(from: config.anchorHostTime, to: info.acquired.hostTicks)
     if arrival < 0 {
       let trim = min(frames.count, -arrival)
       frames = UnsafeBufferPointer(rebasing: frames[trim...])
+      twin = twin.map { UnsafeBufferPointer(rebasing: $0[trim...]) }
       arrival += trim
       acquired = MeetingAcquisitionTime(
         recording: acquired.recording,
@@ -554,15 +620,20 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       health.withLock { $0.preAnchorFrames += trim }
     }
     guard !frames.isEmpty else { return }
+    if config.cleanedCopy, twin == nil { stopCleaned(reason: "copy missing") }
     let written = write(
-      frames, arrival: arrival, afterDrop: info.afterDrop, sourceBreak: info.sourceBreak)
+      frames, cleaned: twin, arrival: arrival, afterDrop: info.afterDrop,
+      sourceBreak: info.sourceBreak)
     guard let onReleased, let written, written.count > 0,
       let span = MeetingAudioSpan(
         recording: config.meetingID, track: config.track, run: runIndex,
         startSample: written.start, sampleCount: written.count)
     else { return }
+    // The cleaned samples only while the cleaned copy is still written: once it stopped, what
+    // live words get is what the files hold, raw.
+    let published = (!cleanedStopped ? twin : nil) ?? frames
     onReleased(
-      UnsafeBufferPointer(rebasing: frames[0..<written.count]),
+      UnsafeBufferPointer(rebasing: published[0..<written.count]),
       MeetingReleasedChunk(
         span: span, acquired: acquired, afterDrop: info.afterDrop, sourceBreak: info.sourceBreak))
   }
@@ -571,7 +642,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// sample and count; zero count when nothing was), or nil when placement itself failed.
   @discardableResult
   private func write(
-    _ frames: UnsafeBufferPointer<Float>, arrival: Int, afterDrop: Bool, sourceBreak: Bool
+    _ frames: UnsafeBufferPointer<Float>, cleaned twin: UnsafeBufferPointer<Float>?,
+    arrival: Int, afterDrop: Bool, sourceBreak: Bool
   ) -> (start: Int, count: Int)? {
     var position: Int
     if let cursor = cursorSample, !afterDrop, !sourceBreak,
@@ -600,6 +672,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       guard writeFrames(UnsafeBufferPointer(rebasing: frames[offset..<(offset + take)])) else {
         return (start, offset)
       }
+      // The raw frames are written: the twin follows them, and nothing about it can undo that.
+      if let twin { writeCleaned(UnsafeBufferPointer(rebasing: twin[offset..<(offset + take)])) }
       offset += take
       segmentFrames += take
       position += take
@@ -669,6 +743,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     }
     file = ref
     segmentFrames = 0
+    openCleaned()
     return true
   }
 
@@ -726,7 +801,153 @@ public final class MeetingTrackWriter: @unchecked Sendable {
       MeetingSegmentInfo(
         index: segmentIndex, fileName: finalURL.lastPathComponent,
         startMs: segmentStartSample / Self.samplesPerMs, frameCount: frames))
+    finalizeCleaned(frames: frames)
     return true
+  }
+
+  // MARK: - Cleaned copy (#4355 PR B)
+
+  /// Opens the cleaned twin of the segment just opened, at the same index and start. Any failure
+  /// stops the cleaned copy; the raw segment is already open and unaffected.
+  private func openCleaned() {
+    guard config.cleanedCopy, !cleanedStopped else { return }
+    let url = segmentURL(index: segmentIndex, partial: true, variant: .cleaned)
+    let fd = Darwin.open(url.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+    guard fd >= 0 else {
+      // An existing twin name is not ours to reuse or erase.
+      stopCleaned(reason: "reserve errno=\(errno)", removePartial: false)
+      return
+    }
+    Darwin.close(fd)
+    var fileFormat = Self.fileFormat
+    var ref: ExtAudioFileRef?
+    var status = ExtAudioFileCreateWithURL(
+      url as CFURL, kAudioFileCAFType, &fileFormat, nil, AudioFileFlags.eraseFile.rawValue, &ref)
+    guard status == noErr, let ref else {
+      stopCleaned(reason: "create status=\(status)")
+      return
+    }
+    var clientFormat = Self.clientFormat
+    status = ExtAudioFileSetProperty(
+      ref, kExtAudioFileProperty_ClientDataFormat,
+      UInt32(MemoryLayout<AudioStreamBasicDescription>.size), &clientFormat)
+    guard status == noErr, chmod(url.path, 0o600) == 0 else {
+      ExtAudioFileDispose(ref)
+      stopCleaned(reason: "format status=\(status)")
+      return
+    }
+    cleanedFile = ref
+  }
+
+  private func writeCleaned(_ frames: UnsafeBufferPointer<Float>) {
+    guard let ref = cleanedFile, let base = frames.baseAddress, !cleanedStopped else { return }
+    #if DEBUG
+      if cleanedFaultForTesting == .write {
+        stopCleaned(reason: "write (test fault)")
+        return
+      }
+    #endif
+    var list = AudioBufferList(
+      mNumberBuffers: 1,
+      mBuffers: AudioBuffer(
+        mNumberChannels: 1, mDataByteSize: UInt32(frames.count * MemoryLayout<Float>.size),
+        mData: UnsafeMutableRawPointer(mutating: base)))
+    let status = ExtAudioFileWrite(ref, UInt32(frames.count), &list)
+    if status != noErr { stopCleaned(reason: "write status=\(status)") }
+  }
+
+  /// Finalizes the cleaned twin of the raw segment just published, in the same durability order.
+  private func finalizeCleaned(frames: Int) {
+    guard let ref = cleanedFile, !cleanedStopped else { return }
+    cleanedFile = nil
+    let partialURL = segmentURL(index: segmentIndex, partial: true, variant: .cleaned)
+    let finalURL = segmentURL(index: segmentIndex, partial: false, variant: .cleaned)
+    let status = ExtAudioFileDispose(ref)
+    #if DEBUG
+      if cleanedFaultForTesting == .finalize {
+        stopCleaned(reason: "finalize (test fault)")
+        return
+      }
+    #endif
+    guard status == noErr else { return stopCleaned(reason: "dispose status=\(status)") }
+    if let code = Self.fullSync(partialURL) { return stopCleaned(reason: "sync errno=\(code)") }
+    if renamex_np(partialURL.path, finalURL.path, UInt32(RENAME_EXCL)) != 0 {
+      return stopCleaned(reason: "rename errno=\(errno)")
+    }
+    #if DEBUG
+      let syncFailure =
+        (cleanedFaultForTesting == .afterRename || cleanedFaultForTesting == .afterRenameKeepingTwin)
+        ? EIO : Self.syncDirectory(config.folder)
+    #else
+      let syncFailure = Self.syncDirectory(config.folder)
+    #endif
+    if let code = syncFailure {
+      // The rename happened but is not durable. Removed where possible (it is ours: we just
+      // renamed it); whether or not that works, the stop means no proof lists it.
+      #if DEBUG
+        if cleanedFaultForTesting != .afterRenameKeepingTwin { unlink(finalURL.path) }
+      #else
+        unlink(finalURL.path)
+      #endif
+      return stopCleaned(reason: "directory sync errno=\(code)", removePartial: false)
+    }
+    cleanedFinalized.append(
+      MeetingSegmentInfo(
+        index: segmentIndex, fileName: finalURL.lastPathComponent,
+        startMs: segmentStartSample / Self.samplesPerMs, frameCount: frames))
+    health.withLock { $0.cleanedSegmentsFinalized += 1 }
+  }
+
+  /// Writes the proof that this writer's cleaned copy finished whole: only at a clean close, only
+  /// when no cleaned-copy step failed, in the segment durability order (exclusive create of a
+  /// temporary name, write, F_FULLFSYNC, exclusive rename, directory sync). Any failure leaves no
+  /// proof, which the final pass reads as "use raw".
+  private func writeCleanedProof() {
+    guard config.cleanedCopy, !cleanedStopped, !failed, !cleanedProofWritten,
+      let first = cleanedFinalized.first, let last = cleanedFinalized.last
+    else { return }
+    let finalURL = config.folder.appendingPathComponent(
+      MeetingSegmentNaming.cleanedProofName(first: first.index, last: last.index))
+    let temporary = config.folder.appendingPathComponent(".proof-\(UUID().uuidString).tmp")
+    func give(up reason: String) {
+      unlink(temporary.path)
+      stopCleaned(reason: reason, removePartial: false)
+    }
+    #if DEBUG
+      if cleanedFaultForTesting == .proof { return give(up: "proof (test fault)") }
+    #endif
+    guard let data = try? JSONEncoder().encode(MeetingCleanedProof(segments: cleanedFinalized))
+    else { return give(up: "proof encode") }
+    let fd = Darwin.open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+    guard fd >= 0 else { return give(up: "proof create errno=\(errno)") }
+    let wrote = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+    Darwin.close(fd)
+    guard wrote == data.count else { return give(up: "proof write") }
+    if let code = Self.fullSync(temporary) { return give(up: "proof sync errno=\(code)") }
+    guard renamex_np(temporary.path, finalURL.path, UInt32(RENAME_EXCL)) == 0 else {
+      return give(up: "proof rename errno=\(errno)")
+    }
+    if let code = Self.syncDirectory(config.folder) {
+      unlink(finalURL.path)
+      return give(up: "proof directory sync errno=\(code)")
+    }
+    cleanedProofWritten = true
+  }
+
+  /// Stops the cleaned copy for the rest of the recording. Its open twin is closed and, unless it
+  /// is not ours (`removePartial` false), its unfinished `.partial` removed, so no incomplete
+  /// twin is left to look like a finished one. Raw writing goes on as before.
+  private func stopCleaned(reason: String, removePartial: Bool = true) {
+    guard config.cleanedCopy, !cleanedStopped else { return }
+    cleanedStopped = true
+    if let ref = cleanedFile {
+      cleanedFile = nil
+      ExtAudioFileDispose(ref)
+    }
+    if removePartial, segmentIndex > 0 {
+      unlink(segmentURL(index: segmentIndex, partial: true, variant: .cleaned).path)
+    }
+    health.withLock { $0.cleanedFailed = true }
   }
 
   /// The highest index any recognized file of this track already uses, final or partial,
@@ -747,15 +968,17 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   }
 
   /// A segment's file, with its start time in the name (#3972 R15).
-  private func segmentURL(index: Int, partial: Bool) -> URL {
+  private func segmentURL(index: Int, partial: Bool, variant: MeetingSegmentVariant = .raw) -> URL {
     config.folder.appendingPathComponent(
       MeetingSegmentNaming.fileName(
-        track: config.track, index: index, startMs: segmentStartSample / Self.samplesPerMs,
-        partial: partial))
+        track: config.track, variant: variant, index: index,
+        startMs: segmentStartSample / Self.samplesPerMs, partial: partial))
   }
 
   private func fail(_ error: Error) {
     guard !failed else { return }
+    // The raw audio stopped: no twin may outlive it as if it were complete.
+    stopCleaned(reason: "raw writer failed")
     failed = true
     health.withLock { $0.failed = true }
     pending.withLock { $0.accepting = false }
@@ -765,6 +988,20 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   // MARK: - Test seams
 
   #if DEBUG
+    /// #4355 PR B: a failure injected at the cleaned copy's own boundary (its write, or its
+    /// finalization), so a test can prove raw writing does not depend on it.
+    package enum CleanedFault: Sendable {
+      case write, finalize, afterRename
+      /// After the rename, and the cleanup that would remove the twin fails too.
+      case afterRenameKeepingTwin
+      /// Writing the proof at close fails.
+      case proof
+    }
+    private var cleanedFaultForTesting: CleanedFault?
+    package func setCleanedFaultForTesting(_ fault: CleanedFault?) {
+      queue.sync { cleanedFaultForTesting = fault }
+    }
+
     /// Runs `hook` on the writer's queue at each finalization phase. Set before the first append.
     package func setPhaseHookForTesting(_ hook: (@Sendable (Phase) -> Void)?) {
       queue.sync { phaseHook = hook }

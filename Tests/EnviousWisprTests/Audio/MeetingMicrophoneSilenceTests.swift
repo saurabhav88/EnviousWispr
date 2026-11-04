@@ -551,20 +551,20 @@ struct MeetingMicrophoneSilenceTests {
     for i in 0..<300 {
       let at = base &+ UInt64(i) &* step
       chunk.withUnsafeBufferPointer {
-        silence.accept($0, acquired: lone(at), afterDrop: false, sourceBreak: false, emit: { _, _ in })
+        silence.accept($0, acquired: lone(at), afterDrop: false, sourceBreak: false, emit: { _, _, _ in })
       }
       // Released one chunk at a time, as the hold comes due.
-      silence.releaseDue(now: lone(at &+ silence.holdTicks), emit: { _, _ in })
+      silence.releaseDue(now: lone(at &+ silence.holdTicks), emit: { _, _, _ in })
     }
-    silence.releaseAll(emit: { _, _ in })
+    silence.releaseAll(emit: { _, _, _ in })
     #expect(silence.intervalOverflows == 0, "the frozen mute never fills its storage")
     // Late audio stamped 100 ms behind C, inside the long mute, is silenced.
     var late = [Float](repeating: 1, count: 160)
     let lateAt = (silence.released?.hostTicks ?? 0) &- MeetingMicrophoneSilence.ticks(nanos: 100_000_000)
     late.withUnsafeBufferPointer {
-      silence.accept($0, acquired: lone(lateAt), afterDrop: false, sourceBreak: false, emit: { _, _ in })
+      silence.accept($0, acquired: lone(lateAt), afterDrop: false, sourceBreak: false, emit: { _, _, _ in })
     }
-    silence.releaseAll(emit: { frames, _ in late = Array(frames) })
+    silence.releaseAll(emit: { frames, _, _ in late = Array(frames) })
     #expect(late.allSatisfy { $0 == 0 }, "late audio inside the frozen mute is silenced")
   }
 
@@ -575,15 +575,15 @@ struct MeetingMicrophoneSilenceTests {
     let base: UInt64 = 10_000_000_000
     let two = [Float](repeating: 1, count: 32_000)
     two.withUnsafeBufferPointer {
-      silence.accept($0, acquired: lone(base), afterDrop: false, sourceBreak: false, emit: { _, _ in })
+      silence.accept($0, acquired: lone(base), afterDrop: false, sourceBreak: false, emit: { _, _, _ in })
     }
-    silence.releaseAll(emit: { _, _ in })
+    silence.releaseAll(emit: { _, _, _ in })
     // C = base + 2 s, so the cutoff is base + 1 s. Sample 0 of the next chunk sits one tick
     // before it (late); sample 1 sits after it.
     let cutoff = base &+ MeetingMicrophoneSilence.ticks(nanos: 1_000_000_000)
     [Float](repeating: 1, count: 1_600).withUnsafeBufferPointer {
       silence.accept(
-        $0, acquired: lone(cutoff - 1), afterDrop: false, sourceBreak: false, emit: { _, _ in })
+        $0, acquired: lone(cutoff - 1), afterDrop: false, sourceBreak: false, emit: { _, _, _ in })
     }
     #expect(silence.lateFrames == 1)
   }

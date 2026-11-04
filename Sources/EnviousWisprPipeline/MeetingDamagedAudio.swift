@@ -21,7 +21,7 @@ package enum MeetingDamagedAudio {
     case .unreadablePartial(let name), .unreadableFinal(let name), .incompatibleFinal(let name):
       return name
     case .folderUnreadable, .emptyPartial, .partialBesideFinal, .promotionFailed,
-      .directorySyncFailed, .emptyFinal, .duplicateIndex:
+      .directorySyncFailed, .emptyFinal, .duplicateIndex, .unreadableProof:
       return nil
     }
   }
@@ -45,7 +45,10 @@ package enum MeetingDamagedAudio {
     var result: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] = [:]
     let unbounded = Int.max
     for kind in MeetingTrackKind.allCases {
-      let files = onDisk.filter { $0.track == kind }.sorted { $0.startMs < $1.startMs }
+      // Raw files only: the cleaned copy (#4355 PR B) is a derivative, and its twin starts where
+      // its raw segment does, so it would never bound a damaged raw file's claim.
+      let files = onDisk.filter { $0.track == kind && $0.variant == .raw }
+        .sorted { $0.startMs < $1.startMs }
       let covered = (readable[kind]?.segments ?? []).map {
         ms($0.readStartSample)..<ms($0.endSample)
       }.filter { !$0.isEmpty }.sorted { $0.lowerBound < $1.lowerBound }

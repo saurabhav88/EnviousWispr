@@ -47,12 +47,18 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
     public let transcriptLanguage: String?
     /// #3973 C2: the resolved engine and model, known before any reuse.
     public let engine: Engine
+    /// #4355 PR B: which microphone copy the pass read, with the echo cleaner that made a cleaned
+    /// copy. Pieces from the raw copy never resume a cleaned pass, or the other way round, and a
+    /// cleaned copy from another cleaner is never reused. Absent in keys written before it, which
+    /// all came from `processingVersion` 5 and never match a version-6 pass.
+    public let microphoneCopy: MeetingMicrophoneCopy?
     public let inputs: [TrackInventory]
 
     public init(
       meetingID: UUID, attemptID: UUID, processingVersion: Int, pieceTargetSeconds: Double,
       pieceSearchSeconds: Double, seamPaddingSeconds: Double, cutsPieces: Bool,
-      transcriptLanguage: String?, engine: Engine, inputs: [TrackInventory]
+      transcriptLanguage: String?, engine: Engine, microphoneCopy: MeetingMicrophoneCopy,
+      inputs: [TrackInventory]
     ) {
       self.meetingID = meetingID
       self.attemptID = attemptID
@@ -64,12 +70,13 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
       // One spelling of Auto, so an Auto key always equals another Auto key.
       self.transcriptLanguage = transcriptLanguage?.isEmpty == false ? transcriptLanguage : nil
       self.engine = engine
+      self.microphoneCopy = microphoneCopy
       self.inputs = inputs
     }
 
     private enum CodingKeys: String, CodingKey {
       case meetingID, attemptID, processingVersion, pieceTargetSeconds, pieceSearchSeconds
-      case seamPaddingSeconds, cutsPieces, transcriptLanguage, engine, inputs
+      case seamPaddingSeconds, cutsPieces, transcriptLanguage, engine, microphoneCopy, inputs
     }
 
     public init(from decoder: any Decoder) throws {
@@ -86,6 +93,8 @@ public struct MeetingProcessingCheckpoint: Codable, Equatable, Sendable {
       let language = try c.decodeIfPresent(String.self, forKey: .transcriptLanguage)
       transcriptLanguage = language?.isEmpty == false ? language : nil
       engine = try c.decode(Engine.self, forKey: .engine)
+      microphoneCopy = try c.decodeIfPresent(
+        MeetingMicrophoneCopy.self, forKey: .microphoneCopy)
       inputs = try c.decode([TrackInventory].self, forKey: .inputs)
     }
   }
