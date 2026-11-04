@@ -935,18 +935,18 @@ struct MeetingSummaryTests {
 
   // MARK: - Written in parts (#4044)
 
-  @Test("the cloud defaults named by the long-meeting hint retain large planning windows")
-  func longMeetingHintDefaultCapacity() {
-    // #4044: "The default OpenAI, Gemini and Claude models fit much longer meetings in one
-    // piece." This binds their minimum planning capacity.
-    for provider: LLMProvider in [.openAI, .gemini, .claude] {
-      // #4353 D2 retired the defaults this hint names; these are the last shipped defaults,
-      // pending the hint's rewording (reported in the chunk 6 receipt).
-      let model = ["openAI": "gpt-4o-mini", "gemini": "gemini-3.7-flash", "claude": "claude-haiku-4-5"][
-        provider.rawValue]!
+  @Test("the long-meeting hint's 'some cloud models' holds for known supported examples")
+  func longMeetingHintSupportedCloudExamples() {
+    // #4044, reworded by #4353 D2: "Some cloud models can fit longer meetings in one piece."
+    // Bound to explicit known models, one per provider, each planned at least 128,000 tokens:
+    // over thirty times Apple Intelligence's 4,096-token window, which wrote the parts.
+    let examples: [(LLMProvider, String)] = [
+      (.openAI, "gpt-4o-mini"), (.gemini, "gemini-3.7-flash"), (.claude, "claude-haiku-4-5"),
+    ]
+    for (provider, model) in examples {
       #expect(
         MeetingSummaryProviders.hostedContextTokens(provider, model: model) >= 128_000,
-        "\(provider.rawValue) default \(model) no longer supports the hint's capacity claim")
+        "\(provider.rawValue) \(model) no longer supports the hint's capacity claim")
     }
   }
 

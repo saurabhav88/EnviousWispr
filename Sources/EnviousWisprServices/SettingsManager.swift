@@ -2349,8 +2349,11 @@ public final class SettingsManager {
       return DiscoveredModelRepair(cloudModel: armedRow.id, ollamaModel: armedRow.id)
     }
     // Prefer the provider's own model (the remembered Ollama name, or a bundled engine's fixed
-    // name) over the plain first-available pick. Cloud providers returned above (#4353 D2).
+    // name), as an exact id or as that id with an eight-digit dated suffix
+    // (`work-model:stable` vs. discovered `work-model:stable-20261103`), over the plain
+    // first-available pick. Cloud providers returned above and are never repaired (#4353 D2).
     let defaultID = LLMProvider.localModel(for: provider, ollamaModel: ollamaModel) ?? ""
+    let datedSnapshotPrefix = "\(defaultID)-"
 
     // #1914 (founder decision 2026-08-04): this repair branch may arm a model
     // automatically, so its candidates exclude hosted Ollama models. It is the
@@ -2397,7 +2400,12 @@ public final class SettingsManager {
       guard model.isAvailable else { return false }
       return provider == .ollama ? !model.isRemote : true
     }
-    let preferredDefault = eligible.first { $0.id == defaultID }
+    let preferredDefault = eligible.first { model in
+      if model.id == defaultID { return true }
+      guard model.id.hasPrefix(datedSnapshotPrefix) else { return false }
+      let snapshotSuffix = model.id.dropFirst(datedSnapshotPrefix.count)
+      return snapshotSuffix.count == 8 && snapshotSuffix.allSatisfy(\.isNumber)
+    }
     if let fallback = preferredDefault ?? eligible.first {
       return DiscoveredModelRepair(
         cloudModel: fallback.id, ollamaModel: provider == .ollama ? fallback.id : nil)

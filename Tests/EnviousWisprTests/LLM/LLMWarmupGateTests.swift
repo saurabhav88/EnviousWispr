@@ -6,7 +6,6 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
-import EnviousWisprAppKitTestSupport
 
 /// #2093: the cloud pre-warm no longer fires on every recording.
 ///
@@ -75,21 +74,28 @@ struct LLMWarmupGateTests {
   }
 
   /// #4353 D2: with no default model, an empty cloud choice reaches every pre-warm caller
-  /// (launch, foreground, each take). The shared door stops it before the key, the request and
-  /// the slot, so the slot stays claimable afterwards.
-  @Test("#4353 an empty cloud model pre-warms nothing and leaves no in-flight marker", arguments: [
-    LLMProvider.openAI, .claude,
-  ])
-  func emptyModelLeavesNoState(provider: LLMProvider) {
-    let session = freshSession()
-    // An isolated key folder, never the real Keychain, in case the guard ever moves.
-    let keys = KeychainManager(
-      backend: .legacyFiles,
-      legacyStore: FileLegacyKeyStore(
-        storageDirectory: TestTemporaryDirectory.url
-          .appending(path: "ew-tests-4353-warmup-\(UUID().uuidString)")))
-    session.preWarmModel(provider: provider, model: "", keychainManager: keys)
-    #expect(session.claimWarmupSlot(provider: provider, model: "", now: Date()))
+  /// (launch, foreground, each take), so the shared door must stop it before the key, the slot
+  /// and the request. A runtime check cannot tell this guard apart from the failed key read that
+  /// follows it without a real key, so the order is read from the source, as the critical-section
+  /// test below does: the empty-model guard is a top-level statement of `preWarmModel` that comes
+  /// before the key read and before the claim.
+  @Test("#4353 the empty-model guard runs before the key read and the claim")
+  func emptyModelGuardPrecedesKeyAndClaim() throws {
+    let url = RepoRoot.sourceURL("Sources/EnviousWisprLLM/LLMNetworkSession.swift")
+    let tree = CachedSwiftParser.parse(source: try String(contentsOf: url, encoding: .utf8))
+    let finder = FunctionStatements(named: "preWarmModel", viewMode: .sourceAccurate)
+    finder.walk(tree)
+    let statements = try #require(finder.statements, "preWarmModel not found; was it renamed?")
+    func firstIndex(_ needle: String) -> Int? {
+      statements.firstIndex { $0.contains(needle) }
+    }
+    let guardIndex = try #require(
+      statements.firstIndex { $0.hasPrefix("guard") && $0.contains("!model.isEmpty") },
+      "no top-level `guard !model.isEmpty` in preWarmModel")
+    let keyIndex = try #require(firstIndex("keychainManager.retrieve("))
+    let claimIndex = try #require(firstIndex("claimWarmupSlot("))
+    #expect(guardIndex < keyIndex, "the key is read before an empty model is refused")
+    #expect(guardIndex < claimIndex, "the slot is claimed before an empty model is refused")
   }
 
   // MARK: - The cold window
@@ -398,5 +404,22 @@ private final class CriticalSectionVisitor: SyntaxVisitor {
       return ref.baseName.text
     }
     return nil
+  }
+}
+
+/// The top-level statements of one named function, as trimmed source text, in order.
+private final class FunctionStatements: SyntaxVisitor {
+  private let name: String
+  private(set) var statements: [String]?
+
+  init(named name: String, viewMode: SyntaxTreeViewMode) {
+    self.name = name
+    super.init(viewMode: viewMode)
+  }
+
+  override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
+    guard node.name.text == name, let body = node.body else { return .visitChildren }
+    statements = body.statements.map { $0.item.trimmedDescription }
+    return .skipChildren
   }
 }

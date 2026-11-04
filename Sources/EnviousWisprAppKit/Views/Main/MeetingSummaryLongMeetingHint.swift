@@ -3,7 +3,8 @@ import EnviousWisprServices
 import SwiftUI
 
 /// Advice above a summary Apple Intelligence wrote in parts (#4044).
-/// Names the larger planning windows of the three cloud defaults.
+/// Says some cloud models plan in a much larger window. #4353 D2: there are no cloud defaults to
+/// name, so it claims only "some", bound to known examples in `MeetingSummaryTests`.
 /// It only informs; nothing switches by itself.
 struct MeetingSummaryLongMeetingHint: View {
   /// Shown only for a summary saved as written in parts by Apple Intelligence while the summary
@@ -29,9 +30,9 @@ struct MeetingSummaryLongMeetingHint: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(
-        "Long meeting: this summary was written in parts. The default OpenAI, Gemini and Claude models fit much longer meetings in one piece.",
+        "Long meeting: this summary was written in parts. Some cloud models can fit longer meetings in one piece.",
         comment:
-          "History, a meeting summarized in parts by Apple Intelligence. Explains that the default models of the three named providers support much longer meetings in a single summary call. This does not promise unlimited meeting length."
+          "History, a meeting summarized in parts by Apple Intelligence. Explains that some cloud AI models (OpenAI, Gemini, Claude) can summarize longer meetings in a single pass. Says some, not all, and does not promise unlimited meeting length."
       )
       .font(.stHelper)
       .foregroundStyle(.stTextSecondary)

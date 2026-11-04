@@ -356,6 +356,40 @@ struct SettingsManagerOllamaTruthTests {
     }
   }
 
+  /// The preferred-model search accepts the remembered name with an eight-digit dated suffix,
+  /// ahead of an earlier row; #4353 D2 kept this for Ollama while removing cloud repair.
+  @Test("a dated tag of the remembered Ollama model wins over an earlier row; hosted ones never")
+  func datedRememberedTagIsPreferred() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = ""
+    settings.ollamaModel = "work-model:stable"
+
+    settings.applyDiscoveredModels(
+      [model("other:latest"), model("work-model:stable-20261103")], for: .ollama)
+
+    #expect(settings.llmModel == "work-model:stable-20261103")
+    #expect(settings.ollamaModel == "work-model:stable-20261103")
+
+    // A hosted dated tag is never chosen; the local row is.
+    let hosted = freshSettings()
+    hosted.llmProvider = .ollama
+    hosted.llmModel = ""
+    hosted.ollamaModel = "work-model:stable"
+    hosted.applyDiscoveredModels(
+      [model("work-model:stable-20261103", isRemote: true), model("other:latest")], for: .ollama)
+    #expect(hosted.ollamaModel == "other:latest")
+
+    // Not eight digits: no preference, the first eligible row.
+    let undated = freshSettings()
+    undated.llmProvider = .ollama
+    undated.llmModel = ""
+    undated.ollamaModel = "work-model:stable"
+    undated.applyDiscoveredModels(
+      [model("other:latest"), model("work-model:stable-2026")], for: .ollama)
+    #expect(undated.ollamaModel == "other:latest")
+  }
+
   @Test("an armed model present in discovery is left alone")
   func armedPresentUntouched() {
     let settings = freshSettings()
