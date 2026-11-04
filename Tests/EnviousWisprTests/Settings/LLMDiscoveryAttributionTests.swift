@@ -38,7 +38,7 @@ struct LLMDiscoveryAttributionTests {
     let defaults = TestDefaults.suite(
       "ew.tests.discovery-attribution.\(UUID().uuidString)")!
     return LLMModelDiscoveryCoordinator(
-      keychainManager: KeychainManager(), cacheDefaults: defaults)
+      keychainManager: KeychainManager(), cacheDefaults: defaults, discoverModels: { _, _ in [] })
   }
 
   /// A settings store of its own, so a cache-load repair (#2884) can never touch the
@@ -131,7 +131,7 @@ struct LLMDiscoveryCachePruneTests {
     let settings = SettingsManager(
       defaults: TestDefaults.suite("ew.tests.2884.settings.\(UUID().uuidString)")!)
     return (
-      LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), cacheDefaults: cache),
+      LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), cacheDefaults: cache, discoverModels: { _, _ in [] }),
       cache, settings
     )
   }
@@ -251,7 +251,7 @@ struct LLMDiscoveryCachePruneTests {
       provider: .appleIntelligence, availability: .available, isRemote: false)
     defaults.set(try JSONEncoder().encode([stale]), forKey: "cachedModels_appleIntelligence")
     let c = LLMModelDiscoveryCoordinator(
-      keychainManager: KeychainManager(), cacheDefaults: defaults)
+      keychainManager: KeychainManager(), cacheDefaults: defaults, discoverModels: { _, _ in [] })
 
     let settings = SettingsManager(
       defaults: TestDefaults.suite("ew.tests.discovery-attribution.ai.settings.\(UUID().uuidString)")!)

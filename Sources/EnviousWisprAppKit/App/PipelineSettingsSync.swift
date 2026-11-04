@@ -95,12 +95,16 @@ final class PipelineSettingsSync {
   /// output classifier, counted from `outputClassifierRecoveryStarted` to `…Finished`.
   private var recoveriesNeedingOutputClassifier = 0
 
+  /// #4353 D6: the cloud model list the diagnostic breadcrumb's model is projected under.
+  private let cloudModelList: @MainActor () -> CloudModelList?
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
+    cloudModelList: @escaping @MainActor () -> CloudModelList?,
     egOneRuntime: EGOneRuntime? = nil,
     s1MiniRuntime: EGOneRuntime? = nil,
     checkerSelectionProvider: (
@@ -144,6 +148,7 @@ final class PipelineSettingsSync {
     /// (which outlasts Stop until its work exits), or nil.
     importPinnedPolishProvider: @escaping @MainActor () -> LLMProvider? = { nil }
   ) {
+    self.cloudModelList = cloudModelList
     self.outputClassifierHolder = outputClassifierHolder
     self.loadOutputClassifier = loadOutputClassifier
     self.importPinnedPolishProvider = importPinnedPolishProvider
@@ -665,14 +670,16 @@ final class PipelineSettingsSync {
   /// reconciles back to dictation's selection afterwards.
 
   private func syncPolishDiagnosticSelection(_ settings: SettingsManager) {
+    let list = cloudModelList()
     SentryBreadcrumb.setPolishSelection(
       provider: settings.llmProvider,
       projectedModel: SettingsProjection.model(
-        provider: settings.llmProvider, id: settings.effectiveLLMModel))
+        provider: settings.llmProvider, id: settings.effectiveLLMModel, list: list))
     SentryBreadcrumb.setPolishSelection(
       provider: settings.effectiveFileImportLLMProvider,
       projectedModel: SettingsProjection.model(
-        provider: settings.effectiveFileImportLLMProvider, id: settings.effectiveFileImportLLMModel),
+        provider: settings.effectiveFileImportLLMProvider, id: settings.effectiveFileImportLLMModel,
+        list: list),
       fileImport: true)
   }
 

@@ -252,7 +252,7 @@ struct HistoryCostBenchmarkTests {
       metadata = BackendMetadata(
         settings: SettingsManager(defaults: defaults),
         llmDiscovery: LLMModelDiscoveryCoordinator(
-          keychainManager: keys, cacheDefaults: defaults, discoverModels: { _, _ in [] }),
+          keychainManager: keys, cacheDefaults: defaults, discoverModels: { _, _ in [] }), cloudModelList: { nil },
         activeModelLoaded: { true }, parakeetModelLabel: { "Parakeet" })
       meetings = try MeetingCoordinatorTests.Harness()
       flow = MeetingStartFlow(

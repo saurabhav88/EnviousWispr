@@ -72,7 +72,7 @@ struct ConnectorAPIKeyTests {
       "the no-key path reaches the catch arm, not the nil guard")
   )
   func openAIKeyIdButNothingStored() async {
-    let connector = OpenAIConnector(keychainManager: emptyKeychain())
+    let connector = OpenAIConnector(keychainManager: emptyKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyMissing)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default,
@@ -99,7 +99,7 @@ struct ConnectorAPIKeyTests {
   /// for any future caller that omits the id.
   @Test("OpenAI with no configured key id -> apiKeyMissing")
   func openAINoKeyConfigured() async {
-    let connector = OpenAIConnector(keychainManager: unreadableKeychain())
+    let connector = OpenAIConnector(keychainManager: unreadableKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyMissing)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default, config: config(keychainId: nil),
@@ -126,7 +126,7 @@ struct ConnectorAPIKeyTests {
       "a Keychain-read defect hid behind a user-configuration state")
   )
   func openAIStoredKeyUnreadable() async {
-    let connector = OpenAIConnector(keychainManager: unreadableKeychain())
+    let connector = OpenAIConnector(keychainManager: unreadableKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyUnreadable)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default,
@@ -153,7 +153,7 @@ struct ConnectorAPIKeyTests {
 
   @Test("Claude with a key id but nothing stored -> apiKeyMissing (never apiKeyUnreadable)")
   func claudeKeyIdButNothingStored() async {
-    let connector = ClaudeConnector(keychainManager: emptyKeychain())
+    let connector = ClaudeConnector(keychainManager: emptyKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyMissing)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default,
@@ -163,7 +163,7 @@ struct ConnectorAPIKeyTests {
 
   @Test("Claude with no configured key id -> apiKeyMissing")
   func claudeNoKeyConfigured() async {
-    let connector = ClaudeConnector(keychainManager: unreadableKeychain())
+    let connector = ClaudeConnector(keychainManager: unreadableKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyMissing)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default, config: config(keychainId: nil),
@@ -173,7 +173,7 @@ struct ConnectorAPIKeyTests {
 
   @Test("Claude with a stored-but-unreadable key -> apiKeyUnreadable, not apiKeyMissing")
   func claudeStoredKeyUnreadable() async {
-    let connector = ClaudeConnector(keychainManager: unreadableKeychain())
+    let connector = ClaudeConnector(keychainManager: unreadableKeychain(), cloudModelList: CloudModelListSeed.current)
     await #expect(throws: LLMError.classified(.apiKeyUnreadable)) {
       _ = try await connector.polish(
         text: "hello there", instructions: .default,
@@ -226,14 +226,14 @@ struct ConnectorAPIKeyTests {
 
     var missing: PolishFailureReason?
     do {
-      _ = try await OpenAIConnector(keychainManager: emptyKeychain())
+      _ = try await OpenAIConnector(keychainManager: emptyKeychain(), cloudModelList: CloudModelListSeed.current)
         .polish(text: "hello there", instructions: .default, config: cfg, onToken: nil)
     } catch let error as LLMError {
       missing = PolishFailureReason.from(error)
     }
     var unreadable: PolishFailureReason?
     do {
-      _ = try await OpenAIConnector(keychainManager: unreadableKeychain())
+      _ = try await OpenAIConnector(keychainManager: unreadableKeychain(), cloudModelList: CloudModelListSeed.current)
         .polish(text: "hello there", instructions: .default, config: cfg, onToken: nil)
     } catch let error as LLMError {
       unreadable = PolishFailureReason.from(error)

@@ -1,0 +1,792 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "chatgpt-4o-latest",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4-turbo",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4.1",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4.1-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4.1-nano",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4o",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-4o-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": false
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5-nano",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.1",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.2",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.2-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.4",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.4-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.4-nano",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.4-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.5-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.6-luna",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.6-sol",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-5.6-terra",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6-astra",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6-luna",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6-sol",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6.1-sol",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o1",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o1-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o1-preview",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o3",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o3-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "o4-mini",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-1.5-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-1.5-flash-8b",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-1.5-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-2.0-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-2.0-flash-lite",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-2.5-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "budget": 0
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-2.5-flash-lite",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "budget": 0
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-2.5-pro",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "budget": 128
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3-flash-preview",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.1-flash-lite",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.1-flash-lite-preview",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.1-pro-preview",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "low"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.1-pro-preview-customtools",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "low"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.5-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.5-flash-lite",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.6-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.7-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "low"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-3.8-flash",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "low"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-fable-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-fable-5-1",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-haiku-4-5",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": false
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-4-1",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-4-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-4-6",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-4-7",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-4-8",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-opus-5-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-sonnet-4-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-sonnet-4-6",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-sonnet-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-sonnet-5-5",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingBetweenTools"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    }
+  ]
+}

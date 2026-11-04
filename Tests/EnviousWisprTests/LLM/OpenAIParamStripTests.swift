@@ -202,7 +202,7 @@ struct OpenAIParamStripTests {
   }
 
   private func connector(_ transport: ScriptedTransport) -> OpenAIConnector {
-    OpenAIConnector(keychainManager: populatedKeychain(), requestExecutor: transport.executor())
+    OpenAIConnector(keychainManager: populatedKeychain(), cloudModelList: CloudModelListSeed.current, requestExecutor: transport.executor())
   }
 
   @Test func temperatureRejectionStripsAndSucceedsInTwoRequests() async throws {
@@ -302,7 +302,7 @@ struct OpenAIParamStripTests {
   @Test func responsesOnlyModelWithMissingKeyReportsKeyFirst() async {
     let transport = ScriptedTransport(script: [])
     let connector = OpenAIConnector(
-      keychainManager: KeychainManager(backend: .legacyFiles, legacyStore: EmptyKeyStore()),
+      keychainManager: KeychainManager(backend: .legacyFiles, legacyStore: EmptyKeyStore()), cloudModelList: CloudModelListSeed.current,
       requestExecutor: transport.executor())
 
     do {

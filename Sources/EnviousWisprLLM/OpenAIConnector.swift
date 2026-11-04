@@ -18,6 +18,9 @@ public struct OpenAIConnector: TranscriptPolisher {
 
   private let keychainManager: KeychainManager
   private let requestExecutor: RequestExecutor
+  /// #4353 D6: the cloud model list the operation that built this connector captured. Every
+  /// request this connector sends, including a strip-and-retry rebuild, reads its policy here.
+  private let cloudModelList: CloudModelList?
   private let baseURL = "https://api.openai.com/v1/chat/completions"
 
   /// Params the strip-retry may remove after a qualifying 400. Never
@@ -31,16 +34,21 @@ public struct OpenAIConnector: TranscriptPolisher {
   /// Never persisted: an OpenAI-side fix resets on relaunch.
   private static let paramMemo = OSAllocatedUnfairLock<[String: Set<String>]>(initialState: [:])
 
-  public init(keychainManager: KeychainManager = KeychainManager()) {
+  public init(keychainManager: KeychainManager = KeychainManager(), cloudModelList: CloudModelList?) {
     self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
     self.requestExecutor = { request, collector in
       try await LLMNetworkSession.shared.session.data(for: request, delegate: collector)
     }
   }
 
   /// Test seam. Production callers use the public init.
-  init(keychainManager: KeychainManager, requestExecutor: @escaping RequestExecutor) {
+  init(
+    keychainManager: KeychainManager, cloudModelList: CloudModelList?,
+    requestExecutor: @escaping RequestExecutor
+  ) {
     self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
     self.requestExecutor = requestExecutor
   }
 
@@ -59,7 +67,8 @@ public struct OpenAIConnector: TranscriptPolisher {
     // Completions; fail deterministically with the model-unavailable notice
     // instead of a doomed network call (today only HTTP 404 maps there, and
     // the provider may answer 400 instead).
-    let capabilities = LLMProvider.openAI.modelCapabilities(model: config.model)
+    let capabilities = LLMProvider.openAI.modelCapabilities(
+      model: config.model, list: cloudModelList)
     guard capabilities.supportsChatCompletions else {
       throw LLMError.classified(.modelUnavailable)
     }
@@ -104,10 +113,11 @@ public struct OpenAIConnector: TranscriptPolisher {
   /// Static and pure for fixture testing.
   static func makeRequestBody(
     config: LLMProviderConfig,
+    list: CloudModelList?,
     messages: [[String: String]],
     omitting: Set<String> = []
   ) -> [String: Any] {
-    let capabilities = LLMProvider.openAI.modelCapabilities(model: config.model)
+    let capabilities = LLMProvider.openAI.modelCapabilities(model: config.model, list: list)
 
     var body: [String: Any] = [
       "model": config.model,
@@ -190,7 +200,7 @@ public struct OpenAIConnector: TranscriptPolisher {
         while true {
           let omitting = Self.memoizedOmissions(model: config.model)
           let body = Self.makeRequestBody(
-            config: config, messages: messages, omitting: omitting)
+            config: config, list: cloudModelList, messages: messages, omitting: omitting)
           let sentStrippable = Self.strippableParams.filter { body[$0] != nil }
           let request = try makeRequest(apiKey: apiKey, body: body)
 

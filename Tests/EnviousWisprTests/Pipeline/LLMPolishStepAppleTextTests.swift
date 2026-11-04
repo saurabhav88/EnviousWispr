@@ -36,7 +36,7 @@ struct LLMPolishStepAppleTextTests {
     step.llmProvider = .appleIntelligence
     step.llmModel = "apple-intelligence"
     step.polishInstructions = instructions
-    step.makePolisher = { _, _, _ in TextRecordingPolisher(box: box) }
+    step.makePolisher = { _, _, _, _ in TextRecordingPolisher(box: box) }
     let transcript = "so i was thinking we could maybe ship the new thing some time next week or so"
 
     _ = try await step.process(TextProcessingContext(text: transcript, language: "en"))

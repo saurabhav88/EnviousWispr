@@ -93,13 +93,13 @@ struct FileImportRunnerTests {
         llmModel: "none", s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
     }
     let british = FileImportRunner(keychainManager: KeychainManager())
-    british.freeze(settings: snapshot(.british), vocabulary: nil)
+    british.freeze(settings: snapshot(.british), vocabulary: nil, cloudModelList: nil)
     let britishPart = try await british.process(part: "the color of the center")
     #expect(britishPart.displayText == "the colour of the centre")
     #expect(britishPart.polishedText == nil)  // provider none: polish bypassed
 
     let american = FileImportRunner(keychainManager: KeychainManager())
-    american.freeze(settings: snapshot(.american), vocabulary: nil)
+    american.freeze(settings: snapshot(.american), vocabulary: nil, cloudModelList: nil)
     #expect(
       try await american.process(part: "the color of the center").displayText
         == "the color of the center")
@@ -119,11 +119,11 @@ struct FileImportRunnerTests {
     }
     let spoken = "We met over a period of weeks full stop"
     let off = FileImportRunner(keychainManager: KeychainManager())
-    off.freeze(settings: snapshot(false), vocabulary: nil)
+    off.freeze(settings: snapshot(false), vocabulary: nil, cloudModelList: nil)
     #expect(try await off.process(part: spoken).displayText == "We met over a period of weeks.")
 
     let legacy = FileImportRunner(keychainManager: KeychainManager())
-    legacy.freeze(settings: snapshot(nil), vocabulary: nil)
+    legacy.freeze(settings: snapshot(nil), vocabulary: nil, cloudModelList: nil)
     let converted = try await legacy.process(part: spoken).displayText
     #expect(converted.contains("period") == false, "\(converted)")
     #expect(converted.hasSuffix("weeks."))
@@ -141,7 +141,7 @@ struct FileImportRunnerTests {
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
       makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
-    runner.freeze(settings: Self.egOneSnapshot, vocabulary: nil)
+    runner.freeze(settings: Self.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
     _ = try await runner.process(part: Self.polishPart)
     _ = try await runner.process(part: Self.polishPart)
     #expect(capture.systemPrompts == [Self.namedPolishPrompt, Self.namedPolishPrompt])

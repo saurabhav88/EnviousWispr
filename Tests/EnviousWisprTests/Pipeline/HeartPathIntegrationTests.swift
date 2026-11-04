@@ -338,7 +338,7 @@ private final class HeartPathHarness {
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polishStep.llmModel = "gpt-4o-mini"
     if let polisher {
-      polishStep.makePolisher = { _, _, _ in polisher }
+      polishStep.makePolisher = { _, _, _, _ in polisher }
     }
 
     let outcome = KernelFinalizationOutcome()

@@ -58,8 +58,11 @@ public final class RecoveryTextProcessor {
   /// #3124: the spelling in force at record time; a spool from before English (UK) is American.
   private var recordedEnglishSpelling: EnglishSpelling = .american
 
+  /// `cloudModelList` is the list the replay captured when it began (#4353 D6). It is never
+  /// read from the spool: recovery polishes under the list current at replay time.
   public init(
-    keychainManager: KeychainManager, outputClassifierHolder: OutputClassifierHolder? = nil,
+    keychainManager: KeychainManager, cloudModelList: CloudModelList?,
+    outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
@@ -69,6 +72,7 @@ public final class RecoveryTextProcessor {
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
+    llmPolish.cloudModelList = cloudModelList
     // #1271: recovery polishes through the SAME EG-1 server as live dictation
     // (or silently skips when it is not ready) — never crashes on a nil handle.
     llmPolish.egOneRuntime = egOneRuntime

@@ -305,7 +305,7 @@ import os
     // too-short gate, not from the disabled-step path the other tests use.
     steps.llmPolish.llmProvider = .openAI
     steps.llmPolish.llmModel = "gpt-4o-mini"
-    steps.llmPolish.makePolisher = { _, _, _ in CannedPolisher() }
+    steps.llmPolish.makePolisher = { _, _, _, _ in CannedPolisher() }
     let wiring = makeWiring(
       outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
 
@@ -668,7 +668,7 @@ import os
     polish.llmProvider = .openAI
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
-    polish.makePolisher = { _, _, _ in ThrowingPolisher() }
+    polish.makePolisher = { _, _, _, _ in ThrowingPolisher() }
     let wiring = makeWiring(
       outcome: outcome,
       steps: makeSteps(polish: polish),
@@ -705,7 +705,7 @@ import os
     polish.llmProvider = .ollama
     polish.llmModel = "some-unknown-model:7b"
     polish.ollamaReadinessProbe = { _ in .ready(facts: facts) }
-    polish.makePolisher = { _, _, _ in CannedPolisher() }
+    polish.makePolisher = { _, _, _, _ in CannedPolisher() }
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(
@@ -738,7 +738,7 @@ import os
     let polish = LLMPolishStep(keychainManager: KeychainManager())
     polish.llmProvider = .openAI
     polish.llmModel = "gpt-4o-mini"
-    polish.makePolisher = { _, _, _ in CannedPolisher() }
+    polish.makePolisher = { _, _, _, _ in CannedPolisher() }
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(
@@ -770,7 +770,7 @@ import os
     polish.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
     }
-    polish.makePolisher = { _, _, _ in ThrowingPolisher() }
+    polish.makePolisher = { _, _, _, _ in ThrowingPolisher() }
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
     let wiring = makeWiring(
@@ -798,7 +798,7 @@ import os
     polish.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
     }
-    polish.makePolisher = { _, _, _ in EmptyPolisher() }
+    polish.makePolisher = { _, _, _, _ in EmptyPolisher() }
 
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
@@ -973,7 +973,7 @@ import os
     polish.llmProvider = .openAI
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
-    polish.makePolisher = { _, _, _ in CancellingPolisher() }
+    polish.makePolisher = { _, _, _, _ in CancellingPolisher() }
 
     let wiring = makeWiring(
       outcome: outcome,

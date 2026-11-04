@@ -28,7 +28,7 @@ struct CloudThinkingTableTests {
   // MARK: - Gemini
 
   @Test func gemini38FlashSendsLowAndTheBodyCarriesIt() {
-    let capabilities = LLMProvider.gemini.modelCapabilities(model: "gemini-3.8-flash")
+    let capabilities = LLMProvider.gemini.modelCapabilities(model: "gemini-3.8-flash", list: CloudModelListSeed.current)
     #expect(capabilities.thinkingControl == .level("low"))
     // The level reaches the wire exactly as the 3.7 row's does.
     let config = LLMProviderConfig(
@@ -45,7 +45,7 @@ struct CloudThinkingTableTests {
 
   @Test(arguments: ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-6.1-sol"])
   func gpt6IdsAreReasoningShapedAndOmitTemperature(model: String) {
-    let c = LLMProvider.openAI.modelCapabilities(model: model)
+    let c = LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current)
     #expect(c.thinkingControl != .unsupported)
     #expect(c.temperaturePolicy == .omit)
     #expect(c.supportsChatCompletions)
@@ -53,19 +53,19 @@ struct CloudThinkingTableTests {
 
   @Test func gpt6MatcherIsBoundedAndKeepsTheOldExceptions() {
     // A synthetic future id in the family gets the family's shape.
-    let future = LLMProvider.openAI.modelCapabilities(model: "gpt-6-future")
+    let future = LLMProvider.openAI.modelCapabilities(model: "gpt-6-future", list: CloudModelListSeed.current)
     #expect(future.thinkingControl == .effort("low"))
     #expect(future.temperaturePolicy == .omit)
     // `gpt-60-future` is not GPT-6.
-    let notGPT6 = LLMProvider.openAI.modelCapabilities(model: "gpt-60-future")
+    let notGPT6 = LLMProvider.openAI.modelCapabilities(model: "gpt-60-future", list: CloudModelListSeed.current)
     #expect(notGPT6.thinkingControl == .unsupported)
     #expect(notGPT6.temperaturePolicy == .include)
     // The chat-variant exception applies to the new family too.
-    let chat = LLMProvider.openAI.modelCapabilities(model: "gpt-6-chat-latest")
+    let chat = LLMProvider.openAI.modelCapabilities(model: "gpt-6-chat-latest", list: CloudModelListSeed.current)
     #expect(chat.thinkingControl == .unsupported)
     // Endpoint eligibility stays independent.
-    #expect(!LLMProvider.openAI.modelCapabilities(model: "gpt-6-pro").supportsChatCompletions)
-    #expect(!LLMProvider.openAI.modelCapabilities(model: "gpt-6-codex").supportsChatCompletions)
+    #expect(!LLMProvider.openAI.modelCapabilities(model: "gpt-6-pro", list: CloudModelListSeed.current).supportsChatCompletions)
+    #expect(!LLMProvider.openAI.modelCapabilities(model: "gpt-6-codex", list: CloudModelListSeed.current).supportsChatCompletions)
   }
 
   // MARK: - OpenAI: fastest legal effort per exact id
@@ -76,21 +76,21 @@ struct CloudThinkingTableTests {
     "gpt-5.4", "gpt-5.4-mini", "gpt-5.2",
   ])
   func effortNoneWhereTheLiveProbeConfirmedIt(model: String) {
-    #expect(LLMProvider.openAI.modelCapabilities(model: model).thinkingControl == .effort("none"))
+    #expect(LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current).thinkingControl == .effort("none"))
   }
 
   /// `gpt-6-astra` and `gpt-6.1-sol` REJECT `none` (HTTP 400), so `low` is their floor; the
   /// rest were never probed, so they keep the value every user has always received.
   @Test(arguments: ["gpt-6-astra", "gpt-6.1-sol", "gpt-5", "gpt-5-mini", "gpt-5.1", "o3"])
   func effortLowForEverythingElse(model: String) {
-    #expect(LLMProvider.openAI.modelCapabilities(model: model).thinkingControl == .effort("low"))
+    #expect(LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current).thinkingControl == .effort("low"))
   }
 
   /// A dated snapshot gets its alias's value; the picker offers snapshots (discovery only
   /// filters `-001` style duplicates and `latest`).
   @Test func datedSnapshotsFollowTheirAlias() {
     func effort(_ model: String) -> LLMModelCapabilities.ThinkingControl {
-      LLMProvider.openAI.modelCapabilities(model: model).thinkingControl
+      LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current).thinkingControl
     }
     #expect(effort("gpt-5.5-2026-04-23") == .effort("none"))
     #expect(effort("gpt-5.4-mini-2026-03-17") == .effort("none"))
@@ -98,7 +98,9 @@ struct CloudThinkingTableTests {
     // Not a real date, or not a trailing date: no normalisation, so the unlisted id gets `low`.
     #expect(effort("gpt-5.5-2026-13-45") == .effort("low"))
     #expect(effort("gpt-5.5-turbo") == .effort("low"))
-    #expect(effort("gpt-5.5-20260423") == .effort("low"))
+    // #4353 D6: one shared dated-id rule (`ProviderModelID`), so a compact date now
+    // inherits too; the old effort lookup stripped dashed dates only (accepted change).
+    #expect(effort("gpt-5.5-20260423") == .effort("none"))
     // Real Gregorian dates only: a leap day is a date, the others are not.
     #expect(effort("gpt-5.5-2024-02-29") == .effort("none"))
     #expect(effort("gpt-5.5-2025-02-29") == .effort("low"))
@@ -112,7 +114,7 @@ struct CloudThinkingTableTests {
   @Test func openAIBodiesCarryTheChosenEffortAndNoTemperature() {
     func body(_ model: String) -> [String: Any] {
       var thinking: ResolvedThinking?
-      if case .effort(let value) = LLMProvider.openAI.modelCapabilities(model: model)
+      if case .effort(let value) = LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current)
         .thinkingControl
       {
         thinking = .effort(value)
@@ -121,7 +123,7 @@ struct CloudThinkingTableTests {
         model: model, apiKeyKeychainId: "openai-api-key", outputTokens: .providerDefault,
         temperature: 0, thinking: thinking)
       return OpenAIConnector.makeRequestBody(
-        config: config,
+        config: config, list: CloudModelListSeed.current,
         messages: [["role": "system", "content": "s"], ["role": "user", "content": "u"]])
     }
     let luna = body("gpt-6-luna")
@@ -145,21 +147,21 @@ struct CloudThinkingTableTests {
   func legacyClaudeBodyIsByteIdentical(model: String) {
     // Production shape: real system prompt, real cap.
     let production = ClaudeConnector.makeRequestBody(
-      model: model, maxTokens: 8192, system: "s", userText: "u")
+      model: model, list: CloudModelListSeed.current, maxTokens: 8192, system: "s", userText: "u")
     #expect(
       canonical(production)
         == #"{"max_tokens":8192,"messages":[{"content":"u","role":"user"}],"model":"\#(model)","system":"s","thinking":{"type":"disabled"}}"#
     )
     // Picker probe shape: no system field, cap 5.
     let probe = ClaudeConnector.makeRequestBody(
-      model: model, maxTokens: 5, system: nil, userText: "Hi")
+      model: model, list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
     #expect(
       canonical(probe)
         == #"{"max_tokens":5,"messages":[{"content":"Hi","role":"user"}],"model":"\#(model)","thinking":{"type":"disabled"}}"#
     )
     // Warmup shape, decoded from the REAL warmup builder, not rebuilt by the test.
     let warmup = LLMNetworkSession.shared.buildWarmupRequest(
-      provider: .claude, model: model, apiKey: "k")
+      provider: .claude, model: model, apiKey: "k", cloudModelList: CloudModelListSeed.current)
     let sent = warmup?.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) }
     #expect(
       (sent as? [String: Any]).map(canonical)
@@ -169,7 +171,7 @@ struct CloudThinkingTableTests {
 
   @Test func sonnet55SendsBetweenToolsAndNoEffort() {
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-sonnet-5-5", maxTokens: 8192, system: "s", userText: "u")
+      model: "claude-sonnet-5-5", list: CloudModelListSeed.current, maxTokens: 8192, system: "s", userText: "u")
     #expect(
       canonical(body)
         == #"{"max_tokens":8192,"messages":[{"content":"u","role":"user"}],"model":"claude-sonnet-5-5","system":"s","thinking":{"type":"between_tools"}}"#
@@ -179,7 +181,7 @@ struct CloudThinkingTableTests {
   @Test(arguments: ["claude-opus-5-5", "claude-fable-5", "claude-fable-5-1"])
   func alwaysThinkingClaudeModelsSendLowEffortAndNoThinkingField(model: String) {
     let body = ClaudeConnector.makeRequestBody(
-      model: model, maxTokens: 8192, system: "s", userText: "u")
+      model: model, list: CloudModelListSeed.current, maxTokens: 8192, system: "s", userText: "u")
     #expect(
       canonical(body)
         == #"{"max_tokens":8192,"messages":[{"content":"u","role":"user"}],"model":"\#(model)","output_config":{"effort":"low"},"system":"s"}"#
@@ -199,12 +201,12 @@ struct CloudThinkingTableTests {
       ),
     ] {
       let warmup = LLMNetworkSession.shared.buildWarmupRequest(
-        provider: .claude, model: model, apiKey: "k")
+        provider: .claude, model: model, apiKey: "k", cloudModelList: CloudModelListSeed.current)
       let sent = warmup?.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) }
       #expect((sent as? [String: Any]).map(canonical) == expected)
       // The picker probe builds through the same function with its own cap and no system.
       let probe = ClaudeConnector.makeRequestBody(
-        model: model, maxTokens: 5, system: nil, userText: "Hi")
+        model: model, list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
       #expect(probe["system"] == nil)
       #expect(probe["max_tokens"] as? Int == 5)
     }
@@ -214,7 +216,7 @@ struct CloudThinkingTableTests {
     // A future id nobody has probed keeps today's body; if Anthropic rejects it, the picker
     // probe hides it, exactly as before this change.
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-future-9", maxTokens: 5, system: nil, userText: "Hi")
+      model: "claude-future-9", list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
     #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
     #expect(body["output_config"] == nil)
   }

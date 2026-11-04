@@ -141,7 +141,7 @@ struct Issue1358EmptyRecoveryTests {
     // Polish ON with an empty-returning polisher; >3 words so it is not bypassed.
     steps.llmPolish.llmProvider = .openAI
     steps.llmPolish.llmModel = "gpt-4o-mini"
-    steps.llmPolish.makePolisher = { _, _, _ in EmptyPolisher() }
+    steps.llmPolish.makePolisher = { _, _, _, _ in EmptyPolisher() }
     let wiring = makeWiring(
       outcome: outcome, steps: steps, save: { transcript, _ in saved.transcript = transcript })
 
@@ -189,7 +189,7 @@ struct Issue1358EmptyRecoveryTests {
       let steps = makeSteps()
       steps.llmPolish.llmProvider = provider
       steps.llmPolish.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
-      steps.llmPolish.makePolisher = { _, _, _ in EmptyPolisher() }
+      steps.llmPolish.makePolisher = { _, _, _, _ in EmptyPolisher() }
       let wiring = makeWiring(outcome: outcome, steps: steps)
       let input = "please use /clear right now"
       let text = try await wiring.processText(input) {}

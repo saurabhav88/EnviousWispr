@@ -244,6 +244,7 @@ struct MeetingWiringTests {
           backend: .legacyFiles,
           legacyStore: FileLegacyKeyStore(
             storageDirectory: root.appendingPathComponent("keys"))),
+        cloudModelList: { nil },
         makeMeetingBackend: { [ownBackends] in ownBackends.make() },
         analyzeSpeakers: { [speakers] audio in await speakers.analyze(audio) })
     }

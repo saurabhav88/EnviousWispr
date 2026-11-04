@@ -24,7 +24,7 @@ struct GeminiLiveSweepTests {
     let keychain = KeychainManager()
     let apiKey = try keychain.retrieve(key: KeychainManager.geminiKeyID)
 
-    let discovered = try await LLMModelDiscovery().discoverModels(provider: .gemini, apiKey: apiKey)
+    let discovered = try await LLMModelDiscovery(cloudModelList: CloudModelListSeed.current).discoverModels(provider: .gemini, apiKey: apiKey)
     let offered = LiveSweepSupport.narrowed(discovered.filter(\.isAvailable))
     #expect(!offered.isEmpty, "discovery returned no available models — sweep cannot run")
     if ProcessInfo.processInfo.environment["EW_SWEEP_ONLY"] == nil {
@@ -40,7 +40,7 @@ struct GeminiLiveSweepTests {
 
     for model in offered {
       var thinking: ResolvedThinking?
-      switch LLMProvider.gemini.modelCapabilities(model: model.id).thinkingControl {
+      switch LLMProvider.gemini.modelCapabilities(model: model.id, list: CloudModelListSeed.current).thinkingControl {
       case .budget(let value): thinking = .budget(value)
       case .level(let value): thinking = .level(value)
       case .effort, .unsupported: thinking = nil

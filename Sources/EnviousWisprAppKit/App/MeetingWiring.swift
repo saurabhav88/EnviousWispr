@@ -51,6 +51,9 @@ enum MeetingWiring {
     let log: @MainActor (String) -> Void
     /// The AI Polish keys, for meeting summaries (#3972 R44).
     let keychain: KeychainManager
+    /// #4353 D6: the cloud model list in use now (`CloudModelListHolder.snapshot`), read once
+    /// per summary attempt by `MeetingSummaryOwner`.
+    let cloudModelList: @MainActor () -> CloudModelList?
     /// #4319: the bundled polisher a file import holds (`FileImportCoordinator`
     /// `.pinnedLocalPolishProvider`), or nil; an EG-1 summary waits while it is set.
     var importPinnedLocalProvider: @MainActor () -> LLMProvider? = { nil }
@@ -325,7 +328,8 @@ enum MeetingWiring {
         isEnabled: { settings.meetingWriteSummary },
         // #4287: the summary engine chosen on the Summaries tab, never dictation's.
         selection: { settings.meetingSummarySelection },
-        prepare: { [egOne = inputs.egOneSummaryEngine] provider, model in
+        cloudModelList: inputs.cloudModelList,
+        prepare: { [egOne = inputs.egOneSummaryEngine] provider, model, cloudModelList in
           // #4319: native EG-1 is prepared by the engine that can lend it the bundled server;
           // every other provider is unchanged.
           if provider == .egOne, let egOne {
@@ -333,7 +337,7 @@ enum MeetingWiring {
               timeoutSeconds: MeetingSummaryOwner.Dependencies.defaultLocalCallTimeoutSeconds)
           }
           return await MeetingSummaryProviders.prepare(
-            provider: provider, model: model, keychain: keychain)
+            provider: provider, model: model, cloudModelList: cloudModelList, keychain: keychain)
         },
         visibleTranscript: {
           [weak coordinator, transcriptCoordinator = inputs.transcriptCoordinator] meetingID in

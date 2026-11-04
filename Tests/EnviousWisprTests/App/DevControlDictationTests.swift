@@ -746,7 +746,7 @@
         pid: 0, isProcessAlive: { _ in false }))
       let sync = PipelineSettingsSync(
         kernelDriver: parakeet, whisperKernelDriver: whisper, audioCapture: audio,
-        asrManager: asr, hotkeyService: hotkey, ollamaRemotenessLookup: { _ in nil })
+        asrManager: asr, hotkeyService: hotkey, cloudModelList: { nil }, ollamaRemotenessLookup: { _ in nil })
       let last = LastRecordingResult()
       let lockAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
         get: { locked.isLocked }, set: { locked.isLocked = $0 })

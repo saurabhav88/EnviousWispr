@@ -107,7 +107,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = provider
     step.llmModel = model
-    step.makePolisher = { _, _, _ in ThrowingPolisher(makeError: makeError) }
+    step.makePolisher = { _, _, _, _ in ThrowingPolisher(makeError: makeError) }
     // #1305: the .ollama entry gate consults a readiness probe before the
     // polisher. These are MID-FLIGHT-path tests (failure on a running server),
     // so the probe reports ready — and never touches a real network.
@@ -804,7 +804,7 @@ struct TextProcessingRunnerCaptureTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
-    step.makePolisher = { _, _, _ in SucceedingPolisher() }
+    step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
 
     let result = try await runner.run(
       rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
@@ -1098,7 +1098,7 @@ struct TextProcessingRunnerCaptureTests {
       return result.polishTakeOutcome
     }
     let polishing = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.emptyResponse }
-    polishing.makePolisher = { _, _, _ in FixedPolisher(text: "Polished.") }
+    polishing.makePolisher = { _, _, _, _ in FixedPolisher(text: "Polished.") }
     #expect(try await run(polishing, Self.longTranscript)?.result == .polished)
 
     let short = makeStep(provider: .openAI, model: "gpt-4o-mini") { LLMError.emptyResponse }
@@ -1154,7 +1154,7 @@ struct TextProcessingRunnerCaptureTests {
   func ollamaSuccessStampedWhereObserved() async throws {
     let serviceCommit = Stamps()
     let step = makeStep(provider: .ollama, model: "qwen3:4b") { LLMError.emptyResponse }
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       serviceCommit.mark()
       return FixedPolisher(text: "Polished text for the take.")
     }

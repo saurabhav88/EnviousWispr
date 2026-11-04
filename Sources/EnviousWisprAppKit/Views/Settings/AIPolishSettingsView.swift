@@ -134,28 +134,12 @@ enum AIPolishKeychainFailureMessage {
 /// Re-validated against OpenAI, Gemini and Claude (2026-09-02, #2602):
 /// `docs/audits/2026-09-02-issue-2602-classifier-revalidation.txt`.
 enum AIPolishModelClassifier {
-  /// #2602: ids whose vendor name carries NO tier word but which ARE the
-  /// cheap-and-fast tier.
-  ///
-  /// **A token cannot do this job any more, and that is what the 2026-09-02
-  /// sweep found.** `mini` and `nano` were OpenAI's small tier through the 4.x
-  /// and 5.0–5.5 generations; at 5.6 the tiers became CODENAMES — `luna` cheap,
-  /// `terra` middle, `sol` large. `luna` is a NAME, not a word meaning "small",
-  /// so adding it to `positives` would read as a rule and behave as a one-model
-  /// exception that expires at the next rename.
-  ///
-  /// Same move `OllamaModelPickerPresentation.groups(from:)` already made for
-  /// Ollama in #1950, for the reason stated there: the token classifier was
-  /// "wrong in both directions" for a naming scheme it was not built for, so
-  /// that provider got a curated verdict instead. And the same instrument
-  /// `LLMModelCapabilities` justifies — OpenAI's models endpoint returns ids
-  /// only, so a live tier lookup cannot exist.
-  ///
-  /// **A new generation needs a row here, not a new token.** Only the
-  /// cheap-and-fast member earns one: `terra` and `sol` are correctly absent,
-  /// both measured available on 2026-09-02 and both correctly left under the
-  /// other heading.
-  static let namedFastTierIDs: Set<String> = ["gpt-5.6-luna"]
+  // #4353 D6: the named fast-tier ids (`gpt-5.6-luna`, #2602) moved to the cloud model list's
+  // `recommended` field, which decides for every listed id (`CloudModelPresentation`). The
+  // reason they existed still holds: at 5.6 OpenAI's tiers became codenames (`luna` cheap,
+  // `terra` middle, `sol` large), and a codename is a name, not a word meaning "small", so a
+  // token rule cannot carry it. A new generation needs a list row, not a new token. What stays
+  // here is the rule for ids the list does not name.
 
   // "haiku" is Claude's fast/cheap tier — it has no "mini"/"nano"/"flash"
   // analog in Anthropic's naming, so without it no Claude model would ever
@@ -178,8 +162,9 @@ enum AIPolishModelClassifier {
     "tts", "image", "search", "transcribe", "banana", "codex", "omni",
   ]
 
-  /// Returns true if the model id is one we named, or a Mini/Nano/Flash/Lite
-  /// variant, suitable for transcript cleanup.
+  /// Returns true for a Mini/Nano/Flash/Haiku/Lite variant suitable for transcript cleanup.
+  /// The fallback for ids the cloud model list does not name; call
+  /// `CloudModelPresentation.isRecommended`, which asks the list first.
   static func isRecommendedForCleanup(_ id: String) -> Bool {
     let lowered = id.lowercased()
     let tokens = Set(
@@ -187,22 +172,10 @@ enum AIPolishModelClassifier {
         .split(whereSeparator: { "-._/".contains($0) })
         .map(String.init)
     )
-    // A disqualifier still vetoes a NAMED id, and it is judged on the FULL id,
-    // never the stripped one — `gpt-5.6-luna-transcribe-2026-01-01` must not
-    // become recommended by having its date removed. Nothing in the named set
-    // trips a disqualifier, so this can only fire on our own mistake, and
-    // failing closed on that is cheaper than shipping a named id that says
-    // `transcribe`.
+    // A disqualifier vetoes the tier words, judged on the FULL id. A token survives its own
+    // dated snapshot (`mini` is still a token of `gpt-5-mini-2025-08-07`), so the dated-copy
+    // rule the named ids needed (cloud review #2603) now lives in the list lookup.
     guard tokens.isDisjoint(with: disqualifiers) else { return false }
-    if namedFastTierIDs.contains(lowered) { return true }
-    // A DATED SNAPSHOT of a named id is that id (cloud review #2603). A token
-    // survives its own snapshot because `mini` is still a token of
-    // `gpt-5-mini-2025-08-07`, which is why the tier words never needed this;
-    // an exact-name lookup does not, so `gpt-5.6-luna-2026-07-09` would have
-    // landed under the other heading while its own alias sat under Recommended.
-    if let base = ProviderModelID.withoutDateSnapshot(lowered), namedFastTierIDs.contains(base) {
-      return true
-    }
     return !tokens.isDisjoint(with: positives)
   }
 
@@ -296,13 +269,15 @@ enum OllamaModelPickerPresentation {
   }
 
   /// `chosenModel` is the surface's own chosen id: a dated copy that would be hidden stays
-  /// visible when it is the one chosen there (#4353 D5).
+  /// visible when it is the one chosen there (#4353 D5). `list` is the caller's one captured
+  /// cloud model list snapshot (#4353 D6), read only for OpenAI, Gemini and Claude.
   static func groups(
-    from models: [LLMModelInfo], provider: LLMProvider, chosenModel: String
+    from models: [LLMModelInfo], provider: LLMProvider, chosenModel: String,
+    list: CloudModelList?
   ) -> Groups {
     switch provider {
     case .openAI, .gemini, .claude:
-      return cloudGroups(from: models, chosenModel: chosenModel)
+      return cloudGroups(from: models, chosenModel: chosenModel, list: list)
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       break
     }
@@ -368,13 +343,29 @@ enum OllamaModelPickerPresentation {
   ///   descending breaks ties, so the input order never matters.
   /// - "Recommended for cleanup" is the row's note only (`ProviderSetup.modelNote`); it never
   ///   moves a model ahead of a newer one.
-  static func cloudGroups(from models: [LLMModelInfo], chosenModel: String) -> Groups {
+  /// - #4353 D6: a row the list marks `hidden`, or an OpenAI row the current list makes
+  ///   ineligible for Chat Completions, is never offered, chosen or not (the chosen-copy
+  ///   exception is about dated copies only); the stored choice keeps its label elsewhere. Each
+  ///   offered row carries the list's name and date where the list has them
+  ///   (`CloudModelPresentation.presented`), and is ordered by that date.
+  static func cloudGroups(
+    from models: [LLMModelInfo], chosenModel: String, list: CloudModelList?
+  ) -> Groups {
     let ids = Set(models.map(\.id))
     let shown = models.filter { model in
+      guard !CloudModelPresentation.isHidden(model.id, provider: model.provider, list: list)
+      else { return false }
+      // A refreshed list can make a cached OpenAI row ineligible for the endpoint our
+      // connector uses; it leaves the menu at once, without rediscovery.
+      guard
+        model.provider != .openAI
+          || model.provider.modelCapabilities(model: model.id, list: list)
+            .supportsChatCompletions
+      else { return false }
       guard model.id != chosenModel, let base = ProviderModelID.withoutDateSnapshot(model.id)
       else { return true }
       return !ids.contains(base)
-    }
+    }.map { CloudModelPresentation.presented($0, list: list) }
     let selectable = newestFirst(shown.filter(\.isSelectable))
     let locked = newestFirst(shown.filter { !$0.isSelectable })
     return Groups(

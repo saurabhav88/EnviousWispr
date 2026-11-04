@@ -279,7 +279,7 @@ struct EGOneLanguageNamingPipelineTests {
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.promptPlanner = spy
-    step.makePolisher = { _, _, _ in CapturingPolisher(capture: capture) }
+    step.makePolisher = { _, _, _, _ in CapturingPolisher(capture: capture) }
     let runner = TextProcessingRunner(
       telemetry: .silent, languageIdentifier: Self.fixed("pl", 0.97),
       timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)

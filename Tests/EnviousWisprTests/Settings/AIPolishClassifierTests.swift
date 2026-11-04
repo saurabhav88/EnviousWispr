@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 import Testing
 
@@ -23,25 +24,28 @@ struct AIPolishClassifierTests {
   /// available (measured 2026-09-02), and the dropdown heading is the only steer
   /// we give. When this fails the model we most want people on is the one they
   /// have to go looking for.
+  /// #4353 D6: the named fast tier is now the cloud model list's `recommended` field.
   @Test("A named cheap-tier codename is recommended even with no tier word")
+  @MainActor
   func namedCodenameIsRecommended() {
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna"))
+    let seed = CloudModelListSeed.current
+    #expect(CloudModelPresentation.isRecommended("gpt-5.6-luna", provider: .openAI, list: seed))
     // Case is normalized like every other id.
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("GPT-5.6-Luna"))
+    #expect(CloudModelPresentation.isRecommended("GPT-5.6-Luna", provider: .openAI, list: seed))
   }
 
   /// Product Outcome (cloud review on #2603). A dated snapshot of a named id IS
   /// that id. A tier WORD survives its own snapshot for free, because `mini` is
   /// still a token of `gpt-5-mini-2025-08-07`; an exact-name lookup does not, so
   /// without this a dated Luna would sit under "Other" while its own alias sat
-  /// under "Recommended".
+  /// under "Recommended". Since #4353 D6 the list's dated-base lookup carries it.
   @Test("A dated snapshot of a named id is still recommended")
+  @MainActor
   func datedSnapshotOfNamedIDIsRecommended() {
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-2026-07-09"))
-    // Anthropic's compact spelling of the same thing.
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-20260709"))
-    // A leap day is a real date.
-    #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-5.6-luna-2024-02-29"))
+    let seed = CloudModelListSeed.current
+    for id in ["gpt-5.6-luna-2026-07-09", "gpt-5.6-luna-20260709", "gpt-5.6-luna-2024-02-29"] {
+      #expect(CloudModelPresentation.isRecommended(id, provider: .openAI, list: seed), "\(id)")
+    }
   }
 
   /// The stripper is swept in every meaning-changing class, because one that

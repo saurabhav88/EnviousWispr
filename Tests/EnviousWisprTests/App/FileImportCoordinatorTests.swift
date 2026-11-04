@@ -1355,7 +1355,7 @@ struct FileImportCoordinatorTests {
       },
       makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
-    runner.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil)
+    runner.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
     final class Parts: @unchecked Sendable { var seen: [String] = [] }
     let parts = Parts()
     let coordinator = makeCoordinator(

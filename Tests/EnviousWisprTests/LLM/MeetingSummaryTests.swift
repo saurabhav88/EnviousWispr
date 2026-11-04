@@ -596,7 +596,8 @@ struct MeetingSummaryTests {
     -> Result<MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable>
   {
     await MeetingSummaryProviders.prepare(
-      provider: provider, model: model, keychain: keychain(),
+      provider: provider, model: model, cloudModelList: CloudModelListSeed.current,
+      keychain: keychain(),
       ollamaReadiness: { await ollama.readiness($0) },
       ollamaVersion: { await ollama.serverVersion() },
       ollamaExecutor: { try await ollama.execute($0) })
@@ -700,22 +701,23 @@ struct MeetingSummaryTests {
     ] {
       let prepared = try #require(
         await MeetingSummaryProviders.prepare(
-          provider: provider, model: model, keychain: Self.keychain()
+          provider: provider, model: model, cloudModelList: CloudModelListSeed.current,
+          keychain: Self.keychain()
         )
         .successValue)
-      let config = MeetingSummaryProviders.hostedConfig(provider, model: model, keyID: "k")
+      let config = MeetingSummaryProviders.hostedConfig(provider, model: model, keyID: "k", list: CloudModelListSeed.current)
       #expect(config.outputTokens == .capped(prepared.window.outputReserveTokens), "\(model)")
       #expect(config.maxRetries == 0)
     }
-    #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "o3") == 9_500)
-    #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4o-mini") == 1_500)
+    #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "o3", list: CloudModelListSeed.current) == 9_500)
+    #expect(MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4o-mini", list: CloudModelListSeed.current) == 1_500)
 
     // An unknown model that may think does not fit the small planning window: refused before
     // any call. An unknown model that does not think fits it.
     let gemini10 = MeetingSummary.Window(
       contextTokens: window(.gemini, "gemini-1.0-pro"),
       outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(
-        .gemini, model: "gemini-1.0-pro"))
+        .gemini, model: "gemini-1.0-pro", list: CloudModelListSeed.current))
     let calls = Calls()
     await #expect(throws: MeetingSummary.Failure.windowTooSmall) {
       _ = try await Self.write(calls, transcript: "t", window: gemini10)
@@ -723,8 +725,38 @@ struct MeetingSummaryTests {
     #expect(calls.prompts.isEmpty)
     let gpt4 = MeetingSummary.Window(
       contextTokens: window(.openAI, "gpt-4"),
-      outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4"))
+      outputReserveTokens: MeetingSummaryProviders.hostedOutputTokens(.openAI, model: "gpt-4", list: CloudModelListSeed.current))
     #expect(try await Self.write(Calls(), transcript: "t", window: gpt4) == "summary 1")
+  }
+
+  /// #4353 D6: the summary's reserve and request read the attempt's captured list, and the
+  /// OpenAI reserve follows the resolved thinking control, never the temperature policy.
+  @Test("the summary reserve and request config come from the captured list, keyed on thinking")
+  func summaryPlanningReadsCapturedList() async throws {
+    func list(_ effort: String, _ temperature: String) throws -> CloudModelList {
+      try CloudModelList.validated(
+        from: Data(
+          #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"openAI","id":"gpt-custom","recommended":false,"hidden":false,"request":{"openAIEffort":"\#(effort)","temperature":"\#(temperature)"},"supportsChatCompletions":true,"allowsFileBatch":true}]}"#
+            .utf8)
+      ).get()
+    }
+    let thinks = try list("low", "omit")
+    let noThinkingNoTemperature = try list("omit", "omit")
+    for (captured, reserve, thinking) in [
+      (thinks, 9_500, ResolvedThinking?.some(.effort("low"))),
+      (noThinkingNoTemperature, 1_500, nil),
+    ] {
+      let prepared = try #require(
+        await MeetingSummaryProviders.prepare(
+          provider: .openAI, model: "gpt-custom", cloudModelList: captured,
+          keychain: Self.keychain()
+        ).successValue)
+      #expect(prepared.window.outputReserveTokens == reserve)
+      let config = MeetingSummaryProviders.hostedConfig(
+        .openAI, model: "gpt-custom", keyID: "k", list: captured)
+      #expect(config.outputTokens == .capped(reserve))
+      #expect(config.thinking == thinking)
+    }
   }
 
   @Test("an Ollama app older than 0.12.6, or of unknown version, is refused before any call")
@@ -847,10 +879,10 @@ struct MeetingSummaryTests {
   static func openAI(_ script: Script, model: String = "gpt-4o-mini") -> MeetingSummary.Complete {
     MeetingSummaryProviders.envelope(
       OpenAIConnector(
-        keychainManager: KeychainManager(backend: .legacyFiles, legacyStore: TestKey()),
+        keychainManager: KeychainManager(backend: .legacyFiles, legacyStore: TestKey()), cloudModelList: CloudModelListSeed.current,
         requestExecutor: script.executor()),
       MeetingSummaryProviders.hostedConfig(
-        .openAI, model: model, keyID: KeychainManager.openAIKeyID))
+        .openAI, model: model, keyID: KeychainManager.openAIKeyID, list: CloudModelListSeed.current))
   }
 
   @Test("shared summary connector cleanup stays at the source-owning adapter")

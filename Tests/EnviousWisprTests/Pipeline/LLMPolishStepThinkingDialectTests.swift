@@ -59,9 +59,11 @@ struct LLMPolishStepThinkingDialectTests {
     let step = LLMPolishStep(keychainManager: KeychainManager())
     step.llmProvider = .gemini
     step.llmModel = model
+    // #4353 D6: the per-model values live in the cloud model list the take captured.
+    step.cloudModelList = CloudModelListSeed.current
 
     let capture = ThinkingCapture()
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CapturingPolisher(capture: capture, result: Self.polished)
     }
 

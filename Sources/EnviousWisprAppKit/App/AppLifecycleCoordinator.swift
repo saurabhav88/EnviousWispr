@@ -56,6 +56,8 @@ final class AppLifecycleCoordinator {
   private let settings: SettingsManager
   private let permissions: PermissionsService
   private let keychainManager: KeychainManager
+  /// #4353 D6: the cloud model list in use now; each warm-up reads it once.
+  private let cloudModelList: @MainActor () -> CloudModelList?
   /// #2997: the launch `settings.snapshot` emitter, built by the bootstrapper, which holds
   /// every coordinator the snapshot reads. Replaces the `customWordsCoordinator` this type
   /// stored only to build the same emitter here.
@@ -107,6 +109,7 @@ final class AppLifecycleCoordinator {
     settings: SettingsManager,
     permissions: PermissionsService,
     keychainManager: KeychainManager,
+    cloudModelList: @escaping @MainActor () -> CloudModelList?,
     standingSnapshotBuilder: StandingSnapshotBuilder,
     contactsImportCoordinator: ContactsImportCoordinator,
     aiAvailability: AIAvailabilityCoordinator,
@@ -139,6 +142,7 @@ final class AppLifecycleCoordinator {
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
     self.standingSnapshotBuilder = standingSnapshotBuilder
     self.contactsImportCoordinator = contactsImportCoordinator
     self.aiAvailability = aiAvailability
@@ -330,7 +334,8 @@ final class AppLifecycleCoordinator {
     LLMNetworkSession.shared.preWarmModel(
       provider: settings.llmProvider,
       model: settings.llmModel,
-      keychainManager: keychainManager
+      keychainManager: keychainManager,
+      cloudModelList: cloudModelList()
     )
 
     // #636: opt-in launch re-scan of Contacts. Add-only, off the launch path —
@@ -436,7 +441,8 @@ final class AppLifecycleCoordinator {
     LLMNetworkSession.shared.preWarmModel(
       provider: settings.llmProvider,
       model: settings.llmModel,
-      keychainManager: keychainManager
+      keychainManager: keychainManager,
+      cloudModelList: cloudModelList()
     )
 
     // #2549: a permission revoked in System Settings while the app was

@@ -63,7 +63,7 @@ struct ClaudeLiveSweepTests {
 
     // The exact candidate population the picker offers: live models list
     // through the shipped filter + availability probe.
-    let discovered = try await LLMModelDiscovery().discoverModels(provider: .claude, apiKey: apiKey)
+    let discovered = try await LLMModelDiscovery(cloudModelList: CloudModelListSeed.current).discoverModels(provider: .claude, apiKey: apiKey)
     let offered = LiveSweepSupport.narrowed(discovered.filter(\.isAvailable))
     #expect(!offered.isEmpty, "discovery returned no available models — sweep cannot run")
     // #3425: a nonempty offered set can pass while the newest models are hidden by a wrong
@@ -74,7 +74,7 @@ struct ClaudeLiveSweepTests {
       #expect(offered.contains { $0.id == required }, "\(required) must be offered; offered: \(offered.map(\.id))")
     }
 
-    let connector = ClaudeConnector(keychainManager: keychain)
+    let connector = ClaudeConnector(keychainManager: keychain, cloudModelList: CloudModelListSeed.current)
     var failures: [String] = []
     var report: [String] = []
     var sweepMedians: [String] = []
@@ -133,7 +133,7 @@ struct ClaudeLiveSweepTests {
       let median = LiveSweepSupport.medianMs(times)
       // The 15-second cloud polish budget (LLMPolishStep.maxDuration) applies to every call.
       if let worst = allTimes.max(), worst > 15_000 { problems.append("a call took \(Int(worst))ms, over the 15s budget") }
-      let shape = LLMProvider.claude.modelCapabilities(model: model.id).claudeRequestShape
+      let shape = LLMProvider.claude.modelCapabilities(model: model.id, list: CloudModelListSeed.current).claudeRequestShape
       if problems.isEmpty {
         report.append("PASS \(model.id) shape=\(shape) median=\(Int(median))ms n=\(times.count)")
         sweepMedians.append("\(model.id)=\(Int(median))ms")
@@ -156,7 +156,7 @@ struct ClaudeLiveSweepTests {
   @Test(.timeLimit(.minutes(10)))
   func latencyReceipt() async throws {
     let keychain = KeychainManager()
-    let connector = ClaudeConnector(keychainManager: keychain)
+    let connector = ClaudeConnector(keychainManager: keychain, cloudModelList: CloudModelListSeed.current)
 
     let short = "so um I think we should meet thursday"
     let medium =
@@ -242,7 +242,7 @@ struct ClaudeLiveSweepTests {
   @Test(.timeLimit(.minutes(10)))
   func compatibilitySweep() async throws {
     let keychain = KeychainManager()
-    let connector = ClaudeConnector(keychainManager: keychain)
+    let connector = ClaudeConnector(keychainManager: keychain, cloudModelList: CloudModelListSeed.current)
 
     let cases: [(String, String)] = [
       (

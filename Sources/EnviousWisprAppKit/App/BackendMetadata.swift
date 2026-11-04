@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import Observation
 
@@ -11,6 +12,8 @@ import Observation
 final class BackendMetadata {
   let settings: SettingsManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// #4353 D6: the cloud model list the chosen model's label is resolved under.
+  let cloudModelList: @MainActor () -> CloudModelList?
   /// Whether the ACTIVE engine's model is resident — the EngineCoordinator's
   /// published truth, injected as a closure. The manager's own flag stopped
   /// covering WhisperKit when #1386 made it Parakeet-only (cloud review P2:
@@ -26,11 +29,13 @@ final class BackendMetadata {
   init(
     settings: SettingsManager,
     llmDiscovery: LLMModelDiscoveryCoordinator,
+    cloudModelList: @escaping @MainActor () -> CloudModelList?,
     activeModelLoaded: @escaping @MainActor () -> Bool,
     parakeetModelLabel: @escaping @MainActor () -> String
   ) {
     self.settings = settings
     self.llmDiscovery = llmDiscovery
+    self.cloudModelList = cloudModelList
     self.activeModelLoaded = activeModelLoaded
     self.parakeetModelLabel = parakeetModelLabel
   }
@@ -84,10 +89,9 @@ final class BackendMetadata {
     }
     let model = settings.effectiveLLMModel  // #1173: single source of truth
     if model.isEmpty { return settings.llmProvider.displayName }
-    if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
-      return info.localizedDisplayName
-    }
-    return model
+    return CloudModelPresentation.label(
+      for: model, provider: settings.llmProvider, models: llmDiscovery.discoveredModels,
+      list: cloudModelList())
   }
 
   /// #2065: ONE table, not one per engine. This branched on `activeBackendType`

@@ -62,7 +62,7 @@ struct LLMPolishResultFinisherTests {
       : Self.cleaned
     let metadata: PolishMetadata? = kind == "metadata"
       ? PolishMetadata(filterTripped: "test-filter", filterFellBackToRaw: true) : nil
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CannedPolisher(result: LLMResult(polishedText: text, polishMetadata: metadata))
     }
     let context = try await step.process(source())
@@ -151,7 +151,7 @@ struct LLMPolishResultFinisherTests {
     let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CannedPolisher(result: LLMResult(polishedText: "Sure, I can do that tomorrow."))
     }
     let result = try await step.process(TextProcessingContext(text: source, language: "en"))
@@ -165,7 +165,7 @@ struct LLMPolishResultFinisherTests {
     let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CannedPolisher(result: LLMResult(polishedText:
         "Here is the cleaned transcript:\nThe cleaned text:\nPlease send the invoice."))
     }

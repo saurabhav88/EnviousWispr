@@ -32,6 +32,9 @@ struct MeetingSummaryOwnerTests {
     var execution: MeetingSummary.Execution = .hosted
     var unavailable: MeetingSummaryProviders.Unavailable?
     var window = MeetingSummary.Window(contextTokens: 128_000, outputReserveTokens: 1_500)
+    /// #4353 D6: the cloud model list the owner reads, and each list `prepare` received.
+    var cloudModelList: CloudModelList?
+    var preparedLists: [CloudModelList?] = []
     /// When set, preparation waits for `releasePrepare()`.
     var holdPrepare = false
     @ObservationIgnored private var heldPrepare: CheckedContinuation<Void, Never>?
@@ -176,7 +179,9 @@ struct MeetingSummaryOwnerTests {
         dependencies: .init(
           isEnabled: { world.enabled },
           selection: { (world.provider, world.model) },
-          prepare: { _, _ in
+          cloudModelList: { world.cloudModelList },
+          prepare: { _, _, list in
+            world.preparedLists.append(list)
             await world.prepare()
             if let prepareOverride = world.prepareOverride { return prepareOverride() }
             if let unavailable = world.unavailable { return .failure(unavailable) }
@@ -710,6 +715,31 @@ struct MeetingSummaryOwnerTests {
     await deletion.value
     #expect(other.world.finished == [Self.row(.cancelled, .hosted)])
     #expect(other.world.finishes == 1, "a preparation that succeeded after the cancel is cleaned up")
+  }
+
+  /// #4353 D6: the attempt reads the cloud model list once, with its selection, and a refresh
+  /// while it runs neither reaches its preparation nor cancels it.
+  @Test("an attempt prepares under the list it started with; a refresh mid-attempt changes nothing")
+  func attemptKeepsItsCloudModelList() async throws {
+    func list(_ id: String) throws -> CloudModelList {
+      try CloudModelList.validated(
+        from: Data(
+          #"{"schema":1,"updated":"2026-11-04","models":[{"provider":"openAI","id":"\#(id)","recommended":false,"hidden":false,"request":{"openAIEffort":"low","temperature":"omit"},"supportsChatCompletions":true,"allowsFileBatch":true}]}"#
+            .utf8)
+      ).get()
+    }
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let started = try list("gpt-started")
+    rig.world.cloudModelList = started
+    rig.world.holdPrepare = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("preparing") { rig.world.preparing }
+    rig.world.cloudModelList = try list("gpt-refreshed")
+    rig.world.releasePrepare()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .hosted)], "a refresh never cancels")
+    #expect(rig.world.preparedLists.map { $0?.revision } == [started.revision])
   }
 
   @Test("a failed preparation has nothing to clean up")
@@ -1717,7 +1747,8 @@ struct MeetingSummaryOwnerTests {
         dependencies: .init(
           isEnabled: { true },
           selection: { (.appleIntelligence, "apple") },
-          prepare: { _, _ in
+          cloudModelList: { nil },
+          prepare: { _, _, _ in
             .success(
               MeetingSummaryProviders.Prepared(
                 execution: .local, window: world.window,

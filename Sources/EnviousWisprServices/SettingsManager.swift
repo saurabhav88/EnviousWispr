@@ -2132,7 +2132,7 @@ public final class SettingsManager {
     // found no quality difference distinguishable from chance (McNemar exact
     // p=0.42) at 2.83x the p90 latency, so each model now always sends the value
     // this toggle sent in its default OFF position. Scope and caveats are owned
-    // by `LLMModelCapabilities.geminiThinkingControl`; do not restate them. Drop the persisted key: a user who had it ON is migrated to the
+    // by the Seed provenance notes in `LLMModelCapabilities.swift` (#4353 D6); do not restate them. Drop the persisted key: a user who had it ON is migrated to the
     // value everyone else already received. Idempotent: removeObject on an
     // absent key is a no-op.
     defaults.removeObject(forKey: "useExtendedThinking")
