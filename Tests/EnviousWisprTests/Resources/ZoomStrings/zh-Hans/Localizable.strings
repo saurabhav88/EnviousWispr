@@ -1,0 +1,24 @@
+/* #4350 test fixture: the listed keys only, copied from Zoom 7.1.9 (88375) zh-Hans.lproj (fixture folder has no .lproj suffix). */
+"LN_Plist_Accessibility_VoIP_Muted_20044" = "电脑音频静音";
+"LN_Plist_Accessibility_VoIP_Unmuted_20044" = "电脑音频开启";
+"LN_Plist_Accessibility_No_Audio_20044" = "未连接音频";
+"LN_No_Audio_Connected_907832" = "未连接音频";
+"LN_Plist_Accessibility_Video_On_20044" = "开启视频";
+"LN_Plist_Accessibility_Video_Off_20044" = "关闭视频";
+"Participants list" = "参会者列表";
+"LN_Meeting_Slide_Remote_Control_Plist_AX_Description_424289" = "参会者列表";
+"LN_PBO_Panelist_Count_353951" = "参会者(%d)";
+"Host" = "主持人";
+"Co-host" = "联席主持人";
+"Co-Host" = "联席主持人";
+"Guest" = "访客";
+"LN_Plist_Guest_110290" = "访客";
+"me" = "我";
+"LN_Accessibility_More_Managing_Options_58425" = "%@的更多选项，已收起";
+"LN_Meeting_Share_Content_Area_AX_422450" = "共享内容";
+"Hide thumbnail video" = "隐藏视频缩略图";
+"LN_Floating_Bar_Tip_Active_Video_68385" = "显示当前演讲者的视频";
+"LN_Accessibility_Active_Speaker_Name_69648" = "正在发言：%@";
+"Talking: " = "正在发言：";
+"Mute My Audio" = "静音";
+"Unmute My Audio" = "解除静音";
