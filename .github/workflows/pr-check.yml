@@ -419,6 +419,17 @@ jobs:
           python3 -I scripts/ollama-library/validate-feed.py --self-test
           python3 -I scripts/ollama-library/validate-feed.py --offline --base "$BASE_SHA" --feed website/public/ollama-library.json
 
+      # #4353 D6: the cloud model list the app fetches and bundles. Offline: the validator's own
+      # shared fixtures first (both valid and invalid, plus generated bounds), then both committed
+      # copies, which must be valid and byte-identical. Every failure exits nonzero, a missing file
+      # included. This proves the JSON contract only; `CloudModelListTests` (the Swift parser on the
+      # same fixtures and the seed) runs in the full local lane, not in the fixed critical bundle.
+      - name: Cloud model list (offline)
+        if: steps.changes.outputs.needs_website == 'true'
+        run: |
+          python3 -I scripts/cloud-models/validate-list.py --self-test
+          python3 -I scripts/cloud-models/validate-list.py --same website/public/cloud-models.json Sources/EnviousWispr/Resources/cloud-models.json
+
 
   # A PR adding more than a floor of test lines and touching core-path source
   # (CORE_PATHS in the script, founder 2026-10-19) must name how those tests are

@@ -49,6 +49,13 @@
   Cache-Control: public, max-age=300
   X-Robots-Tag: noindex
 
+# #4353 D6: the cloud model list, replaced under a fixed name. A cached response may remain
+# fresh for an hour. The app checks at launch and on later activations when due; this cache
+# lifetime does not guarantee when every installation receives a correction.
+/cloud-models.json
+  Cache-Control: public, max-age=3600
+  X-Robots-Tag: noindex
+
 # #4013: the talker rules the app downloads at most once a day. Replaced in place under a fixed
 # name, so an hour lets a fix reach the app the same day.
 /meet/talker-rules.json

@@ -1546,9 +1546,10 @@ private func keyBadge(_ text: String, tone: Color) -> some View {
 ///
 /// Ollama (#3385 design): ON THIS MAC with each model's measured verdict, then the hosted
 /// models under their dated tier headings. Cloud (#4353 D5): one sequence, newest first, with
-/// dated copies hidden unless chosen here; the models our classifier recognises as the fast
-/// tier carry "Fast tier · recommended for cleanup" as a note only; others carry no note,
-/// because "not recognised" says nothing about size, speed or cost.
+/// dated copies hidden unless chosen here; the models the cloud model list recommends (or,
+/// unlisted, our classifier recognises as the fast tier) carry "Recommended" as a note only
+/// (#4353 D6, founder 2026-11-04: "Fast tier" could overclaim for a listed row); others carry
+/// no note, because "not recommended" says nothing about size, speed or cost.
 @ViewBuilder
 private var modelPickerSections: some View {
   let list = cloudModelListHolder?.snapshot?.list
@@ -1653,8 +1654,8 @@ private func modelNote(_ info: LLMModelInfo, list: CloudModelList?) -> String? {
   }
   return CloudModelPresentation.isRecommended(info.id, provider: info.provider, list: list)
     ? String(
-      localized: "Fast tier · recommended for cleanup",
-      comment: "AI Polish, cloud model menu: the line under a model recognised as the fast tier.")
+      localized: "Recommended",
+      comment: "AI Polish, cloud model menu: the line under a model the cloud model list recommends.")
     : nil
 }
 // MARK: - WHY USE block (#1286, #3385)
