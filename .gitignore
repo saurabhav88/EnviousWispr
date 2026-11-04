@@ -168,6 +168,8 @@ scripts/*
 # #2778: the Ollama library feed tools (candidate scan, feed validator, shared name fixtures).
 # pr-check.yml runs the validator, so the directory must ship: `scripts/*` would otherwise hide it.
 !scripts/ollama-library/
+# #4353 D6: the cloud model list validator and its shared fixtures (CloudModelListTests reads them).
+!scripts/cloud-models/
 # #2374 Phase 2: the view-split equivalence proof and its two-way control. The
 # PR's central claim is a MOVE-ONLY verdict from this script, so a reviewer who
 # cannot read it is being handed an unchecked premise.

@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "gpt-r",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "none",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-o",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-n",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    }
+  ]
+}

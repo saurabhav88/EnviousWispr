@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "gemini",
+      "id": "gemini-x",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    }
+  ]
+}
