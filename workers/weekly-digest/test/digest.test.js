@@ -28,6 +28,9 @@ import worker, {
   formatAppUsage,
   fetchOllamaListStatus,
   formatOllamaList,
+  fetchCloudModelListStatus,
+  formatCloudModelList,
+  parseCloudReceipt,
   SOURCE_LABELS,
 } from "../src/index.js";
 import { SENTRY_CALLS_PER_DIGEST } from "../../reporting/sentry-section.js";
@@ -56,6 +59,10 @@ const ENV = {
   OLLAMA_ROUTINE_LOG_ISSUE: "4215",
   OLLAMA_ROUTINE_ENABLED: "true",
   OLLAMA_LIBRARY_FEED_URL: "https://enviouswispr.com/ollama-library.json",
+  // #4353 PR 5: the committed, not-activated state. Cloud tests opt in below.
+  CLOUD_MODEL_ROUTINE_ENABLED: "false",
+  CLOUD_MODEL_ROUTINE_LOG_ISSUE: "",
+  CLOUD_MODEL_ROUTINE_WRITER_LOGIN: "",
 };
 
 // The real 2026-08-05 production release split, so the release line these tests
@@ -146,6 +153,10 @@ const receipt = (createdAt, fields = {}, { login = "saurabhav88", footer = FOOTE
     body: `routine-run date=${f.date} scanned=${f.scanned} picked=${f.picked} mode=${f.mode} outcome=${f.outcome} result=${f.result}` + footer,
   };
 };
+// #4353 PR 5. Test-only values: the real issue and writer are activation values.
+const CLOUD_ISSUE = "9001";
+const CLOUD_WRITER = "cloud-routine-writer[bot]";
+const CLOUD_LOG_PATH = `/repos/saurabhav88/EnviousWispr/issues/${CLOUD_ISSUE}/comments`;
 // NOW is Monday 2026-08-03 13:00 UTC; last Monday's routine ran at 13:30 UTC.
 const LAST_MONDAY = "2026-07-27T13:31:00Z";
 
@@ -191,6 +202,11 @@ function harness(overrides = {}) {
     if (String(url).startsWith("https://enviouswispr.com/ollama-library.json")) {
       state.feedCalls = (state.feedCalls || 0) + 1;
       return overrides.feed ? overrides.feed() : ok(FEED_BODY);
+    }
+    if (new URL(url).host === "api.github.com" && new URL(url).pathname === CLOUD_LOG_PATH) {
+      state.cloudRequests = [...(state.cloudRequests || []), { url: String(url), headers: init?.headers || {} }];
+      const page = Number(new URL(url).searchParams.get("page"));
+      return overrides.cloud ? overrides.cloud(page) : ok([]);
     }
     if (new URL(url).host === "api.github.com" && new URL(url).pathname.includes("/issues/")) {
       state.commentUrls = [...(state.commentUrls || []), String(url)];
@@ -404,11 +420,11 @@ test("a dev_ids 401 costs app usage only; a METRIC 401 fails the whole run", asy
   const devAuth = harness({ posthog: { dev_ids: () => fail(401) } });
   await assert.rejects(() => devAuth.run(), /unavailable sections/);
   assert.equal(devAuth.state.posts.length, 1, "a partial digest still posts");
-  assert.equal(devAuth.state.posts[0].embeds.length, 6);
+  assert.equal(devAuth.state.posts[0].embeds.length, 7);
   // Sentry is a different vendor entirely, so a PostHog credential failure must
   // not cost it. A section that failed because an unrelated API failed would be
   // a coupling this design does not have.
-  assert.doesNotMatch(devAuth.state.posts[0].embeds[5].title, /unavailable/);
+  assert.doesNotMatch(devAuth.state.posts[0].embeds[6].title, /unavailable/);
 
   const metricAuth = harness({ posthog: { website: () => fail(401) } });
   await assert.rejects(() => metricAuth.run(), /HTTP 401/);
@@ -557,14 +573,14 @@ test("GitHub non-2xx on the first page degrades instead of returning '?'", async
 
 // ---- Payload -----------------------------------------------------------------
 
-test("the digest posts six section embeds carrying the brand colour", async () => {
+test("the digest posts seven section embeds carrying the brand colour", async () => {
   const h = harness();
   await h.run();
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 6);
+  assert.equal(digest.embeds.length, 7);
   assert.deepEqual(digest.embeds.map((e) => e.title), [
     "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
-    "Ollama model list", "Errors, last 7 days",
+    "Ollama model list", "Cloud model list", "Errors, last 7 days",
   ]);
   for (const embed of digest.embeds) {
     assert.equal(embed.color, 0x7c3aed);
@@ -992,7 +1008,7 @@ test("the weekly Sentry section spends the fixed call budget and scopes to the r
   assert.equal(h.state.sentryCalls, SENTRY_CALLS_PER_DIGEST,
     "five fixed Sentry calls, never a per-issue fan-out");
   const [digest] = h.state.posts;
-  const sentry = digest.embeds[5];
+  const sentry = digest.embeds[6];
   assert.match(sentry.description, /25 people: microphone capture stalled/);
   assert.match(sentry.description, /13 people: paste fell back to the clipboard/);
   // 8 more people than the prior week (38 vs 30).
@@ -1023,9 +1039,9 @@ test("a Sentry outage costs the Sentry section and nothing else", async () => {
   const h = harness({ sentry: () => fail(503) });
   await assert.rejects(() => h.run(), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 6, "the digest still posts, whole");
-  assert.match(digest.embeds[5].title, /unavailable today/);
-  assert.match(digest.embeds[5].description, /not a report of zero/);
+  assert.equal(digest.embeds.length, 7, "the digest still posts, whole");
+  assert.match(digest.embeds[6].title, /unavailable today/);
+  assert.match(digest.embeds[6].description, /not a report of zero/);
   // The other five sections are untouched and REAL.
   assert.match(digest.embeds[0].title, /All website traffic/);
   for (const embed of digest.embeds.slice(0, 5)) {
@@ -1044,8 +1060,8 @@ test("a worker without the Sentry credential degrades that section only", async 
   const h = harness();
   await assert.rejects(() => h.run(noToken), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 6);
-  assert.match(digest.embeds[5].title, /unavailable today/);
+  assert.equal(digest.embeds.length, 7);
+  assert.match(digest.embeds[6].title, /unavailable today/);
   assert.equal(h.state.sentryCalls, 0, "a missing credential makes no request at all");
 });
 
@@ -1194,7 +1210,7 @@ test("every broken Ollama input costs this section only, then fails the run afte
     await assert.rejects(() => h.run(env), /ollama_list/, name);
     assert.equal(h.state.posts.length, 1, `${name}: the digest still posts`);
     const [digest] = h.state.posts;
-    assert.equal(digest.embeds.length, 6, name);
+    assert.equal(digest.embeds.length, 7, name);
     assert.match(ollamaEmbed(h).description, /^Ollama list figures were temporarily unavailable when this digest ran\.$/, name);
     for (const embed of digest.embeds.filter((e) => e.title !== "Ollama model list")) {
       assert.doesNotMatch(embed.description, /temporarily unavailable/, `${name}: ${embed.title}`);
@@ -1234,4 +1250,422 @@ test("issue mode with picks links the issue it filed", async () => {
   const h = harness({ comments: () => ok([receipt(LAST_MONDAY, { mode: "issue", picked: 3, result: issue })]) });
   await h.run();
   assert.match(ollamaEmbed(h).description, /proposed 3 models: https:\/\/github\.com\/saurabhav88\/EnviousWispr\/issues\/9997$/m);
+});
+
+// ---- Cloud model list (#4353 PR 5) -------------------------------------------
+
+const CLOUD_ENV = {
+  ...ENV,
+  CLOUD_MODEL_ROUTINE_ENABLED: "true",
+  CLOUD_MODEL_ROUTINE_LOG_ISSUE: CLOUD_ISSUE,
+  CLOUD_MODEL_ROUTINE_WRITER_LOGIN: CLOUD_WRITER,
+};
+const cloudEmbed = (h) => h.state.posts[0].embeds.find((e) => e.title === "Cloud model list");
+const cloudText = (h) => cloudEmbed(h).description;
+
+/** The real Stage 2 record shape (workers/cloud-models-routine/README.md
+ * "Durable records"), bound to the line by repository, runID and runDate. */
+const cloudRecord = (f) => ({
+  schema: 1, repository: "saurabhav88/EnviousWispr", runID: f.run, runDate: f.date,
+  runLogCommentID: 3400000001, state: f.result === "merged" ? "merged" : "pending",
+  attempts: [{
+    attempt: "1", artifact: `cloud-model-routine-evidence-${f.run}-1`,
+    sourceSHA: "0123456789abcdef0123456789abcdef01234567",
+    receiptSHA256: "9f2c0d1e4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff0",
+    completedAt: `${f.date}T07:44:10Z`, firstPendingAt: `${f.date}T07:50:12Z`,
+    runOutcome: f.outcome, evidenceOutcome: f.outcome,
+    candidates: Number(f.candidates), added: Number(f.added), failed: Number(f.failed),
+  }],
+  pr: { attempt: "1", number: 4400, url: "https://github.com/saurabhav88/EnviousWispr/pull/4400",
+    head: "89abcdef0123456789abcdef0123456789abcdef" },
+});
+const cloudLine = (f) =>
+  `cloud-routine-run date=${f.date} run=${f.run} providers=3 candidates=${f.candidates} ` +
+  `added=${f.added} failed=${f.failed} outcome=${f.outcome} result=${f.result}`;
+/** One Stage 2 run-log comment: the receipt line, then its one state block. */
+const cloudComment = (createdAt, fields = {}, { login = CLOUD_WRITER, line, record, tail, updatedAt } = {}) => {
+  const f = { date: createdAt.slice(0, 10), run: "101", candidates: 2, added: 1, failed: 0,
+    outcome: "success", result: "merged", ...fields };
+  const rec = { ...cloudRecord(f), ...(record || {}) };
+  return {
+    user: login === null ? null : { login },
+    created_at: createdAt,
+    updated_at: updatedAt || createdAt,
+    body: (line ?? cloudLine(f)) + (tail ?? `\n<!-- cloud-routine-record ${JSON.stringify(rec)} -->`),
+  };
+};
+const cloudPages = (...pages) => (page) => ok(pages[page - 1] ?? []);
+const CLOUD_RECENT = "2026-08-03T08:00:00Z"; // 5 hours before NOW
+
+test("cloud: an exact receipt with its real state block renders the newest run", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT)]) });
+  await h.run(CLOUD_ENV);
+  assert.deepEqual(cloudText(h).split("\n"), [
+    "Newest run: 2026-08-03, receipt posted 2026-08-03. Run: https://github.com/saurabhav88/EnviousWispr/actions/runs/101",
+    "The run completed. New models tested: 2.",
+    "New models confirmed added to the list: 1.",
+  ]);
+  assert.equal(h.state.cloudRequests.length, 1);
+  const url = new URL(h.state.cloudRequests[0].url);
+  assert.equal(url.searchParams.get("per_page"), "100");
+  assert.equal(url.searchParams.get("page"), "1");
+  // No age window on the cloud read: the latest outcome is kept however old.
+  assert.equal(url.searchParams.get("since"), null);
+});
+
+test("cloud: a malformed receipt line from the writer makes the section unavailable", async () => {
+  const lines = {
+    "impossible date": "cloud-routine-run date=2026-02-30 run=101 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "short date": "cloud-routine-run date=2026-8-01 run=101 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "run zero": "cloud-routine-run date=2026-08-03 run=0 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "run leading zero": "cloud-routine-run date=2026-08-03 run=0101 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "run not a number": "cloud-routine-run date=2026-08-03 run=abc providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "run unsafe": "cloud-routine-run date=2026-08-03 run=9999999999999999 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "count too big": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=10000 added=1 failed=0 outcome=success result=merged",
+    "count leading zero": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=02 added=1 failed=0 outcome=success result=merged",
+    "count negative": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=-1 failed=0 outcome=success result=merged",
+    "count decimal": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 failed=0.5 outcome=success result=merged",
+    "providers not 3": "cloud-routine-run date=2026-08-03 run=101 providers=2 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "unknown outcome": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 failed=0 outcome=ok result=merged",
+    "unknown result": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 failed=0 outcome=success result=open",
+    "field order": "cloud-routine-run run=101 date=2026-08-03 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+    "unknown field": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 failed=0 skipped=0 outcome=success result=merged",
+    "missing field": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 outcome=success result=merged",
+    "trailing text": "cloud-routine-run date=2026-08-03 run=101 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged extra",
+    "double space": "cloud-routine-run date=2026-08-03  run=101 providers=3 candidates=2 added=1 failed=0 outcome=success result=merged",
+  };
+  for (const [name, line] of Object.entries(lines)) {
+    const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, {}, { line })]) });
+    await assert.rejects(() => h.run(CLOUD_ENV), /cloud_model_list/, name);
+    assert.match(cloudText(h), /^Cloud model list figures were temporarily unavailable when this digest ran\.$/, name);
+  }
+});
+
+test("cloud: a receipt whose state block is missing, extra or unbound is refused", async () => {
+  const block = (rec) => `\n<!-- cloud-routine-record ${JSON.stringify(rec)} -->`;
+  const f = { date: "2026-08-03", run: "101", candidates: 2, added: 1, failed: 0, outcome: "success", result: "merged" };
+  const cases = {
+    "no block": "",
+    "Ollama footer instead": FOOTER,
+    "footer after the block": block(cloudRecord(f)) + FOOTER,
+    "two blocks": block(cloudRecord(f)) + block(cloudRecord(f)),
+    "not JSON": "\n<!-- cloud-routine-record {not json} -->",
+    "JSON array": "\n<!-- cloud-routine-record [1] -->",
+    "other run ID": block({ ...cloudRecord(f), runID: "102" }),
+    "numeric run ID": block({ ...cloudRecord(f), runID: 101 }),
+    "other repository": block({ ...cloudRecord(f), repository: "someone/else" }),
+    "other run date": block({ ...cloudRecord(f), runDate: "2026-08-02" }),
+    "schema 2": block({ ...cloudRecord(f), schema: 2 }),
+    "text after the block": block(cloudRecord(f)) + "\nmore",
+  };
+  for (const [name, tail] of Object.entries(cases)) {
+    const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, {}, { tail })]) });
+    await assert.rejects(() => h.run(CLOUD_ENV), /cloud_model_list/, name);
+    assert.match(cloudText(h), /temporarily unavailable/, name);
+  }
+});
+
+test("cloud: another account, a similar login or no user is never a receipt", async () => {
+  for (const login of ["cloud-routine-writer", "Cloud-Routine-Writer[bot]", "cloud-routine-writer[bot]x", "saurabhav88", null]) {
+    const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { outcome: "failure" }, { login })]) });
+    await h.run(CLOUD_ENV);
+    assert.equal(cloudText(h),
+      "WARNING: the cloud model routine has posted no run receipt. It may have stopped or never started.", String(login));
+  }
+});
+
+test("cloud: a writer comment that is not a receipt, such as a missing-run notice, is ignored", async () => {
+  const notice = { user: { login: CLOUD_WRITER }, created_at: CLOUD_RECENT, body: "cloud-routine-missing date=2026-08-03 last-run=101" };
+  const h = harness({ cloud: cloudPages([cloudComment("2026-07-27T08:00:00Z", { run: "100" }), notice]) });
+  await h.run(CLOUD_ENV);
+  assert.match(cloudText(h), /actions\/runs\/100$/m);
+});
+
+test("cloud: the newest receipt is chosen by GitHub's creation time, not the typed date", async () => {
+  const h = harness({ cloud: cloudPages([
+    cloudComment("2026-07-27T08:00:00Z", { run: "100", date: "2026-08-02", outcome: "failure" }),
+    cloudComment("2026-08-02T08:00:00Z", { run: "102", date: "2026-07-01" }),
+    cloudComment("2026-07-30T08:00:00Z", { run: "101" }),
+  ]) });
+  await h.run(CLOUD_ENV);
+  assert.match(cloudText(h), /^Newest run: 2026-07-01, receipt posted 2026-08-02\. Run: .*\/runs\/102$/m);
+  assert.doesNotMatch(cloudText(h), /WARNING/);
+});
+
+test("cloud: a recent no-change run reads as completed with nothing new", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { candidates: 0, added: 0, outcome: "nochange", result: "none" })]) });
+  await h.run(CLOUD_ENV);
+  assert.deepEqual(cloudText(h).split("\n").slice(1), [
+    "The run completed and found no new models to add.",
+    "Recorded proposed additions: 0; merge is not confirmed.",
+  ]);
+});
+
+test("cloud: a recent partial run stays a warning and names the failed count", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { candidates: 3, added: 2, failed: 1, outcome: "partial" })]) });
+  await h.run(CLOUD_ENV); // a warning is data, not a section failure
+  const text = cloudText(h);
+  assert.match(text, /^WARNING: this run was partial\. New models that failed testing: 1 of 3\.$/m);
+  assert.match(text, /^New models confirmed added to the list: 2\.$/m);
+  assert.doesNotMatch(text, /no recent receipt/);
+});
+
+test("cloud: a recent failed run stays a warning, never a completion", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { candidates: 0, added: 0, outcome: "failure", result: "none" })]) });
+  await h.run(CLOUD_ENV);
+  const text = cloudText(h);
+  assert.match(text, /^WARNING: this run failed\.$/m);
+  assert.doesNotMatch(text, /completed/);
+});
+
+test("cloud: only a merged result says models were added", async () => {
+  const cases = [
+    [{ added: 2, result: "merged" }, "New models confirmed added to the list: 2."],
+    [{ added: 2, result: "review-blocked" }, "This run is blocked. Recorded proposed additions: 2; merge is not confirmed."],
+    [{ added: 2, result: "none" }, "Recorded proposed additions: 2; merge is not confirmed."],
+    [{ added: 0, result: "none" }, "Recorded proposed additions: 0; merge is not confirmed."],
+  ];
+  for (const [fields, expected] of cases) {
+    const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { candidates: 2, ...fields })]) });
+    await h.run(CLOUD_ENV);
+    const lines = cloudText(h).split("\n");
+    assert.equal(lines.at(-1), expected, JSON.stringify(fields));
+    if (fields.result !== "merged") assert.doesNotMatch(cloudText(h), /added to the list/);
+  }
+});
+
+// No cloud line may claim nothing was added or proposed: those are claims the
+// receipt cannot support (Stage 2 routine-prompt.md Step 5 and Step 2.3).
+const NEGATIVE_CLAIM = /none (were|are) added|nothing (was|is) (added|proposed)|no additions|not added/i;
+
+test("cloud: a merged PR that failed verification (review-blocked) never says nothing was added", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT, { candidates: 2, added: 2, result: "review-blocked" })]) });
+  await h.run(CLOUD_ENV);
+  const text = cloudText(h);
+  assert.match(text, /^This run is blocked\. Recorded proposed additions: 2; merge is not confirmed\.$/m);
+  assert.doesNotMatch(text, NEGATIVE_CLAIM);
+  assert.doesNotMatch(text, /confirmed added/);
+});
+
+test("cloud: a failed run with unreadable evidence and zero counts never says nothing was proposed", async () => {
+  for (const result of ["none", "review-blocked"]) {
+    const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT,
+      { candidates: 0, added: 0, failed: 0, outcome: "failure", result })]) });
+    await h.run(CLOUD_ENV);
+    const text = cloudText(h);
+    assert.match(text, /^WARNING: this run failed\.$/m, result);
+    assert.match(text, /Recorded proposed additions: 0; merge is not confirmed\.$/m, result);
+    assert.doesNotMatch(text, NEGATIVE_CLAIM, result);
+  }
+});
+
+test("cloud: exactly 8 days old is recent; 8 days and a minute warns", async () => {
+  const exact = harness({ cloud: cloudPages([cloudComment("2026-07-26T13:00:00Z")]) });
+  await exact.run(CLOUD_ENV);
+  assert.doesNotMatch(cloudText(exact), /WARNING/);
+  const over = harness({ cloud: cloudPages([cloudComment("2026-07-26T12:59:00Z")]) });
+  await over.run(CLOUD_ENV);
+  assert.match(cloudText(over), /^WARNING: no recent receipt from the cloud model routine \(the newest is 8 days old\)\. It may have stopped\.$/m);
+});
+
+test("cloud: a stale partial or failed run shows the stale warning AND its outcome", async () => {
+  for (const [outcome, warning] of [["partial", /^WARNING: this run was partial/m], ["failure", /^WARNING: this run failed\.$/m]]) {
+    const h = harness({ cloud: cloudPages([cloudComment("2026-07-20T08:00:00Z", { outcome, failed: 1 })]) });
+    await h.run(CLOUD_ENV);
+    const text = cloudText(h);
+    assert.match(text, /^WARNING: no recent receipt from the cloud model routine \(the newest is 14 days old\)/m, outcome);
+    assert.match(text, warning, outcome);
+  }
+});
+
+test("cloud: an old receipt edited today is still stale", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment("2026-07-20T08:00:00Z", {}, { updatedAt: "2026-08-03T12:00:00Z" })]) });
+  await h.run(CLOUD_ENV);
+  assert.match(cloudText(h), /^WARNING: no recent receipt/m);
+});
+
+test("cloud: a receipt created in the future is not accepted", async () => {
+  const alone = harness({ cloud: cloudPages([cloudComment("2026-08-04T08:00:00Z")]) });
+  await alone.run(CLOUD_ENV);
+  assert.match(cloudText(alone), /has posted no run receipt/);
+  const withOlder = harness({ cloud: cloudPages([
+    cloudComment("2026-07-30T08:00:00Z", { run: "100" }),
+    cloudComment("2026-08-04T08:00:00Z", { run: "101", outcome: "failure" }),
+  ]) });
+  await withOlder.run(CLOUD_ENV);
+  assert.match(cloudText(withOlder), /actions\/runs\/100$/m);
+});
+
+test("cloud: the newest receipt beyond page one is found by reading every page", async () => {
+  const filler = (i) => ({ user: { login: "someone" }, created_at: "2026-07-01T00:00:00Z", body: `note ${i}` });
+  const page1 = Array.from({ length: 100 }, (_, i) => filler(i));
+  page1[0] = cloudComment("2026-07-01T08:00:00Z", { run: "90", outcome: "failure" });
+  const page2 = [cloudComment("2026-07-30T08:00:00Z", { run: "100" })];
+  const h = harness({ cloud: cloudPages(page1, page2) });
+  await h.run(CLOUD_ENV);
+  assert.deepEqual(h.state.cloudRequests.map((r) => new URL(r.url).searchParams.get("page")), ["1", "2"]);
+  assert.match(cloudText(h), /actions\/runs\/100$/m);
+  assert.doesNotMatch(cloudText(h), /failed/);
+});
+
+test("cloud: a failed second page makes the section unavailable, never a page-one answer", async () => {
+  const page1 = Array.from({ length: 100 }, () => cloudComment("2026-07-30T08:00:00Z", { run: "100" }));
+  const h = harness({ cloud: (page) => (page === 1 ? ok(page1) : fail(502)) });
+  await assert.rejects(() => h.run(CLOUD_ENV), /cloud_model_list: GitHub run-log comments HTTP 502/);
+  assert.match(cloudText(h), /temporarily unavailable/);
+  assert.doesNotMatch(cloudText(h), /runs\/100/);
+});
+
+test("cloud: a log longer than 20 full pages is refused after exactly 20 requests", async () => {
+  const full = Array.from({ length: 100 }, () => ({ user: { login: "someone" }, created_at: "2026-07-01T00:00:00Z", body: "x" }));
+  const h = harness({ cloud: () => ok(full) });
+  await assert.rejects(() => h.run(CLOUD_ENV), /cloud_model_list: GitHub run-log comments exceeded 20 pages/);
+  assert.equal(h.state.cloudRequests.length, 20);
+  assert.match(cloudText(h), /temporarily unavailable/);
+});
+
+test("cloud: a malformed comment or page shape makes the section unavailable", async () => {
+  const cases = {
+    "not an array": () => ok({ message: "x" }),
+    "comment without body": cloudPages([{ user: { login: CLOUD_WRITER }, created_at: CLOUD_RECENT }]),
+    "unreadable created_at": cloudPages([{ ...cloudComment(CLOUD_RECENT), created_at: "soon" }]),
+    "403": () => fail(403),
+  };
+  for (const [name, cloud] of Object.entries(cases)) {
+    const h = harness({ cloud });
+    await assert.rejects(() => h.run(CLOUD_ENV), /cloud_model_list/, name);
+    assert.match(cloudText(h), /temporarily unavailable/, name);
+  }
+});
+
+test("cloud: the latest known failure is kept even when older than 14 days", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment("2026-07-03T08:00:00Z", { outcome: "failure", result: "none", added: 0 })]) });
+  await h.run(CLOUD_ENV);
+  const text = cloudText(h);
+  assert.match(text, /^Newest run: 2026-07-03/m);
+  assert.match(text, /the newest is 31 days old/);
+  assert.match(text, /^WARNING: this run failed\.$/m);
+});
+
+test("cloud: disabled configuration makes zero cloud reads and says it is not activated", async () => {
+  const h = harness({ cloud: () => { throw new Error("must not be read"); } });
+  await h.run(); // ENV carries the committed disabled state with empty activation values
+  assert.equal(h.state.cloudRequests, undefined);
+  assert.equal(cloudText(h),
+    "The cloud model routine is configured as not activated, so its run log was not read. " +
+      "This is not a live scheduler-state check.");
+  assert.doesNotMatch(cloudText(h), /WARNING|temporarily unavailable/);
+});
+
+test("cloud: the committed wrangler.toml keeps the routine not activated with no invented values", async () => {
+  const { readFileSync } = await import("node:fs");
+  const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  const read = (name) => new RegExp(`^${name} = "([^"]*)"$`, "m").exec(toml)?.[1];
+  assert.equal(read("CLOUD_MODEL_ROUTINE_ENABLED"), "false");
+  assert.equal(read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"), "");
+  assert.equal(read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN"), "");
+  const h = harness();
+  await h.run({ ...ENV,
+    CLOUD_MODEL_ROUTINE_ENABLED: read("CLOUD_MODEL_ROUTINE_ENABLED"),
+    CLOUD_MODEL_ROUTINE_LOG_ISSUE: read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"),
+    CLOUD_MODEL_ROUTINE_WRITER_LOGIN: read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN") });
+  assert.equal(h.state.cloudRequests, undefined);
+});
+
+test("cloud: a missing or inexact enabled state fails the section instead of disabling it", async () => {
+  for (const value of [undefined, "", "TRUE", "1", "no"]) {
+    const h = harness();
+    await assert.rejects(() => h.run({ ...ENV, CLOUD_MODEL_ROUTINE_ENABLED: value }), /cloud_model_list: CLOUD_MODEL_ROUTINE_ENABLED/, String(value));
+    assert.match(cloudText(h), /temporarily unavailable/);
+    assert.equal(h.state.cloudRequests, undefined);
+  }
+});
+
+test("cloud: enabled with a missing or invalid issue or writer fails with zero reads", async () => {
+  const cases = [
+    [{ CLOUD_MODEL_ROUTINE_LOG_ISSUE: "" }, /LOG_ISSUE/],
+    [{ CLOUD_MODEL_ROUTINE_LOG_ISSUE: "#9001" }, /LOG_ISSUE/],
+    [{ CLOUD_MODEL_ROUTINE_LOG_ISSUE: "0" }, /LOG_ISSUE/],
+    [{ CLOUD_MODEL_ROUTINE_WRITER_LOGIN: "" }, /WRITER_LOGIN/],
+    [{ CLOUD_MODEL_ROUTINE_WRITER_LOGIN: "bad login" }, /WRITER_LOGIN/],
+    [{ CLOUD_MODEL_ROUTINE_WRITER_LOGIN: "-leading" }, /WRITER_LOGIN/],
+    [{ GITHUB_REPO: "saurabhav88/EnviousWispr/../x" }, /GITHUB_REPO/],
+  ];
+  for (const [patch, message] of cases) {
+    const h = harness();
+    await assert.rejects(() => h.run({ ...CLOUD_ENV, ...patch }), message, JSON.stringify(patch));
+    assert.match(cloudText(h), /temporarily unavailable/);
+    assert.equal(h.state.cloudRequests, undefined, JSON.stringify(patch));
+  }
+});
+
+test("cloud: a broken cloud source costs only its section, then fails the run after delivery", async () => {
+  const h = harness({ cloud: () => fail(500) });
+  await assert.rejects(() => h.run(CLOUD_ENV), (err) => {
+    assert.match(err.message, /^weekly digest delivered with unavailable sections - cloud_model_list: GitHub run-log comments HTTP 500$/);
+    return true;
+  });
+  assert.equal(h.state.posts.length, 1);
+  const [digest] = h.state.posts;
+  assert.equal(digest.embeds.length, 7);
+  for (const embed of digest.embeds.filter((e) => e.title !== "Cloud model list")) {
+    assert.doesNotMatch(embed.description, /temporarily unavailable/, embed.title);
+  }
+  assert.match(ollamaEmbed(h).description, /completed on 2026-07-27 and found nothing new/);
+});
+
+test("cloud: the Ollama section keeps its own log, author, window and request with cloud enabled", async () => {
+  // An Ollama-shaped receipt by the Ollama account in the cloud log, and a
+  // cloud receipt in the Ollama log, are each ignored by the other section.
+  const h = harness({
+    cloud: cloudPages([receipt(LAST_MONDAY)]),
+    comments: () => ok([receipt(LAST_MONDAY), cloudComment(CLOUD_RECENT, {}, { login: "saurabhav88" })]),
+  });
+  await h.run(CLOUD_ENV);
+  assert.equal(h.state.commentUrls.length, 1);
+  const url = new URL(h.state.commentUrls[0]);
+  assert.equal(url.pathname, "/repos/saurabhav88/EnviousWispr/issues/4215/comments");
+  assert.equal(url.searchParams.get("since"), "2026-07-20T13:00:00.000Z");
+  assert.equal(url.searchParams.get("per_page"), "100");
+  assert.equal(url.searchParams.get("page"), null);
+  assert.match(ollamaEmbed(h).description, /completed on 2026-07-27 and found nothing new/);
+  assert.match(cloudText(h), /has posted no run receipt/);
+});
+
+test("cloud: the GitHub token is sent only on the run-log request", async () => {
+  const h = harness({ cloud: cloudPages([cloudComment(CLOUD_RECENT)]) });
+  await h.run({ ...CLOUD_ENV, GITHUB_TOKEN: "gh-test-token" });
+  assert.equal(h.state.cloudRequests[0].headers.Authorization, "token gh-test-token");
+  assert.equal(new URL(h.state.cloudRequests[0].url).host, "api.github.com");
+});
+
+test("cloud: record text and URLs are never printed, and the payload stays in budget", async () => {
+  const hostile = {
+    pr: { url: "https://evil.example/pull/1", number: 1 },
+    review: { evidence: "@everyone https://evil.example " + "x".repeat(5000) },
+  };
+  const h = harness({ cloud: cloudPages([cloudComment("2026-06-01T08:00:00Z",
+    { run: "999999999999999", candidates: 9999, added: 9999, failed: 9999, outcome: "partial", result: "review-blocked" },
+    { record: hostile })]) });
+  await h.run(CLOUD_ENV);
+  const text = cloudText(h);
+  assert.doesNotMatch(text, /evil|@everyone|pull\/4400|x{20}/);
+  const urls = text.match(/https:\/\/\S+/g);
+  assert.deepEqual(urls, ["https://github.com/saurabhav88/EnviousWispr/actions/runs/999999999999999"]);
+  const [digest] = h.state.posts;
+  const combined = digest.embeds.reduce(
+    (sum, e) => sum + e.title.length + e.description.length + e.footer.text.length, 0);
+  assert.ok(combined < 6000, `combined embed text ${combined} must stay under Discord's budget`);
+});
+
+test("cloud: fetch, parse and format work in isolation", async () => {
+  assert.deepEqual(formatCloudModelList(null), [
+    "Cloud model list", "Cloud model list figures were temporarily unavailable when this digest ran.",
+  ]);
+  assert.equal(parseCloudReceipt("routine-run date=2026-08-03", "saurabhav88/EnviousWispr"), null);
+  const body = cloudComment(CLOUD_RECENT).body;
+  assert.deepEqual(parseCloudReceipt(body, "saurabhav88/EnviousWispr"), {
+    date: "2026-08-03", run: "101", candidates: 2, added: 1, failed: 0, outcome: "success", result: "merged",
+  });
+  assert.deepEqual(await fetchCloudModelListStatus(ENV, NOW, { fetchFn: async () => { throw new Error("no"); } }), { enabled: false });
 });

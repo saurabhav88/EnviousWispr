@@ -4,11 +4,29 @@ import Foundation
 /// Google Gemini API connector for transcript polishing.
 /// Uses Server-Sent Events (SSE) streaming for lower perceived latency.
 public struct GeminiConnector: TranscriptPolisher {
+  /// Transport seam (#4353 PR 5): one physical BATCH HTTP exchange, as `OpenAIConnector` has.
+  /// The weekly cloud model routine (which polishes without `onToken`) and scripted tests
+  /// inject it; production always uses the shared session. The streaming path is unchanged.
+  typealias RequestExecutor = @Sendable (
+    URLRequest,
+    LLMTaskMetricsCollector
+  ) async throws -> (Data, URLResponse)
+
   private let keychainManager: KeychainManager
+  private let requestExecutor: RequestExecutor
   private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 
   public init(keychainManager: KeychainManager = KeychainManager()) {
     self.keychainManager = keychainManager
+    self.requestExecutor = { request, collector in
+      try await LLMNetworkSession.shared.session.data(for: request, delegate: collector)
+    }
+  }
+
+  /// Test seam. Production callers use the public init.
+  init(keychainManager: KeychainManager, requestExecutor: @escaping RequestExecutor) {
+    self.keychainManager = keychainManager
+    self.requestExecutor = requestExecutor
   }
 
   public func polish(
@@ -227,7 +245,6 @@ public struct GeminiConnector: TranscriptPolisher {
     config: LLMProviderConfig,
     callNumber: Int
   ) async throws -> LLMResult {
-    let session = LLMNetworkSession.shared.session
     let collector = LLMTaskMetricsCollector()
     var statusForLog = "pending"
     defer {
@@ -241,7 +258,7 @@ public struct GeminiConnector: TranscriptPolisher {
     let data: Data
     let response: URLResponse
     do {
-      (data, response) = try await session.data(for: request, delegate: collector)
+      (data, response) = try await requestExecutor(request, collector)
     } catch {
       statusForLog = "error:\(Self.shortError(error))"
       throw error
