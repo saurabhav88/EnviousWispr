@@ -655,6 +655,89 @@ struct MeetingMicrophoneSilenceTests {
     #expect(health.segmentsFinalized == 3, "the drop and the run break each start a segment")
   }
 
+  // MARK: - Written spans (#4355)
+
+  /// Each released slice's span checked against its own samples, in release order.
+  private func spans(_ r: Rig) -> [MeetingAudioSpan] {
+    r.released.all.map { info, frames in
+      #expect(info.span.sampleCount == frames.count, "a span names exactly its slice's samples")
+      #expect(info.span.recording == r.id)
+      return info.span
+    }
+  }
+
+  @Test("released spans tile the written timeline: trimmed audio is left out, rollover keeps one run")
+  func spansFollowPlacement() async throws {
+    let r = try rig(segmentSeconds: 1)
+    r.writer.append(
+      [Float](repeating: Self.level, count: 4_000), hostTime: r.anchor &- ticks(0.25))
+    feed(r, seconds: 2.25)
+    #expect(await r.writer.finish() == .finalized)
+    let all = spans(r)
+    #expect(all.allSatisfy { $0.track == .microphone && $0.run == 0 }, "rollover is not a new run")
+    #expect(all.first?.startSample == 0, "the trimmed slice starts at the anchor")
+    #expect(zip(all, all.dropFirst()).allSatisfy { $0.endSample == $1.startSample }, "contiguous")
+    #expect(all.last?.endSample == 36_000, "exactly the written samples, the trimmed ones excluded")
+  }
+
+  @Test("a gap and a producer run break each start a new run, at the position actually written")
+  func runsFollowDiscontinuities() async throws {
+    let r = try rig(hold: nil, track: .callSound)
+    r.writer.append([Float](repeating: Self.level, count: 16_000), hostTime: r.anchor)
+    // 4 s later than the written audio predicts: past the gap threshold.
+    r.writer.append(
+      [Float](repeating: Self.level, count: 16_000), hostTime: r.anchor &+ ticks(5))
+    // Contiguous in time, but the producer says it is a new run.
+    [Float](repeating: Self.level, count: 1_600).withUnsafeBufferPointer {
+      r.writer.append($0, hostTime: r.anchor &+ ticks(6), startsNewRun: true)
+    }
+    #expect(await r.writer.finish() == .finalized)
+    let all = spans(r)
+    #expect(all.map(\.run) == [0, 1, 2])
+    #expect(all.map(\.track) == [.callSound, .callSound, .callSound])
+    #expect(all[0].startSample == 0)
+    #expect(abs(all[1].startSample - 80_000) <= 16, "placed at its own time, on a 1 ms boundary")
+    #expect(all[2].startSample >= all[1].endSample, "never before audio already written")
+  }
+
+  @Test("a chunk straddling the anchor hands over only its written suffix, with its acquisition time advanced")
+  func straddlingChunkSuffix() async throws {
+    let r = try rig(hold: nil, track: .callSound)
+    let chunk = (0..<8_000).map { Float($0 % 100) / 400 + 0.01 }
+    let start = r.anchor &- ticks(0.25)
+    r.writer.append(chunk, hostTime: start)
+    #expect(await r.writer.finish() == .finalized)
+    let released = r.released.all
+    #expect(released.count == 1)
+    let (info, frames) = try #require(released.first)
+    #expect(frames == Array(chunk[4_000...]), "the 4,000 samples after the anchor, exactly")
+    #expect(info.span.startSample == 0 && info.span.sampleCount == 4_000 && info.span.run == 0)
+    #expect(
+      info.acquired.hostTicks == start &+ MeetingMicrophoneSilence.ticks(forSamples: 4_000),
+      "the first handed-over sample was acquired 4,000 samples after the chunk's first")
+    #expect(info.acquired.recording == r.id)
+    #expect(info.acquired.provenance == .estimated)
+  }
+
+  @Test("a write that fails mid-append hands over the written prefix once and none of the rest")
+  func failedWriteHandsOverPrefixOnly() async throws {
+    let r = try rig(hold: nil, segmentSeconds: 1, track: .callSound)
+    let chunk = (0..<24_000).map { Float($0 % 97) / 400 + 0.01 }
+    // The first append opens segment 1; then its final name is taken, so publishing it at the
+    // 1 s rollover fails after its frames were written. The second append's last 8,000 samples
+    // are never written.
+    r.writer.append(Array(chunk[0..<1_600]), hostTime: r.anchor)
+    await r.writer.waitUntilWritten()
+    let taken = MeetingSegmentNaming.fileName(track: .callSound, index: 1, startMs: 0, partial: false)
+    try Data([7]).write(to: r.dir.appendingPathComponent(taken))
+    r.writer.append(Array(chunk[1_600...]), hostTime: r.anchor &+ ticks(samples: 1_600))
+    #expect(await r.writer.finish() == .failed)
+    let released = r.released.all
+    #expect(released.map(\.0.span.sampleCount) == [1_600, 14_400], "each written prefix once")
+    #expect(released.map(\.0.span.startSample) == [0, 1_600])
+    #expect(released.flatMap(\.1) == Array(chunk[0..<16_000]), "none of the unwritten remainder")
+  }
+
   @Test("segment rollover and pre-anchor trimming work on held audio")
   func rolloverAndTrim() async throws {
     let r = try rig(segmentSeconds: 1)
@@ -669,7 +752,9 @@ struct MeetingMicrophoneSilenceTests {
     #expect(back.samples.count == 36_000)
     #expect(zeroRuns(back.samples) == [14_400..<17_600], "silence crosses the 1 s rollover")
     #expect(r.writer.currentHealth.preAnchorFrames == 4_000)
-    #expect(r.released.samples.count == 40_000, "the observer gets the untrimmed chunks")
+    #expect(
+      r.released.samples.count == 36_000,
+      "the observer gets exactly what was written: pre-anchor audio is trimmed for it too")
   }
 }
 #endif

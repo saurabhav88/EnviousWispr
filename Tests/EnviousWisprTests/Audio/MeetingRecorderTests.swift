@@ -881,7 +881,8 @@ struct MeetingRecorderTests {
 
   @Test("stop, quit and a failed start end deliveries for good, late call audio included")
   func liveSamplesEndWithTheRecorder() async throws {
-    // Stop: the call tap's stop tail and a late microphone callback are not observed.
+    // Stop: the call tap's stop tail is written, so live words get it from the writer (#4355);
+    // a late microphone callback and call audio after the files closed are not observed.
     do {
       let r = try rig()
       let observed = Observed()
@@ -893,7 +894,8 @@ struct MeetingRecorderTests {
       await r.recorder.stop()
       late(Self.micPattern(800), 0.1)
       play(r, Self.callPattern(800))
-      #expect(observed.count == 1, "only the chunk recorded before Stop")
+      #expect(observed.count == 2, "the microphone chunk and the written call stop tail")
+      #expect(observed.of(.callSound) == Self.callPattern(1_600), "the stop tail, as written")
       r.recorder.liveSamples = observed.observer
       #expect(r.recorder.liveSamples == nil, "cannot be set again after Stop")
     }
@@ -907,7 +909,7 @@ struct MeetingRecorderTests {
       speak(r.microphones[0], r.clock, Self.micPattern(1_600))
       _ = r.recorder.stopForQuit(deadline: .now() + .seconds(5))
       play(r, Self.callPattern(800))
-      #expect(observed.count == 1)
+      #expect(observed.count == 2, "the microphone chunk and the written call stop tail")
       #expect(r.recorder.liveSamples == nil)
     }
     // Failed start: nothing was recorded and the observer is gone.

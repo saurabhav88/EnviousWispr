@@ -1780,7 +1780,12 @@ struct MeetingLiveWordsTests {
 
 extension MeetingReleasedChunk {
   /// Metadata for a chunk a test offers directly (live words do not read it).
-  static let test = MeetingReleasedChunk(
-    acquired: MeetingAcquisitionTime(recording: UUID(), hostTicks: 0, provenance: .estimated),
-    afterDrop: false, sourceBreak: false)
+  static let test: MeetingReleasedChunk = {
+    let id = UUID()
+    return MeetingReleasedChunk(
+      span: MeetingAudioSpan(
+        recording: id, track: .callSound, run: 0, startSample: 0, sampleCount: 1)!,
+      acquired: MeetingAcquisitionTime(recording: id, hostTicks: 0, provenance: .estimated),
+      afterDrop: false, sourceBreak: false)
+  }()
 }

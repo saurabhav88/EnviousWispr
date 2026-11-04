@@ -250,7 +250,7 @@ final class MeetingLiveWords {
       tracks: [.microphone: .init(status: .starting), .callSound: .init(status: .starting)])
     let micPump = mic.pump
     let callPump = call.pump
-    // Capture thread (call sound) or the microphone writer's queue: the pump copies and
+    // A track writer's queue (both tracks deliver from writer release, #4355): the pump copies and
     // returns; nothing else runs here. The chunk metadata (#4248) is not used: a session is fed
     // samples only (`LivePreviewEngineSession.feed`), and display times come from the meeting
     // clock (`LiveWordsAssembler`), so live words had no use for capture times or run breaks

@@ -25,21 +25,36 @@ public typealias MeetingSilenceStep =
   @Sendable (_ queueNow: MeetingAcquisitionTime, _ released: MeetingAcquisitionTime?) ->
   [MeetingSilenceInterval]?
 
-/// One released chunk's original metadata, as the filtered-output observer gets it.
+/// One written slice of a track, as the live observer gets it after the writer placed it
+/// (#4355 plan §3.1): where it sits on the written timeline, and when its first sample was
+/// acquired. The two are separate domains and neither is derived from the other.
 public struct MeetingReleasedChunk: Sendable, Equatable {
-  /// When the chunk's first sample was acquired, unchanged by the hold, with the provenance its
-  /// producer gave.
+  /// The written samples this slice is: masked, trimmed and placed. Its count equals the
+  /// slice's sample count.
+  public let span: MeetingAudioSpan
+  /// When the slice's first sample was acquired, with the provenance its producer gave.
   public let acquired: MeetingAcquisitionTime
-  /// Audio was dropped at the handoff before this chunk.
+  /// Audio was dropped at the handoff before this slice.
   public let afterDrop: Bool
-  /// The producer said this chunk does not continue the previous one.
+  /// The producer said this slice does not continue the previous one.
   public let sourceBreak: Bool
 
-  public init(acquired: MeetingAcquisitionTime, afterDrop: Bool, sourceBreak: Bool) {
+  public init(
+    span: MeetingAudioSpan, acquired: MeetingAcquisitionTime, afterDrop: Bool, sourceBreak: Bool
+  ) {
+    self.span = span
     self.acquired = acquired
     self.afterDrop = afterDrop
     self.sourceBreak = sourceBreak
   }
+}
+
+/// One accepted chunk before placement: what the writer's handoff and the hold carry. It has no
+/// written position yet, so it never claims one.
+struct MeetingHeldChunk: Sendable, Equatable {
+  let acquired: MeetingAcquisitionTime
+  let afterDrop: Bool
+  let sourceBreak: Bool
 }
 
 /// The microphone hold of one `MeetingTrackWriter` (#4248 plan §3.3). Accepted audio waits here
@@ -76,7 +91,7 @@ final class MeetingMicrophoneSilence {
   }
 
   /// Receives each released chunk on the writer's queue. The buffer is valid only during the call.
-  typealias Emit = (UnsafeBufferPointer<Float>, MeetingReleasedChunk) -> Void
+  typealias Emit = (UnsafeBufferPointer<Float>, MeetingHeldChunk) -> Void
 
   private struct Held {
     var start: Int
@@ -279,7 +294,7 @@ final class MeetingMicrophoneSilence {
         }
         emit(
           UnsafeBufferPointer(frames),
-          MeetingReleasedChunk(
+          MeetingHeldChunk(
             acquired: MeetingAcquisitionTime(
               recording: recording, hostTicks: held.hostTime, provenance: held.provenance),
             afterDrop: held.afterDrop, sourceBreak: held.sourceBreak))
