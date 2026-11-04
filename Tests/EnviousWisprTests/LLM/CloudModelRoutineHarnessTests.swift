@@ -141,11 +141,9 @@ struct CloudModelRoutineHarnessTests {
     return vendors
   }
 
-  static func run(_ vendors: Vendors, history: CloudModelRoutinePolicy.AbsenceHistory = .init())
-    async -> CloudModelRoutineReceipt
-  {
+  static func run(_ vendors: Vendors) async -> CloudModelRoutineReceipt {
     await CloudModelRoutine.run(
-      keys: keys, list: seed, history: history, observedAt: observedAt,
+      keys: keys, list: seed, observedAt: observedAt,
       transports: vendors.transports, provenance: .from(environment: [:]))
   }
 
@@ -202,11 +200,6 @@ struct CloudModelRoutineHarnessTests {
     #expect(Self.candidates(receipt, .openAI).first?.row?.released == "2026-10-01")
     #expect(Self.candidates(receipt, .claude).first?.row?.released == "2026-10-20")
     #expect(Self.candidates(receipt, .gemini).first?.row?.released == nil)
-    // Every listed row was in the catalog.
-    #expect(
-      receipt.providers.allSatisfy {
-        $0.absence.values.allSatisfy { $0.state != "missingForRoutineKey" }
-      })
     // Usage recorded per exchange.
     #expect(
       receipt.calls.allSatisfy {
@@ -313,7 +306,7 @@ struct CloudModelRoutineHarnessTests {
       })
   }
 
-  @Test("a failed catalog proposes nothing, sends no polish and keeps that provider's history")
+  @Test("a failed catalog proposes nothing and sends no polish")
   func failedCatalog() async throws {
     let vendors = Self.vendorsWithNewModels()
     vendors.catalog(Self.geminiModels, status: 500, json: "{}")
@@ -322,23 +315,7 @@ struct CloudModelRoutineHarnessTests {
     #expect(gemini.catalog == "failed")
     #expect(gemini.candidates.isEmpty)
     #expect(vendors.polishRequests.contains { $0.contains("generativelanguage") } == false)
-    #expect(receipt.history.latestObservedAt["gemini"] == nil)
-    #expect(receipt.history.latestObservedAt["openAI"] == Self.observedAt)
     #expect(receipt.outcome == "failure")
-  }
-
-  @Test("a listed model missing from a complete catalog starts its absence history")
-  func absenceRecorded() async throws {
-    let vendors = Self.vendorsWithNewModels()
-    let claudeIDs = Self.seed.models.filter { $0.provider == .claude && !$0.hidden }.map(\.id)
-    let gone = try #require(claudeIDs.first)
-    let kept = claudeIDs.dropFirst().map { ["id": $0] as [String: Any] }
-    vendors.catalog(Self.claudeModels, json: Vendors.json(["data": kept, "has_more": false]))
-    let receipt = await Self.run(vendors)
-    let claude = try #require(receipt.providers.first { $0.provider == "claude" })
-    #expect(
-      claude.absence[gone] == .init(.missingForRoutineKey(firstMissingDay: "2026-11-04", weeks: 1)))
-    #expect(receipt.history.entries.map(\.id).contains(gone))
   }
 
   // MARK: - Receipt evidence
@@ -439,7 +416,7 @@ struct CloudModelRoutineHarnessTests {
       },
       polish: leaky.transports.polish)
     let second = await CloudModelRoutine.run(
-      keys: Self.keys, list: Self.seed, history: .init(), observedAt: Self.observedAt,
+      keys: Self.keys, list: Self.seed, observedAt: Self.observedAt,
       transports: throwing, provenance: .from(environment: [:]))
     let secondRoot = try Self.json(second, refusing: Array(Self.keys.values.values))
     #expect(Self.providerJSON(secondRoot, "claude")?["catalogFailure"] as? String == "other")

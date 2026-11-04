@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """The weekly cloud model routine's ONE owner of permitted automated list changes (#4353 PR 5,
-D7 Receipt and proposal contract; founder decisions 10-13). Standard library only, offline.
+D7 Receipt and proposal contract; founder decisions 10-12 and 14). Standard library only,
+offline. It only ever ADDS rows for new models; it never hides, un-hides or edits a row
+(founder decision 14).
 
-  propose.py generate --base REV --receipt FILE --context FILE --freshness FILE
+  propose.py generate --base REV --receipt FILE --context FILE
                       --output-root DIR --result FILE [--repo DIR]
-  propose.py check    --base REV --receipt FILE --context FILE --freshness FILE
+  propose.py check    --base REV --receipt FILE --context FILE
                       --result FILE --current-root DIR --target-base REV [--repo DIR]
   propose.py --self-test
 
@@ -19,8 +21,6 @@ Inputs and trust (see README.md):
 - `--context` is what the AUTHENTICATED caller (the workflow or Stage 2, which obtained the
   receipt from GitHub) states about the run. This script only compares it with the receipt;
   a match here is not GitHub authentication.
-- `--freshness` names, per provider, the latest authenticated successful catalog observation
-  the caller knows of. A newer one supersedes this receipt's hide and un-hide actions.
 - The receipt is data. No field is executed; refusal messages name fields, never values.
 
 Exit 0: generated or checked. Exit 1: refused (one controlled reason on stderr). Exit 2: usage.
@@ -46,7 +46,6 @@ PROVIDERS = ("openAI", "claude", "gemini")
 INPUT_IDS = ("realDictations[0]", "realDictations[1]", "realDictations[2]")
 RECEIPT_SCHEMA = 1
 RESULT_SCHEMA = 1
-FRESHNESS_SCHEMA = 1
 CONTEXT_SCHEMA = 1
 CONTEXT_FIELDS = ("repository", "workflow", "runID", "runAttempt", "event", "ref", "sourceSHA")
 OUTCOMES = {"success", "partial", "failure", "nochange"}
@@ -59,14 +58,9 @@ SEARCH_OUTCOMES = {
     "passed", "requestRejectedSearchExhausted", "noQualifyingSetting", "interrupted",
     "fallbackOutsideMenu",
 }
-ABSENCE_STATES = {
-    "present", "missingForRoutineKey", "hide", "reappeared", "alreadyHiddenPresent",
-    "alreadyHiddenMissing",
-}
 SHA_RE = re.compile(r"[0-9a-f]{64}")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 INSTANT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-WEEK_RE = re.compile(r"[0-9]{4}-W[0-9]{2}")
 
 
 def _load_validator():
@@ -81,30 +75,6 @@ validate_list = _load_validator()
 
 class Refused(Exception):
     """A controlled refusal. Messages name fields and rules, never receipt or provider text."""
-
-
-# MARK: - Routine marker (the one parser, shared by hiding and un-hiding)
-
-ROUTINE_REASON_RE = re.compile(r"Not in the provider's model list since ([0-9]{4}-[0-9]{2}-[0-9]{2})")
-
-
-def routine_reason(day):
-    return f"Not in the provider's model list since {day}"
-
-
-def routine_hidden_day(reason):
-    """The UTC day when `reason` is exactly the routine's canonical text with a real date;
-    otherwise None (a person's reason, a malformed one, or none)."""
-    if not isinstance(reason, str):
-        return None
-    match = ROUTINE_REASON_RE.fullmatch(reason)
-    if not match:
-        return None
-    try:
-        validate_list.calendar_date(match.group(1), "hiddenReason")
-    except validate_list.Invalid:
-        return None
-    return match.group(1)
 
 
 # MARK: - Strict readers
@@ -177,28 +147,6 @@ def utc_day(moment):
     return moment.strftime("%Y-%m-%d")
 
 
-def week_key(text, path):
-    """(year, week) of a real ISO week such as `2026-W45`; refuses `2026-W99`."""
-    if not isinstance(text, str) or not WEEK_RE.fullmatch(text):
-        raise Refused(f"{path} is not an ISO week")
-    year, week = int(text[:4]), int(text[6:])
-    try:
-        datetime.date.fromisocalendar(year, week, 1)
-    except ValueError:
-        raise Refused(f"{path} is not a real ISO week")
-    return (year, week)
-
-
-def day_week(text):
-    year, week, _ = datetime.date.fromisoformat(text).isocalendar()
-    return (year, week)
-
-
-def iso_week(moment):
-    year, week, _ = moment.isocalendar()
-    return f"{year:04d}-W{week:02d}"
-
-
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -257,18 +205,6 @@ def parse_context(data):
     return context
 
 
-def parse_freshness(data):
-    freshness = keys(load_json(data, "freshness"), "freshness", ("schema", "providers"))
-    if integer(freshness["schema"], "freshness.schema", 1) != FRESHNESS_SCHEMA:
-        raise Refused("freshness.schema is not supported")
-    providers = keys(freshness["providers"], "freshness.providers", PROVIDERS)
-    latest = {}
-    for provider in PROVIDERS:
-        value = providers[provider]
-        latest[provider] = None if value is None else instant(value, f"freshness.providers.{provider}")
-    return latest
-
-
 def parse_call_id(value, path):
     ident = keys(value, path, ("attempt", "call"))
     integer(ident["attempt"], f"{path}.attempt", 1)
@@ -316,7 +252,7 @@ def parse_receipt(data):
     receipt = keys(load_json(data, "receipt"), "receipt", (
         "schema", "provenance", "observedAt", "list", "inputs", "outcome", "providers", "calls",
         "physicalRequests", "logicalCalls", "physicalExchanges", "unrecordedExchanges", "refusals",
-        "history", "publicationReady"))
+        "publicationReady"))
     if integer(receipt["schema"], "receipt.schema", 1) != RECEIPT_SCHEMA:
         raise Refused("receipt.schema is not supported")
     provenance = keys(receipt["provenance"], "receipt.provenance", (), CONTEXT_FIELDS)
@@ -374,33 +310,6 @@ def parse_receipt(data):
     if receipt["logicalCalls"] < len({call for call, _ in physical}):
         raise Refused("receipt.logicalCalls is below the calls that sent requests")
 
-    history = keys(receipt["history"], "receipt.history", ("version", "latestObservedAt", "entries"))
-    if integer(history["version"], "receipt.history.version", 1) != 1:
-        raise Refused("receipt.history.version is not supported")
-    latest_raw = keys(history["latestObservedAt"], "receipt.history.latestObservedAt", (), PROVIDERS)
-    latest = {provider: instant(value, f"receipt.history.latestObservedAt.{provider}")
-              for provider, value in latest_raw.items()}
-    entries = {}
-    for index, entry in enumerate(array(history["entries"], "receipt.history.entries")):
-        path = f"receipt.history.entries[{index}]"
-        keys(entry, path, ("provider", "id", "firstMissingDay", "weeks"))
-        provider = string(entry["provider"], f"{path}.provider", PROVIDERS)
-        string(entry["id"], f"{path}.id")
-        first = day(entry["firstMissingDay"], f"{path}.firstMissingDay")
-        weeks = [week_key(w, f"{path}.weeks[{i}]")
-                 for i, w in enumerate(array(entry["weeks"], f"{path}.weeks"))]
-        if not weeks or weeks != sorted(set(weeks)):
-            raise Refused(f"{path}.weeks are not distinct ascending ISO weeks")
-        if day_week(first) != weeks[0]:
-            raise Refused(f"{path}.firstMissingDay is not in its first missing week")
-        if provider not in latest:
-            raise Refused(f"{path} has no latest observation for its provider")
-        if weeks[-1] > day_week(utc_day(latest[provider])) or first > utc_day(latest[provider]):
-            raise Refused(f"{path} is later than its provider's latest observation")
-        if (provider, entry["id"]) in entries:
-            raise Refused(f"{path} repeats a provider and id")
-        entries[(provider, entry["id"])] = entry
-
     providers = array(receipt["providers"], "receipt.providers")
     if [item.get("provider") if isinstance(item, dict) else None for item in providers] != list(PROVIDERS):
         raise Refused("receipt.providers are not openAI, claude, gemini in order")
@@ -409,83 +318,31 @@ def parse_receipt(data):
         provider = item["provider"]
         path = f"receipt.providers.{provider}"
         keys(item, path, ("provider", "catalog", "identityCount", "excludedModels", "excluded",
-                          "dispositions", "candidates", "absence", "stale"), ("catalogFailure",))
+                          "dispositions", "candidates"), ("catalogFailure",))
         complete = string(item["catalog"], f"{path}.catalog", {"complete", "failed"}) == "complete"
-        stale = boolean(item["stale"], f"{path}.stale")
         integer(item["identityCount"], f"{path}.identityCount")
         if complete == ("catalogFailure" in item):
             raise Refused(f"{path}.catalogFailure does not match the catalog state")
         if not complete:
             string(item["catalogFailure"], f"{path}.catalogFailure", ERROR_CLASSES)
-            if item["candidates"] or item["absence"] or stale:
+            if item["candidates"]:
                 raise Refused(f"{path} has evidence from a failed catalog")
-        absence = keys(item["absence"], f"{path}.absence", (), item["absence"].keys()
-                       if isinstance(item["absence"], dict) else ())
-        if stale and absence:
-            raise Refused(f"{path} has absence evidence from a stale observation")
-        for model_id, evidence in absence.items():
-            parse_absence(evidence, f"{path}.absence[{model_id}]")
         candidates = [parse_candidate(c, f"{path}.candidates[{i}]", provider)
                       for i, c in enumerate(array(item["candidates"], f"{path}.candidates"))]
         if len({c["id"] for c in candidates}) != len(candidates):
             raise Refused(f"{path}.candidates repeat an id")
-        parsed[provider] = {"complete": complete, "stale": stale, "absence": absence,
-                            "candidates": candidates}
-
-    for provider, evidence in parsed.items():
-        if not evidence["complete"]:
-            continue
-        path = f"receipt.providers.{provider}"
-        seen = latest.get(provider)
-        if seen is None or (seen > observed) != evidence["stale"] or seen < observed:
-            raise Refused(f"{path} does not agree with the history's latest observation")
-        if evidence["stale"]:
-            continue
-        pending = {model_id for (p, model_id) in entries if p == provider}
-        absent = {model_id for model_id, a in evidence["absence"].items()
-                  if a["state"] in ("missingForRoutineKey", "hide")}
-        if pending != absent:
-            raise Refused(f"{path} absence does not agree with the history entries")
-        this_week = day_week(utc_day(observed))
-        for model_id in absent:
-            entry, absence = entries[(provider, model_id)], evidence["absence"][model_id]
-            weeks = [week_key(w, "weeks") for w in entry["weeks"]]
-            if weeks[-1] != this_week:
-                raise Refused(f"{path}.absence[{model_id}] history does not include this week")
-            if absence["state"] == "missingForRoutineKey" and (
-                    len(weeks) != 1 or entry["firstMissingDay"] != absence["firstMissingDay"]):
-                raise Refused(f"{path}.absence[{model_id}] does not match its history entry")
-            if absence["state"] == "hide" and len(weeks) < 2:
-                raise Refused(f"{path}.absence[{model_id}] hides without two weekly absences")
+        parsed[provider] = {"complete": complete, "candidates": candidates}
 
     failed = any(not p["complete"] for p in parsed.values()) or receipt["refusals"] > 0
     unfinished = any(c["outcome"] not in ("pass", "passViaSearch")
                      for p in parsed.values() for c in p["candidates"])
-    proposes = any("row" in c for p in parsed.values() for c in p["candidates"]) or any(
-        e["state"] == "hide" for p in parsed.values() for e in p["absence"].values())
+    proposes = any("row" in c for p in parsed.values() for c in p["candidates"])
     expected = ("failure" if failed else "partial" if unfinished
                 else "success" if proposes else "nochange")
     if receipt["outcome"] != expected:
         raise Refused("receipt.outcome contradicts its own evidence")
     return {"raw": receipt, "observed": observed, "providers": parsed, "calls": calls,
-            "physical": physical, "entries": entries}
-
-
-def parse_absence(evidence, path):
-    keys(evidence, path, ("state",), ("firstMissingDay", "weeks", "hiddenReason"))
-    state = string(evidence["state"], f"{path}.state", ABSENCE_STATES)
-    extras = set(evidence) - {"state"}
-    if state == "missingForRoutineKey":
-        if extras != {"firstMissingDay", "weeks"}:
-            raise Refused(f"{path} is not a complete missing record")
-        day(evidence["firstMissingDay"], f"{path}.firstMissingDay")
-        if integer(evidence["weeks"], f"{path}.weeks", 1) != 1:
-            raise Refused(f"{path}.weeks is not 1 for a row that is not yet hidden")
-    elif state == "hide":
-        if extras != {"hiddenReason"} or routine_hidden_day(evidence["hiddenReason"]) is None:
-            raise Refused(f"{path} does not carry the routine's own hidden reason")
-    elif extras:
-        raise Refused(f"{path} has fields its state does not carry")
+            "physical": physical}
 
 
 def parse_candidate(value, path, provider):
@@ -755,7 +612,7 @@ def encode_list(document):
     return (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def plan(base_bytes, receipt, context, freshness, receipt_sha):
+def plan(base_bytes, receipt, context, receipt_sha):
     """Everything this evidence permits against the recorded base. Pure: no reads, no writes.
     Returns (list bytes, result object)."""
     raw = receipt["raw"]
@@ -779,49 +636,10 @@ def plan(base_bytes, receipt, context, freshness, receipt_sha):
 
     observed = receipt["observed"]
     rows = {(r["provider"], r["id"]): index for index, r in enumerate(base["models"])}
-    operations, notes, additions = [], [], []
+    additions = []
     instrument = raw["outcome"]
-
     for provider in PROVIDERS:
-        evidence = receipt["providers"][provider]
-        latest = freshness[provider]
-        current = evidence["complete"] and not evidence["stale"]
-        if current and (latest is None or latest < observed):
-            raise Refused(f"freshness for {provider} is older than this receipt's own observation")
-        if current:
-            listed = {model_id for (p, model_id) in rows if p == provider}
-            if set(evidence["absence"]) != listed:
-                raise Refused(f"receipt.providers.{provider}.absence does not cover the base rows")
-        superseded = current and latest > observed
-        for model_id, absence in sorted(evidence["absence"].items()):
-            index = rows[(provider, model_id)]
-            row = base["models"][index]
-            state = absence["state"]
-            if state in ("missingForRoutineKey", "hide", "reappeared", "present") and row["hidden"]:
-                raise Refused(f"{provider}/{model_id} absence state contradicts the base row")
-            if state == "missingForRoutineKey":
-                notes.append({"note": "missingForRoutineKey", "provider": provider, "id": model_id,
-                              "firstMissingDay": absence["firstMissingDay"]})
-            elif state in ("hide", "alreadyHiddenPresent") and superseded:
-                notes.append({"note": "supersededByNewerObservation", "provider": provider,
-                              "id": model_id, "state": state})
-            elif state == "hide":
-                entry = receipt["entries"].get((provider, model_id))
-                marker_day = routine_hidden_day(absence["hiddenReason"])
-                if entry is None or len(entry["weeks"]) < 2 or iso_week(observed) not in entry["weeks"] \
-                        or entry["firstMissingDay"] != marker_day:
-                    raise Refused(f"{provider}/{model_id} hide lacks two weekly absences")
-                operations.append(("hide", index, absence["hiddenReason"]))
-            elif state == "alreadyHiddenPresent":
-                if not row["hidden"]:
-                    raise Refused(f"{provider}/{model_id} hidden-present evidence for a visible row")
-                if routine_hidden_day(row.get("hiddenReason")) is None:
-                    notes.append({"note": "personHiddenPresent", "provider": provider, "id": model_id})
-                else:
-                    operations.append(("restore", index, None))
-            elif state == "alreadyHiddenMissing" and not row["hidden"]:
-                raise Refused(f"{provider}/{model_id} absence state contradicts the base row")
-        for candidate in evidence["candidates"]:
+        for candidate in receipt["providers"][provider]["candidates"]:
             if candidate["outcome"] in ("pass", "passViaSearch"):
                 additions.append(addition_row(provider, candidate, receipt, rows))
 
@@ -830,23 +648,6 @@ def plan(base_bytes, receipt, context, freshness, receipt_sha):
     else:
         document = copy.deepcopy(base)
         result_ops = []
-        for kind, index, reason in operations:
-            row = document["models"][index]
-            summary = {"op": kind, "provider": row["provider"], "id": row["id"]}
-            if kind == "hide":
-                rebuilt = {}
-                for key, value in row.items():
-                    # Any earlier reason is replaced, so the routine owns this hide.
-                    if key == "hiddenReason":
-                        continue
-                    rebuilt[key] = True if key == "hidden" else value
-                    if key == "hidden":
-                        rebuilt["hiddenReason"] = reason
-                document["models"][index] = rebuilt
-            else:
-                row["hidden"] = False
-                del row["hiddenReason"]
-            result_ops.append(summary)
         for row, summary in additions:
             document["models"].append(canonical_row(row))
             result_ops.append(summary)
@@ -873,7 +674,6 @@ def plan(base_bytes, receipt, context, freshness, receipt_sha):
         "updated": document["updated"] if result_ops else None,
         "listSHA256": sha256(output),
         "operations": result_ops,
-        "observations": notes,
     }
     return output, result
 
@@ -918,13 +718,12 @@ def list_pair(repo, commit):
 def evaluate(args):
     receipt_bytes = read_file(args.receipt, "receipt")
     context = parse_context(read_file(args.context, "context"))
-    freshness = parse_freshness(read_file(args.freshness, "freshness"))
     receipt = parse_receipt(receipt_bytes)
     commit = git_commit(args.repo, args.base)
     if commit != context["sourceSHA"]:
         raise Refused("--base is not the commit the run measured")
     base_bytes = list_pair(args.repo, commit)
-    return plan(base_bytes, receipt, context, freshness, sha256(receipt_bytes))
+    return plan(base_bytes, receipt, context, sha256(receipt_bytes))
 
 
 def write_atomically(path, data):
@@ -1002,7 +801,7 @@ def main(argv):
     for name in ("generate", "check"):
         command = commands.add_parser(name)
         command.add_argument("--repo", default=str(REPO_ROOT))
-        for flag in ("--base", "--receipt", "--context", "--freshness", "--result"):
+        for flag in ("--base", "--receipt", "--context", "--result"):
             command.add_argument(flag, required=True)
         if name == "generate":
             command.add_argument("--output-root", required=True)

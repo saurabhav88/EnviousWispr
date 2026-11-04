@@ -53,12 +53,11 @@ struct CloudModelRoutineProposalTests {
     ]
   }
 
-  /// A fresh folder with the receipt, the caller's context and freshness written in.
+  /// A fresh folder with the receipt and the caller's context written in.
   struct Inputs {
     let folder: URL
     var receipt: URL { folder.appendingPathComponent("receipt.json") }
     var context: URL { folder.appendingPathComponent("context.json") }
-    var freshness: URL { folder.appendingPathComponent("freshness.json") }
     var result: URL { folder.appendingPathComponent("result.json") }
     var output: URL { folder.appendingPathComponent("out") }
   }
@@ -81,10 +80,6 @@ struct CloudModelRoutineProposalTests {
     context["schema"] = 1
     context["receiptSHA256"] = CloudModelRoutineReceipt.sha256(bytes)
     try JSONSerialization.data(withJSONObject: context).write(to: inputs.context)
-    let observed = "2026-11-04T00:00:00Z"
-    try JSONSerialization.data(withJSONObject: [
-      "schema": 1, "providers": ["openAI": observed, "claude": observed, "gemini": observed],
-    ]).write(to: inputs.freshness)
     return inputs
   }
 
@@ -95,8 +90,7 @@ struct CloudModelRoutineProposalTests {
   static func common(_ inputs: Inputs, base: String) -> [String] {
     [
       "--repo", repoRoot.path, "--base", base, "--receipt", inputs.receipt.path,
-      "--context", inputs.context.path, "--freshness", inputs.freshness.path,
-      "--result", inputs.result.path,
+      "--context", inputs.context.path, "--result", inputs.result.path,
     ]
   }
 
@@ -131,7 +125,7 @@ struct CloudModelRoutineProposalTests {
   func fallbackReceiptRoundTrip() async throws {
     let base = try Self.head()
     let receipt = await CloudModelRoutine.run(
-      keys: H.keys, list: H.seed, history: .init(), observedAt: H.observedAt,
+      keys: H.keys, list: H.seed, observedAt: H.observedAt,
       transports: H.vendorsWithNewModels().transports,
       provenance: .from(environment: Self.environment(sourceSHA: base)))
     let inputs = try Self.inputs(receipt, sourceSHA: base)
@@ -185,7 +179,7 @@ struct CloudModelRoutineProposalTests {
       setting == "none/omit" ? nil : S.reject(.openAI)
     }
     let receipt = await CloudModelRoutine.run(
-      keys: H.keys, list: H.seed, history: .init(), observedAt: H.observedAt,
+      keys: H.keys, list: H.seed, observedAt: H.observedAt,
       transports: vendors.transports,
       provenance: .from(environment: Self.environment(sourceSHA: base)))
     let inputs = try Self.inputs(receipt, sourceSHA: base)
@@ -221,7 +215,7 @@ struct CloudModelRoutineProposalTests {
       }
     }
     let receipt = await CloudModelRoutine.run(
-      keys: H.keys, list: H.seed, history: .init(), observedAt: H.observedAt,
+      keys: H.keys, list: H.seed, observedAt: H.observedAt,
       transports: vendors.transports,
       provenance: .from(environment: Self.environment(sourceSHA: base)))
     #expect(
@@ -247,7 +241,7 @@ struct CloudModelRoutineProposalTests {
   func missingProvenanceRefused() async throws {
     let base = try Self.head()
     let receipt = await CloudModelRoutine.run(
-      keys: H.keys, list: H.seed, history: .init(), observedAt: H.observedAt,
+      keys: H.keys, list: H.seed, observedAt: H.observedAt,
       transports: H.vendorsWithNewModels().transports, provenance: .from(environment: [:]))
     let inputs = try Self.inputs(receipt, sourceSHA: base)
     let generated = try Self.generate(inputs, base: base)

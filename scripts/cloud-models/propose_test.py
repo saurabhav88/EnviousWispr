@@ -21,10 +21,6 @@ from pathlib import Path
 import propose
 
 OBSERVED = "2026-11-04T00:00:00Z"
-LATER = "2026-11-05T00:00:00Z"
-WEEK = "2026-W45"
-PREVIOUS_WEEK = "2026-W44"
-ROUTINE_HIDDEN = "Not in the provider's model list since 2026-10-20"
 
 
 def row(provider, model, request, hidden=False, reason=None, recommended=False, chat=False, batch=True):
@@ -42,10 +38,6 @@ BASE_MODELS = [
     row("claude", "claude-a", {"claudeShape": "thinkingDisabled"}),
     row("gemini", "gemini-a", {"geminiThinking": "none"}),
 ]
-# The same list with one row the routine hid itself.
-ROUTINE_MODELS = BASE_MODELS[:1] + [
-    row("openAI", "gpt-h", OPENAI_FALLBACK, hidden=True, reason=ROUTINE_HIDDEN, chat=True)
-] + BASE_MODELS[1:]
 
 
 def list_bytes(models=None, updated="2026-11-01"):
@@ -81,13 +73,7 @@ class Receipt:
         self.commit, self.base, self.outcome = commit, base, outcome
         self.calls, self.physical, self.logical = [], [], set()
         self.candidates = {p: [] for p in propose.PROVIDERS}
-        self.absence = {}
-        self.failed, self.stale = set(), set()
-        self.entries = []
-        document = json.loads(base)
-        for item in document["models"]:
-            state = "alreadyHiddenPresent" if item["hidden"] else "present"
-            self.absence[(item["provider"], item["id"])] = {"state": state}
+        self.failed = set()
 
     def send(self, provider, model, label, phase, index, status=200, params=None, attempts=1):
         for attempt in range(1, attempts + 1):
@@ -179,37 +165,20 @@ class Receipt:
             "id": model, "outcome": "fail", "passViaAdaptation": False, "perInputMs": [],
             "setting": "openAI:omit/include", "errorClass": "keyRejected"})
 
-    def missing(self, provider, model, weeks):
-        """`weeks` distinct weekly absences ending this week; two or more hide."""
-        all_weeks = [PREVIOUS_WEEK, WEEK][-weeks:] if weeks <= 2 else ["2026-W43", PREVIOUS_WEEK, WEEK]
-        first = {1: "2026-11-04", 2: "2026-10-28"}.get(weeks, "2026-10-21")
-        self.entries.append({"provider": provider, "id": model, "firstMissingDay": first,
-                             "weeks": all_weeks})
-        if weeks >= 2:
-            self.absence[(provider, model)] = {"state": "hide",
-                                               "hiddenReason": propose.routine_reason(first)}
-        else:
-            self.absence[(provider, model)] = {"state": "missingForRoutineKey",
-                                               "firstMissingDay": first, "weeks": 1}
-
     def build(self):
         providers = []
         for provider in propose.PROVIDERS:
             item = {"provider": provider, "catalog": "complete", "identityCount": 9,
                     "excludedModels": [], "excluded": {}, "dispositions": {},
-                    "candidates": self.candidates[provider], "stale": provider in self.stale,
-                    "absence": {m: a for (p, m), a in sorted(self.absence.items()) if p == provider}}
+                    "candidates": self.candidates[provider]}
             if provider in self.failed:
-                item.update(catalog="failed", catalogFailure="transient", candidates=[], absence={},
+                item.update(catalog="failed", catalogFailure="transient", candidates=[],
                             identityCount=0)
-            if provider in self.stale:
-                item["absence"] = {}
             providers.append(item)
         failed = bool(self.failed)
         unfinished = any(c["outcome"] not in ("pass", "passViaSearch")
                          for items in self.candidates.values() for c in items)
-        proposes = any("row" in c for items in self.candidates.values() for c in items) or any(
-            a["state"] == "hide" for item in providers for a in item["absence"].values())
+        proposes = any("row" in c for items in self.candidates.values() for c in items)
         outcome = self.outcome or ("failure" if failed else "partial" if unfinished
                                    else "success" if proposes else "nochange")
         return {
@@ -229,10 +198,6 @@ class Receipt:
             "physicalExchanges": len(self.physical),
             "unrecordedExchanges": 0,
             "refusals": 0,
-            "history": {"version": 1, "entries": self.entries,
-                        "latestObservedAt": {
-                            p: LATER if p in self.stale else OBSERVED
-                            for p in propose.PROVIDERS if p not in self.failed}},
             "publicationReady": False,
         }
 
@@ -280,7 +245,7 @@ class Case(unittest.TestCase):
     def receipt(self, outcome=None):
         return Receipt(self.commit, self.base, outcome)
 
-    def inputs(self, receipt, context_edit=None, freshness=None, receipt_bytes=None):
+    def inputs(self, receipt, context_edit=None, receipt_bytes=None):
         data = receipt_bytes if receipt_bytes is not None else json.dumps(
             receipt if isinstance(receipt, dict) else receipt.build(), sort_keys=True).encode()
         (self.root / "receipt.json").write_bytes(data)
@@ -291,16 +256,10 @@ class Case(unittest.TestCase):
         if context_edit:
             context_edit(context)
         (self.root / "context.json").write_text(json.dumps(context))
-        fresh = {"schema": 1, "providers": {p: OBSERVED for p in propose.PROVIDERS}}
-        if freshness:
-            freshness(fresh)
-        (self.root / "freshness.json").write_text(json.dumps(fresh))
-
     def common(self, base=None):
         return ["--repo", str(self.repo), "--base", base or self.commit,
                 "--receipt", str(self.root / "receipt.json"),
                 "--context", str(self.root / "context.json"),
-                "--freshness", str(self.root / "freshness.json"),
                 "--result", str(self.root / "result.json")]
 
     def cli(self, argv):
@@ -411,10 +370,18 @@ class InputsAndTrust(Case):
         receipt.fallback_pass()
         self.refused(receipt, "contradicts its own evidence")
 
-    def test_not_json_and_missing_freshness(self):
+    def test_not_json(self):
         self.refused(self.receipt(), "is not JSON", receipt_bytes=b"{not json")
-        self.refused(self.receipt(), "freshness.providers is missing gemini",
-                     freshness=lambda f: f["providers"].pop("gemini"))
+
+    def test_hiding_evidence_is_not_accepted(self):
+        # The routine never hides (founder decision 14): a receipt carrying absence or history
+        # fields is not this receipt.
+        built = self.receipt().build()
+        built["history"] = {"version": 1, "entries": [], "latestObservedAt": {}}
+        self.refused(built, "unknown key history")
+        built = self.receipt().build()
+        built["providers"][2]["absence"] = {"claude-a": {"state": "hide"}}
+        self.refused(built, "unknown key absence")
 
     def test_messages_never_echo_values(self):
         receipt = self.receipt().build()
@@ -667,171 +634,6 @@ class Additions(Case):
 # MARK: - Hiding and restoration
 
 
-class HidingAndRestoration(Case):
-    def test_two_week_absence_hides_only_two_fields(self):
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 2)
-        self.inputs(receipt)
-        self.assertEqual(self.generate()[0], 0)
-        self.assertEqual(self.generated_list()["models"][2], {
-            "provider": "claude", "id": "claude-a", "recommended": False, "hidden": True,
-            "hiddenReason": "Not in the provider's model list since 2026-10-28",
-            "request": {"claudeShape": "thinkingDisabled"}, "supportsChatCompletions": False,
-            "allowsFileBatch": True})
-        self.assertEqual(len(self.generated_list()["models"]), 4)
-
-    def test_hide_replaces_an_existing_reason_and_can_restore(self):
-        models = copy.deepcopy(BASE_MODELS)
-        models[2]["hiddenReason"] = "Old manual note"
-        models[2] = {k: models[2][k] for k in ("provider", "id", "recommended", "hidden",
-                                               "hiddenReason", "request",
-                                               "supportsChatCompletions", "allowsFileBatch")}
-        self.base = list_bytes(models)
-        self.commit = commit_list(self.repo, self.base, "visible row with a note")
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 2)
-        self.inputs(receipt)
-        self.assertEqual(self.generate()[0], 0)
-        hidden = self.generated_list()
-        self.assertEqual(hidden["models"][2], {
-            "provider": "claude", "id": "claude-a", "recommended": False, "hidden": True,
-            "hiddenReason": "Not in the provider's model list since 2026-10-28",
-            "request": {"claudeShape": "thinkingDisabled"}, "supportsChatCompletions": False,
-            "allowsFileBatch": True})
-        # Merged; next week the model is back, and the routine owns the hide.
-        self.base = propose.encode_list(hidden)
-        self.commit = commit_list(self.repo, self.base, "hidden")
-        self.inputs(self.receipt())
-        (self.root / "result.json").unlink()
-        self.assertEqual(self.generate()[0], 0)
-        self.assertIn({"op": "restore", "provider": "claude", "id": "claude-a"},
-                      self.result()["operations"])
-
-    def history_refused(self, change, needle):
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 2)
-        built = receipt.build()
-        change(built["history"])
-        self.refused(built, needle)
-
-    def test_impossible_week_is_refused(self):
-        self.history_refused(lambda h: h["entries"][0].update(weeks=[WEEK, "2026-W99"]),
-                             "not a real ISO week")
-
-    def test_history_shape_is_refused_when_inconsistent(self):
-        self.history_refused(lambda h: h.update(version="1"), "version is not an integer")
-        self.history_refused(lambda h: h["entries"].append(dict(h["entries"][0])), "repeats")
-        self.history_refused(lambda h: h["entries"][0].update(firstMissingDay="2026-10-01"),
-                             "first missing week")
-        self.history_refused(lambda h: h["entries"][0].update(weeks=[PREVIOUS_WEEK, "2026-W46"]),
-                             "later than its provider's latest")
-        self.history_refused(lambda h: h["latestObservedAt"].pop("claude"), "latest observation")
-        self.history_refused(lambda h: h["entries"].append(
-            {"provider": "claude", "id": "claude-x", "firstMissingDay": "2026-11-04",
-             "weeks": [WEEK]}), "does not agree with the history entries")
-
-    def test_one_week_is_only_a_note(self):
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 1)
-        self.inputs(receipt)
-        self.assertEqual(self.generate()[0], 0)
-        result = self.result()
-        self.assertFalse(result["proposal"])
-        self.assertEqual(result["observations"], [
-            {"note": "personHiddenPresent", "provider": "openAI", "id": "gpt-p"},
-            {"note": "missingForRoutineKey", "provider": "claude", "id": "claude-a",
-             "firstMissingDay": "2026-11-04"}])
-
-    def test_hide_without_two_weekly_absences(self):
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 2)
-        receipt.entries[-1].update(weeks=[WEEK], firstMissingDay="2026-11-04")
-        self.refused(receipt, "two weekly absences")
-
-    def test_routine_hidden_row_is_restored(self):
-        self.base = list_bytes(ROUTINE_MODELS)
-        self.commit = commit_list(self.repo, self.base, "routine-hidden row")
-        receipt = self.receipt()
-        self.inputs(receipt)
-        self.assertEqual(self.generate()[0], 0)
-        models = self.generated_list()["models"]
-        self.assertEqual(models[1], row("openAI", "gpt-h", OPENAI_FALLBACK, chat=True))
-        self.assertEqual(models[2], BASE_MODELS[1])
-        result = self.result()
-        self.assertEqual(result["instrumentOutcome"], "nochange")
-        self.assertEqual(result["outcome"], "success")
-        self.assertEqual(result["operations"], [{"op": "restore", "provider": "openAI", "id": "gpt-h"}])
-        self.assertIn({"note": "personHiddenPresent", "provider": "openAI", "id": "gpt-p"},
-                      result["observations"])
-
-    def test_malformed_or_other_reasons_stay_hidden(self):
-        for reason in ("Not in the provider's model list since 2026-02-30",
-                       "Not in the provider's model list since 2026-10-20 ",
-                       "not in the provider's model list since 2026-10-20", "Retired"):
-            with self.subTest(reason=reason):
-                self.assertIsNone(propose.routine_hidden_day(reason))
-        self.assertEqual(propose.routine_hidden_day(ROUTINE_HIDDEN), "2026-10-20")
-
-    def test_stale_or_failed_or_superseded_observations_act_on_nothing(self):
-        for setup in ("stale", "failed", "superseded"):
-            with self.subTest(setup=setup):
-                receipt = self.receipt()
-                receipt.missing("claude", "claude-a", 2)
-                freshness = None
-                if setup == "stale":
-                    receipt.stale |= {"openAI", "claude"}
-                elif setup == "failed":
-                    receipt.failed |= {"gemini"}
-                    receipt.stale |= {"openAI", "claude"}
-                else:
-                    freshness = lambda f: f["providers"].update(
-                        openAI="2026-11-05T00:00:00Z", claude="2026-11-05T00:00:00Z")
-                self.inputs(receipt, freshness=freshness)
-                (self.root / "result.json").unlink(missing_ok=True)
-                self.assertEqual(self.generate()[0], 0)
-                self.assertEqual(self.result()["operations"], [])
-
-    def test_freshness_older_than_the_receipt_is_refused(self):
-        self.refused(self.receipt(), "older than this receipt",
-                     freshness=lambda f: f["providers"].update(claude="2026-11-01T00:00:00Z"))
-        self.refused(self.receipt(), "older than this receipt",
-                     freshness=lambda f: f["providers"].update(claude=None))
-
-    def test_flapping_starts_a_fresh_sequence(self):
-        # Week A: hidden by the routine (merged).
-        hidden = copy.deepcopy(BASE_MODELS)
-        hidden[2] = row("claude", "claude-a", {"claudeShape": "thinkingDisabled"}, hidden=True,
-                        reason="Not in the provider's model list since 2026-10-28")
-        self.base = list_bytes(hidden)
-        self.commit = commit_list(self.repo, self.base, "hidden")
-        receipt = self.receipt()
-        self.inputs(receipt)
-        self.assertEqual(self.generate()[0], 0)
-        restored = self.generated_list()
-        self.assertFalse(restored["models"][2]["hidden"])
-        self.assertNotIn("hiddenReason", restored["models"][2])
-        # Week B: restored (merged), then missing once: a fresh first week, no hide.
-        self.base = propose.encode_list(restored)
-        self.commit = commit_list(self.repo, self.base, "restored")
-        receipt = self.receipt()
-        receipt.missing("claude", "claude-a", 1)
-        self.inputs(receipt)
-        (self.root / "result.json").unlink()
-        self.assertEqual(self.generate()[0], 0)
-        result = self.result()
-        self.assertEqual([op for op in result["operations"] if op["id"] == "claude-a"], [])
-        self.assertIn({"note": "missingForRoutineKey", "provider": "claude", "id": "claude-a",
-                       "firstMissingDay": "2026-11-04"}, result["observations"])
-
-    def test_hidden_present_evidence_for_a_visible_row(self):
-        receipt = self.receipt()
-        receipt.absence[("openAI", "gpt-a")] = {"state": "alreadyHiddenPresent"}
-        self.refused(receipt, "visible row")
-
-
-# MARK: - Outcomes, output and checking
-
-
 class OutcomesAndCheck(Case):
     def test_true_nochange_writes_no_list(self):
         self.inputs(self.receipt())
@@ -965,20 +767,18 @@ class OutcomesAndCheck(Case):
         status, text = self.check()
         self.assertEqual(status, 1)
         self.assertIn("measured median", text)
-        built = receipt.build()
-        built["history"]["entries"].append({"provider": "claude", "id": "claude-a",
-                                            "firstMissingDay": "2026-11-04", "weeks": ["2026-W99"]})
-        self.inputs(built)
+        receipt.send("openAI", "gpt-new", "openAI:low/omit", "screening", 0)
+        self.inputs(receipt)
         status, text = self.check()
         self.assertEqual(status, 1)
-        self.assertIn("not a real ISO week", text)
+        self.assertIn("phases do not describe", text)
 
     def test_usage_errors_exit_two(self):
         self.assertEqual(self.cli(["generate"])[0], 2)
         self.assertEqual(self.cli(["nonsense"])[0], 2)
 
 
-CATEGORIES = (InputsAndTrust, Additions, HidingAndRestoration, OutcomesAndCheck)
+CATEGORIES = (InputsAndTrust, Additions, OutcomesAndCheck)
 
 
 def run():

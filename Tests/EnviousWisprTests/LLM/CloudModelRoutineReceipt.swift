@@ -43,30 +43,6 @@ struct CloudModelRoutineReceipt: Encodable {
     let sha256: String
   }
 
-  struct AbsenceEvidence: Encodable, Equatable {
-    let state: String
-    let firstMissingDay: String?
-    let weeks: Int?
-    let hiddenReason: String?
-
-    init(_ absence: CloudModelRoutinePolicy.RowAbsence) {
-      switch absence {
-      case .present:
-        (state, firstMissingDay, weeks, hiddenReason) = ("present", nil, nil, nil)
-      case .missingForRoutineKey(let day, let count):
-        (state, firstMissingDay, weeks, hiddenReason) = ("missingForRoutineKey", day, count, nil)
-      case .hide(let proposal):
-        (state, firstMissingDay, weeks, hiddenReason) = ("hide", nil, nil, proposal.hiddenReason)
-      case .reappeared:
-        (state, firstMissingDay, weeks, hiddenReason) = ("reappeared", nil, nil, nil)
-      case .alreadyHidden(let present):
-        (state, firstMissingDay, weeks, hiddenReason) = (
-          present ? "alreadyHiddenPresent" : "alreadyHiddenMissing", nil, nil, nil
-        )
-      }
-    }
-  }
-
   struct CandidateResult: Encodable {
     let id: String
     /// The FALLBACK setting (the compiled rule for this unlisted id).
@@ -108,7 +84,7 @@ struct CloudModelRoutineReceipt: Encodable {
 
   struct ProviderResult: Encodable {
     let provider: String
-    /// `complete` or `failed`. A failed catalog proposes nothing and advances no history.
+    /// `complete` or `failed`. A failed catalog proposes nothing.
     let catalog: String
     /// A closed class, never an error's text or type name.
     let catalogFailure: CloudModelRoutine.ErrorClass?
@@ -118,8 +94,6 @@ struct CloudModelRoutineReceipt: Encodable {
     let excluded: [String: Int]
     let dispositions: [String: String]
     let candidates: [CandidateResult]
-    let absence: [String: AbsenceEvidence]
-    let stale: Bool
   }
 
   let schema: Int
@@ -129,9 +103,8 @@ struct CloudModelRoutineReceipt: Encodable {
   let inputs: [InputEvidence]
   /// The instrument's view: `success`, `partial` (some candidate failed), `failure` (a
   /// catalog failed or the ledger refused a call) or `nochange` (nothing this receipt
-  /// proposes). Not final: the proposal step (Chunk 6, `propose.py`) owns the final proposal or
-  /// no-change classification, including routine un-hides (founder decision 13), and never
-  /// upgrades `failure` or `partial`.
+  /// proposes). Not final: the proposal step (`propose.py`) owns the final proposal or no-change
+  /// classification and never upgrades `failure` or `partial`.
   let outcome: String
   let providers: [ProviderResult]
   let calls: [CloudModelRoutineCalls.ExchangeRecord]
@@ -141,7 +114,6 @@ struct CloudModelRoutineReceipt: Encodable {
   let physicalExchanges: Int
   let unrecordedExchanges: Int
   let refusals: Int
-  let history: CloudModelRoutinePolicy.AbsenceHistory
   let publicationReady: Bool
 
   static func sha256(_ data: Data) -> String {
@@ -170,12 +142,10 @@ extension CloudModelRoutine {
   /// One routine run over the three providers, serially. Requires all keys (the caller
   /// checks `Keys.from(environment:)` first, before any request).
   static func run(
-    keys: Keys, list: CloudModelList, history: CloudModelRoutinePolicy.AbsenceHistory,
-    observedAt: Date, transports: Transports, provenance: CloudModelRoutineReceipt.Provenance
+    keys: Keys, list: CloudModelList, observedAt: Date, transports: Transports, provenance: CloudModelRoutineReceipt.Provenance
   ) async -> CloudModelRoutineReceipt {
     let meter = Meter()
     let keychain = keys.keychain
-    var history = history
     var providers: [CloudModelRoutineReceipt.ProviderResult] = []
     var catalogFailed = false
     var anyCandidateFailed = false
@@ -183,33 +153,14 @@ extension CloudModelRoutine {
 
     for provider in [LLMProvider.openAI, .claude, .gemini] {
       let discovery = LLMModelDiscovery(cloudModelList: list, transport: transports.catalog)
-      let outcome: CloudModelRoutinePolicy.CatalogOutcome
       var catalogFailure: ErrorClass?
       var catalog: LLMModelDiscovery.CloudCatalog?
       do {
-        let fetched = try await discovery.fetchCatalog(
+        catalog = try await discovery.fetchCatalog(
           provider: provider, apiKey: keys.values[provider] ?? "")
-        catalog = fetched
-        outcome = .complete(fetched)
       } catch {
         catalogFailure = errorClass(error)
-        outcome = .failed
         catalogFailed = true
-      }
-
-      let observed = CloudModelRoutinePolicy.observeAbsence(
-        history: history, provider: provider, outcome: outcome, observedAt: observedAt, list: list)
-      history = observed.history
-      var absence: [String: CloudModelRoutineReceipt.AbsenceEvidence] = [:]
-      var stale = false
-      switch observed.result {
-      case .observed(let rows):
-        for (id, row) in rows {
-          absence[id] = .init(row)
-          if case .hide = row { anyProposal = true }
-        }
-      case .stale: stale = true
-      case .discoveryFailed: break
       }
 
       var candidates: [CloudModelRoutineReceipt.CandidateResult] = []
@@ -239,8 +190,8 @@ extension CloudModelRoutine {
         .init(
           provider: provider.rawValue, catalog: catalog == nil ? "failed" : "complete",
           catalogFailure: catalogFailure, identityCount: catalog?.identities.count ?? 0,
-          excludedModels: excludedModels, excluded: excluded, dispositions: dispositions, candidates: candidates,
-          absence: absence, stale: stale))
+          excludedModels: excludedModels, excluded: excluded, dispositions: dispositions,
+          candidates: candidates))
     }
 
     let ledger = meter.snapshot
@@ -265,7 +216,7 @@ extension CloudModelRoutine {
       outcome: outcome, providers: providers, calls: ledger.records,
       physicalRequests: meter.requestEvidence,
       logicalCalls: ledger.logicalCount, physicalExchanges: ledger.physicalCount,
-      unrecordedExchanges: ledger.unrecordedCount, refusals: meter.refusals, history: history,
+      unrecordedExchanges: ledger.unrecordedCount, refusals: meter.refusals,
       publicationReady: false)
   }
 

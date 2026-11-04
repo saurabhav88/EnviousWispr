@@ -7,9 +7,8 @@ import Foundation
 
 /// #4353 PR 5 (D7 detail, Stage 1 harness): the weekly cloud model routine's fallback sweep.
 ///
-/// It reads each provider's complete catalog (Chunk 1), applies absence history and picks new
-/// models (Chunk 2), then polishes three fixed real dictations per picked model through the
-/// SHIPPED connectors with the SHIPPED request policy for that id. Every physical request goes
+/// It reads each provider's complete catalog (Chunk 1), picks new models (Chunk 2), then
+/// polishes three fixed real dictations per picked model through the SHIPPED connectors with the SHIPPED request policy for that id. Every physical request goes
 /// through the call ledger (Chunk 3) first. The settings search lives in
 /// `CloudModelRoutineSearch.swift`.
 enum CloudModelRoutine {
