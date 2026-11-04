@@ -367,8 +367,7 @@ struct MeetingHistoryDetailView: View {
     case .recording(let id, let startedAt) where id == meetingID:
       MeetingLivePanel(startedAt: startedAt)
       if let live = meetings.liveTranscript, live.meetingID == meetingID {
-        MeetingLiveWordsView(
-          transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured)
+        MeetingLiveWordsView(transcript: live)
       }
       Text(
         "The transcript, with who said what, is written when you stop the recording.",
@@ -381,7 +380,7 @@ struct MeetingHistoryDetailView: View {
         String(
           localized: "Saving the recording",
           comment: "EnviousMeet: the meeting recording is being closed and saved."))
-      supersededLiveWords(record)
+      supersededLiveWords()
     default:
       if let processing = meetings.processing, processing.meetingID == meetingID {
         MeetingProcessingPanel(processing: processing)
@@ -413,7 +412,7 @@ struct MeetingHistoryDetailView: View {
         missingTranscript(canTranscribeAgain: canOfferTranscribeAgain(record.id))
       } else if record.state != .notesOnly {
         // #3973: processing, queued or failed: the live words stay until a transcript is ready.
-        supersededLiveWords(record)
+        supersededLiveWords()
       }
       if record.state == .notesOnly {
         Text(
@@ -428,11 +427,9 @@ struct MeetingHistoryDetailView: View {
 
   /// This meeting's live words after Stop, greyed, until its transcript replaces them (the
   /// owner clears them then, and at once on Delete).
-  @ViewBuilder private func supersededLiveWords(_ record: MeetingRecord) -> some View {
+  @ViewBuilder private func supersededLiveWords() -> some View {
     if let live = meetings.liveTranscript, live.meetingID == meetingID {
-      MeetingLiveWordsView(
-        transcript: live, callSoundRecorded: record.trackStatus[.callSound] == .captured,
-        superseded: true)
+      MeetingLiveWordsView(transcript: live, superseded: true)
     }
   }
 

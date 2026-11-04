@@ -518,9 +518,16 @@ package final class MeetingTranscriptionJob {
         kind: kind, pieces: pieces.sorted { $0.startMs < $1.startMs },
         speakerSegments: segments[kind] ?? [])
     }
+    // #4355 PR B: text echo hiding only for a raw microphone. On the cleaned copy the echo was
+    // removed from the audio (residual echo and warm-up passthrough remain possible), and text
+    // matching there hid the user's own words, so it does not run.
+    let hidesEcho: Bool
+    if case .cleaned = microphoneCopy { hidesEcho = false } else { hidesEcho = true }
     let composition = try await unit {
-      await Task.detached(priority: .utility) { MeetingTranscriptComposer.compose(tracks: inputs) }
-        .value
+      await Task.detached(priority: .utility) {
+        MeetingTranscriptComposer.compose(tracks: inputs, hidesEcho: hidesEcho)
+      }
+      .value
     }
     // 4. #4013 chunk 12A: name call-sound speakers from the saved evidence, after composition
     // and from what the pass knew before composition (real pieces, markers, diarized ids).

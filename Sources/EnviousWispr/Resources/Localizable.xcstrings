@@ -8167,17 +8167,6 @@
         }
       }
     },
-    "Echo is hidden in the full transcript." : {
-      "comment" : "History, a stopped meeting: repeated call lines are hidden only in the final transcript.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im vollständigen Transkript wird Echo ausgeblendet."
-          }
-        }
-      }
-    },
     "Edit" : {
       "localizations" : {
         "de" : {

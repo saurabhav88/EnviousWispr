@@ -26,11 +26,12 @@ struct MeetingTranscriptionJobProvenanceTests {
 
   /// A 16 kHz mono 16-bit CAF holding `seconds` of the constant `level`.
   private func file(
-    in dir: URL, variant: MeetingSegmentVariant, level: Float, seconds: Double = 4
+    in dir: URL, variant: MeetingSegmentVariant, level: Float, seconds: Double = 4,
+    track: MeetingTrackKind = .microphone
   ) throws -> (url: URL, startMs: Int) {
     let url = dir.appendingPathComponent(
       MeetingSegmentNaming.fileName(
-        track: .microphone, variant: variant, index: 1, startMs: 0, partial: false))
+        track: track, variant: variant, index: 1, startMs: 0, partial: false))
     let format = AVAudioFormat(
       commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     let out = try AVAudioFile(
@@ -162,5 +163,47 @@ struct MeetingTranscriptionJobProvenanceTests {
     #expect(!names.isEmpty)
     #expect(names.allSatisfy { $0.hasPrefix(MeetingSegmentNaming.cleanedMicrophoneStem + "-") })
     #expect(stored.withLock { $0 }?.key.microphoneCopy == .cleaned(Self.provenance))
+  }
+
+  /// #4355 PR B (founder 2026-11-04): the pass hides text echo only when it reads the raw
+  /// microphone. When this fails, a cleaned meeting hides the user's own words that repeat the
+  /// call, or a raw fallback (older recording, crash) shows the call's words as the user's.
+  @Test("the pass hides repeated call words on the raw microphone and never on the cleaned copy")
+  func echoHidingFollowsTheChosenCopy() async throws {
+    let dir = try folder()
+    let call = MeetingTrackAudio(
+      files: [try file(in: dir, variant: .raw, level: 0.25, track: .callSound)])
+    let raw = MeetingTrackAudio(files: [try file(in: dir, variant: .raw, level: 0.25)])
+    let cleaned = MeetingTrackAudio(files: [try file(in: dir, variant: .cleaned, level: 0.125)])
+    func job() -> MeetingTranscriptionJob {
+      MeetingTranscriptionJob(
+        dependencies: .init(
+          isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {},
+          endModelUse: {}, loadEngine: {},
+          transcribe: { samples, _ in
+            // Both tracks hear the same three words at the same time: the echo case.
+            ASRResult(
+              text: "see you tomorrow", language: nil, duration: Double(samples.count) / 16_000,
+              processingTime: 0, backendType: .parakeet,
+              wordTimings: [
+                ASRWordTiming(word: "see", range: 0..<3, startMs: 100, endMs: 400),
+                ASRWordTiming(word: "you", range: 4..<7, startMs: 400, endMs: 700),
+                ASRWordTiming(word: "tomorrow", range: 8..<16, startMs: 700, endMs: 1200),
+              ])
+          }, unloadEngine: {},
+          analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .single, segments: []) }))
+    }
+    let rawPass = try await job().run(
+      tracks: [.microphone: raw, .callSound: call], microphoneCopy: .raw(nil), language: nil,
+      onStage: { _ in }, attempt: MeetingTestAttempt.attempt(language: nil))
+    #expect(!rawPass.composition.echoTurnIDs.isEmpty, "raw: the repeated call words are hidden")
+    let cleanedPass = try await job().run(
+      tracks: [.microphone: cleaned, .callSound: call],
+      microphoneCopy: .cleaned(Self.provenance), language: nil,
+      onStage: { _ in }, attempt: MeetingTestAttempt.attempt(language: nil))
+    #expect(cleanedPass.composition.echoTurnIDs.isEmpty, "cleaned: nothing is hidden")
+    #expect(
+      cleanedPass.composition.turns.contains { $0.speakerId.hasPrefix("mic") },
+      "cleaned: the microphone words stay visible")
   }
 }

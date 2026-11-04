@@ -51,12 +51,15 @@ enum MeetingsPresentation {
 
   /// What the live words are and how each track is doing, one sentence each (#3973): words
   /// appear as people speak; a track that is off or stopped says why; skipped live audio is
-  /// named. The full transcript, with speakers and echo hidden, comes after the meeting.
+  /// named. The full transcript, with speakers, comes after the meeting. Echo is not mentioned
+  /// (#4355 PR B, founder 2026-11-04): the microphone is cleaned while recording, and whether the
+  /// final pass hides repeated call words (raw microphone only) is not known until it runs; the
+  /// finished transcript's own echo toggle shows what it hid.
   ///
   /// `recordingEnded`: the kept words after Stop, until the transcript replaces them. Nothing
   /// then promises more words or a recording that goes on.
   static func liveStatusLines(
-    _ live: MeetingLiveWords.Transcript, callSoundRecorded: Bool, recordingEnded: Bool = false
+    _ live: MeetingLiveWords.Transcript, recordingEnded: Bool = false
   ) -> [String] {
     var lines = [
       recordingEnded
@@ -89,17 +92,6 @@ enum MeetingsPresentation {
         String(
           localized: "Some Live Preview text was skipped. The full transcript comes after the meeting.",
           comment: "History, a meeting: some audio did not reach the Live Preview."))
-    }
-    // #4355 PR B: echo is removed from the microphone while recording, so a recording meeting
-    // says nothing about it. A stopped meeting keeps its line PROVISIONALLY: the final
-    // transcript's text backstop still runs, but whether it still hides repeated call speech
-    // (rather than the user's own words, as one PR B live turn showed) is decided by the PR B
-    // acceptance check, which keeps or removes this line.
-    if callSoundRecorded, recordingEnded {
-      lines.append(
-        String(
-          localized: "Echo is hidden in the full transcript.",
-          comment: "History, a stopped meeting: repeated call lines are hidden only in the final transcript."))
     }
     return lines
   }
