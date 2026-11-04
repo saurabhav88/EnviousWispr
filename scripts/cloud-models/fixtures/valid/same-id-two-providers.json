@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "shared-id",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "shared-id",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    }
+  ]
+}

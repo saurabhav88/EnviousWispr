@@ -18,7 +18,7 @@ struct ClaudeConnectorTests {
   @Test func discoveryProbeShapeKeepsLiteralCapOfFive() {
     // Mirrors LLMModelDiscovery.probeClaude's builder call exactly.
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 5, system: nil, userText: "Hi")
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
     #expect(body["max_tokens"] as? Int == 5)
   }
 
@@ -43,7 +43,7 @@ struct ClaudeConnectorTests {
 
   @Test func requestBodyContainsRequiredFields() {
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 512, system: "polish this", userText: "hello there")
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 512, system: "polish this", userText: "hello there")
 
     #expect(body["model"] as? String == "claude-haiku-4-5")
     #expect(body["max_tokens"] as? Int == 512)
@@ -57,11 +57,11 @@ struct ClaudeConnectorTests {
 
   @Test func requestBodyOmitsSystemWhenNilOrEmpty() {
     let bodyNil = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 5, system: nil, userText: "Hi")
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
     #expect(bodyNil["system"] == nil)
 
     let bodyEmpty = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 5, system: "", userText: "Hi")
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 5, system: "", userText: "Hi")
     #expect(bodyEmpty["system"] == nil)
   }
 
@@ -71,7 +71,7 @@ struct ClaudeConnectorTests {
   /// unconditionally, not just for newer models.
   @Test func requestBodyNeverContainsSamplingParameters() {
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-opus-4-8", maxTokens: 1024, system: "system prompt", userText: "text")
+      model: "claude-opus-4-8", list: CloudModelListSeed.current, maxTokens: 1024, system: "system prompt", userText: "text")
 
     #expect(body["temperature"] == nil)
     #expect(body["top_p"] == nil)
@@ -85,7 +85,7 @@ struct ClaudeConnectorTests {
   /// explicitly disabled — never omitted like the other sampling params.
   @Test func requestBodyExplicitlyDisablesThinking() {
     let body = ClaudeConnector.makeRequestBody(
-      model: "claude-sonnet-5", maxTokens: 1024, system: "system prompt", userText: "text")
+      model: "claude-sonnet-5", list: CloudModelListSeed.current, maxTokens: 1024, system: "system prompt", userText: "text")
 
     let thinking = body["thinking"] as? [String: String]
     #expect(thinking?["type"] == "disabled")
@@ -97,10 +97,10 @@ struct ClaudeConnectorTests {
   /// handling, different token budget, or a stray sampling parameter).
   @Test func probeAndProductionShareTheSameBuilderShape() {
     let production = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 700, system: "real system prompt",
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 700, system: "real system prompt",
       userText: "real dictated text")
     let probe = ClaudeConnector.makeRequestBody(
-      model: "claude-haiku-4-5", maxTokens: 5, system: nil, userText: "Hi")
+      model: "claude-haiku-4-5", list: CloudModelListSeed.current, maxTokens: 5, system: nil, userText: "Hi")
 
     // Both bodies come from the same builder, so both are free of any
     // omitted sampling parameter, both explicitly disable thinking, and

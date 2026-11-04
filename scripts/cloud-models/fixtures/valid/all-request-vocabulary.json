@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "gpt-low",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-min",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "minimal",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-omit-omit",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-b0",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "budget": 0
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-bmax",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "budget": 32768
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-lmin",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "minimal"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-lhigh",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": {
+          "level": "high"
+        }
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-a",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingBetweenTools"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "claude",
+      "id": "claude-b",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    }
+  ]
+}

@@ -20,6 +20,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public var llmProvider: LLMProvider = .none
   /// #4353 D2: no model until the session's settings set one; never a preselected default.
   public var llmModel: String = ""
+  /// #4353 D6: the cloud model list the operation captured, set beside `llmProvider` and
+  /// `llmModel` at the same three points (dictation start, the import freeze, recovery replay)
+  /// and snapshotted at `process` entry with them. Nil means no list: every id is unlisted.
+  public var cloudModelList: CloudModelList?
   public var polishInstructions: PolishInstructions = .default
   /// #2649: the user's S1-mini control-line picks. Frozen per recording like
   /// provider and model (`DictationSessionConfig`), replayed from the spool on
@@ -54,12 +58,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // batches and a changed source noun in Haiku 4.5, retained by matched ordinary
     // requests. Keep these families, including dated aliases, on individual calls:
     // valid section tags alone cannot establish that cleanup preserved meaning.
-    let model = llmModel.lowercased()
-    let keepsOrdinaryRequests =
-      (llmProvider == .openAI && model.hasPrefix("gpt-4o-mini"))
-      || (llmProvider == .claude && model.hasPrefix("claude-haiku-4-5"))
+    // The rule and its reasons live in `LLMProvider.allowsFileBatch(model:list:)`: a listed
+    // row's `allowsFileBatch`, else the compiled prefix fallback (#2905).
     guard [.openAI, .gemini, .claude].contains(llmProvider),
-      keepsOrdinaryRequests == false,
+      llmProvider.allowsFileBatch(model: llmModel, list: cloudModelList),
       DefaultPromptPlanner.cloudRequiresMinimalEdits(context.text) == false,
       context.polishedText == nil, context.fileBatchCompletionID == nil,
       context.polishWasBypassed == false
@@ -73,7 +75,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     else { return nil }
     return FileBatchMember(
       context: context, provider: llmProvider, model: llmModel,
-      config: providerConfig(context: context, provider: llmProvider, model: llmModel, ollamaThinks: nil),
+      config: providerConfig(
+        context: context, provider: llmProvider, model: llmModel,
+        cloudModelList: cloudModelList, ollamaThinks: nil),
       system: pair.system, mode: plan.mode, vocabulary: polishVocabulary, backend: backend)
   }
 
@@ -150,14 +154,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// breadcrumb plus throw. Tests inject a controllable polisher to exercise the
   /// post-await settings snapshot. Mirrors `promptPlanner` above; `internal`
   /// because only the same-module factory and `@testable` tests reach it.
-  typealias PolisherFactory = @MainActor (LLMProvider, KeychainManager, OutputClassifierProtocol?)
-    ->
-    (any TranscriptPolisher)?
-  var makePolisher: PolisherFactory = { provider, keychain, classifier in
+  /// #4353 D6: the fourth argument is the cloud model list `process` captured at entry; the
+  /// cloud connectors are built per operation around it.
+  typealias PolisherFactory = @MainActor (
+    LLMProvider, KeychainManager, OutputClassifierProtocol?, CloudModelList?
+  ) -> (any TranscriptPolisher)?
+  var makePolisher: PolisherFactory = { provider, keychain, classifier, cloudModelList in
     switch provider {
-    case .openAI: OpenAIConnector(keychainManager: keychain)
+    case .openAI: OpenAIConnector(keychainManager: keychain, cloudModelList: cloudModelList)
     case .gemini: GeminiConnector(keychainManager: keychain)
-    case .claude: ClaudeConnector(keychainManager: keychain)
+    case .claude: ClaudeConnector(keychainManager: keychain, cloudModelList: cloudModelList)
     // #2641: Ollama has no keychain; the retry telemetry seam rides in explicitly.
     case .ollama: OllamaConnector(telemetrySink: keychain.telemetrySink)
     // #832/#913 PR8: the on-device output-safety classifier runs ONLY on Apple
@@ -635,7 +641,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     LLMNetworkSession.shared.preWarmModel(
       provider: llmProvider,
       model: llmModel,
-      keychainManager: keychainManager
+      keychainManager: keychainManager,
+      cloudModelList: cloudModelList
     )
   }
 
@@ -864,6 +871,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    // #4353 D6: the operation's cloud model list, read with provider and model; every request
+    // policy below (thinking, connector body, chat preflight) comes from this local.
+    let cloudModelList = cloudModelList
     // Separate from usage telemetry: import/recovery's silent seam must not hide a crash.
     let diagnosticOperation = SentryBreadcrumb.beginPolishOperation(provider: provider, model: model)
     defer { SentryBreadcrumb.endPolishOperation(diagnosticOperation) }
@@ -1058,7 +1068,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       }
       polisher = handles.make(endpoint)
     } else if let made = makePolisher(
-      provider, keychainManager, outputClassifierHolder?.classifier)
+      provider, keychainManager, outputClassifierHolder?.classifier, cloudModelList)
     {
       polisher = made
     } else {
@@ -1067,7 +1077,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     }
 
     let config = providerConfig(
-      context: context, provider: provider, model: model, ollamaThinks: ollamaThinks)
+      context: context, provider: provider, model: model, cloudModelList: cloudModelList,
+      ollamaThinks: ollamaThinks)
     let outputTokens = config.outputTokens
     let thinking = config.thinking
 
@@ -1331,7 +1342,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   }
 
   private func providerConfig(
-    context: TextProcessingContext, provider: LLMProvider, model: String, ollamaThinks: Bool?
+    context: TextProcessingContext, provider: LLMProvider, model: String,
+    cloudModelList: CloudModelList?, ollamaThinks: Bool?
   ) -> LLMProviderConfig {
     let keychainId: String? =
       switch provider {
@@ -1362,7 +1374,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       provider == .ollama
       ? Self.ollamaThinking(thinks: ollamaThinks)
       : Self.resolveThinking(
-        control: provider.modelCapabilities(model: model).thinkingControl
+        control: provider.modelCapabilities(model: model, list: cloudModelList).thinkingControl
       )
     let outputTokens = Self.outputTokenPolicy(
       provider: provider, textCount: context.text.count,

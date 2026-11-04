@@ -263,6 +263,7 @@ struct ReadinessRetryTelemetryContractTests {
         keychainManager: KeychainManager(),
         outputClassifierHolder: OutputClassifierHolder(),
         now: { Date() },
+        currentCloudModelList: { nil },
         currentVocabulary: { (.empty, .empty) },
         currentSnippets: { .empty })
       var store = RecoverySpoolStore(directory: spoolDir)

@@ -2,6 +2,7 @@
   import AppKit
   import EnviousWisprAudio
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprServices
   import Foundation
 
@@ -486,6 +487,9 @@
       /// (`LLMModelDiscoveryCoordinator.loadCachedModels`), so a model check after a provider
       /// change does not depend on a mounted screen.
       var loadCachedModelCatalog: (LLMProvider) -> Void
+      /// #4353 D6: the cloud model list the menus read now, so an ordinary model write is
+      /// admitted exactly when the menu offers the row.
+      var cloudModelList: () -> CloudModelList?
       /// UIDs of the input devices the system lists right now.
       var connectedInputUIDs: () -> [String]
       /// Input count per connected input device UID, read at request time.
@@ -910,7 +914,8 @@
       // the menu shows it.
       let groups = OllamaModelPickerPresentation.groups(
         from: surface.offeredModels(catalog.models, provider: provider), provider: provider,
-        chosenModel: PolishSettings.cloudModel(on: surface, in: settings))
+        chosenModel: PolishSettings.cloudModel(on: surface, in: settings),
+        list: context.cloudModelList())
       let offered = groups.selectable.map(\.id)
       guard offered.contains(id) else {
         let locked = groups.locked.contains { $0.id == id }

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "gpt-x",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true,
+      "displayName": "GPT\u2028mini"
+    }
+  ]
+}

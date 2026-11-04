@@ -24,12 +24,37 @@ import Foundation
 /// unsupported-param strip-and-retry: an id whose shape we got wrong gets an
 /// HTTP 400, which the picker probe turns into "not offered".
 public struct ClaudeConnector: TranscriptPolisher {
+  /// Transport seam (#4353 PR 5): one physical batch HTTP exchange, as `OpenAIConnector`
+  /// has. The weekly cloud model routine and scripted tests inject it; production always
+  /// uses the shared session.
+  typealias RequestExecutor = @Sendable (
+    URLRequest,
+    LLMTaskMetricsCollector
+  ) async throws -> (Data, URLResponse)
+
   private let keychainManager: KeychainManager
+  private let requestExecutor: RequestExecutor
+  /// #4353 D6: the cloud model list the operation that built this connector captured.
+  private let cloudModelList: CloudModelList?
   private let baseURL = "https://api.anthropic.com/v1/messages"
   private static let apiVersion = "2023-06-01"
 
-  public init(keychainManager: KeychainManager = KeychainManager()) {
+  public init(keychainManager: KeychainManager = KeychainManager(), cloudModelList: CloudModelList?) {
     self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
+    self.requestExecutor = { request, collector in
+      try await LLMNetworkSession.shared.session.data(for: request, delegate: collector)
+    }
+  }
+
+  /// Test seam. Production callers use the public init.
+  init(
+    keychainManager: KeychainManager, cloudModelList: CloudModelList?,
+    requestExecutor: @escaping RequestExecutor
+  ) {
+    self.keychainManager = keychainManager
+    self.cloudModelList = cloudModelList
+    self.requestExecutor = requestExecutor
   }
 
   public func polish(
@@ -59,6 +84,7 @@ public struct ClaudeConnector: TranscriptPolisher {
     }
     let body = Self.makeRequestBody(
       model: config.model,
+      list: cloudModelList,
       maxTokens: maxTokens,
       system: instructions.systemPrompt,
       userText: text
@@ -66,7 +92,8 @@ public struct ClaudeConnector: TranscriptPolisher {
     // #3425: the pipeline's `thinking=` receipt describes `ResolvedThinking`,
     // which is nil for Claude whatever the body says, so the shape the body
     // actually carries is logged here. Content-free: ids and numbers only.
-    let shape = LLMProvider.claude.modelCapabilities(model: config.model).claudeRequestShape
+    let shape = LLMProvider.claude.modelCapabilities(model: config.model, list: cloudModelList)
+      .claudeRequestShape
     Task {
       await AppLogger.shared.log(
         "Claude request shape: model=\(config.model) shape=\(shape) max_tokens=\(maxTokens)",
@@ -156,6 +183,7 @@ public struct ClaudeConnector: TranscriptPolisher {
   /// the same `EnviousWisprLLM` module.
   static func makeRequestBody(
     model: String,
+    list: CloudModelList?,
     maxTokens: Int,
     system: String?,
     userText: String
@@ -164,15 +192,15 @@ public struct ClaudeConnector: TranscriptPolisher {
     // something the catalog's declared capability shape predicts (GitHub cloud
     // review r2, PR #1712: `claude-fable-5` rejected `disabled` while sharing
     // `claude-sonnet-5`'s catalog shape). The decision therefore lives in
-    // `LLMModelCapabilities.claudeRequestShape`, keyed on exact ids and verified
-    // live (#3425); an id whose shape is wrong still falls through the generic
+    // `LLMModelCapabilities.claudeRequestShape`, keyed on exact ids (the caller's captured
+    // cloud model list, #4353 D6) and verified live (#3425); an id whose shape is wrong still falls through the generic
     // non-200 path in `probeClaude` (not offered) and `classify` (`.badRequest`).
     var body: [String: Any] = [
       "model": model,
       "max_tokens": maxTokens,
       "messages": [["role": "user", "content": userText]],
     ]
-    switch LLMProvider.claude.modelCapabilities(model: model).claudeRequestShape {
+    switch LLMProvider.claude.modelCapabilities(model: model, list: list).claudeRequestShape {
     case .thinkingDisabled:
       body["thinking"] = ["type": "disabled"]
     case .thinkingBetweenTools:
@@ -193,7 +221,6 @@ public struct ClaudeConnector: TranscriptPolisher {
     config: LLMProviderConfig,
     callNumber: Int
   ) async throws -> LLMResult {
-    let session = LLMNetworkSession.shared.session
     let collector = LLMTaskMetricsCollector()
     var statusForLog = "pending"
     defer {
@@ -207,7 +234,7 @@ public struct ClaudeConnector: TranscriptPolisher {
     let data: Data
     let response: URLResponse
     do {
-      (data, response) = try await session.data(for: request, delegate: collector)
+      (data, response) = try await requestExecutor(request, collector)
     } catch {
       statusForLog = "error:\(Self.shortError(error))"
       throw error

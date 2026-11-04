@@ -13,7 +13,7 @@ import Testing
 struct LLMProviderCapabilityTests {
 
   private func caps(_ model: String) -> LLMModelCapabilities {
-    LLMProvider.openAI.modelCapabilities(model: model)
+    LLMProvider.openAI.modelCapabilities(model: model, list: CloudModelListSeed.current)
   }
 
   // MARK: - Reasoning family (gpt-5 generation + o-series)
@@ -84,11 +84,11 @@ struct LLMProviderCapabilityTests {
   @Test func geminiDialectIsKeyedOnExactIDs() {
     // Gemini 3 Flash tier: string level, `minimal` is a real thinking-off.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-3.6-flash").thinkingControl
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.6-flash", list: CloudModelListSeed.current).thinkingControl
         == .level("minimal"))
     // Gemini 3 Pro tier: rejects `minimal`, so `low` is the floor.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-3.1-pro-preview").thinkingControl
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.1-pro-preview", list: CloudModelListSeed.current).thinkingControl
         == .level("low"))
     // 3.7 Flash carries the PRO tier's shape under a Flash name: Google rejects
     // `minimal` on it (400, verified live 2026-08-16), so `low` is its floor and
@@ -96,15 +96,15 @@ struct LLMProviderCapabilityTests {
     // future id" in the fallback list below until it became the shipped default;
     // this assertion replaces that coverage rather than dropping it.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-3.7-flash").thinkingControl
+      LLMProvider.gemini.modelCapabilities(model: "gemini-3.7-flash", list: CloudModelListSeed.current).thinkingControl
         == .level("low"))
     // Gemini 2.5 Flash tier: integer budget, 0 is legal.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-flash").thinkingControl
+      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-flash", list: CloudModelListSeed.current).thinkingControl
         == .budget(0))
     // Gemini 2.5 Pro: rejects budget 0, documented minimum 128.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").thinkingControl
+      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro", list: CloudModelListSeed.current).thinkingControl
         == .budget(128))
 
     // Unknown / untested / retired ids reach the fallback and send NOTHING —
@@ -116,19 +116,19 @@ struct LLMProviderCapabilityTests {
     // not exist yet — the exact shape a prefix match would wrongly capture.
     for unknown in ["gemini-3-flash", "gemini-4.0-flash", "gemini-2.0-flash", "nonsense"] {
       #expect(
-        LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported,
+        LLMProvider.gemini.modelCapabilities(model: unknown, list: CloudModelListSeed.current).thinkingControl == .unsupported,
         "\(unknown) must fall through to .unsupported, not inherit an untested value")
-      #expect(LLMProvider.gemini.modelCapabilities(model: unknown).thinkingControl == .unsupported)
+      #expect(LLMProvider.gemini.modelCapabilities(model: unknown, list: CloudModelListSeed.current).thinkingControl == .unsupported)
     }
 
     // Gemini models always keep temperature.
     #expect(
-      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro").temperaturePolicy == .include)
+      LLMProvider.gemini.modelCapabilities(model: "gemini-2.5-pro", list: CloudModelListSeed.current).temperaturePolicy == .include)
   }
 
   @Test func localProvidersNeverReasonAndKeepTemperature() {
     for provider in [LLMProvider.ollama, .appleIntelligence, .egOne, .none] {
-      let c = provider.modelCapabilities(model: "anything")
+      let c = provider.modelCapabilities(model: "anything", list: CloudModelListSeed.current)
       #expect(c.thinkingControl == .unsupported)
       #expect(c.temperaturePolicy == .include)
     }
@@ -142,7 +142,7 @@ struct LLMProviderCapabilityTests {
     "claude-opus-4-8", "claude-fable-5",
   ])
   func claudeHasNoPipelineThinkingValueAndOmitsTemperature(model: String) {
-    let c = LLMProvider.claude.modelCapabilities(model: model)
+    let c = LLMProvider.claude.modelCapabilities(model: model, list: CloudModelListSeed.current)
     #expect(c.thinkingControl == .unsupported)
     #expect(c.temperaturePolicy == .omit)
     #expect(!c.supportsChatCompletions)

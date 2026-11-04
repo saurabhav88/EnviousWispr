@@ -59,7 +59,7 @@ struct FileImportCloudSetupTests {
       keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       makeEGOnePolisher: nil, promptPlanner: nil, checkerSelectionProvider: nil,
-      makePolisher: { _, _, _ in Polisher(capture: capture) })
+      makePolisher: { _, _, _, _ in Polisher(capture: capture) })
     subject.freeze(
       settings: RecordingSettingsSnapshot(
         backendType: .parakeet, backendSupportsLanguageDetection: false,
@@ -68,7 +68,7 @@ struct FileImportCloudSetupTests {
         spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
         llmProvider: provider.rawValue, llmModel: model, s1Control: nil,
         englishSpelling: .american, casualModeEnabled: false),
-      vocabulary: nil)
+      vocabulary: nil, cloudModelList: nil)
     return subject
   }
 

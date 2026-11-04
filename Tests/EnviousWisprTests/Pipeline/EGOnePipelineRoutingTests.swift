@@ -135,7 +135,7 @@ struct EGOnePipelineRoutingTests {
       endpoint: EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     var legacyFactoryCalled = false
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       legacyFactoryCalled = true
       return nil
     }
@@ -167,7 +167,7 @@ struct EGOnePipelineRoutingTests {
         onToken: (@Sendable (String) -> Void)?
       ) async throws -> LLMResult { throw LLMError.providerUnavailable }
     }
-    step.makePolisher = { _, _, _ in Down() }
+    step.makePolisher = { _, _, _, _ in Down() }
     let result = try await run(step, spy: spy)
     #expect(result.polishError != nil)
   }

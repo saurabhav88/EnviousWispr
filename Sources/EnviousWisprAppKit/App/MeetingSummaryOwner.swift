@@ -34,9 +34,14 @@ final class MeetingSummaryOwner {
     var isEnabled: @MainActor () -> Bool
     /// The AI Polish provider and the model it uses now.
     var selection: @MainActor () -> (provider: LLMProvider, model: String)
-    /// The call for a provider and model, or why there is none (`MeetingSummaryProviders`).
+    /// #4353 D6: the cloud model list in use now. Read once per attempt, beside `selection`,
+    /// and never part of the selection-change checks: a background refresh does not cancel
+    /// an attempt already underway.
+    var cloudModelList: @MainActor () -> CloudModelList?
+    /// The call for a provider and model under the attempt's captured cloud model list, or why
+    /// there is none (`MeetingSummaryProviders`).
     var prepare:
-      @MainActor (LLMProvider, String) async -> Result<
+      @MainActor (LLMProvider, String, CloudModelList?) async -> Result<
         MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable
       >
     /// What History shows for a ready meeting, echo hidden, and its speaker names. Nil when
@@ -324,14 +329,17 @@ final class MeetingSummaryOwner {
     // Where the model runs is known from the selection before anything can fail, so every row
     // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once.
     let selection = deps.selection()
+    // #4353 D6: captured with the selection, before the first suspension, and carried to
+    // `prepare`; planning and every request of this attempt use it.
+    let cloudModelList = deps.cloudModelList()
     var kind = Self.providerKind(selection.provider)
     let ending: Ending
     if selection.provider == .none {
       ending = Ending(end: .problem(.noProvider))
     } else {
       ending = await attemptOnce(
-        meetingID, attempt: attempt, selection: selection, approvedUserEdit: approvedUserEdit,
-        owedAlready: owedAlready, kind: &kind)
+        meetingID, attempt: attempt, selection: selection, cloudModelList: cloudModelList,
+        approvedUserEdit: approvedUserEdit, owedAlready: owedAlready, kind: &kind)
     }
     defer {
       busy.remove(attempt)
@@ -359,7 +367,7 @@ final class MeetingSummaryOwner {
 
   private func attemptOnce(
     _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
-    approvedUserEdit: String?, owedAlready: Bool,
+    cloudModelList: CloudModelList?, approvedUserEdit: String?, owedAlready: Bool,
     kind: inout MeetingSummaryFinishedTelemetry.ProviderKind
   ) async -> Ending {
     if !owedAlready {
@@ -372,7 +380,7 @@ final class MeetingSummaryOwner {
       }
     }
     let prepared: MeetingSummaryProviders.Prepared
-    let preparation = await deps.prepare(selection.provider, selection.model)
+    let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)
     // #4319: a successful preparation is unpacked before anything else, so its `finish` runs
     // exactly once on every path from here, a cancel included.
     switch preparation {

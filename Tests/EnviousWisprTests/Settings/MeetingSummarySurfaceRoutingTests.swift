@@ -281,7 +281,7 @@ struct MeetingSummarySurfaceRoutingTests {
       whisperKernelDriver: DictationRuntimeFixtures.makeWhisperPipeline(
         audioCapture: audio, store: store),
       audioCapture: audio, asrManager: asr,
-      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
+      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()), cloudModelList: { nil },
       ollamaRemotenessLookup: { _ in false })
     sync.evictionScheduler = { _ in }
     let settings = Self.freshSettings()

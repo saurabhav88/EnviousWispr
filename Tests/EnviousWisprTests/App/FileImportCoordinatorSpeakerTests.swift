@@ -871,7 +871,7 @@ struct FileImportCoordinatorSpeakerTests {
       keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       makeEGOnePolisher: nil, promptPlanner: nil,
-      makePolisher: { _, _, _ in BatchPolisher(capture: capture, preserveExistingPunctuation: sentenceBoundary) })
+      makePolisher: { _, _, _, _ in BatchPolisher(capture: capture, preserveExistingPunctuation: sentenceBoundary) })
     let settings = RecordingSettingsSnapshot(
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
       wordCorrectionEnabled: false, fillerRemovalEnabled: sentenceBoundary, emojiFormatterEnabled: false,
@@ -898,7 +898,7 @@ struct FileImportCoordinatorSpeakerTests {
         }
       },
       beginRunOverride: {
-        processor.freeze(settings: settings, vocabulary: nil)
+        processor.freeze(settings: settings, vocabulary: nil, cloudModelList: nil)
         return FileImportCoordinator.RunConfiguration(
           polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
           ollamaModel: nil, polishModel: settings.llmModel, backendType: .parakeet)

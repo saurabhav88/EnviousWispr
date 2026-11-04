@@ -43,7 +43,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
       whisperKernelDriver: whisperDriver,
       audioCapture: audio,
       asrManager: asr,
-      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()),
+      hotkeyService: HotkeyService(effects: RecordingDesktopHotkeyEffects()), cloudModelList: { nil },
       ollamaRemotenessLookup: { _ in nil })
     return (sync, settings, parakeet, whisperDriver)
   }
@@ -176,7 +176,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
   @Test("A recovered take replays under the start words recorded with it")
   func recoveryAppliesTheRecordedValue() {
     let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: recorded, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation
@@ -185,7 +185,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A recorded word that equals today's default is still carried")
   func recoveryKeepsADefaultEqualWord() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: Self.allDefaults, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation.startWordOverrides
@@ -194,7 +194,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A spool from before start words replays off with the shipped defaults")
   func legacySpoolReplaysOff() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
     // Poison first, so the nil branch is shown to WRITE the default rather than leave a fresh one.
     processor.inverseTextNormalizationStep.spokenPunctuation = SpokenPunctuationSettings(
       enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
@@ -272,7 +272,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A recovered take and an import replay the recorded period switch OFF")
   func recordedPeriodSwitchOffIsReplayed() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager())
+    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: [:], periodWord: false))
     #expect(processor.inverseTextNormalizationStep.spokenPunctuation.englishPeriodWord == false)
 

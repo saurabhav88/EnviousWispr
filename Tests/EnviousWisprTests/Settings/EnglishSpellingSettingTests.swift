@@ -73,6 +73,6 @@ struct EnglishSpellingSettingTests {
     settings.englishSpelling = .british
     #expect(SettingsProjection.logicals(for: .englishSpelling) == [.englishSpelling])
     #expect(SettingsProjection.Logical.englishSpelling.rawValue == "english_spelling")
-    #expect(SettingsProjection.value(for: .englishSpelling, settings: settings) == "british")
+    #expect(SettingsProjection.value(for: .englishSpelling, settings: settings, list: CloudModelListSeed.current) == "british")
   }
 }

@@ -22,6 +22,22 @@
 import { readFileSync } from "node:fs";
 import { runDigest } from "./src/index.js";
 
+// The cloud model list vars come from the committed wrangler.toml, never a copy
+// here: the smoke must exercise the configuration a deploy would ship, and a
+// copy would keep smoking the disabled state after activation flips it (#4353).
+// Only plain `KEY = "value"` lines are read; a missing key fails loud.
+const CLOUD_VARS = ["CLOUD_MODEL_ROUTINE_ENABLED", "CLOUD_MODEL_ROUTINE_LOG_ISSUE", "CLOUD_MODEL_ROUTINE_WRITER_LOGIN"];
+const wrangler = readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8");
+const cloudVars = {};
+for (const name of CLOUD_VARS) {
+  const m = new RegExp(`^${name} = "([^"\\\\]*)"$`, "m").exec(wrangler);
+  if (!m) {
+    console.error(`wrangler.toml has no plain ${name} = "..." line`);
+    process.exit(1);
+  }
+  cloudVars[name] = m[1];
+}
+
 const CAPTURED_WEBHOOK = "https://smoke.invalid/never-posted";
 
 // The deployed worker's plain configuration is wrangler.toml's [vars]; the smoke reads that
@@ -52,6 +68,7 @@ const env = {
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
   SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
+  ...cloudVars,
 };
 
 // SENTRY_KEY is required for the same reason the others are: a smoke that

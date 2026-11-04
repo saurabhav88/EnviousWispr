@@ -136,7 +136,7 @@ struct PolishTakeOutcomeCarryTests {
     let polish = LLMPolishStep(keychainManager: KeychainManager())
     polish.llmProvider = .openAI
     polish.llmModel = "gpt-4o-mini"
-    polish.makePolisher = { _, _, _ in MissingKeyPolisher() }
+    polish.makePolisher = { _, _, _, _ in MissingKeyPolisher() }
     let telemetry = KernelTelemetryState()
     telemetry.resetForNewSession(takeID: takeID, polishEnabled: true)
     return KernelFinalizationWiring(

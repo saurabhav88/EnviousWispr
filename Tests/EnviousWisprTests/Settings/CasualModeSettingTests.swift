@@ -30,8 +30,8 @@ struct CasualModeSettingTests {
     let settings = SettingsManager(defaults: Self.freshSuite())
     #expect(SettingsProjection.logicals(for: .casualModeEnabled) == [.casualMode])
     #expect(SettingsProjection.Logical.casualMode.rawValue == "casual_mode")
-    #expect(SettingsProjection.snapshotConfig(settings)["casual_mode"] == "off")
+    #expect(SettingsProjection.snapshotConfig(settings, list: CloudModelListSeed.current)["casual_mode"] == "off")
     settings.casualModeEnabled = true
-    #expect(SettingsProjection.snapshotConfig(settings)["casual_mode"] == "on")
+    #expect(SettingsProjection.snapshotConfig(settings, list: CloudModelListSeed.current)["casual_mode"] == "on")
   }
 }

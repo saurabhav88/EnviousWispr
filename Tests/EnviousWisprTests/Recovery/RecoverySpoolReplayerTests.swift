@@ -163,7 +163,8 @@ struct RecoverySpoolReplayerTests {
     transcriptDir: URL? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
-    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil
+    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
+    currentCloudModelList: @escaping @MainActor () -> CloudModelList? = { nil }
   ) -> Harness {
     let spoolDir = tempDir()
     let keyStore = RecoveryKeyStore(backend: .file, fileDirectory: tempDir())
@@ -187,6 +188,7 @@ struct RecoverySpoolReplayerTests {
       onReplayWillTranscribe: onReplayWillTranscribe,
       onReplayFinished: onReplayFinished,
       now: now,
+      currentCloudModelList: currentCloudModelList,
       currentVocabulary: { (.empty, .empty) },
       currentSnippets: { .empty })
     return Harness(
@@ -245,6 +247,24 @@ struct RecoverySpoolReplayerTests {
   /// #3289: the word check is no longer in memory at launch, so a replay tells the app its
   /// recording's frozen polish engine BEFORE transcribing, and the check loads behind the
   /// transcription. When this fails, a recovered dictation misses its learned-word fixes.
+  /// #4353 D6: the replay reads the cloud model list once, before it decrypts or transcribes,
+  /// so a refresh during the replay cannot change the polish it ends with.
+  @Test("a replay reads the cloud model list once, before it transcribes")
+  func replayCapturesCloudModelListAtStart() async throws {
+    var reads: [Int] = []
+    var asrRef: FakeBatchASR?
+    let h = Self.makeHarness(currentCloudModelList: {
+      reads.append(asrRef?.transcribeCallCount ?? -1)
+      return nil
+    })
+    asrRef = h.asr
+    let id = "list-\(UUID().uuidString)"
+    try await Self.seedSpool(h, id: id, samples: [0.1, 0.2, 0.3])
+    let outcome = await h.replayer.replay(recoverySessionID: id, isAborted: { false })
+    #expect(outcome == .recovered)
+    #expect(reads == [0], "one read, before the first transcription")
+  }
+
   @Test("a replay reports the recording's frozen polish engine before it transcribes")
   func replayReportsEngineBeforeTranscribing() async throws {
     var reported: [(LLMProvider, Int)] = []
@@ -836,6 +856,7 @@ struct RecoverySpoolReplayerTests {
         transcriptCoordinator: TranscriptCoordinator(store: transcriptStore),
         keychainManager: KeychainManager(),
         outputClassifierHolder: OutputClassifierHolder(),
+        currentCloudModelList: { nil },
         currentVocabulary: { (.empty, .empty) },
         currentSnippets: { .empty })
       let id = "tel-defer-\(UUID().uuidString)"

@@ -47,7 +47,7 @@
           defaults: TestDefaults.suite("ew.tests.3972.devControlMeetings.\(UUID().uuidString)")!),
         writeContext: DevControlSettings.WriteContext(
           modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-          loadCachedModelCatalog: { _ in },
+          loadCachedModelCatalog: { _ in }, cloudModelList: { nil },
           connectedInputUIDs: { [] }, inputChannelCounts: { [:] },
           pillWordsCapability: { .available }),
         status: status.sources,

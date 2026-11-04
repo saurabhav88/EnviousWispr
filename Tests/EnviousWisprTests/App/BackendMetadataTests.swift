@@ -237,10 +237,10 @@ struct BackendMetadataTests {
     modelLoaded: Bool = false, parakeetModel: String = "Parakeet v3"
   ) -> BackendMetadata {
     let settings = SettingsManager()
-    let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager())
+    let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: KeychainManager(), discoverModels: { _, _ in [] })
     return BackendMetadata(
       settings: settings,
-      llmDiscovery: llmDiscovery,
+      llmDiscovery: llmDiscovery, cloudModelList: { nil },
       activeModelLoaded: { modelLoaded },
       parakeetModelLabel: { parakeetModel }
     )

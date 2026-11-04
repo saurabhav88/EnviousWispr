@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "updated": "2026-11-04",
+  "models": [
+    {
+      "provider": "openAI",
+      "id": "gpt-5.4-mini-2026-01-15",
+      "recommended": true,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "omit",
+        "temperature": "include"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true,
+      "released": "2026-01-15",
+      "displayName": "GPT‑5.4 mini · fast",
+      "medianPolishMs": 812
+    },
+    {
+      "provider": "claude",
+      "id": "claude-old",
+      "recommended": false,
+      "hidden": true,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "hiddenReason": "Retired by Anthropic on 2026-10-01."
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-y",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "released": "2024-02-29",
+      "medianPolishMs": 60000
+    }
+  ]
+}

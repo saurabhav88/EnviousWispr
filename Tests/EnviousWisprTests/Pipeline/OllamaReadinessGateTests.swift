@@ -55,7 +55,7 @@ struct OllamaReadinessGateTests {
     step.llmModel = "llama3.2"
     step.ollamaReadinessProbe = probe
     let factoryCounter = Counter()
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       factoryCounter.value += 1
       return CannedPolisher(invocationCounter: invocationCounter)
     }
@@ -106,7 +106,7 @@ struct OllamaReadinessGateTests {
     step.llmProvider = .ollama
     step.llmModel = model
     step.ollamaReadinessProbe = { _ in .ready(facts: facts) }
-    step.makePolisher = { _, _, _ in CapturingPolisher(capture: capture) }
+    step.makePolisher = { _, _, _, _ in CapturingPolisher(capture: capture) }
     return (step, capture)
   }
 
@@ -274,7 +274,7 @@ struct OllamaReadinessGateTests {
     step.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
     }
-    step.makePolisher = { _, _, _ in ThrowingPolisher() }
+    step.makePolisher = { _, _, _, _ in ThrowingPolisher() }
 
     await #expect(throws: (any Error).self) {
       _ = try await step.process(self.context())

@@ -43,7 +43,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func classicModelSendsTemperatureZeroAndNoEffort() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-4o-mini"), messages: messages)
+      config: config(model: "gpt-4o-mini"), list: CloudModelListSeed.current, messages: messages)
     #expect(body["temperature"] as? Double == 0)
     #expect(body["reasoning_effort"] == nil)
     #expect(body["max_completion_tokens"] as? Int == 512)
@@ -52,7 +52,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func reasoningModelOmitsTemperatureAndSendsEffort() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-5.6-sol", effort: "low"), messages: messages)
+      config: config(model: "gpt-5.6-sol", effort: "low"), list: CloudModelListSeed.current, messages: messages)
     #expect(body["temperature"] == nil)
     #expect(body["reasoning_effort"] as? String == "low")
   }
@@ -61,14 +61,14 @@ struct OpenAIRequestBodyTests {
     // The gpt-5.5 evidence: temperature is rejected even when no
     // reasoning-effort field is present, so omission is unconditional.
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-5.5"), messages: messages)
+      config: config(model: "gpt-5.5"), list: CloudModelListSeed.current, messages: messages)
     #expect(body["temperature"] == nil)
     #expect(body["reasoning_effort"] == nil)
   }
 
   @Test func omittingSetRemovesParamsRegardlessOfFamily() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-4o-mini", effort: "low"),
+      config: config(model: "gpt-4o-mini", effort: "low"), list: CloudModelListSeed.current,
       messages: messages,
       omitting: ["temperature", "reasoning_effort"])
     #expect(body["temperature"] == nil)
@@ -82,7 +82,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func providerDefaultOmitsMaxCompletionTokens() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-4o-mini", outputTokens: .providerDefault),
+      config: config(model: "gpt-4o-mini", outputTokens: .providerDefault), list: CloudModelListSeed.current,
       messages: messages)
     #expect(body["max_completion_tokens"] == nil)
     #expect(body["max_tokens"] == nil)
@@ -90,7 +90,7 @@ struct OpenAIRequestBodyTests {
 
   @Test func cappedSerializesExactValue() {
     let body = OpenAIConnector.makeRequestBody(
-      config: config(model: "gpt-4o-mini", outputTokens: .capped(777)),
+      config: config(model: "gpt-4o-mini", outputTokens: .capped(777)), list: CloudModelListSeed.current,
       messages: messages)
     #expect(body["max_completion_tokens"] as? Int == 777)
   }
@@ -99,7 +99,7 @@ struct OpenAIRequestBodyTests {
 
   @Test(arguments: ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-4o-mini", "o3", "o4-mini", "gpt-5.5"])
   func chatCapableModelsAreCandidates(id: String) {
-    #expect(LLMModelDiscovery.isOpenAIChatCompletionCandidate(id))
+    #expect(LLMModelDiscovery.isOpenAIChatCompletionCandidate(id, list: CloudModelListSeed.current))
   }
 
   @Test(arguments: [
@@ -108,7 +108,7 @@ struct OpenAIRequestBodyTests {
     "gpt-4o-transcribe", "dall-e-3", "text-embedding-3-small",
   ])
   func nonCandidatesAreExcluded(id: String) {
-    #expect(!LLMModelDiscovery.isOpenAIChatCompletionCandidate(id))
+    #expect(!LLMModelDiscovery.isOpenAIChatCompletionCandidate(id, list: CloudModelListSeed.current))
   }
   // Alias ("latest") and version-duplicate ("-001") filtering is
   // deliberately NOT this predicate's job — `filterModels` owns it for all

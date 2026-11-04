@@ -132,6 +132,8 @@ package final class WisprBootstrapper {
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// #4353 D6: the cloud model list (website, last good copy, bundled copy). Started at launch.
+  let cloudModelList: CloudModelListHolder
   /// #3438: the AI polish setup warnings as ONE slot (the `learnFromEdits` shape): which cloud
   /// keys are saved, and which warnings may show.
   let polishSetup: PolishSetupWiring
@@ -391,8 +393,15 @@ package final class WisprBootstrapper {
     }
 
     let savedKeyPresence = SavedKeyPresence()
+    // #4353 D6: reads the local copies now (a few milliseconds); the network waits for launch.
+    let cloudModelList = CloudModelListHolder.live()
     let llmDiscovery = LLMModelDiscoveryCoordinator(
-      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence)
+      keychainManager: keychainManager, savedKeyPresence: savedKeyPresence,
+      discoverModels: { [cloudModelList] provider, apiKey in
+        // One read per discovery run: the probes and filters of this run share one list.
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .discoverModels(provider: provider, apiKey: apiKey)
+      })
 
     let transcriptStore = TranscriptStore()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
@@ -893,6 +902,7 @@ package final class WisprBootstrapper {
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: { [checkerEligibility] provider, language in
@@ -1174,12 +1184,14 @@ package final class WisprBootstrapper {
     let standingSnapshotBuilder = StandingSnapshotBuilder(
       settings: settings, keychainManager: keychainManager,
       customWordsCoordinator: customWordsCoordinator, permissions: permissions,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       snippetsCount: { [snippetsCoordinator] in snippetsCoordinator.snippets.count },
       snippetsKeywordIsDefault: { [snippetsCoordinator] in
         snippetsCoordinator.keyword == SnippetVocabulary.defaultKeyword
       })
     let settingsChangeTelemetry = SettingsChangeTelemetry(
       settings: settings,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       emitBaseline: { standingSnapshotBuilder.emit() })
     // #1173: drain a pending settings delta before any telemetry flush (quit /
     // update-relaunch) so a change made inside the debounce window isn't lost.
@@ -1419,6 +1431,7 @@ package final class WisprBootstrapper {
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
       // byte-exact. `+ 1` keeps the cache generation non-zero so terms take effect.
+      currentCloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       currentVocabulary: { [customWordsCoordinator] in
         LanePartitioner.split(
           customWordsCoordinator.customWords,
@@ -1633,6 +1646,7 @@ package final class WisprBootstrapper {
     let backendMetadata = BackendMetadata(
       settings: settings,
       llmDiscovery: llmDiscovery,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       // The coordinator's published snapshot covers BOTH engines; the manager's
       // own flag is Parakeet-only since #1386 (cloud review P2).
       activeModelLoaded: { [engineCoordinator] in engineCoordinator.status.activeModelLoaded },
@@ -1956,6 +1970,7 @@ package final class WisprBootstrapper {
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
@@ -2261,7 +2276,10 @@ package final class WisprBootstrapper {
         [settings, customWordsPropagator, localPolishRuntimes, kernelDriver, whisperKernelDriver]
         in
         let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
-        fileImportRunner.freeze(settings: snapshot, vocabulary: customWordsPropagator.corrector)
+        // #4353 D6: the list is captured here, with the settings, for the whole run.
+        fileImportRunner.freeze(
+          settings: snapshot, vocabulary: customWordsPropagator.corrector,
+          cloudModelList: cloudModelList.snapshot?.list)
         // #3289: Start and Clean it again both come through here, after the claim; preload the word
         // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
         // it loading or ready. Opening the page or a refused claim never reaches this line.
@@ -2453,6 +2471,7 @@ package final class WisprBootstrapper {
             loadCachedModelCatalog: { [llmDiscovery] provider in
               llmDiscovery.loadCachedModels(for: provider)
             },
+            cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
             connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
             inputChannelCounts: {
               Dictionary(
@@ -2623,6 +2642,7 @@ package final class WisprBootstrapper {
         Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
       },
       keychain: keychainManager,
+      cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       detectedStartWanted: { [meetingBox] in
         meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
@@ -2893,6 +2913,7 @@ package final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    self.cloudModelList = cloudModelList
     let polishSetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -2967,6 +2988,12 @@ package final class WisprBootstrapper {
       })
     kernelDriver.polishSetupHooks = polishSetupTakeHooks
     whisperKernelDriver.polishSetupHooks = polishSetupTakeHooks
+    // #4353 D6: each take reads the cloud model list once, at its start.
+    let captureCloudModelList: @MainActor () -> CloudModelList? = { [cloudModelList] in
+      cloudModelList.snapshot?.list
+    }
+    kernelDriver.captureCloudModelList = captureCloudModelList
+    whisperKernelDriver.captureCloudModelList = captureCloudModelList
     self.polishSetup = PolishSetupWiring(
       savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard,
       summary: SummarySetupMonitorHolder(monitor: summarySetupMonitor))
@@ -3158,6 +3185,8 @@ package final class WisprBootstrapper {
     // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
     // #4321: the summary engine's monitor watches its own.
     polishSetup.start()
+    // #4353 D6: the launch fetch of the cloud model list; returns at once.
+    cloudModelList.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
@@ -3395,6 +3424,8 @@ private struct MainWindowRoot: View {
       )
       .environment(b.aiAvailability)
       .environment(b.llmDiscovery)
+      // #4353 D6: the cloud model list the model menus and labels read.
+      .environment(b.cloudModelList)
       .environment(b.polishSetup.savedKeyPresence)
       .environment(b.polishSetup.monitor)
       .environment(b.polishSetup.summary)
@@ -3453,6 +3484,8 @@ private struct OnboardingWindowRoot: View {
     .environment(b.audioDeviceList)
     .environment(b.aiAvailability)
     .environment(b.llmDiscovery)
+    // #4353 D6: the cloud model list the model menus and labels read.
+    .environment(b.cloudModelList)
     .environment(b.polishSetup.savedKeyPresence)
     .environment(b.polishSetup.monitor)
     .environment(b.polishSetup.summary)

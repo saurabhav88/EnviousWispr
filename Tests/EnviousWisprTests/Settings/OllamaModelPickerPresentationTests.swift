@@ -44,7 +44,7 @@ struct OllamaModelPickerPresentationTests {
       model("qwen3:4b"),
     ]
 
-    let groups = OllamaModelPickerPresentation.groups(from: input, provider: .ollama, chosenModel: "")
+    let groups = OllamaModelPickerPresentation.groups(from: input, provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     let placed =
       groups.recommended.map(\.id) + groups.other.map(\.id) + groups.hosted.map(\.id)
       + groups.locked.map(\.id)
@@ -62,16 +62,18 @@ struct OllamaModelPickerPresentationTests {
         id: "gpt-6-luna", displayName: "gpt-6-luna", provider: .openAI,
         availability: .inconclusive, isRemote: false),
       LLMModelInfo(
-        id: "gpt-5-pro", displayName: "gpt-5-pro", provider: .openAI,
+        id: "gpt-5.5", displayName: "gpt-5.5", provider: .openAI,
         availability: .confirmedUnavailable, isRemote: false),
       LLMModelInfo(
         id: "gpt-4o-mini", displayName: "gpt-4o-mini", provider: .openAI,
         availability: .available, isRemote: false),
     ]
-    let groups = OllamaModelPickerPresentation.groups(from: rows, provider: .openAI, chosenModel: "")
+    let groups = OllamaModelPickerPresentation.groups(from: rows, provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
     let choosable = Set(groups.selectable.map(\.id))
     #expect(choosable == ["gpt-6-luna", "gpt-4o-mini"])
-    #expect(groups.locked.map(\.id) == ["gpt-5-pro"])
+    // A Responses-only id (`gpt-5-pro`, chat-ineligible in the list) is never offered at all
+    // (#4353 D6), so the confirmed lock here is an ordinary chat model.
+    #expect(groups.locked.map(\.id) == ["gpt-5.5"])
   }
 
   // MARK: - Hosted models get their own group
@@ -80,7 +82,7 @@ struct OllamaModelPickerPresentationTests {
   func hostedRowsAreSeparated() {
     let groups = OllamaModelPickerPresentation.groups(
       from: [model("llama3.2"), model("gpt-oss:120b-cloud", isRemote: true)],
-      provider: .ollama, chosenModel: "")
+      provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.hosted.map(\.id) == ["gpt-oss:120b-cloud"])
     #expect(!groups.recommended.map(\.id).contains("gpt-oss:120b-cloud"))
@@ -100,7 +102,7 @@ struct OllamaModelPickerPresentationTests {
       "fixture must genuinely satisfy the recommended predicate or this test proves nothing")
 
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model(id, isRemote: true)], provider: .ollama, chosenModel: "")
+      from: [model(id, isRemote: true)], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.hosted.map(\.id) == [id])
     #expect(groups.recommended.isEmpty)
@@ -113,7 +115,7 @@ struct OllamaModelPickerPresentationTests {
   func lockedBeatsHosted() {
     let groups = OllamaModelPickerPresentation.groups(
       from: [model("gpt-oss:120b-cloud", available: false, isRemote: true)],
-      provider: .ollama, chosenModel: "")
+      provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.locked.map(\.id) == ["gpt-oss:120b-cloud"])
     #expect(groups.hosted.isEmpty)
@@ -138,7 +140,7 @@ struct OllamaModelPickerPresentationTests {
     }
 
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model("phi3-mini"), model("acme-mini"), model("llama3.2")], provider: .ollama, chosenModel: "")
+      from: [model("phi3-mini"), model("acme-mini"), model("llama3.2")], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.recommended.isEmpty)
     #expect(groups.other.map(\.id) == ["phi3-mini", "acme-mini", "llama3.2"])
@@ -150,7 +152,7 @@ struct OllamaModelPickerPresentationTests {
     // The other half of the old defect: no standard local name carries a cloud token, so every
     // model we measured landed under "other" including the best one.
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model("qwen2.5:3b"), model("qwen3:0.6b"), model("qwen2.5:7b")], provider: .ollama, chosenModel: "")
+      from: [model("qwen2.5:3b"), model("qwen3:0.6b"), model("qwen2.5:7b")], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.recommended.map(\.id) == ["qwen2.5:3b", "qwen3:0.6b", "qwen2.5:7b"])
     #expect(groups.other.isEmpty)
@@ -167,7 +169,7 @@ struct OllamaModelPickerPresentationTests {
     ])
   func nonRecommendedVerdictsGoToOther(modelID: String) {
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model(modelID)], provider: .ollama, chosenModel: "")
+      from: [model(modelID)], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.recommended.isEmpty, "\(modelID) must not be recommended")
     #expect(groups.other.map(\.id) == [modelID])
   }
@@ -176,7 +178,7 @@ struct OllamaModelPickerPresentationTests {
   func lockedBeatsRecommended() {
     // Precedence: availability is decided before any recommendation question.
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model("qwen2.5:3b", available: false)], provider: .ollama, chosenModel: "")
+      from: [model("qwen2.5:3b", available: false)], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.locked.map(\.id) == ["qwen2.5:3b"])
     #expect(groups.recommended.isEmpty)
   }
@@ -187,7 +189,7 @@ struct OllamaModelPickerPresentationTests {
     // is still decided before the verdict, so a hosted row never lands under a heading that says
     // nothing about where it runs, even when we measured that model well locally.
     let groups = OllamaModelPickerPresentation.groups(
-      from: [model("qwen2.5:3b", isRemote: true)], provider: .ollama, chosenModel: "")
+      from: [model("qwen2.5:3b", isRemote: true)], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.hosted.map(\.id) == ["qwen2.5:3b"])
     #expect(groups.recommended.isEmpty)
   }
@@ -201,7 +203,7 @@ struct OllamaModelPickerPresentationTests {
     #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o-mini"))
     #expect(AIPolishModelClassifier.isRecommendedForCleanup("gpt-4o") == false)
     let openAI = OllamaModelPickerPresentation.groups(
-      from: [model("gpt-4o"), model("gpt-4o-mini")], provider: .openAI, chosenModel: "")
+      from: [model("gpt-4o"), model("gpt-4o-mini")], provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
     #expect(openAI.selectable.map(\.id) == ["gpt-4o-mini", "gpt-4o"])
   }
 
@@ -210,7 +212,7 @@ struct OllamaModelPickerPresentationTests {
     let groups = OllamaModelPickerPresentation.groups(
       from: [
         model("b-cloud", isRemote: true), model("a-cloud", isRemote: true),
-      ], provider: .ollama, chosenModel: "")
+      ], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
 
     #expect(groups.hosted.map(\.id) == ["b-cloud", "a-cloud"])
   }
@@ -229,7 +231,7 @@ struct OllamaModelPickerPresentationTests {
           model("gpt-4o-mini", isRemote: true, provider: provider),
           model("gpt-4o", isRemote: true, provider: provider),
           model("legacy", available: false, provider: provider),
-        ], provider: provider, chosenModel: "")
+        ], provider: provider, chosenModel: "", list: CloudModelListSeed.current)
 
       #expect(groups.hosted.isEmpty, "\(provider) must never show a hosted group")
       // #4353 D5: one cloud sequence (undated rows, id descending); Recommended is a note only.
@@ -241,7 +243,7 @@ struct OllamaModelPickerPresentationTests {
 
   @Test("an empty input produces four empty groups")
   func emptyInput() {
-    let groups = OllamaModelPickerPresentation.groups(from: [], provider: .ollama, chosenModel: "")
+    let groups = OllamaModelPickerPresentation.groups(from: [], provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.recommended.isEmpty)
     #expect(groups.other.isEmpty)
     #expect(groups.hosted.isEmpty)
@@ -378,7 +380,7 @@ struct OllamaModelPickerPresentationTests {
   func newerOrdinaryBeforeOlderRecommended() {
     let rows = [cloud("gpt-4o-mini", 1_721_000_000), cloud("gpt-6-luna", 1_790_000_000)]
     let groups = OllamaModelPickerPresentation.groups(
-      from: rows, provider: .openAI, chosenModel: "")
+      from: rows, provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.selectable.map(\.id) == ["gpt-6-luna", "gpt-4o-mini"])
     #expect(groups.recommended.isEmpty && groups.other.isEmpty, "one cloud sequence only")
   }
@@ -392,7 +394,7 @@ struct OllamaModelPickerPresentationTests {
     let expected = ["gpt-c", "gpt-b", "gpt-d", "gpt-a", "gpt-z", "gpt-y"]
     for order in [rows, rows.reversed(), rows.shuffled()] {
       let groups = OllamaModelPickerPresentation.groups(
-        from: Array(order), provider: .openAI, chosenModel: "")
+        from: Array(order), provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
       #expect(groups.selectable.map(\.id) == expected)
     }
   }
@@ -405,10 +407,10 @@ struct OllamaModelPickerPresentationTests {
       cloud("claude-opus-4-1-20250805", 150, provider: .claude),
     ]
     let hidden = OllamaModelPickerPresentation.groups(
-      from: rows, provider: .claude, chosenModel: "claude-haiku-4-5")
+      from: rows, provider: .claude, chosenModel: "claude-haiku-4-5", list: CloudModelListSeed.current)
     #expect(hidden.selectable.map(\.id) == ["claude-haiku-4-5", "claude-opus-4-1-20250805"])
     let chosen = OllamaModelPickerPresentation.groups(
-      from: rows, provider: .claude, chosenModel: "claude-haiku-4-5-20251001")
+      from: rows, provider: .claude, chosenModel: "claude-haiku-4-5-20251001", list: CloudModelListSeed.current)
     #expect(
       chosen.selectable.map(\.id)
         == ["claude-haiku-4-5-20251001", "claude-haiku-4-5", "claude-opus-4-1-20250805"])
@@ -424,7 +426,7 @@ struct OllamaModelPickerPresentationTests {
       cloud("gpt-4.1", 250),
     ]
     let groups = OllamaModelPickerPresentation.groups(
-      from: rows, provider: .openAI, chosenModel: "gpt-4.1-2025-04-14")
+      from: rows, provider: .openAI, chosenModel: "gpt-4.1-2025-04-14", list: CloudModelListSeed.current)
     #expect(groups.selectable.map(\.id) == ["gpt-4.1"], "a selectable copy hides behind a locked base")
     #expect(groups.locked.map(\.id) == ["gpt-5-mini", "gpt-4.1-2025-04-14"])
 
@@ -437,7 +439,7 @@ struct OllamaModelPickerPresentationTests {
       cloud("gpt-6-sol", 400, available: .confirmedUnavailable),
     ]
     let sorted = OllamaModelPickerPresentation.groups(
-      from: lockedOutOfOrder, provider: .openAI, chosenModel: "")
+      from: lockedOutOfOrder, provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
     #expect(sorted.selectable.isEmpty)
     #expect(sorted.locked.map(\.id) == ["gpt-6-sol", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-old-locked"])
   }
@@ -450,10 +452,10 @@ struct OllamaModelPickerPresentationTests {
       cloud("gpt-4-20259999", 50),
     ]
     let claude = OllamaModelPickerPresentation.groups(
-      from: Array(rows.prefix(2)), provider: .claude, chosenModel: "")
+      from: Array(rows.prefix(2)), provider: .claude, chosenModel: "", list: CloudModelListSeed.current)
     #expect(claude.selectable.map(\.id) == ["claude-fable-5-1", "claude-fable-5"])
     let openAI = OllamaModelPickerPresentation.groups(
-      from: [cloud("gpt-4", 40), rows[2]], provider: .openAI, chosenModel: "")
+      from: [cloud("gpt-4", 40), rows[2]], provider: .openAI, chosenModel: "", list: CloudModelListSeed.current)
     #expect(openAI.selectable.map(\.id) == ["gpt-4-20259999", "gpt-4"])
   }
 
@@ -461,7 +463,7 @@ struct OllamaModelPickerPresentationTests {
   func ollamaUnchanged() {
     let input = [model("zzz-local"), model("gpt-oss:120b-cloud", isRemote: true), model("aaa-local")]
     let groups = OllamaModelPickerPresentation.groups(
-      from: input, provider: .ollama, chosenModel: "")
+      from: input, provider: .ollama, chosenModel: "", list: CloudModelListSeed.current)
     #expect(groups.other.map(\.id) == ["zzz-local", "aaa-local"])
     #expect(groups.hosted.map(\.id) == ["gpt-oss:120b-cloud"])
     #expect(groups.selectable.map(\.id) == ["zzz-local", "aaa-local", "gpt-oss:120b-cloud"])

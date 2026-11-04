@@ -81,7 +81,7 @@ struct LLMRetryTelemetryTests {
   private func connector(_ transport: ScriptedTransport, spy: RetrySpy) -> OpenAIConnector {
     OpenAIConnector(
       keychainManager: KeychainManager(
-        backend: .legacyFiles, legacyStore: PopulatedKeyStore(), telemetrySink: spy.makeSink()),
+        backend: .legacyFiles, legacyStore: PopulatedKeyStore(), telemetrySink: spy.makeSink()), cloudModelList: CloudModelListSeed.current,
       requestExecutor: transport.executor())
   }
 

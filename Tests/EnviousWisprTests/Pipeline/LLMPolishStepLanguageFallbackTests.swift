@@ -65,7 +65,7 @@ struct LLMPolishStepLanguageFallbackTests {
     step.languageDetection = nil  // mirrors RecoveryTextProcessor (#1063)
 
     let capture = LanguageCapture()
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CapturingPolisher(capture: capture, result: Self.polishedSentence)
     }
 
@@ -93,7 +93,7 @@ extension LLMPolishStepLanguageFallbackTests {
     step.llmModel = "gpt-4o-mini"
     step.languageDetection = nil
     let capture = LanguageCapture()
-    step.makePolisher = { _, _, _ in
+    step.makePolisher = { _, _, _, _ in
       CapturingPolisher(capture: capture, result: Self.polishedSentence)
     }
     var context = TextProcessingContext(text: Self.inputSentence, language: language)

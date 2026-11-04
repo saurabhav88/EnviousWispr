@@ -47,7 +47,13 @@ classify() {
   # forget: the script deciding whether website validation runs is exactly the
   # script whose own breakage that validation would catch. Leaving it out meant
   # a PR editing only the classifier answered its own question with "no".
-  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$|scripts/ollama-library/)' <<<"$changed"; then
+  #
+  # #4353 D6: the cloud model list's offline check runs in website-check too, so its tool and
+  # fixtures (scripts/cloud-models/) and the BUNDLED copy run it. The bundled copy is under
+  # Sources/, which already forces the build, but the build does not compare it with the
+  # website copy: only website-check's byte-equality step does, so a bundled-only edit must
+  # reach website-check as well.
+  if grep -qE '^(website/|\.github/workflows/pr-check\.yml$|scripts/ci/classify-changes\.sh$|scripts/ollama-library/|scripts/cloud-models/|Sources/EnviousWispr/Resources/cloud-models\.json$)' <<<"$changed"; then
     website=true
   else
     website=false
@@ -368,6 +374,19 @@ self_test() {
   _expect_classify "scripts/ollama-library/validate-feed.py" true "feed validator validates itself" true
   _expect_classify "scripts/ollama-library/name-fixtures.json" true "shared feed fixtures run both lanes" true
   _expect_classify "scripts/ollama-library-other/tool.py" true "near-miss tooling directory is not website" false
+  # #4353 D6: the cloud model list. The website copy alone is website-only (its offline check and
+  # the byte-equality step run there; a valid list change also edits the bundled copy, which
+  # builds). The bundled copy, the validator and its fixtures run both lanes. Near misses do not
+  # reach website-check.
+  _expect_classify "website/public/cloud-models.json" false "cloud list alone -> website check" true
+  _expect_classify $'website/public/cloud-models.json\nSources/EnviousWispr/Resources/cloud-models.json' true "both list copies -> build and website" true
+  _expect_classify "Sources/EnviousWispr/Resources/cloud-models.json" true "bundled list alone -> build and website" true
+  _expect_classify "scripts/cloud-models/validate-list.py" true "list validator validates itself" true
+  _expect_classify "scripts/cloud-models/fixtures/invalid/not-json.json" true "shared list fixtures run both lanes" true
+  _expect_classify "website/public/cloud-models.json.bak" false "near-miss list name -> website only" true
+  _expect_classify "Sources/EnviousWispr/Resources/cloud-models.json.bak" true "near-miss bundled name -> build only" false
+  _expect_classify "Sources/EnviousWispr/Resources/other.json" true "another bundled resource -> build only" false
+  _expect_classify "scripts/cloud-models-other/tool.py" true "near-miss list tooling directory is not website" false
   # 2026-10-08: content no app build or test reads skips the build. Two-way controls: the
   # same names elsewhere, a near-miss name, and the kept-out neighbours still build.
   _expect_classify $'README.md

@@ -9066,17 +9066,6 @@
         }
       }
     },
-    "Fast tier · recommended for cleanup" : {
-      "comment" : "AI Polish, cloud model menu: the line under a model recognised as the fast tier.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schnelle Stufe · empfohlen für die Bereinigung"
-          }
-        }
-      }
-    },
     "Fast, or All Languages." : {
       "comment" : "Transcribe a File, Upload step: a feature tile's detail. Fast and All Languages are the two engines' names.",
       "localizations" : {
@@ -17072,7 +17061,7 @@
       }
     },
     "Recommended" : {
-      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nAI Polish: the pill on the recommended provider, EG-1.\nTranscribe a File: badge on the recommended engine.",
+      "comment" : "AI Polish, Ollama model list: our verdict on a model, shown in parentheses after its name.\nAI Polish, cloud model menu: the line under a model the cloud model list recommends.\nAI Polish: the pill on the recommended provider, EG-1.\nTranscribe a File: badge on the recommended engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

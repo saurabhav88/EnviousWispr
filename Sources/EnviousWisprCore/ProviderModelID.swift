@@ -13,7 +13,11 @@ import Foundation
 /// It is a provider-id fact rather than classifier policy, which is why it did
 /// not stay on `AIPolishModelClassifier` — that type's own note asks callers not
 /// to adopt it elsewhere without revisiting placement, and this is that.
-enum ProviderModelID {
+///
+/// #4353 D6: moved from AppKit to Core so the cloud model list's request-policy lookup
+/// (`EnviousWisprLLM`) uses the same rule as telemetry and the menus. It replaced the LLM
+/// module's second copy (`withoutTrailingISODate`, dashed dates only).
+public enum ProviderModelID {
 
   /// The id with a trailing DATED SNAPSHOT removed, or `nil` when there is none.
   ///
@@ -31,7 +35,7 @@ enum ProviderModelID {
   ///
   /// OpenAI's older four-digit `MMDD` snapshots (`gpt-3.5-turbo-0125`) are
   /// deliberately NOT stripped: four digits cannot be told from a version.
-  static func withoutDateSnapshot(_ id: String) -> String? {
+  public static func withoutDateSnapshot(_ id: String) -> String? {
     // Dashed first: it is the longer suffix, so trying it first cannot be
     // shadowed by the compact form.
     strippingDate(from: id, dashed: true) ?? strippingDate(from: id, dashed: false)

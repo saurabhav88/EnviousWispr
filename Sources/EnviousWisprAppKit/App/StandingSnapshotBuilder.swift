@@ -24,12 +24,15 @@ struct StandingSnapshotBuilder {
   /// this builder keeps one coordinator dependency.
   private let snippetsCount: @MainActor () -> Int
   private let snippetsKeywordIsDefault: @MainActor () -> Bool
+  /// #4353 D6: the cloud model list in use now, read once per snapshot.
+  private let cloudModelList: @MainActor () -> CloudModelList?
 
   init(
     settings: SettingsManager,
     keychainManager: KeychainManager,
     customWordsCoordinator: CustomWordsCoordinator,
     permissions: PermissionsService,
+    cloudModelList: @escaping @MainActor () -> CloudModelList?,
     snippetsCount: @escaping @MainActor () -> Int,
     snippetsKeywordIsDefault: @escaping @MainActor () -> Bool
   ) {
@@ -37,6 +40,7 @@ struct StandingSnapshotBuilder {
     self.keychainManager = keychainManager
     self.customWordsCoordinator = customWordsCoordinator
     self.permissions = permissions
+    self.cloudModelList = cloudModelList
     self.snippetsCount = snippetsCount
     self.snippetsKeywordIsDefault = snippetsKeywordIsDefault
   }
@@ -66,7 +70,7 @@ struct StandingSnapshotBuilder {
       snippetsKeywordIsDefault: snippetsKeywordIsDefault(),
       // Phase 4 (#1173): the comprehensive per-setting projection block (all
       // other user-facing settings) for query-side holistic reconstruction.
-      config: SettingsProjection.snapshotConfig(s)
+      config: SettingsProjection.snapshotConfig(s, list: cloudModelList())
     )
   }
 }

@@ -33,7 +33,7 @@ struct OpenAILiveSweepTests {
 
     // The exact candidate population the picker offers: live models list
     // through the shipped filter + availability probe.
-    let discovered = try await LLMModelDiscovery().discoverModels(provider: .openAI, apiKey: apiKey)
+    let discovered = try await LLMModelDiscovery(cloudModelList: CloudModelListSeed.current).discoverModels(provider: .openAI, apiKey: apiKey)
     let offered = LiveSweepSupport.narrowed(discovered.filter(\.isAvailable))
     #expect(!offered.isEmpty, "discovery returned no available models — sweep cannot run")
     // #3425: a nonempty set can pass while the changed models are missing from it, so every id the
@@ -47,7 +47,7 @@ struct OpenAILiveSweepTests {
       }
     }
 
-    let connector = OpenAIConnector(keychainManager: keychain)
+    let connector = OpenAIConnector(keychainManager: keychain, cloudModelList: CloudModelListSeed.current)
     var failures: [String] = []
     var report: [String] = []
 
@@ -56,7 +56,7 @@ struct OpenAILiveSweepTests {
 
     for model in offered {
       // Mirror LLMPolishStep's config decisions for this model.
-      let capabilities = LLMProvider.openAI.modelCapabilities(model: model.id)
+      let capabilities = LLMProvider.openAI.modelCapabilities(model: model.id, list: CloudModelListSeed.current)
       var thinking: ResolvedThinking?
       if case .effort(let value) = capabilities.thinkingControl { thinking = .effort(value) }
       let config = LLMProviderConfig(

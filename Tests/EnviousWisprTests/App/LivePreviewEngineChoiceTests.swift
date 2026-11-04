@@ -139,10 +139,10 @@ import Testing
     let settings = SettingsManager(defaults: defaults)
 
     #expect(
-      SettingsProjection.value(for: .livePreviewEngine, settings: settings) == "apple")
+      SettingsProjection.value(for: .livePreviewEngine, settings: settings, list: CloudModelListSeed.current) == "apple")
     settings.livePreviewEngine = .universal
     #expect(
-      SettingsProjection.value(for: .livePreviewEngine, settings: settings) == "universal")
+      SettingsProjection.value(for: .livePreviewEngine, settings: settings, list: CloudModelListSeed.current) == "universal")
 
     // The change must map to the engine logical, and ONLY that one.
     #expect(SettingsProjection.logicals(for: .livePreviewEngine) == [.livePreviewEngine])

@@ -108,12 +108,16 @@ public enum MeetingSummaryProviders {
   /// room where the model may think (an OpenAI reasoning model, any Gemini model, since Gemini
   /// 2.5 and later think by default), or Claude's polish ceiling, which its connector's own
   /// thinking part fits inside.
-  static func hostedOutputTokens(_ provider: LLMProvider, model: String) -> Int {
-    let capabilities = provider.modelCapabilities(model: model)
+  static func hostedOutputTokens(
+    _ provider: LLMProvider, model: String, list: CloudModelList?
+  ) -> Int {
+    let capabilities = provider.modelCapabilities(model: model, list: list)
     switch provider {
     case .openAI:
-      // `temperaturePolicy` is `.omit` exactly for the reasoning family.
-      return capabilities.temperaturePolicy == .omit
+      // #4353 D6: keyed on the resolved thinking control, never on temperature, so a list
+      // edit to temperature alone cannot change the summary's output cap. For every seed
+      // OpenAI row the two agree (an effort is sent exactly when temperature is omitted).
+      return capabilities.thinkingControl != .unsupported
         ? MeetingSummary.outputTokens + thinkingReserveTokens : MeetingSummary.outputTokens
     case .gemini: return MeetingSummary.outputTokens + thinkingReserveTokens
     case .claude: return LLMConstants.claudeMaxOutputTokens
@@ -124,22 +128,27 @@ public enum MeetingSummaryProviders {
   /// A hosted summary request: the output cap equal to the reserve, connector retries off, and
   /// the thinking value polish would send (Claude's thinking part comes from its connector,
   /// `claudeRequestShape`).
-  static func hostedConfig(_ provider: LLMProvider, model: String, keyID: String)
-    -> LLMProviderConfig
-  {
+  static func hostedConfig(
+    _ provider: LLMProvider, model: String, keyID: String, list: CloudModelList?
+  ) -> LLMProviderConfig {
     let thinking =
-      provider == .claude ? nil : provider.modelCapabilities(model: model).thinkingControl.resolved
+      provider == .claude
+      ? nil : provider.modelCapabilities(model: model, list: list).thinkingControl.resolved
     return LLMProviderConfig(
       model: model, apiKeyKeychainId: keyID,
-      outputTokens: .capped(hostedOutputTokens(provider, model: model)), temperature: 0,
+      outputTokens: .capped(hostedOutputTokens(provider, model: model, list: list)),
+      temperature: 0,
       thinking: thinking, maxRetries: 0)
   }
 
   /// The call for `provider` and `model`, or why there is none. Ollama is asked first for its
   /// own facts about the model (where it runs, whether it thinks), as polish does per attempt,
   /// and for its version: one that cannot be told not to cut a prompt is refused.
+  /// `cloudModelList` is the list the summary attempt captured at its start (#4353 D6); the
+  /// planning reserve, the request config and the connector all read it.
   public static func prepare(
-    provider: LLMProvider, model: String, keychain: KeychainManager,
+    provider: LLMProvider, model: String, cloudModelList: CloudModelList?,
+    keychain: KeychainManager,
     ollamaReadiness: @Sendable (String) async -> OllamaReadiness = {
       await OllamaConnector().preflightReadiness(model: $0)
     },
@@ -156,14 +165,22 @@ public enum MeetingSummaryProviders {
     }
     switch provider {
     case .openAI, .gemini, .claude:
-      let output = hostedOutputTokens(provider, model: model)
+      let output = hostedOutputTokens(provider, model: model, list: cloudModelList)
       let (keyID, connector): (String, any TranscriptPolisher) =
         switch provider {
-        case .openAI: (KeychainManager.openAIKeyID, OpenAIConnector(keychainManager: keychain))
+        case .openAI:
+          (
+            KeychainManager.openAIKeyID,
+            OpenAIConnector(keychainManager: keychain, cloudModelList: cloudModelList)
+          )
         case .gemini: (KeychainManager.geminiKeyID, GeminiConnector(keychainManager: keychain))
-        default: (KeychainManager.claudeKeyID, ClaudeConnector(keychainManager: keychain))
+        default:
+          (
+            KeychainManager.claudeKeyID,
+            ClaudeConnector(keychainManager: keychain, cloudModelList: cloudModelList)
+          )
         }
-      let config = hostedConfig(provider, model: model, keyID: keyID)
+      let config = hostedConfig(provider, model: model, keyID: keyID, list: cloudModelList)
       return .success(
         Prepared(
           execution: .hosted,

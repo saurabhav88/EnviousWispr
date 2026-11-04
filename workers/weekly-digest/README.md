@@ -2,7 +2,8 @@
 
 Posts one Discord digest every Monday: website traffic, tracked visitor
 activity, downloads, and app usage for the previous seven days, the Ollama
-model list and its weekly routine, and the week's errors.
+model list and its weekly routine, the cloud model routine, and the week's
+errors.
 
 ## Ollama model list section (#3837)
 
@@ -21,6 +22,47 @@ config says, not a read of the scheduler. Flip it, and redeploy, in the same
 step that enables or disables the routine. Missing or invalid vars, a non-200,
 or a wrong shape make this section unavailable and fail the run after delivery,
 like every other section.
+
+The comment read (request, response checks, exact writer, newest by GitHub
+`created_at`) is the shared reader in `src/run-log.js`; the receipt grammar,
+footer rule and 14-day window stay with this section.
+
+## Cloud model list section (#4353)
+
+Reads the cloud model routine's run-log issue `CLOUD_MODEL_ROUTINE_LOG_ISSUE`
+through the same shared reader, with its own policy:
+
+- **Every page**, newest receipt on the last one, up to 20 pages of 100. A
+  longer log, or any failed page, makes the section unavailable; it is never
+  read as its first pages.
+- **No age window.** The newest known outcome stays visible however old it is.
+- **Writer:** only comments whose `user.login` is exactly
+  `CLOUD_MODEL_ROUTINE_WRITER_LOGIN` count.
+- **Receipt:** the first line is exactly
+  `cloud-routine-run date=<YYYY-MM-DD> run=<id> providers=3 candidates=<n> added=<n> failed=<n> outcome=<success|partial|failure|nochange> result=<merged|review-blocked|none>`
+  and the only thing below it is one `<!-- cloud-routine-record {...} -->`
+  JSON block whose `schema` is 1 and whose `repository`, `runID` and `runDate`
+  match. No footer is allowed. A writer comment that starts as a receipt and
+  breaks this makes the section unavailable. Other writer comments, such as
+  `cloud-routine-missing`, are not receipts and are ignored.
+- **Freshness** uses GitHub's `created_at`, so editing the comment in place does
+  not make it fresh. A receipt more than 8 days old prints a WARNING line, and
+  a failed or partial outcome prints its own WARNING line as well. This is
+  evaluated when the digest runs; it does not promise notice within 8 days.
+- `outcome` is the run's own outcome. `added` is a count of recorded proposed
+  rows: only `result=merged` is reported as confirmed added to the list. Every
+  other result says the merge is not confirmed, never that nothing was added or
+  proposed: `review-blocked` also covers a PR that merged but failed Stage 2's
+  byte check, and a run without readable evidence records zero counts.
+- The only link printed is the Actions run, built from `GITHUB_REPO` and the
+  validated run ID. Nothing from the record block is printed.
+
+`CLOUD_MODEL_ROUTINE_ENABLED` must be exactly `"true"` or `"false"`. It is
+`"false"` until activation: the section then says the routine is not activated
+and makes no run-log request. `"true"` needs a valid issue number and writer
+login. Activation (`workers/cloud-models-routine/README.md` "Activation checklist") sets all three,
+deploys this Worker and reads the deployed vars back in the same step that
+enables the routine; disabling the routine reverses them the same way.
 
 - Endpoint: `https://enviouswispr-weekly-digest.saurabhav.workers.dev`
 - Schedule: QStash `enviouswispr-weekly-digest`,

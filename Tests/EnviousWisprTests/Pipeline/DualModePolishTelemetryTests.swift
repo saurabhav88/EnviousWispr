@@ -349,7 +349,7 @@ struct DualModePolishTelemetryTests {
           let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
           step.llmProvider = provider
           step.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
-          step.makePolisher = { _, _, _ in CannedResultPolisher(result: result) }
+          step.makePolisher = { _, _, _, _ in CannedResultPolisher(result: result) }
 
           let context = try await step.process(
             TextProcessingContext(text: original, language: "en"))

@@ -254,15 +254,49 @@ enum SettingsProjection {
     }
   }
 
-  /// Project one logical to its privacy-safe emitted value, reading the current
-  /// state from `settings`.
+  /// What a model logical is projected FROM (#4353 D6): the raw provider and id, or the import
+  /// follower state. The change recorder keeps this, not only the projected string, so the
+  /// value before and after a write are projected under ONE cloud model list: a list refresh
+  /// that newly recognises an id is never reported as a model change.
+  enum ModelInput: Equatable {
+    case followsDictation
+    case model(LLMProvider, String)
+  }
+
+  /// The raw input of `.llmModel` and `.fileImportLLMModel`; nil for every other logical.
   @MainActor
-  static func value(for logical: Logical, settings: SettingsManager) -> String {
+  static func modelInput(for logical: Logical, settings: SettingsManager) -> ModelInput? {
+    switch logical {
+    case .llmModel: return .model(settings.llmProvider, settings.effectiveLLMModel)
+    case .fileImportLLMModel:
+      guard settings.fileImportLLMProvider != nil else { return .followsDictation }
+      return .model(settings.effectiveFileImportLLMProvider, settings.effectiveFileImportLLMModel)
+    default: return nil
+    }
+  }
+
+  @MainActor
+  static func project(_ input: ModelInput, list: CloudModelList?) -> String {
+    switch input {
+    case .followsDictation: return "follows_dictation"
+    case .model(let provider, let id): return model(provider: provider, id: id, list: list)
+    }
+  }
+
+  /// Project one logical to its privacy-safe emitted value, reading the current
+  /// state from `settings`. `list` is the caller's one captured cloud model list snapshot
+  /// (#4353 D6); only the model logicals read it.
+  @MainActor
+  static func value(
+    for logical: Logical, settings: SettingsManager, list: CloudModelList?
+  ) -> String {
     switch logical {
     case .recordingMode: return settings.recordingMode.rawValue
     case .llmProvider: return settings.llmProvider.rawValue
-    case .llmModel:
-      return model(provider: settings.llmProvider, id: settings.effectiveLLMModel)
+    case .llmModel, .fileImportLLMModel:
+      // Both model logicals, one path: `modelInput` holds the follower rule.
+      guard let input = modelInput(for: logical, settings: settings) else { return "none" }
+      return project(input, list: list)
     // Preserve follow mode as a preference.
     // Explicit model selections pass through the shared redaction policy.
     case .fileImportLLMProvider:
@@ -271,16 +305,6 @@ enum SettingsProjection {
       // distinction this field exists to measure.
       guard let chosen = settings.fileImportLLMProvider else { return "follows_dictation" }
       return chosen.rawValue
-    case .fileImportLLMModel:
-      // **THROUGH the redaction policy, which this returned the RAW id past.** A user who
-      // runs a locally-named Ollama model for imports had that name leave the machine, while
-      // dictation's identical value was redacted to "custom" — and the comment above this
-      // said "Shape, never content", which is the property the code did not have. Found by
-      // the cloud review of PR #2786.
-      guard settings.fileImportLLMProvider != nil else { return "follows_dictation" }
-      return model(
-        provider: settings.effectiveFileImportLLMProvider,
-        id: settings.effectiveFileImportLLMModel)
     case .meetingSummaryLLMProvider:
       // Absent before migration (onboarding not finished) or unreadable after a downgrade.
       return settings.meetingSummaryLLMProvider?.rawValue ?? "unset"
@@ -342,11 +366,11 @@ enum SettingsProjection {
   /// logical EXCEPT the three already emitted as dedicated typed snapshot fields
   /// (`recording_mode`, `llm_provider`, `filler_removal`), so keys never collide.
   @MainActor
-  static func snapshotConfig(_ settings: SettingsManager) -> [String: String] {
+  static func snapshotConfig(_ settings: SettingsManager, list: CloudModelList?) -> [String: String] {
     let typed: Set<Logical> = [.recordingMode, .llmProvider, .fillerRemoval]
     var out: [String: String] = [:]
     for logical in Logical.allCases where !typed.contains(logical) {
-      out[logical.rawValue] = value(for: logical, settings: settings)
+      out[logical.rawValue] = value(for: logical, settings: settings, list: list)
     }
     return out
   }
@@ -366,15 +390,17 @@ enum SettingsProjection {
   ///   `isFirstPartyModel` prefix match) emits the fixed literal `eg-1-variant`,
   ///   never the raw string. Everything else collapses to `custom`. No
   ///   user-authored name can ever be emitted (#1269 cloud review r2).
-  /// - OpenAI / Gemini: a curated set of known public cloud ids (date-snapshot
-  ///   suffix normalized away). A stale local id carried over before discovery
-  ///   corrects `llmModel` is not on this list → `custom`, never the raw name.
+  /// - OpenAI / Gemini / Claude (#4353 D6): an id the cloud model list names FOR THAT
+  ///   PROVIDER, matched case-sensitively: the exact id when it has its own row (a dated id
+  ///   included), else its dated base when the base has a row
+  ///   (`ProviderModelID.withoutDateSnapshot`), else `custom`. A hidden row is still
+  ///   recognised. A stale or private id is never emitted raw.
   @MainActor
   /// Takes the provider and id as VALUES rather than reading dictation's settings, so both
   /// surfaces run one redaction policy. Lifted for #2772 for the same reason the discovery
   /// repair was: a second copy is how the two would come to disagree, and here the
   /// disagreement is whether a user's own words leave their Mac.
-  static func model(provider: LLMProvider, id: String) -> String {
+  static func model(provider: LLMProvider, id: String, list: CloudModelList?) -> String {
     switch provider {
     case .appleIntelligence: return "apple-intelligence"
     // #1271: native EG-1 — the model id is OUR fixed literal from the
@@ -398,80 +424,22 @@ enum SettingsProjection {
     case .openAI, .gemini, .claude:
       // #4353 D2: no cloud model chosen is "none", never redacted as a custom id.
       if id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "none" }
-      let base = stripDateSnapshotSuffix(id)
-      return cloudModelAllowlist.contains(base) ? base : "custom"
+      return recognisedCloudID(provider: provider, id: id, list: list) ?? "custom"
     }
   }
 
-  /// Curated public Gemini ids. Its own set (not inline in `cloudModelAllowlist`) so
-  /// `SettingsChangeTelemetryTests` can require that every id here has a recorded
-  /// thinking decision in `LLMModelCapabilities` (#3425): `gemini-3.8-flash` was
-  /// added here for telemetry and shipped with no thinking row, thinking by
-  /// default and taking 3 to 14 seconds.
-  static let geminiModelIDs: Set<String> = [
-    "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b",
-    "gemini-2.0-flash", "gemini-2.0-flash-lite",
-    "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
-    // #1770: the allowlist stopped at 2.5, so every Gemini 3.x user's
-    // configured model reconstructed as `custom` and the whole generation was
-    // invisible in settings snapshots. These are the ids the picker actually
-    // offers, verified reachable against the live API 2026-07-29, and
-    // `gemini-3.7-flash` likewise on 2026-08-16.
-    //
-    // 3.7 is on this list because it is now the Gemini DEFAULT. Omitting it
-    // would reconstruct every default-configured Gemini user as `custom` and
-    // make the swap invisible in exactly the telemetry we would use to judge it.
-    "gemini-3-flash-preview", "gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview",
-    "gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools",
-    "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash",
-    "gemini-3.7-flash",
-    // #2602: enumerated from the live model lists of all three keys on
-    // 2026-09-02, not from the previous entries. The same gap #1770 records for
-    // Gemini 3.x had reopened for every generation shipped since: OpenAI 5.1
-    // through 5.6 and Gemini 3.8 were all reconstructing as `custom`, which
-    // hides exactly the generation a settings snapshot is asked about. Luna is
-    // the one this issue promotes to Recommended, so it would have become the
-    // most-selected invisible model.
-    "gemini-3.8-flash",
-  ]
-
-  /// Curated known PUBLIC cloud model ids (OpenAI + Gemini + Claude).
-  /// Deny-by-default anchor: anything not here is `custom`, so no
-  /// private/unknown string leaks. Trade-off: a brand-new public model not
-  /// yet listed reads `custom` until added (itself a useful "on an
-  /// unrecognized model" signal). Seeded from the shipped defaults + the
-  /// families the discovery filters accept (`LLMModelDiscovery`:
-  /// gpt-/o1/o3/o4, gemini-). Claude ids are the live-confirmed base ids
-  /// with their date-snapshot suffix already stripped (issue #158).
-  private static let cloudModelAllowlist: Set<String> = geminiModelIDs.union([
-    // OpenAI
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-4.1", "gpt-4.1-mini",
-    "gpt-4.1-nano", "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-pro",
-    "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini", "chatgpt-4o-latest",
-    "gpt-5.1", "gpt-5.2", "gpt-5.2-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
-    "gpt-5.4-pro", "gpt-5.5", "gpt-5.5-pro", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol",
-    // #3425: the gpt-6 generation, listed live on the founder's key 2026-10-03.
-    "gpt-6-luna", "gpt-6-sol", "gpt-6-astra", "gpt-6.1-sol",
-    // Claude
-    "claude-sonnet-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7",
-    "claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-4-5", "claude-haiku-4-5",
-    "claude-sonnet-4-5", "claude-opus-4-1", "claude-fable-5-1", "claude-opus-5",
-    // #3425: Sonnet 5.5 and Opus 5.5 are now usable (their request shape is known), so
-    // they must not read as `custom`.
-    "claude-sonnet-5-5", "claude-opus-5-5",
-  ])
-
-  /// Strip a trailing provider date-snapshot suffix so dated variants match
-  /// their base allowlist entry. The suffix is public/non-sensitive; this
-  /// only collapses cardinality.
-  ///
-  /// #2602 moved the rule itself to `ProviderModelID`, which the AI Polish
-  /// classifier also needs, and gave it a real calendar-date check. The one
-  /// behaviour change: an id whose digits are not a DATE no longer collapses
-  /// onto a base model, so `gpt-4-20259999` reports `custom` rather than
-  /// `gpt-4`. That is the honest answer for an id no provider ships.
-  private static func stripDateSnapshotSuffix(_ id: String) -> String {
-    ProviderModelID.withoutDateSnapshot(id) ?? id
+  /// The id telemetry may emit for a cloud choice, or nil. Case-sensitive on purpose: list ids
+  /// are lowercase, so `GPT-5.5` is not the published `gpt-5.5` and reads `custom`.
+  static func recognisedCloudID(
+    provider: LLMProvider, id: String, list: CloudModelList?
+  ) -> String? {
+    guard let list else { return nil }
+    func listed(_ candidate: String) -> Bool {
+      list.models.contains { $0.provider == provider && $0.id == candidate }
+    }
+    if listed(id) { return id }
+    if let base = ProviderModelID.withoutDateSnapshot(id), listed(base) { return base }
+    return nil
   }
 
   private static func languageModeLabel(_ mode: LanguageMode) -> String {
@@ -512,6 +480,9 @@ enum SettingsProjection {
 @MainActor
 final class SettingsChangeTelemetry {
   private let settings: SettingsManager
+  /// #4353 D6: the cloud model list in use now. Read once per seed and once per flush, so the
+  /// `from` and `to` of a delta are always projected under the same list.
+  private let cloudModelList: @MainActor () -> CloudModelList?
   private let emitBaseline: @MainActor () -> Void
   private let toggleWindow: Duration
   private let sliderWindow: Duration
@@ -520,6 +491,12 @@ final class SettingsChangeTelemetry {
   private var committedBaseline: [SettingsProjection.Logical: String] = [:]
   /// Value at the start of the in-flight burst, set once per window per logical.
   private var pendingOriginal: [SettingsProjection.Logical: String] = [:]
+  /// #4353 D6: the raw input behind the committed and pending model values. A model delta's
+  /// `from` is re-projected from this under the flush's list, never taken from a string
+  /// projected under an older list: a list refresh alone must not read as a model change.
+  private var committedModelInput: [SettingsProjection.Logical: SettingsProjection.ModelInput] = [:]
+  private var pendingOriginalModelInput: [SettingsProjection.Logical: SettingsProjection.ModelInput] =
+    [:]
   /// Burst source per logical: last-writer-wins, the source of the most recent write in the
   /// window (see `enqueue`).
   private var pendingSource: [SettingsProjection.Logical: Source] = [:]
@@ -535,11 +512,13 @@ final class SettingsChangeTelemetry {
 
   init(
     settings: SettingsManager,
+    cloudModelList: @escaping @MainActor () -> CloudModelList?,
     emitBaseline: @escaping @MainActor () -> Void,
     toggleWindow: Duration = .milliseconds(500),
     sliderWindow: Duration = .seconds(1)
   ) {
     self.settings = settings
+    self.cloudModelList = cloudModelList
     self.emitBaseline = emitBaseline
     self.toggleWindow = toggleWindow
     self.sliderWindow = sliderWindow
@@ -553,9 +532,17 @@ final class SettingsChangeTelemetry {
   /// Used at construction (launch) and after the onboarding-completion baseline
   /// so the committed `from` always matches the most recently emitted snapshot.
   private func seedBaseline() {
+    let list = cloudModelList()
     for logical in SettingsProjection.Logical.allCases {
-      committedBaseline[logical] = SettingsProjection.value(for: logical, settings: settings)
+      commit(logical, list: list)
     }
+  }
+
+  /// Record `logical`'s current value (and, for a model logical, its raw input) as committed.
+  private func commit(_ logical: SettingsProjection.Logical, list: CloudModelList?) {
+    committedBaseline[logical] = SettingsProjection.value(
+      for: logical, settings: settings, list: list)
+    committedModelInput[logical] = SettingsProjection.modelInput(for: logical, settings: settings)
   }
 
   /// The funnel entry: every `SettingsManager.onChange(key)` routes here.
@@ -576,6 +563,7 @@ final class SettingsChangeTelemetry {
         settleTask?.cancel()
         settleTask = nil
         pendingOriginal.removeAll()
+        pendingOriginalModelInput.removeAll()
         pendingSource.removeAll()
         seedBaseline()
       }
@@ -593,9 +581,11 @@ final class SettingsChangeTelemetry {
       // #1987: advance the baseline for EVERY logical this key projects, not just
       // the first. Missing one would leave a stale `from` and make the first real
       // post-onboarding change look like a no-op.
+      let list = cloudModelList()
       for logical in logicals {
-        committedBaseline[logical] = SettingsProjection.value(for: logical, settings: settings)
+        commit(logical, list: list)
         pendingOriginal[logical] = nil
+        pendingOriginalModelInput[logical] = nil
         pendingSource[logical] = nil
       }
       return
@@ -640,7 +630,11 @@ final class SettingsChangeTelemetry {
   private func enqueue(_ logical: SettingsProjection.Logical, source: Source) {
     if pendingOriginal[logical] == nil {
       pendingOriginal[logical] =
-        committedBaseline[logical] ?? SettingsProjection.value(for: logical, settings: settings)
+        committedBaseline[logical]
+        ?? SettingsProjection.value(for: logical, settings: settings, list: cloudModelList())
+      pendingOriginalModelInput[logical] =
+        committedModelInput[logical]
+        ?? SettingsProjection.modelInput(for: logical, settings: settings)
     }
     pendingSource[logical] = source
   }
@@ -653,12 +647,21 @@ final class SettingsChangeTelemetry {
     settleTask?.cancel()
     settleTask = nil
     let pending = pendingOriginal
+    let pendingInputs = pendingOriginalModelInput
     let sources = pendingSource
     pendingOriginal.removeAll()
+    pendingOriginalModelInput.removeAll()
     pendingSource.removeAll()
-    for (logical, original) in pending {
-      let latest = SettingsProjection.value(for: logical, settings: settings)
-      guard latest != original else { continue }  // net no-op (A→B→A)
+    // #4353 D6: ONE list for the whole comparison, `from` and `to` alike.
+    let list = cloudModelList()
+    for (logical, stored) in pending {
+      let original = pendingInputs[logical].map { SettingsProjection.project($0, list: list) } ?? stored
+      let latest = SettingsProjection.value(for: logical, settings: settings, list: list)
+      committedModelInput[logical] = SettingsProjection.modelInput(for: logical, settings: settings)
+      guard latest != original else {
+        committedBaseline[logical] = latest
+        continue  // net no-op (A→B→A)
+      }
       TelemetryService.shared.settingsChanged(
         setting: logical.rawValue, from: original, to: latest,
         source: (sources[logical] ?? .user).rawValue)

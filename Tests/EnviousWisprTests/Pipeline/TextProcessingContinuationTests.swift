@@ -178,7 +178,7 @@ struct TextProcessingContinuationTests {
       }
       polish.llmProvider = .claude
       polish.llmModel = "claude-haiku-4-5"
-      polish.makePolisher = { _, _, _ in EchoPolisher() }
+      polish.makePolisher = { _, _, _, _ in EchoPolisher() }
     }
 
     func runRaw() async throws -> TextProcessingRunResult {
