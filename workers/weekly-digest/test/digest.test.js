@@ -1290,8 +1290,11 @@ test("meeting echo: both queries read meeting.ended over the production populati
     assert.match(sql, /event = 'meeting\.ended'/);
     assert.match(sql, /properties\.environment = 'production'/);
   }
-  assert.match(echo, /sumIf\(toFloat\(properties\.aec_eligible_ms\), properties\.aec_eligible_ms IS NOT NULL\) AS eligible_ms/);
-  assert.match(echo, /sumIf\(toFloat\(properties\.aec_passthrough_ms\), properties\.aec_eligible_ms IS NOT NULL\) AS passthrough_ms/);
+  // Coalesced: a week with no known row sums to NULL in HogQL and the reader refuses NULL
+  // (the 2026-11-04 production smoke failed this section exactly that way).
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_eligible_ms\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS eligible_ms/);
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_passthrough_ms\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS passthrough_ms/);
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_reset_count\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS resets/);
   assert.match(reasons, /properties\.aec_reset_reason != 'none'/);
   const embed = h.state.posts[0].embeds.find((e) => e.title === "Meeting echo cleanup");
   assert.match(embed.description, /10 of 12 meetings reported echo cleanup/);

@@ -546,7 +546,9 @@ export function onboardActivateSql(prod, win) {
  * meeting ATTEMPT (a Retry repeats its recording's figures), production
  * population only. `known` counts rows that carry the echo fields at all;
  * older versions and attempts recovered after a relaunch carry none, and their
- * durations are left out of both sums, never read as zero. */
+ * durations are left out of both sums, never read as zero. A week with no known row
+ * sums to NULL in HogQL (measured 2026-11-04, the first production smoke), so each
+ * sum is coalesced to 0; `known` = 0 is what tells the reader nothing was measured. */
 export function meetingEchoSql(prod, win) {
   const known = "properties.aec_eligible_ms IS NOT NULL";
   return `SELECT
@@ -555,9 +557,9 @@ export function meetingEchoSql(prod, win) {
       countIf(properties.aec_init_outcome = 'ok') AS init_ok,
       countIf(properties.aec_init_outcome = 'failed') AS init_failed,
       countIf(properties.aec_init_outcome = 'no_reference') AS init_no_reference,
-      sumIf(toFloat(properties.aec_eligible_ms), ${known}) AS eligible_ms,
-      sumIf(toFloat(properties.aec_passthrough_ms), ${known}) AS passthrough_ms,
-      sumIf(toFloat(properties.aec_reset_count), ${known}) AS resets,
+      coalesce(sumIf(toFloat(properties.aec_eligible_ms), ${known}), 0) AS eligible_ms,
+      coalesce(sumIf(toFloat(properties.aec_passthrough_ms), ${known}), 0) AS passthrough_ms,
+      coalesce(sumIf(toFloat(properties.aec_reset_count), ${known}), 0) AS resets,
       countIf(${known} AND properties.aec_reset_reason != 'none') AS attempts_with_resets
     FROM events
     WHERE event = 'meeting.ended' AND ${prod} AND ${win}`;
