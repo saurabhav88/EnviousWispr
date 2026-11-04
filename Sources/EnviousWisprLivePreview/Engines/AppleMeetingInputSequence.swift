@@ -3,7 +3,7 @@ import EnviousWisprCore
 import Foundation
 import Speech
 
-/// One Apple meeting session's input queue and bookkeeping (#4355 plan §3.1, PR A chunk 6a).
+/// One Apple meeting session's input queue and bookkeeping (#4355 plan §3.1).
 ///
 /// Apple reports result times on the concatenation of the input its analyzer CONSUMED, and
 /// `AnalyzerInput(buffer:)` carries no start time. So a buffer becomes timeline only at the
