@@ -18,6 +18,15 @@ import Foundation
 ///   already under way: `silence()` returns only after it.
 final class LiveTranscriptCollector: @unchecked Sendable {
 
+  /// How a meeting session's result times reach written audio (#4355): `project` maps a range
+  /// of the session's own input time onto a written span (nil when it cannot be shown), and
+  /// `prune` forgets input that ends before a time no later final can need. Both read the map
+  /// of the one session this collector belongs to.
+  struct Timing: Sendable {
+    let project: @Sendable (_ startSeconds: Double, _ endSeconds: Double) -> MeetingAudioSpan?
+    let prune: @Sendable (_ beforeSeconds: Double) -> Void
+  }
+
   /// The native operations a teardown needs, in the order it runs them.
   struct Teardown: Sendable {
     /// Closes the input and ends the analyzer (`endAnalyzer`'s rule), on whatever isolation
@@ -41,32 +50,60 @@ final class LiveTranscriptCollector: @unchecked Sendable {
   /// The results loop. Joined by `end()`, never cancelled by it, so queued finals arrive.
   private(set) var task: Task<Void, Never>?
 
-  /// `consume` iterates the engine's results and calls its argument with each one's text and
-  /// finality; it returns when the results end and throws when they fail.
+  /// `consume` iterates the engine's results and calls its argument with each one; it returns
+  /// when the results end and throws when they fail. `timing` (meeting sessions) maps a final's
+  /// timed runs onto written audio; without it every final is one piece of unknown timing.
   init(
     lookups: WordCorrector.Lookups?,
+    timing: Timing?,
     onEvent: @escaping @Sendable (LiveWordsEvent) -> Void,
-    consume: @escaping @Sendable (_ deliver: @escaping @Sendable (String, Bool) -> Void)
+    consume: @escaping @Sendable (_ deliver: @escaping @Sendable (LiveTranscriptResult) -> Void)
       async throws -> Void
   ) {
     self.lookups = lookups
     self.onEvent = onEvent
     task = Task { [self] in
       let corrector = WordCorrector()
+      let correct: @Sendable (String) -> String = {
+        Self.corrected($0, corrector: corrector, lookups: lookups)
+      }
       do {
-        try await consume { text, isFinal in
-          let piece = Self.corrected(text, corrector: corrector, lookups: lookups)
-          // #4355: Apple's per-run times arrive in PR A chunk 6; until then a final result is
-          // one piece with unknown timing.
-          self.emit(
-            .update(
-              finalized: isFinal ? MeetingTimedPiece.untimed(piece) : [],
-              inProgress: isFinal ? "" : piece))
+        try await consume { result in
+          guard result.isFinal else {
+            // Volatile words stay provisional: no finalized ownership.
+            self.emit(.update(finalized: [], inProgress: correct(result.text)))
+            return
+          }
+          // The final's visible text is the whole result corrected once (unchanged); its
+          // pieces keep the ownership the approved correction policy allows.
+          let finalized = LiveWordsPieceCorrection.corrected(
+            Self.pieces(of: result, timing: timing), correct)
+          self.emit(.update(finalized: finalized, inProgress: ""))
+          // After this final's runs were projected: input before its start is no longer needed
+          // by it. A later final that reaches back behind this point projects to nil.
+          if let timing, let start = result.startSeconds { timing.prune(start) }
         }
         finish(error: nil)
       } catch {
         finish(error: error)
       }
+    }
+  }
+
+  /// A final result's text as pieces: one per native run, with its projected span (nil without
+  /// timing, without a range, or when projection cannot show one). The pieces always carry
+  /// every character of `result.text`; if the runs do not reproduce it exactly, the result is
+  /// one piece of unknown timing rather than a partial or reordered text.
+  static func pieces(of result: LiveTranscriptResult, timing: Timing?) -> [MeetingTimedPiece] {
+    guard let timing, !result.runs.isEmpty,
+      Array(result.runs.map(\.text).joined().utf8) == Array(result.text.utf8)
+    else { return MeetingTimedPiece.untimed(result.text) }
+    return result.runs.compactMap { run in
+      guard !run.text.isEmpty else { return nil }
+      let span = run.startSeconds.flatMap { start in
+        run.endSeconds.flatMap { end in timing.project(start, end) }
+      }
+      return MeetingTimedPiece(text: run.text, span: span)
     }
   }
 
@@ -151,5 +188,26 @@ final class LiveTranscriptCollector: @unchecked Sendable {
   ) -> String {
     guard let lookups, !text.isEmpty else { return text }
     return corrector.correct(text, using: lookups).corrected
+  }
+}
+
+/// One native transcript result, as the collector needs it (#4355): its text, finality, its
+/// attributed runs in order with their session-local times when the module reports them, and
+/// the result's own start time. Dictation modules report no run times.
+struct LiveTranscriptResult: Sendable, Equatable {
+  struct Run: Sendable, Equatable {
+    let text: String
+    let startSeconds: Double?
+    let endSeconds: Double?
+  }
+
+  let text: String
+  let isFinal: Bool
+  let runs: [Run]
+  let startSeconds: Double?
+
+  /// A result with no run timing (dictation modules, and tests).
+  static func untimed(_ text: String, isFinal: Bool) -> LiveTranscriptResult {
+    LiveTranscriptResult(text: text, isFinal: isFinal, runs: [], startSeconds: nil)
   }
 }

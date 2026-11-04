@@ -330,9 +330,16 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       var made: LiveTranscriptCollector?
       let session = try await startSession(
         contextualPhrases: inputs.phrases, recordsInput: true,
-        makeCollector: { module in
+        makeCollector: { module, recorder in
+          // The collector maps through THIS session's recorder, built before any input exists,
+          // so a late final from an ended session never reads a replacement's map (#4355).
+          let timing = recorder.map { recorder in
+            LiveTranscriptCollector.Timing(
+              project: { recorder.project(startSeconds: $0, endSeconds: $1) },
+              prune: { recorder.prune(beforeSeconds: $0) })
+          }
           let collector = LiveTranscriptCollector(
-            lookups: inputs.lookups, onEvent: onEvent,
+            lookups: inputs.lookups, timing: timing, onEvent: onEvent,
             consume: module.consume)
           made = collector
           return CollectorHandle(
@@ -372,7 +379,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   ) async throws -> Session {
     try await startSession(
       contextualPhrases: contextualPhrases, recordsInput: false,
-      makeCollector: { module in
+      makeCollector: { module, _ in
         CollectorHandle(task: Self.collect(from: module, lookups: lookups, onText: onText), silence: {})
       })
   }
@@ -380,7 +387,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// The shared opening: `makeCollector` builds the results consumer for each fresh module.
   private func startSession(
     contextualPhrases: [String], recordsInput: Bool,
-    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
+    makeCollector: (AppleTranscriberFactory.Module, AppleMeetingInputRecorder?) -> CollectorHandle
   ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
@@ -443,7 +450,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
 
   private func makeStartResources(
     source: AVAudioFormat, target: AVAudioFormat, recordsInput: Bool,
-    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
+    makeCollector: (AppleTranscriberFactory.Module, AppleMeetingInputRecorder?) -> CollectorHandle
   ) throws -> StartResources {
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
@@ -474,8 +481,6 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module.speechModule])
-    // The session owns the vocabulary it started with.
-    let collector = makeCollector(module)
 
     // One converted frame is one written sample only when the rate and channel count match;
     // a sample-type conversion (16 kHz Float32 to 16 kHz Int16) keeps that, a resample does not.
@@ -487,6 +492,8 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
           && source.channelCount == target.channelCount,
         capacity: Self.maxQueuedChunks)
       : nil
+    // The session owns the vocabulary it started with, and its own recorder.
+    let collector = makeCollector(module, recorder)
     return StartResources(
       analyzer: analyzer, stream: stream, continuation: continuation,
       collector: collector, converter: converter, recorder: recorder)
@@ -541,7 +548,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       // screen: a preview that freezes mid-sentence is a far better failure than
       // one that blanks, and the dictation itself is unaffected either way.
       do {
-        try await transcriber.consume { piece, isFinal in
+        try await transcriber.consume { result in
+          let piece = result.text
+          let isFinal = result.isFinal
           if isFinal {
             // Bounded HERE, where the text is built. Accumulating the whole
             // transcript and trimming downstream would keep every word of a

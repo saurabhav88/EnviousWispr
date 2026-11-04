@@ -1,3 +1,4 @@
+import AVFoundation
 import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
@@ -16,15 +17,20 @@ struct ApplePreviewTranscriptTests {
 
   /// Apple's results stream, driven by the test.
   final class Results: @unchecked Sendable {
-    let stream: AsyncThrowingStream<(String, Bool), any Error>
-    let continuation: AsyncThrowingStream<(String, Bool), any Error>.Continuation
+    let stream: AsyncThrowingStream<LiveTranscriptResult, any Error>
+    let continuation: AsyncThrowingStream<LiveTranscriptResult, any Error>.Continuation
     init() {
-      (stream, continuation) = AsyncThrowingStream.makeStream(of: (String, Bool).self)
+      (stream, continuation) = AsyncThrowingStream.makeStream(of: LiveTranscriptResult.self)
     }
-    func yield(_ text: String, final: Bool) { continuation.yield((text, final)) }
-    var consume: @Sendable (@escaping @Sendable (String, Bool) -> Void) async throws -> Void {
+    func yield(_ text: String, final: Bool) {
+      continuation.yield(.untimed(text, isFinal: final))
+    }
+    func yield(_ result: LiveTranscriptResult) { continuation.yield(result) }
+    var consume:
+      @Sendable (@escaping @Sendable (LiveTranscriptResult) -> Void) async throws -> Void
+    {
       { [stream] deliver in
-        for try await (text, isFinal) in stream { deliver(text, isFinal) }
+        for try await result in stream { deliver(result) }
       }
     }
   }
@@ -68,7 +74,8 @@ struct ApplePreviewTranscriptTests {
   private static func collector(
     _ results: Results, log: Log, lookups: WordCorrector.Lookups? = nil
   ) -> LiveTranscriptCollector {
-    LiveTranscriptCollector(lookups: lookups, onEvent: log.event, consume: results.consume)
+    LiveTranscriptCollector(
+      lookups: lookups, timing: nil, onEvent: log.event, consume: results.consume)
   }
 
   /// A teardown whose analyzer end closes the results stream, as Apple's does.
@@ -121,11 +128,11 @@ struct ApplePreviewTranscriptTests {
     let gate = PreviewWait.Once()
     // The results loop is slow: each piece waits for the gate, as a busy collector would.
     let collector = LiveTranscriptCollector(
-      lookups: nil, onEvent: log.event,
+      lookups: nil, timing: nil, onEvent: log.event,
       consume: { [stream = results.stream] deliver in
-        for try await (text, isFinal) in stream {
+        for try await result in stream {
           _ = await gate.value()
-          deliver(text, isFinal)
+          deliver(result)
         }
       })
     results.yield("One.", final: true)
@@ -475,9 +482,9 @@ struct ApplePreviewTranscriptTests {
       speechModule: AppleTranscriberFactory.makeModule(.dictation, locale: Locale(identifier: "en-US"))
         .speechModule,
       consume: { deliver in
-        deliver("hello there.", true)
-        deliver("new segment", false)  // after a pause: only the new segment's words
-        deliver(long, true)
+        deliver(.untimed("hello there.", isFinal: true))
+        deliver(.untimed("new segment", isFinal: false))  // after a pause: only the new segment
+        deliver(.untimed(long, isFinal: true))
       })
     final class Seen: @unchecked Sendable {
       let lock = NSLock()
@@ -491,5 +498,163 @@ struct ApplePreviewTranscriptTests {
     #expect(texts[1] == "hello there.new segment", "the pause kept the finished segment")
     #expect(texts.allSatisfy { $0.count <= LivePreviewTextBound.maxCharacters })
     #expect(texts[2].hasSuffix("word "))
+  }
+
+  // MARK: - Timed finals (#4355 chunk 6b)
+
+  /// Every finalized piece list the collector emitted, in order.
+  final class Finals: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [[MeetingTimedPiece]] = []
+    private var provisional: [String] = []
+    var all: [[MeetingTimedPiece]] { lock.withLock { list } }
+    var inProgress: [String] { lock.withLock { provisional } }
+    func event(_ event: LiveWordsEvent) {
+      guard case .update(let finalized, let inProgress) = event else { return }
+      lock.withLock {
+        if !finalized.isEmpty { list.append(finalized) }
+        if !inProgress.isEmpty { provisional.append(inProgress) }
+      }
+    }
+  }
+
+  static let recording = UUID()
+
+  @available(macOS 26.0, *)
+  private static func recorder(written starts: [Int], capacity: Int = 16) async
+    -> AppleMeetingInputRecorder
+  {
+    let recorder = AppleMeetingInputRecorder(sampleRate: 16_000, exact: true, capacity: capacity)
+    for start in starts {
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: AVAudioFormat(
+          commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false)!,
+        frameCapacity: 1_600)!
+      buffer.frameLength = 1_600
+      recorder.push(
+        buffer, frames: 1_600, sourceFrames: 1_600,
+        slices: [
+          MeetingLiveAudioSlice(
+            offset: 0,
+            span: MeetingAudioSpan(
+              recording: recording, track: .callSound, run: 0, startSample: start,
+              sampleCount: 1_600)!)
+        ])
+    }
+    recorder.finish()
+    var iterator = recorder.sequence.makeAsyncIterator()
+    while await iterator.next() != nil {}
+    return recorder
+  }
+
+  @available(macOS 26.0, *)
+  private static func timing(_ recorder: AppleMeetingInputRecorder) -> LiveTranscriptCollector.Timing {
+    .init(
+      project: { recorder.project(startSeconds: $0, endSeconds: $1) },
+      prune: { recorder.prune(beforeSeconds: $0) })
+  }
+
+  private static func span(_ start: Int, _ count: Int) -> MeetingAudioSpan? {
+    MeetingAudioSpan(
+      recording: recording, track: .callSound, run: 0, startSample: start, sampleCount: count)
+  }
+
+  private static func run(_ text: String, _ start: Double?, _ end: Double?)
+    -> LiveTranscriptResult.Run
+  {
+    .init(text: text, startSeconds: start, endSeconds: end)
+  }
+
+  /// Runs `results` through a collector with `timing` and returns what it emitted.
+  private static func collect(
+    _ results: [LiveTranscriptResult], timing: LiveTranscriptCollector.Timing?
+  ) async -> Finals {
+    let finals = Finals()
+    let collector = LiveTranscriptCollector(
+      lookups: nil, timing: timing, onEvent: finals.event,
+      consume: { deliver in for result in results { deliver(result) } })
+    await collector.task?.value
+    return finals
+  }
+
+  @Test("a final's runs become pieces projected through the session's consumed input, every character kept")
+  func timedFinalPieces() async {
+    guard #available(macOS 26.0, *) else { return }
+    // Written 32,000..<33,600 then 33,600..<35,200 were consumed as input 0 s..<0.2 s.
+    let recorder = await Self.recorder(written: [32_000, 33_600])
+    let result = LiveTranscriptResult(
+      text: "Hello there, friend.", isFinal: true,
+      runs: [
+        Self.run("Hello", 0, 0.05), Self.run(" there,", 0.05, 0.15),
+        Self.run(" friend.", nil, nil),
+      ], startSeconds: 0)
+    let finals = await Self.collect([result], timing: Self.timing(recorder))
+    let pieces = finals.all.first ?? []
+    #expect(MeetingTimedPiece.text(of: pieces) == "Hello there, friend.", "byte for byte")
+    #expect(pieces.map(\.span) == [Self.span(32_000, 800), Self.span(32_800, 1_600), nil])
+  }
+
+  @Test("runs that do not reproduce the text, and a session without timing, give one untimed piece")
+  func untimedFallbacks() async {
+    guard #available(macOS 26.0, *) else { return }
+    let recorder = await Self.recorder(written: [0])
+    let mismatched = LiveTranscriptResult(
+      text: "Hello there.", isFinal: true, runs: [Self.run("Hello", 0, 0.05)], startSeconds: 0)
+    let finals = await Self.collect([mismatched], timing: Self.timing(recorder))
+    #expect(finals.all == [MeetingTimedPiece.untimed("Hello there.")])
+    let timed = LiveTranscriptResult(
+      text: "Hi.", isFinal: true, runs: [Self.run("Hi.", 0, 0.05)], startSeconds: 0)
+    let noTiming = await Self.collect([timed], timing: nil)
+    #expect(noTiming.all == [MeetingTimedPiece.untimed("Hi.")])
+  }
+
+  @Test("volatile results stay provisional words and never gain finalized ownership")
+  func volatileStaysProvisional() async {
+    guard #available(macOS 26.0, *) else { return }
+    let recorder = await Self.recorder(written: [0])
+    let volatile = LiveTranscriptResult(
+      text: "Hel", isFinal: false, runs: [Self.run("Hel", 0, 0.03)], startSeconds: 0)
+    let finals = await Self.collect([volatile], timing: Self.timing(recorder))
+    #expect(finals.all.isEmpty)
+    #expect(finals.inProgress == ["Hel"])
+  }
+
+  @Test("after a final, input before its start is pruned: a later final reaching back abstains, later ones stay exact")
+  func pruneAfterFinal() async {
+    guard #available(macOS 26.0, *) else { return }
+    let recorder = await Self.recorder(written: [0, 1_600, 3_200])
+    let second = LiveTranscriptResult(
+      text: " two", isFinal: true, runs: [Self.run(" two", 0.1, 0.2)], startSeconds: 0.1)
+    let late = LiveTranscriptResult(
+      text: " back", isFinal: true, runs: [Self.run(" back", 0.0, 0.05)], startSeconds: 0)
+    let third = LiveTranscriptResult(
+      text: " three", isFinal: true, runs: [Self.run(" three", 0.2, 0.3)], startSeconds: 0.2)
+    let finals = await Self.collect([second, late, third], timing: Self.timing(recorder))
+    #expect(finals.all.map { $0.map(\.span) } == [[Self.span(1_600, 1_600)], [nil], [Self.span(3_200, 1_600)]])
+  }
+
+  @Test("input dropped while the analyzer was behind never shifts the runs that follow")
+  func droppedInputNeverShifts() async {
+    guard #available(macOS 26.0, *) else { return }
+    // Capacity 2: of five inputs fed before any is taken, only the last two are heard.
+    let recorder = await Self.recorder(written: [0, 1_600, 3_200, 4_800, 6_400], capacity: 2)
+    let result = LiveTranscriptResult(
+      text: "Late words", isFinal: true,
+      runs: [Self.run("Late", 0, 0.1), Self.run(" words", 0.1, 0.2)], startSeconds: 0)
+    let finals = await Self.collect([result], timing: Self.timing(recorder))
+    #expect(finals.all.first?.map(\.span) == [Self.span(4_800, 1_600), Self.span(6_400, 1_600)])
+  }
+
+  @Test("a late final of an ended session reads its own session's map, never the replacement's")
+  func lateFinalReadsOwnMap() async {
+    guard #available(macOS 26.0, *) else { return }
+    let old = await Self.recorder(written: [0])
+    let replacement = await Self.recorder(written: [16_000])
+    let late = LiveTranscriptResult(
+      text: "Old words", isFinal: true, runs: [Self.run("Old words", 0, 0.1)], startSeconds: 0)
+    let oldFinals = await Self.collect([late], timing: Self.timing(old))
+    let newFinals = await Self.collect([late], timing: Self.timing(replacement))
+    #expect(oldFinals.all.first?.first?.span == Self.span(0, 1_600))
+    #expect(newFinals.all.first?.first?.span == Self.span(16_000, 1_600))
   }
 }

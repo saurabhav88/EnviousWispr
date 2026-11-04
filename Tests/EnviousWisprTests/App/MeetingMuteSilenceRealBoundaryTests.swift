@@ -316,6 +316,68 @@ struct MeetingMuteSilenceRealBoundaryTests {
     }
     await runtime.releaseAndDrain()
   }
+
+
+  @Test(
+    "Apple's real meeting module gives timed runs that reach written positions through the production feed (4355)",
+    .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(4)))
+  func appleTimedRunsReachWrittenPositions() async throws {
+    let resolution = await ApplePreviewEngineResolver.resolveMeeting(languageTag: "en-US")
+    guard case .ready(let candidate) = resolution else {
+      Issue.record("Apple meeting module not ready on this Mac: \(resolution)")
+      return
+    }
+    let engine = candidate.makeEngine()
+    try await engine.prepare()
+    let speech = try MuteSilenceP4.speech()
+    let recording = UUID()
+    // Written from sample 48,000 (3 s into the recording) on, so input time and written time differ.
+    let base = 48_000
+    let finals = OSAllocatedUnfairLock<[[MeetingTimedPiece]]>(initialState: [])
+    let session = try await engine.openTranscriptSession(
+      vocabulary: LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false),
+      onEvent: { event in
+        if case .update(let pieces, _) = event, !pieces.isEmpty {
+          finals.withLock { $0.append(pieces) }
+        }
+      })
+    let clock = ContinuousClock()
+    let start = clock.now
+    var offset = 0
+    var index = 0
+    while offset < speech.count {
+      let n = min(MuteSilenceP4.chunk, speech.count - offset)
+      let span = try #require(
+        MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: base + offset,
+          sampleCount: n))
+      await session.feed(
+        MeetingLiveAudioChunk(
+          samples: Array(speech[offset..<(offset + n)]),
+          slices: [MeetingLiveAudioSlice(offset: 0, span: span)]))
+      offset += n
+      index += 1
+      // settle: real-time playback; chunk i is due at start + i x 100 ms.
+      try await Task.sleep(until: start + .milliseconds(100 * index), clock: clock)
+    }
+    await session.end()
+    let all = finals.withLock { $0 }.flatMap { $0 }
+    let spoken = all.filter { !$0.text.allSatisfy(\.isWhitespace) }
+    let timed = spoken.compactMap(\.span)
+    MuteSilenceP4.receipt(
+      "apple-timed", "runs",
+      "pieces=\(spoken.count) timed=\(timed.count)")
+    #expect(spoken.count > 10, "the real module finalized words")
+    #expect(Double(timed.count) >= 0.9 * Double(spoken.count), "native run times reached written positions")
+    #expect(timed.allSatisfy { $0.recording == recording && $0.track == .callSound })
+    #expect(
+      timed.allSatisfy { $0.startSample >= base && $0.endSample <= base + speech.count },
+      "every span lies inside the written audio that was fed")
+    #expect(
+      zip(timed, timed.dropFirst()).allSatisfy { $0.startSample <= $1.startSample },
+      "spans run forward in time")
+    #expect(MuteSilenceP4.words(all.map(\.text).joined()) == MuteSilenceP4.script, "every word kept, in order")
+  }
 }
 
 extension URL {
