@@ -93,15 +93,20 @@ enum MuteSilenceP4 {
     -> MeetingTrackAudio
   {
     let anchor = mach_absolute_time()
+    let id = UUID()
     let writer = MeetingTrackWriter(
       configuration: .init(
-        meetingID: UUID(), track: .microphone, folder: dir, anchorHostTime: anchor,
+        meetingID: id, track: .microphone, folder: dir, anchorHostTime: anchor,
         // Appended far faster than real time: the handoff must hold the whole recording.
         bufferCapacity: samples.count + chunk, maxPendingChunks: samples.count / chunk + 8,
         silenceHoldSeconds: 3.0),
       onSegmentFinalized: { _ in }, onFailure: { _ in })
     if silenceAll {
-      writer.setSilencedIntervals([MeetingSilenceInterval(start: anchor, end: .max)])
+      writer.setSilencedIntervals([
+        MeetingSilenceInterval(
+          start: MeetingAcquisitionTime(recording: id, hostTicks: anchor, provenance: .estimated),
+          end: nil)
+      ])
     }
     var offset = 0
     while offset < samples.count {

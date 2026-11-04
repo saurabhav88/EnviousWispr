@@ -1,5 +1,6 @@
 import CoreAudio
 import Darwin
+import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -20,18 +21,29 @@ struct MeetingMuteFollowerTests {
   /// Seconds as ticks.
   private func s(_ seconds: Double) -> UInt64 { UInt64((seconds * 1_000_000_000).rounded()) }
 
-  private func interval(_ start: Double, _ end: Double) -> MeetingMuteInterval {
-    MeetingMuteInterval(start: s(start), end: s(end))
+  static let recording = UUID()
+
+  /// Seconds as this recording's acquisition time, read from the host clock (observed).
+  private func t(_ seconds: Double) -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: Self.recording, hostTicks: s(seconds), provenance: .observed)
   }
 
-  private func open(_ start: Double) -> MeetingMuteInterval {
-    MeetingMuteInterval(start: s(start), end: MeetingMuteInterval.openEnd)
+  /// A closed stretch: starts at a reading (observed), ends where readings put it (estimated).
+  private func interval(_ start: Double, _ end: Double) -> MeetingSilenceInterval {
+    MeetingSilenceInterval(
+      start: t(start),
+      end: MeetingAcquisitionTime(
+        recording: Self.recording, hostTicks: s(end), provenance: .estimated))
+  }
+
+  private func open(_ start: Double) -> MeetingSilenceInterval {
+    MeetingSilenceInterval(start: t(start), end: nil)
   }
 
   private func follower(_ surface: CallSpeakerSurface = .teamsApp, generation: UInt64 = 1)
     -> MeetingMuteFollower
   {
-    var follower = MeetingMuteFollower(enabled: true, timebase: Self.nanos)
+    var follower = MeetingMuteFollower(recording: Self.recording, enabled: true, timebase: Self.nanos)
     follower.bind(surface: surface, generation: generation)
     return follower
   }
@@ -41,14 +53,15 @@ struct MeetingMuteFollowerTests {
     _ follower: inout MeetingMuteFollower, _ reading: CallSelfMute, at t: Double,
     delay: Double = 0.1, generation: UInt64 = 1
   ) -> MeetingMuteFollower.Outcome {
-    follower.record(reading, copyStart: s(t), delivered: s(t + delay), generation: generation)
+    follower.record(
+      reading, copyStart: self.t(t), delivered: self.t(t + delay), generation: generation)
   }
 
   // MARK: - Startup
 
   @Test("before any reading the microphone stays live and the card says checking")
   func startup() {
-    var f = MeetingMuteFollower(enabled: true, timebase: Self.nanos)
+    var f = MeetingMuteFollower(recording: Self.recording, enabled: true, timebase: Self.nanos)
     #expect(f.state == .unbound)
     f.bind(surface: .meet, generation: 1)
     #expect(f.state == .checking)
@@ -129,16 +142,16 @@ struct MeetingMuteFollowerTests {
     var f = follower()
     _ = read(&f, .muted, at: 10)
     _ = read(&f, .muted, at: 10.5)
-    f.advance(to: s(11.9))
+    f.advance(to: t(11.9))
     #expect(f.state == .muted)
     #expect(f.intervals == [open(10)])
-    f.advance(to: s(12.1))
+    f.advance(to: t(12.1))
     #expect(f.state == .cannotSee)
     #expect(f.intervals == [interval(10, 10.5)])
     // An unmuted state ages to cannot-see too.
     var g = follower()
     _ = read(&g, .unmuted, at: 10)
-    g.advance(to: s(11.6))
+    g.advance(to: t(11.6))
     #expect(g.state == .cannotSee)
   }
 
@@ -160,12 +173,12 @@ struct MeetingMuteFollowerTests {
     var f = follower()
     _ = read(&f, .muted, at: 10)
     _ = read(&f, .muted, at: 10.5)
-    f.setEnabled(false, at: s(10.8))
+    f.setEnabled(false, at: t(10.8))
     #expect(f.state == .disabled)
     #expect(f.intervals == [interval(10, 10.5)])
     #expect(read(&f, .muted, at: 11) == .inactive)
     #expect(f.intervals == [interval(10, 10.5)])
-    f.setEnabled(true, at: s(11.5))
+    f.setEnabled(true, at: t(11.5))
     #expect(f.state == .checking)
     _ = read(&f, .muted, at: 12)
     #expect(f.intervals == [interval(10, 10.5), open(12)])
@@ -176,8 +189,8 @@ struct MeetingMuteFollowerTests {
     var f = follower()
     _ = read(&f, .unmuted, at: 10.5)
     // The copy starts at 11.0; the switch goes off at 11.1 and on at 11.2; the copy lands at 11.3.
-    f.setEnabled(false, at: s(11.1))
-    f.setEnabled(true, at: s(11.2))
+    f.setEnabled(false, at: t(11.1))
+    f.setEnabled(true, at: t(11.2))
     #expect(read(&f, .muted, at: 11.0, delay: 0.3) == .ignored)
     #expect(f.intervals == [])
     #expect(f.state == .checking)
@@ -238,13 +251,13 @@ struct MeetingMuteFollowerTests {
   func watermark() {
     var f = follower()
     _ = read(&f, .muted, at: 10)
-    f.commit(through: s(12))
-    #expect(f.committed == s(12))
+    f.commit(through: t(12))
+    #expect(f.committed?.hostTicks == s(12))
     _ = read(&f, .unmuted, at: 14)
     #expect(f.intervals == [interval(10, 13)])
-    f.commit(through: s(11))
-    #expect(f.committed == s(12), "C never moves back")
-    f.commit(through: s(13))
+    f.commit(through: t(11))
+    #expect(f.committed?.hostTicks == s(12), "C never moves back")
+    f.commit(through: t(13))
     #expect(f.intervals == [])
     #expect(f.missed == MeetingMuteFollower.Missed())
   }
@@ -252,7 +265,7 @@ struct MeetingMuteFollowerTests {
   @Test("a mute read after its start was released counts the kept audio as missed")
   func lateMute() {
     var f = follower()
-    f.commit(through: s(12))
+    f.commit(through: t(12))
     _ = read(&f, .muted, at: 11.9, delay: 0.1)
     #expect(f.intervals == [open(11.9)])
     #expect(f.missed.keptTicks == s(0.1))
@@ -274,7 +287,7 @@ struct MeetingMuteFollowerTests {
     var f = follower(.zoomApp)
     _ = read(&f, .muted, at: 10)
     // The unmuted reading copied at 20 arrives 1 s later; the gate released up to 21 - 3.
-    f.commit(through: s(18))
+    f.commit(through: t(18))
     _ = read(&f, .unmuted, at: 20, delay: 1.0)
     #expect(f.intervals == [], "[10, 17.5) ends before C = 18: wholly released")
     #expect(f.missed.silencedTicks == s(0.5))
@@ -287,13 +300,13 @@ struct MeetingMuteFollowerTests {
   @Test("W > H: the unmute correction reaches released silence and is counted as missed")
   func windowItselfAboveHold() {
     var f = MeetingMuteFollower(
-      enabled: true, timebase: Self.nanos,
+      recording: Self.recording, enabled: true, timebase: Self.nanos,
       timing: { _ in MeetingMuteFollower.Timing(window: 4.0, hold: 3.0, staleness: 1.5) })
     f.bind(surface: .teamsApp, generation: 1)
     _ = read(&f, .muted, at: 10)
     _ = read(&f, .muted, at: 15)
     // The unmuted reading copied at 20 arrives at 20.1; the gate has released up to 20.1 - 3.
-    f.commit(through: s(17.1))
+    f.commit(through: t(17.1))
     _ = read(&f, .unmuted, at: 20, delay: 0.1)
     #expect(f.intervals == [], "[10, 16) ends before C = 17.1: wholly released")
     #expect(f.missed.silencedTicks == s(1.1), "[16, 17.1) went out as silence")
@@ -301,11 +314,11 @@ struct MeetingMuteFollowerTests {
     #expect(f.missed.events == 1)
     // Before C reaches the corrected end, the stretch is published with its literal bounds.
     var g = MeetingMuteFollower(
-      enabled: true, timebase: Self.nanos,
+      recording: Self.recording, enabled: true, timebase: Self.nanos,
       timing: { _ in MeetingMuteFollower.Timing(window: 4.0, hold: 3.0, staleness: 1.5) })
     g.bind(surface: .teamsApp, generation: 1)
     _ = read(&g, .muted, at: 10)
-    g.commit(through: s(15))
+    g.commit(through: t(15))
     _ = read(&g, .unmuted, at: 20, delay: 0.1)
     #expect(g.intervals == [interval(10, 16)])
     #expect(g.missed == MeetingMuteFollower.Missed())
@@ -316,7 +329,7 @@ struct MeetingMuteFollowerTests {
     var f = follower()
     _ = read(&f, .muted, at: 10)
     _ = read(&f, .muted, at: 10.5)
-    f.commit(through: s(11.4))
+    f.commit(through: t(11.4))
     _ = read(&f, .unknown, at: 11)
     #expect(f.intervals == [])
     #expect(f.missed.silencedTicks == s(0.9))
@@ -333,7 +346,7 @@ struct MeetingMuteFollowerTests {
 
   @Test("live timebase converts seconds to host ticks the way the recorder does")
   func liveTicks() {
-    let f = MeetingMuteFollower(enabled: true)
+    let f = MeetingMuteFollower(recording: Self.recording, enabled: true)
     let expected = AudioConvertNanosToHostTime(1_500_000_000)
     let got = f.ticks(1.5)
     #expect(got >= expected - 1 && got <= expected + 1)

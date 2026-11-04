@@ -18,23 +18,36 @@ import os
 /// safely `Sendable` without relying on that. Nothing here waits on another thread, and the
 /// gate keeps no reference to the writer, so the writer holding `clock` forms no cycle.
 final class MeetingMuteGate: Sendable {
+  /// One reading as the gate decides it: the copy's T, decoded once at the coordinator's mute
+  /// ingress (`Reading.init(_:recording:)`), and the raw copy for the DEBUG trace only. D comes
+  /// from the writer.
+  struct Reading: Sendable, Equatable {
+    let copyStart: MeetingAcquisitionTime
+    let copy: CallMuteCopy
+
+    /// The copy's read start is the host clock read when the copy began: observed.
+    init(_ copy: CallMuteCopy, recording: UUID) {
+      self.copy = copy
+      copyStart = MeetingAcquisitionTime(
+        recording: recording, hostTicks: copy.copyStart, provenance: .observed)
+    }
+  }
+
   enum Input: Sendable, Equatable {
-    /// One reading: its copy's T and E, and M, when the MainActor received it. M is for the
-    /// trace only; D comes from the writer.
-    case reading(CallMuteCopy)
+    case reading(Reading)
     case bind(CallSpeakerSurface, generation: UInt64)
     case unbind
-    case setEnabled(Bool, at: UInt64)
+    case setEnabled(Bool, at: MeetingAcquisitionTime)
     /// Time passed with no reading (the session tick); expiry is judged at the queue's time.
     case advance
     case end
   }
 
-  /// One reading's decision, in host ticks, for the DEBUG timing trace.
+  /// One reading's decision, for the DEBUG timing trace.
   struct Trace: Sendable, Equatable {
     let copy: CallMuteCopy
-    let delivered: UInt64
-    let released: UInt64
+    let delivered: MeetingAcquisitionTime
+    let released: MeetingAcquisitionTime?
     let outcome: MeetingMuteFollower.Outcome
   }
 
@@ -103,7 +116,7 @@ final class MeetingMuteGate: Sendable {
     var lastState: MeetingMuteFollower.State
     var lastMissed = MeetingMuteFollower.Missed()
     var totals = Totals()
-    /// The queue time of the last step, so time is counted in the state it was spent in.
+    /// The queue ticks of the last step, so time is counted in the state it was spent in.
     var lastNow: UInt64?
     /// The `.end` step ran: the clock steps of the closing writer count no more time.
     var countingEnded = false
@@ -136,9 +149,11 @@ final class MeetingMuteGate: Sendable {
     { [self] now, released in run(nil, now: now, released: released) }
   }
 
-  private func run(_ input: Input?, now: UInt64, released: UInt64)
-    -> [MeetingSilenceInterval]?
-  {
+  private func run(
+    _ input: Input?, now time: MeetingAcquisitionTime, released: MeetingAcquisitionTime?
+  ) -> [MeetingSilenceInterval]? {
+    // Durations below are tick differences of this recording's queue clock.
+    let now = time.hostTicks
     let (intervals, snapshot) = inner.withLock { s -> ([MeetingSilenceInterval]?, Snapshot?) in
       // The time since the last step was spent in the state the follower showed then.
       if !s.countingEnded, let last = s.lastNow, now > last {
@@ -157,13 +172,14 @@ final class MeetingMuteGate: Sendable {
       s.follower.commit(through: released)
       // Expiry first, at the queue's time: a reading that aged out stops counting before the
       // input or the release that follows.
-      s.follower.advance(to: now)
+      s.follower.advance(to: time)
       var trace: Trace?
       switch input {
-      case .reading(let copy):
+      case .reading(let reading):
         let outcome = s.follower.record(
-          copy.reading, copyStart: copy.copyStart, delivered: now, generation: copy.generation)
-        trace = Trace(copy: copy, delivered: now, released: released, outcome: outcome)
+          reading.copy.reading, copyStart: reading.copyStart, delivered: time,
+          generation: reading.copy.generation)
+        trace = Trace(copy: reading.copy, delivered: time, released: released, outcome: outcome)
         s.totals.count(outcome)
       case .bind(let surface, let generation):
         s.follower.bind(surface: surface, generation: generation)
@@ -179,9 +195,7 @@ final class MeetingMuteGate: Sendable {
         s.follower.end()
         s.generation = nil
       }
-      let current = s.follower.intervals.map {
-        MeetingSilenceInterval(start: $0.start, end: $0.end)
-      }
+      let current = s.follower.intervals
       let changed = current != s.applied
       if changed { s.applied = current }
       let state = s.follower.state

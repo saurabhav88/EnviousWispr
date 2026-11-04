@@ -3,37 +3,40 @@ import CoreAudio
 import EnviousWisprCore
 import Foundation
 
-/// A stretch of host time (`mach_absolute_time` ticks), half open: `[start, end)`, during which
-/// the microphone track is written as silence (#4248). `end == .max` is still open. Audio only
-/// receives these times; which call app, which button and why belong to the AppKit follower.
+/// A stretch of acquisition time, half open: `[start, end)`, during which the microphone track
+/// is written as silence (#4248). A nil `end` is still open. Audio only receives these times;
+/// which call app, which button and why belong to the AppKit follower. Order is judged by host
+/// ticks within one recording; provenance never changes which samples are silenced.
 public struct MeetingSilenceInterval: Sendable, Equatable {
-  public let start: UInt64
-  public let end: UInt64
+  public let start: MeetingAcquisitionTime
+  public let end: MeetingAcquisitionTime?
 
-  public init(start: UInt64, end: UInt64) {
+  public init(start: MeetingAcquisitionTime, end: MeetingAcquisitionTime?) {
     self.start = start
     self.end = end
   }
 }
 
-/// One released microphone chunk's original metadata, as the filtered-output observer gets it.
 /// One mute decision step, run on the microphone writer's queue (#4248 plan §18). It receives
-/// that queue's clock reading and C (the end of audio released for good) and returns the new
-/// silence intervals, or nil to keep the current ones. It runs synchronously and must not wait
-/// on another thread.
+/// that queue's clock reading (observed) and C (the end of audio released for good; nil before
+/// the first release) and returns the new silence intervals, or nil to keep the current ones. It
+/// runs synchronously and must not wait on another thread.
 public typealias MeetingSilenceStep =
-  @Sendable (_ queueNow: UInt64, _ released: UInt64) -> [MeetingSilenceInterval]?
+  @Sendable (_ queueNow: MeetingAcquisitionTime, _ released: MeetingAcquisitionTime?) ->
+  [MeetingSilenceInterval]?
 
+/// One released chunk's original metadata, as the filtered-output observer gets it.
 public struct MeetingReleasedChunk: Sendable, Equatable {
-  /// The capture clock's time of the chunk's first sample, unchanged by the hold.
-  public let hostTime: UInt64
+  /// When the chunk's first sample was acquired, unchanged by the hold, with the provenance its
+  /// producer gave.
+  public let acquired: MeetingAcquisitionTime
   /// Audio was dropped at the handoff before this chunk.
   public let afterDrop: Bool
   /// The producer said this chunk does not continue the previous one.
   public let sourceBreak: Bool
 
-  public init(hostTime: UInt64, afterDrop: Bool, sourceBreak: Bool) {
-    self.hostTime = hostTime
+  public init(acquired: MeetingAcquisitionTime, afterDrop: Bool, sourceBreak: Bool) {
+    self.acquired = acquired
     self.afterDrop = afterDrop
     self.sourceBreak = sourceBreak
   }
@@ -65,6 +68,13 @@ public struct MeetingReleasedChunk: Sendable, Equatable {
 ///   stamped more than `lateArrival` before C when it arrives is judged as live for that part
 ///   and counted in `lateFrames`. Pending decisions that end at or before C are never read again.
 final class MeetingMicrophoneSilence {
+  /// The hold's own half-open tick stretch; `end == .max` is open. Private arithmetic only: the
+  /// typed `MeetingSilenceInterval` is decoded into it once, in `setIntervals`.
+  struct TickSpan: Equatable {
+    let start: UInt64
+    let end: UInt64
+  }
+
   /// Receives each released chunk on the writer's queue. The buffer is valid only during the call.
   typealias Emit = (UnsafeBufferPointer<Float>, MeetingReleasedChunk) -> Void
 
@@ -72,6 +82,7 @@ final class MeetingMicrophoneSilence {
     var start: Int
     var count: Int
     var hostTime: UInt64
+    var provenance: MeetingAcquisitionTime.Provenance
     var afterDrop: Bool
     var sourceBreak: Bool
     /// The arrival contract's cutoff, fixed when the chunk was accepted: its samples before this
@@ -79,6 +90,7 @@ final class MeetingMicrophoneSilence {
     var liveBefore: UInt64
   }
 
+  let recording: UUID
   let holdTicks: UInt64
   /// The arrival contract's bound: frozen decisions are kept this far behind C for audio that
   /// has not arrived yet. Audio stamped earlier than that when it arrives counts as late.
@@ -90,12 +102,21 @@ final class MeetingMicrophoneSilence {
   private var samples: [Float] = []
   private var chunks: [Held] = []
   /// The latest decisions, read only for time at or after C.
-  private var pending: [MeetingSilenceInterval] = []
+  private var pending: [TickSpan] = []
   /// Decisions for time before C, as they stood when that time was released.
-  private var frozen: [MeetingSilenceInterval] = []
+  private var frozen: [TickSpan] = []
 
-  /// C: the end host time of the last released audio.
-  private(set) var released: UInt64 = 0
+  /// C: the end host ticks of the last released audio; 0 before the first release.
+  private var releasedTicks: UInt64 = 0
+  /// The provenance of the chunk whose end set C.
+  private var releasedProvenance: MeetingAcquisitionTime.Provenance = .estimated
+  /// C as an acquisition time; nil before the first release.
+  var released: MeetingAcquisitionTime? {
+    releasedTicks == 0
+      ? nil
+      : MeetingAcquisitionTime(
+        recording: recording, hostTicks: releasedTicks, provenance: releasedProvenance)
+  }
   /// Frames written as zeros.
   private(set) var silencedFrames = 0
   /// Intervals beyond `intervalCapacity` that were left out (their audio stays live).
@@ -105,7 +126,11 @@ final class MeetingMicrophoneSilence {
   /// Frames that arrived stamped more than `lateArrival` before C (judged as live).
   private(set) var lateFrames = 0
 
-  init(holdSeconds: Double, sampleCapacity: Int, chunkCapacity: Int, intervalCapacity: Int = 64) {
+  init(
+    recording: UUID, holdSeconds: Double, sampleCapacity: Int, chunkCapacity: Int,
+    intervalCapacity: Int = 64
+  ) {
+    self.recording = recording
     holdTicks = Self.ticks(nanos: UInt64(max(0, holdSeconds) * 1_000_000_000))
     self.sampleCapacity = max(1, sampleCapacity)
     self.chunkCapacity = max(1, chunkCapacity)
@@ -122,22 +147,34 @@ final class MeetingMicrophoneSilence {
 
   var isEmpty: Bool { chunks.isEmpty }
 
-  /// When the oldest held chunk becomes due; nil when nothing is held.
-  var nextDue: UInt64? { chunks.first.map { end(of: $0) &+ holdTicks } }
+  /// When the oldest held chunk becomes due; nil when nothing is held. Calculated, so estimated.
+  var nextDue: MeetingAcquisitionTime? {
+    chunks.first.map {
+      MeetingAcquisitionTime(
+        recording: recording, hostTicks: end(of: $0) &+ holdTicks, provenance: .estimated)
+    }
+  }
 
   /// Replaces the decisions for time at or after C, merged where they overlap or touch and kept
   /// in order. Time before C keeps its frozen decision. Beyond capacity, the latest are left out
   /// and counted, so their audio stays live.
+  /// Intervals of another recording are not this hold's and are left out.
   func setIntervals(_ new: [MeetingSilenceInterval]) {
     pending.removeAll(keepingCapacity: true)
-    Self.merge(new.filter { $0.end > released }, into: &pending, capacity: intervalCapacity) {
+    let spans = new.compactMap { interval -> TickSpan? in
+      guard interval.start.recording == recording,
+        interval.end.map({ $0.recording == recording }) ?? true
+      else { return nil }
+      return TickSpan(start: interval.start.hostTicks, end: interval.end?.hostTicks ?? .max)
+    }
+    Self.merge(spans.filter { $0.end > releasedTicks }, into: &pending, capacity: intervalCapacity) {
       intervalOverflows += 1
     }
   }
 
   /// Frozen decisions ending at or before this can no longer reach held or arriving audio.
   private var retirementHorizon: UInt64 {
-    let behind = released > lateArrivalTicks ? released - lateArrivalTicks : 0
+    let behind = releasedTicks > lateArrivalTicks ? releasedTicks - lateArrivalTicks : 0
     let oldestHeld = chunks.lazy.map(\.hostTime).min() ?? behind
     return min(oldestHeld, behind)
   }
@@ -145,7 +182,7 @@ final class MeetingMicrophoneSilence {
   /// Adds `intervals` to the sorted, disjoint `list`, merging overlaps; `overflow` runs for each
   /// one left out at capacity.
   private static func merge(
-    _ intervals: [MeetingSilenceInterval], into list: inout [MeetingSilenceInterval],
+    _ intervals: [TickSpan], into list: inout [TickSpan],
     capacity: Int, overflow: () -> Void
   ) {
     var combined = list
@@ -154,8 +191,7 @@ final class MeetingMicrophoneSilence {
     list.removeAll(keepingCapacity: true)
     for interval in combined {
       if let last = list.last, interval.start <= last.end {
-        list[list.count - 1] = MeetingSilenceInterval(
-          start: last.start, end: max(last.end, interval.end))
+        list[list.count - 1] = TickSpan(start: last.start, end: max(last.end, interval.end))
         continue
       }
       guard list.count < capacity else {
@@ -167,15 +203,17 @@ final class MeetingMicrophoneSilence {
   }
 
   /// Holds a copy of `frames`. A chunk larger than the free room is held in pieces, each with the
-  /// host time of its first sample; room is made by releasing the oldest chunks early.
+  /// acquisition time of its first sample; room is made by releasing the oldest chunks early.
   func accept(
-    _ frames: UnsafeBufferPointer<Float>, hostTime: UInt64, afterDrop: Bool, sourceBreak: Bool,
-    emit: Emit
+    _ frames: UnsafeBufferPointer<Float>, acquired: MeetingAcquisitionTime, afterDrop: Bool,
+    sourceBreak: Bool, emit: Emit
   ) {
-    let liveBefore = released > lateArrivalTicks ? released - lateArrivalTicks : 0
+    assert(acquired.recording == recording, "audio of another recording reached this hold")
+    let hostTime = acquired.hostTicks
+    let liveBefore = releasedTicks > lateArrivalTicks ? releasedTicks - lateArrivalTicks : 0
     // The same boundary rule as silencing: a sample is late when its time is before the cutoff.
     lateFrames += Self.silencedRange(
-      of: MeetingSilenceInterval(start: 0, end: liveBefore), chunkHostTime: hostTime,
+      of: TickSpan(start: 0, end: liveBefore), chunkHostTime: hostTime,
       count: frames.count
     ).count
     var offset = 0
@@ -191,15 +229,17 @@ final class MeetingMicrophoneSilence {
         Held(
           start: samples.count, count: take,
           hostTime: first ? hostTime : hostTime &+ Self.ticks(forSamples: offset),
-          afterDrop: first && afterDrop, sourceBreak: first && sourceBreak,
+          provenance: acquired.provenance, afterDrop: first && afterDrop, sourceBreak: first && sourceBreak,
           liveBefore: liveBefore))
       samples.append(contentsOf: UnsafeBufferPointer(rebasing: frames[offset..<(offset + take)]))
       offset += take
     }
   }
 
-  /// Releases every chunk whose last sample is at least `hold` old at `now`.
-  func releaseDue(now: UInt64, emit: Emit) {
+  /// Releases every chunk whose last sample is at least `hold` old at `time`.
+  func releaseDue(now time: MeetingAcquisitionTime, emit: Emit) {
+    assert(time.recording == recording, "another recording's clock reached this hold")
+    let now = time.hostTicks
     var due = 0
     while due < chunks.count, end(of: chunks[due]) &+ holdTicks <= now { due += 1 }
     releaseFront(due, emit: emit)
@@ -219,7 +259,7 @@ final class MeetingMicrophoneSilence {
         let frames = UnsafeMutableBufferPointer(
           rebasing: all[held.start..<(held.start + held.count)])
         let chunkEnd = end(of: held)
-        let cut = min(max(held.hostTime, released), chunkEnd)
+        let cut = min(max(held.hostTime, releasedTicks), chunkEnd)
         // Before C: the frozen decisions. From C on: the latest, which this release freezes.
         silence(
           frames, held.hostTime, frozen, from: max(held.hostTime, held.liveBefore), to: cut)
@@ -228,16 +268,21 @@ final class MeetingMicrophoneSilence {
         // arrival, so a few ticks can separate one chunk's end from the next one's start. Freezing
         // that gap too keeps a long mute one frozen decision; split at every gap, a mute filled
         // the frozen storage within one late-arrival second and left late audio live (#4248).
-        let freezeFrom = min(cut, released)
+        let freezeFrom = min(cut, releasedTicks)
         if chunkEnd > freezeFrom {
           let decided = pending.compactMap { Self.clip($0, from: freezeFrom, to: chunkEnd) }
           Self.merge(decided, into: &frozen, capacity: intervalCapacity) { intervalOverflows += 1 }
         }
-        released = max(released, chunkEnd)
+        if chunkEnd > releasedTicks {
+          releasedTicks = chunkEnd
+          releasedProvenance = held.provenance
+        }
         emit(
           UnsafeBufferPointer(frames),
           MeetingReleasedChunk(
-            hostTime: held.hostTime, afterDrop: held.afterDrop, sourceBreak: held.sourceBreak))
+            acquired: MeetingAcquisitionTime(
+              recording: recording, hostTicks: held.hostTime, provenance: held.provenance),
+            afterDrop: held.afterDrop, sourceBreak: held.sourceBreak))
         consumed = held.start + held.count
       }
     }
@@ -246,13 +291,13 @@ final class MeetingMicrophoneSilence {
     for i in chunks.indices { chunks[i].start -= consumed }
     let horizon = retirementHorizon
     frozen.removeAll { $0.end <= horizon }
-    pending.removeAll { $0.end <= released }
+    pending.removeAll { $0.end <= releasedTicks }
   }
 
   /// Zeroes the samples of a chunk whose times lie in `[from, to)` and in one of `mask`.
   private func silence(
     _ frames: UnsafeMutableBufferPointer<Float>, _ chunkHostTime: UInt64,
-    _ mask: [MeetingSilenceInterval], from: UInt64, to: UInt64
+    _ mask: [TickSpan], from: UInt64, to: UInt64
   ) {
     guard to > from else { return }
     for interval in mask {
@@ -263,12 +308,10 @@ final class MeetingMicrophoneSilence {
     }
   }
 
-  private static func clip(_ interval: MeetingSilenceInterval, from: UInt64, to: UInt64)
-    -> MeetingSilenceInterval?
-  {
+  private static func clip(_ interval: TickSpan, from: UInt64, to: UInt64) -> TickSpan? {
     let start = max(interval.start, from)
     let end = min(interval.end, to)
-    return end > start ? MeetingSilenceInterval(start: start, end: end) : nil
+    return end > start ? TickSpan(start: start, end: end) : nil
   }
 
   private func end(of held: Held) -> UInt64 {
@@ -283,7 +326,7 @@ final class MeetingMicrophoneSilence {
   /// The sample indexes of a chunk inside `interval`. Sample `i` is at
   /// `chunkHostTime + i × 62.5 µs`; it is silenced when `start <= its time < end`.
   static func silencedRange(
-    of interval: MeetingSilenceInterval, chunkHostTime: UInt64, count: Int
+    of interval: TickSpan, chunkHostTime: UInt64, count: Int
   ) -> Range<Int> {
     let first =
       interval.start <= chunkHostTime ? 0 : index(atOrAfter: interval.start - chunkHostTime)

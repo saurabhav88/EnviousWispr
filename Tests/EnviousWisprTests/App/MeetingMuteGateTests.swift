@@ -22,6 +22,38 @@ struct MeetingMuteGateTests {
 
   private func s(_ seconds: Double) -> UInt64 { UInt64((seconds * 1_000_000_000).rounded()) }
 
+  static let recording = UUID()
+
+  /// The writer queue's clock at `seconds` (observed).
+  private func q(_ seconds: Double) -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: Self.recording, hostTicks: s(seconds), provenance: .observed)
+  }
+
+  /// C at `seconds`; nil (nothing released yet) at 0.
+  private func c(_ seconds: Double) -> MeetingAcquisitionTime? {
+    seconds == 0
+      ? nil
+      : MeetingAcquisitionTime(
+        recording: Self.recording, hostTicks: s(seconds), provenance: .estimated)
+  }
+
+  private func open(_ start: Double) -> MeetingSilenceInterval {
+    MeetingSilenceInterval(start: q(start), end: nil)
+  }
+
+  private func closed(_ start: Double, _ end: Double) -> MeetingSilenceInterval {
+    MeetingSilenceInterval(
+      start: q(start),
+      end: MeetingAcquisitionTime(
+        recording: Self.recording, hostTicks: s(end), provenance: .estimated))
+  }
+
+  private func reading(_ copy: CallMuteCopy, recording: UUID = Self.recording)
+    -> MeetingMuteGate.Input
+  {
+    .reading(MeetingMuteGate.Reading(copy, recording: recording))
+  }
+
 
   final class Published: Sendable {
     let all = OSAllocatedUnfairLock<[MeetingMuteGate.Snapshot]>(initialState: [])
@@ -33,9 +65,10 @@ struct MeetingMuteGateTests {
     -> MeetingMuteGate
   {
     let gate = MeetingMuteGate(
-      recording: UUID(), follower: MeetingMuteFollower(enabled: true, timebase: Self.nanos),
+      recording: Self.recording,
+      follower: MeetingMuteFollower(recording: Self.recording, enabled: true, timebase: Self.nanos),
       publish: { snapshot in published.all.withLock { $0.append(snapshot) } })
-    _ = gate.step(.bind(surface, generation: 1))(s(0), 0)
+    _ = gate.step(.bind(surface, generation: 1))(q(0), nil)
     return gate
   }
 
@@ -53,8 +86,8 @@ struct MeetingMuteGateTests {
     _ gate: MeetingMuteGate, _ reading: CallSelfMute, t: Double, d: Double,
     released: Double = 0, generation: UInt64 = 1
   ) -> [MeetingSilenceInterval]? {
-    gate.step(.reading(copy(reading, t: s(t), e: s(t + 0.05), m: s(t + 0.1), generation)))(
-      s(d), s(released))
+    gate.step(self.reading(copy(reading, t: s(t), e: s(t + 0.05), m: s(t + 0.1), generation)))(
+      q(d), c(released))
   }
 
   @Test("telemetry time: bound time counts while the switch is on, unknown time is checking or blind, nothing after the end")
@@ -63,15 +96,15 @@ struct MeetingMuteGateTests {
     let g = gate(published)  // bound at 0: checking
     read(g, .muted, t: 2, d: 2)  // 0 to 2 checking
     read(g, .unmuted, t: 5, d: 5)  // 2 to 5 muted
-    _ = g.step(.setEnabled(false, at: s(6)))(s(6), 0)  // 5 to 6 unmuted
-    _ = g.step(.advance)(s(9), 0)  // 6 to 9 switched off: not counted
-    _ = g.step(.setEnabled(true, at: s(9)))(s(9), 0)
-    _ = g.step(.advance)(s(10), 0)  // 9 to 10 checking again
-    _ = g.step(.unbind)(s(10), 0)
-    _ = g.step(.advance)(s(12), 0)  // 10 to 12 unbound: not counted
-    _ = g.step(.bind(.teamsApp, generation: 2))(s(12), 0)
-    _ = g.step(.end)(s(13), 0)  // 12 to 13 checking
-    _ = g.clock(s(20), 0)  // the closing writer's clock counts nothing more
+    _ = g.step(.setEnabled(false, at: q(6)))(q(6), nil)  // 5 to 6 unmuted
+    _ = g.step(.advance)(q(9), nil)  // 6 to 9 switched off: not counted
+    _ = g.step(.setEnabled(true, at: q(9)))(q(9), nil)
+    _ = g.step(.advance)(q(10), nil)  // 9 to 10 checking again
+    _ = g.step(.unbind)(q(10), nil)
+    _ = g.step(.advance)(q(12), nil)  // 10 to 12 unbound: not counted
+    _ = g.step(.bind(.teamsApp, generation: 2))(q(12), nil)
+    _ = g.step(.end)(q(13), nil)  // 12 to 13 checking
+    _ = g.clock(q(20), nil)  // the closing writer's clock counts nothing more
     #expect(g.totals.eligibleTicks == s(2 + 3 + 1 + 1 + 1))
     #expect(g.totals.unknownTicks == s(2 + 1 + 1))
     #expect(g.totals.readings == 2)
@@ -86,7 +119,7 @@ struct MeetingMuteGateTests {
     let trace = try #require(published.last?.trace)
     #expect(trace.outcome == .staleAtDelivery)
     #expect(trace.copy.received == s(10.1))
-    #expect(trace.delivered == s(12), "D is the queue's time, never M")
+    #expect(trace.delivered == q(12), "D is the queue's time, never M")
     #expect(published.last?.state == .checking)
   }
 
@@ -94,12 +127,12 @@ struct MeetingMuteGateTests {
   func muteThenUnmute() {
     let published = Published()
     let g = gate(published)
-    #expect(read(g, .muted, t: 10, d: 10.2) == [MeetingSilenceInterval(start: s(10), end: .max)])
+    #expect(read(g, .muted, t: 10, d: 10.2) == [open(10)])
     #expect(published.last?.state == .muted)
     // Readings keep coming every 0.5 s while muted, so the stretch never expires.
     for t in stride(from: 10.5, through: 13.5, by: 0.5) { read(g, .muted, t: t, d: t + 0.2) }
     // Teams: W = 1.0 s.
-    #expect(read(g, .unmuted, t: 14, d: 14.2) == [MeetingSilenceInterval(start: s(10), end: s(13))])
+    #expect(read(g, .unmuted, t: 14, d: 14.2) == [closed(10, 13)])
     #expect(published.last?.state == .unmuted)
   }
 
@@ -109,9 +142,9 @@ struct MeetingMuteGateTests {
     let g = gate(published)
     read(g, .muted, t: 10, d: 10.1)
     read(g, .muted, t: 10.5, d: 10.6)
-    #expect(g.clock(s(11.9), 0) == nil, "1.4 s after the last reading: still counts")
+    #expect(g.clock(q(11.9), nil) == nil, "1.4 s after the last reading: still counts")
     let before = published.count
-    #expect(g.clock(s(12.1), 0) == [MeetingSilenceInterval(start: s(10), end: s(10.5))], "closed at last muted T")
+    #expect(g.clock(q(12.1), nil) == [closed(10, 10.5)], "closed at last muted T")
     #expect(published.count == before + 1)
     #expect(published.last?.state == .cannotSee)
     #expect(published.last?.trace == nil)
@@ -123,17 +156,26 @@ struct MeetingMuteGateTests {
     let g = gate(published)
     read(g, .muted, t: 10, d: 10.1)
     // No clock ran in between; the next reading arrives 3 s later and is muted again.
-    #expect(read(g, .muted, t: 13, d: 13.1) == [MeetingSilenceInterval(start: s(13), end: .max)])
+    #expect(read(g, .muted, t: 13, d: 13.1) == [open(13)])
   }
 
   @Test("a reading from an earlier call is ignored")
   func generationFence() throws {
     let published = Published()
     let g = gate(published)
-    _ = g.step(.bind(.zoomApp, generation: 2))(s(5), 0)
+    _ = g.step(.bind(.zoomApp, generation: 2))(q(5), nil)
     #expect(read(g, .muted, t: 10, d: 10.1, generation: 1) == nil)
     #expect(try #require(published.last?.trace).outcome == .ignored)
     #expect(published.last?.generation == 2)
+  }
+
+  @Test("a reading stamped for another recording never silences this one")
+  func otherRecordingIgnored() throws {
+    let published = Published()
+    let g = gate(published)
+    let stray = copy(.muted, t: s(10), e: s(10.05), m: s(10.1))
+    #expect(g.step(reading(stray, recording: UUID()))(q(10.2), nil) == nil)
+    #expect(try #require(published.last?.trace).outcome == .ignored)
   }
 
   @Test("audio already released when a mute is learned is counted as missed")
@@ -150,8 +192,8 @@ struct MeetingMuteGateTests {
     let published = Published()
     let g = gate(published)
     let before = published.count
-    #expect(g.clock(s(1), 0) == nil)
-    #expect(g.step(.advance)(s(2), 0) == nil)
+    #expect(g.clock(q(1), nil) == nil)
+    #expect(g.step(.advance)(q(2), nil) == nil)
     #expect(published.count == before)
   }
 
@@ -161,12 +203,12 @@ struct MeetingMuteGateTests {
     let a = gate(published)
     read(a, .muted, t: 10, d: 10.1)
     read(a, .muted, t: 10.5, d: 10.6)
-    #expect(a.step(.end)(s(10.8), 0) == [MeetingSilenceInterval(start: s(10), end: s(10.5))])
+    #expect(a.step(.end)(q(10.8), nil) == [closed(10, 10.5)])
     let b = gate(published)
     read(b, .muted, t: 10, d: 10.1)
     read(b, .muted, t: 10.5, d: 10.6)
     #expect(
-      b.step(.setEnabled(false, at: s(10.7)))(s(10.8), 0) == [MeetingSilenceInterval(start: s(10), end: s(10.5))])
+      b.step(.setEnabled(false, at: q(10.7)))(q(10.8), nil) == [closed(10, 10.5)])
     #expect(published.last?.state == .disabled)
   }
 
@@ -211,7 +253,7 @@ struct MeetingMuteGateTests {
     read(g, .muted, t: 10, d: 12)
     read(g, .muted, t: 12.5, d: 12.6)
     read(g, .unknown, t: 13, d: 13.1, generation: 9)
-    _ = g.step(.end)(s(13.2), 0)
+    _ = g.step(.end)(q(13.2), nil)
     let all = published.all.withLock { $0 }
     #expect(all.compactMap(\.trace).count == 3, "one trace per reading")
     let last = try #require(all.last)
@@ -229,11 +271,12 @@ struct MeetingMuteGateTests {
       "MeetingMuteGateTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let anchor = mach_absolute_time()
+    let id = UUID()
     let time = OSAllocatedUnfairLock(initialState: anchor)
     let pending = OSAllocatedUnfairLock<[(UInt64, @Sendable () -> Void)]>(initialState: [])
     let writer = MeetingTrackWriter(
       configuration: .init(
-        meetingID: UUID(), track: .microphone, folder: dir, anchorHostTime: anchor,
+        meetingID: id, track: .microphone, folder: dir, anchorHostTime: anchor,
         segmentSeconds: 60, bufferCapacity: 16_000 * 20, silenceHoldSeconds: 3),
       onSegmentFinalized: { _ in }, onFailure: { _ in }, onReleased: nil,
       now: { time.withLock { $0 } },
@@ -241,7 +284,7 @@ struct MeetingMuteGateTests {
     let published = Published()
     // The writer's real clock, so ticks are host ticks here.
     let g = MeetingMuteGate(
-      recording: UUID(), follower: MeetingMuteFollower(enabled: true),
+      recording: id, follower: MeetingMuteFollower(recording: id, enabled: true),
       publish: { snapshot in published.all.withLock { $0.append(snapshot) } })
     let at: @Sendable (Double) -> UInt64 = { seconds in
       anchor &+ AudioConvertNanosToHostTime(UInt64(seconds * 1_000_000_000))
@@ -252,15 +295,15 @@ struct MeetingMuteGateTests {
     // A muted reading copied at 0 s reaches the queue at 2 s: stale, never applied.
     writer.suspendQueueForTesting()
     writer.applySilenceStep(
-      g.step(.reading(copy(.muted, t: anchor, e: anchor, m: anchor))))
+      g.step(reading(copy(.muted, t: anchor, e: anchor, m: anchor), recording: id)))
     time.withLock { $0 = at(2) }
     writer.resumeQueueForTesting()
     await writer.queueBarrierForTesting()
     // A fresh muted reading at 2 s, then nothing: by 5.5 s it has expired.
     writer.applySilenceStep(
-      g.step(.reading(copy(.muted, t: at(2), e: at(2), m: at(2)))))
+      g.step(reading(copy(.muted, t: at(2), e: at(2), m: at(2)), recording: id)))
     writer.applySilenceStep(
-      g.step(.reading(copy(.muted, t: at(2.5), e: at(2.5), m: at(2.5)))))
+      g.step(reading(copy(.muted, t: at(2.5), e: at(2.5), m: at(2.5)), recording: id)))
     await writer.queueBarrierForTesting()
     writer.append([Float](repeating: 0.25, count: 32_000), hostTime: at(2))
     time.withLock { $0 = at(7.5) }

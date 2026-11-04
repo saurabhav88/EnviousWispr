@@ -1780,5 +1780,7 @@ struct MeetingLiveWordsTests {
 
 extension MeetingReleasedChunk {
   /// Metadata for a chunk a test offers directly (live words do not read it).
-  static let test = MeetingReleasedChunk(hostTime: 0, afterDrop: false, sourceBreak: false)
+  static let test = MeetingReleasedChunk(
+    acquired: MeetingAcquisitionTime(recording: UUID(), hostTicks: 0, provenance: .estimated),
+    afterDrop: false, sourceBreak: false)
 }

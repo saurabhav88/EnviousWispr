@@ -173,8 +173,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   private let onReleased: ReleasedHandler?
   private let now: @Sendable () -> UInt64
   private let scheduler: ReleaseScheduler
-  /// C for the follower: the end host time of microphone audio released for good.
-  private let released = OSAllocatedUnfairLock(initialState: UInt64(0))
+  /// C for the follower: the end of microphone audio released for good; nil before the first.
+  private let releasedWatermark = OSAllocatedUnfairLock<MeetingAcquisitionTime?>(initialState: nil)
 
   // Queue-confined state.
   private var scratchSamples: [Float] = []
@@ -230,7 +230,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     self.silence = (configuration.track == .microphone ? configuration.silenceHoldSeconds : nil)
       .map { hold in
       MeetingMicrophoneSilence(
-        holdSeconds: hold,
+        recording: configuration.meetingID, holdSeconds: hold,
         sampleCapacity: Int((hold + 2) * MeetingAudioFormat.sampleRate),
         chunkCapacity: configuration.maxPendingChunks)
     }
@@ -256,9 +256,9 @@ public final class MeetingTrackWriter: @unchecked Sendable {
 
   public var currentHealth: Health { health.withLock { $0 } }
 
-  /// The end host time of microphone audio the silence hold has released for good (the plan's
-  /// C): an interval update can no longer change audio before it. 0 before the first release.
-  public var releasedHostTime: UInt64 { released.withLock { $0 } }
+  /// The end of microphone audio the silence hold has released for good (the plan's C): an
+  /// interval update can no longer change audio before it. Nil before the first release.
+  public var released: MeetingAcquisitionTime? { releasedWatermark.withLock { $0 } }
 
   /// Runs `step` on the writer's queue, in call order with appends, drains and the close. The
   /// queue's clock is read first (the plan's D), then C, and the intervals `step` returns apply
@@ -282,8 +282,13 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     applySilenceStep { _, _ in intervals }
   }
 
+  /// The clock adapter: the queue's clock read now, observed rather than acquired.
+  private func queueNow() -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: config.meetingID, hostTicks: now(), provenance: .observed)
+  }
+
   private func runSilenceStep(_ step: MeetingSilenceStep) {
-    let delivered = now()
+    let delivered = queueNow()
     guard let silence, !silenceClosed else { return }
     guard let intervals = step(delivered, silence.released) else { return }
     silence.setIntervals(intervals)
@@ -440,12 +445,17 @@ public final class MeetingTrackWriter: @unchecked Sendable {
         let end = i + 1 < scratchChunks.count ? scratchChunks[i + 1].offset : all.count
         guard end > chunk.offset else { continue }
         let frames = UnsafeBufferPointer(rebasing: all[chunk.offset..<end])
+        // The append adapter: the producers hand scalar host ticks without saying how they got
+        // them (the microphone estimates from arrival, `MeetingRecorder`; the call-sound tap's
+        // validity is not passed through yet), so nothing here may claim hardware acquisition.
         let info = MeetingReleasedChunk(
-          hostTime: chunk.hostTime, afterDrop: chunk.afterDrop, sourceBreak: chunk.sourceBreak)
+          acquired: MeetingAcquisitionTime(
+            recording: config.meetingID, hostTicks: chunk.hostTime, provenance: .estimated),
+          afterDrop: chunk.afterDrop, sourceBreak: chunk.sourceBreak)
         if let silence {
           // The hold copies the chunk; nothing keeps a pointer into the handoff buffer.
           silence.accept(
-            frames, hostTime: info.hostTime, afterDrop: info.afterDrop,
+            frames, acquired: info.acquired, afterDrop: info.afterDrop,
             sourceBreak: info.sourceBreak, emit: emitHeld)
         } else {
           writeReleased(frames, info)
@@ -461,10 +471,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// One released chunk. C is published first, so anything that sees this chunk downstream
   /// also sees a watermark that covers it.
   private func emitHeld(_ frames: UnsafeBufferPointer<Float>, _ info: MeetingReleasedChunk) {
-    if let silence {
-      let end = silence.released
-      released.withLock { $0 = max($0, end) }
-    }
+    if let end = silence?.released { publishReleased(end) }
     guard !failed else { return }
     writeReleased(frames, info)
   }
@@ -472,7 +479,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// Releases what is due now and schedules the next release; a no-op without a hold.
   private func releaseDueHeld() {
     guard let silence, !silenceClosed else { return }
-    silence.releaseDue(now: now(), emit: emitHeld)
+    silence.releaseDue(now: queueNow(), emit: emitHeld)
     recordSilenceHealth()
     scheduleRelease()
   }
@@ -487,7 +494,8 @@ public final class MeetingTrackWriter: @unchecked Sendable {
   /// One pending release at a time, for the oldest held chunk's due time. The block holds the
   /// writer weakly and does nothing once the writer closed.
   private func scheduleRelease() {
-    guard let silence, !silenceClosed, let due = silence.nextDue else { return }
+    // The scheduler adapter: Dispatch and the test scheduler take raw host ticks.
+    guard let silence, !silenceClosed, let due = silence.nextDue?.hostTicks else { return }
     if let pending = releaseScheduledAt, pending <= due { return }
     releaseScheduledAt = due
     let fire: @Sendable () -> Void = { [weak self] in
@@ -509,7 +517,7 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     let (end, silenced, overflows, late) = (
       silence.released, silence.silencedFrames, silence.intervalOverflows, silence.lateFrames
     )
-    released.withLock { $0 = max($0, end) }
+    if let end { publishReleased(end) }
     health.withLock {
       $0.silencedFrames = silenced
       $0.silenceIntervalOverflows = overflows
@@ -517,11 +525,18 @@ public final class MeetingTrackWriter: @unchecked Sendable {
     }
   }
 
+  /// C never moves back: a later end replaces it, an earlier one is ignored.
+  private func publishReleased(_ end: MeetingAcquisitionTime) {
+    releasedWatermark.withLock { current in
+      if current.map({ end.hostTicks > $0.hostTicks }) ?? true { current = end }
+    }
+  }
+
   /// Hands a chunk to `onReleased`, trims audio from before the anchor and writes the rest.
   private func writeReleased(_ chunk: UnsafeBufferPointer<Float>, _ info: MeetingReleasedChunk) {
     onReleased?(chunk, info)
     var frames = chunk
-    var arrival = Self.samples(from: config.anchorHostTime, to: info.hostTime)
+    var arrival = Self.samples(from: config.anchorHostTime, to: info.acquired.hostTicks)
     if arrival < 0 {
       let trim = min(frames.count, -arrival)
       frames = UnsafeBufferPointer(rebasing: frames[trim...])

@@ -90,6 +90,7 @@ struct MeetingMicrophoneSilenceTests {
   }
 
   private struct Rig {
+    let id: UUID
     let dir: URL
     let anchor: UInt64
     let writer: MeetingTrackWriter
@@ -103,17 +104,18 @@ struct MeetingMicrophoneSilenceTests {
   ) throws -> Rig {
     let dir = try folder()
     let anchor = mach_absolute_time()
+    let id = UUID()
     let released = Released()
     let clock = manual ? Clock(anchor) : nil
     let writer = MeetingTrackWriter(
       configuration: .init(
-        meetingID: UUID(), track: track, folder: dir, anchorHostTime: anchor,
+        meetingID: id, track: track, folder: dir, anchorHostTime: anchor,
         segmentSeconds: segmentSeconds, bufferCapacity: bufferCapacity, silenceHoldSeconds: hold),
       onSegmentFinalized: { _ in }, onFailure: { _ in },
       onReleased: { frames, info in
         let copy = Array(frames)
-        let seen = released.writer.withLock { $0.writer?.releasedHostTime } ?? 0
-        let chunkEnd = info.hostTime &+ MeetingMicrophoneSilence.ticks(forSamples: copy.count)
+        let seen = released.writer.withLock { $0.writer?.released?.hostTicks } ?? 0
+        let chunkEnd = info.acquired.hostTicks &+ MeetingMicrophoneSilence.ticks(forSamples: copy.count)
         released.watermarks.withLock { $0.append((seen, chunkEnd)) }
         let total = released.chunks.withLock { list -> Int in
           list.append((info, copy))
@@ -128,7 +130,7 @@ struct MeetingMicrophoneSilenceTests {
         .manual { due, run in c.pending.withLock { $0.append((due, run)) } }
       } ?? .live)
     released.writer.withLock { $0.writer = writer }
-    return Rig(dir: dir, anchor: anchor, writer: writer, released: released, clock: clock)
+    return Rig(id: id, dir: dir, anchor: anchor, writer: writer, released: released, clock: clock)
   }
 
   /// `seconds` of the constant signal in `chunk`-sample appends from `start` seconds after the
@@ -145,8 +147,27 @@ struct MeetingMicrophoneSilenceTests {
     }
   }
 
+  /// This rig's recording at `ticks`; the writer's append adapter stamps audio estimated.
+  private func t(_ rig: Rig, _ ticks: UInt64) -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: rig.id, hostTicks: ticks, provenance: .estimated)
+  }
+
+  /// A stretch in host ticks; a nil end is open.
+  private func span(_ rig: Rig, _ start: UInt64, _ end: UInt64?) -> MeetingSilenceInterval {
+    MeetingSilenceInterval(start: t(rig, start), end: end.map { t(rig, $0) })
+  }
+
+  /// C in host ticks; 0 before the first release.
+  private func releasedTicks(_ rig: Rig) -> UInt64 { rig.writer.released?.hostTicks ?? 0 }
+
+  /// The recording of the tests that drive a bare hold.
+  static let lone = UUID()
+  private func lone(_ ticks: UInt64) -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: Self.lone, hostTicks: ticks, provenance: .estimated)
+  }
+
   private func interval(_ rig: Rig, _ start: Double, _ end: Double) -> MeetingSilenceInterval {
-    MeetingSilenceInterval(start: rig.anchor &+ ticks(start), end: rig.anchor &+ ticks(end))
+    span(rig, rig.anchor &+ ticks(start), rig.anchor &+ ticks(end))
   }
 
   /// Indexes of zero samples, as half-open runs.
@@ -173,7 +194,7 @@ struct MeetingMicrophoneSilenceTests {
     let s = { (n: Int) in base &+ MeetingMicrophoneSilence.ticks(forSamples: n) }
     func range(_ a: UInt64, _ b: UInt64, count: Int = 100) -> Range<Int> {
       MeetingMicrophoneSilence.silencedRange(
-        of: MeetingSilenceInterval(start: a, end: b), chunkHostTime: base, count: count)
+        of: MeetingMicrophoneSilence.TickSpan(start: a, end: b), chunkHostTime: base, count: count)
     }
     #expect(range(s(10), s(20)) == 10..<20)
     #expect(range(s(10) + 1, s(20)) == 11..<20, "a start just after sample 10 skips it")
@@ -216,7 +237,7 @@ struct MeetingMicrophoneSilenceTests {
     #expect(r.released.samples.allSatisfy { $0 == Self.level })
     #expect(await r.writer.finish() == .finalized)
     #expect(zeroRuns(try readBack(r.dir).samples) == [])
-    #expect(r.writer.releasedHostTime == 0)
+    #expect(releasedTicks(r) == 0)
   }
 
   // MARK: - The hold
@@ -231,7 +252,7 @@ struct MeetingMicrophoneSilenceTests {
     clock.fireDue()
     await r.writer.queueBarrierForTesting()
     #expect(r.released.all.isEmpty, "nothing is 3 s old yet")
-    #expect(r.writer.releasedHostTime == 0)
+    #expect(releasedTicks(r) == 0)
     // The mute is learned late, while its audio is still held.
     r.writer.setSilencedIntervals([interval(r, 0.2, 0.4)])
     clock.set(r.anchor &+ ticks(3.55))
@@ -240,7 +261,7 @@ struct MeetingMicrophoneSilenceTests {
     // Chunks ending by 0.55 s are due at 3.55 s: the first five (0 to 0.5 s).
     #expect(r.released.samples.count == 8_000)
     #expect(zeroRuns(r.released.samples) == [3_200..<6_400])
-    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(samples: 8_000))
+    #expect(releasedTicks(r) == r.anchor &+ ticks(samples: 8_000))
     // Later chunks release on their own schedule, without another append.
     clock.set(r.anchor &+ ticks(4.1))
     clock.fireDue()
@@ -258,14 +279,14 @@ struct MeetingMicrophoneSilenceTests {
     await r.writer.queueBarrierForTesting()
     clock.fireDue()
     await r.writer.queueBarrierForTesting()
-    let c = r.writer.releasedHostTime
+    let c = releasedTicks(r)
     #expect(c == r.anchor &+ ticks(samples: 16_000), "audio up to 1 s is out")
     // W beyond the hold: the mute is learned for [0.5, 1.5) after [0.5, 1) was released.
     r.writer.setSilencedIntervals([interval(r, 0.5, 1.5)])
     #expect(await r.writer.finish() == .finalized)
     let back = try readBack(r.dir).samples
     #expect(zeroRuns(back) == [16_000..<24_000], "only the unreleased half is silenced")
-    #expect(r.writer.releasedHostTime >= c, "C never moves back")
+    #expect(releasedTicks(r) >= c, "C never moves back")
   }
 
   @Test("interval updates apply in call order, even while a drain is queued")
@@ -330,7 +351,7 @@ struct MeetingMicrophoneSilenceTests {
     // The pieces carry continuous host times: no gap, one segment.
     #expect(r.writer.currentHealth.gaps == 0)
     #expect(r.writer.currentHealth.segmentsFinalized == 1)
-    #expect(r.released.all.first?.0.hostTime == r.anchor)
+    #expect(r.released.all.first?.0.acquired.hostTicks == r.anchor)
   }
 
   // MARK: - Decision steps (#4248 plan §18)
@@ -343,12 +364,12 @@ struct MeetingMicrophoneSilenceTests {
     clock.set(r.anchor &+ ticks(4.0))
     clock.fireDue()
     await r.writer.queueBarrierForTesting()
-    let c = r.writer.releasedHostTime
+    let c = releasedTicks(r)
     let seen = OSAllocatedUnfairLock<(UInt64, UInt64)?>(initialState: nil)
     r.writer.suspendQueueForTesting()
     // Sent at 4 s; the queue runs it at 9 s.
     r.writer.applySilenceStep { now, released in
-      seen.withLock { $0 = (now, released) }
+      seen.withLock { $0 = (now.hostTicks, released?.hostTicks ?? 0) }
       return nil
     }
     clock.set(r.anchor &+ ticks(9.0))
@@ -369,7 +390,7 @@ struct MeetingMicrophoneSilenceTests {
     let staleness = ticks(1.5)
     r.writer.suspendQueueForTesting()
     r.writer.applySilenceStep { now, _ in
-      now - copied <= staleness ? [MeetingSilenceInterval(start: copied, end: .max)] : nil
+      now.hostTicks - copied <= staleness ? [self.span(r, copied, nil)] : nil
     }
     clock.set(r.anchor &+ ticks(2.0))
     r.writer.resumeQueueForTesting()
@@ -384,7 +405,7 @@ struct MeetingMicrophoneSilenceTests {
     let expiresAt = r.anchor &+ ticks(3.5)
     // Muted until the reading expires at 3.5 s; after that the open stretch ends at 0.5 s.
     r.writer.setSilenceClock { now, _ in
-      [MeetingSilenceInterval(start: r.anchor, end: now < expiresAt ? .max : r.anchor &+ ticks(0.5))]
+      [self.span(r, r.anchor, now.hostTicks < expiresAt ? nil : r.anchor &+ self.ticks(0.5))]
     }
     feed(r, seconds: 1)
     clock.set(r.anchor &+ ticks(4.0))
@@ -399,7 +420,7 @@ struct MeetingMicrophoneSilenceTests {
   @Test("the clock step runs before forced releases when storage fills")
   func clockRunsBeforeForcedRelease() async throws {
     let r = try rig()
-    r.writer.setSilenceClock { _, _ in [MeetingSilenceInterval(start: r.anchor, end: r.anchor &+ ticks(1))] }
+    r.writer.setSilenceClock { _, _ in [self.span(r, r.anchor, r.anchor &+ self.ticks(1))] }
     // 7 s in one append: the first 2 s leave as forced releases inside the append.
     r.writer.append(
       [Float](repeating: Self.level, count: 7 * Self.rate), hostTime: r.anchor &+ ticks(0.0))
@@ -499,18 +520,18 @@ struct MeetingMicrophoneSilenceTests {
     await r.writer.queueBarrierForTesting()
     clock.fireDue()
     await r.writer.queueBarrierForTesting()
-    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(2.5))
+    #expect(releasedTicks(r) == r.anchor &+ ticks(2.5))
     // Advance C to 3.0 by releasing the second chunk, holding a later one so the mute stays.
     feed(r, from: 3.0, seconds: 0.5, chunk: 8_000)
     clock.set(r.anchor &+ ticks(6.05))
     clock.fireDue()
     await r.writer.queueBarrierForTesting()
-    #expect(r.writer.releasedHostTime == r.anchor &+ ticks(3.0))
+    #expect(releasedTicks(r) == r.anchor &+ ticks(3.0))
     // A late chunk stamped [1.5, 2.5): its part before C - 1 s = 2.0 is late and stays live; the
     // rest falls under the frozen mute.
     r.writer.append([Float](repeating: Self.level, count: 16_000), hostTime: r.anchor &+ ticks(1.5))
     #expect(await r.writer.finish() == .finalized)
-    let lateChunk = try #require(r.released.all.last { $0.0.hostTime == r.anchor &+ ticks(1.5) })
+    let lateChunk = try #require(r.released.all.last { $0.0.acquired.hostTicks == r.anchor &+ ticks(1.5) })
     #expect(zeroRuns(lateChunk.1) == [8_000..<16_000], "before 2.0 live; 2.0 to 2.5 frozen-muted")
     #expect(r.writer.currentHealth.silenceLateFrames == 8_000)
   }
@@ -522,26 +543,26 @@ struct MeetingMicrophoneSilenceTests {
     // every gap, filled their 64 places within one late-arrival second and left the rest out
     // (interval_overflows=225), so late audio in a long mute would have been kept live.
     let silence = MeetingMicrophoneSilence(
-      holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 1_000)
+      recording: Self.lone, holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 1_000)
     let base: UInt64 = 10_000_000_000
-    silence.setIntervals([MeetingSilenceInterval(start: base, end: .max)])
+    silence.setIntervals([MeetingSilenceInterval(start: lone(base), end: nil)])
     let chunk = [Float](repeating: 1, count: 160)
     let step = MeetingMicrophoneSilence.ticks(forSamples: 160) &+ 5
     for i in 0..<300 {
       let at = base &+ UInt64(i) &* step
       chunk.withUnsafeBufferPointer {
-        silence.accept($0, hostTime: at, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+        silence.accept($0, acquired: lone(at), afterDrop: false, sourceBreak: false, emit: { _, _ in })
       }
       // Released one chunk at a time, as the hold comes due.
-      silence.releaseDue(now: at &+ silence.holdTicks, emit: { _, _ in })
+      silence.releaseDue(now: lone(at &+ silence.holdTicks), emit: { _, _ in })
     }
     silence.releaseAll(emit: { _, _ in })
     #expect(silence.intervalOverflows == 0, "the frozen mute never fills its storage")
     // Late audio stamped 100 ms behind C, inside the long mute, is silenced.
     var late = [Float](repeating: 1, count: 160)
-    let lateAt = silence.released &- MeetingMicrophoneSilence.ticks(nanos: 100_000_000)
+    let lateAt = (silence.released?.hostTicks ?? 0) &- MeetingMicrophoneSilence.ticks(nanos: 100_000_000)
     late.withUnsafeBufferPointer {
-      silence.accept($0, hostTime: lateAt, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+      silence.accept($0, acquired: lone(lateAt), afterDrop: false, sourceBreak: false, emit: { _, _ in })
     }
     silence.releaseAll(emit: { frames, _ in late = Array(frames) })
     #expect(late.allSatisfy { $0 == 0 }, "late audio inside the frozen mute is silenced")
@@ -550,11 +571,11 @@ struct MeetingMicrophoneSilenceTests {
   @Test("a sample straddling the late cutoff counts as late, by the silencing boundary rule")
   func lateBoundaryRule() {
     let silence = MeetingMicrophoneSilence(
-      holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 64)
+      recording: Self.lone, holdSeconds: 3, sampleCapacity: 160_000, chunkCapacity: 64)
     let base: UInt64 = 10_000_000_000
     let two = [Float](repeating: 1, count: 32_000)
     two.withUnsafeBufferPointer {
-      silence.accept($0, hostTime: base, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+      silence.accept($0, acquired: lone(base), afterDrop: false, sourceBreak: false, emit: { _, _ in })
     }
     silence.releaseAll(emit: { _, _ in })
     // C = base + 2 s, so the cutoff is base + 1 s. Sample 0 of the next chunk sits one tick
@@ -562,7 +583,7 @@ struct MeetingMicrophoneSilenceTests {
     let cutoff = base &+ MeetingMicrophoneSilence.ticks(nanos: 1_000_000_000)
     [Float](repeating: 1, count: 1_600).withUnsafeBufferPointer {
       silence.accept(
-        $0, hostTime: cutoff - 1, afterDrop: false, sourceBreak: false, emit: { _, _ in })
+        $0, acquired: lone(cutoff - 1), afterDrop: false, sourceBreak: false, emit: { _, _ in })
     }
     #expect(silence.lateFrames == 1)
   }
@@ -584,6 +605,17 @@ struct MeetingMicrophoneSilenceTests {
     #expect(marks.allSatisfy { $0.seen >= $0.chunkEnd })
   }
 
+  @Test("silence decided for another recording never reaches this recording's audio")
+  func otherRecordingIntervalsIgnored() async throws {
+    let r = try rig()
+    let stranger = UUID()
+    let at = { MeetingAcquisitionTime(recording: stranger, hostTicks: $0, provenance: .estimated) }
+    r.writer.setSilencedIntervals([MeetingSilenceInterval(start: at(r.anchor), end: nil)])
+    feed(r, seconds: 1)
+    #expect(await r.writer.finish() == .finalized)
+    #expect(zeroRuns(try readBack(r.dir).samples) == [])
+  }
+
   @Test("call sound is never held or silenced, even when given a hold and intervals")
   func callSoundUntouched() async throws {
     let r = try rig(track: .callSound)
@@ -592,7 +624,7 @@ struct MeetingMicrophoneSilenceTests {
     await r.writer.queueBarrierForTesting()
     #expect(r.released.samples.count == 16_000, "written at once, no hold")
     #expect(r.released.samples.allSatisfy { $0 == Self.level })
-    #expect(r.writer.releasedHostTime == 0)
+    #expect(releasedTicks(r) == 0)
     #expect(await r.writer.finish() == .finalized)
     #expect(zeroRuns(try readBack(r.dir).samples) == [])
   }
@@ -616,7 +648,7 @@ struct MeetingMicrophoneSilenceTests {
     let infos = r.released.all.map(\.0)
     #expect(infos.contains { $0.afterDrop }, "the chunk after the drop says so")
     #expect(infos.last?.sourceBreak == true)
-    #expect(infos.last?.hostTime == r.anchor &+ ticks(1.6), "never restamped at release")
+    #expect(infos.last?.acquired.hostTicks == r.anchor &+ ticks(1.6), "never restamped at release")
     let health = r.writer.currentHealth
     #expect(health.droppedFrames == 8_000)
     #expect(health.discontinuities == 1)

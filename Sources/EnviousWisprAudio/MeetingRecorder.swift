@@ -333,8 +333,8 @@ public final class MeetingRecorder {
     micWriter?.setSilenceClock(step)
   }
 
-  /// The end host time of microphone audio released for good (the plan's C); 0 before any.
-  public var microphoneReleasedHostTime: UInt64 { micWriter?.releasedHostTime ?? 0 }
+  /// The end of microphone audio released for good (the plan's C); nil before any.
+  public var microphoneReleased: MeetingAcquisitionTime? { micWriter?.released }
 
   /// The live mute state for the meter: true reads 0, false restores the device level.
   public func setMicrophoneMuted(_ muted: Bool) {
@@ -374,6 +374,7 @@ public final class MeetingRecorder {
     if config.captureCallSound {
       let writer = makeWriter(.callSound)
       let live = liveBox
+      let meetingID = config.meetingID
       let source = sources.makeCallSound(
         { samples, hostTime, startsNewRun in
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
@@ -381,7 +382,11 @@ public final class MeetingRecorder {
           if let observe = live.currentForCallSound() {
             observe(
               .callSound, samples,
-              MeetingReleasedChunk(hostTime: hostTime, afterDrop: false, sourceBreak: startsNewRun))
+              MeetingReleasedChunk(
+                // The tap's timestamp validity is not passed through yet: never hardware here.
+                acquired: MeetingAcquisitionTime(
+                  recording: meetingID, hostTicks: hostTime, provenance: .estimated),
+                afterDrop: false, sourceBreak: startsNewRun))
           }
         },
         { [weak self] reason in
