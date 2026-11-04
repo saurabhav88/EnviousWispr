@@ -132,6 +132,8 @@ package final class WisprBootstrapper {
   let aiAvailability: AIAvailabilityCoordinator
   let keychainManager: KeychainManager
   let llmDiscovery: LLMModelDiscoveryCoordinator
+  /// #4353 D6: the cloud model list (website, last good copy, bundled copy). Started at launch.
+  let cloudModelList: CloudModelListHolder
   /// #3438: the AI polish setup warnings as ONE slot (the `learnFromEdits` shape): which cloud
   /// keys are saved, and which warnings may show.
   let polishSetup: PolishSetupWiring
@@ -393,6 +395,8 @@ package final class WisprBootstrapper {
     let savedKeyPresence = SavedKeyPresence()
     let llmDiscovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychainManager, savedKeyPresence: savedKeyPresence)
+    // #4353 D6: reads the local copies now (a few milliseconds); the network waits for launch.
+    let cloudModelList = CloudModelListHolder.live()
 
     let transcriptStore = TranscriptStore()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
@@ -2893,6 +2897,7 @@ package final class WisprBootstrapper {
     self.aiAvailability = aiAvailability
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
+    self.cloudModelList = cloudModelList
     let polishSetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3158,6 +3163,8 @@ package final class WisprBootstrapper {
     // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
     // #4321: the summary engine's monitor watches its own.
     polishSetup.start()
+    // #4353 D6: the launch fetch of the cloud model list; returns at once.
+    cloudModelList.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
     // "recovering" pill. Strict limb, single-flight, one attempt per orphan.
     Task { await recoveryCoordinator.scanAndRecover() }
