@@ -58,6 +58,10 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
     var samples: [Float] = []
     /// Absolute index of `samples[0]`: everything before it was released by the core.
     var origin = 0
+    /// #4355, transcript sessions: every admitted sample's written position, at the same
+    /// absolute indices the core decodes by (`origin + i`). Pruned only as the core releases
+    /// audio, which happens after it has published (and so projected) what it committed.
+    var map = MeetingAudioFeedMap(sampleRate: 16_000)
     var ended = false
     var capped = false
     /// Held as the protocol rather than the concrete session so a test can
@@ -224,8 +228,14 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
       guard drop > 0 else { return }
       s.samples.removeFirst(drop)
       s.origin += drop
+      // The core never reads before `mark` again and has already published what it committed
+      // there, so no pending piece needs those positions (#4355).
+      s.map.prune(before: s.origin)
     }
   }
+
+  /// Written-position records kept (#4355; tests).
+  package var mapRecordCountForTests: Int { state.withLock { $0.map.recordCount } }
 
   /// Retained audio, in samples (tests and the long-run harness).
   package var retainedSampleCountForTests: Int { state.withLock { $0.samples.count } }
@@ -247,14 +257,25 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
     }
   #endif
 
-  /// #4355: the written positions are not yet used here. Mapping Universal's segment times onto
-  /// written audio is PR A chunk 7; until then this session hears the samples and its pieces
-  /// stay untimed.
+  /// A meeting chunk (#4355): admitted exactly like `feed(_:)`, and in the same lock step its
+  /// written slices become the map's record for those absolute samples. Refused input (ended,
+  /// or the ceiling reached) adds no timeline.
   package func feed(_ chunk: MeetingLiveAudioChunk) async {
-    await feed(chunk.samples)
+    await admit(chunk.samples, slices: chunk.slices)
   }
 
+  /// Samples with no written positions; in a transcript session they are unpositioned time.
   package func feed(_ newSamples: [Float]) async {
+    await admit(newSamples, slices: nil)
+  }
+
+  /// The written span of `[start, end)` seconds of this session's absolute input, or nil
+  /// (#4355). The core calls it synchronously when it publishes a committed segment.
+  nonisolated func projectSpan(start: Double, end: Double) -> MeetingAudioSpan? {
+    state.withLock { $0.map.project(startSeconds: start, endSeconds: end) }
+  }
+
+  private func admit(_ newSamples: [Float], slices: [MeetingLiveAudioSlice]?) async {
     let justCapped: Bool = state.withLock { s in
       guard !s.ended, !s.capped else { return false }
       guard s.samples.count + newSamples.count <= Self.maxRetainedSamples else {
@@ -266,6 +287,7 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
         return true
       }
       s.samples.append(contentsOf: newSamples)
+      if case .transcript = output { s.map.commit(frames: newSamples.count, slices: slices) }
       return false
     }
     // Stop the decode loop rather than letting it re-decode a frozen buffer
@@ -327,7 +349,7 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
       // than an assumption, and costs one nil check.
       let capStop = s.decodeStop
       let starting = s.attaching
-      let task = Task { [output, onTeardownStarted] in
+      let task = Task { [output, onTeardownStarted, state] in
         switch output {
         case .display(let continuation, let publisher):
           continuation.finish()
@@ -339,7 +361,10 @@ package final class TranscribeCppPreviewSession: LiveTranscriptSession, @uncheck
         await starting?.value  // the cancel must follow the start it undoes
         await live?.cancel()
         await capStop?.value
-        // Decoding has physically stopped: deliver what was accepted, then the one terminal.
+        // Decoding has physically stopped, so nothing more is committed or projected: every
+        // accepted piece was projected when the core published it (#4355). The positions go.
+        state.withLock { $0.map = MeetingAudioFeedMap(sampleRate: 16_000) }
+        // Deliver what was accepted, then the one terminal.
         if case .transcript(let queue) = output { await queue.finish() }
       }
       s.teardown = task

@@ -539,6 +539,79 @@ struct LiveWordsTranscriptSessionTests {
 
   private static func text(_ bytes: Int) -> String { String(repeating: "a", count: bytes) }
 
+  // MARK: - Written positions (#4355 chunk 7)
+
+  private static let recording = UUID()
+
+  private static func chunk(written start: Int, count: Int = 1_600, run: Int = 0)
+    -> MeetingLiveAudioChunk
+  {
+    MeetingLiveAudioChunk(
+      samples: [Float](repeating: 0.1, count: count),
+      slices: [
+        MeetingLiveAudioSlice(
+          offset: 0,
+          span: MeetingAudioSpan(
+            recording: recording, track: .callSound, run: run, startSample: start,
+            sampleCount: count)!)
+      ])
+  }
+
+  private static func span(_ start: Int, _ count: Int, run: Int = 0) -> MeetingAudioSpan? {
+    MeetingAudioSpan(
+      recording: recording, track: .callSound, run: run, startSample: start, sampleCount: count)
+  }
+
+  @Test("admitted chunks map the session's absolute input onto their written audio; holes, run changes and plain samples do not")
+  func admittedChunksMap() async {
+    let handle = Self.handle(Received())
+    await handle.feed(Self.chunk(written: 48_000))  // input 0..<1,600
+    await handle.feed(Self.chunk(written: 49_600))  // input 1,600..<3,200, contiguous
+    await handle.feed(Self.chunk(written: 60_000))  // input 3,200..<4,800, a written hole
+    await handle.feed([Float](repeating: 0.1, count: 1_600))  // input 4,800..<6,400, no position
+    await handle.feed(Self.chunk(written: 70_000, run: 1))  // input 6,400..<8,000
+    #expect(handle.projectSpan(start: 0.05, end: 0.15) == Self.span(48_800, 1_600))
+    #expect(handle.projectSpan(start: 0.15, end: 0.25) == nil, "across the written hole")
+    #expect(handle.projectSpan(start: 0.3, end: 0.35) == nil, "unpositioned input")
+    #expect(handle.projectSpan(start: 0.4, end: 0.5) == Self.span(70_000, 1_600, run: 1))
+    await handle.end()
+  }
+
+  @Test("releasing audio keeps absolute offsets: later ranges stay exact, released ones map to nothing")
+  func releaseKeepsAbsoluteOffsets() async {
+    let handle = Self.handle(Received())
+    for i in 0..<4 { await handle.feed(Self.chunk(written: 10_000 + i * 1_600)) }
+    handle.releaseAudio(before: 3_200)
+    #expect(handle.retainedSampleCountForTests == 3_200)
+    #expect(handle.projectSpan(start: 0, end: 0.1) == nil, "released")
+    #expect(handle.projectSpan(start: 0.2, end: 0.3) == Self.span(13_200, 1_600))
+    await handle.end()
+  }
+
+  @Test("teardown empties the positions, and input after the end never recreates them")
+  func teardownEmptiesPositions() async {
+    let handle = Self.handle(Received())
+    await handle.feed(Self.chunk(written: 0))
+    #expect(handle.projectSpan(start: 0, end: 0.1) == Self.span(0, 1_600), "control, before the end")
+    await handle.end()
+    #expect(handle.mapRecordCountForTests == 0, "emptied by the teardown")
+    await handle.feed(Self.chunk(written: 1_600))
+    #expect(handle.mapRecordCountForTests == 0, "fed after the end: nothing recorded")
+    #expect(handle.projectSpan(start: 0, end: 0.1) == nil)
+  }
+
+  @Test("input refused at the retained-audio ceiling adds no timeline")
+  func ceilingRefusalAddsNoTimeline() async {
+    let handle = Self.handle(Received())
+    await handle.feed(Self.chunk(written: 0))
+    let overCap = TranscribeCppPreviewSession.maxRetainedSamples
+    await handle.feed(Self.chunk(written: 1_600, count: overCap))  // past the ceiling: refused
+    #expect(handle.retainedSampleCountForTests == 1_600, "control: the ceiling refused it")
+    #expect(handle.mapRecordCountForTests == 1, "only the admitted chunk is timeline")
+    #expect(handle.projectSpan(start: 0.1, end: 0.2) == nil)
+    await handle.end()
+  }
+
   @Test("a slow consumer receives every finalized delta in order, coalesced only between barriers")
   func orderedCoalescedDelivery() async {
     let received = Received(holdFirst: true)
