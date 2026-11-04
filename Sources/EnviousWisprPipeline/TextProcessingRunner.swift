@@ -15,6 +15,19 @@ internal struct TextProcessingRunResult {
   var polishError: String? { polishNotice?.text }
   /// #3438: what this take's polish met, for a live take with a frozen setup only.
   var polishTakeOutcome: PolishTakeOutcome? = nil
+  /// #4353 D9: the cloud setup the polish step met, typed, for EVERY caller (Transcribe a File
+  /// runs with no take probe). Independent of the error surface policy and of the notice text.
+  var cloudSetupOutcome: CloudPolishSetupOutcome? = nil
+}
+
+/// #4353 D9: what a cloud polish step found about its own setup, with the provider and the
+/// model the step asked for (its entry snapshot). Machine meaning only; the words live with
+/// each surface.
+public enum CloudPolishSetupOutcome: Sendable, Equatable {
+  /// A cloud provider with no model chosen: nothing was asked, so it is a bypass.
+  case noModelChosen(provider: LLMProvider)
+  /// The provider answered that the chosen model does not exist: an attempt that failed.
+  case modelUnavailable(provider: LLMProvider, model: String)
 }
 
 /// #3438: the live take's AI polish setup, handed to one run. Recovery and file import pass
@@ -295,6 +308,7 @@ internal final class TextProcessingRunner {
   ) async throws -> TextProcessingRunResult {
     var context = initialContext
     var polishNotice: PolishNotice?
+    var cloudSetupOutcome: CloudPolishSetupOutcome?
     // #3438: set once, at the moment the polish step's result is classified; never rewritten.
     var polishTakeOutcome: PolishTakeOutcome?
     // `observedAt` is where the evidence was observed (`observationStamp`), never when the
@@ -460,6 +474,12 @@ internal final class TextProcessingRunner {
         var cloudNoModelProvider: LLMProvider?
         if let llmError = error as? LLMError, case .cloudModelNotSelected(let provider) = llmError {
           cloudNoModelProvider = provider
+          cloudSetupOutcome = .noModelChosen(provider: provider)
+        } else if let provider = polishProviderAtStart, LLMPolishStep.cloudProviders.contains(provider),
+          let attempted = polishModelAtStart, !attempted.isEmpty,
+          PolishFailureReason.from(error) == .modelUnavailable
+        {
+          cloudSetupOutcome = .modelUnavailable(provider: provider, model: attempted)
         }
         let reason: String
         if isAppleIntelligencePolishTimeout {
@@ -735,7 +755,8 @@ internal final class TextProcessingRunner {
       Task { await logger.log(timingLine, level: .info, category: "Pipeline") }
     }
     return TextProcessingRunResult(
-      context: context, polishNotice: polishNotice, polishTakeOutcome: polishTakeOutcome)
+      context: context, polishNotice: polishNotice, polishTakeOutcome: polishTakeOutcome,
+      cloudSetupOutcome: cloudSetupOutcome)
   }
 
   /// #3438: where the step observed what `evidence` (or a polished `result`) says, from the

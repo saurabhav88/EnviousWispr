@@ -1586,3 +1586,104 @@ struct FileImportCoordinatorTests {
     #expect(count.value == 1, "a refused Clean it again released a claim it never took")
   }
 }
+
+// MARK: - #4353 D9: the cloud setup notice follows the document on screen
+
+extension FileImportCoordinatorTests {
+  /// Three capitalized sentences of 150 words each: over the local 200-word ceiling together,
+  /// so the document is cut into one piece per sentence. Literal, so the expected words do not come
+  /// from the splitter under test.
+  private static let cloudSentences = ["alpha", "bravo", "charlie"].map { word in
+    ([word.capitalized] + Array(repeating: word, count: 148) + ["\(word)."]).joined(separator: " ")
+  }
+  private static let goneModel = CloudPolishSetupOutcome.modelUnavailable(
+    provider: .openAI, model: "gpt-x")
+
+  /// A processor that refuses the "Bravo" piece with the gone model while `refuse` is set, and
+  /// cleans every other piece. The cleaned text is the piece itself, so every word is checkable.
+  /// With a `gate`, the "Bravo" piece is held inside the processor until the gate opens.
+  private func cloudCoordinator(
+    refuse: @escaping @MainActor () -> Bool, gate: PartGate? = nil
+  ) -> FileImportCoordinator {
+    makeCoordinator(
+      lease: EngineLease(),
+      transcribe: { _ in Self.cloudSentences.joined(separator: " ") },
+      processPart: { piece in
+        if let gate, piece.hasPrefix("Bravo") { await gate.wait() }
+        guard refuse(), piece.hasPrefix("Bravo") else { return Self.outcome(piece) }
+        return FileImportRunner.PartOutcome(
+          text: piece, polishedText: nil, cloudSetup: Self.goneModel)
+      })
+  }
+
+  private func startAndFinish(_ coordinator: FileImportCoordinator) async throws {
+    coordinator.choose(url: Self.anyURL)
+    try #require(await settleUntil { if case .ready = coordinator.state { return true }; return false })
+    coordinator.start()
+    try #require(await settleUntil { coordinator.state == .finished })
+  }
+
+  @Test("#4353 a gone model on one piece: one notice, every word of every piece still on screen")
+  func cloudNoticeFromTheRealAppend() async throws {
+    let coordinator = cloudCoordinator(refuse: { true })
+    try await startAndFinish(coordinator)
+    #expect(coordinator.parts.map(\.text) == Self.cloudSentences)
+    #expect(coordinator.parts.map(\.cloudSetup) == [nil, Self.goneModel, nil])
+    #expect(coordinator.parts.map(\.isUnpolished) == [false, true, false])
+    #expect(coordinator.cloudSetupNotice == Self.goneModel)
+  }
+
+  @Test("#4353 the notice clears on a working Clean it again, on Start over and on a new file")
+  func cloudNoticeLifecycle() async throws {
+    var refuse = true
+    let coordinator = cloudCoordinator(refuse: { refuse })
+    try await startAndFinish(coordinator)
+    #expect(coordinator.cloudSetupNotice == Self.goneModel)
+
+    refuse = false
+    coordinator.rePolish()
+    try #require(await settleUntil {
+      coordinator.state == .finished && coordinator.parts.count == Self.cloudSentences.count
+        && coordinator.parts.allSatisfy { $0.isUnpolished == false }
+    })
+    #expect(coordinator.cloudSetupNotice == nil, "a working run kept the old notice")
+    #expect(coordinator.parts.map(\.text) == Self.cloudSentences)
+
+    refuse = true
+    coordinator.rePolish()
+    try #require(await settleUntil {
+      coordinator.state == .finished && coordinator.cloudSetupNotice == Self.goneModel
+    })
+    try #require(await settleUntil { coordinator.isEngineHeld == false })
+    coordinator.startOver()
+    #expect(coordinator.cloudSetupNotice == nil, "Start over kept the old notice")
+
+    try await startAndFinish(coordinator)
+    #expect(coordinator.cloudSetupNotice == Self.goneModel)
+    try #require(await settleUntil { coordinator.isEngineHeld == false })
+    coordinator.choose(url: Self.anyURL)
+    #expect(coordinator.cloudSetupNotice == nil, "a new file kept the old notice")
+  }
+
+  @Test("#4353 a gone-model piece from a stopped run cannot bring the notice back")
+  func staleCloudOutcomeCannotRestoreTheNotice() async throws {
+    let gate = PartGate()
+    let coordinator = cloudCoordinator(refuse: { true }, gate: gate)
+    coordinator.choose(url: Self.anyURL)
+    try #require(await settleUntil { if case .ready = coordinator.state { return true }; return false })
+    coordinator.start()
+    try #require(await settleUntil { await gate.entered == 1 })
+
+    coordinator.stop()
+    await gate.releaseAll()
+    // Every held and later piece passes the gate at once; the run is over when it hands the
+    // engine back, and no piece of it may have landed.
+    try #require(await settleUntil {
+      await gate.releaseAll()
+      return coordinator.isEngineHeld == false
+    })
+    #expect(coordinator.parts.map(\.text) == [Self.cloudSentences[0]], "stop keeps the finished piece")
+    #expect(coordinator.parts.allSatisfy { $0.cloudSetup == nil })
+    #expect(coordinator.cloudSetupNotice == nil, "a stopped run's piece raised the notice")
+  }
+}

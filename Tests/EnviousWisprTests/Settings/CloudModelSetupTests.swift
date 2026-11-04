@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
 import Foundation
 import Observation
 import Testing
@@ -313,5 +314,36 @@ struct CloudModelSetupTests {
     #expect(navigation.pendingModelMenu == second, "a stale consume must not drop a newer ask")
     navigation.consumeModelMenu(second)
     #expect(navigation.pendingModelMenu == nil)
+  }
+}
+
+// MARK: - Transcribe a File's one document notice (#4353 D9)
+
+@MainActor
+@Suite("Transcribe a File cloud setup notice (#4353)", .tags(.productOutcome))
+struct FileImportCloudSetupNoticeTests {
+  private func part(_ id: Int, _ setup: CloudPolishSetupOutcome?) -> FileImportCoordinator.Part {
+    FileImportCoordinator.Part(id: id, text: "words \(id)", isUnpolished: false, cloudSetup: setup)
+  }
+
+  @Test("one notice per document: a gone model first, then no model, else none")
+  func aggregation() {
+    let gone = CloudPolishSetupOutcome.modelUnavailable(provider: .openAI, model: "gpt-x")
+    let none = CloudPolishSetupOutcome.noModelChosen(provider: .openAI)
+    #expect(FileImportCoordinator.cloudSetupNotice(for: [part(0, nil), part(1, nil)]) == nil)
+    #expect(FileImportCoordinator.cloudSetupNotice(for: [part(0, none), part(1, none)]) == none)
+    #expect(
+      FileImportCoordinator.cloudSetupNotice(for: [part(0, none), part(1, gone), part(2, nil)])
+        == gone)
+  }
+
+  @Test("the notice names the provider or the model the run used")
+  func sentence() {
+    #expect(
+      TranscribeFileView.cloudSetupSentence(.noModelChosen(provider: .claude))
+        == "Choose a model for Claude.")
+    #expect(
+      TranscribeFileView.cloudSetupSentence(.modelUnavailable(provider: .openAI, model: "gpt-x"))
+        == "gpt-x no longer works. Select a new cloud model.")
   }
 }

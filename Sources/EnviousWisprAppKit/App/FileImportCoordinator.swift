@@ -285,6 +285,23 @@ final class FileImportCoordinator {
     /// The raw text that followed this piece inside its turn (a long turn cut into several
     /// pieces), so the turn is rebuilt without an invented separator. "" otherwise.
     var trailingGap: String = ""
+    /// #4353 D9: the cloud setup this part's polish met, with the model it asked for.
+    var cloudSetup: CloudPolishSetupOutcome? = nil
+  }
+
+  /// #4353 D9: the ONE cloud setup notice for the document on screen, from its own parts, so
+  /// it lives and dies with them (a new file, Start over and Clean it again clear the parts;
+  /// a late part from an older run never lands, `append` refuses it). A model the provider
+  /// refused is named first, in part order, because it is the one the person must replace;
+  /// otherwise the first part that found no model chosen. Never rewrites any part's words.
+  var cloudSetupNotice: CloudPolishSetupOutcome? { Self.cloudSetupNotice(for: parts) }
+
+  static func cloudSetupNotice(for parts: [Part]) -> CloudPolishSetupOutcome? {
+    let outcomes = parts.compactMap(\.cloudSetup)
+    return outcomes.first {
+      if case .modelUnavailable = $0 { return true }
+      return false
+    } ?? outcomes.first
   }
 
   private(set) var state: State = .idle {
@@ -3024,7 +3041,8 @@ final class FileImportCoordinator {
           wasPolished: outcome.polishedText != nil,
           polishWasAttempted: outcome.wasPolishAttempted,
           turnID: index < turnIDs.count ? turnIDs[index] : nil,
-          trailingGap: index < gaps.count ? gaps[index] : ""))
+          trailingGap: index < gaps.count ? gaps[index] : "",
+          cloudSetup: outcome.cloudSetup))
       nextIndex += 1
       state = .polishing(done: nextIndex, total: pieces.count)
       return true

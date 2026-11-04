@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
 import UniformTypeIdentifiers
@@ -27,6 +28,8 @@ import UniformTypeIdentifiers
 /// after a run it is about the words that were kept.
 struct TranscribeFileView: View {
   @Environment(FileImportCoordinator.self) private var coordinator
+  /// #4353 D9: carries "open the import's model menu" to the Polish step's card.
+  @Environment(NavigationCoordinator.self) private var navigation: NavigationCoordinator?
   @Environment(SettingsManager.self) private var settings
 
   // #2772 chunk 3: the same coordinators the AI Polish page reads. The Polish step now
@@ -1662,6 +1665,15 @@ struct TranscribeFileView: View {
 
   // MARK: - 6. Done
 
+  /// #4353 D9: the document notice's words, from the reviewed chunk 3 copy, naming the
+  /// provider and model the run used (frozen in the part outcome), never the live selection.
+  static func cloudSetupSentence(_ setup: CloudPolishSetupOutcome) -> String {
+    switch setup {
+    case .noModelChosen(let provider): return PolishSetupSurfaceCopy.chooseModelTitle(provider)
+    case .modelUnavailable(_, let model): return PolishSetupSurfaceCopy.modelNoLongerWorksNotice(model)
+    }
+  }
+
   /// Everything above the document on Done: heading, notices, the header card and the view
   /// switch. Fixed on screen; `doneLayout` puts the document's own `ScrollView` under it.
   @ViewBuilder
@@ -1690,6 +1702,23 @@ struct TranscribeFileView: View {
     // would alarm the first user and under-warn the second. Found by Codex.
     if let notice = coordinator.historySaveNotice {
       InsetNotice(verbatim: notice, systemImage: "exclamationmark.triangle", tint: .orange)
+    }
+    // #4353 D9: one notice for the whole document when its cloud polish had no model, or the
+    // chosen model no longer works. It sits above both presentations (speaker turns and plain
+    // text). The button goes back to the Polish step with the import's model menu open; it
+    // changes no setting and runs nothing until the person picks and starts again.
+    if let setup = coordinator.cloudSetupNotice {
+      HStack(alignment: .firstTextBaseline, spacing: 10) {
+        InsetNotice(
+          verbatim: Self.cloudSetupSentence(setup), systemImage: "exclamationmark.triangle",
+          tint: .orange)
+        Button(PolishSetupSurfaceCopy.selectNewCloudModel) {
+          navigation?.requestModelMenu(on: .fileImport)
+          coordinator.choosePolisherAgain()
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.stAccent)
+      }
     }
     // Background speaker work outlives the visible Working step (#2811 §3 Design correction)
     // and Done has no other Stop, so this one line carries its own. ONE line, saying what is
