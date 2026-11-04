@@ -41,7 +41,8 @@ import Testing
       duration: Double = 1_800, speakers: Int = 3, processing: Double = 90, audio: Double = 1_800,
       echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
       engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil,
-      muteFollow: MuteFollowSummary? = nil, provenance: MeetingEndedTelemetry.Provenance? = nil
+      muteFollow: MuteFollowSummary? = nil, provenance: MeetingEndedTelemetry.Provenance? = nil,
+      echoSummary: MeetingEchoSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
@@ -49,7 +50,90 @@ import Testing
         processingSeconds: processing,
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
         summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
-        speakerNaming: speakerNaming, muteFollow: muteFollow, provenance: provenance)
+        speakerNaming: speakerNaming, muteFollow: muteFollow, provenance: provenance,
+        echo: echoSummary)
+    }
+
+    private static let echoKeys: Set<String> = [
+      "aec_eligible_ms", "aec_passthrough_ms", "aec_init_outcome", "aec_reset_count",
+      "aec_reset_reason",
+    ]
+
+    @Test(
+      "#4355: an echo summary adds whole-millisecond integers, a reset count and two closed strings"
+    )
+    func echoFields() throws {
+      // 16,000 samples = 1 s; 24,008 samples = 1,500.5 ms -> 1,500 (whole ms, rounded down once).
+      let summary = MeetingEchoSummary(
+        eligibleSamples: 960_008, passthroughSamples: 24_008, initOutcome: .ok, resetCount: 3,
+        resetCauses: [.callRebuild: 2, .micRun: 1])
+      let row = try #require(capture(event(echoSummary: summary)))
+      #expect(row.intProps["aec_eligible_ms"] == 60_000)
+      #expect(row.intProps["aec_passthrough_ms"] == 1_500)
+      #expect(row.intProps["aec_reset_count"] == 3)
+      #expect(row.stringProps["aec_init_outcome"] == "ok")
+      #expect(row.stringProps["aec_reset_reason"] == "multiple")
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(Self.echoKeys))
+    }
+
+    @Test("#4355: one cause names itself, none says none; no reference is a known zero")
+    func echoReasonAndNoReference() throws {
+      let one = MeetingEchoSummary(
+        eligibleSamples: 16_000, passthroughSamples: 16_000, initOutcome: .failed, resetCount: 1,
+        resetCauses: [.callLost: 1])
+      let row = try #require(capture(event(echoSummary: one)))
+      #expect(row.stringProps["aec_reset_reason"] == "call_lost")
+      #expect(row.stringProps["aec_init_outcome"] == "failed")
+      let mic = try #require(capture(event(echoSummary: .noReference)))
+      #expect(mic.intProps["aec_eligible_ms"] == 0)
+      #expect(mic.intProps["aec_passthrough_ms"] == 0)
+      #expect(mic.intProps["aec_reset_count"] == 0)
+      #expect(mic.stringProps["aec_reset_reason"] == "none")
+      #expect(mic.stringProps["aec_init_outcome"] == "no_reference")
+    }
+
+    @Test("#4355: no summary sends no echo key; an unknown start sends the counts without it")
+    func echoOmitted() throws {
+      let none = try #require(capture(event()))
+      let noneKeys = Set(none.stringProps.keys).union(none.intProps.keys)
+      #expect(noneKeys.isDisjoint(with: Self.echoKeys))
+      let unknownStart = MeetingEchoSummary(
+        eligibleSamples: 0, passthroughSamples: 0, initOutcome: nil, resetCount: 0, resetCauses: [:])
+      let row = try #require(capture(event(echoSummary: unknownStart)))
+      #expect(row.stringProps["aec_init_outcome"] == nil)
+      #expect(row.intProps["aec_eligible_ms"] == 0)
+    }
+
+    @Test("#4355: passthrough never exceeds eligible; every closed value is its spelling")
+    func echoBoundsAndVocabulary() {
+      let clamped = MeetingEchoSummary(
+        eligibleSamples: 100, passthroughSamples: 500, initOutcome: .ok, resetCount: -1,
+        resetCauses: [.wake: 0])
+      #expect(clamped.passthroughSamples == 100)
+      #expect(clamped.resetCount == 0)
+      #expect(clamped.resetCauses.isEmpty && clamped.resetReason == "none")
+      #expect(MeetingEchoSummary.milliseconds(samples: 15) == 0)
+      #expect(MeetingEchoSummary.milliseconds(samples: 16) == 1)
+      #expect(
+        MeetingEchoSummary.InitOutcome.allCases.map(\.rawValue) == ["ok", "failed", "no_reference"])
+      #expect(
+        MeetingEchoSummary.ResetCause.allCases.map(\.rawValue) == [
+          "mic_run", "mic_gap", "call_run", "call_rebuild", "call_lost", "rate_change", "wake",
+          "divergence", "reference_overflow", "passthrough", "native_failure",
+        ])
+    }
+
+    @Test("#4355: the Sentry breadcrumb carries exactly the aec keys, none without a summary")
+    func echoBreadcrumb() throws {
+      let summary = MeetingEchoSummary(
+        eligibleSamples: 32_000, passthroughSamples: 0, initOutcome: .ok, resetCount: 0,
+        resetCauses: [:])
+      let data = try #require(TelemetryService.meetingEchoBreadcrumbData(event(echoSummary: summary)))
+      #expect(Set(data.keys) == Self.echoKeys)
+      #expect(data["aec_eligible_ms"] as? Int == 2_000)
+      #expect(TelemetryService.meetingEchoBreadcrumbData(event()) == nil)
     }
 
     @Test("#4249: stop provenance adds four closed strings; Keep presses travel as a bucket",

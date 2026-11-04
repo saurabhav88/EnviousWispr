@@ -141,6 +141,10 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     public var foreignRenderChunks = 0
     public var resets = 0
     public var resetRequests: [MeetingEchoResetReason: Int] = [:]
+    /// #4355 telemetry: the causes of the resets that RAN, each counted once per reset.
+    public var resetCauses: [MeetingEchoSummary.ResetCause: Int] = [:]
+    /// Whether the native instance was created; nil until the worker first tried.
+    public var nativeCreated: Bool?
   }
 
   public static let frameSamples = Int(EW_AEC_FRAME_SAMPLES)
@@ -187,6 +191,8 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     var nextID: UInt64 = 0
     var generation: UInt64 = 0
     var resetRequested = false
+    /// Why the pending reset was asked for, handed to the worker with `resetRequested`.
+    var requestedCauses: Set<MeetingEchoSummary.ResetCause> = []
     /// Queued reference no longer continues into new reference (a drop or a call-sound rebuild).
     var referenceInvalid = false
     /// Microphone audio was refused since the last accepted interval.
@@ -307,6 +313,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
       if excess > 0 {
         s.counters.renderSamplesDropped += excess
         s.resetRequested = true
+        s.requestedCauses.insert(.referenceOverflow)
         s.referenceInvalid = true
       }
       s.renderInbox.append(chunk)
@@ -316,6 +323,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
         s.renderInboxSamples -= dropped.samples.count
         s.counters.renderSamplesDropped += dropped.samples.count
         s.resetRequested = true
+        s.requestedCauses.insert(.referenceOverflow)
         s.referenceInvalid = true
       }
       return true
@@ -328,6 +336,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     shared.withLock {
       $0.resetRequested = true
       $0.counters.resetRequests[reason, default: 0] += 1
+      $0.requestedCauses.insert(Self.cause(reason))
       switch reason {
       case .callSoundRebuilt, .callSoundLost, .sampleRateChanged, .wake:
         // Reference admitted before this point does not continue into what follows: drop it
@@ -340,6 +349,17 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
       }
     }
     scheduleDrain()
+  }
+
+  private static func cause(_ reason: MeetingEchoResetReason) -> MeetingEchoSummary.ResetCause {
+    switch reason {
+    case .microphoneReopened: return .micRun
+    case .callSoundRebuilt: return .callRebuild
+    case .callSoundLost: return .callLost
+    case .sampleRateChanged: return .rateChange
+    case .wake: return .wake
+    case .divergence: return .divergence
+    }
   }
 
   /// Settled intervals since the last call, in admission order. Results wait here until taken.
@@ -459,7 +479,10 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
   /// One drain: processes everything admitted, then returns. Runs only on the serial executor.
   private func drain() {
     shared.withLock { $0.drainScheduled = false }
-    worker.createIfNeeded()
+    if worker.createIfNeeded() {
+      let created = worker.backend != nil
+      shared.withLock { $0.counters.nativeCreated = created }
+    }
     while step() {}
     let release: Bool = shared.withLock { s in
       s.closed && s.pending.isEmpty && !s.workerReleased
@@ -475,22 +498,27 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
   private func step() -> Bool {
     let w = worker
     let snapshot = shared.withLock {
-      s -> (gen: UInt64, reset: Bool, dropReference: Bool, render: [RenderChunk], next: Interval?, closed: Bool) in
+      s -> (gen: UInt64, reset: Bool, causes: Set<MeetingEchoSummary.ResetCause>, dropReference: Bool, render: [RenderChunk], next: Interval?, closed: Bool) in
       let reset = s.resetRequested
       s.resetRequested = false
+      let causes = s.requestedCauses
+      s.requestedCauses.removeAll()
       let dropReference = s.referenceInvalid
       s.referenceInvalid = false
       let render = s.renderInbox
       s.renderInbox.removeAll()
       s.renderInboxSamples = 0
       let next = s.pending.first { $0.id >= w.feedID }
-      return (s.generation, reset, dropReference, render, next, s.closed)
+      return (s.generation, reset, causes, dropReference, render, next, s.closed)
     }
     if snapshot.gen != w.generation {
       w.restartEpoch(generation: snapshot.gen)
-      w.nativeResetNeeded = true
+      w.needReset(.passthrough)
     }
-    if snapshot.reset { w.nativeResetNeeded = true }
+    if snapshot.reset {
+      w.nativeResetNeeded = true
+      w.pendingCauses.formUnion(snapshot.causes)
+    }
     // Reference queued before a drop or a call-sound rebuild does not continue into what follows.
     if snapshot.dropReference { w.dropReference() }
     for chunk in snapshot.render {
@@ -506,7 +534,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
       // The microphone stream breaks here (a new producer run, or refused audio): finish the
       // frame so far on its own, then start AEC3 over.
       if w.micFill > 0 { processFrame() }
-      w.nativeResetNeeded = true
+      w.needReset(run != interval.run ? .micRun : .micGap)
     }
     w.micRun = interval.run
     if w.feedID != interval.id {
@@ -540,7 +568,6 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     var verdict: MeetingEchoSubstitution? = nil
     var out = [Float](repeating: 0, count: Self.frameSamples)
     var renderFed = 0
-    var resetCount = 0
     var captured = false
     if let backend = w.backend {
       if w.nativeResetNeeded {
@@ -548,7 +575,14 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
         w.resetTrust()
         // A partial render frame from before the reset never joins reference after it.
         w.renderFill = 0
-        resetCount = 1
+        // #4355 telemetry: published the moment the reset ran, before any later native call
+        // that could park, so a Stop that freezes meanwhile still sees it.
+        let ran = w.pendingCauses
+        w.pendingCauses.removeAll()
+        shared.withLock { s in
+          s.counters.resets += 1
+          for cause in ran { s.counters.resetCauses[cause, default: 0] += 1 }
+        }
         if !backend.reset() {
           w.backend = nil
           verdict = .nativeFailure
@@ -568,7 +602,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
         captured = ok
         if !ok {
           verdict = .nativeFailure
-          w.nativeResetNeeded = true
+          w.needReset(.nativeFailure)
         } else {
           w.framesSinceMetrics += 1
           if w.framesSinceMetrics >= Self.metricsEveryFrames {
@@ -589,11 +623,10 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     w.frameSpans.removeAll(keepingCapacity: true)
     w.micFill = 0
     let generation = w.generation
-    let (frameVerdict, cleaned, fed, resets, didCapture) = (verdict, out, renderFed, resetCount, captured)
+    let (frameVerdict, cleaned, fed, didCapture) = (verdict, out, renderFed, captured)
     let dropped = w.renderDropped
     w.renderDropped = 0
     shared.withLock { s in
-      s.counters.resets += resets
       s.counters.renderSamplesDropped += dropped
       s.counters.renderFrames += fed
       if didCapture { s.counters.capturedFrames += 1 }
@@ -626,6 +659,8 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
     private var created = false
     var generation: UInt64 = 0
     var nativeResetNeeded = false
+    /// Why the pending native reset is needed (telemetry), recorded when the reset runs.
+    var pendingCauses: Set<MeetingEchoSummary.ResetCause> = []
     // Microphone framing.
     var micFrame = [Float](repeating: 0, count: MeetingEchoCanceller.frameSamples)
     var micFill = 0
@@ -650,11 +685,18 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
 
     init(makeBackend: @escaping @Sendable () -> MeetingEchoBackend?) { self.makeBackend = makeBackend }
 
-    /// Creates the native instance on the worker executor, once.
-    func createIfNeeded() {
-      guard !created else { return }
+    /// Creates the native instance on the worker executor, once. True on the call that tried.
+    @discardableResult
+    func createIfNeeded() -> Bool {
+      guard !created else { return false }
       created = true
       backend = makeBackend()
+      return true
+    }
+
+    func needReset(_ cause: MeetingEchoSummary.ResetCause) {
+      nativeResetNeeded = true
+      pendingCauses.insert(cause)
     }
 
     func resetTrust() {
@@ -687,7 +729,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
         renderQueue.removeAll()
         renderQueueSamples = 0
         renderFill = 0
-        nativeResetNeeded = true
+        needReset(.callRun)
       }
       renderRun = run
       renderQueue.append((ticks, samples, 0))
@@ -698,7 +740,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
         renderQueueSamples -= head.samples.count - head.offset
         renderDropped += head.samples.count - head.offset
         renderFill = 0
-        nativeResetNeeded = true
+        needReset(.referenceOverflow)
       }
     }
 
@@ -730,7 +772,7 @@ public final class MeetingEchoCanceller: @unchecked Sendable {
             } else {
               failed = true
               resetTrust()
-              nativeResetNeeded = true
+              needReset(.nativeFailure)
             }
           }
         }

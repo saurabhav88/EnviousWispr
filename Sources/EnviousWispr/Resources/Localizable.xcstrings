@@ -8178,17 +8178,6 @@
         }
       }
     },
-    "Echo is hidden when the meeting ends." : {
-      "comment" : "History, a recording meeting: repeated call lines are hidden only in the final transcript.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Echo wird erst nach dem Meeting ausgeblendet."
-          }
-        }
-      }
-    },
     "Edit" : {
       "localizations" : {
         "de" : {

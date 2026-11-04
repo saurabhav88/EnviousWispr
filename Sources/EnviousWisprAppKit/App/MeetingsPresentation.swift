@@ -90,15 +90,16 @@ enum MeetingsPresentation {
           localized: "Some Live Preview text was skipped. The full transcript comes after the meeting.",
           comment: "History, a meeting: some audio did not reach the Live Preview."))
     }
-    if callSoundRecorded {
+    // #4355 PR B: echo is removed from the microphone while recording, so a recording meeting
+    // says nothing about it. A stopped meeting keeps its line PROVISIONALLY: the final
+    // transcript's text backstop still runs, but whether it still hides repeated call speech
+    // (rather than the user's own words, as one PR B live turn showed) is decided by the PR B
+    // acceptance check, which keeps or removes this line.
+    if callSoundRecorded, recordingEnded {
       lines.append(
-        recordingEnded
-          ? String(
-            localized: "Echo is hidden in the full transcript.",
-            comment: "History, a stopped meeting: repeated call lines are hidden only in the final transcript.")
-          : String(
-            localized: "Echo is hidden when the meeting ends.",
-            comment: "History, a recording meeting: repeated call lines are hidden only in the final transcript."))
+        String(
+          localized: "Echo is hidden in the full transcript.",
+          comment: "History, a stopped meeting: repeated call lines are hidden only in the final transcript."))
     }
     return lines
   }

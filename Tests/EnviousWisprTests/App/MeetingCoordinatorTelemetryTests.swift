@@ -282,6 +282,35 @@ struct MeetingCoordinatorTelemetryTests {
     #expect(harness.ended.map(\.callReportsOmitted) == [0, 0])
   }
 
+  @Test("#4355: the recording's echo summary reaches meeting.ended at stop; a Retry keeps it; recovery has none")
+  func echoSummaryAdoptedRetriedAndNotInvented() async throws {
+    let harness = try Harness()
+    harness.receiptError.withLock { $0 = CocoaError(.fileWriteOutOfSpace) }
+    await harness.coordinator.start(from: .menu)
+    let recorder = try #require(harness.recorders.last)
+    let meetingID = recorder.configuration.meetingID
+    let summary = MeetingEchoSummary(
+      eligibleSamples: 160_000, passthroughSamples: 32_000, initOutcome: .ok, resetCount: 1,
+      resetCauses: [.callRebuild: 1])
+    recorder.report.echoSummary = summary
+    await harness.coordinator.stop(reason: .user)
+    await eventually("ended") { harness.ended.count == 1 && harness.coordinator.processing == nil }
+    harness.receiptError.withLock { $0 = nil }
+    #expect(await harness.coordinator.transcribeAgain(meetingID: meetingID, engine: .parakeet))
+    await eventually("retry ended") {
+      harness.ended.count == 2 && harness.coordinator.processing == nil
+    }
+    #expect(harness.ended.map(\.echo) == [summary, summary], "the Retry inherits the recording's facts")
+
+    await harness.coordinator.start(from: .history)
+    harness.coordinator.prepareForTermination()
+    let relaunched = MeetingCoordinator(dependencies: harness.dependencies())
+    relaunched.launch()
+    await eventually("recovered ended") { harness.ended.count == 3 }
+    #expect(harness.ended.last?.outcome == .interruptedReady)
+    #expect(harness.ended.last?.echo == nil, "never invented after a relaunch")
+  }
+
   @Test("#4248: the recording's mute summary reaches meeting.ended at stop; a Retry keeps it; recovery has none")
   func muteSummaryAdoptedRetriedAndNotInvented() async throws {
     let harness = try Harness()

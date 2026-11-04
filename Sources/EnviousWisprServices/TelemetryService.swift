@@ -4125,6 +4125,19 @@ public final class TelemetryService {
           boolProps: props.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture("meeting.ended", properties: props)
+    // #4355 PR B: the same echo-cleanup facts as a content-free Sentry breadcrumb, so an error
+    // later in the session shows how the last meeting's echo cleanup went. Counts and closed
+    // values only (`meetingEchoBreadcrumbData`); nothing when the attempt has no echo summary.
+    if let data = Self.meetingEchoBreadcrumbData(event) {
+      SentryBreadcrumb.add(stage: "meeting", message: "meeting ended (echo cleanup)", data: data)
+    }
+  }
+
+  /// #4355 PR B: the `aec_*` keys of the `meeting.ended` payload, for the Sentry breadcrumb; nil
+  /// without an echo summary.
+  static func meetingEchoBreadcrumbData(_ event: MeetingEndedTelemetry) -> [String: Any]? {
+    guard event.echo != nil else { return nil }
+    return meetingEndedProperties(event).filter { $0.key.hasPrefix("aec_") }
   }
 
   /// The `meeting.ended` payload. Numbers stay numbers (`processing_seconds` and `rtf` are
@@ -4142,6 +4155,12 @@ public final class TelemetryService {
   /// #4248: `mute_follow_enabled` (`Bool`), `mute_eligible_seconds_bucket`, `mute_reads_bucket`
   /// and, when anything was eligible, `mute_silenced_share_bucket` and `mute_unknown_share_bucket`
   /// (strings); all omitted when the attempt has no mute summary.
+  /// #4355 PR B: `aec_eligible_ms` and `aec_passthrough_ms` (`Int` whole milliseconds of
+  /// microphone audio offered to echo cleanup, and the part written with raw audio as its cleaned
+  /// copy; passthrough ≤ eligible), `aec_reset_count` (`Int`, resets that ran) and
+  /// `aec_reset_reason` (`none`, one `MeetingEchoSummary.ResetCause`, or `multiple`), all omitted
+  /// when the attempt has no echo summary; `aec_init_outcome` (`ok`, `failed`, `no_reference`)
+  /// also omitted when the library was never asked to start.
   static func meetingEndedProperties(_ event: MeetingEndedTelemetry) -> [String: Any] {
     var props: [String: Any] = [
       "outcome": event.outcome.rawValue,
@@ -4182,6 +4201,14 @@ public final class TelemetryService {
       props["mute_reads_bucket"] = meetingMuteReadsBucket(mute.reads)
       if let share = mute.silencedShare { props["mute_silenced_share_bucket"] = meetingShareBucket(share) }
       if let share = mute.unknownShare { props["mute_unknown_share_bucket"] = meetingShareBucket(share) }
+    }
+    // #4355 PR B: echo cleanup, counts and closed values only; omitted when not known.
+    if let echo = event.echo {
+      props["aec_eligible_ms"] = echo.eligibleMs
+      props["aec_passthrough_ms"] = echo.passthroughMs
+      props["aec_reset_count"] = echo.resetCount
+      props["aec_reset_reason"] = echo.resetReason
+      if let outcome = echo.initOutcome { props["aec_init_outcome"] = outcome.rawValue }
     }
     // #4249: stop provenance; each key only when known (a recovered attempt has none).
     if let provenance = event.provenance {

@@ -656,7 +656,8 @@ final class MeetingCoordinator {
         audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
-        speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance)
+        speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance,
+        echo: facts.echo)
     }
   }
 
@@ -667,6 +668,8 @@ final class MeetingCoordinator {
     var callSound: CallSoundSummary?
     /// #4248: the recording's mute following, frozen at stop; nil when none.
     var muteFollow: MuteFollowSummary?
+    /// #4355 PR B: what echo cleanup did in the recording, frozen at stop; nil when not known.
+    var echo: MeetingEchoSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
     /// #4249: the stop reason (first accepted stop wins) and the call facts call detection
@@ -1484,6 +1487,10 @@ final class MeetingCoordinator {
   /// #4121: keeps the recorder's frozen call-sound summary on the open attempt, for its
   /// `meeting.ended` row. A report without one changes nothing.
   private func adoptCallSoundSummary(_ report: MeetingRecorder.StopReport?, for meetingID: UUID) {
+    // #4355 PR B: frozen by the recorder when its echo worker settled, first stop wins.
+    if let echo = report?.echoSummary, openAttempts[meetingID]?.echo == nil {
+      openAttempts[meetingID]?.echo = echo
+    }
     guard let summary = report?.callSoundSummary else { return }
     openAttempts[meetingID]?.callSound = summary
   }

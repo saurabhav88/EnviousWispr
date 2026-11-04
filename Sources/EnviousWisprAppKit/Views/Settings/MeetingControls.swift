@@ -405,7 +405,8 @@ struct MeetingConsentNote: View {
 /// after the meeting.
 struct MeetingLiveWordsView: View {
   let transcript: MeetingLiveWords.Transcript
-  /// The call sound is recorded: echo is hidden only in the final transcript.
+  /// The call sound is recorded: echo is removed from the microphone while recording (#4355 PR B),
+  /// and a stopped meeting says the final transcript also hides repeated call lines.
   let callSoundRecorded: Bool
   /// After Stop, until the transcript replaces them: greyed, and the copy says the recording
   /// ended.

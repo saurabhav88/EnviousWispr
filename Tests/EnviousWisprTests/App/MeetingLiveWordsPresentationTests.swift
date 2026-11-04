@@ -17,7 +17,9 @@ struct MeetingLiveWordsPresentationTests {
   static let intro = "Live Preview, as people speak. The full transcript comes after the meeting."
   static let removal = "Live Preview stopped while the Universal engine is being removed."
   static let skipped = "Some Live Preview text was skipped. The full transcript comes after the meeting."
-  static let echo = "Echo is hidden when the meeting ends."
+  /// #4355 PR B: echo is removed while recording, so a recording meeting never says this
+  /// sentence again (it was shown while recording before PR B).
+  static let retiredEcho = "Echo is hidden when the meeting ends."
 
   static func live(
     _ mic: Status?, _ call: Status?, dropped: Set<MeetingTrackKind> = [],
@@ -103,7 +105,7 @@ struct MeetingLiveWordsPresentationTests {
     #expect(
       P.liveStatusLines(
         Self.live(.stopped(.modelRemoved), .stopped(.modelRemoved)), callSoundRecorded: true)
-        == [Self.intro, Self.removal, Self.echo])
+        == [Self.intro, Self.removal])
     #expect(
       P.liveStatusLines(
         Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.engineNotDownloaded(engine: .universal, languageName: "German"))),
@@ -111,7 +113,6 @@ struct MeetingLiveWordsPresentationTests {
         == [
           Self.intro,
           "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview.",
-          Self.echo,
         ])
     // Different outcomes per track: each said, microphone first.
     #expect(
@@ -120,8 +121,13 @@ struct MeetingLiveWordsPresentationTests {
         callSoundRecorded: true)
         == [
           Self.intro, "Live Preview stopped for You. The recording continues.", Self.skipped,
-          Self.echo,
         ])
+    // #4355 PR B: no recording state with call sound says anything about echo.
+    for status: Status in [.starting, .running, .stopped(.engineFailed)] {
+      let lines = P.liveStatusLines(Self.live(status, status), callSoundRecorded: true)
+      #expect(!lines.contains(Self.retiredEcho), "\(status)")
+      #expect(!lines.contains { $0.localizedCaseInsensitiveContains("echo") }, "\(status)")
+    }
     // Dropped audio on both tracks: one note.
     #expect(
       P.liveStatusLines(

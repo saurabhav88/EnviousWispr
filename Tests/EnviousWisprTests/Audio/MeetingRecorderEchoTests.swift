@@ -129,7 +129,7 @@ struct MeetingRecorderEchoTests {
       rig.executor.runAll()
       bridge.pump()
     }
-    await rig.recorder.stop()
+    let stopReport = await rig.recorder.stop()
     let backend = try #require(rig.backend)
     #expect(backend.captures == 300)
     #expect(backend.renders > 0)
@@ -155,6 +155,16 @@ struct MeetingRecorderEchoTests {
       files: twins.map { (rig.folder.appendingPathComponent($0.fileName), $0.startMs) })
     let tail = try audio.read(from: 47_000, count: 1)[0]
     #expect(abs(tail - 0.125) < 0.001)
+    // #4355 telemetry, against the files: every sample offered is eligible, and passthrough is
+    // exactly the samples whose cleaned copy is still the raw level (warm-up before trust).
+    let echo = try #require(stopReport.echoSummary)
+    let twin = try audio.read(from: 0, count: 48_000)
+    let rawLevel = twin.filter { abs($0 - 0.25) < 0.001 }.count
+    #expect(rawLevel > 0 && rawLevel < 48_000)
+    #expect(echo.eligibleSamples == 48_000)
+    #expect(echo.passthroughSamples == rawLevel)
+    #expect(echo.initOutcome == .ok)
+    #expect(echo.resetCount == 0 && echo.resetReason == "none")
   }
 
   @Test(
@@ -173,8 +183,22 @@ struct MeetingRecorderEchoTests {
         rig.executor.runAll()
         rig.recorder.pumpEchoForTesting()
       }
-      await rig.recorder.stop()
+      let stopReport = await rig.recorder.stop()
       #expect(try frames(rig, try files(rig, prefix: "mic")) == 16_000, "\(scenario)")
+      // #4355 telemetry: no call sound is a known no-reference; no library is a failed start
+      // whose every eligible sample passed through.
+      let echo = try #require(stopReport.echoSummary, "\(scenario)")
+      switch scenario {
+      case "off": #expect(echo == .noReference)
+      case "native":
+        // Every chunk of the recording, not only the first: a failed cleaner is a fallback.
+        #expect(echo.initOutcome == .failed)
+        #expect(echo.eligibleSamples == 16_000)
+        #expect(echo.passthroughSamples == 16_000)
+      default:
+        #expect(echo.initOutcome == .noReference, "\(scenario)")
+        #expect(echo.passthroughSamples == echo.eligibleSamples, "\(scenario)")
+      }
       let report = MeetingTrackRecovery.recover(folder: rig.folder)
       #expect(report.cleanedConfirmed.isEmpty, "\(scenario)")
       if scenario != "native" { #expect(result.echoProvenance == nil, "\(scenario)") }
@@ -324,6 +348,7 @@ struct MeetingRecorderEchoTests {
       #expect(abs(after - 0.25) < 0.001, "\(loss): raw after")
       let counters = try #require(rig.recorder.echoBridgeForTesting).countersForTesting
       #expect(counters.resetRequests[.callSoundLost] == 1, "\(loss)")
+      #expect(counters.resetCauses[.callLost] == 1, "\(loss): the reset ran")
     }
   }
 
@@ -390,6 +415,10 @@ struct MeetingRecorderEchoTests {
     let stopReport = await stopping.value
     #expect(Date().timeIntervalSince(started) < 5)
     #expect(stopReport == quitReport)
+    // #4355 telemetry: Quit's raw takeover counts every owed sample once, as passthrough.
+    let echo = try #require(quitReport.echoSummary)
+    #expect(echo.eligibleSamples == 8_000)
+    #expect(echo.passthroughSamples == 8_000)
     let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
     let raw = names.filter { $0.hasPrefix("mic-") }.sorted()
     let total = try raw.reduce(0) {
@@ -397,6 +426,86 @@ struct MeetingRecorderEchoTests {
     }
     #expect(total == 8_000)
     #expect(MeetingTrackRecovery.recover(folder: folder).problems.isEmpty)
+  }
+
+  @Test(
+    "a reset that ran is in the frozen summary even when the next native call parks through Stop"
+  )
+  func resetCountedBeforeAParkedCapture() async throws {
+    final class Hook: @unchecked Sendable {
+      // Test-only: touched on the worker queue inside capture, and once by the test before start.
+      var park: (() -> Void)?
+    }
+    let arrived = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    defer { release.signal() }
+    let backend = Echo.FakeBackend()
+    let hook = Hook()
+    // Re-arms on every capture until one follows a reset; that one parks.
+    hook.park = { [unowned backend] in
+      if backend.resets > 0 {
+        arrived.signal()
+        _ = release.wait(timeout: .now() + 10)  // deadline-fallback: released by the defer
+      } else {
+        backend.onCapture = hook.park
+      }
+    }
+    backend.onCapture = hook.park
+    let queue = DispatchQueue(label: "test.recorder.echo.worker.reset")
+    let folder = try MeetingAudioFixture.folder("MeetingRecorderEchoResetParked")
+    let microphone = Fakes.FakeMicrophone()
+    let clock = Fakes.Clock()
+    let calls = Fakes.Box<[Fakes.FakeCallSound]>([])
+    let box = OSAllocatedUnfairLock<Echo.FakeBackend?>(initialState: backend)
+    var sources = MeetingRecorder.Sources(
+      makeMicrophone: { microphone },
+      makeCallSound: { handler, _, onReport in
+        let fake = Fakes.FakeCallSound(handler: handler, onReport: onReport)
+        calls.value.append(fake)
+        return fake
+      },
+      hostTime: { clock.now.withLock { $0 } }, reopenDelay: {})
+    sources.echoPumpInterval = nil
+    sources.makeEchoCanceller = { recording in
+      MeetingEchoCanceller(
+        recording: recording,
+        makeBackend: {
+          let taken: Echo.FakeBackend? = box.withLock { b in
+            defer { b = nil }
+            return b
+          }
+          return taken
+        },
+        now: { DispatchTime.now().uptimeNanoseconds },
+        schedule: { work in queue.async(execute: work) }, after: { _, _ in })
+    }
+    let recorder = MeetingRecorder(
+      configuration: .init(
+        meetingID: UUID(), folder: folder, captureCallSound: true, microphoneUID: nil,
+        inputChannelByDeviceUID: [:]),
+      sources: sources, onSegment: { _, _ in }, onFailure: { _, _ in })
+    _ = try await recorder.start()
+    clock.advance(seconds: 0.1)
+    microphone.onSamples?([Float](repeating: 0.25, count: 1_600), 0.2)
+    try #require(calls.value.first).onReport(
+      CallSoundChangeReport(
+        outcome: "rebuilt", reason: "output_device", configuredRateHz: 48_000,
+        nominalRateHz: 48_000, measuredRateBucket: nil, outputTransport: nil))
+    clock.advance(seconds: 0.1)
+    microphone.onSamples?([Float](repeating: 0.25, count: 1_600), 0.2)
+    let parked = await Task.detached { blockThread(on: arrived) }.value  // deadline-fallback: bounded (10 s)
+    try #require(parked, "no capture followed the reset")
+    let report = await recorder.stop()
+    let echo = try #require(report.echoSummary)
+    #expect(echo.resetCount == 1)
+    #expect(echo.resetCauses == [.callRebuild: 1])
+    #expect(echo.eligibleSamples == 3_200)
+    // The parked call finishing later changes nothing frozen: the worker queue is serial, so
+    // once an empty block runs on it, the parked drain (and its late result) has finished.
+    release.signal()
+    queue.sync {}
+    let bridge = try #require(recorder.echoBridgeForTesting)
+    #expect(bridge.summary == echo)
   }
 
   @Test("a microphone reopen and a call-sound rebuild restart AEC3")
@@ -424,6 +533,11 @@ struct MeetingRecorderEchoTests {
     speak(rig, 1_600)
     rig.executor.runAll()
     #expect(backend.resets == 2)
-    await rig.recorder.stop()
+    let stopReport = await rig.recorder.stop()
+    // #4355 telemetry: the resets that ran, with their causes, not the requests.
+    let echo = try #require(stopReport.echoSummary)
+    #expect(echo.resetCount == 2)
+    #expect(echo.resetCauses == [.callRebuild: 1, .micRun: 1])
+    #expect(echo.resetReason == "multiple")
   }
 }
