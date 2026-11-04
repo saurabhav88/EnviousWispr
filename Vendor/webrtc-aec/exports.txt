@@ -1,0 +1,8 @@
+_ew_aec_create
+_ew_aec_destroy
+_ew_aec_process_render
+_ew_aec_process_capture
+_ew_aec_set_stream_delay_ms
+_ew_aec_reset
+_ew_aec_get_metrics
+_ew_aec_version

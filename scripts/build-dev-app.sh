@@ -197,6 +197,9 @@ echo "==> Step 7: Verifying deployed bundle..."
 # engine and the Universal preview cannot load: a broken build, not a degraded one.
 [ -f "$APP_PATH/Contents/Frameworks/CTranscribe.framework/Versions/A/CTranscribe" ] \
   || { echo "ERROR: CTranscribe.framework missing from Frameworks (#3735)"; exit 1; }
+# #4355: the meeting echo cleaner (WebRTC AEC3, dynamic framework, linked by the app).
+[ -f "$APP_PATH/Contents/Frameworks/CWebRTCAEC.framework/Versions/A/CWebRTCAEC" ] \
+  || { echo "ERROR: CWebRTCAEC.framework missing from Frameworks (#4355)"; exit 1; }
 # #2649: S1-mini rides the same route. The licence text is listed here too —
 # its ADDITIONAL TERM binds the distributed bundle, not just the download.
 for s1_resource in s1-manifest.json s1-delivery-manifest.json \

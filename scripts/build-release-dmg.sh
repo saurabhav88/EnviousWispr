@@ -373,6 +373,18 @@ else
         echo "::error::CTranscribe.framework missing from the bundle (#3735)"
         exit 1
     fi
+    # 5.8. #4355: the meeting echo cleaner framework (WebRTC AEC3, dynamic, linked by
+    # the app). Built and ad-hoc signed by Vendor/webrtc-aec/build-xcframework.sh, so it
+    # is re-sealed here like CTranscribe. Missing is a broken build (the app links it and
+    # would not launch): fail closed.
+    AEC_FRAMEWORK="$BUNDLE/Contents/Frameworks/CWebRTCAEC.framework"
+    if [[ -f "$AEC_FRAMEWORK/Versions/A/CWebRTCAEC" ]]; then
+        echo "    [5.8/6] echo cleaner: CWebRTCAEC.framework"
+        codesign "${SIGN_FLAGS[@]}" "$AEC_FRAMEWORK/Versions/A"
+    else
+        echo "::error::CWebRTCAEC.framework missing from the bundle (#4355)"
+        exit 1
+    fi
     # 6. Embed the Developer ID provisioning profile, THEN the main app bundle.
     # keychain-access-groups is a RESTRICTED entitlement; AMFI requires the embedded
     # profile to authorize it at launch (TN3125). The profile is sealed by the
