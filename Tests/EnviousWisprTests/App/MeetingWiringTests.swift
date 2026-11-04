@@ -460,6 +460,9 @@ struct MeetingWiringTests {
 
     settings.llmProvider = .egOne
     settings.meetingSummaryLLMProvider = .claude
+    // #4353 D2: no model is preselected, so the empty choice is the summary's own problem.
+    #expect(summaries.configurationProblem() == .cloudNoModel(.claude))
+    settings.meetingSummaryLLMModel = "claude-haiku-4-5"
     #expect(summaries.configurationProblem() == nil, "dictation's EG-1 must not block summaries")
 
     settings.llmProvider = .claude

@@ -6,6 +6,7 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
+import EnviousWisprAppKitTestSupport
 
 /// #2093: the cloud pre-warm no longer fires on every recording.
 ///
@@ -85,7 +86,7 @@ struct LLMWarmupGateTests {
     let keys = KeychainManager(
       backend: .legacyFiles,
       legacyStore: FileLegacyKeyStore(
-        storageDirectory: FileManager.default.temporaryDirectory
+        storageDirectory: TestTemporaryDirectory.url
           .appending(path: "ew-tests-4353-warmup-\(UUID().uuidString)")))
     session.preWarmModel(provider: provider, model: "", keychainManager: keys)
     #expect(session.claimWarmupSlot(provider: provider, model: "", now: Date()))
