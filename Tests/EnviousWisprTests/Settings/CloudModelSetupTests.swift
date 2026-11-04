@@ -209,6 +209,19 @@ struct CloudModelSetupTests {
     #expect(monitor.confirmedSetupProblem(.cloudNoModel, for: chosen) == nil)
   }
 
+  @Test("#4353 each screen's no-model guidance names what still happens there")
+  func guidancePerSurface() {
+    #expect(
+      PolishSetupSurfaceCopy.chooseModelGuidance(on: .dictation)
+        == "Choose a model to turn on AI Polish. Dictation still works until you do.")
+    #expect(
+      PolishSetupSurfaceCopy.chooseModelGuidance(on: .fileImport)
+        == "Choose a model to turn on AI Polish for files. Files are still transcribed until you do.")
+    #expect(
+      PolishSetupSurfaceCopy.chooseModelGuidance(on: .meetingSummary)
+        == "Choose a model to write meeting summaries.")
+  }
+
   // MARK: - Whole-diff review round 1
 
   @Test("#4353 another provider is judged with its own remembered model, not the chosen one's")

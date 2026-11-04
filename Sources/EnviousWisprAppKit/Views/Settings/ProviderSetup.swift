@@ -1120,7 +1120,7 @@ private var cloudModelNoticeLine: (text: String, warning: Bool)? {
     return (PolishSetupSurfaceCopy.modelUnavailableWithKey(chosen), true)
   }
   guard !surfaceDiscoveredModels.isEmpty else { return nil }
-  return (PolishSetupSurfaceCopy.chooseModelGuidance, false)
+  return (PolishSetupSurfaceCopy.chooseModelGuidance(on: surface), false)
 }
 
 /// #4353 D4: opens this card's model menu for a pending request addressed to this surface.

@@ -205,13 +205,29 @@ enum PolishSetupSurfaceCopy {
       comment: "AI Polish model menu, closed: no cloud model is chosen yet.")
   }
 
-  /// Under the model row after a key is saved and no model is chosen yet.
-  static var chooseModelGuidance: String {
-    String(
-      localized: "Choose a model to turn on AI Polish. Dictation still works until you do.",
-      comment:
-        "AI Polish, under the model menu after an API key is saved and no model is chosen. AI Polish names a feature."
-    )
+  /// Under the model row after a key is saved and no model is chosen yet, in that screen's own
+  /// words: what still happens there until a model is chosen (#4353 UAT).
+  static func chooseModelGuidance(on surface: ProviderSetupSurface) -> String {
+    switch surface {
+    case .dictation:
+      return String(
+        localized: "Choose a model to turn on AI Polish. Dictation still works until you do.",
+        comment:
+          "AI Polish, under the model menu after an API key is saved and no model is chosen. AI Polish names a feature."
+      )
+    case .fileImport:
+      return String(
+        localized: "Choose a model to turn on AI Polish for files. Files are still transcribed until you do.",
+        comment:
+          "Transcribe a File, Polish step: under the model menu after an API key is saved and no model is chosen. AI Polish names a feature."
+      )
+    case .meetingSummary:
+      return String(
+        localized: "Choose a model to write meeting summaries.",
+        comment:
+          "EnviousMeet, Summaries tab: under the model menu after an API key is saved and no model is chosen."
+      )
+    }
   }
 
   /// Under the model row when live discovery confirmed the chosen model unavailable.
