@@ -305,6 +305,12 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// `PolishFailureReason.ollamaPreflightSkipMessage`), Sentry capture NO,
   /// PostHog `llm.polish_skipped` YES. Non-retryable by `LLMRetryPolicy`.
   case localPolishNotReady(PolishFailureReason)
+  /// #4353 D3: a cloud provider (OpenAI, Gemini, Claude) is chosen but no model is. Thrown by the
+  /// `LLMPolishStep` entry gate BEFORE any key read, connector or request. A SURFACED SKIP, the
+  /// same class as `localPolishNotReady`: deterministic text kept, no provider stamp, a
+  /// skipped-tone notice, `llm.polish_skipped` once, no Sentry capture, never retried. The
+  /// provider is the step's entry snapshot.
+  case cloudModelNotSelected(LLMProvider)
   /// A cloud/Ollama polish failure carrying its specific classified reason
   /// (#945). The single adapter that threads the rich `PolishFailureReason`
   /// catalog through the existing `throws LLMError` contract: connectors throw
@@ -341,6 +347,9 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       // `PolishFailureReason.ollamaPreflightSkipMessage`, composed by the
       // runner. This generic description exists only for logs.
       return "Local polish not ready (\(reason.telemetryTag))."
+    case .cloudModelNotSelected(let provider):
+      // Surfaced skip; the on-screen notice is composed by the runner. Logs only.
+      return "No \(provider.rawValue) model selected."
     case .classified(let reason):
       // The user-facing, provider-specific notice is composed by the runner via
       // `reason.composedMessage(provider:)`. This generic description exists only
@@ -397,6 +406,8 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
       return a == b && pa == pb
     case (.localPolishNotReady(let a), .localPolishNotReady(let b)):
       return a == b
+    case (.cloudModelNotSelected(let a), .cloudModelNotSelected(let b)):
+      return a == b
     case (.classified(let a), .classified(let b)):
       return a == b
     default:
@@ -443,6 +454,8 @@ extension LLMError: StableSentryErrorIdentity {
     case .rateLimited: return "EnviousWisprLLM.LLMError#10"
     case .emptyResponse: return "EnviousWisprLLM.LLMError#11"
     case .providerUnavailable: return "EnviousWisprLLM.LLMError#12"
+    // #4353: a fresh number. Never captured today (a surfaced skip), pinned anyway.
+    case .cloudModelNotSelected: return "EnviousWisprLLM.LLMError#14"
     }
   }
 
@@ -462,6 +475,7 @@ extension LLMError: StableSentryErrorIdentity {
     case .rateLimited: return "llm.rate_limited"
     case .emptyResponse: return "llm.empty_response"
     case .providerUnavailable: return "llm.provider_unavailable"
+    case .cloudModelNotSelected: return "llm.cloud_model_not_selected"
     }
   }
 }

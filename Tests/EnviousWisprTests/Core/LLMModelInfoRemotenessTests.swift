@@ -61,7 +61,7 @@ struct LLMModelInfoRemotenessTests {
     for value in [true, false] {
       let original = LLMModelInfo(
         id: "gpt-oss:120b-cloud", displayName: "Gpt Oss", provider: .ollama,
-        isAvailable: true, isRemote: value)
+        availability: .available, isRemote: value)
       let data = try JSONEncoder().encode(original)
       let decoded = try JSONDecoder().decode(LLMModelInfo.self, from: data)
       #expect(decoded.isRemote == value)
@@ -99,7 +99,7 @@ struct LLMModelInfoRemotenessTests {
       #expect(status.displayName == english[status], "\(status)")
       let row = LLMModelInfo(
         id: "apple-intelligence", displayName: "stored", provider: .appleIntelligence,
-        isAvailable: false, isRemote: false, appleIntelligenceStatus: status)
+        availability: .confirmedUnavailable, isRemote: false, appleIntelligenceStatus: status)
       let decoded = try JSONDecoder().decode(
         LLMModelInfo.self, from: try JSONEncoder().encode(row))
       #expect(decoded.appleIntelligenceStatus == status)

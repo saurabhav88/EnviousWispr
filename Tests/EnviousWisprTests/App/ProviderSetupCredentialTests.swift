@@ -50,7 +50,7 @@ struct ProviderSetupKeyActionTests {
       discoverModels: { provider, _ in
         asked.providers.append(provider)
         return [LLMModelInfo(
-          id: "m", displayName: "m", provider: provider, isAvailable: true, isRemote: true)]
+          id: "m", displayName: "m", provider: provider, availability: .available, isRemote: true)]
       })
     return ProviderSetupKeyActions.Owners(
       keychainManager: keychain, presence: presence, discovery: discovery,

@@ -15,6 +15,19 @@ internal struct TextProcessingRunResult {
   var polishError: String? { polishNotice?.text }
   /// #3438: what this take's polish met, for a live take with a frozen setup only.
   var polishTakeOutcome: PolishTakeOutcome? = nil
+  /// #4353 D9: the cloud setup the polish step met, typed, for EVERY caller (Transcribe a File
+  /// runs with no take probe). Independent of the error surface policy and of the notice text.
+  var cloudSetupOutcome: CloudPolishSetupOutcome? = nil
+}
+
+/// #4353 D9: what a cloud polish step found about its own setup, with the provider and the
+/// model the step asked for (its entry snapshot). Machine meaning only; the words live with
+/// each surface.
+public enum CloudPolishSetupOutcome: Sendable, Equatable {
+  /// A cloud provider with no model chosen: nothing was asked, so it is a bypass.
+  case noModelChosen(provider: LLMProvider)
+  /// The provider answered that the chosen model does not exist: an attempt that failed.
+  case modelUnavailable(provider: LLMProvider, model: String)
 }
 
 /// #3438: the live take's AI polish setup, handed to one run. Recovery and file import pass
@@ -295,6 +308,7 @@ internal final class TextProcessingRunner {
   ) async throws -> TextProcessingRunResult {
     var context = initialContext
     var polishNotice: PolishNotice?
+    var cloudSetupOutcome: CloudPolishSetupOutcome?
     // #3438: set once, at the moment the polish step's result is classified; never rewritten.
     var polishTakeOutcome: PolishTakeOutcome?
     // `observedAt` is where the evidence was observed (`observationStamp`), never when the
@@ -454,6 +468,19 @@ internal final class TextProcessingRunner {
         // #4287 PR 3: the same local engine was writing an EnviousMeet summary. A skip with a
         // notice, like the Ollama preflight class above: no Sentry capture, no failure count.
         let summaryBusy = error as? SummaryEngineBusy
+        // #4353 D3: a cloud provider with no model chosen, found before any request. The same
+        // surfaced-skip class: notice yes, Sentry no, `llm.polish_skipped` once, deterministic
+        // text kept, and a bypass (not failed cleanup) for the import's report.
+        var cloudNoModelProvider: LLMProvider?
+        if let llmError = error as? LLMError, case .cloudModelNotSelected(let provider) = llmError {
+          cloudNoModelProvider = provider
+          cloudSetupOutcome = .noModelChosen(provider: provider)
+        } else if let provider = polishProviderAtStart, let attempted = polishModelAtStart,
+          PolishFailureReason.from(error).meansCloudModelUnavailable(
+            provider: provider, model: attempted)
+        {
+          cloudSetupOutcome = .modelUnavailable(provider: provider, model: attempted)
+        }
         let reason: String
         if isAppleIntelligencePolishTimeout {
           reason =
@@ -470,6 +497,9 @@ internal final class TextProcessingRunner {
         } else if let summaryBusy {
           reason =
             "skipped: \(summaryBusy.provider.rawValue) is writing an EnviousMeet summary, using deterministic text"
+        } else if let cloudNoModelProvider {
+          reason =
+            "skipped: no \(cloudNoModelProvider.rawValue) model selected, using deterministic text"
         } else {
           reason = "failed: \(error.localizedDescription)"
         }
@@ -539,9 +569,14 @@ internal final class TextProcessingRunner {
         let polishSkippedSilently =
           isSilentPolishSkip || contextWindowSkip != nil || isAppleIntelligencePolishTimeout
           || isLocalEnginePolishTimeout || isCancellationLike
-        if polishSkippedSilently || summaryBusy != nil { context.polishWasBypassed = true }
+        if polishSkippedSilently || summaryBusy != nil || cloudNoModelProvider != nil {
+          context.polishWasBypassed = true
+        }
         if step.errorSurfacePolicy == .surface, let summaryBusy {
           polishNotice = summaryBusy.notice
+        } else if step.errorSurfacePolicy == .surface, let cloudNoModelProvider {
+          // The existing skipped-tone sentence ("no polish model is selected"); no new copy.
+          polishNotice = PolishFailureReason.noModelSelected.notice(provider: cloudNoModelProvider)
         } else if step.errorSurfacePolicy == .surface, let skipReason = localPolishSkipReason {
           // #1305 surfaced skip: set the pinned skipped-tone notice, fire NO
           // Sentry capture (that is the point of the class). The composed
@@ -558,7 +593,16 @@ internal final class TextProcessingRunner {
             // fire-and-forget; the raw transcript/prompt/provider-body never
             // leave the device (the reason set is closed and content-free).
             let reason = PolishFailureReason.from(error)
-            polishNotice = reason.notice(provider: provider)
+            // #4353 D4: a cloud model the provider says no longer exists is named, from the
+            // model this take asked for (the step's entry snapshot), never current settings.
+            if let attempted = polishModelAtStart,
+              reason.meansCloudModelUnavailable(provider: provider, model: attempted)
+            {
+              polishNotice = PolishNotice(
+                leadIn: .failed, text: CloudModelNoticeCopy.noLongerWorks(attempted))
+            } else {
+              polishNotice = reason.notice(provider: provider)
+            }
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting
             // SUBSET below, not the record itself.
@@ -623,13 +667,14 @@ internal final class TextProcessingRunner {
           } else if polishSkippedSilently {
             result = .skippedSilently
           } else if localPolishSkipReason != nil || summaryBusy != nil
-            || polishNotice?.leadIn == .skipped
+            || cloudNoModelProvider != nil || polishNotice?.leadIn == .skipped
           {
             result = .skippedWithNotice
           } else {
             result = .failed
           }
-          let evidence = Self.setupEvidence(from: error)
+          let evidence = Self.setupEvidence(
+            from: error, provider: polishProviderAtStart, model: polishModelAtStart)
           settlePolishOutcome(
             result, evidence,
             observedAt: Self.observationStamp(
@@ -676,6 +721,9 @@ internal final class TextProcessingRunner {
         } else if let summaryBusy {
           let reason = PolishSkipReason.summaryUsesEngine(summaryBusy.provider)
           recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+        } else if let cloudNoModelProvider {
+          let reason = PolishSkipReason.cloudNoModelSelected(cloudNoModelProvider)
+          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw
@@ -708,7 +756,8 @@ internal final class TextProcessingRunner {
       Task { await logger.log(timingLine, level: .info, category: "Pipeline") }
     }
     return TextProcessingRunResult(
-      context: context, polishNotice: polishNotice, polishTakeOutcome: polishTakeOutcome)
+      context: context, polishNotice: polishNotice, polishTakeOutcome: polishTakeOutcome,
+      cloudSetupOutcome: cloudSetupOutcome)
   }
 
   /// #3438: where the step observed what `evidence` (or a polished `result`) says, from the
@@ -727,6 +776,11 @@ internal final class TextProcessingRunner {
       stamp = seen?.requestEndedAt
     case .ollamaUnreachable?, .ollamaModelUnavailable?, .ollamaNoModel?:
       stamp = seen?.probeAnsweredAt
+    case .cloudNoModel?:
+      // No request was made; the entry gate is where it was seen.
+      stamp = seen?.cloudModelCheckedAt
+    case .cloudModelUnavailable?:
+      stamp = seen?.requestEndedAt
     case .localEngineNotReady?, .localEngineDownloadPending?:
       stamp = seen?.requestEndedAt
     case nil:
@@ -738,9 +792,22 @@ internal final class TextProcessingRunner {
   /// #3438: what a polish error says about the setup, from its TYPE only (never a message).
   /// Nil for every error that is not about setup: timeouts, length limits, server errors,
   /// crashes, output rejection, a missing Apple Intelligence.
-  static func setupEvidence(from error: any Error) -> PolishSetupEvidence? {
+  ///
+  /// `provider` and `model` are the step's entry snapshot. They are read for ONE question, through
+  /// the shared `meansCloudModelUnavailable`: whether a cloud request's failure means the chosen
+  /// model cannot be used (a 404, or a leftover audio-input model's 400). A 403 (`.accessDenied`)
+  /// is not counted: at request time it can be about the whole key or project, not this model.
+  static func setupEvidence(
+    from error: any Error, provider: LLMProvider?, model: String?
+  ) -> PolishSetupEvidence? {
     guard let llmError = error as? LLMError else { return nil }
+    if case .classified(let reason) = llmError, let provider, let model,
+      reason.meansCloudModelUnavailable(provider: provider, model: model)
+    {
+      return .cloudModelUnavailable
+    }
     switch llmError {
+    case .cloudModelNotSelected: return .cloudNoModel
     case .classified(.apiKeyMissing): return .cloudKeyMissing
     case .classified(.apiKeyUnreadable): return .cloudKeyUnreadable
     case .invalidAPIKey: return .cloudKeyRejected

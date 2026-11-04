@@ -370,7 +370,7 @@ public final class SettingsManager {
       // after discovery had cleared it. Only discovery and an explicit user
       // pick may arm an Ollama model; fixed literals still get swept.
       if fixedLiterals.contains(cloudModel) {
-        return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+        return ollamaModel
       }
       // #2772: and a value that is not the armed model is a LEFTOVER, swept to empty. The
       // picker writes this field and the settings sync mirrors it into `ollamaModel`, so at
@@ -381,26 +381,30 @@ public final class SettingsManager {
       // does not mirror, so the armed model survives. Found by the cloud review of
       // PR #2786; the same line serves dictation, whose provider change runs this too.
       return cloudModel == ollamaModel ? cloudModel : ""
-    case .openAI, .gemini, .claude, .none:
-      // #1770: a WITHDRAWN id is well-formed, so the prefix check waves it
-      // through and the user 404s on every dictation, forever. Discovery would
-      // repair it, but discovery does not run at launch and opening AI Polish
-      // settings only loads CACHED rows — the real rescan sits behind the
-      // manual refresh button, which a user has no reason to press.
+    case .none:
+      // Polish off keeps the cloud pick, so turning polish back on restores it; only a fixed
+      // literal is swept (the same result the shared arm gave `.none` before #4353 D2).
+      return fixedLiterals.contains(cloudModel) ? "" : cloudModel
+    case .openAI, .gemini, .claude:
+      // #4353 D2: a provider-compatible id stays byte-for-byte, retired or not. Whether a chosen
+      // model still works is the request's answer, never a launch-time sweep, and nothing
+      // invents a model: a fixed literal, another provider's id or empty restores this
+      // surface's remembered pick for the provider, else stays empty ("Choose a model").
       if fixedLiterals.contains(cloudModel) || cloudModel.isEmpty
-        || LLMProvider.isRetiredModel(cloudModel, for: provider)
         || !LLMProvider.modelIDLooksLikeCloudProvider(cloudModel, provider)
       {
-        // #4353 D1: no retirement veto on the remembered id. Deciding that a chosen model no
-        // longer works belongs to the request, not to a launch-time sweep (plan D1/D2).
         if let remembered, CloudModelMemory.accepts(remembered, for: provider) {
           return remembered
         }
-        return LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+        return ""
       }
       return cloudModel
     }
   }
+
+  /// The Ollama model a fresh install starts with and the guided download suggests, owned by
+  /// `SettingsDefaultValues` (#4353 D2 retired the shared default-model function that carried it).
+  public nonisolated static let recommendedOllamaModel = SettingsDefaultValues.ollamaModel
 
   // MARK: - Cloud model memory (#4353 D1)
 
@@ -1855,7 +1859,8 @@ public final class SettingsManager {
     meetingSummaryCloudModelMemory =
       Self.loadCloudModelMemory(key: Self.meetingSummaryCloudModelMemoryKey, from: defaults)
       ?? CloudModelMemory()
-    llmModel = rawLLMModel ?? LLMProvider.defaultModel(for: .openAI)
+    // #4353 D2: an absent cloud field is no choice, never a preselected default.
+    llmModel = rawLLMModel ?? ""
     ollamaModel = defaults.string(forKey: "ollamaModel") ?? SettingsDefaultValues.ollamaModel
     // #2772: ABSENT means follow dictation, so the key genuinely not being there is the
     // default and `nil` must survive the round trip. `object(forKey:)` distinguishes an
@@ -1867,7 +1872,7 @@ public final class SettingsManager {
     fileImportLLMProvider = (defaults.object(forKey: "fileImportLLMProvider") as? String)
       .flatMap { LLMProvider(rawValue: $0) }
     fileImportLLMModel =
-      defaults.string(forKey: "fileImportLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
+      defaults.string(forKey: "fileImportLLMModel") ?? ""
     fileImportOllamaModel =
       defaults.string(forKey: "fileImportOllamaModel") ?? SettingsDefaultValues.ollamaModel
     // #4287: an unknown stored value (a later build's provider) reads as nil, which readers
@@ -1875,7 +1880,7 @@ public final class SettingsManager {
     meetingSummaryLLMProvider = (defaults.object(forKey: Self.meetingSummaryProviderKey) as? String)
       .flatMap { LLMProvider(rawValue: $0) }
     meetingSummaryLLMModel =
-      defaults.string(forKey: "meetingSummaryLLMModel") ?? LLMProvider.defaultModel(for: .openAI)
+      defaults.string(forKey: "meetingSummaryLLMModel") ?? ""
     meetingSummaryOllamaModel =
       defaults.string(forKey: "meetingSummaryOllamaModel") ?? SettingsDefaultValues.ollamaModel
     autoCopyToClipboard =
@@ -2265,15 +2270,16 @@ public final class SettingsManager {
   /// Pure and static, so `FileImportDiscoveryRepairTests` can walk the grid, and so
   /// the two surfaces cannot come to disagree about what a catalog means.
   ///
-  /// #4353 D1: `rememberedCloudModel` is the surface's memory entry for `provider`. A cloud
-  /// provider with a remembered selection is never repaired by discovery, in any branch: the
-  /// user's choice stands, and a model that stopped working fails at request time instead.
+  /// #4353 D2: a cloud catalog never writes a selection, in any branch and whatever it holds
+  /// (empty, locked, inconclusive or pruned rows): the user's choice stands, an empty one stays
+  /// empty, and a model that stopped working fails at request time instead.
   public static func discoveredModelRepair(
     for models: [LLMModelInfo], provider: LLMProvider,
-    cloudModel: String, ollamaModel: String, rememberedCloudModel: String?
+    cloudModel: String, ollamaModel: String
   ) -> DiscoveredModelRepair {
-    if CloudModelMemory.cloudProviders.contains(provider), rememberedCloudModel != nil {
-      return DiscoveredModelRepair()
+    switch provider {
+    case .openAI, .gemini, .claude: return DiscoveredModelRepair()
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: break
     }
     if models.isEmpty {
       // #1305: for Ollama, empty discovery means NOTHING is installed — arming
@@ -2286,13 +2292,10 @@ public final class SettingsManager {
       // returning it for dictation configs, every polish attempt is guarded by
       // the readiness preflight in `LLMPolishStep` (the stale name probes as
       // model-missing and skips instantly); dictation-time truth is owned by
-      // that gate, not by clearing this field. Cloud providers keep the
-      // default-fill (their catalogs are never legitimately empty; an empty
-      // result is a discovery hiccup).
+      // that gate, not by clearing this field. The bundled engines keep their fixed name.
       return DiscoveredModelRepair(
         cloudModel: provider == .ollama
-          ? ""
-          : LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel),
+          ? "" : LLMProvider.localModel(for: provider, ollamaModel: ollamaModel) ?? "",
         ollamaModel: nil)
     }
     // #1914 (PR #1949 cloud review): for Ollama the ARMED model is
@@ -2345,17 +2348,11 @@ public final class SettingsManager {
       guard provider == .ollama else { return DiscoveredModelRepair() }
       return DiscoveredModelRepair(cloudModel: armedRow.id, ollamaModel: armedRow.id)
     }
-    // Prefer the provider's own default-model family (an exact id match,
-    // or that default id as a dated-snapshot prefix — Anthropic returns
-    // Claude ids as a compact-dated snapshot, e.g. `claude-haiku-4-5` vs.
-    // discovered `claude-haiku-4-5-20251001`) over the plain first-available
-    // pick. Provider-generic, not Claude-specific: for OpenAI/Gemini/Ollama,
-    // whose default ids already exist verbatim in their own catalogs, only
-    // the exact-id branch is reachable — a no-op preserving prior behavior.
-    // For Claude, the dated-snapshot branch is load-bearing: a plain
-    // first-available pick would default a fresh user to whatever model
-    // sorts first alphabetically, not the fast/cheap Haiku default.
-    let defaultID = LLMProvider.defaultModel(for: provider, ollamaModel: ollamaModel)
+    // Prefer the provider's own model (the remembered Ollama name, or a bundled engine's fixed
+    // name), as an exact id or as that id with an eight-digit dated suffix
+    // (`work-model:stable` vs. discovered `work-model:stable-20261103`), over the plain
+    // first-available pick. Cloud providers returned above and are never repaired (#4353 D2).
+    let defaultID = LLMProvider.localModel(for: provider, ollamaModel: ollamaModel) ?? ""
     let datedSnapshotPrefix = "\(defaultID)-"
 
     // #1914 (founder decision 2026-08-04): this repair branch may arm a model
@@ -2444,8 +2441,7 @@ public final class SettingsManager {
     isApplyingSystemWrite = true
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
-      for: models, provider: provider, cloudModel: llmModel, ollamaModel: ollamaModel,
-      rememberedCloudModel: dictationCloudModelMemory.model(for: provider))
+      for: models, provider: provider, cloudModel: llmModel, ollamaModel: ollamaModel)
     // The lifted policy preserves every model-value decision; the branch-by-branch
     // comparison against the pre-lift body is in the chunk 3 review record.
     //
@@ -2477,8 +2473,7 @@ public final class SettingsManager {
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
       for: models, provider: provider,
-      cloudModel: meetingSummaryLLMModel, ollamaModel: meetingSummaryOllamaModel,
-      rememberedCloudModel: meetingSummaryCloudModelMemory.model(for: provider))
+      cloudModel: meetingSummaryLLMModel, ollamaModel: meetingSummaryOllamaModel)
     if let newCloud = repair.cloudModel, meetingSummaryLLMModel != newCloud {
       meetingSummaryLLMModel = newCloud
     }
@@ -2499,8 +2494,7 @@ public final class SettingsManager {
     defer { isApplyingSystemWrite = false }
     let repair = Self.discoveredModelRepair(
       for: models, provider: provider,
-      cloudModel: fileImportLLMModel, ollamaModel: fileImportOllamaModel,
-      rememberedCloudModel: fileImportCloudModelMemory.model(for: provider))
+      cloudModel: fileImportLLMModel, ollamaModel: fileImportOllamaModel)
     if let newCloud = repair.cloudModel, fileImportLLMModel != newCloud {
       fileImportLLMModel = newCloud
     }

@@ -69,7 +69,7 @@ struct CredentialWriterTests {
         return [
           LLMModelInfo(
             id: "model-\(provider.rawValue)", displayName: "m", provider: provider,
-            isAvailable: true, isRemote: true)
+            availability: .available, isRemote: true)
         ]
       })
     let settings = SettingsManager(
@@ -209,7 +209,7 @@ struct CredentialWriterTests {
       #expect(await finish.wait())
       if failing { throw LLMError.invalidAPIKey }
       return [LLMModelInfo(id: "late-model", displayName: "late", provider: provider,
-        isAvailable: true, isRemote: true)]
+        availability: .available, isRemote: true)]
     })
     try fx.keychain.store(key: KeychainManager.openAIKeyID, value: "synthetic")
     fx.presence.recordSaved(.openAI)
@@ -315,7 +315,7 @@ struct CredentialWriterTests {
     }
     try #require(await storage.entered.wait())
     #expect(fx.discovery.keyValidationState == .idle)
-    fx.discovery.loadCachedModels(for: .openAI, settings: fx.settings, surface: .dictation)
+    fx.discovery.loadCachedModels(for: .openAI)
     storage.release()
     await saving.value
     #expect(fx.discovery.keyValidationState == .idle)

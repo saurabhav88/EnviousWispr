@@ -344,7 +344,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     self.server = coordinator ?? LocalPolishServerCoordinator()
     if let manifest {
       self.activationBlockers = manifest.activationBlockers(
-        expectedModelName: LLMProvider.defaultModel(for: provider))
+        expectedModelName: LLMProvider.localModel(for: provider, ollamaModel: "") ?? "")
     } else {
       self.activationBlockers = ["manifest_missing"]
     }

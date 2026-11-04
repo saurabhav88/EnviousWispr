@@ -85,7 +85,7 @@ struct BackendMetadataTests {
         id: "gpt-4o-mini",
         displayName: "GPT-4o Mini",
         provider: .openAI,
-        isAvailable: true,
+        availability: .available,
         isRemote: false)
     ]
     #expect(bm.llmLabel == "GPT-4o Mini")
@@ -121,7 +121,7 @@ struct BackendMetadataTests {
         id: "gpt-4o-mini",
         displayName: "GPT-4o Mini",
         provider: .openAI,
-        isAvailable: true,
+        availability: .available,
         isRemote: false)
     ]
     #expect(bm.polishLabel == "GPT-4o Mini")

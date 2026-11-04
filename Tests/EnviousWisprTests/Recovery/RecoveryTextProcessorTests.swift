@@ -307,16 +307,6 @@ struct RecoveryTextProcessorTests {
 
   // MARK: - The replay seam requests the recorded model as chosen (#4353)
 
-  /// The retirement is Google's, so the membership test may only ever apply to Google's
-  /// provider. An Ollama model is named by the USER: `ollama cp` will happily produce a local
-  /// model called `gemini-2.0-flash`, and that is a legitimate choice.
-  @Test("a retired GEMINI id is retired only under Gemini")
-  func retiredIDIsScopedToItsProvider() {
-    #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: .gemini))
-    for foreign in [LLMProvider.ollama, .openAI, .claude] {
-      #expect(LLMProvider.isRetiredModel("gemini-2.0-flash", for: foreign) == false)
-    }
-  }
 
   /// The WIRING, proved without adding a production test seam (`steps` is private by
   /// design; the established pattern in this file is a static source check).

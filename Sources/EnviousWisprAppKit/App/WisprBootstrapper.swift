@@ -2450,8 +2450,8 @@ package final class WisprBootstrapper {
               DevControlSettings.ModelCatalog(
                 provider: llmDiscovery.stateProvider, models: llmDiscovery.discoveredModels)
             },
-            loadCachedModelCatalog: { [llmDiscovery, settings] provider, surface in
-              llmDiscovery.loadCachedModels(for: provider, settings: settings, surface: surface)
+            loadCachedModelCatalog: { [llmDiscovery] provider in
+              llmDiscovery.loadCachedModels(for: provider)
             },
             connectedInputUIDs: { AudioDeviceEnumerator.allInputDevices().map(\.uid) },
             inputChannelCounts: {
@@ -2909,6 +2909,11 @@ package final class WisprBootstrapper {
       recordKeyEvidence: { [savedKeyPresence] provider, state, readAt in
         savedKeyPresence.recordRead(state, for: provider, readAt: readAt)
       },
+      // #4353: a dictation's answer about its cloud model joins discovery's, newest wins.
+      recordCloudModelOutcome: { [weak llmDiscovery] provider, model, observation in
+        llmDiscovery?.recordCloudModelObservation(
+          provider: provider, model: model, observation: observation)
+      },
       // #3988: the notice history lives in THIS build's own defaults domain, never the unified
       // settings suite, so the dev build and the shipped app never share a day or a quiet.
       noticeStore: OutsideStopNoticeStore(defaults: .standard))
@@ -2932,8 +2937,10 @@ package final class WisprBootstrapper {
     // withdrawn in the same turn its episode stops applying.
     let polishSetupCard = PolishSetupCardPresenter(
       overlay: recordingOverlay, monitor: polishSetupMonitor,
-      openAIPolish: { [weak navigationCoordinator, weak appWindowCoordinator] in
+      openAIPolish: { [weak navigationCoordinator, weak appWindowCoordinator] openModelMenu in
         navigationCoordinator?.request(.aiPolish)
+        // #4353 D4: "Select a new cloud model" lands with dictation's model menu open.
+        if openModelMenu { navigationCoordinator?.requestModelMenu(on: .dictation) }
         appWindowCoordinator?.showWindow()
       })
     polishSetupMonitor.onEpisodeChange = { [weak polishSetupCard] in polishSetupCard?.reconcile() }

@@ -704,6 +704,8 @@
       case .providerFailed: return "providerFailed"
       case .notesUnreadable: return "notesUnreadable"
       case .storageFailed: return "storageFailed"
+      case .cloudNoModel: return "cloudNoModel"
+      case .cloudModelUnavailable: return "cloudModelUnavailable"
       }
     }
 

@@ -40,7 +40,8 @@ final class PolishSetupCardPresenter {
 
   private let overlay: any OverlayPresenting
   private let monitor: PolishSetupMonitor
-  private let openAIPolish: @MainActor () -> Void
+  /// Opens AI Polish; `openModelMenu` also asks dictation's model menu to open (#4353 D4).
+  private let openAIPolish: @MainActor (_ openModelMenu: Bool) -> Void
   private let log: @MainActor (String) -> Void
 
   /// Admitted, waiting for its first render.
@@ -52,7 +53,7 @@ final class PolishSetupCardPresenter {
 
   init(
     overlay: any OverlayPresenting, monitor: PolishSetupMonitor,
-    openAIPolish: @escaping @MainActor () -> Void,
+    openAIPolish: @escaping @MainActor (_ openModelMenu: Bool) -> Void,
     log: @escaping @MainActor (String) -> Void = PolishSetupCardPresenter.appLog
   ) {
     self.overlay = overlay
@@ -191,7 +192,7 @@ final class PolishSetupCardPresenter {
     switch shown.card.ticket {
     case .setup(let ticket):
       if answer == .finishSetup {
-        openAIPolish()
+        openAIPolish(shown.card.subject.problem.opensModelMenu)
       } else {
         // Only the card, only for the episode it showed.
         monitor.acknowledge(.card, in: ticket.episode)
@@ -199,7 +200,7 @@ final class PolishSetupCardPresenter {
     case .outsideStop:
       // The notice was spent when it appeared. Choose engine opens AI Polish, where provider
       // requirements and setup status are shown; OK only closes it.
-      if answer == .chooseEngine { openAIPolish() }
+      if answer == .chooseEngine { openAIPolish(false) }
     }
   }
 

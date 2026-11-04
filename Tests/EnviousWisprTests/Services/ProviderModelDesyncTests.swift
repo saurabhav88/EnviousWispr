@@ -61,7 +61,8 @@ struct ProviderModelDesyncTests {
     #expect(
       settings.effectiveLLMModel != "llama3.2",
       "a Gemini request must never be sent with an Ollama model name")
-    #expect(settings.effectiveLLMModel == "gemini-3.7-flash")
+    // #4353 D2: swept to empty ("Choose a model"), never to a preselected Gemini default.
+    #expect(settings.effectiveLLMModel == "")
     // The remembered Ollama preference is untouched — #1305 relies on it for the
     // Download-suggestion copy, and sweeping it here would fix one bug with
     // another.
@@ -81,16 +82,18 @@ struct ProviderModelDesyncTests {
     settings.llmModel = "llama3.2"
     settings.llmProvider = .gemini
 
-    #expect(settings.effectiveLLMModel == "gemini-3.7-flash")
+    // #4353 D2: empty, never another provider's name and never a preselected default.
+    #expect(settings.effectiveLLMModel == "")
   }
 
   /// Every cloud destination, not just the one that showed up in telemetry.
   /// `openAI` appeared once and `claude` never, which is sample size rather than
-  /// immunity — they share the single guard.
+  /// immunity — they share the single guard. #4353 D2: each lands on empty ("Choose a model"),
+  /// since a never-used provider remembers no pick and nothing is preselected.
   nonisolated static let cloudDestinations: [(LLMProvider, String)] = [
-    (.gemini, "gemini-3.7-flash"),
-    (.openAI, "gpt-4o-mini"),
-    (.claude, "claude-haiku-4-5"),
+    (.gemini, ""),
+    (.openAI, ""),
+    (.claude, ""),
   ]
 
   @Test("no cloud provider inherits a local model name", arguments: cloudDestinations)
@@ -122,8 +125,8 @@ struct ProviderModelDesyncTests {
     let settings = SettingsManager(defaults: suite)
 
     #expect(
-      settings.effectiveLLMModel == "gemini-3.7-flash",
-      "launch-time canonicalization must repair a stuck install")
+      settings.effectiveLLMModel == "",
+      "launch-time canonicalization must clear a stuck install (#4353 D2: to empty)")
     #expect(settings.llmProvider == .gemini, "the user's provider choice is not overridden")
   }
 

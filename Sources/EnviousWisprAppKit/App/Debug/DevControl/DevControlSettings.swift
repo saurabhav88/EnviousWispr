@@ -485,7 +485,7 @@
       /// The screen's synchronous cached load, including ownership and surface repair
       /// (`LLMModelDiscoveryCoordinator.loadCachedModels`), so a model check after a provider
       /// change does not depend on a mounted screen.
-      var loadCachedModelCatalog: (LLMProvider, ProviderSetupSurface) -> Void
+      var loadCachedModelCatalog: (LLMProvider) -> Void
       /// UIDs of the input devices the system lists right now.
       var connectedInputUIDs: () -> [String]
       /// Input count per connected input device UID, read at request time.
@@ -895,7 +895,7 @@
       }
       var catalog = context.modelCatalog()
       if catalog.provider != provider || catalog.models.isEmpty {
-        context.loadCachedModelCatalog(provider, surface)
+        context.loadCachedModelCatalog(provider)
         catalog = context.modelCatalog()
       }
       guard catalog.provider == provider, !catalog.models.isEmpty else {

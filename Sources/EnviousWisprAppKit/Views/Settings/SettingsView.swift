@@ -102,6 +102,18 @@ struct UnifiedWindowView: View {
         navigate(.destination(destination))
       }
     }
+    // #4353 D4: a control the page on screen asked to bring into view and ring. The same
+    // arrival a search result uses (scrolls only when the control is not fully visible), applied
+    // to the window's state directly: it is not a search, so no search attempt is finished or
+    // reported, and it only applies while that control's page is the one showing.
+    .onChange(of: navigationCoordinator.pendingReveal, initial: true) { _, id in
+      guard let id else { return }
+      navigationCoordinator.consumeReveal()
+      guard let request = SettingsSearchRequest(entryID: id.rawValue),
+        request.destination.page == navigationState.selectedPage
+      else { return }
+      navigationState.apply(request)
+    }
     .onPreferenceChange(PolishSetupUnsavedKeyDraftKey.self) { hasUnsavedKeyDraft = $0 }
     .alert(
       leaveQuestion?.content.title ?? "",

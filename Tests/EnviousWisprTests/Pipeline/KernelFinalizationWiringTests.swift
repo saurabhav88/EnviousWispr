@@ -666,6 +666,8 @@ import os
     let saves = SaveCountBox()
     let polish = LLMPolishStep(keychainManager: KeychainManager())
     polish.llmProvider = .openAI
+    // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
+    polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _ in ThrowingPolisher() }
     let wiring = makeWiring(
       outcome: outcome,
@@ -969,6 +971,8 @@ import os
 
     let polish = LLMPolishStep(keychainManager: KeychainManager())
     polish.llmProvider = .openAI
+    // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
+    polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _ in CancellingPolisher() }
 
     let wiring = makeWiring(

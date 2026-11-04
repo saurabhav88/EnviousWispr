@@ -84,7 +84,7 @@ struct SavedKeyPresenceTests {
   }
 
   private static func row(_ id: String, provider: LLMProvider) -> LLMModelInfo {
-    LLMModelInfo(id: id, displayName: id, provider: provider, isAvailable: true, isRemote: true)
+    LLMModelInfo(id: id, displayName: id, provider: provider, availability: .available, isRemote: true)
   }
 
   // MARK: - Presence
@@ -196,6 +196,61 @@ struct SavedKeyPresenceTests {
       savedKeyPresence: presence, discoverModels: answer)
     await discovery.validateKeyAndDiscoverModels(provider: provider, settings: Self.settings())
     return discovery
+  }
+
+  @Test("live discovery records each model's own probe answer, in true order (#4353)")
+  func discoveryRecordsDefinitiveModelAnswers() async throws {
+    let keychain = Self.fixtureKeychain()
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "test-not-a-real-key")
+    let presence = SavedKeyPresence()
+    presence.recordSaved(.openAI)
+    let t0 = ContinuousClock.now
+    func at(_ ms: Int) -> ContinuousClock.Instant { t0 + .milliseconds(ms) }
+    func row(_ id: String, _ availability: LLMModelAvailability, _ ms: Int?) -> LLMModelInfo {
+      LLMModelInfo(
+        id: id, displayName: id, provider: .openAI, availability: availability,
+        isRemote: false, availabilityObservedAt: ms.map(at))
+    }
+    let discovery = LLMModelDiscoveryCoordinator(
+      keychainManager: keychain, cacheDefaults: Self.cacheDefaults(), savedKeyPresence: presence,
+      discoverModels: { _, _ in
+      [
+        // Discovery started before 0; each probe answered at its own time.
+        row("gpt-late-fail", .confirmedUnavailable, 30),  // after a working dictation at 20
+        row("gpt-late-ok", .available, 30),  // after a failed dictation at 20
+        row("gpt-early", .confirmedUnavailable, 5),  // before a working dictation at 20
+        row("gpt-unsure", .inconclusive, 30),
+        row("gpt-no-time", .confirmedUnavailable, nil),
+      ]
+    })
+    func dictation(_ model: String, works: Bool, _ ms: Int, revision: UInt64 = 1) {
+      discovery.recordCloudModelObservation(
+        provider: .openAI, model: model,
+        observation: CloudModelObservation(
+          credentialRevision: revision, works: works, observedAt: at(ms)))
+    }
+    dictation("gpt-late-fail", works: true, 20)
+    dictation("gpt-late-ok", works: false, 20)
+    dictation("gpt-early", works: true, 20)
+    dictation("gpt-unsure", works: false, 20)
+    await discovery.validateKeyAndDiscoverModels(provider: .openAI, settings: Self.settings())
+
+    let answers = try #require(discovery.cloudModelObservations[.openAI])
+    #expect(answers["gpt-late-fail"]?.works == false, "a later probe failure must win")
+    #expect(answers["gpt-late-ok"]?.works == true, "a later probe success must win")
+    #expect(answers["gpt-early"]?.works == true, "an earlier probe answer published late won")
+    #expect(answers["gpt-unsure"]?.works == false, "a probe that could not tell changed the answer")
+    #expect(answers["gpt-no-time"] == nil, "a row with no probe time became evidence")
+    #expect(answers["gpt-late-fail"]?.observedAt == at(30))
+    #expect(answers["gpt-late-fail"]?.credentialRevision == 1)
+
+    // An answer earned under another key replaces, and the old key's answer stops applying.
+    dictation("gpt-late-fail", works: true, 10, revision: 2)
+    #expect(discovery.cloudModelObservations[.openAI]?["gpt-late-fail"]?.credentialRevision == 2)
+    #expect(
+      CloudModelObservation.confirmsUnavailable(
+        discovery.cloudModelObservations, provider: .openAI, model: "gpt-late-ok",
+        credentialRevision: 2) == false)
   }
 
   @Test("a key the provider accepts, refuses, or could not be asked about")
@@ -368,7 +423,7 @@ struct SavedKeyPresenceTests {
     }
     #expect(discovery.cloudVerdict?.result == .rejected)
     // Transcribe a File shows Gemini: what is SHOWN is Gemini's (nothing yet)...
-    discovery.loadCachedModels(for: .gemini, settings: Self.settings(), surface: .dictation)
+    discovery.loadCachedModels(for: .gemini)
     #expect(discovery.cloudVerdict == nil)
     // ...but dictation's OpenAI key is still known to be rejected (#3438 final review).
     #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected)
@@ -428,7 +483,7 @@ struct SavedKeyPresenceTests {
     defer { release.open() }
     #expect(await entered.wait(), "the recheck never reached the provider")
     #expect(discovery.cloudVerdicts[.openAI]?.result == .checking)
-    discovery.loadCachedModels(for: .gemini, settings: settings, surface: .dictation)
+    discovery.loadCachedModels(for: .gemini)
     #expect(discovery.cloudVerdicts[.openAI]?.result == .rejected, "the rejection was lost")
     release.open()
     await recheck.value

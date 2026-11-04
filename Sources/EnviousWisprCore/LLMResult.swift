@@ -58,84 +58,18 @@ extension LLMProvider {
     }
   }
 
-  /// Default model for a provider. Used to restore a sensible model when switching providers.
-  ///
-  /// The `ollamaModel` default is a FALLBACK for callers that have no saved value; every production
-  /// caller passes the stored setting explicitly. It must nonetheless match
-  /// `SettingsDefaultValues.ollamaModel` (#1950 moved both to `qwen2.5:3b`), or the fallback path
-  /// quietly serves a different model than a fresh install does, and
-  /// `SettingsDefaultsRoutingTests` asserts they agree so the two cannot drift.
-  public static func defaultModel(for provider: LLMProvider, ollamaModel: String = "qwen2.5:3b")
-    -> String
-  {
+  /// The model a NON-cloud provider runs: the remembered Ollama name, or a bundled engine's
+  /// fixed name; `""` for no polish. Nil for OpenAI, Gemini and Claude, which have no default:
+  /// a cloud model is only ever the user's choice (#4353 D2), so nothing may fill one in.
+  public static func localModel(for provider: LLMProvider, ollamaModel: String) -> String? {
     switch provider {
-    case .openAI: return "gpt-4o-mini"
-    // 2026-08-16: was `gemini-3.5-flash` (itself the #1770 replacement for
-    // `gemini-2.0-flash`, which Google shut down 2026-06-01). Swapped on the
-    // #1832 bar — "once benchmarked" — not on the price table. Four arms on
-    // sealed_v1 (1,462 cases), all graded in ONE judging window with the cloud
-    // polish v7 prompt:
-    //
-    //   3.5-flash  minimal   91.2%  S4 52   $3.71/run   p90  965ms
-    //   3.6-flash  minimal   89.9%  S4 61   $1.82/run   p90  893ms
-    //   3.7-flash  low       93.5%  S4 26   $2.63/run   p90 1710ms
-    //
-    // 3.7 wins quality decisively (half the critical failures of 3.5) and still
-    // costs 29% less, at the price of roughly double the p90 latency because it
-    // cannot disable thinking — `low` is its floor. 3.6 is cheapest and fastest
-    // and is the WORST of the three on quality, below what we already shipped;
-    // a price-led choice would have picked it and made polish worse.
-    //
-    // Two caveats kept deliberately. 3.7's judge-stability check FAILED at
-    // 5.2pp against a 5.0 limit, so its 93.5% carries more uncertainty than the
-    // other two, which passed. And the judge is azure/gpt-5-6-luna, an OpenAI
-    // model grading Gemini output. Founder chose 3.7 on this evidence.
-    //
-    // This is the fallback for new users and provider switches. An existing
-    // Gemini user with `gemini-3.5-flash` saved keeps it — `canonicalize`
-    // only replaces a model id that looks like ANOTHER provider's.
-    case .gemini: return "gemini-3.7-flash"
-    case .claude: return "claude-haiku-4-5"
+    case .openAI, .gemini, .claude: return nil
     case .ollama: return ollamaModel
     case .appleIntelligence: return "apple-intelligence"
     case .egOne: return LLMProvider.egOneModelName
     case .s1Mini: return LLMProvider.s1MiniModelName
     case .none: return ""
     }
-  }
-
-  /// Model ids the provider has WITHDRAWN, which must be swept off a user's
-  /// saved settings rather than left to fail forever (#1770).
-  ///
-  /// #4353: its one remaining reader is `SettingsManager.normalizedModel`, and a remembered
-  /// pick now overrides it (decision 3: nobody's stored selection changes). Request-time
-  /// swaps in Transcribe a File and crash recovery were removed (decision 4: never swap a
-  /// chosen model). PR 2 of #4353 removes the remaining launch-time use.
-  ///
-  /// Deliberately an EXPLICIT set, never a predicate: we only ever replace ids
-  /// the provider has actually withdrawn, never a model the user legitimately
-  /// chose. Each was verified 404 against the live API on 2026-07-29.
-  ///
-  /// KEYED BY PROVIDER, not a flat set of ids. An Ollama model is named by the
-  /// user, so a local model called `gemini-2.0-flash` is a perfectly legitimate
-  /// choice that a flat set would silently rewrite to the shipped default. Keying also keeps the next entry honest: under a flat set plus a
-  /// `provider == .gemini` guard, a future OpenAI retirement added here would be
-  /// silently ignored — it would LOOK registered and do nothing.
-  ///
-  /// This is NOT a general staleness mechanism. When Google retires the next
-  /// model, a human adds it here — the same human gate that governs adding a
-  /// new model's thinking dialect.
-  public static let retiredModelIDs: [LLMProvider: Set<String>] = [
-    .gemini: [
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-lite",
-      "gemini-3-pro-preview",
-    ]
-  ]
-
-  /// Whether `provider` has WITHDRAWN `modelID`.
-  public static func isRetiredModel(_ modelID: String, for provider: LLMProvider) -> Bool {
-    retiredModelIDs[provider]?.contains(modelID) ?? false
   }
 
   /// Coarse "does this model id look like it could belong to `provider`"
@@ -342,6 +276,21 @@ public enum AppleIntelligenceModelStatus: String, Codable, Sendable, CaseIterabl
   }
 }
 
+/// What model discovery learned about one model for the current key (#4353 D4).
+///
+/// Three values, because two lied: a probe that never got an answer (offline, timeout, a
+/// busy server) used to read as "locked", and a locked row cannot be chosen, so a network
+/// blip during discovery took a working model away from the user.
+public enum LLMModelAvailability: String, Codable, Sendable, Equatable {
+  /// The probe got a working answer.
+  case available
+  /// The provider said this model is missing or not allowed for this key (for a cloud
+  /// provider: 404, 403, or Gemini's zero quota), or this Mac cannot run it.
+  case confirmedUnavailable
+  /// No usable answer either way. The row stays selectable.
+  case inconclusive
+}
+
 /// A discoverable LLM model with availability status.
 public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// Canonical Ollama model name: strips a `:latest` suffix, preserves every
@@ -368,7 +317,18 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   public let id: String
   public let displayName: String
   public let provider: LLMProvider
-  public var isAvailable: Bool
+  public var availability: LLMModelAvailability
+
+  /// Discovery CONFIRMED this model works. Not the same question as `isSelectable`: an
+  /// inconclusive row is selectable but not confirmed available.
+  public var isAvailable: Bool { availability == .available }
+
+  /// The user may pick this row. Only confirmed unavailability locks a row (#4353 D4).
+  public var isSelectable: Bool { availability != .confirmedUnavailable }
+
+  /// #4353 D4: when THIS row's probe answer arrived, stamped where the probe returned. Transient:
+  /// never encoded, so a row read back from the cache has nil and is never fresh evidence.
+  public var availabilityObservedAt: ContinuousClock.Instant?
 
   /// #1914: whether the OLLAMA DAEMON proxies this model to Ollama's own
   /// servers instead of running it on this Mac.
@@ -406,13 +366,15 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   /// exists to remove. Required turns that into a compile error, the same cure
   /// `LLMPolishStep`'s non-optional `ollamaThinks` binding uses.
   public init(
-    id: String, displayName: String, provider: LLMProvider, isAvailable: Bool,
-    isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil
+    id: String, displayName: String, provider: LLMProvider, availability: LLMModelAvailability,
+    isRemote: Bool, appleIntelligenceStatus: AppleIntelligenceModelStatus? = nil,
+    availabilityObservedAt: ContinuousClock.Instant? = nil
   ) {
+    self.availabilityObservedAt = availabilityObservedAt
     self.id = id
     self.displayName = displayName
     self.provider = provider
-    self.isAvailable = isAvailable
+    self.availability = availability
     self.isRemote = isRemote
     self.appleIntelligenceStatus = appleIntelligenceStatus
   }
@@ -439,12 +401,27 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
   ///   load-bearing: cloud panes load the cache and do NOT auto-run discovery,
   ///   so failing closed there would leave a real user staring at an empty
   ///   model list until they thought to press refresh.
+  ///
+  /// #4353 D4: `availability` is absent in caches written before it existed. A legacy CLOUD
+  /// row stored `false` both for a real lock and for a probe that never got an answer, so it
+  /// decodes as inconclusive (selectable) rather than as a confirmed lock. Every other
+  /// provider's `false` was a confirmed fact (Apple Intelligence: this Mac cannot run it).
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
+    availabilityObservedAt = nil
     id = try container.decode(String.self, forKey: .id)
     displayName = try container.decode(String.self, forKey: .displayName)
     provider = try container.decode(LLMProvider.self, forKey: .provider)
-    isAvailable = try container.decode(Bool.self, forKey: .isAvailable)
+    if let stored = try container.decodeIfPresent(
+      LLMModelAvailability.self, forKey: .availability)
+    {
+      availability = stored
+    } else if try container.decode(Bool.self, forKey: .isAvailable) {
+      availability = .available
+    } else {
+      availability =
+        [.openAI, .gemini, .claude].contains(provider) ? .inconclusive : .confirmedUnavailable
+    }
     // #3142: absent in caches written before the field existed; nil means "a model name".
     appleIntelligenceStatus = try container.decodeIfPresent(
       AppleIntelligenceModelStatus.self, forKey: .appleIntelligenceStatus)
@@ -463,6 +440,23 @@ public struct LLMModelInfo: Codable, Identifiable, Sendable {
     } else {
       isRemote = false
     }
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case id, displayName, provider, availability, isAvailable, isRemote, appleIntelligenceStatus
+  }
+
+  /// Writes `isAvailable` beside `availability` so a build from before #4353 can still read
+  /// the cache after a downgrade (it requires the key).
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(displayName, forKey: .displayName)
+    try container.encode(provider, forKey: .provider)
+    try container.encode(availability, forKey: .availability)
+    try container.encode(isAvailable, forKey: .isAvailable)
+    try container.encode(isRemote, forKey: .isRemote)
+    try container.encodeIfPresent(appleIntelligenceStatus, forKey: .appleIntelligenceStatus)
   }
 }
 

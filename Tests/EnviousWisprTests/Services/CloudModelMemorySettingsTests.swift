@@ -20,7 +20,7 @@ struct CloudModelMemorySettingsTests {
 
   private static func row(_ id: String, available: Bool = true) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: .openAI, isAvailable: available, isRemote: false)
+      id: id, displayName: id, provider: .openAI, availability: available ? .available : .confirmedUnavailable, isRemote: false)
   }
 
   // MARK: - Round trips
@@ -229,7 +229,8 @@ struct CloudModelMemorySettingsTests {
     defaults.set("gpt-6-luna", forKey: "llmModel")
     let settings = SettingsManager(defaults: defaults)
     #expect(settings.dictationCloudModelMemory.model(for: .openAI) == nil)
-    #expect(settings.llmModel.hasPrefix("claude-"))
+    // #4353 D2: the foreign id is cleared to empty, never to a preselected Claude default.
+    #expect(settings.llmModel == "")
   }
 
   @Test("an upgrade with polish off keeps the pick under the engine the toggle restores")
@@ -255,15 +256,28 @@ struct CloudModelMemorySettingsTests {
     #expect(settings.fileImportCloudModelMemory == CloudModelMemory())
   }
 
+  /// Seeding is the upgrade's one-time copy of a stored pick into an ABSENT memory. Polish off
+  /// separates it from ordinary recording: the seed files the pick under the engine the toggle
+  /// restores (`upgradeWithPolishOff`), while ordinary recording under "no polish" files
+  /// nothing. So a present empty memory that stays empty here was not seeded again.
   @Test("a memory that was already seeded, even empty, is never seeded again")
   func presentEmptyMemoryIsNotReseeded() throws {
     let defaults = Self.freshDefaults()
-    defaults.set("gemini", forKey: "llmProvider")
-    defaults.set("gemini-2.0-flash", forKey: "llmModel")
+    defaults.set("none", forKey: "llmProvider")
+    defaults.set("claude", forKey: "lastLLMProvider")
+    defaults.set("claude-haiku-5-5", forKey: "llmModel")
     defaults.set(try JSONEncoder().encode(CloudModelMemory()), forKey: "cloudModelByProvider")
     let settings = SettingsManager(defaults: defaults)
-    #expect(settings.dictationCloudModelMemory.model(for: .gemini) != "gemini-2.0-flash")
-    #expect(settings.llmModel == "gemini-3.7-flash")
+    #expect(settings.dictationCloudModelMemory == CloudModelMemory())
+    #expect(settings.llmModel == "claude-haiku-5-5", "the stored pick itself is kept as stored")
+
+    // #4353 D2: a provider-compatible stored id, retired or not, stays byte-for-byte, and the
+    // ordinary recording of the accepted value files it (that is not a seed).
+    let kept = Self.freshDefaults()
+    kept.set("gemini", forKey: "llmProvider")
+    kept.set("gemini-2.0-flash", forKey: "llmModel")
+    kept.set(try JSONEncoder().encode(CloudModelMemory()), forKey: "cloudModelByProvider")
+    #expect(SettingsManager(defaults: kept).llmModel == "gemini-2.0-flash")
   }
 
   @Test("the launch-time summary migration copies the stored dictation model as stored")
@@ -385,5 +399,75 @@ struct CloudModelMemorySettingsTests {
     case .fileImport: #expect(settings.fileImportLLMModel == "gpt-6-luna")
     case .meetingSummary: #expect(settings.meetingSummaryLLMModel == "gpt-6-luna")
     }
+  }
+
+  // MARK: - #4353 D2: nothing is preselected
+
+  @Test("#4353 a never-used cloud provider stays empty across launch, switching and relaunch")
+  func neverUsedStaysEmpty() {
+    let defaults = Self.freshDefaults()
+    let settings = SettingsManager(defaults: defaults)
+    // A fresh install's dictation starts on a fixed on-device engine, which names its own model;
+    // no cloud field holds a preselected id.
+    #expect(LLMProvider.localModel(for: settings.llmProvider, ollamaModel: "") != nil)
+    #expect(settings.fileImportLLMModel == "")
+    #expect(settings.meetingSummaryLLMModel == "")
+    for provider in [LLMProvider.openAI, .gemini, .claude, .ollama, .claude, .openAI] {
+      settings.llmProvider = provider
+      settings.seedFileImportPolishModelsIfNeeded(for: provider)
+      settings.fileImportLLMProvider = provider
+      settings.meetingSummaryLLMProvider = provider
+      if provider != .ollama {
+        #expect(settings.llmModel == "", "\(provider)")
+        #expect(settings.fileImportLLMModel == "", "\(provider)")
+        #expect(settings.meetingSummaryLLMModel == "", "\(provider)")
+      }
+    }
+    let reloaded = SettingsManager(defaults: defaults)
+    #expect(reloaded.llmModel == "")
+    #expect(reloaded.fileImportLLMModel == "")
+    #expect(reloaded.meetingSummaryLLMModel == "")
+  }
+
+  enum EmptyCatalog: CaseIterable { case empty, available, locked, inconclusive }
+
+  @Test(
+    "#4353 no catalog fills an empty cloud choice, with nothing remembered",
+    arguments: Surface.allCases, EmptyCatalog.allCases)
+  func discoveryNeverFillsAnEmptyChoice(surface: Surface, catalog: EmptyCatalog) {
+    let settings = SettingsManager(defaults: Self.freshDefaults())
+    settings.llmProvider = .claude
+    switch surface {
+    case .dictation: break
+    case .fileImport: settings.fileImportLLMProvider = .claude
+    case .meetingSummary: settings.meetingSummaryLLMProvider = .claude
+    }
+    func row(_ id: String, _ availability: LLMModelAvailability) -> LLMModelInfo {
+      LLMModelInfo(
+        id: id, displayName: id, provider: .claude, availability: availability, isRemote: true)
+    }
+    let models: [LLMModelInfo]
+    switch catalog {
+    case .empty: models = []
+    case .available: models = [row("claude-haiku-4-5-20251001", .available), row("claude-x", .available)]
+    case .locked: models = [row("claude-haiku-4-5", .confirmedUnavailable)]
+    case .inconclusive: models = [row("claude-haiku-4-5", .inconclusive)]
+    }
+    var modelWrites: [SettingsManager.SettingKey] = []
+    settings.onChange = { key in
+      if [.llmModel, .fileImportLLMModel, .meetingSummaryLLMModel].contains(key) {
+        modelWrites.append(key)
+      }
+    }
+    switch surface {
+    case .dictation: settings.applyDiscoveredModels(models, for: .claude)
+    case .fileImport: settings.applyDiscoveredModelsForFileImport(models, for: .claude)
+    case .meetingSummary: settings.applyDiscoveredModelsForMeetingSummary(models, for: .claude)
+    }
+    settings.onChange = nil
+    #expect(modelWrites.isEmpty)
+    #expect(settings.llmModel == "")
+    #expect(settings.fileImportLLMModel == "")
+    #expect(settings.meetingSummaryLLMModel == "")
   }
 }

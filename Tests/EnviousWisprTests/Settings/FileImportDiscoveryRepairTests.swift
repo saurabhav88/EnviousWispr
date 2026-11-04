@@ -54,7 +54,7 @@ struct FileImportDiscoveryRepairTests {
     _ id: String, provider: LLMProvider, available: Bool = true, remote: Bool = false
   ) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: provider, isAvailable: available, isRemote: remote)
+      id: id, displayName: id, provider: provider, availability: available ? .available : .confirmedUnavailable, isRemote: remote)
   }
 
   /// The point of the whole lift: a catalog fetched for the import's provider repairs the

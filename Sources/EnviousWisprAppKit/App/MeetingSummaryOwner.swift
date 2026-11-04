@@ -116,6 +116,11 @@ final class MeetingSummaryOwner {
     case notesUnreadable
     /// The meeting's files could not be written; the summary stays owed.
     case storageFailed
+    /// #4353 D9: OpenAI, Gemini or Claude with no model chosen. Nothing was sent.
+    case cloudNoModel(LLMProvider)
+    /// #4353 D9: the provider answered that this model does not exist. The provider and model
+    /// are the attempt's own frozen selection, never the setting read afterwards.
+    case cloudModelUnavailable(LLMProvider, String)
   }
 
   private(set) var activity: [UUID: Activity] = [:]
@@ -194,6 +199,11 @@ final class MeetingSummaryOwner {
   func decide() -> MeetingEndedTelemetry.SummaryPlan {
     guard deps.isEnabled() else { return .off }
     let selection = deps.selection()
+    // #4353 D9: no cloud model chosen schedules nothing; the Summary tab explains it from the
+    // setting (`configurationProblem`), and Write summary works once a model is chosen.
+    if MeetingSummaryProviders.isCloudWithNoModel(selection.provider, model: selection.model) {
+      return .unsupported
+    }
     switch MeetingSummary.capability(
       selection.provider, model: selection.model, ollamaModelIsRemote: nil)
     {
@@ -375,6 +385,7 @@ final class MeetingSummaryOwner {
       case .notForSummaries: return Ending(end: .problem(.notForSummaries))
       case .notReady: return Ending(end: .problem(.notReady))
       case .ollamaTooOld: return Ending(end: .problem(.ollamaTooOld))
+      case .noModelChosen: return Ending(end: .problem(.cloudNoModel(selection.provider)))
       }
     }
     if Task.isCancelled {
@@ -530,6 +541,10 @@ final class MeetingSummaryOwner {
       case .windowTooSmall: return Ending(end: .problem(.notForSummaries))
       case .providerFailed, .empty, .truncated, .timedOut:
         return Ending(end: .problem(.providerFailed))
+      case .rejected(let reason):
+        // #4353 D9: a cloud model problem only when the shared reading says this attempt's
+        // captured model cannot be used; anything else keeps its existing explanation.
+        return Ending(end: .problem(Self.rejectedProblem(reason, selection)))
       }
     } catch {
       if local {
@@ -682,6 +697,10 @@ final class MeetingSummaryOwner {
   /// provider, or a provider or model that cannot summarize. Nil when one can be tried.
   func configurationProblem() -> Problem? {
     let selection = deps.selection()
+    // #4353 D9: an empty cloud choice is explained from the setting itself, before any request.
+    if MeetingSummaryProviders.isCloudWithNoModel(selection.provider, model: selection.model) {
+      return .cloudNoModel(selection.provider)
+    }
     switch MeetingSummary.capability(
       selection.provider, model: selection.model, ollamaModelIsRemote: nil)
     {
@@ -726,6 +745,15 @@ final class MeetingSummaryOwner {
     }
     writeAgain(meetingID, replacing: nil)
     return .started
+  }
+
+  /// #4353 D9: what a refused request means for the attempt that got it, read with its own
+  /// captured provider and model.
+  static func rejectedProblem(
+    _ reason: PolishFailureReason, _ selection: (provider: LLMProvider, model: String)
+  ) -> Problem {
+    reason.meansCloudModelUnavailable(provider: selection.provider, model: selection.model)
+      ? .cloudModelUnavailable(selection.provider, selection.model) : .providerFailed
   }
 
   static func providerKind(_ provider: LLMProvider) -> MeetingSummaryFinishedTelemetry.ProviderKind
@@ -795,10 +823,13 @@ final class MeetingSummaryOwner {
       case .cancelled: outcome = .cancelled
       case .nothingToSummarize: outcome = .nothingToSummarize
       case .problem(.noProvider): outcome = .noProvider
+      // #4353 D9: no cloud model chosen is a setup state like an engine that cannot summarize;
+      // nothing was attempted, so it never reads as a provider failure.
       case .problem(.notForSummaries), .problem(.notReady), .problem(.ollamaTooOld),
-        .problem(.tooLong):
+        .problem(.tooLong), .problem(.cloudNoModel):
         outcome = .unsupported
-      case .problem(.providerFailed), .problem(.notesUnreadable), .problem(.storageFailed):
+      case .problem(.providerFailed), .problem(.notesUnreadable), .problem(.storageFailed),
+        .problem(.cloudModelUnavailable):
         outcome = .failed
       }
       // R57, enforced here for every path: `none` exactly with `noProvider`. A provider other

@@ -935,15 +935,18 @@ struct MeetingSummaryTests {
 
   // MARK: - Written in parts (#4044)
 
-  @Test("the cloud defaults named by the long-meeting hint retain large planning windows")
-  func longMeetingHintDefaultCapacity() {
-    // #4044: "The default OpenAI, Gemini and Claude models fit much longer meetings in one
-    // piece." This binds their minimum planning capacity.
-    for provider: LLMProvider in [.openAI, .gemini, .claude] {
-      let model = LLMProvider.defaultModel(for: provider)
+  @Test("the long-meeting hint's 'some cloud models' holds for known supported examples")
+  func longMeetingHintSupportedCloudExamples() {
+    // #4044, reworded by #4353 D2: "Some cloud models can fit longer meetings in one piece."
+    // Bound to explicit known models, one per provider, each planned at least 128,000 tokens:
+    // over thirty times Apple Intelligence's 4,096-token window, which wrote the parts.
+    let examples: [(LLMProvider, String)] = [
+      (.openAI, "gpt-4o-mini"), (.gemini, "gemini-3.7-flash"), (.claude, "claude-haiku-4-5"),
+    ]
+    for (provider, model) in examples {
       #expect(
         MeetingSummaryProviders.hostedContextTokens(provider, model: model) >= 128_000,
-        "\(provider.rawValue) default \(model) no longer supports the hint's capacity claim")
+        "\(provider.rawValue) \(model) no longer supports the hint's capacity claim")
     }
   }
 
@@ -1006,6 +1009,57 @@ struct MeetingSummaryTests {
     #expect(result.inParts == true)
     #expect(calls.prompts.contains { $0.contains("the user's own notes") })
   }
+  // MARK: - #4353 D9
+
+  @Test("#4353 an empty cloud model is refused first: no window, no connector, no Ollama probe")
+  func emptyCloudModelIsRefusedFirst() async {
+    for provider in [LLMProvider.openAI, .gemini, .claude] {
+      for model in ["", "   "] {
+        let ollama = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
+        let result = await Self.prepare(provider, model, ollama)
+        #expect(result.failureValue == .noModelChosen, "\(provider) \(model.debugDescription)")
+        #expect(ollama.probes == 0)
+        #expect(ollama.requests.isEmpty)
+      }
+      // A chosen model still prepares.
+      let ready = await Self.prepare(provider, "some-model", Ollama(facts: nil))
+      #expect(ready.successValue?.execution == .hosted)
+    }
+    // Local engines never read as "no cloud model".
+    #expect(MeetingSummaryProviders.isCloudWithNoModel(.ollama, model: "") == false)
+    #expect(MeetingSummaryProviders.isCloudWithNoModel(.appleIntelligence, model: "") == false)
+    #expect(MeetingSummaryProviders.isCloudWithNoModel(.none, model: "") == false)
+  }
+
+  @Test("#4353 a model the provider says does not exist fails typed after one call, never retried")
+  func modelUnavailableIsTypedAndNotRetried() async throws {
+    let gone = Calls()
+    gone.answers = Array(repeating: .failure(LLMError.classified(.modelUnavailable)), count: 3)
+    await #expect(throws: MeetingSummary.Failure.rejected(.modelUnavailable)) {
+      _ = try await Self.write(gone, transcript: "t")
+    }
+    #expect(gone.prompts.count == 1)
+
+    // An Ollama 404 (a model not pulled) reaches the same typed failure through the real
+    // connector; the owner keeps it an ordinary failure for a local engine.
+    let local = Ollama(facts: OllamaModelFacts(isRemote: false, thinks: false))
+    let prepared = try #require(await Self.prepare(.ollama, "llama3.2", local).successValue)
+    local.replies = Array(repeating: .http(404, "{\"error\":\"model not found\"}"), count: 3)
+    await #expect(throws: MeetingSummary.Failure.rejected(.modelUnavailable)) {
+      _ = try await MeetingSummary.write(
+        transcript: "t", notes: "", facts: "", window: prepared.window, callTimeoutSeconds: 60,
+        admit: {}, complete: prepared.complete)
+    }
+    #expect(local.requests.count == 1)
+
+    // #4353 G5: a bad request is passed on typed too, once, for the owner to read with its model.
+    let refused = Calls()
+    refused.answers = Array(repeating: .failure(LLMError.classified(.badRequest)), count: 3)
+    await #expect(throws: MeetingSummary.Failure.rejected(.badRequest)) {
+      _ = try await Self.write(refused, transcript: "t")
+    }
+    #expect(refused.prompts.count == 1)
+  }
 }
 
 extension Result {
@@ -1014,4 +1068,5 @@ extension Result {
     if case .failure(let error) = self { return error }
     return nil
   }
+
 }

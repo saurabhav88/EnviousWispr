@@ -34,7 +34,9 @@ struct AIPolishProviderPicker: View {
       claudeKeySaved: model.claudeKeySaved,
       savedKeyPresence: savedKeyPresence,
       cloudVerdicts: llmDiscovery.cloudVerdicts,
-      ollamaModel: settings.ollamaModel)
+      ollamaModel: settings.ollamaModel,
+      // #4353: the status chip reads the key; the model warning is the monitor's.
+      selectedCloudModel: nil, cloudModelEvidence: [:])
   }
 
   private func status(for provider: LLMProvider) -> ProviderStatus? {

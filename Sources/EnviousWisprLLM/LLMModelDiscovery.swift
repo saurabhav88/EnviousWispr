@@ -10,16 +10,27 @@ public struct LLMModelDiscovery: Sendable {
 
   public init() {}
 
-  /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
   /// #2884: "transcribe" and "audio" are audio-input ids (gemini-3.5-transcribe,
   /// the native-audio Live models) that advertise `generateContent` and so pass
   /// `fetchGeminiModels`, then reject a text polish request with 400. The OpenAI
-  /// branch's `isOpenAIChatCompletionCandidate` already skipped both.
-  static let excludePatterns = [
-    "tts", "image", "robotics", "computer-use", "deep-research",
-    "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
-    "lyria", "transcribe", "audio",
-  ]
+  /// branch's `isOpenAIChatCompletionCandidate` already skipped both. Named on its own so
+  /// a leftover pick's 400 can be read as "this model cannot be used" (#4353 G5).
+  static let audioInputPatterns = ["transcribe", "audio"]
+
+  /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
+  static let excludePatterns =
+    [
+      "tts", "image", "robotics", "computer-use", "deep-research",
+      "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
+      "lyria",
+    ] + audioInputPatterns
+
+  /// #4353 G5: an audio-input model id (`gemini-3.5-transcribe`, `gpt-4o-audio-preview`), which
+  /// rejects a text polish request with HTTP 400.
+  public static func isAudioInputModelID(_ id: String) -> Bool {
+    let lowered = id.lowercased()
+    return audioInputPatterns.contains { lowered.contains($0) }
+  }
 
   /// Suffixes that indicate versioned duplicates (keep only the base model).
   private static let versionedSuffixes = ["-001", "-002", "-003"]
@@ -56,15 +67,46 @@ public struct LLMModelDiscovery: Sendable {
   static func modelInfo(
     from candidate: DiscoveryCandidate,
     provider: LLMProvider,
-    isAvailable: Bool
+    availability: LLMModelAvailability,
+    observedAt: ContinuousClock.Instant?
   ) -> LLMModelInfo {
     LLMModelInfo(
       id: candidate.id,
       displayName: candidate.displayName,
       provider: provider,
-      isAvailable: isAvailable,
-      isRemote: candidate.isRemote
+      availability: availability,
+      isRemote: candidate.isRemote,
+      availabilityObservedAt: observedAt
     )
+  }
+
+  /// #4353 D4: what one cloud probe's answer says about the model, as a pure decision so the
+  /// three probes cannot disagree and tests reach the rule the probes call.
+  ///
+  /// `statusCode == nil` means no HTTP answer (offline, timeout, cancellation, not HTTP).
+  /// Only evidence about the MODEL for this key confirms unavailability: the provider's own
+  /// classifier saying `.modelUnavailable` (404) or `.accessDenied` (403), or Gemini's
+  /// quota-zero lock (a 429 whose body reports `limit: 0`). A rate limit, a busy server, a
+  /// rejected key, a billing problem or an unclassified answer says nothing about the model,
+  /// so it is inconclusive and the row stays selectable.
+  static func probeAvailability(
+    provider: LLMProvider, statusCode: Int?, body: String
+  ) -> LLMModelAvailability {
+    guard let statusCode else { return .inconclusive }
+    if statusCode == 200 { return .available }
+    let reason: PolishFailureReason
+    switch provider {
+    case .openAI: reason = OpenAIConnector.classify(statusCode: statusCode, bodyString: body)
+    case .claude: reason = ClaudeConnector.classify(statusCode: statusCode, bodyString: body)
+    case .gemini:
+      if statusCode == 429, body.contains("limit: 0") { return .confirmedUnavailable }
+      reason = GeminiConnector.classify(statusCode: statusCode, bodyString: body)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return .inconclusive
+    }
+    switch reason {
+    case .modelUnavailable, .accessDenied: return .confirmedUnavailable
+    default: return .inconclusive
+    }
   }
 
   /// #1914: `/api/tags` rows to selection-dropdown candidates.
@@ -146,11 +188,16 @@ public struct LLMModelDiscovery: Sendable {
       { group in
         for model in batch {
           group.addTask {
-            let available = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
+            let availability = await probeModel(
+              id: model.id, provider: provider, apiKey: apiKey)
+            // #4353: this model's answer arrived now, inside its own probe task; neither the
+            // discovery's start nor the list's publication stands in for it.
+            let observedAt = ContinuousClock.now
             return Self.modelInfo(
               from: model,
               provider: provider,
-              isAvailable: available
+              availability: availability,
+              observedAt: observedAt
             )
           }
         }
@@ -164,9 +211,15 @@ public struct LLMModelDiscovery: Sendable {
       results.append(contentsOf: batchResults)
     }
 
-    // Sort: available first, then by display name
-    return results.sorted { lhs, rhs in
-      if lhs.isAvailable != rhs.isAvailable { return lhs.isAvailable }
+    return Self.sortedForPicker(results)
+  }
+
+  /// Selectable rows first, then confirmed-locked rows; each by display name (#4353 D4). A row
+  /// discovery was not sure about sorts WITH the working rows: being unsure is not a reason to
+  /// push a model down the menu.
+  static func sortedForPicker(_ rows: [LLMModelInfo]) -> [LLMModelInfo] {
+    rows.sorted { lhs, rhs in
+      if lhs.isSelectable != rhs.isSelectable { return lhs.isSelectable }
       return lhs.displayName < rhs.displayName
     }
   }
@@ -243,10 +296,10 @@ public struct LLMModelDiscovery: Sendable {
     }
   }
 
-  private func probeGemini(modelID: String, apiKey: String) async -> Bool {
+  private func probeGemini(modelID: String, apiKey: String) async -> LLMModelAvailability {
     let urlString =
       "https://generativelanguage.googleapis.com/v1beta/models/\(modelID):generateContent"
-    guard let url = URL(string: urlString) else { return false }
+    guard let url = URL(string: urlString) else { return .inconclusive }
 
     let body = Self.makeGeminiProbeRequestBody()
 
@@ -259,17 +312,10 @@ public struct LLMModelDiscovery: Sendable {
 
     guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
       let httpResponse = response as? HTTPURLResponse
-    else { return false }
-
-    if httpResponse.statusCode == 200 { return true }
-    if httpResponse.statusCode == 429 {
-      // Check if quota limit is 0 (locked) vs temporary rate limit
-      let body = String(data: data, encoding: .utf8) ?? ""
-      if body.contains("limit: 0") { return false }
-      // Temporary rate limit — assume available
-      return true
-    }
-    return false
+    else { return .inconclusive }
+    return Self.probeAvailability(
+      provider: .gemini, statusCode: httpResponse.statusCode,
+      body: String(data: data, encoding: .utf8) ?? "")
   }
 
   static func makeGeminiProbeRequestBody() -> [String: Any] {
@@ -333,11 +379,11 @@ public struct LLMModelDiscovery: Sendable {
     return LLMProvider.openAI.modelCapabilities(model: id).supportsChatCompletions
   }
 
-  private func probeOpenAI(modelID: String, apiKey: String) async -> Bool {
+  private func probeOpenAI(modelID: String, apiKey: String) async -> LLMModelAvailability {
     let body = Self.makeOpenAIProbeRequestBody(modelID: modelID)
 
     guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
-      return false
+      return .inconclusive
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -346,11 +392,12 @@ public struct LLMModelDiscovery: Sendable {
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
     request.timeoutInterval = 10
 
-    guard let (_, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+    guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
       let httpResponse = response as? HTTPURLResponse
-    else { return false }
-
-    return httpResponse.statusCode == 200
+    else { return .inconclusive }
+    return Self.probeAvailability(
+      provider: .openAI, statusCode: httpResponse.statusCode,
+      body: String(data: data, encoding: .utf8) ?? "")
   }
 
   static func makeOpenAIProbeRequestBody(modelID: String) -> [String: Any] {
@@ -446,8 +493,10 @@ public struct LLMModelDiscovery: Sendable {
     return allModels
   }
 
-  private func probeClaude(modelID: String, apiKey: String) async -> Bool {
-    guard let url = URL(string: "https://api.anthropic.com/v1/messages") else { return false }
+  private func probeClaude(modelID: String, apiKey: String) async -> LLMModelAvailability {
+    guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
+      return .inconclusive
+    }
     let body = ClaudeConnector.makeRequestBody(
       model: modelID, maxTokens: 5, system: nil, userText: "Hi")
 
@@ -459,26 +508,16 @@ public struct LLMModelDiscovery: Sendable {
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
     request.timeoutInterval = 10
 
-    guard let (_, response) = try? await LLMNetworkSession.shared.session.data(for: request),
+    guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
       let httpResponse = response as? HTTPURLResponse
-    else { return false }
-
-    if httpResponse.statusCode == 200 { return true }
-    // A transient rate limit or server-side overload is not proof the key
-    // lacks access to this model — reading it as "locked" would falsely
-    // disable a valid model during a busy moment (Codex local review,
-    // widened after the live latency receipt showed real transient 5xx
-    // traffic from Anthropic). Unlike Gemini's ambiguous RESOURCE_EXHAUSTED
-    // (which needs body-sniffing to split rate-limit from a real
-    // quota-zero lock), Anthropic's 429 `rate_limit_error` and 5xx (incl.
-    // the documented 529 `overloaded_error`) are unambiguous transient
-    // signals — the same range `ClaudeConnector.classify` already treats
-    // as `providerServerError` and retries — so no body inspection is
-    // needed here either.
-    if httpResponse.statusCode == 429 || (500...599).contains(httpResponse.statusCode) {
-      return true
-    }
-    return false
+    else { return .inconclusive }
+    // A transient rate limit or server-side overload is not proof the key lacks access to
+    // this model (Codex local review; Anthropic's 429 `rate_limit_error` and 5xx, incl. 529
+    // `overloaded_error`). Before #4353 those read as AVAILABLE; now they are inconclusive,
+    // which keeps the row selectable without claiming the probe succeeded.
+    return Self.probeAvailability(
+      provider: .claude, statusCode: httpResponse.statusCode,
+      body: String(data: data, encoding: .utf8) ?? "")
   }
 
   // MARK: - Ollama
@@ -553,7 +592,8 @@ public struct LLMModelDiscovery: Sendable {
   {
     LLMModelInfo(
       id: "apple-intelligence", displayName: englishAppleIntelligenceLabel(status),
-      provider: .appleIntelligence, isAvailable: isAvailable, isRemote: false,
+      provider: .appleIntelligence,
+      availability: isAvailable ? .available : .confirmedUnavailable, isRemote: false,
       appleIntelligenceStatus: status)
   }
 
@@ -571,16 +611,18 @@ public struct LLMModelDiscovery: Sendable {
 
   // MARK: - Shared Helpers
 
-  private func probeModel(id: String, provider: LLMProvider, apiKey: String) async -> Bool {
+  private func probeModel(id: String, provider: LLMProvider, apiKey: String) async
+    -> LLMModelAvailability
+  {
     switch provider {
     case .gemini: return await probeGemini(modelID: id, apiKey: apiKey)
     case .openAI: return await probeOpenAI(modelID: id, apiKey: apiKey)
     case .claude: return await probeClaude(modelID: id, apiKey: apiKey)
-    case .ollama: return true  // If model appears in tags list, it's available
-    case .appleIntelligence: return true
-    case .egOne: return true  // #1271: availability is the health probe's job, not discovery's
-    case .s1Mini: return true  // #2649: same — a fixed local model, health-probed, never discovered
-    case .none: return false
+    case .ollama: return .available  // If model appears in tags list, it's available
+    case .appleIntelligence: return .available
+    case .egOne: return .available  // #1271: availability is the health probe's job, not discovery's
+    case .s1Mini: return .available  // #2649: same — a fixed local model, health-probed, never discovered
+    case .none: return .confirmedUnavailable
     }
   }
 

@@ -187,7 +187,8 @@ struct MeetingSummaryMigrationTests {
     let settings = SettingsManager(defaults: Self.onboardedStore(dictation: "egOne"))
     settings.meetingSummaryLLMProvider = .openAI
     #expect(settings.meetingSummaryLLMModel != LLMProvider.egOneModelName)
-    #expect(settings.meetingSummarySelection.model == LLMProvider.defaultModel(for: .openAI))
+    // #4353 D2: swept to empty, never to a preselected OpenAI default.
+    #expect(settings.meetingSummarySelection.model == "")
   }
 
   @Test("the summary revision counts every summary provider change and nothing else")

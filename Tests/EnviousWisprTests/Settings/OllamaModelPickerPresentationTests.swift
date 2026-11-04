@@ -24,7 +24,7 @@ struct OllamaModelPickerPresentationTests {
     provider: LLMProvider = .ollama
   ) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: provider, isAvailable: available, isRemote: isRemote)
+      id: id, displayName: id, provider: provider, availability: available ? .available : .confirmedUnavailable, isRemote: isRemote)
   }
 
   // MARK: - The partition itself
@@ -51,6 +51,27 @@ struct OllamaModelPickerPresentationTests {
 
     #expect(placed.count == input.count, "a row was dropped or duplicated")
     #expect(Set(placed) == Set(input.map(\.id)))
+  }
+
+  // MARK: - Only a confirmed lock is locked (#4353 D4)
+
+  @Test("a cloud row discovery was not sure about stays selectable; a confirmed lock does not")
+  func onlyConfirmedLocksAreLocked() {
+    let rows = [
+      LLMModelInfo(
+        id: "gpt-6-luna", displayName: "gpt-6-luna", provider: .openAI,
+        availability: .inconclusive, isRemote: false),
+      LLMModelInfo(
+        id: "gpt-5-pro", displayName: "gpt-5-pro", provider: .openAI,
+        availability: .confirmedUnavailable, isRemote: false),
+      LLMModelInfo(
+        id: "gpt-4o-mini", displayName: "gpt-4o-mini", provider: .openAI,
+        availability: .available, isRemote: false),
+    ]
+    let groups = OllamaModelPickerPresentation.groups(from: rows, provider: .openAI)
+    let choosable = Set((groups.recommended + groups.other + groups.hosted).map(\.id))
+    #expect(choosable == ["gpt-6-luna", "gpt-4o-mini"])
+    #expect(groups.locked.map(\.id) == ["gpt-5-pro"])
   }
 
   // MARK: - Hosted models get their own group

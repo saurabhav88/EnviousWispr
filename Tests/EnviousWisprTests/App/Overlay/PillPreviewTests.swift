@@ -132,10 +132,12 @@
         "localEngineStoppedOutside.escalated.s1Mini.lowMemory",
       ]
       for provider in ["openAI", "gemini", "claude"] {
-        for problem in ["cloudKeyMissing", "cloudKeyRejected"] {
+        for problem in ["cloudKeyMissing", "cloudKeyRejected", "cloudNoModel"] {
           expectedIDs.insert("\(problem).\(provider)")
         }
       }
+      // #4353: the model id is the title's only variable, so one row covers it.
+      expectedIDs.insert("cloudModelUnavailable.openAI")
       for provider in ["egOne", "s1Mini"] {
         for problem in [
           "localEngineNotDownloaded", "localEngineDownloadPaused", "localEngineUpdatePaused",
@@ -148,7 +150,9 @@
       #expect(
         Set(samples.map { PillPreviewCatalog.polishProblemCaseName($0.problem) })
           == PillPreviewCatalog.allPolishProblemCaseNames)
-      let sampleLines = samples.map(\.model.line)
+      // #4353: the cloud model cards share their line ("Pasted without AI polish.") and differ
+      // by title, so what must be unique is the title and line the card shows together.
+      let sampleLines = samples.map { "\($0.model.title) | \($0.model.line)" }
       #expect(Set(sampleLines).count == sampleLines.count, "two setup samples show one sentence")
       // #3988: every notice variant has rows, and each shape has its own buttons.
       let variants = Set(samples.compactMap(\.model.variant))
@@ -156,7 +160,9 @@
       for sample in samples {
         switch sample.model.variant {
         case nil:
-          #expect(sample.model.primaryLabel == "Finish setup", "\(sample.id)")
+          let primary =
+            sample.problem.opensModelMenu ? "Select a new cloud model" : "Finish setup"
+          #expect(sample.model.primaryLabel == primary, "\(sample.id)")
           #expect(sample.model.dismissLabel == "Not now", "\(sample.id)")
         case .first?:
           #expect(sample.model.primaryLabel == nil, "\(sample.id)")
@@ -176,7 +182,7 @@
       for entry in PillPreviewCatalog.all {
         switch entry.make(Self.ignoreNote) {
         case .polishSetupCard(let model, _, _):
-          rowLines.append(model.line)
+          rowLines.append("\(model.title) | \(model.line)")
         case .warning(let reason):
           warningTexts.insert(DictationNarrator.copy(for: reason))
           if case .interruptedTail(let disclosure, let trimmed) = reason {

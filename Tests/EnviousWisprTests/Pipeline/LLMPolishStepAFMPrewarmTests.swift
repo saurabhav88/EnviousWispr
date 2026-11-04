@@ -119,6 +119,7 @@ struct LLMPolishStepAFMPrewarmTests {
     long.afmPrewarmOutcome = .hit
     let cloud = LLMPolishStep(keychainManager: KeychainManager())
     cloud.llmProvider = .openAI
+    cloud.llmModel = "gpt-4o-mini"  // #4353 D2: no implicit model
     let box = TextBox()
     cloud.makePolisher = { _, _, _ in RecordingPolisher(box: box) }
     let polished = try await cloud.process(long)

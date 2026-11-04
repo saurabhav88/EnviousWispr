@@ -335,6 +335,8 @@ private final class HeartPathHarness {
     // `.openAI` only selects that provider's budget and enables the step; the injected
     // polisher replaces the connector entirely, so no key or network is used.
     polishStep.llmProvider = .openAI
+    // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
+    polishStep.llmModel = "gpt-4o-mini"
     if let polisher {
       polishStep.makePolisher = { _, _, _ in polisher }
     }

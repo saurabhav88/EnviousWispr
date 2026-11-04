@@ -396,6 +396,8 @@ enum SettingsProjection {
       if OllamaSetupService.isFirstPartyModel(id) { return "eg-1-variant" }
       return "custom"
     case .openAI, .gemini, .claude:
+      // #4353 D2: no cloud model chosen is "none", never redacted as a custom id.
+      if id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "none" }
       let base = stripDateSnapshotSuffix(id)
       return cloudModelAllowlist.contains(base) ? base : "custom"
     }

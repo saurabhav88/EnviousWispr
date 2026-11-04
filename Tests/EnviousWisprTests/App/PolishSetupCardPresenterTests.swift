@@ -132,6 +132,8 @@ struct PolishSetupCardPresenterTests {
     /// #3988: EG-1's unresolved outside stop and its health (red = the restart failed).
     var egOneStop: OutsideStopContext? { didSet { onTransition?() } }
     var egOneHealth: EGOneHealth = .green { didSet { onTransition?() } }
+    /// #4353: the cloud model the facts judge; nil keeps every older case's facts unchanged.
+    var selectedCloudModel: String? { didSet { onTransition?() } }
     @ObservationIgnored var onTransition: (() -> Void)?
 
     var inputs: PolishSetupInputs {
@@ -144,6 +146,7 @@ struct PolishSetupCardPresenterTests {
         openAIKeySaved: openAIKeySaved, geminiKeySaved: true, claudeKeySaved: true,
         ollamaSetup: .ready, ollamaModel: .installed)
       facts.egOneOutsideStop = egOneStop
+      facts.selectedCloudModel = selectedCloudModel
       return PolishSetupInputs(
         onboardingComplete: onboardingComplete, configuration: configuration, facts: facts,
         ollamaLastCommitAt: nil)
@@ -154,6 +157,8 @@ struct PolishSetupCardPresenterTests {
   final class Log {
     var rows: [PolishSetupPromptEvent] = []
     var opened = 0
+    /// #4353: what each open asked for: true opens dictation's model menu too.
+    var openedModelMenu: [Bool] = []
   }
 
   private struct Fixture {
@@ -174,7 +179,10 @@ struct PolishSetupCardPresenterTests {
       reportPrompt: { log.rows.append($0) },
       recordKeyEvidence: { _, state, _ in world.openAIKeySaved = state.asSavedFlag })
     let card = PolishSetupCardPresenter(
-      overlay: overlay, monitor: monitor, openAIPolish: { log.opened += 1 }, log: { _ in })
+      overlay: overlay, monitor: monitor, openAIPolish: {
+        log.opened += 1
+        log.openedModelMenu.append($0)
+      }, log: { _ in })
     monitor.onEpisodeChange = { [weak card] in card?.reconcile() }
     world.onTransition = { [weak monitor] in monitor?.configurationOrEligibilityChanged() }
     monitor.start()
@@ -377,6 +385,19 @@ struct PolishSetupCardPresenterTests {
 
   // MARK: - Answers
 
+  @Test("Select a new cloud model opens AI Polish with dictation's model menu")
+  func cloudModelCardOpensMenu() {
+    let fx = Self.fixture(keySaved: true)
+    defer { fx.monitor.stop() }
+    fx.world.configuration = PolishSetupConfiguration(
+      provider: .openAI, model: "", credentialRevision: 1)
+    fx.world.selectedCloudModel = ""
+    Self.conclude(fx, evidence: .cloudNoModel, tag: .cloudNoModel)
+    #expect(fx.overlay.cardIsShowing)
+    fx.overlay.pressFinish()
+    #expect(fx.log.openedModelMenu == [true])
+  }
+
   @Test("Finish setup opens AI Polish once and reports what the card showed")
   func finishSetup() {
     let fx = Self.fixture()
@@ -385,6 +406,7 @@ struct PolishSetupCardPresenterTests {
     fx.overlay.pressFinish()
     fx.overlay.pressFinish()
     #expect(fx.log.opened == 1)
+    #expect(fx.log.openedModelMenu == [false], "a key card must not open the model menu")
     #expect(fx.overlay.cardIsShowing == false)
     #expect(
       fx.log.rows.last
@@ -781,7 +803,7 @@ struct PolishSetupCardOverlayTests {
     let monitor = PolishSetupMonitor(
       readInputs: { world.inputs }, reportPrompt: { rows.actions.append($0.action) })
     let card = PolishSetupCardPresenter(
-      overlay: overlay, monitor: monitor, openAIPolish: {}, log: { _ in })
+      overlay: overlay, monitor: monitor, openAIPolish: { _ in }, log: { _ in })
     monitor.onEpisodeChange = { [weak card] in card?.reconcile() }
     monitor.start()
     return Fixture(

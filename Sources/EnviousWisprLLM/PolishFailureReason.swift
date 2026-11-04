@@ -54,6 +54,26 @@ public enum PolishFailureTelemetryChannel: Sendable, Equatable {
 /// that public case carries it. The per-connector `classify` functions stay
 /// `internal`. The reason never holds raw provider text (privacy: telemetry and
 /// the user message both use this closed set, never the provider's error body).
+/// #4353 G5: the one reading of a cloud request failure as "the chosen model cannot be used",
+/// shared by dictation, Transcribe a File and meeting summaries. True for a cloud provider's
+/// model the provider says does not exist (`.modelUnavailable`, 404), and for a leftover
+/// audio-input model's refusal of a text request (`.badRequest`, 400). An ordinary model's 400
+/// and every key, billing, safety, length or transport failure keep their own meaning.
+extension PolishFailureReason {
+  public func meansCloudModelUnavailable(provider: LLMProvider, model: String) -> Bool {
+    switch provider {
+    case .openAI, .gemini, .claude: break
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return false
+    }
+    guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+    switch self {
+    case .modelUnavailable: return true
+    case .badRequest: return LLMModelDiscovery.isAudioInputModelID(model)
+    default: return false
+    }
+  }
+}
+
 public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
   /// No API key configured for the selected cloud provider. A user-configuration
   /// state, not a defect.
@@ -513,6 +533,9 @@ public enum PolishFailureReason: String, Sendable, Equatable, CaseIterable {
         // #1305: the runner handles this case on its dedicated surfaced-skip
         // arm before reaching here. Defensive unwrap for any other caller.
         return reason
+      case .cloudModelNotSelected:
+        // #4353: the runner handles this on its surfaced-skip arm too. Defensive.
+        return .noModelSelected
       case .modelNotReady:
         // The on-device model is not usable yet (still downloading, or
         // org-restricted). Reached since #1446: an Apple Intelligence failure is
@@ -555,5 +578,18 @@ public struct PolishNotice: Equatable, Sendable {
   public init(leadIn: PolishFailureReason.LeadIn, text: String) {
     self.leadIn = leadIn
     self.text = text
+  }
+}
+
+/// #4353 D4: the sentence for a chosen cloud model the provider says no longer exists, naming
+/// the model the take asked for. One owner below AppKit, so the dictation notice and the
+/// Settings surfaces read the same words.
+public enum CloudModelNoticeCopy {
+  public static func noLongerWorks(_ model: String) -> String {
+    String(
+      localized: "\(model) no longer works. Select a new cloud model.",
+      comment:
+        "Notice: the chosen cloud AI model stopped working; the person picks another one. %@ is a model id, such as gpt-4o-mini; keep it as is."
+    )
   }
 }

@@ -44,6 +44,8 @@ struct LLMErrorSentryIdentityTests {
     // already `invalidAPIKey`, which is why a fresh case must be pinned here
     // rather than assigned by reading the neighbours.
     (.localEngineSkipped(.crashed, .s1Mini), 13),
+    // #4353: a cloud provider with no model chosen. 14 is the next free ordinal.
+    (.cloudModelNotSelected(.openAI), 14),
   ]
 
   // MARK: - A. Pin lock
@@ -56,15 +58,15 @@ struct LLMErrorSentryIdentityTests {
     }
   }
 
-  @Test("all 14 descriptors and semantic IDs are unique")
+  @Test("all 15 descriptors and semantic IDs are unique")
   func identitiesAreUnique() {
     let errors = Self.allCases.map(\.0)
-    // 14 since #2649 added `localEngineSkipped`. Pinned as a literal on purpose:
-    // a count derived from the table would pass with a duplicate ordinal, which
-    // is the one defect this row exists to catch.
-    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 14)
-    #expect(Set(errors.map(\.sentrySemanticID)).count == 14)
-    #expect(Self.allCases.count == 14)
+    // 15 since #4353 added `cloudModelNotSelected` (14 since #2649's `localEngineSkipped`).
+    // Pinned as a literal on purpose: a count derived from the table would pass with a
+    // duplicate ordinal, which is the one defect this row exists to catch.
+    #expect(Set(errors.map(\.sentryFingerprintDescriptor)).count == 15)
+    #expect(Set(errors.map(\.sentrySemanticID)).count == 15)
+    #expect(Self.allCases.count == 15)
   }
 
   // MARK: - B. The property that matters

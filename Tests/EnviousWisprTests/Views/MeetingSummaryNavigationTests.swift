@@ -50,4 +50,46 @@ struct MeetingSummaryNavigationTests {
       MeetingSummaryLongMeetingHint.shows(
         writtenInParts: true, summaryProviderID: "appleIntelligence", settings: settings))
   }
+
+  // MARK: - #4353 D9
+
+  @Test("#4353 Select a new cloud model opens the Summaries tab with the summary model menu")
+  func modelMenuLinkOpensTheSummaryMenu() {
+    let navigation = NavigationCoordinator()
+    MeetingSummaryModelMenuLink.open(navigation)
+    #expect(navigation.pendingDestination == .meetings(.summaries))
+    #expect(navigation.pendingModelMenu?.surface == .meetingSummary)
+
+    let plain = NavigationCoordinator()
+    MeetingSummarySettingsLink.open(plain)
+    #expect(plain.pendingDestination == .meetings(.summaries))
+    #expect(plain.pendingModelMenu == nil, "the ordinary settings link opens no menu")
+  }
+
+  @Test("#4353 the cloud model problems name the provider or the attempted model and offer the menu")
+  func cloudModelProblems() {
+    let none = MeetingSummaryOwner.Problem.cloudNoModel(.gemini)
+    let gone = MeetingSummaryOwner.Problem.cloudModelUnavailable(.openAI, "gpt-x")
+    #expect(MeetingSummaryView.message(none) == "Choose a model for Gemini.")
+    #expect(MeetingSummaryView.message(gone) == "gpt-x no longer works. Select a new cloud model.")
+    for problem in [none, gone] {
+      #expect(MeetingSummaryView.opensSummaryModelMenu(problem))
+      #expect(MeetingSummaryView.opensSummarySettings(problem) == false)
+    }
+    for problem in [MeetingSummaryOwner.Problem.noProvider, .notReady, .providerFailed] {
+      #expect(MeetingSummaryView.opensSummaryModelMenu(problem) == false)
+    }
+  }
+
+  @Test("#4353 the setting comes first; an obsolete no-model failure hides; a gone model stays named")
+  func cloudProblemPrecedence() {
+    let gone = MeetingSummaryOwner.Problem.cloudModelUnavailable(.openAI, "gpt-x")
+    #expect(
+      MeetingSummaryView.shownProblem(activity: .failed(gone), configuration: .cloudNoModel(.claude))
+        == .cloudNoModel(.claude))
+    #expect(
+      MeetingSummaryView.shownProblem(activity: .failed(.cloudNoModel(.openAI)), configuration: nil)
+        == nil)
+    #expect(MeetingSummaryView.shownProblem(activity: .failed(gone), configuration: nil) == gone)
+  }
 }

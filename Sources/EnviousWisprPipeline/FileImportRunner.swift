@@ -35,13 +35,18 @@ public final class FileImportRunner {
     /// Whether a polisher was asked for this part. Defaults to true so every
     /// existing construction keeps meaning what it meant.
     private let polishAttempted: Bool
+    /// #4353 D9: the cloud setup this part's polish met, with the provider and model it asked
+    /// for. Nil when the setup was fine or no cloud polisher ran.
+    public let cloudSetup: CloudPolishSetupOutcome?
 
     public init(
-      text: String, polishedText: String?, polishAttempted: Bool = true
+      text: String, polishedText: String?, polishAttempted: Bool = true,
+      cloudSetup: CloudPolishSetupOutcome? = nil
     ) {
       self.text = text
       self.polishedText = polishedText
       self.polishAttempted = polishAttempted
+      self.cloudSetup = cloudSetup
     }
 
     /// What the document shows for this part: polished when there is one, the
@@ -246,13 +251,22 @@ public final class FileImportRunner {
       guard onOutcome(index, outcome) else { throw CancellationError() }
       try checkCurrent()
     }
-    func finish(_ part: PreparedPart, context: TextProcessingContext, includePolish: Bool) async throws {
+    /// `batchSetup`: what a shared batch call met (#4353 D9). Its members finish without the
+    /// polish step, so the batch's own setup outcome and bypass travel here instead of being
+    /// lost at the hand-off; nil for a part that ran its own polish.
+    func finish(
+      _ part: PreparedPart, context: TextProcessingContext, includePolish: Bool,
+      batchSetup: CloudPolishSetupOutcome? = nil
+    ) async throws {
       try checkCurrent()
       let stages = part.steps.fileImportStages
       let chain = (includePolish ? [stages.polish] : []) + stages.afterPolish
-      let result = try await runner.run(context: context, steps: chain)
+      var start = context
+      if case .noModelChosen? = batchSetup { start.polishWasBypassed = true }
+      let result = try await runner.run(context: start, steps: chain)
       try checkCurrent()
-      try emit(part.index, Self.outcome(settings: settings, result: result))
+      try emit(
+        part.index, Self.outcome(settings: settings, result: result, batchSetup: batchSetup))
     }
     func flush() async throws {
       try checkCurrent()
@@ -270,7 +284,9 @@ public final class FileImportRunner {
         try checkCurrent()
         let mapped = step.takeFileBatchResults(accepted: accepted.context)
         for (offset, part) in current.enumerated() {
-          try await finish(part, context: mapped?[offset] ?? part.context, includePolish: false)
+          try await finish(
+            part, context: mapped?[offset] ?? part.context, includePolish: false,
+            batchSetup: accepted.cloudSetupOutcome)
           try checkCurrent()
         }
       } else {
@@ -344,7 +360,8 @@ public final class FileImportRunner {
   }
 
   private static func outcome(
-    settings: RecordingSettingsSnapshot, result: TextProcessingRunResult
+    settings: RecordingSettingsSnapshot, result: TextProcessingRunResult,
+    batchSetup: CloudPolishSetupOutcome? = nil
   ) -> PartOutcome {
     // A blank polish is not a polish — the same rule the recovery replay
     // applies, for the same reason: the floor is real text and an empty string
@@ -375,7 +392,9 @@ public final class FileImportRunner {
       // same distinction was drawn for the provider-is-None case: the setting
       // answers "was one asked for", and only the OUTCOME answers "was one
       // made".
-      polishAttempted: Self.polishWasAttempted(settings: settings, result: result))
+      polishAttempted: Self.polishWasAttempted(settings: settings, result: result),
+      // A part that ran its own polish carries its own; a batch member carries the batch's.
+      cloudSetup: result.cloudSetupOutcome ?? batchSetup)
   }
 
   /// Whether a polisher was actually asked about THIS passage.

@@ -292,7 +292,9 @@ enum OllamaModelPickerPresentation {
     var locked: [LLMModelInfo] = []
 
     for model in models {
-      guard model.isAvailable else {
+      // #4353 D4: only a CONFIRMED lock leaves the choosable groups; a row discovery could not
+      // decide either way stays selectable.
+      guard model.isSelectable else {
         locked.append(model)
         continue
       }

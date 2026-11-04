@@ -1463,6 +1463,51 @@ struct FileImportCoordinatorSpeakerTests {
     #expect(texts[1] == (150..<300).map { "w\($0)" }.joined(separator: " "))
   }
 
+  /// #4353 D9: a speaker document reaches the cloud model notice through the same real append
+  /// as a plain one. Live presentation of the speaker view stays with the final UAT.
+  @Test("#4353 a labeled import with a gone cloud model keeps every turn's words, ids and one notice")
+  func labeledImportCarriesTheCloudNotice() async {
+    let store = FakeHistoryStore()
+    let fixture = Self.manyWordFixture(count: 300, split: 150)
+    let gone = CloudPolishSetupOutcome.modelUnavailable(provider: .openAI, model: "gpt-x")
+    @MainActor final class PartCounter {
+      private(set) var count = 0
+      func next() -> Int {
+        count += 1
+        return count
+      }
+    }
+    let partsSeen = PartCounter()
+    let coordinator = makeStoreBackedCoordinator(
+      store: store, transcribedText: fixture.text, wordTimings: fixture.timings,
+      speakerLabeler: { _, _ in .labeled(count: 2, segments: fixture.segments) },
+      processPart: { part, _ in
+        partsSeen.next() == 2
+          ? FileImportRunner.PartOutcome(text: part, polishedText: nil, cloudSetup: gone)
+          : FileImportRunner.PartOutcome(text: part, polishedText: part)
+      })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    #expect(await settleUntil { coordinator.state == .finished })
+    let first = (0..<150).map { "w\($0)" }.joined(separator: " ")
+    let second = (150..<300).map { "w\($0)" }.joined(separator: " ")
+    #expect(coordinator.parts.map(\.text) == [first, second])
+    #expect(coordinator.parts.map(\.cloudSetup) == [nil, gone])
+    #expect(coordinator.parts.map(\.isUnpolished) == [false, true])
+    let ids = coordinator.parts.map(\.turnID)
+    #expect(ids.allSatisfy { $0 != nil } && Set(ids).count == 2, "each section keeps its own turn")
+    #expect(coordinator.cloudSetupNotice == gone)
+    guard let historyID = coordinator.historyID else {
+      Issue.record("no historyID at Done")
+      return
+    }
+    #expect(turnTexts(store.current(historyID)) == [first, second])
+  }
+
   /// The part ceiling follows the run's polisher: a cloud polisher is bound by the request,
   /// an on-device one by the words (15 s budget; 470-word parts timed out on a fast Mac).
   @Test("the part ceiling is the local one for an on-device polisher and the default for cloud")

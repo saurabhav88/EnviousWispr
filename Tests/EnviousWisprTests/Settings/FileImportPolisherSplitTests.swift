@@ -143,9 +143,8 @@ struct FileImportPolisherSplitTests {
     #expect(
       resolved != "gemini-3-flash",
       "an OpenAI import must not carry a Gemini model id")
-    #expect(
-      LLMProvider.modelIDLooksLikeCloudProvider(resolved, .openAI),
-      "the swept value must be a real OpenAI id, got \(resolved)")
+    // #4353 D2: swept to empty ("Choose a model"), never to a preselected OpenAI default.
+    #expect(resolved == "", "the swept value must be empty, got \(resolved)")
   }
 
   /// A fixed-literal engine's id must not leak into a cloud provider either — the #1271

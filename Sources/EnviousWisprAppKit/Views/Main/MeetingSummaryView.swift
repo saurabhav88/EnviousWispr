@@ -236,7 +236,9 @@ struct MeetingSummaryView: View {
         .foregroundStyle(.stError)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("history.meeting.summaryProblem")
-      if Self.opensSummarySettings(problem) {
+      if Self.opensSummaryModelMenu(problem) {
+        MeetingSummaryModelMenuLink()
+      } else if Self.opensSummarySettings(problem) {
         MeetingSummarySettingsLink()
       }
     }
@@ -248,8 +250,22 @@ struct MeetingSummaryView: View {
     activity: MeetingSummaryOwner.Activity?, configuration: MeetingSummaryOwner.Problem?
   ) -> MeetingSummaryOwner.Problem? {
     if let configuration { return configuration }
-    if case .failed(let problem) = activity { return problem }
-    return nil
+    guard case .failed(let problem) = activity else { return nil }
+    // #4353 D9: an attempt that found no cloud model is obsolete once the setting has one (the
+    // setting's own empty choice is `configuration` above). A gone model stays: it names the
+    // model that attempt used, which is true whatever is chosen now.
+    if case .cloudNoModel = problem { return nil }
+    return problem
+  }
+
+  /// #4353 D9: the cloud model problems, whose action opens the summary engine's model menu.
+  static func opensSummaryModelMenu(_ problem: MeetingSummaryOwner.Problem) -> Bool {
+    switch problem {
+    case .cloudNoModel, .cloudModelUnavailable: return true
+    case .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
+      .notesUnreadable, .storageFailed:
+      return false
+    }
   }
 
   /// #4287: the problems the summary engine choice fixes, with a link to EnviousMeet's
@@ -258,6 +274,8 @@ struct MeetingSummaryView: View {
     switch problem {
     case .noProvider, .notForSummaries, .notReady, .ollamaTooOld: return true
     case .tooLong, .providerFailed, .notesUnreadable, .storageFailed: return false
+    // The model menu action replaces the plain link for these (`opensSummaryModelMenu`).
+    case .cloudNoModel, .cloudModelUnavailable: return false
     }
   }
 
@@ -298,6 +316,10 @@ struct MeetingSummaryView: View {
       return String(
         localized: "The summary could not be saved. Try again.",
         comment: "History, a meeting: the meeting's files could not be written.")
+    case .cloudNoModel(let provider):
+      return PolishSetupSurfaceCopy.chooseModelTitle(provider)
+    case .cloudModelUnavailable(_, let model):
+      return PolishSetupSurfaceCopy.modelNoLongerWorksNotice(model)
     }
   }
 

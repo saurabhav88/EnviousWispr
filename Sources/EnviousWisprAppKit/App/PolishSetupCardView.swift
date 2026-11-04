@@ -24,6 +24,19 @@ struct PolishSetupCardModel: Hashable, Sendable {
   init(problem: PolishSetupProblem) {
     if case .localEngineStoppedOutside(_, let stop) = problem {
       self.init(outsideStop: stop, variant: .first)
+    } else if case .cloudNoModel(let provider) = problem {
+      // #4353 D4: the title says what to do; the line is the dictation's own outcome.
+      self.init(
+        title: PolishSetupSurfaceCopy.chooseModelTitle(provider),
+        line: Self.pastedWithoutPolish,
+        primaryLabel: PolishSetupSurfaceCopy.selectNewCloudModel,
+        dismissLabel: PolishSetupSurfaceCopy.cardNotNow, variant: nil)
+    } else if case .cloudModelUnavailable(_, let model) = problem {
+      self.init(
+        title: PolishSetupSurfaceCopy.modelNoLongerWorksTitle(model),
+        line: Self.pastedWithoutPolish,
+        primaryLabel: PolishSetupSurfaceCopy.selectNewCloudModel,
+        dismissLabel: PolishSetupSurfaceCopy.cardNotNow, variant: nil)
     } else {
       self.init(
         title: PolishSetupSurfaceCopy.cardTitle,
@@ -61,6 +74,14 @@ struct PolishSetupCardModel: Hashable, Sendable {
     self.primaryLabel = primaryLabel
     self.dismissLabel = dismissLabel
     self.variant = variant
+  }
+
+  /// The same sentence the dictation's own notice uses (`DictationNarrator`).
+  private static var pastedWithoutPolish: String {
+    String(
+      localized: "Pasted without AI polish.",
+      // Same key and comment as the pill, so the catalog keeps one entry and one translation.
+      comment: "Pill: AI polish failed, so the unpolished text was pasted.")
   }
 
   /// What VoiceOver reads when the card appears: the same title and line it shows.

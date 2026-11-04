@@ -24,7 +24,7 @@ struct SettingsManagerOllamaTruthTests {
     _ id: String, available: Bool = true, isRemote: Bool = false
   ) -> LLMModelInfo {
     LLMModelInfo(
-      id: id, displayName: id, provider: .ollama, isAvailable: available, isRemote: isRemote)
+      id: id, displayName: id, provider: .ollama, availability: available ? .available : .confirmedUnavailable, isRemote: isRemote)
   }
 
   // MARK: - Empty discovery (the root-cause fix)
@@ -43,15 +43,15 @@ struct SettingsManagerOllamaTruthTests {
     #expect(settings.ollamaModel == "llama2:latest")
   }
 
-  @Test("cloud empty discovery keeps the provider default (unchanged behavior)")
-  func cloudEmptyDiscoveryKeepsDefault() {
+  /// #4353 D2: a cloud catalog never fills a model in; empty stays "Choose a model".
+  @Test("cloud empty discovery leaves an empty choice empty")
+  func cloudEmptyDiscoveryKeepsEmpty() {
     let settings = freshSettings()
     settings.llmProvider = .openAI
 
     settings.applyDiscoveredModels([], for: .openAI)
 
-    #expect(settings.llmModel == LLMProvider.defaultModel(for: .openAI))
-    #expect(!settings.llmModel.isEmpty)
+    #expect(settings.llmModel == "")
   }
 
   @Test("stale empty discovery for a switched-away provider is dropped")
@@ -260,7 +260,7 @@ struct SettingsManagerOllamaTruthTests {
   }
 
   /// The preferred-default branch has its own candidate search, so it needs its
-  /// own guard. `defaultModel(for: .ollama, ollamaModel:)` returns the
+  /// own guard. `localModel(for: .ollama, ollamaModel:)` returns the
   /// remembered name, so a remembered HOSTED model is exactly the input that
   /// would sail through a fix applied only to the plain fallback.
   ///
@@ -340,21 +340,54 @@ struct SettingsManagerOllamaTruthTests {
   /// means nothing for a cloud provider, whose models are all "remote" in the
   /// ordinary sense — filtering them out would disable cloud polish entirely.
   ///
-  /// #4353 D1: through the settings appliers a cloud surface always has a remembered pick, which
-  /// discovery leaves alone, so this checks the repair policy itself with nothing remembered.
-  @Test("cloud auto-selection is unaffected by remoteness")
-  func cloudAutoSelectionUnaffected() {
+  /// #4353 D2 replaces cloud auto-selection: a cloud catalog, remote rows or not, never writes a
+  /// selection, so remoteness cannot matter to it.
+  @Test("a cloud catalog never auto-selects, remote rows or not")
+  func cloudNeverAutoSelects() {
     for provider in [LLMProvider.openAI, .gemini, .claude] {
       let repair = SettingsManager.discoveredModelRepair(
         for: [
           LLMModelInfo(
-            id: "some-model", displayName: "S", provider: provider, isAvailable: true,
+            id: "some-model", displayName: "S", provider: provider, availability: .available,
             isRemote: true)
-        ], provider: provider, cloudModel: "deleted-model", ollamaModel: "",
-        rememberedCloudModel: nil)
+        ], provider: provider, cloudModel: "deleted-model", ollamaModel: "")
 
-      #expect(repair.cloudModel == "some-model", "\(provider) must still auto-select")
+      #expect(repair == SettingsManager.DiscoveredModelRepair(), "\(provider) wrote a selection")
     }
+  }
+
+  /// The preferred-model search accepts the remembered name with an eight-digit dated suffix,
+  /// ahead of an earlier row; #4353 D2 kept this for Ollama while removing cloud repair.
+  @Test("a dated tag of the remembered Ollama model wins over an earlier row; hosted ones never")
+  func datedRememberedTagIsPreferred() {
+    let settings = freshSettings()
+    settings.llmProvider = .ollama
+    settings.llmModel = ""
+    settings.ollamaModel = "work-model:stable"
+
+    settings.applyDiscoveredModels(
+      [model("other:latest"), model("work-model:stable-20261103")], for: .ollama)
+
+    #expect(settings.llmModel == "work-model:stable-20261103")
+    #expect(settings.ollamaModel == "work-model:stable-20261103")
+
+    // A hosted dated tag is never chosen; the local row is.
+    let hosted = freshSettings()
+    hosted.llmProvider = .ollama
+    hosted.llmModel = ""
+    hosted.ollamaModel = "work-model:stable"
+    hosted.applyDiscoveredModels(
+      [model("work-model:stable-20261103", isRemote: true), model("other:latest")], for: .ollama)
+    #expect(hosted.ollamaModel == "other:latest")
+
+    // Not eight digits: no preference, the first eligible row.
+    let undated = freshSettings()
+    undated.llmProvider = .ollama
+    undated.llmModel = ""
+    undated.ollamaModel = "work-model:stable"
+    undated.applyDiscoveredModels(
+      [model("other:latest"), model("work-model:stable-2026")], for: .ollama)
+    #expect(undated.ollamaModel == "other:latest")
   }
 
   @Test("an armed model present in discovery is left alone")
@@ -401,14 +434,15 @@ struct SettingsManagerOllamaTruthTests {
     #expect(settings.llmModel == "llama3.2")
   }
 
-  @Test("cloud providers still refill an empty llmModel at launch (unchanged)")
-  func cloudEmptyRefilledAtLaunch() {
+  /// #4353 D2: an empty stored cloud choice stays empty at launch; nothing is preselected.
+  @Test("an empty cloud llmModel stays empty at launch")
+  func cloudEmptyStaysEmptyAtLaunch() {
     let settings = freshSettings { suite in
       suite.set("openAI", forKey: "llmProvider")
       suite.set("", forKey: "llmModel")
     }
 
-    #expect(settings.llmModel == LLMProvider.defaultModel(for: .openAI))
+    #expect(settings.llmModel == "")
   }
 
   // MARK: - Cross-cloud-provider model bleed (#158, Codex r4)
@@ -425,7 +459,8 @@ struct SettingsManagerOllamaTruthTests {
     // every Claude prewarm/polish request would fail until async discovery
     // happens to repair it (or persist broken across relaunches if
     // discovery never runs, e.g. offline or no key saved yet).
-    #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
+    // #4353 D2: swept to empty ("Choose a model"), never to a preselected Claude default.
+    #expect(settings.llmModel == "")
   }
 
   @Test("a persisted foreign-cloud model id is swept at launch too")
@@ -435,7 +470,9 @@ struct SettingsManagerOllamaTruthTests {
       suite.set("gemini-2.0-flash", forKey: "llmModel")
     }
 
-    #expect(settings.llmModel == LLMProvider.defaultModel(for: .claude))
+    // #4353 D2: another provider's id restores Claude's remembered pick, else empty. This
+    // never-used install remembers none for Claude.
+    #expect(settings.llmModel == "")
   }
 
   // MARK: - Retired-model sweep (#1770)

@@ -712,7 +712,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "llama3.2", displayName: "llama3.2", provider: .ollama, isAvailable: true,
+            id: "llama3.2", displayName: "llama3.2", provider: .ollama, availability: .available,
             isRemote: false)
         ], for: .ollama)  // → "llama3.2", system
       telemetry.flush()
@@ -762,7 +762,7 @@ import Testing
       // snapshot (llm_model = the default Ollama model) + re-seed
       settings.onboardingState = .completed
       box.clear()
-      // Post-onboarding: back to OpenAI → effective model flips to gpt-4o-mini.
+      // Post-onboarding: back to OpenAI → no model chosen yet (#4353 D2), projected "none".
       // Must emit a real delta, NOT be skipped against a stale baseline.
       settings.llmProvider = .openAI
       telemetry.flush()
@@ -770,7 +770,7 @@ import Testing
       #expect(d.count == 1)
       // re-seeded from the effective Ollama model
       #expect(d.first?.stringProps["from"] == defaultOllamaModel)
-      #expect(d.first?.stringProps["to"] == "gpt-4o-mini")
+      #expect(d.first?.stringProps["to"] == "none")
     }
 
     @Test("Onboarding completion emits the baseline exactly once")
@@ -880,7 +880,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            id: "mistral", displayName: "M", provider: .ollama, availability: .available,
             isRemote: false)
         ],
         for: .ollama)
@@ -895,7 +895,9 @@ import Testing
     func providerOffRefreshesModel() {
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
-      settings.llmProvider = .openAI  // canonicalizes model → gpt-4o-mini
+      settings.llmProvider = .openAI
+      // #4353 D2: nothing is preselected, so a pick is made to give the projection a value.
+      settings.llmModel = "gpt-4o-mini"
       telemetry.flush()
       box.clear()
       settings.llmProvider = LLMProvider.none  // no llmModel write, but projection → none
@@ -938,7 +940,7 @@ import Testing
       settings.applyDiscoveredModels(
         [
           LLMModelInfo(
-            id: "mistral", displayName: "M", provider: .ollama, isAvailable: true,
+            id: "mistral", displayName: "M", provider: .ollama, availability: .available,
             isRemote: false)
         ],
         for: .ollama)
@@ -1022,22 +1024,33 @@ import Testing
       settings.llmProvider = .appleIntelligence
       settings.llmProvider = .egOne
       #expect(settings.effectiveLLMModel == LLMProvider.egOneModelName)
-      // Switching to a cloud provider must sweep the literal to that
-      // provider's default (#1271 Codex r7: "eg-1" reached OpenAI as a
-      // model name and every polish call failed until discovery repaired it).
+      // Switching to a cloud provider must sweep the literal (#1271 Codex r7: "eg-1" reached
+      // OpenAI as a model name and every polish call failed until discovery repaired it).
+      // #4353 D2: swept to empty ("Choose a model"); no provider has a preselected default.
       settings.llmProvider = .openAI
-      #expect(settings.llmModel == "gpt-4o-mini")
+      #expect(settings.llmModel == "")
       settings.llmProvider = .egOne
       settings.llmProvider = .gemini
-      // #1770: deliberately the EXACT id, not `defaultModel(for:)`. An earlier
-      // revision of this change replaced it with the constant to stop it
-      // "rotting" — which made it `x == x`, a tautology that can never fail and
-      // silently gave up the ability to catch a wrong shipped default. Breaking
-      // when a shipped default moves is the POINT: it forces a human to look.
-      // Moved 3.5 -> 3.7 on 2026-08-16. This assertion did exactly what the
-      // note above says it is for: it broke when the default moved, and a human
-      // checked. Evidence for the swap is on `LLMResult.defaultModel`.
-      #expect(settings.llmModel == "gemini-3.7-flash")
+      #expect(settings.llmModel == "")
+    }
+
+    @Test("#4353 an empty cloud model projects as none; a following import stays follows_dictation")
+    func emptyCloudModelProjectsNone() {
+      let settings = SettingsManager(defaults: TestDefaults.suite("SCT-4353-\(UUID().uuidString)")!)
+      for provider in [LLMProvider.openAI, .gemini, .claude] {
+        settings.llmProvider = provider
+        settings.llmModel = ""
+        #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "none")
+        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings) == "follows_dictation")
+        settings.fileImportLLMProvider = provider
+        settings.fileImportLLMModel = ""
+        #expect(SettingsProjection.value(for: .fileImportLLMModel, settings: settings) == "none")
+        settings.fileImportLLMProvider = nil
+      }
+      // A nonempty custom id is still redacted, never sent.
+      settings.llmProvider = .openAI
+      settings.llmModel = "gpt-private-finetune"
+      #expect(SettingsProjection.value(for: .llmModel, settings: settings) == "custom")
     }
 
     @Test("Language lock projects to mode only, never the code")
@@ -1086,7 +1099,7 @@ import Testing
 
     private static let noContext = DevControlSettings.WriteContext(
       modelCatalog: { DevControlSettings.ModelCatalog(provider: nil, models: []) },
-      loadCachedModelCatalog: { _, _ in },
+      loadCachedModelCatalog: { _ in },
       connectedInputUIDs: { [] }, inputChannelCounts: { [:] }, pillWordsCapability: { .available })
 
     /// Starts `model_unload_policy` at a known value with nothing pending, so each test
@@ -1185,6 +1198,8 @@ import Testing
       let (settings, telemetry, box, _) = makeHarness()
       defer { TelemetryService.shared.testEventHook = nil }
       settings.llmProvider = .openAI
+      // #4353 D2: nothing is preselected, so a pick gives the model projection a value to leave.
+      settings.llmModel = "gpt-4o-mini"
       telemetry.flush()
       box.clear()
       let before = SettingsProjection.value(for: .llmModel, settings: settings)
