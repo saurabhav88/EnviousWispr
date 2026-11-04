@@ -422,7 +422,16 @@ enum PolishSetupReadiness: Equatable {
     _ provider: LLMProvider, facts: PolishSetupFacts
   ) -> PolishSetupReadiness {
     let key = cloudKey(provider, facts: facts)
-    guard key == .noProblem, let model = facts.selectedCloudModel else { return key }
+    guard key == .noProblem else { return key }
+    return cloudModelReadiness(provider, facts: facts)
+  }
+
+  /// #4353: the model half of a cloud provider's readiness, with the key taken as fine. Shared
+  /// by `cloud` and by the monitor when a dictation proves a rejected key works again.
+  static func cloudModelReadiness(
+    _ provider: LLMProvider, facts: PolishSetupFacts
+  ) -> PolishSetupReadiness {
+    guard let model = facts.selectedCloudModel else { return .noProblem }
     if model.isEmpty { return .problem(.cloudNoModel(provider)) }
     if CloudModelObservation.confirmsUnavailable(
       facts.cloudModelEvidence, provider: provider, model: model,

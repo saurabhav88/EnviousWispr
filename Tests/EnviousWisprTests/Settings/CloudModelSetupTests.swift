@@ -118,13 +118,14 @@ struct CloudModelSetupTests {
     var revision: UInt64 = 1
     /// The one owner of model answers, as `LLMModelDiscoveryCoordinator` is in the app.
     var observations: [LLMProvider: [String: CloudModelObservation]] = [:]
+    var remembered: [LLMProvider: String] = [:]
     @ObservationIgnored var onTransition: (() -> Void)?
     var inputs: PolishSetupInputs {
       var facts = CloudModelSetupTests.facts(revision: revision, model: model)
       facts.cloudModelEvidence = observations
       return PolishSetupInputs(
         onboardingComplete: true, configuration: configuration, facts: facts,
-        ollamaLastCommitAt: nil)
+        ollamaLastCommitAt: nil, rememberedCloudModels: remembered)
     }
     func record(_ provider: LLMProvider, _ model: String, _ observation: CloudModelObservation) {
       observations[provider, default: [:]][model] = CloudModelObservation.merged(
@@ -206,6 +207,50 @@ struct CloudModelSetupTests {
     let chosen = PolishSetupTakeContext(
       provider: .openAI, model: "gpt-x", configurationRevision: 1, episode: nil)
     #expect(monitor.confirmedSetupProblem(.cloudNoModel, for: chosen) == nil)
+  }
+
+  // MARK: - Whole-diff review round 1
+
+  @Test("#4353 another provider is judged with its own remembered model, not the chosen one's")
+  func otherProviderUsesItsRememberedModel() {
+    let world = World()
+    // Now on Claude with no model; OpenAI remembers a working pick.
+    world.configuration = PolishSetupConfiguration(
+      provider: .claude, model: "", credentialRevision: 1)
+    world.model = ""
+    world.remembered = [.openAI: "gpt-x"]
+    let monitor = Self.monitor(world)
+    #expect(monitor.readiness(for: .openAI) == .noProblem, "Go back to OpenAI must stay offered")
+    // Nothing remembered for OpenAI: going back would land on no model.
+    world.remembered = [:]
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudNoModel(.openAI)))
+    // A remembered pick the provider confirmed gone is judged as gone.
+    world.remembered = [.openAI: "gpt-old"]
+    world.observations = Self.evidence(unavailable: ["gpt-old"], at: .now - .seconds(5))
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudModelUnavailable(.openAI, "gpt-old")))
+  }
+
+  @Test("#4353 a newer key rejection wins over a model warning; a working take restores the model check")
+  func keyRejectionBeatsModelWarning() {
+    let world = World()
+    world.observations = Self.evidence(unavailable: ["gpt-x"], at: .now - .seconds(5))
+    let monitor = Self.monitor(world)
+    monitor.start()
+    defer { monitor.stop() }
+    #expect(monitor.eligibleProblem == .cloudModelUnavailable(.openAI, "gpt-x"))
+    let take = Self.take(monitor)
+    monitor.ingest(
+      PolishTakeOutcome(
+        takeID: "take-key", context: take, result: .failed, evidence: .cloudKeyRejectedClassified,
+        setupProblem: .cloudKeyRejected, observedAt: .now))
+    #expect(monitor.eligibleProblem == .cloudKeyRejected(.openAI), "the key comes before the model")
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudKeyRejected(.openAI)))
+
+    // An empty choice is hidden behind a rejected key the same way.
+    world.configuration = PolishSetupConfiguration(
+      provider: .openAI, model: "", credentialRevision: 1)
+    world.model = ""
+    #expect(monitor.readiness(for: .openAI) == .problem(.cloudKeyRejected(.openAI)))
   }
 
   // MARK: - One newest answer per model and key (chunk 3 repair, findings 1 to 3)

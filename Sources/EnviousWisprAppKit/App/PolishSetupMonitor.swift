@@ -55,6 +55,9 @@ struct PolishSetupInputs {
   let facts: PolishSetupFacts
   /// When the Ollama service last committed its state (`lastCommitAt`); nil if never.
   let ollamaLastCommitAt: ContinuousClock.Instant?
+  /// #4353: the scope's remembered cloud model per provider, the model "Go back" would restore
+  /// (a provider change selects that provider's remembered pick, else none).
+  var rememberedCloudModels: [LLMProvider: String] = [:]
 }
 
 /// Permission to present one earned outside-stop notice (#3988): the stop it is about, the
@@ -433,11 +436,27 @@ final class PolishSetupMonitor {
     // The same evidence and freshness rules as the warnings themselves: a key or a server a
     // dictation proved broken is not offered as a way back. The model of a provider that is not
     // the chosen one is not known here, so only server-level Ollama answers apply to it.
-    let model =
-      provider == inputs.configuration.provider ? inputs.configuration.model : nil
+    // #4353: another cloud provider is judged with ITS remembered model for this scope, the one
+    // selecting it would restore (none remembered is no model), never the chosen provider's.
+    var judged = inputs
+    let model: String?
+    if provider == inputs.configuration.provider {
+      model = inputs.configuration.model
+    } else if Self.usesCloudKey(provider) {
+      let remembered = inputs.rememberedCloudModels[provider] ?? ""
+      var facts = inputs.facts
+      facts.selectedCloudModel = remembered
+      judged = PolishSetupInputs(
+        onboardingComplete: inputs.onboardingComplete, configuration: inputs.configuration,
+        facts: facts, ollamaLastCommitAt: inputs.ollamaLastCommitAt,
+        rememberedCloudModels: inputs.rememberedCloudModels)
+      model = remembered
+    } else {
+      model = nil
+    }
     return withTakeObservations(
-      PolishSetupReadiness.evaluate(provider: provider, facts: inputs.facts),
-      provider: provider, model: model, inputs: inputs)
+      PolishSetupReadiness.evaluate(provider: provider, facts: judged.facts),
+      provider: provider, model: model, inputs: judged)
   }
 
   /// The episode a surface is showing now, for it to hand back with the person's answer.
@@ -769,12 +788,15 @@ final class PolishSetupMonitor {
       Self.cloudVerdictAt(facts, provider: provider).map({ $0 < take.observedAt }) ?? true
     else { return readiness }
     switch (take.rejected, readiness) {
-    case (true, .noProblem), (true, .unknown):
-      // The provider rejected this key during a dictation (no Settings visit needed).
+    case (true, .noProblem), (true, .unknown), (true, .problem(.cloudNoModel(provider))),
+      (true, .problem(.cloudModelUnavailable(provider, _))):
+      // The provider rejected this key during a dictation (no Settings visit needed). #4353:
+      // the key comes before the model, so a model answer never hides a newer key rejection.
       return .problem(.cloudKeyRejected(provider))
     case (false, .problem(.cloudKeyRejected(provider))):
-      // A dictation polished with this key after the check rejected it.
-      return .noProblem
+      // A dictation polished with this key after the check rejected it: the key is fine, and
+      // the model is judged as if the key had always been (#4353: key first, then model).
+      return PolishSetupReadiness.cloudModelReadiness(provider, facts: facts)
     default:
       return readiness
     }
@@ -1182,7 +1204,26 @@ extension PolishSetupInputs {
         // #4353: the scope's own cloud model, judged for the chosen cloud provider only.
         selectedCloudModel: PolishSetupMonitor.usesCloudKey(provider) ? engine.model : nil,
         cloudModelEvidence: llmDiscovery.cloudModelObservations),
-      ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt)
+      ollamaLastCommitAt: setup.ollamaSetup.lastCommitAt,
+      rememberedCloudModels: Self.rememberedCloudModels(settings: settings, scope: scope))
+  }
+
+  /// #4353: the scope's remembered cloud model per provider (dictation's or the summary
+  /// engine's memory).
+  @MainActor
+  static func rememberedCloudModels(
+    settings: SettingsManager, scope: PolishSetupScope
+  ) -> [LLMProvider: String] {
+    let memory: CloudModelMemory
+    switch scope {
+    case .dictation: memory = settings.dictationCloudModelMemory
+    case .meetingSummary: memory = settings.meetingSummaryCloudModelMemory
+    }
+    var models: [LLMProvider: String] = [:]
+    for provider in [LLMProvider.openAI, .gemini, .claude] {
+      if let model = memory.model(for: provider) { models[provider] = model }
+    }
+    return models
   }
 }
 
