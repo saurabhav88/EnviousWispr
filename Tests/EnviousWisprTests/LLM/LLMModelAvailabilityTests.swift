@@ -158,4 +158,23 @@ struct LLMModelAvailabilityTests {
       #expect(row.availabilityObservedAt == stamped, "the probe's own time must reach the row")
     }
   }
+
+  @Test("#4353 D5 a release date survives the cache; the probe time does not; an old row decodes undated")
+  func releaseDateCacheRoundTrip() throws {
+    let date = Date(timeIntervalSince1970: 1_744_316_542)
+    let row = LLMModelInfo(
+      id: "gpt-4.1-mini", displayName: "G", provider: .openAI, availability: .available,
+      isRemote: false, availabilityObservedAt: .now, releaseDate: date)
+    let decoded = try JSONDecoder().decode(
+      LLMModelInfo.self, from: JSONEncoder().encode(row))
+    #expect(decoded.releaseDate == date)
+    #expect(decoded.availabilityObservedAt == nil)
+
+    let legacy = Data(#"{"id":"gpt-x","displayName":"X","provider":"openAI","isAvailable":true}"#.utf8)
+    #expect(try JSONDecoder().decode(LLMModelInfo.self, from: legacy).releaseDate == nil)
+    let unusable = Data(
+      #"{"id":"gpt-x","displayName":"X","provider":"openAI","isAvailable":true,"releaseDate":"soon"}"#.utf8)
+    let kept = try JSONDecoder().decode(LLMModelInfo.self, from: unusable)
+    #expect(kept.id == "gpt-x" && kept.releaseDate == nil, "an unusable date never drops the row")
+  }
 }
