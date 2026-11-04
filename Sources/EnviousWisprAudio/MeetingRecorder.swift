@@ -55,8 +55,8 @@ public final class MeetingRecorder {
   public typealias SegmentHandler = @Sendable (MeetingTrackKind, MeetingSegmentInfo) -> Void
   public typealias FailureHandler = @MainActor (MeetingTrackKind, Error) -> Void
   /// See `liveSamples`.
-  /// A chunk, its track and its original metadata (#4248: the capture host time of its first
-  /// sample, a drop before it, and a producer run break), as the file gets them.
+  /// A written slice, its track and its metadata: its written span (#4355), the acquisition
+  /// time of its first sample, a drop before it, and a producer run break (#4248).
   public typealias LiveSamplesObserver = @Sendable (
     MeetingTrackKind, UnsafeBufferPointer<Float>, MeetingReleasedChunk
   ) -> Void
@@ -199,26 +199,18 @@ public final class MeetingRecorder {
   /// overflowed the tap thread's stack (SIGBUS on its guard page).
   /// `MeetingRecorderTests.liveSamplesDepthStaysFlat` pins the depth.
   ///
-  /// The microphone's deliveries come from its writer's release (#4248), so they continue after
-  /// capture stops until the held tail is out; the call sound's stop with its capture.
+  /// Both tracks' deliveries come from their writers' release (#4248, #4355), so they continue
+  /// after capture stops until each writer's accepted audio is written; they end at `close`.
   private final class LiveObserverBox: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var observer: LiveSamplesObserver?
     private var closed = false
-    private var callSoundClosed = false
 
-    /// The observer now (writer queue for the microphone; never waits beyond the unfair lock).
+    /// The observer now (a writer's queue; never waits beyond the unfair lock).
     func current() -> LiveSamplesObserver? {
       lock.lock()
       defer { lock.unlock() }
       return observer
-    }
-
-    /// The observer for a call-sound chunk (tap thread): nil once call-sound capture stopped.
-    func currentForCallSound() -> LiveSamplesObserver? {
-      lock.lock()
-      defer { lock.unlock() }
-      return callSoundClosed ? nil : observer
     }
 
     func set(_ newValue: LiveSamplesObserver?) {
@@ -227,19 +219,11 @@ public final class MeetingRecorder {
       if !closed { observer = newValue }
     }
 
-    /// Call-sound capture stopped: no more call-sound deliveries.
-    func closeCallSound() {
-      lock.lock()
-      defer { lock.unlock() }
-      callSoundClosed = true
-    }
-
     func close() {
       lock.lock()
       defer { lock.unlock() }
       observer = nil
       closed = true
-      callSoundClosed = true
     }
   }
 
@@ -333,8 +317,8 @@ public final class MeetingRecorder {
     micWriter?.setSilenceClock(step)
   }
 
-  /// The end host time of microphone audio released for good (the plan's C); 0 before any.
-  public var microphoneReleasedHostTime: UInt64 { micWriter?.releasedHostTime ?? 0 }
+  /// The end of microphone audio released for good (the plan's C); nil before any.
+  public var microphoneReleased: MeetingAcquisitionTime? { micWriter?.released }
 
   /// The live mute state for the meter: true reads 0, false restores the device level.
   public func setMicrophoneMuted(_ muted: Bool) {
@@ -373,16 +357,10 @@ public final class MeetingRecorder {
     var callStatus: MeetingTrackStatus = .off
     if config.captureCallSound {
       let writer = makeWriter(.callSound)
-      let live = liveBox
       let source = sources.makeCallSound(
         { samples, hostTime, startsNewRun in
+          // Live words get the call sound from the writer's release, once placed (#4355).
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
-          // Borrowed for this call only; read under the lock, invoked outside it.
-          if let observe = live.currentForCallSound() {
-            observe(
-              .callSound, samples,
-              MeetingReleasedChunk(hostTime: hostTime, afterDrop: false, sourceBreak: startsNewRun))
-          }
         },
         { [weak self] reason in
           Task { @MainActor in
@@ -579,7 +557,7 @@ public final class MeetingRecorder {
   public func stop() async -> StopReport {
     if let stopReport { return stopReport }
     stopCapture()
-    // The microphone writer releases its held tail through `liveSamples` while it finishes;
+    // Each writer releases its accepted tail through `liveSamples` while it finishes;
     // deliveries end for good after both files closed.
     async let mic = micWriter?.finish()
     async let call = callWriter?.finish()
@@ -615,7 +593,6 @@ public final class MeetingRecorder {
     reopenTask?.cancel()
     reopenTask = nil
     admissionOff()
-    liveBox.closeCallSound()
     microphone?.onSamples = nil
     microphone?.onInterrupted = nil
     microphone?.onStalled = nil
@@ -643,8 +620,8 @@ public final class MeetingRecorder {
 
   private func makeWriter(_ track: MeetingTrackKind) -> MeetingTrackWriter {
     let onSegment = self.onSegment
-    // Microphone only: the filtered, released audio goes to live words on the writer's queue.
-    let released = track == .microphone ? Self.microphoneRelease(to: liveBox) : nil
+    // Both tracks: the written audio goes to live words on the writer's queue, with its span.
+    let released = Self.release(track, to: liveBox)
     let writer = MeetingTrackWriter(
       configuration: MeetingTrackWriter.Configuration(
         meetingID: config.meetingID, track: track, folder: config.folder,
@@ -664,12 +641,12 @@ public final class MeetingRecorder {
     return writer
   }
 
-  /// Hands each released microphone chunk to the live observer (writer queue, borrowed buffer).
-  private nonisolated static func microphoneRelease(to live: LiveObserverBox)
+  /// Hands each written slice of `track` to the live observer (writer queue, borrowed buffer).
+  private nonisolated static func release(_ track: MeetingTrackKind, to live: LiveObserverBox)
     -> MeetingTrackWriter.ReleasedHandler
   {
     { frames, info in
-      if let observe = live.current() { observe(.microphone, frames, info) }
+      if let observe = live.current() { observe(track, frames, info) }
     }
   }
 

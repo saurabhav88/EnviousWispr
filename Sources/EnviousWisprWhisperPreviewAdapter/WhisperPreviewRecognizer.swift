@@ -182,7 +182,7 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
   package func openTranscriptSession(
     vocabulary: LivePreviewVocabulary,
     onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-  ) async throws -> any LivePreviewEngineSession {
+  ) async throws -> any LiveTranscriptSession {
     let handle = TranscribeCppPreviewSession(lookups: vocabulary.lookups, onEvent: onEvent)
     let session: any WhisperIncrementalSession
     do {
@@ -200,6 +200,13 @@ package actor WhisperPreviewRecognizer: LivePreviewEngine {
       // Never handed to the owner: no events, not even a terminal; the queue's task ends.
       await handle.discard()
       throw error
+    }
+    // #4355: committed segments map onto written audio through this handle's map, at the
+    // moment they are published. Weak: the session must not keep an ended handle alive.
+    if let rolling = session as? TranscribeCppRollingSession {
+      await rolling.setSpanProjection { [weak handle] start, end in
+        handle?.projectSpan(start: start, end: end)
+      }
     }
     await handle.attach(session)
     return handle

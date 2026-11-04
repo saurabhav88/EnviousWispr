@@ -1225,7 +1225,7 @@ struct TranscribeCppRollingSessionTests {
     /// Every finalized delta, joined: the whole confirmed transcript.
     var finalized: String {
       all.reduce(into: "") { text, event in
-        if case .update(let finalized, _) = event { text += finalized }
+        if case .update(let finalized, _) = event { text += MeetingTimedPiece.text(of: finalized) }
       }
     }
   }
@@ -1251,9 +1251,62 @@ struct TranscribeCppRollingSessionTests {
       [Self.seg(0, 1.5, " Hello world. How"), Self.seg(1.5, 3.0, " are you")], realAudioEnd: 3)
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " Hello world. How are"),
-        .update(finalized: " Hello world. How", inProgress: " are you"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " Hello world. How are"),
+        .update(finalized: MeetingTimedPiece.untimed(" Hello world. How"), inProgress: " are you"),
       ])
+  }
+
+  // MARK: - Segment ownership (#4355 chunk 7)
+
+  static let recording = UUID()
+  /// A projection standing in for the owner's map: absolute seconds → samples, one run.
+  static let projection: @Sendable (Double, Double) -> MeetingAudioSpan? = { start, end in
+    MeetingAudioSpan(
+      recording: recording, track: .callSound, run: 0,
+      startSample: Int((start * 16_000).rounded()),
+      sampleCount: Int((end * 16_000).rounded()) - Int((start * 16_000).rounded()))
+  }
+
+  @Test("each committed segment is its own piece with its own projected span")
+  func committedSegmentsKeepOwnership() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    await s.setSpanProjection(Self.projection)
+    await s.apply(
+      [Self.seg(0, 1, " One."), Self.seg(1, 2, " Two."), Self.seg(2, 3, " Three")],
+      realAudioEnd: 3)
+    await s.apply(
+      [Self.seg(0, 1, " One."), Self.seg(1, 2, " Two."), Self.seg(2, 3.5, " Three more")],
+      realAudioEnd: 3.5)
+    guard case .update(let pieces, _)? = events.all.last else {
+      Issue.record("no update")
+      return
+    }
+    #expect(pieces.map(\.text) == [" One.", " Two."])
+    #expect(pieces.map(\.span) == [Self.projection(0, 1), Self.projection(1, 2)])
+  }
+
+  @Test("a suffix left by a committed-prefix cut inside its segment is emitted once, with no span")
+  func cutSuffixHasNoSpan() async {
+    let events = Events()
+    let s = Self.transcriptSession(Self.noDecode, events: events)
+    await s.setSpanProjection(Self.projection)
+    await s.apply(
+      [Self.seg(0, 1.2, " Hello world."), Self.seg(1.2, 2.0, " How are")], realAudioEnd: 2)
+    await s.apply(
+      [Self.seg(0, 1.5, " Hello world. How"), Self.seg(1.5, 3.0, " are you")], realAudioEnd: 3)
+    // The decoder now hears " are" inside the segment that holds the committed " How".
+    await s.apply(
+      [Self.seg(0, 2.2, " Hello world. How are"), Self.seg(2.2, 3.5, " you today")],
+      realAudioEnd: 3.5)
+    let finals = events.all.compactMap { event -> [MeetingTimedPiece]? in
+      guard case .update(let pieces, _) = event, !pieces.isEmpty else { return nil }
+      return pieces
+    }
+    #expect(finals.map { $0.map(\.text) } == [[" Hello world. How"], [" are"]], "each word once")
+    #expect(finals.first?.first?.span == Self.projection(0, 1.5), "a whole first segment")
+    #expect(finals.last?.first?.span == nil, "the suffix never takes its segment's audio")
+    #expect(events.finalized == " Hello world. How are")
   }
 
   @Test("a commit is handed over even when the held-back words do not change")
@@ -1266,8 +1319,8 @@ struct TranscribeCppRollingSessionTests {
     await s.apply([Self.seg(0, 1, " no"), Self.seg(1, 2, " no")], realAudioEnd: 2)
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " no"),
-        .update(finalized: " no", inProgress: " no"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " no"),
+        .update(finalized: MeetingTimedPiece.untimed(" no"), inProgress: " no"),
       ])
   }
 
@@ -1293,7 +1346,7 @@ struct TranscribeCppRollingSessionTests {
     let s = Self.transcriptSession(Self.noDecode, events: events)
     await s.apply([Self.seg(0, 31, " unstable words")], realAudioEnd: 31)
     #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
-    #expect(events.all == [.update(finalized: "", inProgress: " unstable words"), .discontinuity])
+    #expect(events.all == [.update(finalized: MeetingTimedPiece.untimed(""), inProgress: " unstable words"), .discontinuity])
   }
 
   @Test("a genuine commit in the same decode arrives once before the forced advance")
@@ -1310,8 +1363,8 @@ struct TranscribeCppRollingSessionTests {
     #expect(await s.discardedUnstableAudioForTests, "control: the advance was forced")
     #expect(
       events.all == [
-        .update(finalized: "", inProgress: " Yes. and then"),
-        .update(finalized: " Yes.", inProgress: " and then something long"),
+        .update(finalized: MeetingTimedPiece.untimed(""), inProgress: " Yes. and then"),
+        .update(finalized: MeetingTimedPiece.untimed(" Yes."), inProgress: " and then something long"),
         .discontinuity,
       ])
   }

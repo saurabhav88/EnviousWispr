@@ -300,7 +300,7 @@ struct MeetingLiveWordsIntegrationTests {
       MeetingLiveWordsTests.bothRunning($0)
     }
     try #require(world.appleEngines[0].sessions.first).emit(
-      .update(finalized: "Live line.", inProgress: ""))
+      .update(finalized: MeetingTimedPiece.untimed("Live line."), inProgress: ""))
     await MeetingLiveWordsTests.until("the live line", rig.owner) {
       ($0.transcript?.lines.map(\.text) ?? []) == ["Live line."]
     }
@@ -334,7 +334,7 @@ struct MeetingLiveWordsIntegrationTests {
     let meetingID = try #require(rig.coordinator.meetings.first?.id)
     await MeetingLiveWordsTests.until("running", rig.owner) { MeetingLiveWordsTests.bothRunning($0) }
     try #require(world.appleEngines[0].sessions.first).emit(
-      .update(finalized: "Live line.", inProgress: ""))
+      .update(finalized: MeetingTimedPiece.untimed("Live line."), inProgress: ""))
     await MeetingLiveWordsTests.until("the live line", rig.owner) {
       ($0.transcript?.lines.map(\.text) ?? []) == ["Live line."]
     }
@@ -362,7 +362,7 @@ struct MeetingLiveWordsIntegrationTests {
     let meetingID = try #require(rig.coordinator.meetings.first?.id)
     await MeetingLiveWordsTests.until("running", rig.owner) { MeetingLiveWordsTests.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
-    mic.emit(.update(finalized: "Live line.", inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed("Live line."), inProgress: ""))
     await MeetingLiveWordsTests.until("the live line", rig.owner) {
       ($0.transcript?.lines.isEmpty ?? true) == false
     }
@@ -374,7 +374,7 @@ struct MeetingLiveWordsIntegrationTests {
       $0.transcript == nil
     }
     #expect(rig.coordinator.record(id: meetingID)?.deletionRequested != true, "the write is held")
-    mic.emit(.update(finalized: "Late words.", inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed("Late words."), inProgress: ""))
     #expect(rig.coordinator.liveTranscript == nil, "late words are refused")
     release()
     await PreviewWait.within("Delete", onExpiry: release) { await deleting.value }
@@ -414,7 +414,7 @@ struct MeetingLiveWordsIntegrationTests {
     await MeetingLiveWordsTests.until("the next meeting's status", rig.owner, release: feed.open) {
       MeetingLiveWordsTests.status($0, .microphone) == .off(.previousStillClosing)
     }
-    oldMic.emit(.update(finalized: "From the deleted meeting.", inProgress: ""))
+    oldMic.emit(.update(finalized: MeetingTimedPiece.untimed("From the deleted meeting."), inProgress: ""))
     #expect(rig.coordinator.liveTranscript?.meetingID == second)
     #expect(rig.coordinator.liveTranscript?.lines.isEmpty == true)
     // Quit is synchronous and returns with the old cleanup still held.

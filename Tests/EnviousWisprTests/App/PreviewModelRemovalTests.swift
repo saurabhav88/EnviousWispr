@@ -158,7 +158,7 @@ struct PreviewModelRemovalTests {
       MeetingLiveWordsTests.bothRunning($0)
     }
     let shared = try #require(rig.world.shared.first)
-    try #require(shared.engine.sessions.first).emit(.update(finalized: "Kept words.", inProgress: ""))
+    try #require(shared.engine.sessions.first).emit(.update(finalized: MeetingTimedPiece.untimed("Kept words."), inProgress: ""))
     await MeetingLiveWordsTests.until("the line", rig.owner, release: release) {
       ($0.transcript?.lines.map(\.text) ?? []) == ["Kept words."]
     }

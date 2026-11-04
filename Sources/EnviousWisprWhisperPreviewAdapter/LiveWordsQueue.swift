@@ -1,4 +1,5 @@
 import EnviousWisprASR
+import EnviousWisprCore
 import EnviousWisprLivePreview
 import EnviousWisprPostProcessing
 import Foundation
@@ -17,9 +18,10 @@ import os
 /// whole (never truncated) and closes the queue: the accepted entries still drain, then exactly
 /// one `.ended(.failed("backlog"))`. The terminal itself needs no budget.
 ///
-/// Accounting, in bytes: each entry costs `entryCost` plus the UTF-8 length of its texts; a
-/// discontinuity or an empty update costs `entryCost` alone, so alternating barriers cannot
-/// grow without bound. The entry the consumer is delivering stays charged until its delivery
+/// Accounting, in bytes: each entry costs `entryCost` plus the UTF-8 length of its texts plus
+/// `LiveWordsAssembler.pieceCharge` per finalized piece (#4355), so tiny timed pieces cannot
+/// slip under a text-only budget; a discontinuity or an empty update costs `entryCost` alone,
+/// so alternating barriers cannot grow without bound. The entry the consumer is delivering stays charged until its delivery
 /// returns, so a consumer stuck inside `onEvent` holds its share. Custom Words run on the
 /// consumer after an entry leaves the queue, so a longer canonical never adds to queued text;
 /// the in-flight charge is the entry's size as queued.
@@ -31,13 +33,14 @@ final class LiveWordsQueue: @unchecked Sendable {
   static let entryCost = 64
 
   private enum Entry {
-    case update(finalized: String, inProgress: String)
+    case update(finalized: [MeetingTimedPiece], inProgress: String)
     case discontinuity
 
     var cost: Int {
       switch self {
       case .update(let finalized, let inProgress):
-        LiveWordsQueue.entryCost + finalized.utf8.count + inProgress.utf8.count
+        LiveWordsQueue.entryCost + LiveWordsAssembler.charge(of: finalized)
+          + inProgress.utf8.count
       case .discontinuity:
         LiveWordsQueue.entryCost
       }
@@ -81,7 +84,10 @@ final class LiveWordsQueue: @unchecked Sendable {
         case .silenced:
           return
         case .entry(.update(let finalized, let inProgress)):
-          onEvent(.update(finalized: corrected(finalized), inProgress: corrected(inProgress)))
+          onEvent(
+            .update(
+              finalized: LiveWordsPieceCorrection.corrected(finalized, corrected),
+              inProgress: corrected(inProgress)))
         case .entry(.discontinuity):
           onEvent(.discontinuity)
         case .terminal(let end):
@@ -99,19 +105,20 @@ final class LiveWordsQueue: @unchecked Sendable {
       guard s.accepting else { return nil }
       // The charge after admission, computed from byte counts BEFORE any text is built: a
       // refused event allocates nothing and leaves the queue exactly as it was.
-      var merging: String?
+      var merging: [MeetingTimedPiece]?
       var charge = s.queued + s.inFlight
       switch event {
       case .update(let finalized, let inProgress):
         if case .update(let earlier, let replaced)? = s.entries.last {
-          // Coalesce: the deltas in order, joined as the assembler joins two updates' finals
-          // (#3973), the newest in-progress text replacing the old.
+          // Coalesce: the piece lists in order, joined as the assembler joins two updates'
+          // finals (#3973, #4355), the newest in-progress text replacing the old.
           let merged = LiveWordsAssembler.join(earlier, finalized)
           merging = merged
-          charge += merged.utf8.count - earlier.utf8.count + inProgress.utf8.count
-            - replaced.utf8.count
+          charge += LiveWordsAssembler.charge(of: merged) - LiveWordsAssembler.charge(of: earlier)
+            + inProgress.utf8.count - replaced.utf8.count
         } else {
-          charge += Self.entryCost + finalized.utf8.count + inProgress.utf8.count
+          charge += Self.entryCost + LiveWordsAssembler.charge(of: finalized)
+            + inProgress.utf8.count
         }
       case .discontinuity:
         charge += Self.entryCost

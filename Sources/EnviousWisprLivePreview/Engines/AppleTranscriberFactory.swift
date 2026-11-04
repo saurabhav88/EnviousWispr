@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 import Speech
 
@@ -27,13 +28,15 @@ package enum AppleTranscriberFactory {
   /// `SpeechAnalyzer` (`ApplePreviewRecognizer` trap 1), so this is built per analyzer.
   package struct Module: @unchecked Sendable {
     let speechModule: any SpeechModule
-    /// Iterates the module's results, calling `deliver` with each one's text and finality.
-    /// Throws when the results stream throws; returns when it completes. Both kinds deliver
-    /// per segment: a volatile result replaces the segment in flight, a final appends it
+    /// Iterates the module's results, calling `deliver` with each one. Throws when the results
+    /// stream throws; returns when it completes. Both kinds deliver per segment: a volatile
+    /// result replaces the segment in flight, a final appends it
     /// (`ApplePreviewRecognizer.collect`; SDK `SpeechTranscriber.Result` /
-    /// `DictationTranscriber.Result`).
+    /// `DictationTranscriber.Result`). The meeting kind also delivers each attributed run's
+    /// `audioTimeRange` on the session's input timeline (#4355).
     let consume:
-      @Sendable (_ deliver: @escaping @Sendable (String, Bool) -> Void) async throws -> Void
+      @Sendable (_ deliver: @escaping @Sendable (LiveTranscriptResult) -> Void) async throws
+        -> Void
   }
 
   /// The preset each kind runs with.
@@ -45,19 +48,38 @@ package enum AppleTranscriberFactory {
         speechModule: module,
         consume: { deliver in
           for try await result in module.results {
-            deliver(String(result.text.characters), result.isFinal)
+            deliver(.untimed(String(result.text.characters), isFinal: result.isFinal))
           }
         })
     case .meeting:
-      let module = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+      // #4355 Phase 0a step 5: the time-indexed preset reports `audioTimeRange` on every run
+      // (140 of 140 finals on the probe call); the progressive preset reports none.
+      let module = SpeechTranscriber(
+        locale: locale, preset: .timeIndexedProgressiveTranscription)
       return Module(
         speechModule: module,
         consume: { deliver in
           for try await result in module.results {
-            deliver(String(result.text.characters), result.isFinal)
+            let runs = result.text.runs.map { run in
+              LiveTranscriptResult.Run(
+                text: String(result.text[run.range].characters),
+                startSeconds: run.audioTimeRange.flatMap { seconds($0.start) },
+                endSeconds: run.audioTimeRange.flatMap { seconds($0.end) })
+            }
+            deliver(
+              LiveTranscriptResult(
+                text: String(result.text.characters), isFinal: result.isFinal, runs: runs,
+                startSeconds: seconds(result.range.start)))
           }
         })
     }
+  }
+
+  /// A time in seconds, or nil when it is not a number (invalid, indefinite or infinite).
+  private static func seconds(_ time: CMTime) -> Double? {
+    guard time.isNumeric else { return nil }
+    let value = time.seconds
+    return value.isFinite ? value : nil
   }
 
   /// Whether this kind can run on this Mac at all. `SpeechTranscriber` also depends on the

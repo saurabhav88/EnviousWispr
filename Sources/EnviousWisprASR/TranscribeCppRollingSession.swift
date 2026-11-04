@@ -48,9 +48,12 @@ import Foundation
 /// Preview mode's lossless transcript output (#3973), next to the bounded display tail: what an
 /// owner needs to build a growing transcript (EnviousMeet's live words).
 package enum TranscriptEvent: Sendable, Equatable {
-  /// `finalized`: text that became final in this decode, never repeated. `inProgress`: the
-  /// words still held back, replacing the previous ones (empty when none).
-  case update(finalized: String, inProgress: String)
+  /// `finalized`: text that became final in this decode, never repeated, as timed pieces: one
+  /// per committed native segment, with that segment's written span when the session has a
+  /// span projection and the piece owns the whole segment; a suffix left after the committed
+  /// prefix was cut inside its segment has no span (#4355). `inProgress`: the words still held
+  /// back, replacing the previous ones (empty when none).
+  case update(finalized: [MeetingTimedPiece], inProgress: String)
   /// A forced advance discarded the agreement state of words that never committed: the
   /// held-back words shown so far are not promoted to finalized. The audio retained after the
   /// new origin is decoded again, so later decodes may recognize some of the same words.
@@ -137,6 +140,18 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   #endif
   /// The last text handed to `onHypothesis`, so an unchanged hypothesis is not handed again.
   private var lastPublished = ""
+  /// #4355: maps a native segment's absolute session-input seconds onto written audio (the
+  /// transcript owner's map); nil for sessions without one. Called synchronously when a delta
+  /// is published, before retention can release that audio.
+  private var spanProjection: (@Sendable (_ start: Double, _ end: Double) -> MeetingAudioSpan?)?
+
+  /// Sets the span projection; the transcript owner calls it once, before `start`.
+  package func setSpanProjection(
+    _ projection: @escaping @Sendable (_ start: Double, _ end: Double) -> MeetingAudioSpan?
+  ) {
+    spanProjection = projection
+  }
+
   /// The held-back words last handed to `Publication.onTranscript`.
   private var lastTranscriptInProgress = ""
 
@@ -651,7 +666,8 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
     // Strings are built only for a transcript owner, never on dictation's decodes.
     if publication?.onTranscript != nil {
       publishTranscript(
-        finalized: fresh[0..<commitCount].map(\.text).joined(),
+        finalized: committedPieces(
+          fresh[0..<commitCount], segments: segments, cutUnits: units[..<cut]),
         inProgress: remaining.map(\.text).joined())
     }
 
@@ -755,7 +771,32 @@ package actor TranscribeCppRollingSession: WhisperIncrementalSession {
   /// Preview mode: hands the transcript owner this decode's committed delta (exactly once, from
   /// the units themselves, before any bounded retention can drop them) and the held-back words,
   /// when either changed.
-  private func publishTranscript(finalized: String, inProgress: String) {
+  /// One piece per committed native segment, in order. A segment none of whose units were cut
+  /// as the committed prefix is owned whole by its piece, which gets the segment's projected
+  /// span; a segment the cut split leaves a suffix with no span (no word times exist to split
+  /// a segment by, so its suffix is never given the whole segment's audio).
+  private func committedPieces(
+    _ committed: ArraySlice<RollingUnit>, segments: [RollingSegment],
+    cutUnits: ArraySlice<RollingUnit>
+  ) -> [MeetingTimedPiece] {
+    var pieces: [MeetingTimedPiece] = []
+    var index = committed.startIndex
+    while index < committed.endIndex {
+      let segment = committed[index].segment
+      var next = index
+      while next < committed.endIndex, committed[next].segment == segment { next += 1 }
+      let text = committed[index..<next].map(\.text).joined()
+      let ownsWholeSegment = !cutUnits.contains { $0.segment == segment }
+      let span =
+        ownsWholeSegment
+        ? spanProjection?(Double(segments[segment].start), Double(segments[segment].end)) : nil
+      if !text.isEmpty { pieces.append(MeetingTimedPiece(text: text, span: span)) }
+      index = next
+    }
+    return pieces
+  }
+
+  private func publishTranscript(finalized: [MeetingTimedPiece], inProgress: String) {
     guard let onTranscript = publication?.onTranscript else { return }
     guard !finalized.isEmpty || inProgress != lastTranscriptInProgress else { return }
     lastTranscriptInProgress = inProgress

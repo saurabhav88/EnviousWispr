@@ -416,7 +416,7 @@
         MeetingLiveWordsTests.status($0, .microphone) == .running
       }
       try #require(world.appleEngines.first?.sessions.first).emit(
-        .update(finalized: "Hello there.", inProgress: ""))
+        .update(finalized: MeetingTimedPiece.untimed("Hello there."), inProgress: ""))
       await MeetingLiveWordsTests.until("one line", live.owner) {
         $0.transcript?.lines.count == 1
       }

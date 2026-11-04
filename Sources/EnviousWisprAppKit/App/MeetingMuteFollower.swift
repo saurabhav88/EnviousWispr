@@ -1,24 +1,16 @@
 import Darwin
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
 
-/// A stretch of meeting time, in host ticks (`mach_absolute_time`), half open: `[start, end)`.
-/// `end == .max` is a stretch still open.
-struct MeetingMuteInterval: Sendable, Equatable {
-  let start: UInt64
-  let end: UInt64
-
-  static let openEnd = UInt64.max
-
-  var isOpen: Bool { end == Self.openEnd }
-}
-
 /// Decides, from the call app's mute button readings, which stretches of the microphone are left
 /// out of a meeting recording (#4248 plan §3.0, the sole timing owner). One per recording.
 ///
-/// Pure: every input carries its own host time and nothing here reads the app, the clock or
-/// audio. Four times are kept apart and never stand in for each other:
+/// Pure: every input carries its own acquisition time and nothing here reads the app, the clock
+/// or audio. Inputs of another recording are ignored. The arithmetic below is on host ticks of
+/// this one recording, decoded at each input; provenance never changes a decision. Four times
+/// are kept apart and never stand in for each other:
 /// - T, a reading's copy-start host time: a conservative stamp, earlier than the moment the
 ///   button was read. Never the copy's middle or end.
 /// - D, when that reading reached the gate queue. `D - T` (L) is part of the hold budget.
@@ -84,14 +76,24 @@ struct MeetingMuteFollower: Sendable {
     var events = 0
   }
 
-  private(set) var state: State = .unbound
-  /// The muted stretches not yet wholly released, oldest first. A copy; the follower keeps its
-  /// own.
-  var intervals: [MeetingMuteInterval] {
-    closed + (openStart.map { [.init(start: $0, end: MeetingMuteInterval.openEnd)] } ?? [])
+  /// One muted stretch in this recording's host ticks, half open: `[start, end)`.
+  private struct Stretch: Equatable {
+    let start: UInt64
+    let end: UInt64
   }
-  /// C: the end host time of audio released for good.
-  private(set) var committed: UInt64 = 0
+
+  let recording: UUID
+  private(set) var state: State = .unbound
+  /// The muted stretches not yet wholly released, oldest first; the last may be open (nil end).
+  /// Starts are reading times (observed); a closed end is derived from readings (estimated).
+  var intervals: [MeetingSilenceInterval] {
+    closed.map {
+      MeetingSilenceInterval(start: time($0.start, .observed), end: time($0.end, .estimated))
+    } + (openStart.map { [MeetingSilenceInterval(start: time($0, .observed), end: nil)] } ?? [])
+  }
+  /// C: the end of audio released for good; nil before any.
+  private(set) var committed: MeetingAcquisitionTime?
+  private var committedTicks: UInt64 { committed?.hostTicks ?? 0 }
   private(set) var missed = Missed()
 
   private let timebase: mach_timebase_info_data_t
@@ -105,19 +107,32 @@ struct MeetingMuteFollower: Sendable {
   private var openReleasedFrom: UInt64?
   /// Whether a mute state was read since binding or switching on (checking versus cannot-see).
   private var following = false
-  private var closed: [MeetingMuteInterval] = []
+  private var closed: [Stretch] = []
   /// Readings copied before this host time are not used: the switch was off when they began.
   private var acceptFrom: UInt64 = 0
   private let timingFor: @Sendable (CallSpeakerSurface) -> Timing
 
   init(
-    enabled: Bool, timebase: mach_timebase_info_data_t = CallSpeakerTimeline.liveTimebase,
+    recording: UUID, enabled: Bool,
+    timebase: mach_timebase_info_data_t = CallSpeakerTimeline.liveTimebase,
     timing: @escaping @Sendable (CallSpeakerSurface) -> Timing = { Timing.for($0) }
   ) {
+    self.recording = recording
     self.enabled = enabled
     self.timebase = timebase
     timingFor = timing
     state = enabled ? .unbound : .disabled
+  }
+
+  private func time(_ ticks: UInt64, _ provenance: MeetingAcquisitionTime.Provenance)
+    -> MeetingAcquisitionTime
+  {
+    MeetingAcquisitionTime(recording: recording, hostTicks: ticks, provenance: provenance)
+  }
+
+  /// This recording's ticks of `time`; nil for another recording's time.
+  private func ticks(of time: MeetingAcquisitionTime) -> UInt64? {
+    time.recording == recording ? time.hostTicks : nil
   }
 
   /// Host ticks in `seconds`.
@@ -148,11 +163,11 @@ struct MeetingMuteFollower: Sendable {
     if enabled { state = .unbound }
   }
 
-  /// The Settings switch, changed at `hostTime`. Turning it off closes an open stretch; audio
+  /// The Settings switch, changed at `time`. Turning it off closes an open stretch; audio
   /// already released is never restored. Turning it on starts checking again, and a copy that
-  /// began before `hostTime` (while the switch was off) is never used.
-  mutating func setEnabled(_ on: Bool, at hostTime: UInt64) {
-    guard on != enabled else { return }
+  /// began before `time` (while the switch was off) is never used.
+  mutating func setEnabled(_ on: Bool, at time: MeetingAcquisitionTime) {
+    guard on != enabled, let hostTime = ticks(of: time) else { return }
     enabled = on
     if !on {
       closeAtLastMuted()
@@ -168,9 +183,11 @@ struct MeetingMuteFollower: Sendable {
   /// One reading, copied at `copyStart` (T) and delivered at `delivered` (D).
   @discardableResult
   mutating func record(
-    _ reading: CallSelfMute, copyStart t: UInt64, delivered d: UInt64, generation: UInt64
+    _ reading: CallSelfMute, copyStart: MeetingAcquisitionTime,
+    delivered: MeetingAcquisitionTime, generation: UInt64
   ) -> Outcome {
     guard enabled, let timing, let current = self.generation else { return .inactive }
+    guard let t = ticks(of: copyStart), let d = ticks(of: delivered) else { return .ignored }
     guard generation == current, t >= acceptFrom, lastReadingT.map({ t > $0 }) ?? true else {
       return .ignored
     }
@@ -181,9 +198,9 @@ struct MeetingMuteFollower: Sendable {
     case .muted:
       if openStart == nil {
         openStart = t
-        openReleasedFrom = max(t, committed)
+        openReleasedFrom = max(t, committedTicks)
         // Audio from T up to C went out live already.
-        if t < committed { noteMissed(kept: committed - t) }
+        if t < committedTicks { noteMissed(kept: committedTicks - t) }
       }
       lastMutedT = t
       following = true
@@ -205,8 +222,8 @@ struct MeetingMuteFollower: Sendable {
 
   /// Time moved on to `now` with no new reading: a reading older than the staleness limit no
   /// longer counts.
-  mutating func advance(to now: UInt64) {
-    guard enabled, let timing, let last = lastReadingT, now > last,
+  mutating func advance(to time: MeetingAcquisitionTime) {
+    guard enabled, let now = ticks(of: time), let timing, let last = lastReadingT, now > last,
       now - last > ticks(timing.staleness)
     else { return }
     guard state == .muted || state == .unmuted else { return }
@@ -214,12 +231,12 @@ struct MeetingMuteFollower: Sendable {
     state = .cannotSee
   }
 
-  /// The gate released audio up to `hostTime` for good. C never moves back. Stretches wholly
-  /// before C are retired.
-  mutating func commit(through hostTime: UInt64) {
-    guard hostTime > committed else { return }
-    committed = hostTime
-    closed.removeAll { $0.end <= committed }
+  /// The gate released audio up to `time` for good (nil: nothing released yet). C never moves
+  /// back. Stretches wholly before C are retired.
+  mutating func commit(through time: MeetingAcquisitionTime?) {
+    guard let time, let hostTime = ticks(of: time), hostTime > committedTicks else { return }
+    committed = time
+    closed.removeAll { $0.end <= hostTime }
   }
 
   /// The recording ended: an open stretch closes at its last muted reading.
@@ -244,16 +261,16 @@ struct MeetingMuteFollower: Sendable {
     lastMutedT = nil
     // While open, released audio after `end` up to C went out as silence.
     let wrongFrom = max(releasedFrom, end)
-    if committed > wrongFrom { noteMissed(silenced: committed - wrongFrom) }
+    if committedTicks > wrongFrom { noteMissed(silenced: committedTicks - wrongFrom) }
     guard end > start else { return }
-    insert(MeetingMuteInterval(start: start, end: end))
+    insert(Stretch(start: start, end: end))
   }
 
   /// Readings only move forward and a stretch ends at or before its last muted reading, so a
   /// new stretch always starts after the previous one ends: stretches stay apart, in order, and
   /// an unknown or unmuted gap between them is never bridged.
-  private mutating func insert(_ interval: MeetingMuteInterval) {
-    guard interval.end > committed else { return }
+  private mutating func insert(_ interval: Stretch) {
+    guard interval.end > committedTicks else { return }
     closed.append(interval)
   }
 

@@ -121,16 +121,31 @@ struct MeetingCoordinatorTests {
     /// Runs the steps at `indices` in the order given, outside `runSteps`' bookkeeping, so a
     /// test can deliver an older step after newer ones.
     func runSteps(at indices: [Int], now: UInt64, released: UInt64 = 0) {
+      let (now, released) = queueTimes(now: now, released: released)
       for index in indices { _ = steps[index](now, released) }
     }
     @discardableResult
     func runSteps(now: UInt64, released: UInt64 = 0) -> [MeetingSilenceInterval]? {
+      let (now, released) = queueTimes(now: now, released: released)
       var last: [MeetingSilenceInterval]?
       while stepsRun < steps.count {
         if let intervals = steps[stepsRun](now, released) { last = intervals }
         stepsRun += 1
       }
       return last
+    }
+
+    /// The writer queue's view: its clock (observed) and C (nil before the first release), in
+    /// this recording.
+    private func queueTimes(now: UInt64, released: UInt64)
+      -> (MeetingAcquisitionTime, MeetingAcquisitionTime?)
+    {
+      let id = configuration.meetingID
+      return (
+        MeetingAcquisitionTime(recording: id, hostTicks: now, provenance: .observed),
+        released == 0
+          ? nil : MeetingAcquisitionTime(recording: id, hostTicks: released, provenance: .estimated)
+      )
     }
   }
 

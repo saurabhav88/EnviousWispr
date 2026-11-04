@@ -264,6 +264,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     fileprivate let sourceFormat: AVAudioFormat
     fileprivate let targetFormat: AVAudioFormat
     fileprivate let fedAnyAudio: FedFlag
+    /// Meeting transcript sessions only (#4355): what the analyzer consumed, mapped onto
+    /// written audio. Nil for dictation's preview.
+    fileprivate let recorder: AppleMeetingInputRecorder?
   }
 
   /// Mutable "did any audio reach the analyzer" flag, per session.
@@ -320,16 +323,23 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   func openTranscriptSession(
     vocabulary: LivePreviewVocabulary,
     onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-  ) async throws -> any LivePreviewEngineSession {
+  ) async throws -> any LiveTranscriptSession {
     let inputs = ApplePreviewHints.inputs(for: vocabulary)
     try await LocaleClaims.shared.claim(locale, purpose: "session")
     do {
       var made: LiveTranscriptCollector?
       let session = try await startSession(
-        contextualPhrases: inputs.phrases,
-        makeCollector: { module in
+        contextualPhrases: inputs.phrases, recordsInput: true,
+        makeCollector: { module, recorder in
+          // The collector maps through THIS session's recorder, built before any input exists,
+          // so a late final from an ended session never reads a replacement's map (#4355).
+          let timing = recorder.map { recorder in
+            LiveTranscriptCollector.Timing(
+              project: { recorder.project(startSeconds: $0, endSeconds: $1) },
+              prune: { recorder.prune(beforeSeconds: $0) })
+          }
           let collector = LiveTranscriptCollector(
-            lookups: inputs.lookups, onEvent: onEvent,
+            lookups: inputs.lookups, timing: timing, onEvent: onEvent,
             consume: module.consume)
           made = collector
           return CollectorHandle(
@@ -368,16 +378,16 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     onText: @escaping @Sendable (String) -> Void
   ) async throws -> Session {
     try await startSession(
-      contextualPhrases: contextualPhrases,
-      makeCollector: { module in
+      contextualPhrases: contextualPhrases, recordsInput: false,
+      makeCollector: { module, _ in
         CollectorHandle(task: Self.collect(from: module, lookups: lookups, onText: onText), silence: {})
       })
   }
 
   /// The shared opening: `makeCollector` builds the results consumer for each fresh module.
   private func startSession(
-    contextualPhrases: [String],
-    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
+    contextualPhrases: [String], recordsInput: Bool,
+    makeCollector: (AppleTranscriberFactory.Module, AppleMeetingInputRecorder?) -> CollectorHandle
   ) async throws -> Session {
     guard let target = targetFormat, let source = sourceFormat else {
       throw LivePreviewError.notPrepared
@@ -396,7 +406,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let opening = try await ApplePreviewSessionSetup.start(
       phrases: contextualPhrases,
       make: {
-        try makeStartResources(source: source, target: target, makeCollector: makeCollector)
+        try makeStartResources(
+          source: source, target: target, recordsInput: recordsInput,
+          makeCollector: makeCollector)
       },
       attach: { opening, phrases in
         let context = AnalysisContext()
@@ -406,7 +418,12 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
           "LIVE_PREVIEW hints configured count=\(phrases.count)", category: "LivePreview")
       },
       start: { opening in
-        try await opening.analyzer.start(inputSequence: opening.stream)
+        if let recorder = opening.recorder {
+          // Meeting sessions: each buffer becomes input time as the analyzer takes it (#4355).
+          try await opening.analyzer.start(inputSequence: recorder.sequence)
+        } else {
+          try await opening.analyzer.start(inputSequence: opening.stream)
+        }
       },
       discard: { opening in await discardStartResources(opening) },
       isCurrent: { currentToken == token },
@@ -419,7 +436,7 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       token: token, analyzer: opening.analyzer, continuation: opening.continuation,
       collector: opening.collector.task,
       converter: opening.converter, sourceFormat: source, targetFormat: target,
-      fedAnyAudio: FedFlag())
+      fedAnyAudio: FedFlag(), recorder: opening.recorder)
   }
 
   private struct StartResources: Sendable {
@@ -428,11 +445,12 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let continuation: AsyncStream<AnalyzerInput>.Continuation
     let collector: CollectorHandle
     let converter: AVAudioConverter?
+    let recorder: AppleMeetingInputRecorder?
   }
 
   private func makeStartResources(
-    source: AVAudioFormat, target: AVAudioFormat,
-    makeCollector: (AppleTranscriberFactory.Module) -> CollectorHandle
+    source: AVAudioFormat, target: AVAudioFormat, recordsInput: Bool,
+    makeCollector: (AppleTranscriberFactory.Module, AppleMeetingInputRecorder?) -> CollectorHandle
   ) throws -> StartResources {
     // A fresh converter per session, so no resampler tail crosses a boundary and
     // leaks the previous dictation's audio into this one.
@@ -463,12 +481,22 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
       bufferingPolicy: .bufferingNewest(Self.maxQueuedChunks))
     let analyzer = SpeechAnalyzer(modules: [module.speechModule])
-    // The session owns the vocabulary it started with.
-    let collector = makeCollector(module)
 
+    // One converted frame is one written sample only when the rate and channel count match;
+    // a sample-type conversion (16 kHz Float32 to 16 kHz Int16) keeps that, a resample does not.
+    let recorder =
+      recordsInput
+      ? AppleMeetingInputRecorder(
+        sampleRate: target.sampleRate,
+        exact: source.sampleRate == target.sampleRate
+          && source.channelCount == target.channelCount,
+        capacity: Self.maxQueuedChunks)
+      : nil
+    // The session owns the vocabulary it started with, and its own recorder.
+    let collector = makeCollector(module, recorder)
     return StartResources(
       analyzer: analyzer, stream: stream, continuation: continuation,
-      collector: collector, converter: converter)
+      collector: collector, converter: converter, recorder: recorder)
   }
 
   // Finishing the stream and cancelling the collector is not enough: the analyzer
@@ -481,7 +509,11 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // Quieted FIRST: closing the input ends the results, and a discarded opening's collector
     // must report nothing (`LiveTranscriptCollector.discardOpening` owns the order).
     await LiveTranscriptCollector.discardOpening(
-      silence: opening.collector.silence, finishInput: { opening.continuation.finish() },
+      silence: opening.collector.silence,
+      finishInput: {
+        opening.continuation.finish()
+        opening.recorder?.clear()
+      },
       cancelResults: { opening.collector.task.cancel() },
       cancelAnalyzer: { await opening.analyzer.cancelAndFinishNow() })
   }
@@ -516,7 +548,9 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
       // screen: a preview that freezes mid-sentence is a far better failure than
       // one that blanks, and the dictation itself is unaffected either way.
       do {
-        try await transcriber.consume { piece, isFinal in
+        try await transcriber.consume { result in
+          let piece = result.text
+          let isFinal = result.isFinal
           if isFinal {
             // Bounded HERE, where the text is built. Accumulating the whole
             // transcript and trimming downstream would keep every word of a
@@ -585,29 +619,85 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   /// flight when the next recording begins would otherwise push the previous
   /// dictation's audio into the new stream.
   func feed(_ samples: [Float], session: Session) {
-    guard session.token == currentToken, !samples.isEmpty else { return }
-    guard
+    guard session.token == currentToken, let toSend = Self.converted(samples, session: session)
+    else { return }
+    session.fedAnyAudio.set()
+    nonisolated(unsafe) let unsafeBuffer = toSend
+    session.continuation.yield(AnalyzerInput(buffer: unsafeBuffer))
+  }
+
+  /// Feed a meeting chunk (#4355): a meeting session's analyzer reads its recorder's queue,
+  /// which records each buffer's written slices and commits it as input time when taken. A
+  /// buffer that failed to convert is never queued and never recorded.
+  func feed(_ chunk: MeetingLiveAudioChunk, session: Session) {
+    guard session.token == currentToken else { return }
+    let outcome = Self.conversion(chunk.samples, session: session)
+    guard let recorder = session.recorder else {
+      // Not a meeting session: the samples-only path.
+      guard case .converted(let toSend) = outcome else { return }
+      session.fedAnyAudio.set()
+      nonisolated(unsafe) let unsafeBuffer = toSend
+      session.continuation.yield(AnalyzerInput(buffer: unsafeBuffer))
+      return
+    }
+    if Self.queueMeetingInput(outcome, sourceFrames: chunk.samples.count, slices: chunk.slices, into: recorder) {
+      session.fedAnyAudio.set()
+    }
+  }
+
+  /// What became of one chunk's conversion.
+  enum ConversionOutcome {
+    /// Nothing reached the converter (no samples, or no buffer could be built).
+    case notStarted
+    /// The converter ran and returned no usable output: it may hold input back, so the frame
+    /// correspondence after it is unknown.
+    case uncertain
+    case converted(AVAudioPCMBuffer)
+  }
+
+  /// Queues a meeting chunk's conversion outcome (#4355). Only a converted buffer is queued;
+  /// an uncertain conversion stops exact mapping for the rest of the session. True when a
+  /// buffer was accepted by the queue.
+  static func queueMeetingInput(
+    _ outcome: ConversionOutcome, sourceFrames: Int, slices: [MeetingLiveAudioSlice],
+    into recorder: AppleMeetingInputRecorder
+  ) -> Bool {
+    switch outcome {
+    case .notStarted:
+      return false
+    case .uncertain:
+      recorder.loseCorrespondence()
+      return false
+    case .converted(let buffer):
+      let result = recorder.push(
+        buffer, frames: Int(buffer.frameLength), sourceFrames: sourceFrames, slices: slices)
+      if case .terminated = result { return false }
+      return true
+    }
+  }
+
+  /// `samples` in the session's analyzer format, or nil when there is nothing to send.
+  private static func converted(_ samples: [Float], session: Session) -> AVAudioPCMBuffer? {
+    guard case .converted(let buffer) = conversion(samples, session: session) else { return nil }
+    return buffer
+  }
+
+  private static func conversion(_ samples: [Float], session: Session) -> ConversionOutcome {
+    guard !samples.isEmpty,
       let buffer = AVAudioPCMBuffer(
         pcmFormat: session.sourceFormat, frameCapacity: AVAudioFrameCount(samples.count))
-    else { return }
+    else { return .notStarted }
     buffer.frameLength = AVAudioFrameCount(samples.count)
-    guard let channel = buffer.floatChannelData else { return }
+    guard let channel = buffer.floatChannelData else { return .notStarted }
     samples.withUnsafeBufferPointer { src in
       guard let base = src.baseAddress else { return }
       channel[0].update(from: base, count: samples.count)
     }
-
-    let toSend: AVAudioPCMBuffer
-    if let converter = session.converter {
-      guard let converted = Self.convert(buffer, using: converter, to: session.targetFormat)
-      else { return }
-      toSend = converted
-    } else {
-      toSend = buffer
+    guard let converter = session.converter else { return .converted(buffer) }
+    guard let out = convert(buffer, using: converter, to: session.targetFormat) else {
+      return .uncertain
     }
-    session.fedAnyAudio.set()
-    nonisolated(unsafe) let unsafeBuffer = toSend
-    session.continuation.yield(AnalyzerInput(buffer: unsafeBuffer))
+    return .converted(out)
   }
 
   /// Close `session` and release its analyzer. Safe to call twice.
@@ -639,7 +729,11 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
   func finishAnalyzer(_ session: Session) async {
     let analyzer = session.analyzer
     await LiveTranscriptCollector.endAnalyzer(
-      finishInput: { session.continuation.finish() }, fedAnyAudio: session.fedAnyAudio.value,
+      finishInput: {
+        session.continuation.finish()
+        session.recorder?.finish()  // queued meeting input still drains, then the end
+      },
+      fedAnyAudio: session.fedAnyAudio.value,
       finalize: { try await analyzer.finalizeAndFinishThroughEndOfInput() },
       cancel: { await analyzer.cancelAndFinishNow() })
   }
@@ -711,14 +805,19 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
 /// through its collector's once-only teardown, which joins the results loop before the locale
 /// use is given back.
 @available(macOS 26.0, *)
-struct AppleTranscriptSessionHandle: LivePreviewEngineSession {
+struct AppleTranscriptSessionHandle: LiveTranscriptSession {
   let recognizer: ApplePreviewRecognizer
   let session: ApplePreviewRecognizer.Session
   let collector: LiveTranscriptCollector
   let claimedLocale: Locale
 
+  func feed(_ chunk: MeetingLiveAudioChunk) async {
+    await recognizer.feed(chunk, session: session)
+  }
+
+  /// Samples with no written positions: heard, and recorded as unpositioned input time.
   func feed(_ samples: [Float]) async {
-    await recognizer.feed(samples, session: session)
+    await recognizer.feed(MeetingLiveAudioChunk(samples: samples, slices: []), session: session)
   }
 
   func end() async {
@@ -730,6 +829,8 @@ struct AppleTranscriptSessionHandle: LivePreviewEngineSession {
       LiveTranscriptCollector.Teardown(
         endAnalyzer: { await recognizer.finishAnalyzer(session) },
         release: { await LocaleClaims.shared.finish(locale) }))
+    // After the analyzer ended and the results loop finished: nothing more is consumed.
+    session.recorder?.clear()
   }
 }
 

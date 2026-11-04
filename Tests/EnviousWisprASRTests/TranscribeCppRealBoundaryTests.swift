@@ -1158,7 +1158,7 @@ extension TranscribeCppPreviewRealBoundaryTests {
       lock.withLock {
         switch event {
         case .update(let done, let held):
-          finalized += done
+          finalized += MeetingTimedPiece.text(of: done)
           inProgress = held
         case .discontinuity:
           discontinuities += 1

@@ -34,7 +34,7 @@ struct LivePreviewEnglishSpellingTests {
     final class SpeakingEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       let heard: String
@@ -56,7 +56,7 @@ struct LivePreviewEnglishSpellingTests {
     final class SilentEngine: LivePreviewEngine, @unchecked Sendable {
       func openTranscriptSession(
         vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-      ) async throws -> any LivePreviewEngineSession {
+      ) async throws -> any LiveTranscriptSession {
         throw displayOnlyTranscriptOpen(Self.self)
       }
       func prepare() async throws {}

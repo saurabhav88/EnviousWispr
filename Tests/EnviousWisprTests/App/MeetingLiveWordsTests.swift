@@ -67,9 +67,10 @@ struct MeetingLiveWordsTests {
     }
   }
 
-  final class FakeSession: LivePreviewEngineSession, @unchecked Sendable {
+  final class FakeSession: LiveTranscriptSession, @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var _fed: [Float] = []
+    private var _fedChunks: [MeetingLiveAudioChunk] = []
     private var _ends = 0
     private var _endsCompleted = 0
     private var waiters: [(() -> Bool, CheckedContinuation<Void, Never>)] = []
@@ -85,6 +86,8 @@ struct MeetingLiveWordsTests {
       self.feedGate = feedGate
     }
     var fed: [Float] { lock.withLock { _fed } }
+    /// Every chunk fed through the typed meeting feed, written positions included (#4355).
+    var fedChunks: [MeetingLiveAudioChunk] { lock.withLock { _fedChunks } }
     var ends: Int { lock.withLock { _ends } }
     #if DEBUG
       /// #4254: what `detectionReport()` returns (nil: no speech detection).
@@ -107,7 +110,15 @@ struct MeetingLiveWordsTests {
     /// Ends that have returned.
     var endsCompleted: Int { lock.withLock { _endsCompleted } }
     func feed(_ samples: [Float]) async {
+      Issue.record("the meeting feeds transcript sessions only through the typed feed")
       changed { _fed += samples }
+      await feedGate.pass()
+    }
+    func feed(_ chunk: MeetingLiveAudioChunk) async {
+      changed {
+        _fed += chunk.samples
+        _fedChunks.append(chunk)
+      }
       await feedGate.pass()
     }
     /// Like Apple's collector: an end delivers `.ended(.requested)` after the last event.
@@ -197,7 +208,7 @@ struct MeetingLiveWordsTests {
     }
     func openTranscriptSession(
       vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
-    ) async throws -> any LivePreviewEngineSession {
+    ) async throws -> any LiveTranscriptSession {
       let first = lock.withLock { () -> Bool in
         _vocabularies.append(vocabulary)
         _openEvents.append(onEvent)
@@ -389,8 +400,8 @@ struct MeetingLiveWordsTests {
     _ owner: MeetingLiveWords, _ id: UUID = UUID(),
     tracks: Set<MeetingTrackKind> = [.microphone, .callSound],
     clock: @escaping @Sendable () -> Int = { 1_000 }
-  ) -> MeetingRecorder.LiveSamplesObserver {
-    let observer = owner.prepareCapture(meetingID: id)
+  ) -> LiveCapture {
+    let observer = LiveCapture(recording: id, observer: owner.prepareCapture(meetingID: id))
     owner.captureStarted(
       meetingID: id, captured: tracks, vocabulary: vocabulary, clock: clock)
     return observer
@@ -666,9 +677,9 @@ struct MeetingLiveWordsTests {
     world.apple = .ready(world.appleCandidate())
     let owner = Self.owner(world)
     let id = UUID()
-    let observer = owner.prepareCapture(meetingID: id)
+    let observer = LiveCapture(recording: id, observer: owner.prepareCapture(meetingID: id))
     let early: [Float] = (0..<1_600).map(Float.init)
-    early.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, early)
     #expect(world.languages.isEmpty && world.appleEngines.isEmpty, "nothing resolved yet")
     owner.captureStarted(
       meetingID: id, captured: [.microphone, .callSound], vocabulary: Self.vocabulary,
@@ -706,9 +717,9 @@ struct MeetingLiveWordsTests {
     let engines = world.appleEngines
     let mic = try #require(engines[0].sessions.first)
     let call = try #require(engines[1].sessions.first)
-    mic.emit(.update(finalized: "Hello", inProgress: " there"))
-    mic.emit(.update(finalized: " there.", inProgress: ""))
-    call.emit(.update(finalized: "Hi.", inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed("Hello"), inProgress: " there"))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed(" there."), inProgress: ""))
+    call.emit(.update(finalized: MeetingTimedPiece.untimed("Hi."), inProgress: ""))
     await Self.until("both tracks' words", owner) { o in
       let lines = o.transcript?.lines ?? []
       return lines.contains { $0.track == .microphone && $0.text == "Hello there." }
@@ -773,14 +784,14 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
     let call = try #require(world.appleEngines[1].sessions.first)
-    mic.emit(.update(finalized: "Before.", inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed("Before."), inProgress: ""))
     mic.emit(.ended(.failed("service")))
     await Self.until("mic stopped", owner) {
       Self.status($0, .microphone) == .stopped(.engineFailed)
     }
     #expect(Self.status(owner, .callSound) == .running)
     await PreviewWait.within("the failed session's end") { await mic.until { mic.ends == 1 } }
-    call.emit(.update(finalized: "Still here.", inProgress: ""))
+    call.emit(.update(finalized: MeetingTimedPiece.untimed("Still here."), inProgress: ""))
     await Self.until("the call track's words", owner) { o in
       (o.transcript?.lines ?? []).contains { $0.track == .callSound && $0.text == "Still here." }
     }
@@ -837,13 +848,15 @@ struct MeetingLiveWordsTests {
     let owner = Self.owner(world)
     Self.record(owner, tracks: [.microphone])
     await PreviewWait.within("the open held", onExpiry: open.open) { await open.reached(1) }
-    let observer = owner.prepareCapture(meetingID: UUID())  // a new recording replaces it
+    let replacement = UUID()  // a new recording replaces it
+    let observer = LiveCapture(
+      recording: replacement, observer: owner.prepareCapture(meetingID: replacement))
     open.open()
     #expect(await owner.waitForCleanups(seconds: 10))
     let late = try #require(world.appleEngines.first?.sessions.first)
     #expect(late.ends == 1, "ended once by the old recording's cleanup")
     let samples: [Float] = [1, 2, 3]
-    samples.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, samples)
     #expect(late.fed.isEmpty, "never fed: it was never the recording's session")
     owner.stop()
   }
@@ -925,9 +938,9 @@ struct MeetingLiveWordsTests {
     let mic = try #require(world.appleEngines[0].sessions.first)
     let call = try #require(world.appleEngines[1].sessions.first)
     // One main-actor turn: all three are queued before any drain runs.
-    mic.emit(.update(finalized: "A.", inProgress: ""))
-    call.emit(.update(finalized: "B.", inProgress: ""))
-    mic.emit(.update(finalized: " C.", inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed("A."), inProgress: ""))
+    call.emit(.update(finalized: MeetingTimedPiece.untimed("B."), inProgress: ""))
+    mic.emit(.update(finalized: MeetingTimedPiece.untimed(" C."), inProgress: ""))
     await Self.until("three lines", owner) { ($0.transcript?.lines.count ?? 0) == 3 }
     let seen = (owner.transcript?.lines ?? []).map { "\($0.track):\($0.text)" }
     #expect(seen == ["microphone:A.", "callSound:B.", "microphone:C."])
@@ -942,7 +955,7 @@ struct MeetingLiveWordsTests {
     Self.record(owner)
     await Self.until("running", owner) { Self.bothRunning($0) }
     try #require(world.appleEngines[0].sessions.first).emit(
-      .update(finalized: "Last words.", inProgress: ""))
+      .update(finalized: MeetingTimedPiece.untimed("Last words."), inProgress: ""))
     owner.stop()  // same main-actor turn: no drain ran in between
     #expect(owner.transcript?.lines.map(\.text) == ["Last words."])
   }
@@ -962,11 +975,11 @@ struct MeetingLiveWordsTests {
     let mic = try #require(world.appleEngines[0].sessions.first)
     let call = try #require(world.appleEngines[1].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, first)
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     // The tail arrives while the feed is held (the recorder's released 3 s), then Stop.
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, tail)
     owner.stop()
     await PreviewWait.within("the other track ended", onExpiry: feed.open) {
       await call.until { call.ends == 1 }
@@ -994,10 +1007,10 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let mic = try #require(world.appleEngines[0].sessions.first)
     let first: [Float] = (0..<1_600).map(Float.init)
-    first.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, first)
     await PreviewWait.within("the feed held", onExpiry: feed.open) { await feed.reached(1) }
     let tail: [Float] = (1_600..<4_000).map(Float.init)
-    tail.withUnsafeBufferPointer { observer(.microphone, $0, .test) }
+    observer.offer(.microphone, tail)
     let meetingID = try #require(owner.transcript?.meetingID)
     owner.delete(meetingID: meetingID)
     await PreviewWait.within("the end started", onExpiry: feed.open) {
@@ -1098,7 +1111,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     // The mic feed is held, so 40 s of audio overflows the 28.8 s the pump keeps.
     let second = [Float](repeating: 0.1, count: 16_000)
-    for _ in 0..<40 { second.withUnsafeBufferPointer { observer(.microphone, $0, .test) } }
+    for _ in 0..<40 { observer.offer(.microphone, second) }
     await Self.until("the dropped flag", owner, release: feed.open) {
       $0.transcript?.tracks[.microphone]?.droppedAudio == true
     }
@@ -1118,9 +1131,14 @@ struct MeetingLiveWordsTests {
       let finished = DispatchSemaphore(value: 0)
       DispatchQueue.global().async {
         started.signal()
-        for i in 0..<2_000 {
+        // 500 posts stay inside the track's budget with each piece's charge (#4355), so every
+        // accepted post is a delivered one.
+        for i in 0..<500 {
           let text = "\(i) "
-          if bridge.post(.update(finalized: text, inProgress: ""), track: .microphone, epoch: 1) {
+          if bridge.post(
+            .update(finalized: MeetingTimedPiece.untimed(text), inProgress: ""), track: .microphone,
+            epoch: 1)
+          {
             accepted.withLock { $0.append(text) }
           }
         }
@@ -1132,7 +1150,9 @@ struct MeetingLiveWordsTests {
       // deadline-fallback: around the producer's own signals
       #expect(finished.wait(timeout: .now() + 10) == .success)
       let taken = batch.reduce(into: "") { text, entry in
-        if case .update(let finalized, _) = entry.event { text += finalized }
+        if case .update(let finalized, _) = entry.event {
+          text += MeetingTimedPiece.text(of: finalized)
+        }
       }
       #expect(taken == accepted.withLock { $0.joined() }, "every accepted post is in the batch")
       #expect(!bridge.post(.discontinuity, track: .microphone, epoch: 1), "closed afterwards")
@@ -1184,9 +1204,9 @@ struct MeetingLiveWordsTests {
   private static let quiet = [Float](repeating: 0, count: 1_600)
 
   private static func speak(
-    _ observer: MeetingRecorder.LiveSamplesObserver, _ track: MeetingTrackKind, _ samples: [Float]
+    _ observer: LiveCapture, _ track: MeetingTrackKind, _ samples: [Float]
   ) {
-    samples.withUnsafeBufferPointer { observer(track, $0, .test) }
+    observer.offer(track, samples)
   }
 
   @Test("no restart before the audio threshold, and voiced audio postpones it to the first quiet window")
@@ -1222,7 +1242,7 @@ struct MeetingLiveWordsTests {
     let engine = world.appleEngines[0]
     let call = try #require(world.appleEngines[1].sessions.first)
     let old = try #require(engine.sessions.first)
-    old.emit(.update(finalized: "Before.", inProgress: " maybe"))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Before."), inProgress: " maybe"))
     let first = Self.voiced(1_600)
     let after = Self.voiced(800, from: 5_000)
     Self.speak(observer, .microphone, first + Self.quiet + after)
@@ -1233,9 +1253,9 @@ struct MeetingLiveWordsTests {
     }
     #expect(old.fed == first + Self.quiet, "the old session got everything up to the quiet window")
     #expect(new.fed == after, "the replacement got the rest, once, in order")
-    new.emit(.update(finalized: " After.", inProgress: ""))
-    old.emit(.update(finalized: " Late.", inProgress: ""))  // the old epoch is closed
-    call.emit(.update(finalized: "Call goes on.", inProgress: ""))
+    new.emit(.update(finalized: MeetingTimedPiece.untimed(" After."), inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed(" Late."), inProgress: ""))  // the old epoch is closed
+    call.emit(.update(finalized: MeetingTimedPiece.untimed("Call goes on."), inProgress: ""))
     await Self.until("the new and the call words", owner) { o in
       let texts = (o.transcript?.lines ?? []).map(\.text)
       return texts.contains("After.") && texts.contains("Call goes on.")
@@ -1262,7 +1282,7 @@ struct MeetingLiveWordsTests {
     let observer = Self.record(owner)
     await Self.until("running", owner) { Self.bothRunning($0) }
     let engine = world.appleEngines[0]
-    try #require(engine.sessions.first).emit(.update(finalized: "Kept.", inProgress: ""))
+    try #require(engine.sessions.first).emit(.update(finalized: MeetingTimedPiece.untimed("Kept."), inProgress: ""))
     Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
     await Self.until("mic stopped by the deadline", owner, release: end.open) {
       Self.status($0, .microphone) == .stopped(.restartTimedOut)
@@ -1363,7 +1383,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let engine = world.appleEngines[0]
     let old = try #require(engine.sessions.first)
-    old.emit(.update(finalized: "Said before.", inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Said before."), inProgress: ""))
     Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
     await Self.until("mic stopped", owner) {
       Self.status($0, .microphone) == .stopped(.restartFailed)
@@ -1393,7 +1413,7 @@ struct MeetingLiveWordsTests {
     let old = try #require(engine.sessions.first)
     Self.speak(observer, .microphone, Self.voiced(1_600) + Self.quiet)
     await PreviewWait.within("the old end", onExpiry: end.open) { await old.until { old.ends == 1 } }
-    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))  // while ending
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Flushed at the end."), inProgress: ""))  // while ending
     end.open()
     await PreviewWait.within("the replacement") { await engine.opened.reached(2) }
     await Self.until("the flushed final", owner) { o in
@@ -1431,7 +1451,7 @@ struct MeetingLiveWordsTests {
     // not tell the repaired order apart (a negative control passed without the repair).
     Self.speak(observer, .microphone, (0..<3_200).map { 0.5 + Float($0) / 100_000 })
     owner.stop()
-    old.emit(.update(finalized: "Flushed at the end.", inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Flushed at the end."), inProgress: ""))
     end.open()
     // The replacement opens and is fed the tail; its end is held until its final is emitted.
     await PreviewWait.within("the replacement", onExpiry: release) { await engine.opened.reached(2) }
@@ -1439,7 +1459,7 @@ struct MeetingLiveWordsTests {
     await PreviewWait.within("the replacement's end", onExpiry: release) {
       await replacement.until { replacement.ends == 1 }
     }
-    replacement.emit(.update(finalized: " Tail words.", inProgress: ""))
+    replacement.emit(.update(finalized: MeetingTimedPiece.untimed(" Tail words."), inProgress: ""))
     replacementEnd.open()
     #expect(await owner.waitForCleanups(seconds: 10))
     let joined = (owner.transcript?.lines ?? []).filter { $0.track == .microphone }
@@ -1456,18 +1476,53 @@ struct MeetingLiveWordsTests {
   private static func sessions(
     _ chunks: [[Float]], threshold: Int
   ) async -> [[Float]] {
+    await sessionParts(chunks, threshold: threshold).map { $0.flatMap(\.samples) }
+  }
+
+  /// The parts `RestartFeeder` sends for `chunks` (each offered as contiguous written audio
+  /// from sample 0 of one run), grouped per session.
+  private static func sessionParts(
+    _ chunks: [[Float]], threshold: Int
+  ) async -> [[MeetingLiveAudioChunk]] {
     let feeder = RestartFeeder(meter: RestartMeter(threshold: threshold, quietRMS: 0.001))
-    let sent = OSAllocatedUnfairLock<[[Float]]>(initialState: [[]])
+    let sent = OSAllocatedUnfairLock<[[MeetingLiveAudioChunk]]>(initialState: [[]])
+    let recording = UUID()
+    var position = 0
     for chunk in chunks {
+      let span = MeetingAudioSpan(
+        recording: recording, track: .callSound, run: 0, startSample: position,
+        sampleCount: chunk.count)!
+      position += chunk.count
       await feeder.run(
-        chunk,
+        MeetingLiveAudioChunk(samples: chunk, slices: [MeetingLiveAudioSlice(offset: 0, span: span)]),
         send: { part in
-          sent.withLock { $0[$0.count - 1] += part }
+          sent.withLock { $0[$0.count - 1].append(part) }
           return true
         },
         restart: { sent.withLock { $0.append([]) } })
     }
     return sent.withLock { $0 }
+  }
+
+  @Test("a restart cuts the written positions with the samples: the two sessions get complementary spans")
+  func restartCutsSpansWithSamples() async {
+    let audio = Self.voiced(1_600) + [Float](repeating: 0, count: 4_000)
+    let chunks = stride(from: 0, to: audio.count, by: 1_000).map {
+      Array(audio[$0..<min($0 + 1_000, audio.count)])
+    }
+    let sessions = await Self.sessionParts(chunks, threshold: 1_600)
+    #expect(sessions.count >= 2, "a restart happened")
+    let parts = sessions.flatMap { $0 }
+    for part in parts {
+      #expect(part.slices.reduce(0) { $0 + $1.count } == part.samples.count, "slices tile the part")
+      #expect(part.slices.first?.offset == 0)
+    }
+    let spans = parts.flatMap(\.slices).map(\.span)
+    #expect(spans.first?.startSample == 0)
+    #expect(zip(spans, spans.dropFirst()).allSatisfy { $0.endSample == $1.startSample }, "no gap, no overlap")
+    #expect(spans.last?.endSample == audio.count, "every written sample once")
+    let firstSessionEnd = sessions[0].flatMap(\.slices).last?.span.endSample
+    #expect(firstSessionEnd == sessions[0].flatMap(\.samples).count, "the cut is where the samples are cut")
   }
 
   @Test("continuous quiet audio in chunks smaller than 100 ms still restarts")
@@ -1528,29 +1583,67 @@ struct MeetingLiveWordsTests {
     let bridge = LiveWordsBridge(clock: { 7 }, wake: { woken.withLock { $0 += 1 } })
     bridge.openEpoch(1, for: .microphone)
     bridge.openEpoch(1, for: .callSound)
-    bridge.post(.update(finalized: "a", inProgress: "x"), track: .microphone, epoch: 1)
-    bridge.post(.update(finalized: "b", inProgress: "y"), track: .microphone, epoch: 1)
-    bridge.post(.update(finalized: "c", inProgress: ""), track: .callSound, epoch: 1)
-    bridge.post(.update(finalized: "d", inProgress: ""), track: .microphone, epoch: 1)
-    bridge.post(.update(finalized: "stale", inProgress: ""), track: .microphone, epoch: 2)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("a"), inProgress: "x"), track: .microphone, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("b"), inProgress: "y"), track: .microphone, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("c"), inProgress: ""), track: .callSound, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("d"), inProgress: ""), track: .microphone, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("stale"), inProgress: ""), track: .microphone, epoch: 2)
     #expect(
       bridge.take().map { "\($0.track):\($0.event)" } == [
-        "microphone:\(LiveWordsEvent.update(finalized: "a b", inProgress: "y"))",
-        "callSound:\(LiveWordsEvent.update(finalized: "c", inProgress: ""))",
-        "microphone:\(LiveWordsEvent.update(finalized: "d", inProgress: ""))",
+        "microphone:\(LiveWordsEvent.update(finalized: MeetingTimedPiece.untimed("a") + MeetingTimedPiece.untimed(" b"), inProgress: "y"))",
+        "callSound:\(LiveWordsEvent.update(finalized: MeetingTimedPiece.untimed("c"), inProgress: ""))",
+        "microphone:\(LiveWordsEvent.update(finalized: MeetingTimedPiece.untimed("d"), inProgress: ""))",
       ])
     // Barriers are charged; a track past its budget ends with one backlog, the other goes on.
     for _ in 0..<(LiveWordsBridge.budgetPerTrack / LiveWordsBridge.entryCost + 5) {
       bridge.post(.discontinuity, track: .microphone, epoch: 1)
     }
-    bridge.post(.update(finalized: "after", inProgress: ""), track: .microphone, epoch: 1)
-    bridge.post(.update(finalized: "call", inProgress: ""), track: .callSound, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("after"), inProgress: ""), track: .microphone, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("call"), inProgress: ""), track: .callSound, epoch: 1)
     let entries = bridge.take()
     let mic = entries.filter { $0.track == .microphone }
     #expect(mic.count == LiveWordsBridge.budgetPerTrack / LiveWordsBridge.entryCost + 1)
     #expect(mic.last?.event == .ended(.failed("backlog")))
-    #expect(entries.last?.event == .update(finalized: "call", inProgress: ""))
+    #expect(entries.last?.event == .update(finalized: MeetingTimedPiece.untimed("call"), inProgress: ""))
     #expect(woken.withLock { $0 } > 0)
+  }
+
+  @Test("the bridge's merge keeps every piece's own span, untimed pieces included")
+  func bridgeMergeKeepsOwnership() {
+    let bridge = LiveWordsBridge(clock: { 0 }, wake: {})
+    bridge.openEpoch(1, for: .callSound)
+    let recording = UUID()
+    func timed(_ text: String, _ start: Int) -> MeetingTimedPiece {
+      MeetingTimedPiece(
+        text: text,
+        span: MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: start, sampleCount: 1_600))
+    }
+    bridge.post(.update(finalized: [timed("Hi", 0)], inProgress: "x"), track: .callSound, epoch: 1)
+    bridge.post(.update(finalized: MeetingTimedPiece.untimed("there"), inProgress: ""), track: .callSound, epoch: 1)
+    bridge.post(.update(finalized: [timed(" again.", 3_200)], inProgress: ""), track: .callSound, epoch: 1)
+    let taken = bridge.take()
+    #expect(taken.count == 1, "control: merged")
+    guard case .update(let pieces, _)? = taken.first?.event else { return }
+    #expect(pieces.map(\.text) == ["Hi", " there", " again."])
+    #expect(pieces.map(\.span) == [timed("Hi", 0).span, nil, timed(" again.", 3_200).span])
+  }
+
+  @Test("the bridge charges every timed piece: many tiny pieces end the track as a backlog")
+  func bridgeChargesPieces() {
+    let bridge = LiveWordsBridge(clock: { 0 }, wake: {})
+    bridge.openEpoch(1, for: .callSound)
+    let recording = UUID()
+    // 1,400 one-character pieces: 1,464 bytes of text alone would fit the 64 KB budget; with
+    // each piece's charge they do not.
+    let tiny = (0..<1_400).map { i in
+      MeetingTimedPiece(
+        text: "a",
+        span: MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: i * 160, sampleCount: 160))
+    }
+    bridge.post(.update(finalized: tiny, inProgress: ""), track: .callSound, epoch: 1)
+    #expect(bridge.take().map(\.event) == [.ended(.failed("backlog"))])
   }
 
   @Test("a Universal load refused while dictation holds the executor is tried again, then runs")
@@ -1608,15 +1701,23 @@ struct MeetingLiveWordsTests {
   func mergeMatchesSeparateUpdates(_ pair: (String, String)) {
     let bridge = LiveWordsBridge(clock: { 0 }, wake: {})
     bridge.openEpoch(1, for: .microphone)
-    bridge.post(.update(finalized: pair.0, inProgress: "x"), track: .microphone, epoch: 1)
-    bridge.post(.update(finalized: pair.1, inProgress: ""), track: .microphone, epoch: 1)
+    bridge.post(
+      .update(finalized: MeetingTimedPiece.untimed(pair.0), inProgress: "x"), track: .microphone,
+      epoch: 1)
+    bridge.post(
+      .update(finalized: MeetingTimedPiece.untimed(pair.1), inProgress: ""), track: .microphone,
+      epoch: 1)
     let merged = bridge.take()
     #expect(merged.count == 1, "control: the two updates were merged")
     var viaMerge = LiveWordsAssembler()
     for entry in merged { viaMerge.apply(entry.event, track: .microphone, atMs: 0) }
     var oneByOne = LiveWordsAssembler()
-    oneByOne.apply(.update(finalized: pair.0, inProgress: "x"), track: .microphone, atMs: 0)
-    oneByOne.apply(.update(finalized: pair.1, inProgress: ""), track: .microphone, atMs: 0)
+    oneByOne.apply(
+      .update(finalized: MeetingTimedPiece.untimed(pair.0), inProgress: "x"), track: .microphone,
+      atMs: 0)
+    oneByOne.apply(
+      .update(finalized: MeetingTimedPiece.untimed(pair.1), inProgress: ""), track: .microphone,
+      atMs: 0)
     #expect(viaMerge.lines.map(\.text) == oneByOne.lines.map(\.text))
   }
 
@@ -1629,7 +1730,7 @@ struct MeetingLiveWordsTests {
     await Self.until("running", owner) { Self.bothRunning($0) }
     let id = try Self.id(of: owner)
     try #require(world.appleEngines[0].sessions.first).emit(
-      .update(finalized: "Kept.", inProgress: ""))
+      .update(finalized: MeetingTimedPiece.untimed("Kept."), inProgress: ""))
     await Self.until("words", owner) { !($0.transcript?.lines.isEmpty ?? true) }
     owner.stop()
     #expect(owner.transcript?.lines.map(\.text) == ["Kept."], "kept after Stop")
@@ -1666,8 +1767,8 @@ struct MeetingLiveWordsTests {
     Self.record(owner)
     await Self.until("second running", owner) { Self.bothRunning($0) }
     let current = try #require(world.appleEngines[2].sessions.first)
-    old.emit(.update(finalized: "Old meeting.", inProgress: ""))
-    current.emit(.update(finalized: "New meeting.", inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Old meeting."), inProgress: ""))
+    current.emit(.update(finalized: MeetingTimedPiece.untimed("New meeting."), inProgress: ""))
     await Self.until("the new words", owner) { o in
       (o.transcript?.lines ?? []).contains { $0.text == "New meeting." }
     }
@@ -1721,7 +1822,7 @@ struct MeetingLiveWordsTests {
     let shared = try #require(world.shared.first)
     let old = try #require(shared.engine.sessions.first)
 
-    old.emit(.update(finalized: "Before.", inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Before."), inProgress: ""))
     owner.stop()
     try #require(owner.transcript?.lines.map(\.text) == ["Before."])
     try #require(
@@ -1751,14 +1852,14 @@ struct MeetingLiveWordsTests {
         $0.transcript?.meetingID == id && Self.status($0, .microphone) == .running
       }
       let current = try #require(world.appleEngines.first?.sessions.first)
-      current.emit(.update(finalized: "New meeting.", inProgress: ""))
+      current.emit(.update(finalized: MeetingTimedPiece.untimed("New meeting."), inProgress: ""))
       await Self.until("new words applied", owner, release: end.open) {
         $0.transcript?.lines.map(\.text) == ["New meeting."]
       }
     }
 
     // Delivered after Stop, while the session's end is still held.
-    old.emit(.update(finalized: "Last sentence.", inProgress: ""))
+    old.emit(.update(finalized: MeetingTimedPiece.untimed("Last sentence."), inProgress: ""))
     end.open()
     try #require(await owner.waitForCleanups(seconds: 10))
     #expect(old.endsCompleted == 1)
@@ -1778,7 +1879,38 @@ struct MeetingLiveWordsTests {
   }
 }
 
-extension MeetingReleasedChunk {
-  /// Metadata for a chunk a test offers directly (live words do not read it).
-  static let test = MeetingReleasedChunk(hostTime: 0, afterDrop: false, sourceBreak: false)
+/// One recording's live-audio observer with fixture-owned metadata (#4355): every offer is
+/// handed over with a written span in that recording (the same id `prepareCapture` got), each
+/// track's offers contiguous from 0, and an acquisition time read from the host clock when it is
+/// offered (never derived from the position).
+final class LiveCapture: Sendable {
+  let recording: UUID
+  let observer: MeetingRecorder.LiveSamplesObserver
+  private let next = OSAllocatedUnfairLock<[MeetingTrackKind: Int]>(initialState: [:])
+
+  init(recording: UUID, observer: @escaping MeetingRecorder.LiveSamplesObserver) {
+    self.recording = recording
+    self.observer = observer
+  }
+
+  func offer(_ track: MeetingTrackKind, _ samples: UnsafeBufferPointer<Float>) {
+    guard !samples.isEmpty else { return }
+    let count = samples.count
+    let start = next.withLock { n -> Int in
+      defer { n[track, default: 0] += count }
+      return n[track, default: 0]
+    }
+    let chunk = MeetingReleasedChunk(
+      span: MeetingAudioSpan(
+        recording: recording, track: track, run: 0, startSample: start,
+        sampleCount: samples.count)!,
+      acquired: MeetingAcquisitionTime(
+        recording: recording, hostTicks: mach_absolute_time(), provenance: .estimated),
+      afterDrop: false, sourceBreak: false)
+    observer(track, samples, chunk)
+  }
+
+  func offer(_ track: MeetingTrackKind, _ samples: [Float]) {
+    samples.withUnsafeBufferPointer { offer(track, $0) }
+  }
 }

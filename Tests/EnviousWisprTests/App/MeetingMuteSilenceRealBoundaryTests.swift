@@ -93,15 +93,20 @@ enum MuteSilenceP4 {
     -> MeetingTrackAudio
   {
     let anchor = mach_absolute_time()
+    let id = UUID()
     let writer = MeetingTrackWriter(
       configuration: .init(
-        meetingID: UUID(), track: .microphone, folder: dir, anchorHostTime: anchor,
+        meetingID: id, track: .microphone, folder: dir, anchorHostTime: anchor,
         // Appended far faster than real time: the handoff must hold the whole recording.
         bufferCapacity: samples.count + chunk, maxPendingChunks: samples.count / chunk + 8,
         silenceHoldSeconds: 3.0),
       onSegmentFinalized: { _ in }, onFailure: { _ in })
     if silenceAll {
-      writer.setSilencedIntervals([MeetingSilenceInterval(start: anchor, end: .max)])
+      writer.setSilencedIntervals([
+        MeetingSilenceInterval(
+          start: MeetingAcquisitionTime(recording: id, hostTicks: anchor, provenance: .estimated),
+          end: nil)
+      ])
     }
     var offset = 0
     while offset < samples.count {
@@ -187,7 +192,8 @@ struct MeetingMuteSilenceRealBoundaryTests {
       onEvent: { event in
         switch event {
         // Each update carries only the newly finalized words (a delta), in order.
-        case .update(let done, _):
+        case .update(let pieces, _):
+          let done = MeetingTimedPiece.text(of: pieces)
           updates.withLock { $0 += 1 }
           if !done.isEmpty { finalized.withLock { $0 += ($0.isEmpty ? "" : " ") + done } }
         case .ended(let reason): ended.withLock { $0 = reason }
@@ -309,6 +315,143 @@ struct MeetingMuteSilenceRealBoundaryTests {
       throw error
     }
     await runtime.releaseAndDrain()
+  }
+
+
+  /// #4355 Phase 0a Universal measurement: on a labelled two-track meeting (`call.wav` and
+  /// `lines.json` in the folder named by `EW_4355_TURNS`), how many of Universal's finalized
+  /// pieces are untimed, and how many timed pieces cross a speaker turn (overlap reference lines
+  /// of more than one speaker). Sizes unresolved coverage; asserts only that the path ran.
+  @Test(
+    "Universal timed pieces on a labelled meeting: untimed share and speaker-turn crossings (4355 measurement)",
+    .enabled(
+      if: WhisperProductionWiringRealBoundaryTests.modelIsPresent && PinnedVADModel.isCheckedIn
+        && ProcessInfo.processInfo.environment["EW_4355_TURNS"] != nil),
+    .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(10)))
+  func universalCrossingMeasurement() async throws {
+    let folder = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["EW_4355_TURNS"]))
+    let file = try AVAudioFile(forReading: folder.appendingPathComponent("call.wav"))
+    let buffer = try #require(
+      AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
+    try file.read(into: buffer)
+    let seconds = 300
+    let all = UnsafeBufferPointer(start: try #require(buffer.floatChannelData?[0]), count: Int(buffer.frameLength))
+    let audio = Array(all.prefix(seconds * 16_000))
+    struct Lines: Decodable {
+      struct Line: Decodable { let speaker: String; let track: String; let start: Double; let end: Double }
+      let lines: [Line]
+    }
+    let lines = try JSONDecoder().decode(
+      Lines.self, from: Data(contentsOf: folder.appendingPathComponent("lines.json"))
+    ).lines.filter { $0.track == "call" }
+    let bundlePath = try PinnedVADModel.bundlePath()
+    let runtime = TranscribeCppPreviewRuntime(
+      modelPath: WhisperProductionWiringRealBoundaryTests.evaluationModel.path, isAdmitted: { true })
+    let recognizer = WhisperPreviewRecognizer(
+      runtime: runtime, language: "en",
+      liveSpeechDetector: { MeetingSpeechDetector(modelBundle: Bundle(path: bundlePath) ?? .main) })
+    try await recognizer.prepare()
+    let recording = UUID()
+    let finals = OSAllocatedUnfairLock<[MeetingTimedPiece]>(initialState: [])
+    let session = try await recognizer.openTranscriptSession(
+      vocabulary: LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false),
+      onEvent: { event in
+        if case .update(let pieces, _) = event { finals.withLock { $0 += pieces } }
+      })
+    let clock = ContinuousClock()
+    let start = clock.now
+    var offset = 0
+    var index = 0
+    while offset < audio.count {
+      let n = min(MuteSilenceP4.chunk, audio.count - offset)
+      let span = try #require(
+        MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: offset, sampleCount: n))
+      await session.feed(
+        MeetingLiveAudioChunk(
+          samples: Array(audio[offset..<(offset + n)]),
+          slices: [MeetingLiveAudioSlice(offset: 0, span: span)]))
+      offset += n
+      index += 1
+      // settle: real-time playback; chunk i is due at start + i x 100 ms.
+      try await Task.sleep(until: start + .milliseconds(100 * index), clock: clock)
+    }
+    await session.end()
+    await runtime.releaseAndDrain()
+    let spoken = finals.withLock { $0 }.filter { !$0.text.allSatisfy(\.isWhitespace) }
+    let timed = spoken.compactMap(\.span)
+    let crossing = timed.filter { span in
+      let a = Double(span.startSample) / 16_000
+      let b = Double(span.endSample) / 16_000
+      let speakers = Set(lines.filter { $0.start < b && $0.end > a }.map(\.speaker))
+      return speakers.count > 1
+    }
+    MuteSilenceP4.receipt(
+      "universal-measure", "crossing",
+      "seconds=\(seconds) pieces=\(spoken.count) timed=\(timed.count) untimed=\(spoken.count - timed.count) crossing=\(crossing.count)")
+    #expect(spoken.count > 0, "the real path finalized words")
+    #expect(timed.allSatisfy { $0.recording == recording }, "spans come from this recording")
+  }
+
+  @Test(
+    "Apple's real meeting module gives timed runs that reach written positions through the production feed (4355)",
+    .tags(.realBoundary), .realBoundaryRun, .timeLimit(.minutes(4)))
+  func appleTimedRunsReachWrittenPositions() async throws {
+    let resolution = await ApplePreviewEngineResolver.resolveMeeting(languageTag: "en-US")
+    guard case .ready(let candidate) = resolution else {
+      Issue.record("Apple meeting module not ready on this Mac: \(resolution)")
+      return
+    }
+    let engine = candidate.makeEngine()
+    try await engine.prepare()
+    let speech = try MuteSilenceP4.speech()
+    let recording = UUID()
+    // Written from sample 48,000 (3 s into the recording) on, so input time and written time differ.
+    let base = 48_000
+    let finals = OSAllocatedUnfairLock<[[MeetingTimedPiece]]>(initialState: [])
+    let session = try await engine.openTranscriptSession(
+      vocabulary: LivePreviewVocabulary(lookups: nil, contextualPhrases: [], dictionaryEnabled: false),
+      onEvent: { event in
+        if case .update(let pieces, _) = event, !pieces.isEmpty {
+          finals.withLock { $0.append(pieces) }
+        }
+      })
+    let clock = ContinuousClock()
+    let start = clock.now
+    var offset = 0
+    var index = 0
+    while offset < speech.count {
+      let n = min(MuteSilenceP4.chunk, speech.count - offset)
+      let span = try #require(
+        MeetingAudioSpan(
+          recording: recording, track: .callSound, run: 0, startSample: base + offset,
+          sampleCount: n))
+      await session.feed(
+        MeetingLiveAudioChunk(
+          samples: Array(speech[offset..<(offset + n)]),
+          slices: [MeetingLiveAudioSlice(offset: 0, span: span)]))
+      offset += n
+      index += 1
+      // settle: real-time playback; chunk i is due at start + i x 100 ms.
+      try await Task.sleep(until: start + .milliseconds(100 * index), clock: clock)
+    }
+    await session.end()
+    let all = finals.withLock { $0 }.flatMap { $0 }
+    let spoken = all.filter { !$0.text.allSatisfy(\.isWhitespace) }
+    let timed = spoken.compactMap(\.span)
+    MuteSilenceP4.receipt(
+      "apple-timed", "runs",
+      "pieces=\(spoken.count) timed=\(timed.count)")
+    #expect(spoken.count > 10, "the real module finalized words")
+    #expect(Double(timed.count) >= 0.9 * Double(spoken.count), "native run times reached written positions")
+    #expect(timed.allSatisfy { $0.recording == recording && $0.track == .callSound })
+    #expect(
+      timed.allSatisfy { $0.startSample >= base && $0.endSample <= base + speech.count },
+      "every span lies inside the written audio that was fed")
+    #expect(
+      zip(timed, timed.dropFirst()).allSatisfy { $0.startSample <= $1.startSample },
+      "spans run forward in time")
+    #expect(MuteSilenceP4.words(all.map(\.text).joined()) == MuteSilenceP4.script, "every word kept, in order")
   }
 }
 

@@ -37,6 +37,19 @@ package struct LiveWordsAssembler: Sendable, Equatable {
     package let startMs: Int
     package let endMs: Int
     package let text: String
+    /// The line's finalized text as timed pieces, untrimmed (#4355). A provisional line's text
+    /// and an uncertain line's frozen guess are one piece with unknown timing.
+    package let pieces: [MeetingTimedPiece]
+    /// Who spoke this line, once live speakers assign one (PR C). Always nil in PR A.
+    package let speakerKey: LiveSpeakerKey?
+  }
+
+  /// Who a live line belongs to (#4355 plan §4): the user, one separated remote voice (its
+  /// live speaker id), or a remote stretch that could not be attributed.
+  package enum LiveSpeakerKey: Sendable, Equatable {
+    case you
+    case remote(String)
+    case unresolved
   }
 
   /// More confirmed characters than this close a line.
@@ -51,6 +64,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
     let startMs: Int
     var endMs: Int
     var text: String
+    var pieces: [MeetingTimedPiece]
   }
 
   private struct Provisional: Sendable, Equatable {
@@ -96,7 +110,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
           index,
           Line(
             id: entry.id, track: entry.track, kind: entry.kind, startMs: entry.startMs,
-            endMs: entry.endMs, text: text)
+            endMs: entry.endMs, text: text, pieces: entry.pieces, speakerKey: nil)
         ))
     }
     for track in MeetingTrackKind.allCases {
@@ -109,7 +123,8 @@ package struct LiveWordsAssembler: Sendable, Equatable {
           provisional.lineIndex,
           Line(
             id: "\(track.rawValue)-provisional", track: track, kind: .provisional,
-            startMs: provisional.startMs, endMs: provisional.endMs, text: text)
+            startMs: provisional.startMs, endMs: provisional.endMs, text: text,
+            pieces: MeetingTimedPiece.untimed(provisional.text), speakerKey: nil)
         ))
     }
     return
@@ -129,8 +144,10 @@ package struct LiveWordsAssembler: Sendable, Equatable {
   /// when the other track spoke, the line passed the size limit or the track paused, it moves
   /// to a new line, which owns its later replacement and finalization.
   private mutating func update(
-    track: MeetingTrackKind, finalized: String, inProgress: String, atMs: Int
+    track: MeetingTrackKind, finalized pieces: [MeetingTimedPiece], inProgress: String,
+    atMs: Int
   ) {
+    let finalized = MeetingTimedPiece.text(of: pieces)
     var state = tracks[track] ?? TrackState()
     let prior = state.provisional
     // Closing rules measure the pause since the track's previous words: `lastWordsMs` is only
@@ -148,6 +165,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
       }
       if let finalLine {
         entries[finalLine].text = Self.join(entries[finalLine].text, finalized)
+        entries[finalLine].pieces = Self.join(entries[finalLine].pieces, pieces)
         entries[finalLine].endMs = atMs
         state.currentLine = finalLine
       }
@@ -181,7 +199,8 @@ package struct LiveWordsAssembler: Sendable, Equatable {
       entries.append(
         Entry(
           id: makeID(track, "uncertain"), track: track, kind: .uncertain,
-          startMs: provisional.startMs, endMs: atMs, text: provisional.text))
+          startMs: provisional.startMs, endMs: atMs, text: provisional.text,
+          pieces: MeetingTimedPiece.untimed(provisional.text)))
     }
     state.provisional = nil
     // Later words start a new line, so they never read as coming before the frozen guess.
@@ -206,7 +225,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
     entries.append(
       Entry(
         id: makeID(track, "line"), track: track, kind: .confirmed, startMs: atMs, endMs: atMs,
-        text: ""))
+        text: "", pieces: []))
     return entries.count - 1
   }
 
@@ -223,6 +242,31 @@ package struct LiveWordsAssembler: Sendable, Equatable {
 
   private static func displayed(_ text: String) -> String {
     text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// Joins two updates' finalized pieces with `join(_:_:)`'s spacing (#4355): the lists are
+  /// concatenated in order, and a separator that rule adds belongs to `b`'s first piece. No
+  /// two pieces are merged, so no span is ever widened over another piece's audio.
+  package static func join(_ a: [MeetingTimedPiece], _ b: [MeetingTimedPiece])
+    -> [MeetingTimedPiece]
+  {
+    guard let first = b.first else { return a }
+    let aText = MeetingTimedPiece.text(of: a)
+    let bText = MeetingTimedPiece.text(of: b)
+    let added = join(aText, bText).count - aText.count - bText.count
+    guard added > 0 else { return a + b }
+    let separated = MeetingTimedPiece(
+      text: String(repeating: " ", count: added) + first.text, span: first.span)
+    return a + [separated] + b.dropFirst()
+  }
+
+  /// The storage a queue charges for one piece beyond its text: its span and bookkeeping, so
+  /// many tiny pieces cannot slip under a text-only budget (#4355).
+  package static let pieceCharge = 48
+
+  /// What a queue charges for `pieces`: every piece's text in UTF-8 plus `pieceCharge`.
+  package static func charge(of pieces: [MeetingTimedPiece]) -> Int {
+    pieces.reduce(0) { $0 + pieceCharge + $1.text.utf8.count }
   }
 
   /// Joins two pieces, adding one space only where neither supplies one and both sides are

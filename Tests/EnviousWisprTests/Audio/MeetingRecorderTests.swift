@@ -171,6 +171,7 @@ struct MeetingRecorderTests {
   }
 
   fileprivate struct Rig {
+    let meetingID: UUID
     let recorder: MeetingRecorder
     let microphones: [FakeMicrophone]
     let callBox: Box<[FakeCallSound]>
@@ -219,9 +220,10 @@ struct MeetingRecorderTests {
       hostTime: { clock.now.withLock { $0 } },
       reopenDelay: { await reopenGate.pass() })
     sources.releaseScheduler = releases.scheduler
+    let meetingID = UUID()
     let recorder = MeetingRecorder(
       configuration: .init(
-        meetingID: UUID(), folder: folder, captureCallSound: callSound,
+        meetingID: meetingID, folder: folder, captureCallSound: callSound,
         microphoneUID: "Chosen", inputChannelByDeviceUID: [:]),
       sources: sources,
       onSegment: { track, info in segments.list.withLock { $0.append((track, info)) } },
@@ -231,7 +233,8 @@ struct MeetingRecorderTests {
       },
       onCallSoundReport: onCallSoundReport)
     return Rig(
-      recorder: recorder, microphones: microphones, callBox: callBox, clock: clock,
+      meetingID: meetingID, recorder: recorder, microphones: microphones, callBox: callBox,
+      clock: clock,
       segments: segments, failureBox: failureBox, failureSignal: failureSignal,
       reopenGate: reopenGate, folder: folder, releases: releases)
   }
@@ -568,7 +571,7 @@ struct MeetingRecorderTests {
     // #4248: live words get the same chunks through the hold, the run break included.
     let infos = observed.infos(of: .microphone)
     #expect(infos.filter(\.sourceBreak).count == 1, "the reopen's run break reaches live words once")
-    #expect(infos.first?.hostTime == r.recorder.anchor, "original capture time, never restamped")
+    #expect(infos.first?.acquired.hostTicks == r.recorder.anchor, "original capture time, never restamped")
     #expect(observed.of(.microphone).count == 48_000)
   }
 
@@ -878,7 +881,8 @@ struct MeetingRecorderTests {
 
   @Test("stop, quit and a failed start end deliveries for good, late call audio included")
   func liveSamplesEndWithTheRecorder() async throws {
-    // Stop: the call tap's stop tail and a late microphone callback are not observed.
+    // Stop: the call tap's stop tail is written, so live words get it from the writer (#4355);
+    // a late microphone callback and call audio after the files closed are not observed.
     do {
       let r = try rig()
       let observed = Observed()
@@ -890,7 +894,8 @@ struct MeetingRecorderTests {
       await r.recorder.stop()
       late(Self.micPattern(800), 0.1)
       play(r, Self.callPattern(800))
-      #expect(observed.count == 1, "only the chunk recorded before Stop")
+      #expect(observed.count == 2, "the microphone chunk and the written call stop tail")
+      #expect(observed.of(.callSound) == Self.callPattern(1_600), "the stop tail, as written")
       r.recorder.liveSamples = observed.observer
       #expect(r.recorder.liveSamples == nil, "cannot be set again after Stop")
     }
@@ -904,7 +909,7 @@ struct MeetingRecorderTests {
       speak(r.microphones[0], r.clock, Self.micPattern(1_600))
       _ = r.recorder.stopForQuit(deadline: .now() + .seconds(5))
       play(r, Self.callPattern(800))
-      #expect(observed.count == 1)
+      #expect(observed.count == 2, "the microphone chunk and the written call stop tail")
       #expect(r.recorder.liveSamples == nil)
     }
     // Failed start: nothing was recorded and the observer is gone.
@@ -984,10 +989,10 @@ struct MeetingRecorderTests {
     speak(r.microphones[0], r.clock, spoken)
     await writerSettled(r)
     #expect(observed.of(.microphone).isEmpty, "still held: nothing delivered yet")
-    #expect(r.recorder.microphoneReleasedHostTime == 0)
+    #expect(r.recorder.microphoneReleased == nil)
     await releaseHeld(r)
     #expect(observed.of(.microphone) == spoken, "released: delivered from the writer, in order")
-    #expect(r.recorder.microphoneReleasedHostTime > 0)
+    #expect(r.recorder.microphoneReleased != nil)
     await r.recorder.stop()
     #expect(Self.same(try saved(r, .microphone), spoken))
   }
@@ -1004,7 +1009,7 @@ struct MeetingRecorderTests {
     speak(r.microphones[0], r.clock, spoken)
     await r.recorder.stop()
     #expect(observed.of(.microphone) == spoken, "the whole held tail, once, in order")
-    #expect(observed.infos(of: .microphone).first?.hostTime == r.recorder.anchor)
+    #expect(observed.infos(of: .microphone).first?.acquired.hostTicks == r.recorder.anchor)
     r.recorder.liveSamples = observed.observer
     #expect(r.recorder.liveSamples == nil, "deliveries ended for good after the files closed")
   }
@@ -1016,7 +1021,8 @@ struct MeetingRecorderTests {
     r.recorder.liveSamples = observed.observer
     let anchor = r.recorder.anchor
     let quarter = AudioConvertNanosToHostTime(250_000_000)
-    let muted = [MeetingSilenceInterval(start: anchor &+ quarter, end: anchor &+ 2 * quarter)]
+    let at = { MeetingAcquisitionTime(recording: r.meetingID, hostTicks: $0, provenance: .estimated) }
+    let muted = [MeetingSilenceInterval(start: at(anchor &+ quarter), end: at(anchor &+ 2 * quarter))]
     r.recorder.setSilenceClock { _, _ in muted }
     _ = try await r.recorder.start()
     let spoken = Self.micPattern(16_000)

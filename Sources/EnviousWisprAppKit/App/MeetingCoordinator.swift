@@ -2746,7 +2746,7 @@ final class MeetingCoordinator {
   private func startMuteFollow(meetingID: UUID, recorder: MeetingRecording) {
     let gate = MeetingMuteGate(
       recording: meetingID,
-      follower: MeetingMuteFollower(enabled: deps.muteFollowingEnabled()),
+      follower: MeetingMuteFollower(recording: meetingID, enabled: deps.muteFollowingEnabled()),
       publish: { [weak self] snapshot in
         Task { @MainActor [weak self] in self?.muteSnapshot(snapshot) }
       })
@@ -2781,7 +2781,7 @@ final class MeetingCoordinator {
 
   private func muteRead(_ copy: CallMuteCopy, meetingID: UUID) {
     muteCaptureCounts[meetingID]?.delivered += 1
-    muteSend(.reading(copy), meetingID: meetingID)
+    muteSend(.reading(MeetingMuteGate.Reading(copy, recording: meetingID)), meetingID: meetingID)
   }
 
   private func muteCaptureEvent(_ event: CallMuteCaptureEvent, meetingID: UUID) {
@@ -2799,7 +2799,10 @@ final class MeetingCoordinator {
   func muteFollowingChanged() {
     let on = deps.muteFollowingEnabled()
     guard let follow = muteFollow else { return }
-    muteSend(.setEnabled(on, at: deps.hostTime()), meetingID: follow.meetingID)
+    // The switch changed now: the host clock read here is observed time.
+    let at = MeetingAcquisitionTime(
+      recording: follow.meetingID, hostTicks: deps.hostTime(), provenance: .observed)
+    muteSend(.setEnabled(on, at: at), meetingID: follow.meetingID)
     if let entry = speakerSession, entry.meetingID == follow.meetingID {
       entry.session.muteFollowingChanged()
     } else if on, let recorder {
@@ -2847,7 +2850,7 @@ final class MeetingCoordinator {
       if let trace = snapshot.trace {
         let c = trace.copy
         deps.log(
-          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered) C=\(trace.released) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) tolerated=\(c.toleratedFailures) msgs=\(c.cost.messages) msg_us=\(Self.micros(c.cost.messageTime)) kinds=\(CallAXCopyCost.Kind.allCases.map { "\($0.rawValue):\(c.cost.byKind[$0]?.messages ?? 0):\(Self.micros(c.cost.byKind[$0]?.time ?? .zero))" }.joined(separator: ",")) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks):\($0.messages):\(Self.micros($0.messageTime))" }.joined(separator: ","))"
+          "MEET_MUTE_TIMING seq=\(snapshot.seq) gen=\(c.generation) surface=\(c.surface.rawValue) T=\(c.copyStart) E=\(c.copyEnd) complete=\(c.completeness == .complete ? 1 : 0) nodes=\(c.nodes) M=\(c.received) D=\(trace.delivered.hostTicks) C=\(trace.released?.hostTicks ?? 0) outcome=\(trace.outcome) reading=\(c.reading.rawValue) state=\(snapshot.state) completeness=\(c.completeness) failed=\(c.failedReads) tolerated=\(c.toleratedFailures) msgs=\(c.cost.messages) msg_us=\(Self.micros(c.cost.messageTime)) kinds=\(CallAXCopyCost.Kind.allCases.map { "\($0.rawValue):\(c.cost.byKind[$0]?.messages ?? 0):\(Self.micros(c.cost.byKind[$0]?.time ?? .zero))" }.joined(separator: ",")) win=\(c.cost.windows.map { "\($0.nodes):\($0.ticks):\($0.messages):\(Self.micros($0.messageTime))" }.joined(separator: ","))"
         )
       }
       if snapshot.ended {
