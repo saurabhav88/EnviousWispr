@@ -282,7 +282,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         gate.write_text('hold')
         queue = self.root / 'scripts/local-ci-queue.py'
         source = queue.read_text()
-        entry = 'def acquire(fd):\n    checked_descriptor(fd)\n'
+        entry = ('def acquire(fd, kind="full"):\n'
+                 '    if kind not in KINDS:\n'
+                 '        raise ValueError(f"queue kind must be one of {\', \'.join(KINDS)}")\n'
+                 '    checked_descriptor(fd)\n')
         self.assertEqual(source.count(entry), 1)
         # A private copy holds the observed startup state before custom signal
         # handlers exist. An INT forwarded unchanged would be lost here.
