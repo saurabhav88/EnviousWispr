@@ -20,7 +20,7 @@ const faqs = [
   },
   {
     "q": "Can I use EnviousWispr to transcribe meetings?",
-    "a": "Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, so the other people on a call are included. After the meeting you get a transcript with who said what, your notes, and an optional summary. Otter.ai is the better choice if your team needs to share transcripts or search across every meeting."
+    "a": "Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, so the other people on a call are included. After the meeting you get a transcript with who said what, your notes, and an optional summary. Otter.ai is the better choice if your team needs to share transcripts in a team workspace."
   },
   {
     "q": "Is there a free dictation alternative to Otter.ai?",
@@ -312,7 +312,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio leaves your device</td>
-            <td><span class="table-check">Never.</span> If you choose a cloud AI provider, only text is sent: the transcript, plus your notes for a meeting summary.</td>
+            <td><span class="table-check">Never.</span> If you choose a cloud AI provider, only text is sent: the transcript for polish, and the transcript, your notes and meeting details such as the calendar title and invited people, for a meeting summary.</td>
             <td>Yes, audio uploaded to Otter's servers for transcription and storage</td>
           </tr>
           <tr>
@@ -332,7 +332,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speaker identification</td>
-            <td><span class="table-check">Yes</span>, after a meeting (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call) and in files you import; not live while recording</td>
+            <td><span class="table-check">Yes</span>, live during a call and in the finished transcript (on a call, your microphone is You; call voices are numbered or named from supported call apps), and in files you import</td>
             <td><span class="table-check">Yes</span> - identifies who said what</td>
           </tr>
           <tr>
@@ -352,7 +352,7 @@ const faqs = [
           </tr>
           <tr>
             <td>AI polish / AI features</td>
-            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key; Apple Intelligence, Ollama, OpenAI, Gemini or Claude can also write a summary of each meeting</td>
+            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key; meeting summaries have their own engine choice: EG-1, Apple Intelligence, Ollama, OpenAI, Gemini or Claude</td>
             <td>AI summaries, action items, chat with transcripts (cloud)</td>
           </tr>
           <tr>
@@ -558,7 +558,7 @@ const faqs = [
           <p>Otter.ai records meetings. It joins your Zoom, Meet, or Teams call, captures everything, identifies speakers, and produces a searchable transcript after the fact. The output lives inside Otter's app. It is a meeting productivity tool.</p>
           <p>EnviousWispr puts text where you type, in real time. Hold a keybind, speak, release. Text appears in your email draft, Slack message, code editor, or Google Doc. There is no separate transcript window, no copy-pasting, no switching tabs. It replaces your keyboard for moments when speaking is faster than typing.</p>
           <p>EnviousWispr also records meetings, on your Mac, with EnviousMeet. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays. No bot joins. After the meeting you get a transcript with who said what, your notes, and an optional summary.</p>
-          <p>If your team shares meeting notes, wants a bot in every call, or searches across months of meetings, Otter is the right tool. If you want meetings transcribed on your own Mac, and dictation in every app, EnviousWispr does both for free.</p>
+          <p>If your team shares meeting notes, wants a bot in every call, or needs a shared team library of meetings, Otter is the right tool. If you want meetings transcribed on your own Mac, and dictation in every app, EnviousWispr does both for free.</p>
           <div class="deep-dive-detail">
             <strong>Key difference:</strong> Otter keeps your meetings in its cloud for your team. EnviousWispr keeps them on your Mac, and also puts text where you type.
           </div>
@@ -569,10 +569,10 @@ const faqs = [
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
           <p>Otter.ai uploads all audio to its cloud servers. Transcripts are stored online and processed by Otter's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
-          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. Dictation audio is cleared after transcription; meeting audio stays on your Mac until you delete it. If you choose a cloud AI provider, only text is sent (the transcript, plus your notes for a meeting summary). OpenAI, Gemini and Claude receive it under your own key; a hosted Ollama model sends it to Ollama's servers.</p>
-          <p>Cloud processing is what gives Otter team sharing and search across every meeting. EnviousWispr transcribes meetings and labels speakers on your Mac, so the audio never leaves it. For personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
+          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. Dictation audio is cleared after transcription; meeting audio stays on your Mac until you delete it. If you choose a cloud AI provider, only text is sent (the transcript for polish, and the transcript, your notes and meeting details such as the calendar title and invited people, for a meeting summary). OpenAI, Gemini and Claude receive it under your own key; a hosted Ollama model sends it to Ollama's servers.</p>
+          <p>Cloud processing is what gives Otter team sharing. EnviousWispr transcribes meetings and labels speakers on your Mac, so the audio never leaves it. For personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Otter's cloud approach enables team sharing and cross-meeting search. EnviousWispr's local approach keeps meeting audio and transcripts on your Mac, with speakers labelled after the meeting, not live.
+            <strong>The tradeoff:</strong> Otter's cloud approach enables team sharing and shared meeting libraries. EnviousWispr's local approach keeps meeting audio and transcripts on your Mac, with speakers labelled live and in the transcript.
           </div>
         </div>
       </div>
@@ -597,7 +597,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
         <div class="advantage-title">Speaker identification</div>
-        <p class="advantage-desc">Otter identifies who said what in a conversation with speaker diarization. EnviousWispr labels speakers after a meeting ends (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call), not live while it records.</p>
+        <p class="advantage-desc">Otter identifies who said what in a conversation with speaker diarization. EnviousWispr labels speakers too: live during a call once Live Preview, call sound and the Speaker labels model are ready, and again in the finished transcript, with names from supported call apps when there is enough evidence.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🤝</div>
@@ -607,7 +607,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">📊</div>
         <div class="advantage-title">AI meeting summaries</div>
-        <p class="advantage-desc">Otter generates automatic summaries, action items, and key takeaways from meetings. It can answer questions about past conversations, and its MCP server lets AI assistants such as ChatGPT and Claude read your meeting history. EnviousWispr can write a summary of each meeting with your own AI Polish provider, but it cannot answer questions across past meetings or connect them to other assistants.</p>
+        <p class="advantage-desc">Otter generates automatic summaries, action items, and key takeaways from meetings. It can answer questions about past conversations, and its MCP server lets AI assistants such as ChatGPT and Claude read your meeting history. EnviousWispr can write a summary of each meeting with a summary engine you choose in EnviousMeet, but it cannot answer questions across past meetings or connect them to other assistants.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔗</div>
@@ -617,20 +617,15 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔍</div>
         <div class="advantage-title">Search across meetings</div>
-        <p class="advantage-desc">Otter indexes all your past transcripts and lets you search across them. Find what was said in any meeting, by any speaker. EnviousWispr lets you search the dictations and transcripts saved in History on your Mac.</p>
+        <p class="advantage-desc">Otter indexes all your past transcripts and lets you search across them. Find what was said in any meeting, by any speaker. EnviousWispr lets you search the dictations, imported transcripts and finished meetings saved in History on your Mac, including meeting titles, speakers, notes and invited people.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">Cross-platform availability</div>
         <p class="advantage-desc">Otter works on web, iOS, Android, a Chrome extension, and a desktop app for Mac and Windows. EnviousWispr runs on Apple Silicon Macs and Android phones, with no iPhone, Windows or web version.</p>
       </div>
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">⏱️</div>
-        <div class="advantage-title">Live speaker identification</div>
-        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousMeet shows live words while it records, but labels speakers only after the meeting.</p>
-      </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your team needs shared meeting notes, a meeting bot, or search across every meeting, use Otter. If you want dictation in every app and meetings recorded on your own Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your team needs shared meeting notes or a meeting bot, use Otter. If you want dictation in every app and meetings recorded on your own Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
   </div>
 </section>
 
@@ -648,7 +643,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr to transcribe meetings?</div>
-        <p class="faq-a">Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, so the other people on a call are included. After the meeting you get a transcript with who said what, your notes, and an optional summary. Otter.ai is the better choice if your team needs to share transcripts or search across every meeting.</p>
+        <p class="faq-a">Yes. EnviousMeet, built into EnviousWispr, records a call or an in-person meeting on your Mac. No bot joins. It records your microphone and, on macOS 14.2 or later, the sound your Mac plays, so the other people on a call are included. After the meeting you get a transcript with who said what, your notes, and an optional summary. Otter.ai is the better choice if your team needs to share transcripts in a team workspace.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is there a free dictation alternative to Otter.ai?</div>

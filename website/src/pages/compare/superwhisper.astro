@@ -328,7 +328,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
-            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you choose a cloud AI provider, only text is sent: the transcript, plus your notes for a meeting summary.</td>
+            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you choose a cloud AI provider, only text is sent: the transcript for polish, and the transcript, your notes and meeting details such as the calendar title and invited people, for a meeting summary.</td>
             <td>Not with a local speech model. Choosing a cloud speech model sends audio to that provider; cloud writing models send transcript text.</td>
           </tr>
           <tr>
@@ -393,12 +393,12 @@ const faqs = [
           </tr>
           <tr>
             <td>Meeting transcription</td>
-            <td><span class="table-check">Yes</span> (EnviousMeet: live words, notes, optional summary, and who said what after the meeting; no live speaker identification)</td>
+            <td><span class="table-check">Yes</span> (EnviousMeet: live words with live speaker labels, your notes, an optional summary, and who said what in the transcript)</td>
             <td><span class="table-check">Yes</span> (Meetings tab with live speaker identification and summaries; free on Mac)</td>
           </tr>
           <tr>
             <td>System audio and speaker identification</td>
-            <td><span class="table-check">Yes</span>, in meetings: records the sound your Mac plays (macOS 14.2+); speakers labelled after the meeting</td>
+            <td><span class="table-check">Yes</span>, in meetings: records the sound your Mac plays (macOS 14.2+); speakers labelled live and in the transcript</td>
             <td><span class="table-check">Yes</span>, configurable per Mode</td>
           </tr>
           <tr>
@@ -624,11 +624,6 @@ const faqs = [
       <p class="section-sub">Superwhisper covers more ground than EnviousWispr, across more devices and more kinds of work. It may be a better fit in these situations:</p>
     </div>
     <div class="advantages-grid">
-      <div class="advantage-card reveal">
-        <div class="advantage-icon">🎙</div>
-        <div class="advantage-title">You want speakers identified live</div>
-        <p class="advantage-desc">Superwhisper 3.0 added a Meetings tab with live speaker identification and summaries, free on Mac. EnviousWispr also records meetings, with live words, notes and an optional summary, but it labels speakers only after the meeting ends. If seeing who is speaking during the meeting matters, Superwhisper does that today.</p>
-      </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
         <div class="advantage-title">You want cross-platform support</div>

@@ -48,7 +48,7 @@ const faqs = [
   },
   {
     "q": "Can I use EnviousWispr to take notes during meetings?",
-    "a": "Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records. It does not join call rooms as a bot."
+    "a": "Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records, unless you turn on Turn off dictation during meetings. It does not join call rooms as a bot."
   },
   {
     "q": "Does Notta work for dictation like EnviousWispr?",
@@ -301,7 +301,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Speaker identification</td>
-            <td><span class="table-check">Yes</span>, after a meeting (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call) and in files you import; not live while recording</td>
+            <td><span class="table-check">Yes</span>, live during a call and in the finished transcript (on a call, your microphone is You; call voices are numbered or named from supported call apps), and in files you import</td>
             <td><span class="table-check">Yes</span>, multi-speaker diarization</td>
           </tr>
           <tr>
@@ -336,7 +336,7 @@ const faqs = [
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key; Apple Intelligence, Ollama, OpenAI, Gemini or Claude can also write a summary of each meeting</td>
+            <td><span class="table-highlight">EG-1, S1-mini by Superwhisper, Ollama</span> on-device, <span class="table-highlight">Apple Intelligence</span> on-device (macOS 26+); OpenAI, Gemini, or Claude with your own key; meeting summaries have their own engine choice: EG-1, Apple Intelligence, Ollama, OpenAI, Gemini or Claude</td>
             <td>AI summaries and action items from meetings</td>
           </tr>
           <tr>
@@ -553,10 +553,10 @@ const faqs = [
         <div class="deep-dive-title">Privacy: on-device vs cloud</div>
         <div class="deep-dive-body">
           <p>By default, Notta uploads audio to its cloud servers. Transcripts are stored online and processed by Notta's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
-          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. Dictation audio is cleared after transcription; meeting audio stays on your Mac until you delete it. If you choose a cloud AI provider, only text is sent (the transcript, plus your notes for a meeting summary). OpenAI, Gemini and Claude receive it under your own key; a hosted Ollama model sends it to Ollama's servers.</p>
-          <p>Cloud processing is what lets Notta offer team workspaces and search across meetings. EnviousWispr records, transcribes and labels speakers on your Mac. For personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
+          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. Dictation audio is cleared after transcription; meeting audio stays on your Mac until you delete it. If you choose a cloud AI provider, only text is sent (the transcript for polish, and the transcript, your notes and meeting details such as the calendar title and invited people, for a meeting summary). OpenAI, Gemini and Claude receive it under your own key; a hosted Ollama model sends it to Ollama's servers.</p>
+          <p>Cloud processing is what lets Notta offer team workspaces. EnviousWispr records, transcribes and labels speakers on your Mac. For personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
           <div class="deep-dive-detail">
-            <strong>The tradeoff:</strong> Notta's cloud approach enables speaker identification, team workspaces, and cross-meeting search, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr records and transcribes meetings on your Mac for free, labels speakers after the meeting, and is local for every dictation.
+            <strong>The tradeoff:</strong> Notta's cloud approach enables team workspaces and shared meeting libraries, and its newer Privacy Mode brings local meeting transcription to the desktop. EnviousWispr records and transcribes meetings on your Mac for free, labels speakers live and in the transcript, and is local for every dictation.
           </div>
         </div>
       </div>
@@ -581,7 +581,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">🗣️</div>
         <div class="advantage-title">Speaker diarization</div>
-        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr labels speakers after a meeting ends (on a call, everything your microphone hears is You; the call voices are numbered when they can be told apart, otherwise Call), not live while it records.</p>
+        <p class="advantage-desc">Notta identifies who said what in multi-person conversations. EnviousWispr labels speakers too: live during a call once Live Preview, call sound and the Speaker labels model are ready, and again in the finished transcript, with names from supported call apps when there is enough evidence.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">👥</div>
@@ -650,7 +650,7 @@ const faqs = [
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use EnviousWispr to take notes during meetings?</div>
-        <p class="faq-a">Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records. It does not join call rooms as a bot.</p>
+        <p class="faq-a">Yes. EnviousMeet records the meeting, shows live words while it records once a live words engine is downloaded, and has a Notes tab for your own notes. After the meeting you get a transcript with who said what and an optional summary. You can keep dictating into other apps while it records, unless you turn on Turn off dictation during meetings. It does not join call rooms as a bot.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does Notta work for dictation like EnviousWispr?</div>
