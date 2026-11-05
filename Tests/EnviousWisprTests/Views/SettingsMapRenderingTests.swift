@@ -856,6 +856,7 @@ struct SettingsMapRenderingTests {
       emitRenameTelemetry: { _ in }, emitTurnsDisplayedTelemetry: {})
     let row = MeetingLiveWordsRowModel.renderFixture(
       settings: home.settings, appleAvailable: appleAvailable)
+    let speakerLabels = MeetingSpeakerLabelsModel.renderFixture()
     let engineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: home.settings,
@@ -867,7 +868,7 @@ struct SettingsMapRenderingTests {
         home.polish(
           view.environment(harness.coordinator).environment(flow).environment(transcripts)
             .environment(PermissionsService()).environment(NavigationCoordinator())
-            .environment(row).environment(engineRow))
+            .environment(row).environment(engineRow).environment(speakerLabels))
       }
     )
   }

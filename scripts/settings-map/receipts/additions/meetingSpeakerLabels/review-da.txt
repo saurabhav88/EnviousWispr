@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "da",
+    "title": "markering af talere",
+    "words": [
+      "taleradskillelse"
+    ],
+    "phrases": [
+      "hvem taler lige nu i mødet",
+      "vis hvem der taler i livevisningen"
+    ]
+  }
+}

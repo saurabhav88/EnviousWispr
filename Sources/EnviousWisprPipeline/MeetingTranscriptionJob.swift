@@ -1152,7 +1152,7 @@ package final class MeetingTranscriptionJob {
     try await Task.detached(priority: .utility) { try audio.read(from: start, count: count) }.value
   }
 
-  nonisolated static func ms(_ sample: Int) -> Int {
+  package nonisolated static func ms(_ sample: Int) -> Int {
     Int((Double(sample) * 1000 / MeetingAudioFormat.sampleRate).rounded())
   }
 }

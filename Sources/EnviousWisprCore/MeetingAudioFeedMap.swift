@@ -72,9 +72,16 @@ package struct MeetingAudioFeedMap: Sendable {
     guard startSeconds.isFinite, endSeconds.isFinite, startSeconds >= 0,
       endSeconds > startSeconds
     else { return nil }
-    let start = frame(atSeconds: startSeconds, roundingUp: false)
-    let end = frame(atSeconds: endSeconds, roundingUp: true)
-    guard end > start, start >= prunedThrough, end <= consumedFrames else { return nil }
+    return project(
+      startFrame: frame(atSeconds: startSeconds, roundingUp: false),
+      endFrame: frame(atSeconds: endSeconds, roundingUp: true))
+  }
+
+  /// The written span of input frames `[startFrame, endFrame)`, under the same rules as the
+  /// seconds form. #4355 PR C: the live speaker session reports whole 10 ms frames as exact
+  /// frame indices, so it projects here and never round-trips through seconds.
+  package func project(startFrame start: Int, endFrame end: Int) -> MeetingAudioSpan? {
+    guard start >= 0, end > start, start >= prunedThrough, end <= consumedFrames else { return nil }
     var first: MeetingAudioSpan?
     var expected: Int?  // the next written sample the range must continue with
     var position = start  // the next input frame the range must cover

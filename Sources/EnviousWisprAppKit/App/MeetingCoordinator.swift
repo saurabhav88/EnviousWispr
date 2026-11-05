@@ -657,7 +657,7 @@ final class MeetingCoordinator {
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
         speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance,
-        echo: facts.echo)
+        echo: facts.echo, liveSpeakers: facts.liveSpeakers)
     }
   }
 
@@ -670,6 +670,8 @@ final class MeetingCoordinator {
     var muteFollow: MuteFollowSummary?
     /// #4355 PR B: what echo cleanup did in the recording, frozen at stop; nil when not known.
     var echo: MeetingEchoSummary?
+    /// #4355 PR C: what live speaker labels did, frozen at stop; nil when not known.
+    var liveSpeakers: MeetingLiveSpeakerSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
     /// #4249: the stop reason (first accepted stop wins) and the call facts call detection
@@ -1434,6 +1436,10 @@ final class MeetingCoordinator {
     // kept events and closes admission. The lines stay until the transcript is ready. A quit
     // during the close already retired them (`quit()`), so this changes nothing then.
     deps.liveWords?.stop()
+    // #4355 PR C: the live speaker summary is frozen by that stop, before any later meeting.
+    if let summary = deps.liveWords?.speakers?.frozenSummary(for: meetingID) {
+      openAttempts[meetingID]?.liveSpeakers = summary
+    }
     // A quit during the close owns the outcome (interrupted, its own deadline).
     guard !quitting else { return }
     // A final log that could not be saved stays owned here, for a quit to save.
@@ -2945,6 +2951,20 @@ final class MeetingCoordinator {
   #endif
 
   /// The meeting's speaker session, removed from the coordinator; nil when it has none.
+  /// #4355 PR C: the host time `meetingID`'s timeline starts at while it records (the recorder
+  /// anchor both the track writer and the call-app log count from), for live names.
+  func liveRecordingAnchor(meetingID: UUID) -> UInt64? {
+    guard case .recording(let current, _) = phase, current == meetingID else { return nil }
+    return recorder?.anchor
+  }
+
+  /// #4355 PR C: the call-app speaker log collected so far for `meetingID` while it records, for
+  /// live names; nil for any other meeting or when none is being read.
+  func liveCallSpeakerLog(meetingID: UUID) -> CallSpeakerLog? {
+    guard let current = speakerSession, current.meetingID == meetingID else { return nil }
+    return current.session.currentLog
+  }
+
   private func takeSpeakerSession(_ meetingID: UUID) -> CallSpeakerSession? {
     if speakerMuteRules?.meetingID == meetingID { speakerMuteRules = nil }
     guard let current = speakerSession, current.meetingID == meetingID else { return nil }

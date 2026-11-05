@@ -1,0 +1,1 @@
+German council (gpt-6-sol + gemini-3.8-flash, session ew-4355-speaker-labels-vocab-de-2026-11-04; raw council-de.json). Adopted: drop Sprecherwechsel (GPT: too vague), add Sprechermodell (Gemini), drop the Live-Vorschau phrase (both: dash and sibling title), add 'unterscheide Stimmen im Meeting' (Gemini). Kept Sprechererkennung and Sprecherzuordnung (both OK).

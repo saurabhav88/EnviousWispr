@@ -34,6 +34,10 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   /// model on MLX). A standalone folder like `editJudge`, NOT a checker adapter: it runs on no
   /// base, so it has no `checkerBaseFamily` and no `checkerContract`.
   case wordCheck = "word_check"
+  /// #4355 PR C: the live meeting speaker model (FluidAudio Nemotron3 diarizer, preset `low`),
+  /// third-party weights loaded by `LiveSpeakerSession`. Its own family so its folder, marker
+  /// and delivery switch are shared with no transcription or polish model.
+  case speakerLive = "speaker_live"
 
   /// The base family a checker adapter runs on; nil for a family that is not
   /// a checker. Exhaustive, so a new family must say whether it is one.
@@ -41,7 +45,7 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
     switch self {
     case .egOneChecker: .egOne
     case .s1MiniChecker: .s1Mini
-    case .parakeet, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck: nil
+    case .parakeet, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck, .speakerLive: nil
     }
   }
 }

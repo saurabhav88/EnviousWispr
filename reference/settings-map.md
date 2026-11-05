@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English and German. The other 30 languages (ar, bg, cs, da, el, es, et, fi, fr, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German.
 
-311 nodes, 284 searchable, 9088 vocabulary blocks.
+312 nodes, 285 searchable, 9120 vocabulary blocks.
 
-Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182b90598c30`, uiCatalogSHA256 `1f061918286946966c214ab9815c829b21b7ac7dc2ae3fb2c07f2836fdc08af8`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `01f63261e01077041f88573647ff9eda5533a54ffe751848c58e53916f22762e`
+Fingerprints: mapSHA256 `eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ead1f4653f0`, uiCatalogSHA256 `81c5ba8215b483420f29c3936029773f60cd25a6b641d03aff3ff1c81f341b7a`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487`
 
 ## Structure
 
@@ -303,6 +303,7 @@ Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182
         - [Apple](#node-meetingTranscriptEngine-apple) `meetingTranscriptEngine.apple` (choice)
       - [Auto-detect language / Sprache automatisch erkennen](#node-meetingTranscriptAutoDetect) `meetingTranscriptAutoDetect` (setting)
       - [Transcript language / Transkriptsprache](#node-meetingTranscriptLanguage) `meetingTranscriptLanguage` (setting)
+      - [Speaker labels / Sprecherkennzeichnung](#node-meetingSpeakerLabels) `meetingSpeakerLabels` (feature)
     - [Summaries / Zusammenfassungen](#node-meetings-tab-summaries) `meetings.tab.summaries` (feature)
       - [Write a summary when a meeting ends / Zusammenfassung erstellen, wenn ein Meeting endet](#node-meetingWriteSummary) `meetingWriteSummary` (setting)
       - [Summary engine / Zusammenfassungs-Engine](#node-meetingSummaryEngine) `meetingSummaryEngine` (setting)
@@ -2855,6 +2856,28 @@ Fingerprints: mapSHA256 `16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
 | Search (en) | phrases: change meeting transcript language; language of the full transcript after a meeting |
 | Search (de) | phrases: ändere die Sprache für das vollständige Transkript nach dem Meeting; in welcher Sprache wird das vollständige Transkript nach dem Meeting erstellt |
+| Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-meetingSpeakerLabels"></a>
+
+### Speaker labels / Sprecherkennzeichnung (`meetingSpeakerLabels`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | feature |
+| Parent | [`meetings.tab.models`](#node-meetings-tab-models) |
+| Title source | catalog key `Speaker labels` |
+| Description | Shows who is talking in Live Preview while a meeting records. / Zeigt in der Live-Vorschau, wer gerade spricht, während ein Meeting aufgenommen wird. |
+| Description source | catalog key `Shows who is talking in Live Preview while a meeting records.` |
+| Destination | `meetings` › `models` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`meetingSpeakerLabels`](#node-meetingSpeakerLabels) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: diarization, speaker identification, speaker labels<br>phrases: who is talking in the meeting; show who is speaking in live preview |
+| Search (de) | words: Sprecherzuordnung, Sprechererkennung, Sprechermodell<br>phrases: wer spricht gerade im Meeting; unterscheide Stimmen im Meeting |
 | Search (other 30 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-meetingUseCalendarForNames"></a>

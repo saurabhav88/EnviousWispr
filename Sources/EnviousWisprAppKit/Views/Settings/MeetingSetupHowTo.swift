@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLivePreview
 import SwiftUI
 
 /// The carousel's state (#4346 plan §3.4): which card shows, whether auto-advance is paused,
@@ -601,18 +602,19 @@ private struct MeetingHowToHistory: View {
       }
       .padding(8)
       .background(Color.obTextTertiary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+      // #4355 PR C: the live view's headers. Words still being said wait under "Speaker".
       line(
-        .microphone, 182_000,
+        .you, 182_000,
         LocalizedStringResource(
           "Can we move the launch to the 17th?",
           comment: "EnviousMeet setup: example live words on card 5."))
       line(
-        .callSound, 185_000,
+        .remote("1"), 185_000,
         LocalizedStringResource(
           "Yes, I'll tell support today.",
           comment: "EnviousMeet setup: example live words on card 5."))
       line(
-        .callSound, 189_000,
+        .unresolved, 189_000,
         LocalizedStringResource(
           "And I'll update the",
           comment:
@@ -624,12 +626,13 @@ private struct MeetingHowToHistory: View {
   }
 
   private func line(
-    _ track: MeetingTrackKind, _ ms: Int, _ words: LocalizedStringResource, unsure: Bool = false
+    _ speaker: LiveWordsAssembler.LiveSpeakerKey, _ ms: Int, _ words: LocalizedStringResource,
+    unsure: Bool = false
   ) -> some View {
     VStack(alignment: .leading, spacing: 1) {
       Text(
         verbatim:
-          "\(MeetingsPresentation.liveSpeaker(track)) · \(MeetingsPresentation.clock(ms: ms))"
+          "\(MeetingsPresentation.liveSpeakerHeader(speaker)) · \(MeetingsPresentation.clock(ms: ms))"
       )
       .font(.system(size: 14, weight: .semibold))
       .foregroundStyle(Color.obTextSecondary)

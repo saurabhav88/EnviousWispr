@@ -46,6 +46,8 @@ package final class WisprBootstrapper {
   /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
   /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
   let meetingLiveWordsRow: MeetingLiveWordsRowModel
+  /// #4355 PR C: the Speaker labels card (EnviousMeet > Models).
+  let meetingSpeakerLabels: MeetingSpeakerLabelsModel
   /// #4325: starts a Universal download that waited for the meeting to end.
   private let meetingIdleObserver: MeetingIdleObserver
   /// #3973 C3: EnviousMeet > Models' Transcript engine row.
@@ -2545,6 +2547,18 @@ package final class WisprBootstrapper {
           await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted)
         },
         appleEquivalent: MeetingLiveWordsChoice.liveAppleEquivalent))
+    // #4355 PR C: the recording meeting's live speaker labels. The model is read once per meeting
+    // through the delivery door; dictation (recording, transcribing or polishing on either engine)
+    // goes first.
+    let meetingLiveSpeakers = MeetingLiveSpeakers(
+      dependencies: .init(
+        admittedDirectory: { [modelDelivery] in
+          await modelDelivery.admittedLiveSpeakerModelDirectory()
+        },
+        isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+        modelRevision: { [modelDelivery] in
+          modelDelivery.speakerLiveRegistration?.manifest.identity.revision
+        }))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
         resolveChoice: { [meetingLiveWordsChoice] forcing in
@@ -2575,7 +2589,7 @@ package final class WisprBootstrapper {
               settings: settings, dictationActive: liveRecordingState.isDictationActive)
           }
         }),
-      choiceOwner: meetingLiveWordsChoice)
+      choiceOwner: meetingLiveWordsChoice, speakers: meetingLiveSpeakers)
     // #3973: removing the Universal model lets dictation's preview and the meeting's live
     // words both go before the one residency wait and the delete.
     PreviewModelRemoval.install(
@@ -2718,6 +2732,13 @@ package final class WisprBootstrapper {
     }
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
+    // #4355 PR C: live names read this meeting's call-app speaker log.
+    meetingLiveWords.speakers?.currentCallLog = { [weak meetingCoordinator] meetingID in
+      meetingCoordinator?.liveCallSpeakerLog(meetingID: meetingID)
+    }
+    meetingLiveWords.speakers?.currentAnchor = { [weak meetingCoordinator] meetingID in
+      meetingCoordinator?.liveRecordingAnchor(meetingID: meetingID)
+    }
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
       environment: .init(
         choice: meetingLiveWordsChoice, settings: settings,
@@ -2749,9 +2770,30 @@ package final class WisprBootstrapper {
     }
     modelDelivery.isMeetingActive = meetingIsActive
     whisper.setupService.isMeetingActive = meetingIsActive
+    // #4355 PR C: the Speaker labels card's model. Its load check releases the model before the
+    // delivery home deletes files, stops when a meeting starts and runs again when it ends.
+    let meetingSpeakerLabels = MeetingSpeakerLabelsModel(
+      environment: .live(home: modelDelivery, isMeetingActive: meetingIsActive))
+    self.meetingSpeakerLabels = meetingSpeakerLabels
+    modelDelivery.drainLiveSpeakerHoldersBeforeRemoval = {
+      [weak meetingSpeakerLabels, weak meetingLiveSpeakers = meetingLiveWords.speakers] in
+      await meetingSpeakerLabels?.releaseForRemoval()
+      await meetingLiveSpeakers?.waitForRelease()
+    }
+    meetingLiveWords.speakers?.waitForCheckRelease = { [weak meetingSpeakerLabels] in
+      await meetingSpeakerLabels?.waitForCheckRelease()
+    }
+    meetingSpeakerLabels.waitForMeetingRelease = {
+      [weak meetingLiveSpeakers = meetingLiveWords.speakers] in
+      await meetingLiveSpeakers?.waitForRelease()
+    }
     self.meetingIdleObserver = MeetingIdleObserver(
       isActive: meetingIsActive,
-      onIdle: { [modelDelivery] in modelDelivery.meetingBecameIdle() })
+      onIdle: { [modelDelivery, weak meetingSpeakerLabels] in
+        modelDelivery.meetingBecameIdle()
+        meetingSpeakerLabels?.meetingBecameIdle()
+      },
+      onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: settings, whisperSetup: whisper.setupService,
@@ -2810,7 +2852,11 @@ package final class WisprBootstrapper {
         openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
         callSoundSupported: { CallMicrophoneWatcher.isSupported },
         settings: settings,
-        emit: { TelemetryService.shared.trackMeetingSetup($0) }))
+        emit: { TelemetryService.shared.trackMeetingSetup($0) },
+        // #4355 PR C: the one speaker labels door, queued if a meeting is active.
+        requestSpeakerLabelsModel: { [modelDelivery] in
+          modelDelivery.requestLiveSpeakerModel(meetingActive: meetingIsActive())
+        }))
     let callDetection = CallDetectionCoordinator(
       dependencies: .init(
         settings: settings,
@@ -3386,6 +3432,7 @@ private struct MainWindowRoot: View {
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)
+      .environment(b.meetingSpeakerLabels)
       .environment(b.meetingTranscriptEngineRow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)

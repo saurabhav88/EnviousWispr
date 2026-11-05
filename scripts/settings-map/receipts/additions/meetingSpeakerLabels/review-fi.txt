@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "fi",
+    "title": "puhujien tunnisteet",
+    "words": [
+      "puhujien erottelu"
+    ],
+    "phrases": [
+      "kuka kokouksessa puhuu juuri nyt",
+      "näytä kokouksen puhujat reaaliaikaisessa esikatselussa"
+    ]
+  }
+}

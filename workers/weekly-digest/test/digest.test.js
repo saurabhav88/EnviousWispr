@@ -27,6 +27,7 @@ import worker, {
   formatDownloads,
   formatAppUsage,
   formatMeetingEcho,
+  formatLiveSpeakers,
   fetchOllamaListStatus,
   formatOllamaList,
   fetchCloudModelListStatus,
@@ -136,6 +137,16 @@ const POSTHOG_ROWS = {
       "eligible_ms", "passthrough_ms", "resets", "attempts_with_resets"],
   },
   meeting_echo_reasons: { results: [["call_rebuild", 2], ["multiple", 1]], columns: ["bucket", "n"] },
+  meeting_live_speakers: {
+    results: [[12, 9, 6, 2, 0, 1, 6, 3, 1, 4_000, 2, 1_500, 6_000]],
+    columns: ["attempts", "known", "ready", "absent", "loading", "failed", "with_remote_words",
+      "named", "skipped_attempts", "skipped_ms", "update_drops", "unpositioned_ms",
+      "live_words_unpositioned_ms"],
+  },
+  meeting_live_share: { results: [["75%+", 4], ["25-50%", 2]], columns: ["bucket", "n"] },
+  speaker_labels_load_check: { results: [[7, 1, 1]], columns: ["loaded", "failed", "failed_installs"] },
+  speaker_labels_failed_machines: { results: [["MacBookAir10,1", 1]], columns: ["bucket", "n"] },
+  speaker_labels_failed_os: { results: [["14.6.1", 1]], columns: ["bucket", "n"] },
 };
 
 const CF_BODY = {
@@ -342,7 +353,7 @@ test("a clean run makes exactly 8 PostHog requests: 1 preflight + 7 metrics", as
   const h = harness();
   await h.run();
   // Equality, so both an added query and a silently dropped one fail.
-  assert.equal(h.state.posthogCalls, 8);
+  assert.equal(h.state.posthogCalls, 13);
   assert.equal(h.state.queryNames.filter((q) => q === "weekly_digest_dev_ids").length, 1);
 });
 
@@ -356,7 +367,12 @@ test("every query name carries the weekly_digest label, never daily_report", asy
     "weekly_digest_downloads",
     "weekly_digest_meeting_echo",
     "weekly_digest_meeting_echo_reasons",
+    "weekly_digest_meeting_live_share",
+    "weekly_digest_meeting_live_speakers",
     "weekly_digest_onboard_activate",
+    "weekly_digest_speaker_labels_failed_machines",
+    "weekly_digest_speaker_labels_failed_os",
+    "weekly_digest_speaker_labels_load_check",
     "weekly_digest_website",
   ]);
 });
@@ -429,11 +445,11 @@ test("a dev_ids 401 costs app usage only; a METRIC 401 fails the whole run", asy
   const devAuth = harness({ posthog: { dev_ids: () => fail(401) } });
   await assert.rejects(() => devAuth.run(), /unavailable sections/);
   assert.equal(devAuth.state.posts.length, 1, "a partial digest still posts");
-  assert.equal(devAuth.state.posts[0].embeds.length, 8);
+  assert.equal(devAuth.state.posts[0].embeds.length, 9);
   // Sentry is a different vendor entirely, so a PostHog credential failure must
   // not cost it. A section that failed because an unrelated API failed would be
   // a coupling this design does not have.
-  assert.doesNotMatch(devAuth.state.posts[0].embeds[7].title, /unavailable/);
+  assert.doesNotMatch(devAuth.state.posts[0].embeds[8].title, /unavailable/);
 
   const metricAuth = harness({ posthog: { website: () => fail(401) } });
   await assert.rejects(() => metricAuth.run(), /HTTP 401/);
@@ -582,14 +598,15 @@ test("GitHub non-2xx on the first page degrades instead of returning '?'", async
 
 // ---- Payload -----------------------------------------------------------------
 
-test("the digest posts eight section embeds carrying the brand colour", async () => {
+test("the digest posts nine section embeds carrying the brand colour", async () => {
   const h = harness();
   await h.run();
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 8);
+  assert.equal(digest.embeds.length, 9);
   assert.deepEqual(digest.embeds.map((e) => e.title), [
     "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
-    "Meeting echo cleanup", "Ollama model list", "Cloud model list", "Errors, last 7 days",
+    "Meeting echo cleanup", "Live speaker labels", "Ollama model list", "Cloud model list",
+    "Errors, last 7 days",
   ]);
   for (const embed of digest.embeds) {
     assert.equal(embed.color, 0x7c3aed);
@@ -1017,7 +1034,7 @@ test("the weekly Sentry section spends the fixed call budget and scopes to the r
   assert.equal(h.state.sentryCalls, SENTRY_CALLS_PER_DIGEST,
     "five fixed Sentry calls, never a per-issue fan-out");
   const [digest] = h.state.posts;
-  const sentry = digest.embeds[7];
+  const sentry = digest.embeds[8];
   assert.match(sentry.description, /25 people: microphone capture stalled/);
   assert.match(sentry.description, /13 people: paste fell back to the clipboard/);
   // 8 more people than the prior week (38 vs 30).
@@ -1048,9 +1065,9 @@ test("a Sentry outage costs the Sentry section and nothing else", async () => {
   const h = harness({ sentry: () => fail(503) });
   await assert.rejects(() => h.run(), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 8, "the digest still posts, whole");
-  assert.match(digest.embeds[7].title, /unavailable today/);
-  assert.match(digest.embeds[7].description, /not a report of zero/);
+  assert.equal(digest.embeds.length, 9, "the digest still posts, whole");
+  assert.match(digest.embeds[8].title, /unavailable today/);
+  assert.match(digest.embeds[8].description, /not a report of zero/);
   // The other seven sections are untouched and REAL.
   assert.match(digest.embeds[0].title, /All website traffic/);
   for (const embed of digest.embeds.slice(0, 7)) {
@@ -1069,8 +1086,8 @@ test("a worker without the Sentry credential degrades that section only", async 
   const h = harness();
   await assert.rejects(() => h.run(noToken), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 8);
-  assert.match(digest.embeds[7].title, /unavailable today/);
+  assert.equal(digest.embeds.length, 9);
+  assert.match(digest.embeds[8].title, /unavailable today/);
   assert.equal(h.state.sentryCalls, 0, "a missing credential makes no request at all");
 });
 
@@ -1219,7 +1236,7 @@ test("every broken Ollama input costs this section only, then fails the run afte
     await assert.rejects(() => h.run(env), /ollama_list/, name);
     assert.equal(h.state.posts.length, 1, `${name}: the digest still posts`);
     const [digest] = h.state.posts;
-    assert.equal(digest.embeds.length, 8, name);
+    assert.equal(digest.embeds.length, 9, name);
     assert.match(ollamaEmbed(h).description, /^Ollama list figures were temporarily unavailable when this digest ran\.$/, name);
     for (const embed of digest.embeds.filter((e) => e.title !== "Ollama model list")) {
       assert.doesNotMatch(embed.description, /temporarily unavailable/, `${name}: ${embed.title}`);
@@ -1325,7 +1342,7 @@ test("meeting echo: a failed or malformed echo query costs that section only, th
     const h = harness({ posthog: override });
     await assert.rejects(() => h.run(), /meeting_echo/, name);
     const [digest] = h.state.posts;
-    assert.equal(digest.embeds.length, 8, name);
+    assert.equal(digest.embeds.length, 9, name);
     const embed = digest.embeds.find((e) => e.title === "Meeting echo cleanup");
     assert.match(embed.description, /temporarily unavailable/, name);
     assert.match(digest.embeds.find((e) => e.title === "App usage").description, /189 people used/, name);
@@ -1334,6 +1351,72 @@ test("meeting echo: a failed or malformed echo query costs that section only, th
 
 const ECHO_COLUMNS = ["attempts", "known", "init_ok", "init_failed", "init_no_reference",
   "eligible_ms", "passthrough_ms", "resets", "attempts_with_resets"];
+
+// ---- Live speaker labels (#4355 PR C) ----------------------------------------
+
+const LIVE_ROW = {
+  attempts: 12, known: 9, ready: 6, absent: 2, loading: 0, failed: 1, with_remote_words: 6,
+  named: 3, skipped_attempts: 1, skipped_ms: 4_000, update_drops: 2, unpositioned_ms: 1_500,
+  live_words_unpositioned_ms: 6_000,
+};
+
+test("live speakers: populated week reports states, share ranges, names, backlog and load checks", async () => {
+  const lines = formatLiveSpeakers(
+    LIVE_ROW, [{ bucket: "25-50%", n: 2 }, { bucket: "75%+", n: 4 }], { loaded: 7, failed: 1, failed_installs: 1 },
+    [{ bucket: "MacBookAir10,1", n: 1 }], [{ bucket: "14.6.1", n: 1 }]).join("\n");
+  assert.match(lines, /9 of 12 meetings reported live speaker labels; 3 came from older versions or were not known\./);
+  assert.match(lines, /6 ready, 2 not downloaded or no call sound, 0 still loading, 1 failed/);
+  assert.match(lines, /meetings per range\): 25-50% 2, 75%\+ 4\./, "ranges in order, never averaged");
+  assert.match(lines, /3 meetings showed at least one call-app name/);
+  assert.match(lines, /1 meetings skipped 4\.0 s of call audio to keep up; 2 model updates were dropped/);
+  assert.match(lines, /Load checks: 7 loaded, 1 failed\.\nFailed checks by macOS version: 14\.6\.1 1\.\nInstalls with a failed check \(1\), by Mac: MacBookAir10,1 1\./);
+  assert.match(lines, /Audio with no known position: 1\.5 s of call audio for speaker labels, 6\.0 s for live words/);
+  const h = harness();
+  await h.run();
+  const sql = h.state.sql.find((q) => q.includes("AS unpositioned_ms"));
+  assert.match(sql, /event = 'meeting\.ended'/);
+  assert.match(sql, /properties\.environment = 'production'/);
+  assert.match(sql, /coalesce\(sumIf\(toFloat\(properties\.live_backlog_skipped_ms\), properties\.live_speaker_state IS NOT NULL\), 0\) AS skipped_ms/);
+  const embed = h.state.posts[0].embeds.find((e) => e.title === "Live speaker labels");
+  assert.match(embed.description, /9 of 12 meetings reported live speaker labels/);
+});
+
+test("live speakers: empty week, older rows, no call words and unavailable parts stay distinct", () => {
+  assert.match(formatLiveSpeakers({ ...LIVE_ROW, attempts: 0, known: 0 }, [], { loaded: 0, failed: 0 }, []).join("\n"),
+    /^No meetings ended this week\.$[\s\S]*^No Speaker labels load checks ran this week\.$/m);
+  assert.match(formatLiveSpeakers({ ...LIVE_ROW, known: 0 }, [], null, null).join("\n"),
+    /none reported live speaker labels[\s\S]*Load checks were temporarily unavailable/);
+  assert.match(formatLiveSpeakers({ ...LIVE_ROW, with_remote_words: 0 }, [], { loaded: 1, failed: 0 }, []).join("\n"),
+    /No meeting had live call words to label\./);
+  assert.match(formatLiveSpeakers(null, null, { loaded: 1, failed: 0 }, []).join("\n"),
+    /Live speaker figures were temporarily unavailable/);
+  assert.match(formatLiveSpeakers(LIVE_ROW, null, { loaded: 0, failed: 2 }, null, null).join("\n"),
+    /numbered speaker were temporarily unavailable[\s\S]*by macOS version were temporarily unavailable[\s\S]*Installs with a failed check, by Mac, were temporarily unavailable/);
+});
+
+test("live speakers: a failed check is counted under the macOS version it reported itself", async () => {
+  const h = harness();
+  await h.run();
+  const os = h.state.sql.find((q) => q.includes("properties.os_version, 'unknown') AS bucket"));
+  assert.ok(os, "the macOS grouping reads the check's own os_version");
+  assert.match(os, /event = 'speaker_labels\.load_check' AND properties\.outcome = 'failed'/);
+  assert.doesNotMatch(os, /app\.launched/, "never a launch row that may predate an upgrade");
+});
+
+test("live speakers: a failed install with no launch row this week stays counted, not dropped", () => {
+  const lines = formatLiveSpeakers(LIVE_ROW, [], { loaded: 0, failed: 3, failed_installs: 2 }, [],
+    [{ bucket: "15.1", n: 3 }]).join("\n");
+  assert.match(lines, /Installs with a failed check \(2\), by Mac: Mac model not shown 2\./);
+});
+
+test("live speakers: a failed query costs that section only, then fails the run after delivery", async () => {
+  const h = harness({ posthog: { meeting_live_speakers: () => fail(503) } });
+  await assert.rejects(() => h.run(), /meeting_live_speakers/);
+  const [digest] = h.state.posts;
+  assert.equal(digest.embeds.length, 9);
+  const embed = digest.embeds.find((e) => e.title === "Live speaker labels");
+  assert.match(embed.description, /Live speaker figures were temporarily unavailable/);
+});
 
 // ---- Cloud model list (#4353 PR 5) -------------------------------------------
 
@@ -1715,7 +1798,7 @@ test("cloud: a broken cloud source costs only its section, then fails the run af
   });
   assert.equal(h.state.posts.length, 1);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 8);
+  assert.equal(digest.embeds.length, 9);
   for (const embed of digest.embeds.filter((e) => e.title !== "Cloud model list")) {
     assert.doesNotMatch(embed.description, /temporarily unavailable/, embed.title);
   }

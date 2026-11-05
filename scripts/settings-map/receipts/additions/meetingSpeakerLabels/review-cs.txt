@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "cs",
+    "title": "označení mluvčích",
+    "words": [
+      "rozlišení hlasů"
+    ],
+    "phrases": [
+      "kdo právě mluví na schůzce",
+      "zobrazit mluvčího v živém náhledu"
+    ]
+  }
+}

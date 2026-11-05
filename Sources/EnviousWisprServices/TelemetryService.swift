@@ -4131,6 +4131,41 @@ public final class TelemetryService {
     if let data = Self.meetingEchoBreadcrumbData(event) {
       SentryBreadcrumb.add(stage: "meeting", message: "meeting ended (echo cleanup)", data: data)
     }
+    // #4355 PR C: the live speaker facts on the same content-free route.
+    if let data = Self.meetingLiveSpeakersBreadcrumbData(event) {
+      SentryBreadcrumb.add(stage: "meeting", message: "meeting ended (live speakers)", data: data)
+    }
+  }
+
+  /// #4355 PR C: the `live_*` keys of the `meeting.ended` payload, for the Sentry breadcrumb;
+  /// nil without a live speaker summary.
+  static func meetingLiveSpeakersBreadcrumbData(_ event: MeetingEndedTelemetry) -> [String: Any]? {
+    guard event.liveSpeakers != nil else { return nil }
+    return meetingEndedProperties(event).filter { $0.key.hasPrefix("live_") }
+  }
+
+  /// #4355 PR C: one row per completed Speaker labels load check (Settings, after a download or
+  /// when the card first shows an admitted model). `outcome` is `loaded` or `failed`; a check
+  /// stopped by a meeting or Remove is not a result and sends nothing. Shape only: the bundled
+  /// model revision and the macOS version at the check, never a path, name or error text. The
+  /// Mac model comes from `app.launched` by install (it never changes for one).
+  public func trackSpeakerLabelsLoadCheck(loaded: Bool, modelRevision: String?) {
+    // The macOS version at THIS check (it can change between launches), in `app.launched`'s
+    // format; the Mac model stays on `app.launched` (fixed per install).
+    let os = ProcessInfo.processInfo.operatingSystemVersion
+    var props: [String: Any] = [
+      "outcome": loaded ? "loaded" : "failed",
+      "os_version": "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)",
+    ]
+    if let modelRevision { props["model_revision"] = modelRevision }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "speaker_labels.load_check",
+          stringProps: props.compactMapValues { $0 as? String }, intProps: [:], doubleProps: [:],
+          boolProps: [:]))
+    #endif
+    PostHogSDK.shared.capture("speaker_labels.load_check", properties: props)
   }
 
   /// #4355 PR B: the `aec_*` keys of the `meeting.ended` payload, for the Sentry breadcrumb; nil
@@ -4209,6 +4244,17 @@ public final class TelemetryService {
       props["aec_reset_count"] = echo.resetCount
       props["aec_reset_reason"] = echo.resetReason
       if let outcome = echo.initOutcome { props["aec_init_outcome"] = outcome.rawValue }
+    }
+    // #4355 PR C: live speaker labels, counts and closed values only; omitted when not known.
+    if let live = event.liveSpeakers {
+      props["live_speaker_state"] = live.state.rawValue
+      if let revision = live.modelRevision { props["live_speaker_model_revision"] = revision }
+      if let share = live.attributedShare { props["live_attributed_share"] = meetingShareBucket(share) }
+      props["live_named_speaker_count"] = live.namedSpeakers
+      props["live_backlog_skipped_ms"] = live.backlogSkippedMs
+      props["live_update_drops"] = live.updateDrops
+      props["live_unpositioned_ms"] = live.unpositionedMs
+      props["live_words_unpositioned_ms"] = live.liveWordsUnpositionedMs
     }
     // #4249: stop provenance; each key only when known (a recovered attempt has none).
     if let provenance = event.provenance {

@@ -92,7 +92,8 @@ struct MeetingLivePanel: View {
       }
       meters
       // #4248: static text in reading order, right under the "You" meter it explains.
-      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp) {
+      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp)
+      {
         Text(line)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -186,9 +187,10 @@ struct MeetingProcessingPanel: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(
-        MeetingsPresentation.stage(processing, waitingOnSummary: meetings.passWaitsOnSummary))
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
+        MeetingsPresentation.stage(processing, waitingOnSummary: meetings.passWaitsOnSummary)
+      )
+      .font(.stRowTitle)
+      .foregroundStyle(.stTextPrimary)
       if let fraction = MeetingsPresentation.progress(processing) {
         ProgressView(value: fraction)
       } else {
@@ -266,11 +268,12 @@ struct MeetingCallSoundRow: View {
         "",
         isOn: Binding(
           get: { !settings.meetingCaptureCallSound },
-          set: { settings.meetingCaptureCallSound = !$0 }))
-        .labelsHidden()
-        .toggleStyle(BrandedToggleStyle())
-        .fixedSize()
-        .accessibilityLabel(Text(MeetingsCopy.callSoundTitle))
+          set: { settings.meetingCaptureCallSound = !$0 })
+      )
+      .labelsHidden()
+      .toggleStyle(BrandedToggleStyle())
+      .fixedSize()
+      .accessibilityLabel(Text(MeetingsCopy.callSoundTitle))
     }
   }
 }
@@ -399,7 +402,7 @@ struct MeetingConsentNote: View {
   }
 }
 
-/// The recording meeting's live words (#3973): lines labelled by track as people speak, words
+/// The recording meeting's live words (#3973): blocks headed You, Speaker N or Speaker (#4355 PR C) as people speak, words
 /// still changing and words the engine was unsure of shown lighter. The status lines say when
 /// a track has no live words and why. The full transcript, with speakers, comes after the
 /// meeting.
@@ -408,6 +411,22 @@ struct MeetingLiveWordsView: View {
   /// After Stop, until the transcript replaces them: greyed, and the copy says the recording
   /// ended.
   var superseded = false
+
+  private func liveHeader(_ header: MeetingsPresentation.LiveRow.Header) -> String {
+    "\(MeetingsPresentation.liveSpeakerHeader(header.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: header.startMs))"
+  }
+
+  /// One line's text; a speaker change inside it starts a new paragraph under its own header.
+  private func liveText(_ row: MeetingsPresentation.LiveRow) -> Text {
+    row.segments.enumerated().reduce(Text(verbatim: "")) { text, item in
+      let (index, segment) = item
+      guard index > 0 else { return text + Text(segment.text) }
+      guard let header = segment.header else { return text + Text(" " + segment.text) }
+      return text + Text(verbatim: "\n\n")
+        + Text(verbatim: liveHeader(header)).font(.caption.weight(.semibold))
+          .foregroundColor(.stTextSecondary) + Text(verbatim: "\n") + Text(segment.text)
+    }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -430,23 +449,35 @@ struct MeetingLiveWordsView: View {
         }
       } else {
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 10) {
-            ForEach(transcript.lines) { line in
+          LazyVStack(alignment: .leading, spacing: 2) {
+            // #4355 PR C: speaker blocks, after each piece was assigned, drawn as one row per
+            // live line keyed by the line's identity. Regrouping changes headers only: a line's
+            // text is never removed or reparented, so selection and focus stay with it. A
+            // speaker change inside a line is a header inside that line's text.
+            ForEach(
+              MeetingsPresentation.liveRows(
+                MeetingsPresentation.liveBlocks(
+                  transcript.lines, labels: transcript.speakerLabels))
+            ) {
+              row in
               VStack(alignment: .leading, spacing: 2) {
-                Text(
-                  verbatim:
-                    "\(MeetingsPresentation.liveSpeaker(line.track)) · \(MeetingsPresentation.clock(ms: line.startMs))"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.stTextSecondary)
-                Text(line.text)
+                if let header = row.header {
+                  Text(verbatim: liveHeader(header))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.stTextSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                }
+                liveText(row)
                   .font(.stBody)
-                  .italic(line.kind == .uncertain)
+                  .italic(row.kind == .uncertain)
                   .foregroundStyle(
-                    superseded || line.kind != .confirmed ? Color.stTextSecondary : Color.stTextPrimary)
+                    superseded || row.kind != .confirmed
+                      ? Color.stTextSecondary : Color.stTextPrimary
+                  )
                   .textSelection(.enabled)
               }
-              .id(line.id)
+              // The gap between blocks the nested layout had (10 points around a 2-point run gap).
+              .padding(.top, row.header != nil ? 8 : 0)
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -458,6 +489,12 @@ struct MeetingLiveWordsView: View {
     }
     .padding(14)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+    // #4355 PR C: one announcement per applied batch that moved text under a speaker, never
+    // per model update, and never a claim about who is talking now.
+    .onChange(of: transcript.speakerLabels.revision) { old, new in
+      guard new > old, !superseded else { return }
+      AccessibilityNotification.Announcement(MeetingsPresentation.liveSpeakersUpdated).post()
+    }
   }
 }
 
@@ -534,7 +571,8 @@ struct MeetingCallAppsRow: View {
       }
       .disabled(
         settings.meetingCallDetection == CallDetectionPolicy.Mode.off.rawValue
-          || !CallMicrophoneWatcher.isSupported)
+          || !CallMicrophoneWatcher.isSupported
+      )
       .environment(\.settingsArrivalRegisteredID, SettingsMapID.meetingCallApps)
       Label {
         Text(MeetingsCopy.callAppsPrivacy)

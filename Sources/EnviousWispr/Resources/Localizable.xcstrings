@@ -4920,6 +4920,17 @@
         }
       }
     },
+    "Cancel speaker labels download" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Cancel button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der Sprecherkennzeichnung abbrechen"
+          }
+        }
+      }
+    },
     "Cancelling…" : {
       "localizations" : {
         "de" : {
@@ -5192,6 +5203,17 @@
         }
       }
     },
+    "Check after the meeting" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: status chip. Downloaded; the check that it works runs when the meeting ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung nach dem Meeting"
+          }
+        }
+      }
+    },
     "Check again" : {
       "comment" : "AI Polish: reads the saved API key again.",
       "localizations" : {
@@ -5319,6 +5341,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Engine wird geprüft. Einen Moment."
+          }
+        }
+      }
+    },
+    "Checking that speaker labels work on this Mac." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the downloaded model is being loaded once to check it works.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wird geprüft, ob die Sprecherkennzeichnung auf diesem Mac funktioniert."
           }
         }
       }
@@ -7859,6 +7892,17 @@
         }
       }
     },
+    "Download queued" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: status chip. The download was asked for during a meeting and starts when it ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download vorgemerkt"
+          }
+        }
+      }
+    },
     "Download size" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table.",
       "localizations" : {
@@ -7866,6 +7910,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Downloadgröße"
+          }
+        }
+      }
+    },
+    "Download speaker labels" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Download button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung herunterladen"
           }
         }
       }
@@ -7921,6 +7976,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Download wurde unterbrochen. Klicke auf „Erneut versuchen“, um ihn fortzusetzen."
+          }
+        }
+      }
+    },
+    "Downloaded. The check runs when the meeting ends." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the check that the model works waits for the meeting to end.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladen. Die Prüfung startet, wenn das Meeting endet."
           }
         }
       }
@@ -8087,6 +8153,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird heruntergeladen..."
+          }
+        }
+      }
+    },
+    "Downloading: %@ of %@" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: download progress, such as 50 MB of 199 MB.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading: %1$@ of %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download läuft: %1$@ von %2$@"
           }
         }
       }
@@ -14245,6 +14328,17 @@
         }
       }
     },
+    "Not available in this version of EnviousWispr." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the model is missing from this build.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In dieser Version von EnviousWispr nicht verfügbar."
+          }
+        }
+      }
+    },
     "Not available on this Mac" : {
       "comment" : "AI Polish, Apple Intelligence: the status row's title when this Mac reports it unavailable.",
       "localizations" : {
@@ -14373,6 +14467,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht genug freier Speicherplatz. Während der Installation benötigt der Download etwa %@ freien Speicher."
+          }
+        }
+      }
+    },
+    "Not enough free space for speaker labels. Free up some space and try again." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the download failed because the disk is full.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug freier Speicherplatz für die Sprecherkennzeichnung. Gib etwas Speicherplatz frei und versuche es erneut."
           }
         }
       }
@@ -15171,6 +15276,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bildschirmvorschau pausiert, solange „Schnellere Transkription“ während der Aufnahme transkribiert."
+          }
+        }
+      }
+    },
+    "One download of %@." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the download size before downloading, such as 199 MB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmaliger Download von %@."
           }
         }
       }
@@ -17503,12 +17619,34 @@
         }
       }
     },
+    "Remove is available when the meeting ends." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: Remove is off while a meeting records or is being transcribed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen ist möglich, sobald das Meeting endet."
+          }
+        }
+      }
+    },
     "Remove mishearing %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fehlerkennung %@ entfernen"
+          }
+        }
+      }
+    },
+    "Remove speaker labels" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Remove button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung entfernen"
           }
         }
       }
@@ -17753,6 +17891,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Retry speaker labels check" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after the model failed to start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung der Sprecherkennzeichnung wiederholen"
+          }
+        }
+      }
+    },
+    "Retry speaker labels download" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after a failed download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der Sprecherkennzeichnung wiederholen"
           }
         }
       }
@@ -19123,6 +19283,17 @@
         }
       }
     },
+    "Shows who is talking in Live Preview while a meeting records." : {
+      "comment" : "EnviousMeet Models page: the short line under Speaker labels.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt in der Live-Vorschau, wer gerade spricht, während ein Meeting aufgenommen wird."
+          }
+        }
+      }
+    },
     "Shows words as you speak. Turns Live Preview on." : {
       "comment" : "Recording Pill settings: short line under the Reading Well design's name. Live Preview is a setting.",
       "localizations" : {
@@ -19501,12 +19672,78 @@
         }
       }
     },
+    "Speaker" : {
+      "comment" : "History, Live Preview of a recording meeting: header of call words not yet given to one voice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecher"
+          }
+        }
+      }
+    },
+    "Speaker %@" : {
+      "comment" : "History, Live Preview of a recording meeting: header of words one separated call voice said, numbered by first appearance, such as Speaker 2.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecher %@"
+          }
+        }
+      }
+    },
     "Speaker detection didn't finish for this recording." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Sprechererkennung wurde für diese Aufnahme nicht abgeschlossen."
+          }
+        }
+      }
+    },
+    "Speaker labels" : {
+      "comment" : "EnviousMeet Models page: the name of the live speaker labels feature and its card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung"
+          }
+        }
+      }
+    },
+    "Speaker labels could not start on this Mac. Try again, or remove the download." : {
+      "comment" : "EnviousMeet Models page, Speaker labels: the downloaded model failed to load.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprecherkennzeichnung konnte auf diesem Mac nicht starten. Versuche es erneut oder entferne den Download."
+          }
+        }
+      }
+    },
+    "Speaker labels download progress" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the download progress bar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloadfortschritt der Sprecherkennzeichnung"
+          }
+        }
+      }
+    },
+    "Speaker labels updated." : {
+      "comment" : "VoiceOver announcement while a meeting records: some live call text was just placed under its speaker's header.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung aktualisiert."
           }
         }
       }
@@ -24413,6 +24650,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anzuzeigende Wörter"
+          }
+        }
+      }
+    },
+    "While a meeting records, speaker labels separate the voices on the call, so Live Preview shows their words under Speaker 1, Speaker 2 and so on, and under names on call apps that show them. It needs one download. Labels can be wrong when people talk at the same time. The finished transcript and how speech is turned into text do not change." : {
+      "comment" : "EnviousMeet Models page: help for Speaker labels.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Während ein Meeting aufgenommen wird, unterscheidet die Sprecherkennzeichnung die Stimmen im Anruf. So zeigt die Live-Vorschau das Gesagte unter Sprecher 1, Sprecher 2 und so weiter sowie bei Anruf-Apps, die Namen anzeigen, unter deren Namen. Dafür ist ein einmaliger Download nötig. Wenn mehrere Personen gleichzeitig sprechen, kann die Zuordnung falsch sein. Das fertige Transkript und die Umwandlung von Sprache in Text ändern sich dadurch nicht."
           }
         }
       }

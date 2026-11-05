@@ -704,6 +704,9 @@
    "meetingSummaryEngine.keepCurrent",
    "meetingSummaryEngine.ollama",
    "meetingSummaryEngine.openAI"
+  ],
+  "mac-ctl-meeting-speaker-labels": [
+   "meetingSpeakerLabels"
   ]
  },
  "newSurfaces": {
@@ -856,6 +859,11 @@
    "kind": "control",
    "parent": "mac-page-meetings",
    "label": "Summary engine"
+  },
+  "mac-ctl-meeting-speaker-labels": {
+   "kind": "control",
+   "parent": "mac-page-meetings",
+   "label": "Speaker labels [Models tab; live speaker model download]"
   }
  }
 }

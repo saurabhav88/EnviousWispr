@@ -1966,7 +1966,7 @@
 
     func callWords(_ meeting: UUID, endMs: Int) -> MeetingLiveWords.Transcript {
       .init(meetingID: meeting,
-        lines: [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: endMs, text: "x", pieces: MeetingTimedPiece.untimed("x"), speakerKey: nil)],
+        lines: [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: endMs, text: "x", pieces: MeetingTimedPiece.untimed("x"))],
         tracks: [.callSound: .init(status: .running)])
     }
 
@@ -2031,7 +2031,7 @@
       #expect(rig.panel.content.testName == "countdown:10", "quiet for 6 s: the countdown starts")
       // Same furthest word end, new text: not activity.
       var edited = callWords(meeting, endMs: 2_000)
-      edited.lines = [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: 2_000, text: "y", pieces: MeetingTimedPiece.untimed("y"), speakerKey: nil)]
+      edited.lines = [.init(id: "c-1", track: .callSound, kind: .confirmed, startMs: 0, endMs: 2_000, text: "y", pieces: MeetingTimedPiece.untimed("y"))]
       rig.transcript = edited
       rig.advance(1)
       rig.coordinator.stepForTesting()
@@ -2083,7 +2083,7 @@
       rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
       rig.attempts[meeting] = UUID()
       rig.transcript = .init(meetingID: meeting,
-        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"), speakerKey: nil)],
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"))],
         tracks: [.microphone: .init(status: .running)])
       rig.coordinator.stepForTesting()
       for _ in 0..<300 {
@@ -2106,7 +2106,7 @@
       let meeting = UUID()
       rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
       rig.transcript = .init(meetingID: meeting,
-        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"), speakerKey: nil)],
+        lines: [.init(id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"))],
         tracks: [.microphone: .init(status: .running), .callSound: .init(status: .stopped(.engineFailed))])
       rig.coordinator.stepForTesting()
       for _ in 0..<310 {
@@ -2129,7 +2129,7 @@
       let meeting = UUID()
       rig.phase = .recording(meetingID: meeting, startedAt: rig.clock)
       let confirmed = LiveWordsAssembler.Line(
-        id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"), speakerKey: nil)
+        id: "m-1", track: .microphone, kind: .confirmed, startMs: 0, endMs: 500, text: "x", pieces: MeetingTimedPiece.untimed("x"))
       rig.transcript = .init(meetingID: meeting, lines: [confirmed],
         tracks: [.microphone: .init(status: .running, droppedAudio: true)])
       rig.coordinator.stepForTesting()
@@ -2137,7 +2137,7 @@
         rig.advance(2)
         // A lone provisional "." whose end keeps moving, as Apple speech showed in silence.
         rig.transcript?.lines = [confirmed,
-          .init(id: "p", track: .microphone, kind: .provisional, startMs: 600, endMs: 1_000 + tick * 2_000, text: ".", pieces: MeetingTimedPiece.untimed("."), speakerKey: nil)]
+          .init(id: "p", track: .microphone, kind: .provisional, startMs: 600, endMs: 1_000 + tick * 2_000, text: ".", pieces: MeetingTimedPiece.untimed("."))]
         rig.coordinator.tickForTesting()
       }
       #expect(rig.panel.content.testName.hasPrefix("stillInMeeting:"))

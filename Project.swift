@@ -681,6 +681,8 @@ let project = Project(
         "Sources/EnviousWispr/Resources/edit-judge-delivery-manifest.json",
         // #3242: Kev learned-word check (MLX) for polish engines without their own checker.
         "Sources/EnviousWispr/Resources/word-check-delivery-manifest.json",
+        // #4355 PR C: the live meeting speaker model (Nemotron3 diarizer, preset low).
+        "Sources/EnviousWispr/Resources/speaker-live-delivery-manifest.json",
         // #4353 D6: the bundled cloud model list, the offline fallback (Bundle.main).
         "Sources/EnviousWispr/Resources/cloud-models.json",
         "Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt",

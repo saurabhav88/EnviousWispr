@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "es",
+    "title": "etiquetas de hablantes",
+    "words": [
+      "diferenciar voces"
+    ],
+    "phrases": [
+      "quién está hablando en la reunión",
+      "mostrar quién habla en la vista previa en directo"
+    ]
+  }
+}

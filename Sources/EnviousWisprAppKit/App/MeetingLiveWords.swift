@@ -99,6 +99,8 @@ final class MeetingLiveWords {
     /// #4325: Universal was chosen but not downloaded, so Apple shows this meeting's live words
     /// (the meeting page says so). The saved choice stays Universal.
     var appleStandingIn = false
+    /// #4355 PR C: which call pieces belong to which "Speaker N" (`MeetingLiveSpeakers`).
+    var speakerLabels = MeetingLiveSpeakerLabels()
   }
 
   /// The recording meeting's live words, kept after Stop until its transcript is ready.
@@ -160,9 +162,21 @@ final class MeetingLiveWords {
   /// reaches it through `deps.resolveChoice`; the Live words row reads the same instance here.
   let choiceOwner: MeetingLiveWordsChoice.Initializer?
 
-  init(dependencies: Dependencies, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil) {
+  /// #4355 PR C: the live speaker labels owner for each recording (nil: no labels, every call
+  /// line under "Speaker").
+  let speakers: MeetingLiveSpeakers?
+
+  init(
+    dependencies: Dependencies, choiceOwner: MeetingLiveWordsChoice.Initializer? = nil,
+    speakers: MeetingLiveSpeakers? = nil
+  ) {
     self.deps = dependencies
     self.choiceOwner = choiceOwner
+    self.speakers = speakers
+    speakers?.onLabelsChanged = { [weak self] meetingID, labels in
+      guard let self, self.transcript?.meetingID == meetingID else { return }
+      self.transcript?.speakerLabels = labels
+    }
   }
 
   // MARK: - Recording state
@@ -250,6 +264,9 @@ final class MeetingLiveWords {
       tracks: [.microphone: .init(status: .starting), .callSound: .init(status: .starting)])
     let micPump = mic.pump
     let callPump = call.pump
+    // #4355 PR C: the same written call audio also reaches the speaker analysis, through its
+    // own pump (a pump has one consumer).
+    let speakerFeed = speakers?.prepareCapture(meetingID: meetingID)
     // A track writer's queue (both tracks deliver from writer release, #4355): the pump copies
     // the samples and their written span and returns; nothing else runs here. Display times
     // still come from the meeting clock (`LiveWordsAssembler`); the span travels toward the
@@ -257,7 +274,9 @@ final class MeetingLiveWords {
     return { track, samples, info in
       switch track {
       case .microphone: micPump.admit(samples, span: info.span)
-      case .callSound: callPump.admit(samples, span: info.span)
+      case .callSound:
+        callPump.admit(samples, span: info.span)
+        speakerFeed?(samples, info)
       }
     }
   }
@@ -266,6 +285,7 @@ final class MeetingLiveWords {
   func captureFailed(meetingID: UUID) {
     guard let current = recording, current.meetingID == meetingID else { return }
     retireCurrent(clearOutput: true)
+    speakers?.clear(meetingID: meetingID)
   }
 
   /// Capture started on `captured` tracks. Resolves the engine (never a download), prepares it
@@ -284,6 +304,7 @@ final class MeetingLiveWords {
       setStatus(.off(.notCaptured), kind)
     }
     current.tracks = current.tracks.filter { captured.contains($0.key) }
+    speakers?.captureStarted(meetingID: meetingID, callSound: captured.contains(.callSound))
     let (stream, wake) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     current.bridge = LiveWordsBridge(clock: clock, wake: { wake.yield() })
     let gen = current.generation
@@ -324,25 +345,33 @@ final class MeetingLiveWords {
   /// session's terminal) is applied by that cleanup while these lines are still this meeting's
   /// (#4097); the cleanup then closes admission. The lines stay until `transcriptReady`.
   func stop() {
+    // #4355 PR C: both live-words pumps' unpositioned audio (one pump per track for the whole
+    // recording), read before retirement.
+    let unpositioned = recording?.tracks.values.reduce(0) { $0 + $1.pump.accounting.unpositioned }
     retireCurrent(clearOutput: false, drainHeldAudio: true)
+    // The speaker summary is frozen from the lines this stop applied.
+    speakers?.stop(lines: transcript?.lines ?? [], liveWordsUnpositionedSamples: unpositioned ?? 0)
   }
 
   /// Delete: the same, and the live words go now.
   func delete(meetingID: UUID) {
     if recording?.meetingID == meetingID { retireCurrent(clearOutput: true) }
     if transcript?.meetingID == meetingID { transcript = nil }
+    speakers?.clear(meetingID: meetingID)
   }
 
   /// Quit: the same retirement as Stop. The process exit frees any native model left
   /// (`TranscribeCppProcessExit`).
   func quit() {
     retireCurrent(clearOutput: false)
+    speakers?.stop()
   }
 
   /// The meeting's final transcript replaced the live words.
   func transcriptReady(meetingID: UUID) {
     guard recording == nil || recording?.meetingID != meetingID else { return }
     if transcript?.meetingID == meetingID { transcript = nil }
+    speakers?.clear(meetingID: meetingID)
   }
 
   // MARK: - Universal model removal (plan §3.2)
@@ -875,6 +904,9 @@ final class MeetingLiveWords {
       }
     }
     transcript?.lines = current.assembler.lines
+    if let lines = transcript?.lines {
+      speakers?.linesChanged(lines, meetingID: current.meetingID)
+    }
     refreshDropped(generation: current.generation)
   }
 

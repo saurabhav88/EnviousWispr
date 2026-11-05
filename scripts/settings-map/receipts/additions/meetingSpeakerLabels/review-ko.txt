@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "ko",
+    "title": "화자 표시",
+    "words": [
+      "발언자",
+      "목소리 구분"
+    ],
+    "phrases": [
+      "회의에서 지금 누가 말하는지",
+      "실시간 미리보기에 말하는 사람 표시"
+    ]
+  }
+}

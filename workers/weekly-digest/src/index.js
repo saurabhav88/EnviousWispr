@@ -703,6 +703,84 @@ export function meetingEchoResetReasonsSql(prod, win) {
     LIMIT 12`;
 }
 
+/** #4355 PR C: live speaker labels across the week's `meeting.ended` rows, one row per
+ * meeting ATTEMPT (a Transcribe again repeats its recording's figures), production only.
+ * `known` counts rows carrying `live_speaker_state`; older versions and recovered attempts
+ * carry none and are left out of every sum, never read as zero. `with_remote_words` counts
+ * rows whose share exists (an attempt with no live call words has no share). Sums coalesce
+ * to 0 because HogQL sums no rows to NULL; `known` = 0 is what says nothing was measured. */
+export function meetingLiveSpeakersSql(prod, win) {
+  const known = "properties.live_speaker_state IS NOT NULL";
+  return `SELECT
+      count() AS attempts,
+      countIf(${known}) AS known,
+      countIf(properties.live_speaker_state = 'ready') AS ready,
+      countIf(properties.live_speaker_state = 'absent') AS absent,
+      countIf(properties.live_speaker_state = 'loading') AS loading,
+      countIf(properties.live_speaker_state = 'failed') AS failed,
+      countIf(properties.live_attributed_share IS NOT NULL) AS with_remote_words,
+      countIf(${known} AND toFloat(properties.live_named_speaker_count) > 0) AS named,
+      countIf(${known} AND toFloat(properties.live_backlog_skipped_ms) > 0) AS skipped_attempts,
+      coalesce(sumIf(toFloat(properties.live_backlog_skipped_ms), ${known}), 0) AS skipped_ms,
+      coalesce(sumIf(toFloat(properties.live_update_drops), ${known}), 0) AS update_drops,
+      coalesce(sumIf(toFloat(properties.live_unpositioned_ms), ${known}), 0) AS unpositioned_ms,
+      coalesce(sumIf(toFloat(properties.live_words_unpositioned_ms), ${known}), 0) AS live_words_unpositioned_ms
+    FROM events
+    WHERE event = 'meeting.ended' AND ${prod} AND ${win}`;
+}
+
+/** #4355 PR C: attempts by attribution bucket (share of live call words shown under a
+ * numbered speaker). Buckets are labels, never averaged. Zero rows is a legitimate week. */
+export function meetingLiveShareSql(prod, win) {
+  return `SELECT properties.live_attributed_share AS bucket, count() AS n
+    FROM events
+    WHERE event = 'meeting.ended' AND properties.live_attributed_share IS NOT NULL
+      AND ${prod} AND ${win}
+    GROUP BY bucket
+    ORDER BY n DESC
+    LIMIT 8`;
+}
+
+/** #4355 PR C: Speaker labels load checks (one row per completed check; a stopped check
+ * sends nothing). */
+export function speakerLabelsLoadCheckSql(prod, win) {
+  return `SELECT
+      countIf(properties.outcome = 'loaded') AS loaded,
+      countIf(properties.outcome = 'failed') AS failed,
+      count(DISTINCT if(properties.outcome = 'failed', distinct_id, NULL)) AS failed_installs
+    FROM events
+    WHERE event = 'speaker_labels.load_check' AND ${prod} AND ${win}`;
+}
+
+/** #4355 PR C: failed load checks by the macOS version each check itself reported (the
+ * version can change between launches, so it rides the check; older rows say unknown). */
+export function speakerLabelsFailedOsSql(prod, win) {
+  return `SELECT coalesce(properties.os_version, 'unknown') AS bucket, count() AS n
+    FROM events
+    WHERE event = 'speaker_labels.load_check' AND properties.outcome = 'failed'
+      AND ${prod} AND ${win}
+    GROUP BY bucket
+    ORDER BY n DESC
+    LIMIT 8`;
+}
+
+/** #4355 PR C: installs with a failed load check this window, by the Mac model their
+ * \`app.launched\` rows reported (fixed for an install; an install with no launch row in the
+ * window is not listed). Counts installs, not checks. */
+export function speakerLabelsFailedMachinesSql(prod, win) {
+  return `SELECT coalesce(properties.device_model, 'unknown') AS bucket, count(DISTINCT distinct_id) AS n
+    FROM events
+    WHERE event = 'app.launched' AND ${prod} AND ${win}
+      AND distinct_id IN (
+        SELECT distinct_id FROM events
+        WHERE event = 'speaker_labels.load_check' AND properties.outcome = 'failed'
+          AND ${prod} AND ${win}
+      )
+    GROUP BY bucket
+    ORDER BY n DESC
+    LIMIT 8`;
+}
+
 /** Website traffic. NO production predicate, deliberately.
  *
  * `productionClauseFor` always begins `properties.environment = 'production'`,
@@ -926,6 +1004,70 @@ export function formatMeetingEcho(echo, reasons) {
   }
   lines.push("", "Counted per meeting attempt, so a Transcribe again repeats its recording. Dev machines are excluded.");
   return lines;
+}
+
+const LIVE_SPEAKERS_TITLE = "Live speaker labels";
+const SHARE_ORDER = ["0", "<5%", "5-25%", "25-50%", "50-75%", "75%+"];
+
+/** #4355 PR C. Any input null means that query could not be read; the section says which
+ * part is unavailable rather than inventing a zero. */
+export function formatLiveSpeakers(live, shares, checks, failedMachines, failedOs) {
+  const lines = [LIVE_SPEAKERS_TITLE];
+  if (!live) {
+    lines.push(`Live speaker figures were ${UNAVAILABLE} when this digest ran.`);
+  } else if (live.attempts === 0) {
+    lines.push("No meetings ended this week.");
+  } else if (live.known === 0) {
+    lines.push(`${n(live.attempts)} meetings ended; none reported live speaker labels (older app versions or not known).`);
+  } else {
+    const older = live.attempts - live.known;
+    lines.push(`${n(live.known)} of ${n(live.attempts)} meetings reported live speaker labels${older > 0 ? `; ${n(older)} came from older versions or were not known` : ""}.`);
+    lines.push(`Speaker model at stop: ${n(live.ready)} ready, ${n(live.absent)} not downloaded or no call sound, ${n(live.loading)} still loading, ${n(live.failed)} failed.`);
+    if (live.with_remote_words === 0) {
+      lines.push("No meeting had live call words to label.");
+    } else if (shares == null) {
+      lines.push(`Call words under a numbered speaker were ${UNAVAILABLE}.`);
+    } else {
+      const byBucket = new Map(shares.map((r) => [r.bucket ?? "unknown", r.n]));
+      const parts = SHARE_ORDER.filter((b) => byBucket.has(b)).map((b) => `${b} ${n(byBucket.get(b))}`);
+      for (const [b, count] of byBucket) if (!SHARE_ORDER.includes(b)) parts.push(`${b} ${n(count)}`);
+      lines.push(`Call words under a numbered speaker (meetings per range): ${parts.join(", ")}.`);
+    }
+    lines.push(`${n(live.named)} meetings showed at least one call-app name.`);
+    lines.push(live.skipped_attempts > 0
+      ? `${n(live.skipped_attempts)} meetings skipped ${secondsOf(live.skipped_ms)} s of call audio to keep up; ${n(live.update_drops)} model updates were dropped.`
+      : `No call audio was skipped to keep up; ${n(live.update_drops)} model updates were dropped.`);
+    lines.push(`Audio with no known position: ${secondsOf(live.unpositioned_ms)} s of call audio for speaker labels, ${secondsOf(live.live_words_unpositioned_ms)} s for live words (microphone and call).`);
+  }
+  if (!checks) {
+    lines.push(`Load checks were ${UNAVAILABLE}.`);
+  } else if (checks.loaded + checks.failed === 0) {
+    lines.push("No Speaker labels load checks ran this week.");
+  } else {
+    lines.push(`Load checks: ${n(checks.loaded)} loaded, ${n(checks.failed)} failed.`);
+    if (checks.failed > 0) {
+      lines.push(failedOs == null
+        ? `Failed checks by macOS version were ${UNAVAILABLE}.`
+        : `Failed checks by macOS version: ${failedOs.map((r) => `${r.bucket ?? "unknown"} ${n(r.n)}`).join(", ")}.`);
+      if (failedMachines == null) {
+        lines.push(`Installs with a failed check, by Mac, were ${UNAVAILABLE}.`);
+      } else {
+        // Installs the breakdown does not list (no launch row this week, or past its eight
+        // groups) stay counted, under a neutral label.
+        const parts = failedMachines.map((r) => `${r.bucket ?? "unknown"} ${n(r.n)}`);
+        const placed = failedMachines.reduce((sum, r) => sum + r.n, 0);
+        const unplaced = Math.max(0, (checks.failed_installs ?? 0) - placed);
+        if (unplaced > 0) parts.push(`Mac model not shown ${n(unplaced)}`);
+        lines.push(`Installs with a failed check (${n(checks.failed_installs ?? placed)}), by Mac: ${parts.join(", ")}.`);
+      }
+    }
+  }
+  lines.push("", "Counted per meeting attempt, so a Transcribe again repeats its recording. Dev machines are excluded.");
+  return lines;
+}
+
+function secondsOf(ms) {
+  return (ms / 1000).toFixed(ms >= 10_000 ? 0 : 1);
 }
 
 const OLLAMA_TITLE = "Ollama model list";
@@ -1162,6 +1304,11 @@ export async function runDigest(env, deps = {}) {
     posthogTasks.push(() => querySection(env, onboardActivateSql(prod, window.win), "onboard_activate", hogqlOpts));
     posthogTasks.push(() => querySection(env, meetingEchoSql(prod, window.win), "meeting_echo", hogqlOpts));
     posthogTasks.push(() => querySection(env, meetingEchoResetReasonsSql(prod, window.win), "meeting_echo_reasons", hogqlOpts));
+    posthogTasks.push(() => querySection(env, meetingLiveSpeakersSql(prod, window.win), "meeting_live_speakers", hogqlOpts));
+    posthogTasks.push(() => querySection(env, meetingLiveShareSql(prod, window.win), "meeting_live_share", hogqlOpts));
+    posthogTasks.push(() => querySection(env, speakerLabelsLoadCheckSql(prod, window.win), "speaker_labels_load_check", hogqlOpts));
+    posthogTasks.push(() => querySection(env, speakerLabelsFailedMachinesSql(prod, window.win), "speaker_labels_failed_machines", hogqlOpts));
+    posthogTasks.push(() => querySection(env, speakerLabelsFailedOsSql(prod, window.win), "speaker_labels_failed_os", hogqlOpts));
   }
 
   const [posthogOutcome, cfOutcome, ghOutcome, sentryOutcome, ollamaOutcome, cloudOutcome] = await Promise.allSettled([
@@ -1211,6 +1358,8 @@ export async function runDigest(env, deps = {}) {
   //                     usage.active/.fresh          readAggregate, finite numbers
   //                     meetingEcho.* (9 columns)    readAggregate, finite numbers
   //                     meetingEchoReasons[].n/.bucket  readGrouped, as sources
+  //                     liveSpeakers.* (12 columns), loadChecks.*  readAggregate, finite numbers
+  //                     liveShares[], failedMachines[], failedOs[]  readGrouped, as sources
   //                     sources[].n                  readGrouped, finite number
   //                     sources[].bucket             readGrouped, present, string or null
   //                     devIds[]                     shared resolveDevIds, non-empty strings
@@ -1327,6 +1476,7 @@ export async function runDigest(env, deps = {}) {
   };
 
   let site, downloads, sources, usage, funnel, meetingEcho, meetingEchoReasons;
+  let liveSpeakers, liveShares, loadChecks, failedMachines, failedOs;
   try {
     site = readAggregate(0, "website", ["views", "visitors"]);
     downloads = readAggregate(1, "downloads", ["intents", "bots_excluded"]);
@@ -1340,6 +1490,19 @@ export async function runDigest(env, deps = {}) {
         ])
       : null;
     meetingEchoReasons = prod ? readGrouped(6, "meeting_echo_reasons", ["bucket", "n"]) : null;
+    liveSpeakers = prod
+      ? readAggregate(7, "meeting_live_speakers", [
+          "attempts", "known", "ready", "absent", "loading", "failed", "with_remote_words",
+          "named", "skipped_attempts", "skipped_ms", "update_drops", "unpositioned_ms",
+          "live_words_unpositioned_ms",
+        ])
+      : null;
+    liveShares = prod ? readGrouped(8, "meeting_live_share", ["bucket", "n"]) : null;
+    loadChecks = prod
+      ? readAggregate(9, "speaker_labels_load_check", ["loaded", "failed", "failed_installs"])
+      : null;
+    failedMachines = prod ? readGrouped(10, "speaker_labels_failed_machines", ["bucket", "n"]) : null;
+    failedOs = prod ? readGrouped(11, "speaker_labels_failed_os", ["bucket", "n"]) : null;
   } catch (err) {
     await postFailureNotice(env, label, { fetchFn });
     throw err;
@@ -1372,6 +1535,7 @@ export async function runDigest(env, deps = {}) {
       toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
       toEmbed(formatAppUsage(usage, funnel)),
       toEmbed(formatMeetingEcho(meetingEcho, meetingEchoReasons)),
+      toEmbed(formatLiveSpeakers(liveSpeakers, liveShares, loadChecks, failedMachines, failedOs)),
       toEmbed(formatOllamaList(ollama)),
       toEmbed(formatCloudModelList(cloud)),
       toEmbed(sentryLines),

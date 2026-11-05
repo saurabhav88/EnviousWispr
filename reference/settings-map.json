@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 311,
-    "searchable" : 284,
-    "vocabularyBlocks" : 9088
+    "nodes" : 312,
+    "searchable" : 285,
+    "vocabularyBlocks" : 9120
   },
   "fingerprints" : {
-    "mapSHA256" : "16ae9d3acedbfcb8d71aab77ac101a7856d72a95601dfef0a2e5182b90598c30",
-    "uiCatalogSHA256" : "1f061918286946966c214ab9815c829b21b7ac7dc2ae3fb2c07f2836fdc08af8",
+    "mapSHA256" : "eea9daea98589fbe29969e0c3bf14476c78e409fe842641923874ead1f4653f0",
+    "uiCatalogSHA256" : "81c5ba8215b483420f29c3936029773f60cd25a6b641d03aff3ff1c81f341b7a",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "01f63261e01077041f88573647ff9eda5533a54ffe751848c58e53916f22762e"
+    "vocabularySHA256" : "25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487"
   },
   "interfaceLanguages" : [
     "en",
@@ -42470,6 +42470,379 @@
           "words" : [
             "会后转写",
             "会后逐字稿"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.meetings",
+        "meetings.tab.models"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Zeigt in der Live-Vorschau, wer gerade spricht, während ein Meeting aufgenommen wird.",
+        "en" : "Shows who is talking in Live Preview while a meeting records.",
+        "key" : "Shows who is talking in Live Preview while a meeting records.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "meetings",
+        "tab" : "models"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "meetingSpeakerLabels",
+      "kind" : "feature",
+      "parent" : "meetings.tab.models",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "meetingSpeakerLabels",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Sprecherkennzeichnung",
+        "en" : "Speaker labels",
+        "key" : "Speaker labels",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "من يتحدث الآن في الاجتماع",
+            "إظهار المتحدث في المعاينة المباشرة"
+          ],
+          "title" : "تسميات المتحدثين",
+          "words" : [
+            "تمييز الأصوات"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "кой говори в момента по време на срещата",
+            "показване на говорещия в прегледа на живо"
+          ],
+          "title" : "обозначаване на говорещите",
+          "words" : [
+            "разграничаване на гласове"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "kdo právě mluví na schůzce",
+            "zobrazit mluvčího v živém náhledu"
+          ],
+          "title" : "označení mluvčích",
+          "words" : [
+            "rozlišení hlasů"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "hvem taler lige nu i mødet",
+            "vis hvem der taler i livevisningen"
+          ],
+          "title" : "markering af talere",
+          "words" : [
+            "taleradskillelse"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wer spricht gerade im Meeting",
+            "unterscheide Stimmen im Meeting"
+          ],
+          "words" : [
+            "Sprecherzuordnung",
+            "Sprechererkennung",
+            "Sprechermodell"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "ποιος μιλάει τώρα στη συνάντηση",
+            "εμφάνιση ομιλητή στη ζωντανή προεπισκόπηση"
+          ],
+          "title" : "ετικέτες ομιλητών",
+          "words" : [
+            "διάκριση ομιλητών"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "who is talking in the meeting",
+            "show who is speaking in live preview"
+          ],
+          "words" : [
+            "diarization",
+            "speaker identification",
+            "speaker labels"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "quién está hablando en la reunión",
+            "mostrar quién habla en la vista previa en directo"
+          ],
+          "title" : "etiquetas de hablantes",
+          "words" : [
+            "diferenciar voces"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kes koosolekul praegu räägib",
+            "näita kõnelejat reaalajas eelvaates"
+          ],
+          "title" : "kõnelejate tähised",
+          "words" : [
+            "häälte eristamine"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kuka kokouksessa puhuu juuri nyt",
+            "näytä kokouksen puhujat reaaliaikaisessa esikatselussa"
+          ],
+          "title" : "puhujien tunnisteet",
+          "words" : [
+            "puhujien erottelu"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "qui parle en ce moment dans la réunion",
+            "afficher qui parle dans l’aperçu en direct"
+          ],
+          "title" : "identification des intervenants",
+          "words" : [
+            "locuteurs",
+            "distinction des voix"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "मीटिंग में अभी कौन बोल रहा है",
+            "लाइव प्रीव्यू में दिखाएँ कि कौन बोल रहा है"
+          ],
+          "title" : "बोलने वालों की पहचान",
+          "words" : [
+            "बोलने वाला",
+            "आवाज़ों में फ़र्क"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "tko trenutačno govori na sastanku",
+            "prikaži govornika u pregledu uživo"
+          ],
+          "title" : "oznake govornika",
+          "words" : [
+            "razlikovanje glasova"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "ki beszél éppen a megbeszélésen",
+            "beszélő megjelenítése az élő előnézetben"
+          ],
+          "title" : "beszélők jelölése",
+          "words" : [
+            "beszélők megkülönböztetése"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "chi sta parlando nella riunione",
+            "mostra chi parla nell’anteprima in tempo reale"
+          ],
+          "title" : "etichette degli interlocutori",
+          "words" : [
+            "interlocutori",
+            "distinzione delle voci"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "会議で今誰が話しているか",
+            "ライブプレビューに話者を表示"
+          ],
+          "title" : "話者ラベル",
+          "words" : [
+            "話者分離",
+            "発言者",
+            "声の区別"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "회의에서 지금 누가 말하는지",
+            "실시간 미리보기에 말하는 사람 표시"
+          ],
+          "title" : "화자 표시",
+          "words" : [
+            "발언자",
+            "목소리 구분"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kas dabar kalba susitikime",
+            "rodyti kalbėtoją tiesioginėje peržiūroje"
+          ],
+          "title" : "kalbėtojų žymos",
+          "words" : [
+            "balsų atskyrimas"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "kurš pašlaik runā sapulcē",
+            "rādīt runātājus sapulces priekšskatījumā"
+          ],
+          "title" : "runātāju apzīmējumi",
+          "words" : [
+            "balsu atšķiršana"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "min qed jitkellem waqt il-laqgħa",
+            "uri min qed jitkellem fil-previżjoni diretta"
+          ],
+          "title" : "tikketti tal-kelliema",
+          "words" : [
+            "distinzjoni tal-vuċijiet"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "wie praat er nu in de vergadering",
+            "toon wie er spreekt tijdens de vergadering"
+          ],
+          "title" : "sprekerlabels",
+          "words" : [
+            "sprekers onderscheiden"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "kto teraz mówi na spotkaniu",
+            "oznaczaj rozmówców w podglądzie na żywo"
+          ],
+          "title" : "oznaczanie rozmówców",
+          "words" : [
+            "rozróżnianie głosów"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "quem está falando na reunião",
+            "mostrar quem fala na prévia ao vivo"
+          ],
+          "title" : "identificação de falantes",
+          "words" : [
+            "interlocutores",
+            "distinção de vozes"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "cine vorbește acum în ședință",
+            "arată cine vorbește în previzualizarea live"
+          ],
+          "title" : "etichete pentru vorbitori",
+          "words" : [
+            "diferențierea vocilor"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "кто сейчас говорит на встрече",
+            "показывать говорящих в предпросмотре во время записи встречи"
+          ],
+          "title" : "метки говорящих",
+          "words" : [
+            "определение говорящего",
+            "диаризация"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "kto práve hovorí na stretnutí",
+            "zobraziť hovoriaceho v živom náhľade"
+          ],
+          "title" : "označenie hovoriacich",
+          "words" : [
+            "rozlíšenie hlasov"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "kdo trenutno govori na sestanku",
+            "prikaži govorca v predogledu v živo"
+          ],
+          "title" : "oznake govorcev",
+          "words" : [
+            "razločevanje glasov"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "vem pratar just nu på mötet",
+            "visa vem som pratar i liveförhandsvisningen"
+          ],
+          "title" : "talaretiketter",
+          "words" : [
+            "talarseparering"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "toplantıda şu an kim konuşuyor",
+            "canlı önizlemede konuşanı göster"
+          ],
+          "title" : "konuşmacı etiketleri",
+          "words" : [
+            "sesleri ayırt etme"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "хто зараз говорить на зустрічі",
+            "показувати, хто говорить, під час запису зустрічі"
+          ],
+          "title" : "позначення мовців",
+          "words" : [
+            "розрізнення голосів",
+            "діаризація"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "ai đang nói trong cuộc họp",
+            "hiện người đang nói trong bản xem trước trực tiếp"
+          ],
+          "title" : "nhãn người nói",
+          "words" : [
+            "phân biệt giọng nói"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "显示会议中谁在说话",
+            "在会议实时预览中区分说话人"
+          ],
+          "title" : "说话人标签",
+          "words" : [
+            "发言人",
+            "区分说话人"
           ]
         }
       }

@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "hu",
+    "title": "beszélők jelölése",
+    "words": [
+      "beszélők megkülönböztetése"
+    ],
+    "phrases": [
+      "ki beszél éppen a megbeszélésen",
+      "beszélő megjelenítése az élő előnézetben"
+    ]
+  }
+}

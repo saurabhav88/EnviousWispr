@@ -219,7 +219,6 @@ struct LiveWordsAssemblerTests {
     #expect(MeetingTimedPiece.text(of: confirmed.pieces) == "One two", "pieces agree with the text")
     #expect(confirmed.pieces.map(\.span) == [Self.timed("One", 0).span, nil])
     #expect(lines[1].pieces == MeetingTimedPiece.untimed("thr"), "provisional words carry no timing")
-    #expect(lines.allSatisfy { $0.speakerKey == nil })
   }
 
   @Test("correction inside one piece keeps every span, even when it changes the length")

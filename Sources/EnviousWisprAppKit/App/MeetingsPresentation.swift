@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLivePreview
 import EnviousWisprPipeline
 import Foundation
 
@@ -36,6 +37,148 @@ enum MeetingsPresentation {
   }
 
   // MARK: - Live words (R42, R52)
+
+  /// #4355 PR C: one header and its text in the live words: consecutive text of the same
+  /// speaker shares one block. Each run keeps its source line's identity and kind.
+  struct LiveBlock: Identifiable, Equatable {
+    struct Run: Identifiable, Equatable {
+      let id: String
+      /// The live line this run's text came from.
+      let lineID: String
+      let text: String
+      let kind: LiveWordsAssembler.Line.Kind
+    }
+    let id: String
+    let speaker: LiveWordsAssembler.LiveSpeakerKey
+    let startMs: Int
+    var runs: [Run]
+  }
+
+  /// Splits each live line into runs of one speaker, piece by piece (never by the line's
+  /// combined span), then joins consecutive runs of the same speaker into blocks. Every piece's
+  /// text appears exactly once, in order.
+  static func liveBlocks(
+    _ lines: [LiveWordsAssembler.Line], labels: MeetingLiveSpeakerLabels
+  ) -> [LiveBlock] {
+    var blocks: [LiveBlock] = []
+    for line in lines {
+      var runStart = 0
+      var current: (key: LiveWordsAssembler.LiveSpeakerKey, text: String, startMs: Int)?
+      func flush() {
+        guard let run = current else { return }
+        let text = run.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        current = nil
+        guard !text.isEmpty else { return }
+        let item = LiveBlock.Run(
+          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind)
+        if let last = blocks.indices.last, blocks[last].speaker == run.key {
+          blocks[last].runs.append(item)
+        } else {
+          blocks.append(
+            LiveBlock(id: item.id, speaker: run.key, startMs: run.startMs, runs: [item]))
+        }
+      }
+      for (index, piece) in line.pieces.enumerated() {
+        let key = labels.key(for: piece, track: line.track)
+        if let run = current, run.key == key {
+          current?.text += piece.text
+        } else {
+          flush()
+          runStart = index
+          current = (key, piece.text, runStartMs(piece, line: line))
+        }
+      }
+      flush()
+    }
+    return blocks
+  }
+
+  /// One row of the live words: ONE live line, keyed by the line's identity, so regrouping
+  /// never removes or reparents a line's text (merging or splitting runs only changes headers).
+  /// `header` is the block header above the row when the line opens a block; a speaker change
+  /// inside the line is a `segments` entry with its own header, drawn inside the row's text.
+  struct LiveRow: Identifiable, Equatable {
+    struct Header: Equatable {
+      let speaker: LiveWordsAssembler.LiveSpeakerKey
+      let startMs: Int
+    }
+    struct Segment: Equatable {
+      /// Nil when the segment continues the block above.
+      let header: Header?
+      let text: String
+    }
+    let id: String
+    let kind: LiveWordsAssembler.Line.Kind
+    let header: Header?
+    let segments: [Segment]
+  }
+
+  static func liveRows(_ blocks: [LiveBlock]) -> [LiveRow] {
+    var rows: [LiveRow] = []
+    var lineID: String?
+    var kind: LiveWordsAssembler.Line.Kind = .confirmed
+    var header: LiveRow.Header?
+    var segments: [LiveRow.Segment] = []
+    func flush() {
+      guard let id = lineID else { return }
+      rows.append(LiveRow(id: id, kind: kind, header: header, segments: segments))
+    }
+    for block in blocks {
+      for (index, run) in block.runs.enumerated() {
+        let opens = index == 0 ? LiveRow.Header(speaker: block.speaker, startMs: block.startMs) : nil
+        if run.lineID != lineID {
+          flush()
+          lineID = run.lineID
+          kind = run.kind
+          header = opens
+          segments = [LiveRow.Segment(header: nil, text: run.text)]
+        } else {
+          segments.append(LiveRow.Segment(header: opens, text: run.text))
+        }
+      }
+    }
+    flush()
+    return rows
+  }
+
+  /// When a run starts: its first piece's written audio position, so a later speaker in a long
+  /// line is not stamped with the line's start. Never before the line's own start (written
+  /// positions can trail the meeting clock after a capture gap); untimed pieces use the line's.
+  private static func runStartMs(_ piece: MeetingTimedPiece, line: LiveWordsAssembler.Line) -> Int
+  {
+    guard let span = piece.span else { return line.startMs }
+    return max(line.startMs, MeetingTranscriptionJob.ms(span.startSample))
+  }
+
+  /// A live block's header: "You", the call app's name for the speaker (`names`, by number),
+  /// "Speaker N", or "Speaker" while unresolved.
+  static func liveSpeakerHeader(
+    _ key: LiveWordsAssembler.LiveSpeakerKey, names: [Int: String] = [:]
+  ) -> String {
+    switch key {
+    case .you:
+      return String(localized: "You", comment: "EnviousMeet: the microphone level meter's label.")
+    case .remote(let number):
+      if let value = Int(number), let name = names[value] { return name }
+      return String(
+        localized: "Speaker \(number)",
+        comment:
+          "History, Live Preview of a recording meeting: header of words one separated call voice said, numbered by first appearance, such as Speaker 2.")
+    case .unresolved:
+      return String(
+        localized: "Speaker",
+        comment:
+          "History, Live Preview of a recording meeting: header of call words not yet given to one voice.")
+    }
+  }
+
+  /// The accessibility announcement when settled live text moved under its speakers.
+  static var liveSpeakersUpdated: String {
+    String(
+      localized: "Speaker labels updated.",
+      comment:
+        "VoiceOver announcement while a meeting records: some live call text was just placed under its speaker's header.")
+  }
 
   /// The live words' label: the microphone is the user, the call track is the call.
   static func liveSpeaker(_ track: MeetingTrackKind) -> String {

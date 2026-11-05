@@ -66,8 +66,12 @@ struct SentryScopeWriterFreezeTests {
   /// that has an echo summary: fixed stage `meeting`, fixed message, data =
   /// `meetingEchoBreadcrumbData` (aec_eligible_ms, aec_passthrough_ms, aec_reset_count integers
   /// and the closed aec_init_outcome / aec_reset_reason strings). No title, word, path or id.
+  /// #4355 PR C: `trackMeetingEnded` adds a second breadcrumb per attempt that has a live
+  /// speaker summary: fixed stage `meeting`, fixed message, data =
+  /// `meetingLiveSpeakersBreadcrumbData` (the `live_*` integers, the closed state and share
+  /// bucket strings and the bundled model revision). No name, word, path or id.
   static let inventoryFingerprint =
-    "9aafa91904c36ab791fb5f06d685ebb5a4f96335e0b2d6a18ea570f097bbcb02"
+    "f90a282e6a54f5eca02e4708822d382aaaad843cbdf54c193a1ea3f080714696"
 
   struct Site: Hashable, Comparable {
     let file: String

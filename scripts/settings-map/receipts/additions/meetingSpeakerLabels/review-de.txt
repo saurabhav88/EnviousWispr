@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "de",
+    "words": [
+      "Sprechererkennung",
+      "Sprecherzuordnung",
+      "Sprecherwechsel"
+    ],
+    "phrases": [
+      "wer spricht gerade im Meeting",
+      "zeig mir in der Live-Vorschau, wer spricht"
+    ]
+  }
+}

@@ -21,6 +21,7 @@ struct MeetingModelsTab: View {
           MeetingTranscriptEngineCard()
           MeetingTranscriptLanguageSection()
         }
+        MeetingSpeakerLabelsCard()
       }
     }
   }
@@ -469,9 +470,235 @@ enum MeetingEngineStatusPresentation {
     }
   }
 
+  /// #4355 PR C: Speaker labels, reusing the Live Preview chip labels for the download states.
+  static func speakerLabels(_ status: MeetingSpeakerLabelsModel.Status) -> ProviderStatus {
+    switch status {
+    case .ready:
+      ProviderStatus(label: EngineSummaryCopy.ready, tone: .ready)
+    case .checking:
+      ProviderStatus(label: EngineSummaryCopy.checking, tone: .unavailable)
+    case .waitingForMeeting:
+      ProviderStatus(
+        label: String(localized: MeetingSpeakerLabelsCopy.waitingChip), tone: .needsSetup)
+    case .queuedForMeeting:
+      ProviderStatus(
+        label: String(localized: MeetingSpeakerLabelsCopy.queuedChip), tone: .needsSetup)
+    case .notDownloaded:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup)
+    case .downloading:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup)
+    case .downloadFailed:
+      ProviderStatus(label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error)
+    case .loadFailed, .unavailableInThisBuild:
+      ProviderStatus(
+        label: String(localized: "Unavailable", comment: "AI Polish provider status chip."),
+        tone: .unavailable)
+    }
+  }
+
   /// Parakeet: the Engine tab's mapping over a fresh admission read (nil while checking).
   static func parakeet(admitted: Bool?) -> ProviderStatus {
     EngineSummaryPresentation.fastModelStatus(admitted: admitted)
+  }
+}
+
+// MARK: - Speaker labels
+
+/// #4355 PR C: the Speaker labels card. Download, progress, Cancel, Try Again and Remove all go
+/// through `MeetingSpeakerLabelsModel` (app-owned) and the delivery home's one door, so closing
+/// Settings never drops a download or a check. Ready only after the downloaded model loaded once
+/// on this Mac.
+struct MeetingSpeakerLabelsCard: View {
+  @Environment(MeetingSpeakerLabelsModel.self) private var model
+
+  var body: some View {
+    // The section heading the other Models sections carry (the Transcript language precedent:
+    // heading, then the row with the same name).
+    BrandedSection(header: MeetingSpeakerLabelsCopy.title) {
+      BrandedRow(showDivider: false) {
+        SettingsRow(
+          map: .id(.meetingSpeakerLabels), icon: "person.2.wave.2",
+          help: MeetingSpeakerLabelsCopy.help
+        ) {
+          action
+        }
+        // The chip leads the status lines (the Live Preview card's place for it), so a long
+        // translated title keeps the whole title line at narrow widths (UX review: German broke
+        // "Sprecherkennzeichnung" mid-word beside the chip).
+        .rowStatus {
+          VStack(alignment: .leading, spacing: 4) {
+            ProviderStatusChip(
+              status: MeetingEngineStatusPresentation.speakerLabels(model.status))
+            statusLine
+          }
+        }
+      }
+    }
+    // A check starts when the model is admitted while the card is shown, and when it appears.
+    // Admission is part of the ID: validating an existing install and an admitted, unchecked
+    // model both show Checking, so the status alone would not change when admission finishes.
+    .task(id: CheckTrigger(status: model.status, installed: model.isInstalled)) {
+      model.checkIfNeeded()
+    }
+  }
+
+  private struct CheckTrigger: Equatable {
+    let status: MeetingSpeakerLabelsModel.Status
+    let installed: Bool
+  }
+
+  @ViewBuilder private var statusLine: some View {
+    switch model.status {
+    case .unavailableInThisBuild:
+      meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.unavailable))
+    case .notDownloaded:
+      if model.downloadRefused {
+        meetingStatusText(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
+      } else if let bytes = model.downloadBytes {
+        meetingStatusText(MeetingSpeakerLabelsCopy.downloadSize(bytes))
+      }
+    case .queuedForMeeting:
+      meetingStatusText(LivePreviewEngineCopy.waitingForMeeting)
+    case .downloading(let written, let total):
+      VStack(alignment: .leading, spacing: 4) {
+        if let written, let total, total > 0 {
+          let progress = MeetingSpeakerLabelsCopy.progress(written: written, total: total)
+          meetingStatusText(progress)
+          ProgressView(value: Double(written), total: Double(total)).frame(maxWidth: 220)
+            .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.progressName))
+            .accessibilityValue(progress)
+        } else {
+          ProgressView().controlSize(.small)
+            .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.progressName))
+        }
+      }
+    case .downloadFailed(let failure):
+      meetingStatusText(MeetingSpeakerLabelsCopy.downloadFailure(failure))
+    case .checking:
+      meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.checking))
+    case .waitingForMeeting:
+      meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.checkAfterMeeting))
+    case .ready:
+      if model.removeWaitsForMeeting {
+        meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.removeAfterMeeting))
+      }
+    case .loadFailed:
+      meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.loadFailed))
+    }
+  }
+
+  /// One action per state, at the row's trailing edge. Remove is off while a meeting is active (the
+  /// delivery home refuses it too).
+  @ViewBuilder private var action: some View {
+    switch model.status {
+    case .unavailableInThisBuild, .checking, .waitingForMeeting:
+      EmptyView()
+    case .notDownloaded:
+      Button(String(localized: SettingsItemCopy.LivePreview.universalDownload)) {
+        model.download()
+      }
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.downloadName))
+    case .downloadFailed:
+      Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) { model.download() }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryDownloadName))
+    case .queuedForMeeting, .downloading:
+      Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) { model.cancel() }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.cancelName))
+    case .ready:
+      removeButton
+    case .loadFailed:
+      HStack(spacing: 8) {
+        Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) {
+          model.retryCheck()
+        }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryCheckName))
+        removeButton
+      }
+    }
+  }
+
+  private var removeButton: some View {
+    Button(String(localized: SettingsItemCopy.LivePreview.universalRemove)) { model.remove() }
+      .disabled(model.removeWaitsForMeeting)
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.removeName))
+  }
+}
+
+/// #4355 PR C: the Speaker labels card's words. It never promises names on every call app or that
+/// one label is always one person.
+enum MeetingSpeakerLabelsCopy {
+  static let title = LocalizedStringResource(
+    "Speaker labels",
+    comment: "EnviousMeet Models page: the name of the live speaker labels feature and its card.")
+  static let short = LocalizedStringResource(
+    "Shows who is talking in Live Preview while a meeting records.",
+    comment: "EnviousMeet Models page: the short line under Speaker labels.")
+  static let help = LocalizedStringResource(
+    "While a meeting records, speaker labels separate the voices on the call, so Live Preview shows their words under Speaker 1, Speaker 2 and so on, and under names on call apps that show them. It needs one download. Labels can be wrong when people talk at the same time. The finished transcript and how speech is turned into text do not change.",
+    comment: "EnviousMeet Models page: help for Speaker labels.")
+  static let unavailable = LocalizedStringResource(
+    "Not available in this version of EnviousWispr.",
+    comment: "EnviousMeet Models page, Speaker labels: the model is missing from this build.")
+  static let checking = LocalizedStringResource(
+    "Checking that speaker labels work on this Mac.",
+    comment: "EnviousMeet Models page, Speaker labels: the downloaded model is being loaded once to check it works.")
+  static let checkAfterMeeting = LocalizedStringResource(
+    "Downloaded. The check runs when the meeting ends.",
+    comment: "EnviousMeet Models page, Speaker labels: the check that the model works waits for the meeting to end.")
+  static let loadFailed = LocalizedStringResource(
+    "Speaker labels could not start on this Mac. Try again, or remove the download.",
+    comment: "EnviousMeet Models page, Speaker labels: the downloaded model failed to load.")
+  static let removeAfterMeeting = LocalizedStringResource(
+    "Remove is available when the meeting ends.",
+    comment: "EnviousMeet Models page, Speaker labels: Remove is off while a meeting records or is being transcribed.")
+  static let queuedChip = LocalizedStringResource(
+    "Download queued",
+    comment: "EnviousMeet Models page, Speaker labels: status chip. The download was asked for during a meeting and starts when it ends.")
+  static let waitingChip = LocalizedStringResource(
+    "Check after the meeting",
+    comment: "EnviousMeet Models page, Speaker labels: status chip. Downloaded; the check that it works runs when the meeting ends.")
+  static let downloadName = LocalizedStringResource(
+    "Download speaker labels",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Download button.")
+  static let cancelName = LocalizedStringResource(
+    "Cancel speaker labels download",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Cancel button.")
+  static let retryDownloadName = LocalizedStringResource(
+    "Retry speaker labels download",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after a failed download.")
+  static let retryCheckName = LocalizedStringResource(
+    "Retry speaker labels check",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after the model failed to start.")
+  static let removeName = LocalizedStringResource(
+    "Remove speaker labels",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Remove button.")
+  static let progressName = LocalizedStringResource(
+    "Speaker labels download progress",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the download progress bar.")
+  static let notEnoughSpace = LocalizedStringResource(
+    "Not enough free space for speaker labels. Free up some space and try again.",
+    comment: "EnviousMeet Models page, Speaker labels: the download failed because the disk is full.")
+
+  static func downloadSize(_ bytes: Int64) -> String {
+    let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    return String(
+      localized: "One download of \(size).",
+      comment: "EnviousMeet Models page, Speaker labels: the download size before downloading, such as 199 MB.")
+  }
+
+  static func progress(written: Int64, total: Int64) -> String {
+    let done = ByteCountFormatter.string(fromByteCount: written, countStyle: .file)
+    let all = ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    return String(
+      localized: "Downloading: \(done) of \(all)",
+      comment: "EnviousMeet Models page, Speaker labels: download progress, such as 50 MB of 199 MB.")
+  }
+
+  /// Why the download stopped. The shared delivery copy for every reason except full disk, whose
+  /// shared sentence names the speech model and its size.
+  static func downloadFailure(_ failure: DeliveryFailure) -> String {
+    if failure.reason == .insufficientDisk { return String(localized: notEnoughSpace) }
+    return ModelDeliveryCopy.message(reason: failure.reason, detail: failure.detail)
   }
 }
 

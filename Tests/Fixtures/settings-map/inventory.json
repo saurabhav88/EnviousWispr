@@ -2687,6 +2687,24 @@
    }
   },
   {
+   "id": "meetingSpeakerLabels",
+   "kind": "feature",
+   "destination": {
+    "page": "meetings",
+    "tab": "models"
+   },
+   "disposition": "mapped",
+   "parent": "meetings.tab.models",
+   "target": "meetingSpeakerLabels",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Shows who is talking in Live Preview while a meeting records."
+   }
+  },
+  {
    "id": "meetingUseCalendarForNames",
    "kind": "setting",
    "destination": {

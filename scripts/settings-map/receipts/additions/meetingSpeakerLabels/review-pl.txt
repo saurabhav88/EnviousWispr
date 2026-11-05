@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "pl",
+    "title": "oznaczanie rozmówców",
+    "words": [
+      "rozróżnianie głosów"
+    ],
+    "phrases": [
+      "kto teraz mówi na spotkaniu",
+      "oznaczaj rozmówców w podglądzie na żywo"
+    ]
+  }
+}

@@ -38,6 +38,7 @@ struct MeetingOnboardingModelTests {
     }
     var callSoundSupported = true
     var emitted: [MeetingSetupTelemetry] = []
+    var speakerLabelsRequests = 0
     var clock = Date(timeIntervalSince1970: 1_000_000)
 
     init() throws {
@@ -64,6 +65,7 @@ struct MeetingOnboardingModelTests {
         callSoundSupported: { [unowned self] in callSoundSupported },
         settings: settings,
         emit: { [unowned self] in emitted.append($0) },
+        requestSpeakerLabelsModel: { [unowned self] in speakerLabelsRequests += 1 },
         now: { [unowned self] in clock }))
   }
 
@@ -93,8 +95,11 @@ struct MeetingOnboardingModelTests {
     #expect(rig.model.screen == .done)
     #expect(rig.model.unresolved.count == 1)
     rig.clock = rig.clock.addingTimeInterval(42)
+    #expect(rig.speakerLabelsRequests == 0, "nothing downloads before setup finishes")
     rig.model.finish()
     #expect(rig.settings.meetingOnboardingComplete)
+    // #4355 PR C: finishing setup asks for the speaker labels model once, without waiting.
+    #expect(rig.speakerLabelsRequests == 1)
     #expect(rig.emitted.count == 1)
     let row = try #require(rig.emitted.first)
     #expect(row.outcome == .finished)

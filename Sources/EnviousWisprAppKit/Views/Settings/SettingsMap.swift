@@ -764,6 +764,15 @@ enum SettingsMap {
       description: .resource(MeetingsCopy.transcriptLanguageShort),
       parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
       visibility: .always, target: .meetingTranscriptLanguage, fallbacks: []),
+    // #4355 PR C: Speaker labels. Download, Cancel, Try Again and Remove are actions of the card,
+    // not places of their own (the Live words precedent above): a search arrives at the card,
+    // which says what to do.
+    SettingsMapNode(
+      id: .meetingSpeakerLabels, structure: .item, item: .feature,
+      title: .resource(MeetingSpeakerLabelsCopy.title),
+      description: .resource(MeetingSpeakerLabelsCopy.short),
+      parent: .meetingsTabModels, destination: .meetings(.models), dictionaryTab: nil,
+      visibility: .always, target: .meetingSpeakerLabels, fallbacks: []),
     // #4017 R5: name meetings from the calendar. Like the two switches above, it is on the page
     // whenever the page shows its settings; until EnviousMeet's setup is finished the page
     // shows the setup instead, and a search arrives on the page itself.

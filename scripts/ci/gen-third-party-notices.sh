@@ -274,7 +274,9 @@ if [[ "$MODE" == "check" ]]; then
   # without it fails the release gate rather than shipping quietly.
   # #996 phase D: mmBERT-small's attribution is appended after the S1 section
   # (same reason), so the gate names it too; #3482 adds multilingual-e5-small's.
-  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP' 'multilingual-e5-small by Microsoft Corporation'; do
+  # #4355 PR C: OpenMDW-1.1 requires its text and the notices of origin with the
+  # speaker model, so the gate names the model, NVIDIA's origin and the agreement.
+  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP' 'multilingual-e5-small by Microsoft Corporation' 'nvidia/Nemotron-3-Diarization by NVIDIA, OpenMDW-1.1' 'OpenMDW License Agreement, version 1.1'; do
     if ! grep -qF "$needle" "$NOTICES"; then
       echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
       stale=1
@@ -396,6 +398,29 @@ printf 'OpenAI Whisper licence:\n\n'
 cat "$WHISPER_MIT"
 printf '\nGGUF conversion repositories licence:\n\n'
 cat "$WHISPER_APACHE"
+
+# #4355 PR C: the live meeting speaker model is SERVED by us (models.enviouswispr.com, the
+# pinned Hugging Face revision as backup). OpenMDW-1.1 requires a copy of the agreement and
+# the notices of origin to travel with any distribution, so both ship here.
+SPEAKER_LIVE_LICENSE="${PROJ_ROOT}/Sources/EnviousWispr/Resources/nemotron3-diarization-OpenMDW-1.1-LICENSE.txt"
+[[ -f "$SPEAKER_LIVE_LICENSE" ]] || { echo "error: missing $SPEAKER_LIVE_LICENSE" >&2; exit 1; }
+printf '\n'
+printf 'Nemotron 3 Diarization (CoreML, live meeting speaker labels)\n'
+printf '  Version: Hugging Face revision 25a90f97 (FluidInference/nemotron-3-diarization-coreml)\n'
+printf '  License: OpenMDW-1.1 (https://github.com/OpenMDW/OpenMDW/blob/main/1.1/LICENSE.OpenMDW-1.1)\n'
+printf '  Source:  https://huggingface.co/FluidInference/nemotron-3-diarization-coreml\n\n'
+printf 'EnviousWispr downloads this speaker model for live speaker labels in EnviousMeet;\n'
+printf 'it is not distributed inside this disk image. The files are served from\n'
+printf 'models.enviouswispr.com, with the Hugging Face revision above as a backup\n'
+printf 'source. Notices of origin:\n'
+printf '  - Model: nvidia/Nemotron-3-Diarization by NVIDIA, OpenMDW-1.1\n'
+printf '    (https://huggingface.co/nvidia/Nemotron-3-Diarization)\n'
+printf '  - Core ML conversion: FluidInference/nemotron-3-diarization-coreml by Fluid\n'
+printf '    Inference, OpenMDW-1.1\n'
+printf 'Envious Labs did not modify the model. The installed files are byte-identical\n'
+printf 'to the publisher'"'"'s files and are checked against their SHA-256 before use.\n\n'
+cat "$SPEAKER_LIVE_LICENSE"
+printf '\n'
 
 # S1-mini is, like Parakeet Ultra above, SERVED by us from models.enviouswispr.com
 # rather than by its publisher, which makes us a redistributor under

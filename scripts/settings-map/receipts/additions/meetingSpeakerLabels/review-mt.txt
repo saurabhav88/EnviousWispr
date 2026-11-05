@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "mt",
+    "title": "tikketti tal-kelliema",
+    "words": [
+      "distinzjoni tal-vuċijiet"
+    ],
+    "phrases": [
+      "min qed jitkellem waqt il-laqgħa",
+      "uri min qed jitkellem fil-previżjoni diretta"
+    ]
+  }
+}

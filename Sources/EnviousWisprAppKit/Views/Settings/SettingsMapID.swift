@@ -183,6 +183,8 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   // #4320: the transcript Auto-detect switch, beside the Transcript language row.
   case meetingTranscriptAutoDetect = "meetingTranscriptAutoDetect"
   case meetingTranscriptLanguage = "meetingTranscriptLanguage"
+  // #4355 PR C: the Speaker labels card (live speaker model download and readiness).
+  case meetingSpeakerLabels = "meetingSpeakerLabels"
   case meetingTurnsOffDictation = "meetingTurnsOffDictation"
   case meetingFollowsCallMute = "meetingFollowsCallMute"
   case meetingUseCalendarForNames = "meetingUseCalendarForNames"

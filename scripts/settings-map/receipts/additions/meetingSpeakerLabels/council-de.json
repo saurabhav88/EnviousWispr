@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1793853293-8cb4bfcd",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1793853293-8cb4bfcd",
+  "providers": {
+    "openai": {
+      "content": "- **Sprechererkennung:** Verst\u00e4ndlich und passend, kann aber auch die Identifikation bestimmter Personen nahelegen. Hier werden Stimmen zun\u00e4chst Sprechern zugeordnet.\n- **Sprecherzuordnung:** Treffend, nat\u00fcrlich und klar von den anderen Einstellungen abgegrenzt.\n- **Sprecherwechsel:** Thematisch verwandt, aber zu ungenau f\u00fcr diese Karte.\n- **wer spricht gerade im Meeting:** Nat\u00fcrlich und passend zur Kennzeichnung w\u00e4hrend der Aufnahme.\n- **zeig mir in der Live-Vorschau, wer spricht:** Inhaltlich passend, aber als Sucheingabe etwas umst\u00e4ndlich; au\u00dferdem enth\u00e4lt es einen Bindestrich.\n\n{\"words\":[\"Sprecherkennzeichnung\",\"Sprecherzuordnung\",\"Sprechererkennung\"],\"phrases\":[\"wer spricht gerade im Meeting\",\"wer spricht in der Vorschau\"]}",
+      "latest_response_id": "resp_0919eea7afb6d61c006aec076e5fe88190a1c851872219c6be",
+      "model": "gpt-6-sol",
+      "provider": "openai",
+      "session": "ew-4355-speaker-labels-vocab-de-2026-11-04-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 694,
+        "cost_usd": 0.003162,
+        "latency_ms": 8005,
+        "prompt_tokens": 386,
+        "reasoning_tokens": 516,
+        "total_tokens": 1080
+      }
+    },
+    "gemini": {
+      "content": "### Review\n\n* **Words:**\n  * **\u201eSprechererkennung\u201c:** Highly accurate, natural, and distinct from the sibling rows. It is the primary colloquial term users will search for when looking for speaker identification/diarization.\n  * **\u201eSprecherzuordnung\u201c:** Accurate and natural; clearly targets speaker attribution without overlapping with transcription or live preview engines.\n  * **\u201eSprecherwechsel\u201c:** Accurate concept (speaker turns), though slightly more technical; adding **\u201eSprechermodell\u201c** is also very effective since the card is explicitly downloading a dedicated model on the *Modelle* tab.\n* **Phrases:**\n  * **\u201ewer spricht gerade im Meeting\u201c:** Accurate and natural conversational query that fits speaker identification during a live call.\n  * **\u201ezeig mir in der Live-Vorschau, wer spricht\u201c:** Problematic for two reasons:\n    1. It violates the constraint **no dashes** due to \u201eLive-Vorschau\u201c.\n    2. Including the exact title of the sibling row (*Live-Vorschau*) risks steering search weighting toward that row instead of *Sprecherkennzeichnung*. A better alternative avoids referencing the sibling row directly while capturing the desired action (e.g. *\u201eerkenne wer gerade spricht\u201c* or *\u201eunterscheide Stimmen im Meeting\u201c*).\n\n---\n\n### Corrected Block\n\n```json\n{\n  \"words\": [\n    \"Sprechererkennung\",\n    \"Sprecherzuordnung\",\n    \"Sprechermodell\",\n    \"Sprecherwechsel\"\n  ],\n  \"phrases\": [\n    \"wer spricht gerade im Meeting\",\n    \"erkenne wer gerade spricht\",\n    \"unterscheide Stimmen im Meeting\"\n  ]\n}\n```",
+      "latest_interaction_id": "v1_ChdiZ2ZzYXBESUVZYk4wX2dQcXAzSXdBURIXYmdmc2FwRElFWWJOMF9nUHFwM0l3QVE",
+      "model": "gemini-3.8-flash",
+      "provider": "gemini",
+      "session": "ew-4355-speaker-labels-vocab-de-2026-11-04-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 393,
+        "completion_tokens": 393,
+        "reasoning_tokens": 1327,
+        "total_tokens": 2113,
+        "cost_usd": 0.0134895,
+        "latency_ms": 14572
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "it",
+    "title": "etichette degli interlocutori",
+    "words": [
+      "interlocutori",
+      "distinzione delle voci"
+    ],
+    "phrases": [
+      "chi sta parlando nella riunione",
+      "mostra chi parla nell’anteprima in tempo reale"
+    ]
+  }
+}

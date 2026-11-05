@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "zh",
+    "title": "说话人标签",
+    "words": [
+      "发言人",
+      "区分说话人"
+    ],
+    "phrases": [
+      "显示会议中谁在说话",
+      "在会议实时预览中区分说话人"
+    ]
+  }
+}

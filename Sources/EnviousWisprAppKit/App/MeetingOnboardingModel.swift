@@ -43,6 +43,10 @@ final class MeetingOnboardingModel {
     var callSoundSupported: @MainActor () -> Bool
     var settings: SettingsManager
     var emit: @MainActor (MeetingSetupTelemetry) -> Void
+    /// #4355 PR C: asks for the speaker labels model (`ModelDeliveryHome
+    /// .requestLiveSpeakerModel(meetingActive:)`). Called once by `finish()`; it returns at once
+    /// and setup never waits for the download or its check.
+    var requestSpeakerLabelsModel: @MainActor () -> Void
     var now: @MainActor () -> Date = { Date() }
   }
 
@@ -229,6 +233,9 @@ final class MeetingOnboardingModel {
     if calendar == .granted { deps.settings.meetingUseCalendarForNames = true }
     report(outcome: .finished)
     deps.settings.meetingOnboardingComplete = true
+    // #4355 PR C: setup's last step starts the speaker labels download (it waits for a meeting
+    // to end if one is running). Setups finished before this change get Download on the card.
+    deps.requestSpeakerLabelsModel()
     screen = .welcome
     consented = false
   }
