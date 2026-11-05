@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 
 /// Deterministic inverse text normalization (ITN): spoken-form → written-form.
-/// "two zero three nine five four…" → "203-954-8879", "twenty twenty six" → "2026",
+/// "two one two five five five…" → "212-555-0147", "twenty twenty six" → "2026",
 /// "eighty million dollars" → "$80 million".
 ///
 /// This is a faithful Swift port of the hand-rolled deterministic normalizer that

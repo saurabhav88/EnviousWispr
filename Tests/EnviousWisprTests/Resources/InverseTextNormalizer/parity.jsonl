@@ -1398,7 +1398,7 @@
 {"input": "Go back to council.", "expected": "Go back to council.", "category": "negative", "slice": "negative"}
 {"input": "Go back to codex, explain the issue, use the same session and see what it says.", "expected": "Go back to codex, explain the issue, use the same session and see what it says.", "category": "negative", "slice": "negative"}
 {"input": "Yeah, something to brainstorm with council. We can uh decide if we can think of a cool solution or low prioritize it.", "expected": "Yeah, something to brainstorm with council. We can uh decide if we can think of a cool solution or low prioritize it.", "category": "negative", "slice": "negative"}
-{"input": "my phone number is two zero three nine five four eight eight seven nine", "expected": "my phone number is 203-954-8879", "category": "phone", "slice": "realgold"}
+{"input": "my phone number is two one two five five five zero one four seven", "expected": "my phone number is 212-555-0147", "category": "phone", "slice": "realgold"}
 {"input": "today's date is june second twenty twenty six", "expected": "today's date is June 2, 2026", "category": "date", "slice": "realgold"}
 {"input": "there are a lot more models on the market", "expected": "there are a lot more models on the market", "category": "negative", "slice": "negative"}
 {"input": "let's meet at one twenty", "expected": "let's meet at one twenty", "category": "time", "slice": "ambiguity"}
@@ -1411,7 +1411,7 @@
 {"input": "the final score was twenty twenty", "expected": "the final score was 2020", "category": "numeric", "slice": "ambiguity"}
 {"input": "we won five to three", "expected": "we won 5-3", "category": "numeric", "slice": "ambiguity"}
 {"input": "i need five apples", "expected": "i need five apples", "category": "numeric", "slice": "ambiguity"}
-{"input": "i live at three twenty west thirty eighth street", "expected": "i live at three twenty west 38th street", "category": "numeric", "slice": "ambiguity"}
+{"input": "i live at five twenty west forty fifth street", "expected": "i live at five twenty west 45th street", "category": "numeric", "slice": "ambiguity"}
 {"input": "we picked three hundred twenty apples", "expected": "we picked 320 apples", "category": "numeric", "slice": "ambiguity"}
 {"input": "the store is on fifth avenue", "expected": "the store is on fifth avenue", "category": "numeric", "slice": "ambiguity"}
 {"input": "she finished in fifth place", "expected": "she finished in fifth place", "category": "negative", "slice": "negative"}
@@ -1867,7 +1867,7 @@
 {"input": "aamina", "expected": "aamina", "category": "negative", "slice": "negative"}
 {"input": "aaminah", "expected": "aaminah", "category": "negative", "slice": "negative"}
 {"input": "aamjiwnaang", "expected": "aamjiwnaang", "category": "negative", "slice": "negative"}
-{"input": "call me at 203 nine five four eight eight seven nine", "expected": "call me at 203-954-8879", "category": "phone", "slice": "mixedstate"}
+{"input": "call me at 212 five five five zero one four seven", "expected": "call me at 212-555-0147", "category": "phone", "slice": "mixedstate"}
 {"input": "i have 20 dollars and fifty cents", "expected": "i have $20.50", "category": "currency", "slice": "mixedstate"}
 {"input": "the meeting is on june 2 twenty twenty six", "expected": "the meeting is on June 2, 2026", "category": "date", "slice": "mixedstate"}
 {"input": "my flight is at 3 forty five pm", "expected": "my flight is at 3:45 PM", "category": "time", "slice": "mixedstate"}
@@ -1878,7 +1878,7 @@
 {"input": "there are 15 hundred people", "expected": "there are 1,500 people", "category": "numeric", "slice": "mixedstate"}
 {"input": "the bill came to 1,234 dollars", "expected": "the bill came to $1,234", "category": "currency", "slice": "mixedstate"}
 {"input": "the total is $1,234.50", "expected": "the total is $1,234.50", "category": "currency", "slice": "idempotence"}
-{"input": "call 203-954-8879 today", "expected": "call 203-954-8879 today", "category": "phone", "slice": "idempotence"}
+{"input": "call 212-555-0147 today", "expected": "call 212-555-0147 today", "category": "phone", "slice": "idempotence"}
 {"input": "the date is June 2, 2026", "expected": "the date is June 2, 2026", "category": "date", "slice": "idempotence"}
 {"input": "we meet at 3:45 PM", "expected": "we meet at 3:45 PM", "category": "time", "slice": "idempotence"}
 {"input": "it grew 5% last year", "expected": "it grew 5% last year", "category": "numeric", "slice": "idempotence"}

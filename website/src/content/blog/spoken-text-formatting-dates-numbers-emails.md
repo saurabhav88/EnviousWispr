@@ -77,7 +77,7 @@ Idiomatic times are left as you said them on purpose. "Quarter past five" and "h
 
 - "eight two four six one nine six one seven five" becomes "824-619-6175"
 - A spoken "oh" is treated as a zero, the way people actually read numbers aloud
-- It even handles a mix of already-spoken digits and number words in the same breath: "call me at 203 nine five four eight eight seven nine" becomes "call me at 203-954-8879"
+- It even handles a mix of already-spoken digits and number words in the same breath: "call me at 212 five five five zero one four seven" becomes "call me at 212-555-0147"
 
 ## Email addresses
 

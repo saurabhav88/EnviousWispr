@@ -156,7 +156,7 @@ import os
       outcome: outcome, context: context, save: { transcript, _ in saved.transcript = transcript })
 
     let floored = try await wiring.processText(
-      "call me at two zero three nine five four eight eight seven nine"
+      "call me at two one two five five five zero one four seven"
     ) {}
     try await wiring.store(floored, UUID(), .ordinary)
     _ = await wiring.deliver(floored, .ordinary)

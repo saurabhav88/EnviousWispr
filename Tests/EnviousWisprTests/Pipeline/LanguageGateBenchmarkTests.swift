@@ -50,7 +50,9 @@ struct LanguageGateBenchmarkTests {
     .deletingLastPathComponent()  // Tests
     .deletingLastPathComponent()  // repo root
     .appending(path: "Tests/EnviousWisprTests/Resources/LanguageGate")
-  /// Historical rows: Parakeet v3 and WhisperKit on the September 2026 audio, kept byte-for-byte.
+  /// Historical rows: Parakeet v3 and WhisperKit on the September 2026 audio, kept byte-for-byte
+  /// except the `en_us_english_01` rows in all three fixtures, whose phone digits were substituted
+  /// for founder privacy on 2026-11-04 (marked `privacy_redacted`; `audio_sha256` names the original clip).
   static let fixtureURL = fixtureDirectory.appending(path: "transcripts.jsonl")
   /// #3546: Parakeet Ultra rows on the same 178 sentences, re-spoken by the same Azure voices
   /// (October 2026; the September WAVs were not kept). Same oracles, Parakeet only.

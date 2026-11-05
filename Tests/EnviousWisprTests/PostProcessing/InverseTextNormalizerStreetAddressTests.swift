@@ -25,8 +25,8 @@ struct InverseTextNormalizerStreetAddressTests {
       "9 High Plains Road, Shelton, Connecticut 06484"
     ),
     (
-      "Three twenty West Thirty Eighth Street, apartment two twenty, New York, New York one zero zero one eight.",
-      "320 West 38th Street, apartment 220, New York, New York 10018."
+      "Five twenty West Forty Fifth Street, apartment three ten, New York, New York one zero zero three six.",
+      "520 West 45th Street, apartment 310, New York, New York 10036."
     ),
     (
       "My parents live at nine High Plains Road, Shelton, Connecticut, 06484.",
