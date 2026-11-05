@@ -18,8 +18,16 @@ import os
 /// and `.acquired`), so a written stretch maps to the call-app log's clock (milliseconds after
 /// the recorder anchor, `CallSpeakerTimeline.observationMs`) through the chunk that holds it:
 /// the chunk's acquisition time plus the stretch's offset inside the chunk. The namer then
-/// applies each segment's frozen lag once. Stretches in no recorded chunk, or in a chunk whose
-/// time was only estimated, abstain. Never arrival time on the main actor.
+/// applies each segment's frozen lag once. Stretches in no recorded chunk abstain. Never arrival
+/// time on the main actor.
+///
+/// Every released chunk's time is `.estimated` today: the writer's append adapter does not carry
+/// the call-sound tap's timestamp validity (`MeetingTrackWriter`), so the tap's run clock
+/// (hardware host times where Core Audio marks them valid) arrives unlabeled. Live naming uses
+/// it anyway. Refusing estimated times left every stretch out and no live name could ever be
+/// proposed (real Zoom take, 2026-11-05: evidence 3, solo stretches 0). The final pass names
+/// from written positions, a coarser clock than this one, so live names trust nothing the
+/// shipped final-pass naming does not.
 enum MeetingLiveNaming {
   /// What one settled piece contributes: its live speaker and its solo stretches, already on
   /// the call-app log's clock (milliseconds after the recorder anchor).
@@ -80,13 +88,13 @@ enum MeetingLiveNaming {
   }
 
   /// Written stretches of `run` on the call-app log's clock, through the chunks that hold them.
-  /// Parts in no chunk, or in a chunk with an estimated time, are left out.
+  /// Parts in no chunk are left out.
   static func observationStretches(
     _ stretches: [Range<Int>], run: Int, clock: [ClockEntry], anchor: UInt64
   ) -> [Range<Int>] {
     var result: [Range<Int>] = []
     for stretch in stretches {
-      for entry in clock where entry.run == run && entry.acquired.provenance != .estimated {
+      for entry in clock where entry.run == run {
         let lower = max(stretch.lowerBound, entry.startSample)
         let upper = min(stretch.upperBound, entry.endSample)
         guard lower < upper,

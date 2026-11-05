@@ -200,6 +200,9 @@ final class MeetingLiveSpeakers {
   private let dictationActive = OSAllocatedUnfairLock(initialState: false)
   /// The last retired recording's summary, frozen at its stop (`meeting.ended`).
   private var frozen: (meetingID: UUID, summary: MeetingLiveSpeakerSummary)?
+  /// The last naming pass's outcome and counts, so the log gets one line per change, not one
+  /// every 2 s.
+  private var lastNamingLog: String?
 
   /// The summary frozen when `meetingID` stopped; nil for any other meeting.
   func frozenSummary(for meetingID: UUID) -> MeetingLiveSpeakerSummary? {
@@ -584,6 +587,16 @@ final class MeetingLiveSpeakers {
     let (composition, eligibility) = MeetingLiveNaming.inputs(Array(namingEvidence.values))
     let result = MeetingSpeakerNamer.propose(
       composition: composition, eligibility: eligibility, log: log)
+    // Counts only: never a name, a word or an id.
+    let line =
+      "meeting live speaker names outcome=\(result.outcome.rawValue) "
+      + "proposed=\(result.proposals.count) evidence=\(namingEvidence.count) "
+      + "solo=\(namingEvidence.values.reduce(0) { $0 + $1.soloMs.count }) "
+      + "segments=\(log?.segments.count ?? -1) anchor=\(currentAnchor(current.meetingID) != nil)"
+    if line != lastNamingLog {
+      lastNamingLog = line
+      Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
+    }
     var numberByID: [String: Int] = [:]
     for (key, number) in numberOf {
       numberByID[MeetingLiveNaming.speakerID(epoch: key.epoch, slot: key.slot)] = number

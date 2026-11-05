@@ -60,11 +60,13 @@ struct MeetingLiveNamingTests {
     anchor + AudioConvertNanosToHostTime(UInt64(ms) * 1_000_000)
   }
 
+  /// Labelled `.estimated`, as `MeetingTrackWriter` labels every released chunk in the app: a
+  /// `.hardware` fixture once hid that live naming refused every real chunk.
   static func released(_ span: MeetingAudioSpan, acquiredAfterMs ms: Int) -> MeetingReleasedChunk {
     MeetingReleasedChunk(
       span: span,
       acquired: MeetingAcquisitionTime(
-        recording: recording, hostTicks: hostTime(afterMs: ms), provenance: .hardware),
+        recording: recording, hostTicks: hostTime(afterMs: ms), provenance: .estimated),
       afterDrop: false, sourceBreak: false)
   }
 
