@@ -30,7 +30,7 @@ import Speech
 /// a five-language panel (#1988 comments). It ships zero bytes (the model is in
 /// the OS, shared with system dictation), covers 33 languages, and formats numbers,
 /// dates, addresses and emails inline — the trial's deciding factor, because
-/// watching `two zero three nine five four` crawl across the pill reads as the
+/// watching `two one two five five five` crawl across the pill reads as the
 /// software failing even though the pasted result is correct.
 ///
 /// Its cost is the macOS 26 floor, which is why the setting is disabled below that.

@@ -113,7 +113,7 @@ struct SpokenPunctuationToggleTests {
       "the invoice is eighty five dollars",
       "we raised eighty million dollars last year",
       "i was born in nineteen eighty seven",
-      "call me at 203 nine five four eight eight seven nine",
+      "call me at 212 five five five zero one four seven",
       "email casey at proton dot me",
       "visit stackoverflow dot io slash blog",
       "the twentieth century",

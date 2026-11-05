@@ -5,7 +5,7 @@ import Foundation
 import os
 
 /// Deterministic inverse text normalization (spoken-form → written-form) as a post-ASR
-/// limb: "two zero three nine five four…" → "203-954-8879", "twenty twenty six" → "2026",
+/// limb: "two one two five five five…" → "212-555-0147", "twenty twenty six" → "2026",
 /// "eighty million dollars" → "$80 million". The engine (`InverseTextNormalizer`) won the
 /// #145 ITN bake-off; this is the thin pipeline wrapper around it.
 ///

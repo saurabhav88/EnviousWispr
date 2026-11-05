@@ -2,7 +2,7 @@ import Foundation
 
 /// #3211: a dictated US street address gets its numbers written and its commas, English route
 /// only. Founder samples: Parakeet's `9 High Plains Road Shelton Connecticut 06484` pasted with no
-/// commas, and `Three twenty West 38th Street, apartment two twenty, …` kept both numbers spelled,
+/// commas, and `Five twenty West 45th Street, apartment three ten, …` kept both numbers spelled,
 /// because a single digit then a ten ("three twenty") is ambiguous in prose. Inside a complete
 /// address it is not.
 ///
@@ -303,7 +303,7 @@ extension InverseTextNormalizer {
     return five + "-" + four
   }
 
-  /// `apartment two twenty` → `apartment 220`; `Suite four B` → `Suite 4B`; `#12` as written.
+  /// `apartment three ten` → `apartment 310`; `Suite four B` → `Suite 4B`; `#12` as written.
   private static func renderUnit(_ unit: String) -> String? {
     if unit.hasPrefix("#") { return unit }
     let parts = unit.split(whereSeparator: \.isWhitespace).map(String.init)

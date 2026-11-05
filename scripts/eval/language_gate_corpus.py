@@ -257,7 +257,7 @@ add("ru-RU", "numbers_native", "Встреча в половине одинна�
 add("uk-UA", "foreign_clean", "Можеш надіслати мені нотатки зі зустрічі?")
 
 # ---- English controls: the rules MUST keep firing ---------------------------------
-add("en-US", "english_control", "Call me at two zero three nine five four eight eight seven nine.", convert=["203-954-8879"])
+add("en-US", "english_control", "Call me at two one two five five five zero one four seven.", convert=["212-555-0147"])
 add("en-US", "english_control", "It cost eighty million dollars last year.", convert=["$80 million"])
 add("en-US", "english_control", "The meeting is on March twelfth two thousand seven at three thirty PM.", convert=["March 12, 2007"])
 add("en-US", "english_control", "Send it to john dot smith at example dot com.")  # both engines already emit dots; observe

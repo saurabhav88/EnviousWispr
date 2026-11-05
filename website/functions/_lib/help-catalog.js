@@ -2323,7 +2323,7 @@ export default {
           "id": "numbers-dates-and-times#how-are-street-addresses-written",
           "anchor": "how-are-street-addresses-written",
           "heading": "How are street addresses written?",
-          "text": "A US street address said in full, from the house number through the state and ZIP code, comes out with digits and commas, in the words you said. For example, \"three twenty West Thirty Eighth Street, apartment two twenty, New York, New York one zero zero one eight\" becomes 320 West 38th Street, apartment 220, New York, New York 10018.\n\nStreet and state names are not shortened to postal abbreviations. An address without a state or a ZIP code is left as you spoke it. So is a ZIP code the speech engine misheard.",
+          "text": "A US street address said in full, from the house number through the state and ZIP code, comes out with digits and commas, in the words you said. For example, \"five twenty West Forty Fifth Street, apartment three ten, New York, New York one zero zero three six\" becomes 520 West 45th Street, apartment 310, New York, New York 10036.\n\nStreet and state names are not shortened to postal abbreviations. An address without a state or a ZIP code is left as you spoke it. So is a ZIP code the speech engine misheard.",
           "url": "https://enviouswispr.com/help/numbers-dates-and-times/#how-are-street-addresses-written"
         },
         {

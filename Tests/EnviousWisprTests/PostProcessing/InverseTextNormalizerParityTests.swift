@@ -155,7 +155,7 @@ struct InverseTextNormalizerParityTests {
       // word-driven digit read with a zero-word, length ≤ 6
       ("the code is two zero three", "the code is 203"),
       // mixed-state phone (already-digit group + digit-words) — fix #4
-      ("call me at 203 nine five four eight eight seven nine", "call me at 203-954-8879"),
+      ("call me at 212 five five five zero one four seven", "call me at 212-555-0147"),
       // strict-cardinal corruption guard: a non-cardinal run is left untouched (context for
       // "one twenty" belongs to the AI-polish layer, not the deterministic floor)
       ("there were one twenty people there", "there were one twenty people there"),
