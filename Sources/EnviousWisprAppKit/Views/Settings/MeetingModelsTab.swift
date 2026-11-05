@@ -475,9 +475,15 @@ enum MeetingEngineStatusPresentation {
     switch status {
     case .ready:
       ProviderStatus(label: EngineSummaryCopy.ready, tone: .ready)
-    case .checking, .waitingForMeeting:
+    case .checking:
       ProviderStatus(label: EngineSummaryCopy.checking, tone: .unavailable)
-    case .notDownloaded, .queuedForMeeting:
+    case .waitingForMeeting:
+      ProviderStatus(
+        label: String(localized: MeetingSpeakerLabelsCopy.waitingChip), tone: .needsSetup)
+    case .queuedForMeeting:
+      ProviderStatus(
+        label: String(localized: MeetingSpeakerLabelsCopy.queuedChip), tone: .needsSetup)
+    case .notDownloaded:
       ProviderStatus(label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup)
     case .downloading:
       ProviderStatus(label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup)
@@ -506,7 +512,9 @@ struct MeetingSpeakerLabelsCard: View {
   @Environment(MeetingSpeakerLabelsModel.self) private var model
 
   var body: some View {
-    BrandedSection {
+    // The section heading the other Models sections carry (the Transcript language precedent:
+    // heading, then the row with the same name).
+    BrandedSection(header: MeetingSpeakerLabelsCopy.title) {
       BrandedRow(showDivider: false) {
         SettingsRow(
           map: .id(.meetingSpeakerLabels), icon: "person.2.wave.2",
@@ -514,10 +522,16 @@ struct MeetingSpeakerLabelsCard: View {
         ) {
           action
         }
-        .rowTitleStatus {
-          ProviderStatusChip(status: MeetingEngineStatusPresentation.speakerLabels(model.status))
+        // The chip leads the status lines (the Live Preview card's place for it), so a long
+        // translated title keeps the whole title line at narrow widths (UX review: German broke
+        // "Sprecherkennzeichnung" mid-word beside the chip).
+        .rowStatus {
+          VStack(alignment: .leading, spacing: 4) {
+            ProviderStatusChip(
+              status: MeetingEngineStatusPresentation.speakerLabels(model.status))
+            statusLine
+          }
         }
-        .rowStatus { statusLine }
       }
     }
     // A check starts when the model is admitted while the card is shown, and when it appears.
@@ -539,10 +553,14 @@ struct MeetingSpeakerLabelsCard: View {
     case .downloading(let written, let total):
       VStack(alignment: .leading, spacing: 4) {
         if let written, let total, total > 0 {
-          meetingStatusText(MeetingSpeakerLabelsCopy.progress(written: written, total: total))
+          let progress = MeetingSpeakerLabelsCopy.progress(written: written, total: total)
+          meetingStatusText(progress)
           ProgressView(value: Double(written), total: Double(total)).frame(maxWidth: 220)
+            .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.progressName))
+            .accessibilityValue(progress)
         } else {
           ProgressView().controlSize(.small)
+            .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.progressName))
         }
       }
     case .downloadFailed(let failure):
@@ -560,7 +578,7 @@ struct MeetingSpeakerLabelsCard: View {
     }
   }
 
-  /// One action per state, beside the title. Remove is off while a meeting is active (the
+  /// One action per state, at the row's trailing edge. Remove is off while a meeting is active (the
   /// delivery home refuses it too).
   @ViewBuilder private var action: some View {
     switch model.status {
@@ -570,10 +588,13 @@ struct MeetingSpeakerLabelsCard: View {
       Button(String(localized: SettingsItemCopy.LivePreview.universalDownload)) {
         model.download()
       }
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.downloadName))
     case .downloadFailed:
       Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) { model.download() }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryDownloadName))
     case .queuedForMeeting, .downloading:
       Button(String(localized: SettingsItemCopy.LivePreview.universalCancel)) { model.cancel() }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.cancelName))
     case .ready:
       removeButton
     case .loadFailed:
@@ -581,6 +602,7 @@ struct MeetingSpeakerLabelsCard: View {
         Button(String(localized: SettingsItemCopy.LivePreview.universalRetry)) {
           model.retryCheck()
         }
+        .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.retryCheckName))
         removeButton
       }
     }
@@ -589,6 +611,7 @@ struct MeetingSpeakerLabelsCard: View {
   private var removeButton: some View {
     Button(String(localized: SettingsItemCopy.LivePreview.universalRemove)) { model.remove() }
       .disabled(model.removeWaitsForMeeting)
+      .accessibilityLabel(String(localized: MeetingSpeakerLabelsCopy.removeName))
   }
 }
 
@@ -619,6 +642,30 @@ enum MeetingSpeakerLabelsCopy {
   static let removeAfterMeeting = LocalizedStringResource(
     "Remove is available when the meeting ends.",
     comment: "EnviousMeet Models page, Speaker labels: Remove is off while a meeting records or is being transcribed.")
+  static let queuedChip = LocalizedStringResource(
+    "Download queued",
+    comment: "EnviousMeet Models page, Speaker labels: status chip. The download was asked for during a meeting and starts when it ends.")
+  static let waitingChip = LocalizedStringResource(
+    "Check after the meeting",
+    comment: "EnviousMeet Models page, Speaker labels: status chip. Downloaded; the check that it works runs when the meeting ends.")
+  static let downloadName = LocalizedStringResource(
+    "Download speaker labels",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Download button.")
+  static let cancelName = LocalizedStringResource(
+    "Cancel speaker labels download",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Cancel button.")
+  static let retryDownloadName = LocalizedStringResource(
+    "Retry speaker labels download",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after a failed download.")
+  static let retryCheckName = LocalizedStringResource(
+    "Retry speaker labels check",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after the model failed to start.")
+  static let removeName = LocalizedStringResource(
+    "Remove speaker labels",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the Remove button.")
+  static let progressName = LocalizedStringResource(
+    "Speaker labels download progress",
+    comment: "EnviousMeet Models page, Speaker labels: accessibility name of the download progress bar.")
   static let notEnoughSpace = LocalizedStringResource(
     "Not enough free space for speaker labels. Free up some space and try again.",
     comment: "EnviousMeet Models page, Speaker labels: the download failed because the disk is full.")

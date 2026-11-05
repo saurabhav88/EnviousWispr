@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
 import Observation
@@ -186,7 +187,46 @@ final class MeetingSpeakerLabelsModel {
     self.environment = environment
   }
 
+  #if DEBUG
+    /// UX-review seam (#4355 PR C): `EW_UAT_SPEAKER_LABELS_STAGE=<state>` at launch shows one
+    /// card state with every action inert, so each state can be photographed in the real app
+    /// without touching the delivery controller, caches or telemetry. Logged when used; compiled
+    /// out of Release.
+    private let stagedStatus: Status? = MeetingSpeakerLabelsModel.stagedStatusFromEnvironment()
+
+    private static func stagedStatusFromEnvironment() -> Status? {
+      guard let raw = ProcessInfo.processInfo.environment["EW_UAT_SPEAKER_LABELS_STAGE"] else {
+        return nil
+      }
+      let staged: Status? =
+        switch raw {
+        case "notDownloaded": .notDownloaded
+        case "queued": .queuedForMeeting
+        case "downloading": .downloading(bytesWritten: 83_886_080, totalBytes: 199_124_357)
+        case "checking": .checking
+        case "waiting": .waitingForMeeting
+        case "ready": .ready
+        case "downloadFailed": .downloadFailed(DeliveryFailure(reason: .sourceUnreachable))
+        case "loadFailed": .loadFailed
+        default: nil
+        }
+      Task {
+        await AppLogger.shared.log(
+          "UAT seam: speaker labels card staged as \(raw) (recognised=\(staged != nil))",
+          level: .info, category: "Delivery")
+      }
+      return staged
+    }
+
+    private var isStaged: Bool { stagedStatus != nil }
+  #else
+    private var isStaged: Bool { false }
+  #endif
+
   var status: Status {
+    #if DEBUG
+      if let stagedStatus { return stagedStatus }
+    #endif
     guard let state = environment.deliveryState() else { return .unavailableInThisBuild }
     if environment.downloadQueued(), state != .admitted { return .queuedForMeeting }
     switch state {
@@ -219,6 +259,7 @@ final class MeetingSpeakerLabelsModel {
   /// The card appeared or the delivery state changed: check an admitted model that has not been
   /// checked; forget readiness once the model is no longer admitted.
   func checkIfNeeded() {
+    guard !isStaged else { return }
     guard environment.deliveryState() == .admitted else {
       if readiness != .unchecked { invalidate() }
       return
@@ -229,15 +270,23 @@ final class MeetingSpeakerLabelsModel {
 
   /// Download, or Try Again after a failed download.
   func download() {
+    guard !isStaged else { return }
     _ = environment.request(environment.isMeetingActive())
   }
 
-  func cancel() { environment.cancel() }
+  func cancel() {
+    guard !isStaged else { return }
+    environment.cancel()
+  }
 
-  func remove() { _ = environment.remove() }
+  func remove() {
+    guard !isStaged else { return }
+    _ = environment.remove()
+  }
 
   /// Try Again after a failed load check.
   func retryCheck() {
+    guard !isStaged else { return }
     guard readiness == .failed, environment.deliveryState() == .admitted else { return }
     startCheck()
   }

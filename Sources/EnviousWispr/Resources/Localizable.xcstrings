@@ -4920,6 +4920,17 @@
         }
       }
     },
+    "Cancel speaker labels download" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Cancel button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der Sprecherkennzeichnung abbrechen"
+          }
+        }
+      }
+    },
     "Cancelling…" : {
       "localizations" : {
         "de" : {
@@ -5188,6 +5199,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verfügbarkeit von Apple Intelligence prüfen"
+          }
+        }
+      }
+    },
+    "Check after the meeting" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: status chip. Downloaded; the check that it works runs when the meeting ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung nach dem Meeting"
           }
         }
       }
@@ -7870,6 +7892,17 @@
         }
       }
     },
+    "Download queued" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: status chip. The download was asked for during a meeting and starts when it ends.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download vorgemerkt"
+          }
+        }
+      }
+    },
     "Download size" : {
       "comment" : "Speech engine settings, engine card: a row label in the card's spec table.",
       "localizations" : {
@@ -7877,6 +7910,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Downloadgröße"
+          }
+        }
+      }
+    },
+    "Download speaker labels" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Download button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung herunterladen"
           }
         }
       }
@@ -17596,6 +17640,17 @@
         }
       }
     },
+    "Remove speaker labels" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the Remove button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung entfernen"
+          }
+        }
+      }
+    },
     "Remove this file" : {
       "localizations" : {
         "de" : {
@@ -17836,6 +17891,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Retry speaker labels check" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after the model failed to start.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung der Sprecherkennzeichnung wiederholen"
+          }
+        }
+      }
+    },
+    "Retry speaker labels download" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of Try Again after a failed download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der Sprecherkennzeichnung wiederholen"
           }
         }
       }
@@ -19623,6 +19700,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Sprecherkennzeichnung konnte auf diesem Mac nicht starten. Versuche es erneut oder entferne den Download."
+          }
+        }
+      }
+    },
+    "Speaker labels download progress" : {
+      "comment" : "EnviousMeet Models page, Speaker labels: accessibility name of the download progress bar.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloadfortschritt der Sprecherkennzeichnung"
           }
         }
       }
