@@ -351,13 +351,6 @@ struct MeetingLiveSpeakersTests {
     #expect(rig.speakers.frozenSummary(for: next)?.remoteWords == 0)
     #expect(frozen.attributedShare == 0.75)
   }
-}
-
-extension MeetingLiveSpeakersTests.Rig {
-  /// The model loaded (epoch 0); no label changes, so nothing to wait for beyond ordering.
-  func try_publishReady() {
-    analyses.last?.publish(.ready(epoch: 0))
-  }
 
   @Test("call audio the speaker pump drops while the model loads counts as skipped; with no model, nothing does")
   func pumpDropsCountAsSkipped() async throws {
@@ -387,5 +380,12 @@ extension MeetingLiveSpeakersTests.Rig {
     let none = try #require(rig.speakers.frozenSummary(for: absent))
     #expect(none.state == .absent)
     #expect(none.backlogSkippedMs == 0, "audio refused on purpose without a model is not skipped")
+  }
+}
+
+extension MeetingLiveSpeakersTests.Rig {
+  /// The model loaded (epoch 0); no label changes, so nothing to wait for beyond ordering.
+  func try_publishReady() {
+    analyses.last?.publish(.ready(epoch: 0))
   }
 }
