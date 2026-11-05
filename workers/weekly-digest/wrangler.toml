@@ -37,9 +37,9 @@ OLLAMA_LIBRARY_FEED_URL = "https://enviouswispr.com/ollama-library.json"
 # either one empty or invalid fails the section. Enable or
 # disable the routine, change these, deploy, and read the deployed vars back in
 # one activation step.
-CLOUD_MODEL_ROUTINE_ENABLED = "true"
+CLOUD_MODEL_ROUTINE_ENABLED = "false"
 CLOUD_MODEL_ROUTINE_LOG_ISSUE = "4384"
-CLOUD_MODEL_ROUTINE_WRITER_LOGIN = "envious-cloud-model-stage2[bot]"
+CLOUD_MODEL_ROUTINE_WRITER_LOGIN = "saurabhav88"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
