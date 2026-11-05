@@ -95,4 +95,4 @@ A few tips for getting started:
 
 Your next meeting is probably in an hour. That's enough time to install the app and have it ready for your first post-meeting dictation. Try it once. If the summary that comes back is better than what you'd have typed in five minutes (and it will be) you won't go back to the old way.
 
-*Looking for meeting transcription? See [vs Otter.ai](/compare/otter-ai/), [vs Notta](/compare/notta/), or [browse all comparisons](/compare/).*
+*Want the whole meeting recorded and transcribed? EnviousMeet, built into EnviousWispr, records calls and in-person meetings on your Mac with no bot. Comparing tools? See [vs Otter.ai](/compare/otter-ai/), [vs Notta](/compare/notta/), or [browse all comparisons](/compare/).*
