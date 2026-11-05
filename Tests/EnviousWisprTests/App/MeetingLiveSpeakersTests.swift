@@ -175,6 +175,11 @@ struct MeetingLiveSpeakersTests {
     #expect(
       blocks.map(\.startMs) == [0, 0, 6],  // sample 100 at 16 kHz is 6.25 ms
       "a second speaker inside one line is stamped from its own first word, not the line's start")
+    // The view draws one flat list of runs: "Right." keeps its row while its block changes, and
+    // only the run opening a block carries a header.
+    let rows = MeetingsPresentation.liveRows(blocks)
+    #expect(rows.map(\.id) == ["m-1#0", "c-1#0", "c-1#1", "c-2#0"])
+    #expect(rows.map { $0.header?.speaker } == [.you, .remote("1"), .remote("2"), nil])
   }
 
   @Test("untimed text, a reset and stale results never produce a label")

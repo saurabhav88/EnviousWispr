@@ -433,34 +433,37 @@ struct MeetingLiveWordsView: View {
         }
       } else {
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 10) {
-            // #4355 PR C: speaker blocks, after each piece was assigned. Runs keep their line's
-            // identity, so regrouping never re-creates text the user selected.
+          LazyVStack(alignment: .leading, spacing: 2) {
+            // #4355 PR C: speaker blocks, after each piece was assigned, drawn as one flat list
+            // of runs keyed by their line's identity. A header rides on the run that opens its
+            // block, so regrouping moves headers and never reparents selected or focused text.
             ForEach(
-              MeetingsPresentation.liveBlocks(transcript.lines, labels: transcript.speakerLabels)
+              MeetingsPresentation.liveRows(
+                MeetingsPresentation.liveBlocks(
+                  transcript.lines, labels: transcript.speakerLabels))
             ) {
-              block in
+              row in
               VStack(alignment: .leading, spacing: 2) {
-                Text(
-                  verbatim:
-                    "\(MeetingsPresentation.liveSpeakerHeader(block.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: block.startMs))"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.stTextSecondary)
-                .accessibilityAddTraits(.isHeader)
-                ForEach(block.runs) { run in
-                  Text(run.text)
-                    .font(.stBody)
-                    .italic(run.kind == .uncertain)
-                    .foregroundStyle(
-                      superseded || run.kind != .confirmed
-                        ? Color.stTextSecondary : Color.stTextPrimary
-                    )
-                    .textSelection(.enabled)
-                    .id(run.id)
+                if let header = row.header {
+                  Text(
+                    verbatim:
+                      "\(MeetingsPresentation.liveSpeakerHeader(header.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: header.startMs))"
+                  )
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(.stTextSecondary)
+                  .accessibilityAddTraits(.isHeader)
                 }
+                Text(row.run.text)
+                  .font(.stBody)
+                  .italic(row.run.kind == .uncertain)
+                  .foregroundStyle(
+                    superseded || row.run.kind != .confirmed
+                      ? Color.stTextSecondary : Color.stTextPrimary
+                  )
+                  .textSelection(.enabled)
               }
-              .id(block.id)
+              // The gap between blocks the nested layout had (10 points around a 2-point run gap).
+              .padding(.top, row.header != nil ? 8 : 0)
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)

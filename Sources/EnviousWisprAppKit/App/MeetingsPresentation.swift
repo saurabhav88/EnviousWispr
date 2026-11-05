@@ -90,6 +90,29 @@ enum MeetingsPresentation {
     return blocks
   }
 
+  /// One row of the live words: a run, with its block's header when it opens a block. The view
+  /// shows rows as one flat list keyed by run, so regrouping moves headers and never reparents
+  /// text the user selected or focused.
+  struct LiveRow: Identifiable, Equatable {
+    let run: LiveBlock.Run
+    /// The block's speaker and start, on the block's first run only.
+    let header: (speaker: LiveWordsAssembler.LiveSpeakerKey, startMs: Int)?
+    var id: String { run.id }
+
+    static func == (lhs: LiveRow, rhs: LiveRow) -> Bool {
+      lhs.run == rhs.run && lhs.header?.speaker == rhs.header?.speaker
+        && lhs.header?.startMs == rhs.header?.startMs
+    }
+  }
+
+  static func liveRows(_ blocks: [LiveBlock]) -> [LiveRow] {
+    blocks.flatMap { block in
+      block.runs.enumerated().map { index, run in
+        LiveRow(run: run, header: index == 0 ? (block.speaker, block.startMs) : nil)
+      }
+    }
+  }
+
   /// When a run starts: its first piece's written audio position, so a later speaker in a long
   /// line is not stamped with the line's start. Never before the line's own start (written
   /// positions can trail the meeting clock after a capture gap); untimed pieces use the line's.
