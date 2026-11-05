@@ -75,7 +75,7 @@ struct LiveSpeakerSessionRealBoundaryTests {
     #expect(!talkingSlots.isEmpty, "a two-voice recording produced no speaker activity")
     #expect(activities.contains { !$0.activeSlots.isEmpty })
 
-    session.close()
+    session.end()
     try await BoundedWait.until(released, deadline: .seconds(30))
   }
 }

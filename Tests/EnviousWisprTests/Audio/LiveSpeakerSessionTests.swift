@@ -200,7 +200,7 @@ import os
     #expect(h.loadedFrom.withLock { $0 } == URL(fileURLWithPath: "/admitted/speaker-live"))
     #expect(h.recorder.updates == [.unavailable(.loadFailed)])
     h.session.submit(Self.chunk(start: 0, count: 1600))
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
     #expect(h.probe.steps.withLock { $0 } == 0)
   }
@@ -230,7 +230,7 @@ import os
       next = activity.span.endSample
     }
     #expect(next == 32_000)
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
   }
 
@@ -257,7 +257,7 @@ import os
         LiveSpeakerActivity(epoch: 0, span: Self.span(start: 10_000, count: 800), activeSlots: [2]),
       ])
     #expect(h.recorder.unpositioned == 5)
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
   }
 
@@ -283,7 +283,7 @@ import os
     #expect(h.recorder.activities.allSatisfy { $0.epoch == 0 })
     #expect(h.recorder.activities.first?.span.startSample == 3200)
     #expect(h.recorder.activities.last?.span.endSample == 8000)
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
   }
 
@@ -303,7 +303,7 @@ import os
     #expect(epochs.last == 1)
     #expect(h.recorder.updates.contains(.reset(epoch: 1)))
     #expect(h.recorder.activities.last?.span.run == 1)
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
   }
 
@@ -312,7 +312,7 @@ import os
   /// Holds the session for closures created before it exists.
   final class SessionBox: Sendable {
     let session = OSAllocatedUnfairLock<LiveSpeakerSession?>(initialState: nil)
-    func close() { session.withLock { $0 }?.close() }
+    func close() { session.withLock { $0 }?.end() }
   }
 
   /// close() from inside the admission predicate, at both admission points: at the claim (the
@@ -372,7 +372,7 @@ import os
     h.session.start()
     h.session.submit(Self.chunk(start: 0, count: 1600))
     try await BoundedWait.until(h.loaderEntered)
-    h.session.close()
+    h.session.end()
     #expect(h.released.hasFired == false)
     loadGate.fire()
     try await BoundedWait.until(h.released)
@@ -390,8 +390,8 @@ import os
     try await BoundedWait.until(h.recorder.when(Self.isReady))
     h.session.submit(Self.chunk(start: 0, count: 800))
     try await BoundedWait.until(h.probe.stepStarted)
-    h.session.close()
-    h.session.close()
+    h.session.end()
+    h.session.end()
     #expect(h.released.hasFired == false)
     gate.signal()
     try await BoundedWait.until(h.released)
@@ -409,7 +409,7 @@ import os
     try await BoundedWait.until(h.recorder.when { $0.last == .unavailable(.inferenceFailed) })
     h.probe.fail.withLock { $0 = false }
     h.session.submit(Self.chunk(start: 1600, count: 1600))
-    h.session.close()
+    h.session.end()
     try await BoundedWait.until(h.released)
     #expect(h.probe.steps.withLock { $0 } == 1)
   }

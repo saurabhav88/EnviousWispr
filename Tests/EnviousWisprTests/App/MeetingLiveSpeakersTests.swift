@@ -42,7 +42,7 @@ struct MeetingLiveSpeakersTests {
       if count >= expectedSubmits { submitted.fire() }
     }
     func reset() { events.withLock { $0.append("reset") } }
-    func close() { closed.withLock { $0 = true } }
+    func end() { closed.withLock { $0 = true } }
     var droppedSamples: Int { 0 }
   }
 

@@ -12,7 +12,7 @@ protocol LiveSpeakerAnalysis: Sendable {
   func start()
   func submit(_ chunk: MeetingLiveAudioChunk)
   func reset()
-  func close()
+  func end()
   /// Queued audio dropped for the backlog bound so far, in samples.
   var droppedSamples: Int { get }
 }
@@ -616,7 +616,7 @@ final class MeetingLiveSpeakers {
     if let current = recording {
       current.start?.cancel()
       current.naming?.cancel()
-      current.analysis?.close()
+      current.analysis?.end()
       current.wake?.finish()  // the consumer ends; anything still queued is this stale meeting's
       _ = current.pump.retire()
       recording = nil

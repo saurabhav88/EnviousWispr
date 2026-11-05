@@ -42,12 +42,12 @@ enum LiveSpeakerLoadCheck {
     return await withTaskCancellationHandler {
       session.start()
       let found = await box.decision()
-      session.close()
+      session.end()
       await box.release()
       return Task.isCancelled ? .cancelled : found
     } onCancel: {
       box.decide(.cancelled)
-      session.close()
+      session.end()
     }
   }
 

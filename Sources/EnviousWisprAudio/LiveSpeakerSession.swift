@@ -120,9 +120,9 @@ package final class Nemotron3LiveSpeakerRuntime: LiveSpeakerRuntime {
 /// those frames to written spans (`MeetingAudioFeedMap`) turns each frame into a span or, for
 /// unpositioned audio, into a counted unresolved frame. The map is pruned behind emitted frames.
 ///
-/// Terminal policy. `close()` stops admission at once (logical closure) and discards queued
+/// Terminal policy. `end()` stops admission at once (logical closure) and discards queued
 /// audio; physical release (dropping the model) runs on the executor after any step in flight,
-/// then `onReleased` fires exactly once. Nothing is published after `close()`, and a released
+/// then `onReleased` fires exactly once. Nothing is published after `end()`, and a released
 /// session never reloads. The caller that stops waiting keeps no handle; the queued release task
 /// retains the session until it runs.
 package actor LiveSpeakerSession {
@@ -197,7 +197,7 @@ package actor LiveSpeakerSession {
 
   // MARK: Nonisolated entry points (never wait)
 
-  /// Starts loading the model. Idempotent; ignored after `close()`.
+  /// Starts loading the model. Idempotent; ignored after `end()`.
   nonisolated package func start() {
     guard !inbox.withLock({ $0.closed }) else { return }
     Task { await self.load() }
@@ -230,10 +230,10 @@ package actor LiveSpeakerSession {
   /// Logical closure: admission stops now and queued audio is discarded. Physical release
   /// follows on the executor after any step in flight.
   ///
-  /// When `close()` returns, no update will be published any more: it waits only for a
+  /// When `end()` returns, no update will be published any more: it waits only for a
   /// publication already inside `publish` (the callback is short and must not block on the
-  /// caller of `close()`; a callback that calls `close()` itself does not deadlock).
-  nonisolated package func close() {
+  /// caller of `end()`; a callback that calls `end()` itself does not deadlock).
+  nonisolated package func end() {
     let first = inbox.withLock { box -> Bool in
       guard !box.closed else { return false }
       box.closed = true
@@ -284,7 +284,7 @@ package actor LiveSpeakerSession {
     phase = .loading
     var loaded: (any LiveSpeakerRuntime)?
     do { loaded = try await loader(directory) } catch { loaded = nil }
-    // Re-read after the suspension: close() may have run meanwhile.
+    // Re-read after the suspension: end() may have run meanwhile.
     if releaseAfterLoad {
       loaded = nil  // dropped unused, before release is reported
       finishRelease()
@@ -298,7 +298,7 @@ package actor LiveSpeakerSession {
       return
     }
     if isClosed {
-      // close() ran but its release task has not yet: drop the model now; release() still
+      // end() ran but its release task has not yet: drop the model now; release() still
       // fires `onReleased` when it runs.
       phase = .failed
       return
@@ -316,7 +316,7 @@ package actor LiveSpeakerSession {
       // step is admitted, so refused audio always stays under the backlog bound.
       var admitted = false
       if carry == nil {
-        // Every look-and-take is one lock region with the closed check, so close() can never
+        // Every look-and-take is one lock region with the closed check, so end() can never
         // empty the queue between them. `admit` runs OUTSIDE the lock (it is the caller's
         // closure); audio leaves the queue only after it said yes, so refused audio always
         // stays under the bound.
@@ -353,7 +353,7 @@ package actor LiveSpeakerSession {
       guard admitted || admit() else {
         // Mid-chunk refusal: the rest goes back to the FRONT, in order, under the bound.
         inbox.withLock { box in
-          guard !box.closed else { return }  // close() discarded the queue; so is this
+          guard !box.closed else { return }  // end() discarded the queue; so is this
           box.items.insert(.audio(pending), at: 0)
           box.samples += pending.samples.count
           Self.trim(&box, limit: backlogLimitSamples)
@@ -425,7 +425,7 @@ package actor LiveSpeakerSession {
     return .activity(result, unpositionedFrames: unpositioned)
   }
 
-  /// Every publication goes through the gate: after `close()` returns, none starts.
+  /// Every publication goes through the gate: after `end()` returns, none starts.
   private func send(_ update: LiveSpeakerUpdate) {
     publication.publish { publish(update) }
   }
@@ -455,8 +455,8 @@ package actor LiveSpeakerSession {
   }
 }
 
-/// Orders publication against `close()`: a publication runs entirely before the closing or not
-/// at all. Recursive so a `publish` callback that calls `close()` on its own thread does not
+/// Orders publication against `end()`: a publication runs entirely before the closing or not
+/// at all. Recursive so a `publish` callback that calls `end()` on its own thread does not
 /// deadlock.
 // @unchecked Sendable: `closed` is read and written only while holding `lock`.
 private final class PublicationGate: @unchecked Sendable {
