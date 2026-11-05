@@ -25,12 +25,12 @@ package enum BundledSpeakerModelLoader {
   package static func load(in bundle: Bundle) throws -> OfflineDiarizerModels {
     let start = CFAbsoluteTimeGetCurrent()
 
-    // FBank runs faster on CPU (the vendor's own default loader policy,
-    // `OfflineDiarizerModels.swift`); segmentation, embedding and PLDA use `.all`.
+    // Segmentation, embedding and PLDA use `.all`; FBank follows `fbankComputeUnits`.
     let segmentationModel = try loadModel(
       named: ModelNames.OfflineDiarizer.segmentation, in: bundle, computeUnits: .all)
     let fbankModel = try loadModel(
-      named: ModelNames.OfflineDiarizer.fbank, in: bundle, computeUnits: .cpuOnly)
+      named: ModelNames.OfflineDiarizer.fbank, in: bundle,
+      computeUnits: fbankComputeUnits(ProcessInfo.processInfo.operatingSystemVersion))
     let embeddingModel = try loadModel(
       named: ModelNames.OfflineDiarizer.embedding, in: bundle, computeUnits: .all)
     let pldaRhoModel = try loadModel(
@@ -45,6 +45,18 @@ package enum BundledSpeakerModelLoader {
       pldaPsi: pldaPsi,
       compilationDuration: CFAbsoluteTimeGetCurrent() - start
     )
+  }
+
+  /// #4376: FBank on the CPU-only path runs through Apple's BNNS, which on macOS 14 corrupts
+  /// memory (FluidInference/FluidAudio#878, fixed in macOS 15). Measured on an M1 Mac mini,
+  /// macOS 14.8.9, with the bundled models and the default diarizer config on a two-voice clip:
+  /// `.cpuOnly` FBank crashed 22 of 30 runs (EXC_BAD_ACCESS in BNNSGraphContextExecute_v2) and
+  /// every run that finished found 1 speaker; `.cpuAndGPU` and `.all` finished 50 of 50 each
+  /// with 2 speakers. So macOS 14 keeps FBank off the CPU-only path. macOS 15 and later keep
+  /// `.cpuOnly`, the vendor's default (the M1 runs that finished took 0.43 s vs 0.77 s per 30 s).
+  /// Probe: AgentArtifacts run `20261104-201708-4376-bnns-probe-0fcb`.
+  package static func fbankComputeUnits(_ os: OperatingSystemVersion) -> MLComputeUnits {
+    os.majorVersion < 15 ? .cpuAndGPU : .cpuOnly
   }
 
   private static func loadModel(
