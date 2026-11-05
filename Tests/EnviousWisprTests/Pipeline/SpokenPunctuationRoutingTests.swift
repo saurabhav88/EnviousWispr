@@ -37,7 +37,7 @@ struct SpokenPunctuationRoutingTests {
   private func step(
     _ settings: SpokenPunctuationSettings, lid: Bool = true
   ) -> InverseTextNormalizationStep {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.spokenPunctuation = settings
     step.backendSupportsLID = lid
     return step
@@ -397,7 +397,7 @@ struct SpokenPunctuationRoutingTests {
   func unchangedCarriesProvenance() async throws {
     let itn = InverseTextNormalizationStep(requestWork: { request in
       ITNWorkResult(text: request.input, punctuationRulesFired: 1, spokenFinalFullStop: true)
-    })
+    }, deadlines: .unbounded)
     let out = try await itn.process(ctx("See you.", language: "en"))
     #expect(out.text == "See you.")
     #expect(out.spokenFinalFullStop == true)
@@ -500,7 +500,7 @@ struct SpokenPunctuationRoutingTests {
       seen.add(request)
       await gate.enter()
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
-    })
+    }, deadlines: .unbounded)
     step.backendSupportsLID = true
     let original = SpokenPunctuationSettings(enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
     step.spokenPunctuation = original
@@ -541,7 +541,7 @@ struct SpokenPunctuationRoutingTests {
     let step = InverseTextNormalizationStep(requestWork: { request in
       seen.add(request)
       return ITNWorkResult(text: request.input, punctuationRulesFired: 0)
-    })
+    }, deadlines: .unbounded)
     step.spokenPunctuation = Self.on
     step.backendSupportsLID = true
     var context = ctx("alpha EWSNIPabc123 beta", language: "de")
@@ -570,7 +570,7 @@ struct SpokenPunctuationRoutingTests {
       learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
-      inverseTextNormalization: InverseTextNormalizationStep(),
+      inverseTextNormalization: InverseTextNormalizationStep(deadlines: .unbounded),
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),

@@ -81,8 +81,13 @@ struct AutoLanguageSpokenPunctuationTests {
     return context
   }
 
-  private func step(_ settings: SpokenPunctuationSettings = on) -> InverseTextNormalizationStep {
-    let step = InverseTextNormalizationStep()
+  /// Routing and output tests run with unbounded deadline execution (#4405); a test OF the
+  /// deadline passes `.real`.
+  private func step(
+    _ settings: SpokenPunctuationSettings = on,
+    deadlines: InverseTextNormalizationStep.Deadlines = .unbounded
+  ) -> InverseTextNormalizationStep {
+    let step = InverseTextNormalizationStep(deadlines: deadlines)
     step.spokenPunctuation = settings
     step.backendSupportsLID = true
     return step
@@ -173,7 +178,7 @@ struct AutoLanguageSpokenPunctuationTests {
 
   @Test("a probe that overruns the step's ceiling keeps the engine's label and source")
   func probeTimeoutKeepsTheEngineLabel() async throws {
-    let step = step()
+    let step = step(deadlines: .real)
     step.routingProbe = {
       // settle: stands in for a probe that never finishes; the step's own 0.5 s ceiling abandons it.
       try? await Task.sleep(for: .seconds(30))

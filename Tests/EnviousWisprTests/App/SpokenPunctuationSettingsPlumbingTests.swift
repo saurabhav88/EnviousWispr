@@ -130,7 +130,7 @@ struct SpokenPunctuationSettingsPlumbingTests {
     let step = InverseTextNormalizationStep(requestWork: { request in
       seen.add(request.spokenPunctuation.enabled)
       return ITNWorkResult(text: request.input, punctuationRulesFired: nil)
-    })
+    }, deadlines: .unbounded)
     let context = TextProcessingContext(text: "hello world", language: nil)
 
     step.spokenPunctuation = SpokenPunctuationSettings(

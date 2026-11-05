@@ -2271,7 +2271,7 @@ import os
       learnedWordCheck: LearnedWordCheckStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
-      inverseTextNormalization: InverseTextNormalizationStep(),
+      inverseTextNormalization: InverseTextNormalizationStep(deadlines: .unbounded),
       englishSpelling: EnglishSpellingStep(target: .text),
       llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
