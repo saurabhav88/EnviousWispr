@@ -1,0 +1,1 @@
+Activation probe for #4353 PR 5. This PR proves that `build-check` starts on an App-authored PR without a person approving the run, and that the routine PR check refuses a routine PR with no authenticated provenance. It is closed unmerged.
