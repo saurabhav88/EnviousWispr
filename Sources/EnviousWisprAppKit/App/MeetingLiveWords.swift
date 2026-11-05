@@ -276,7 +276,7 @@ final class MeetingLiveWords {
       case .microphone: micPump.admit(samples, span: info.span)
       case .callSound:
         callPump.admit(samples, span: info.span)
-        speakerFeed?(samples, info.span)
+        speakerFeed?(samples, info)
       }
     }
   }

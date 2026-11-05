@@ -2729,6 +2729,13 @@ package final class WisprBootstrapper {
     }
     meetingBox.coordinator = meetingCoordinator
     self.meetingCoordinator = meetingCoordinator
+    // #4355 PR C: live names read this meeting's call-app speaker log.
+    meetingLiveWords.speakers?.currentCallLog = { [weak meetingCoordinator] meetingID in
+      meetingCoordinator?.liveCallSpeakerLog(meetingID: meetingID)
+    }
+    meetingLiveWords.speakers?.currentAnchor = { [weak meetingCoordinator] meetingID in
+      meetingCoordinator?.liveRecordingAnchor(meetingID: meetingID)
+    }
     self.meetingLiveWordsRow = MeetingLiveWordsRowModel(
       environment: .init(
         choice: meetingLiveWordsChoice, settings: settings,

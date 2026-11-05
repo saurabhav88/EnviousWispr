@@ -54,6 +54,11 @@ struct MeetingLiveSpeakersTests {
     var labelChanges: [MeetingLiveSpeakerLabels] = []
     var labelSignal = BoundedWait.Signal()
     var handoffActivityLimit = 256
+    var namingInterval: Duration? = .seconds(2)
+    /// The call-app log each meeting returns, and which meetings asked for one.
+    var logs: [UUID: CallSpeakerLog] = [:]
+    var logReads: [UUID] = []
+    var anchor: UInt64?
     /// Fires each time the meeting reads whether the model is downloaded.
     var eligibilityRead = BoundedWait.Signal()
     lazy var speakers: MeetingLiveSpeakers = {
@@ -69,7 +74,12 @@ struct MeetingLiveSpeakersTests {
             analyses.append(analysis)
             return analysis
           },
-          handoffActivityLimit: handoffActivityLimit))
+          namingInterval: namingInterval, handoffActivityLimit: handoffActivityLimit))
+      speakers.currentAnchor = { [unowned self] _ in anchor }
+      speakers.currentCallLog = { [unowned self] id in
+        logReads.append(id)
+        return logs[id]
+      }
       speakers.onLabelsChanged = { [unowned self] _, labels in
         labelChanges.append(labels)
         labelSignal.fire()
@@ -86,11 +96,14 @@ struct MeetingLiveSpeakersTests {
       return id
     }
 
-    /// Publishes through the current analysis and waits for the labels to change.
-    func publishAndWait(_ update: LiveSpeakerUpdate) async throws {
+    /// Publishes through the current analysis and waits for the labels to change (or, with
+    /// `expectLabels: false`, for the update to be applied).
+    func publishAndWait(_ update: LiveSpeakerUpdate, expectLabels: Bool = true) async throws {
       labelSignal = BoundedWait.Signal()
+      let applied = BoundedWait.Signal()
+      if !expectLabels { speakers.receivedForTests = { _ in applied.fire() } }
       try #require(analyses.last).publish(update)
-      try await BoundedWait.until(labelSignal)
+      try await BoundedWait.until(expectLabels ? labelSignal : applied)
     }
   }
 
@@ -99,7 +112,13 @@ struct MeetingLiveSpeakersTests {
     MeetingAudioSpan(
       recording: recording, track: .callSound, run: run, startSample: start, sampleCount: count)!
   }
-  static func line(
+  static func released(_ span: MeetingAudioSpan) -> MeetingReleasedChunk {
+    MeetingReleasedChunk(
+      span: span,
+      acquired: MeetingAcquisitionTime(recording: recording, hostTicks: 1, provenance: .hardware),
+      afterDrop: false, sourceBreak: false)
+  }
+    static func line(
     _ id: String, _ track: MeetingTrackKind, _ pieces: [MeetingTimedPiece]
   ) -> LiveWordsAssembler.Line {
     LiveWordsAssembler.Line(
@@ -240,8 +259,8 @@ struct MeetingLiveSpeakersTests {
     _ = try await BoundedWait.result(of: start)
     let samples = [Float](repeating: 0.1, count: 200)
     samples.withUnsafeBufferPointer { buffer in
-      feed(UnsafeBufferPointer(rebasing: buffer[0..<100]), Self.span(0, 100, run: 0))
-      feed(UnsafeBufferPointer(rebasing: buffer[100..<200]), Self.span(0, 100, run: 1))
+      feed(UnsafeBufferPointer(rebasing: buffer[0..<100]), Self.released(Self.span(0, 100, run: 0)))
+      feed(UnsafeBufferPointer(rebasing: buffer[100..<200]), Self.released(Self.span(0, 100, run: 1)))
     }
     try await BoundedWait.until(rig.analyses[0].submitted)
     #expect(rig.analyses[0].events.withLock { $0 } == ["submit(0)", "reset", "submit(1)"])

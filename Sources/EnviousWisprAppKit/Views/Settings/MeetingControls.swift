@@ -443,7 +443,7 @@ struct MeetingLiveWordsView: View {
               VStack(alignment: .leading, spacing: 2) {
                 Text(
                   verbatim:
-                    "\(MeetingsPresentation.liveSpeakerHeader(block.speaker)) · \(MeetingsPresentation.clock(ms: block.startMs))"
+                    "\(MeetingsPresentation.liveSpeakerHeader(block.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: block.startMs))"
                 )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.stTextSecondary)

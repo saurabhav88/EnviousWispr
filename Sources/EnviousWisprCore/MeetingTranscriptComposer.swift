@@ -70,6 +70,19 @@ public struct MeetingComposition: Sendable, Equatable {
   public let echoTurnIDs: [String]
   /// Distinct speakers across both tracks, echo turns excluded; at least 1 when any turn exists.
   public let speakerCount: Int
+
+  /// #4355 PR C: the live naming adapter builds a composition of live call turns for
+  /// `MeetingSpeakerNamer` outside this module.
+  package init(
+    text: String, turns: [Turn], speakerNames: [String: String], echoTurnIDs: [String],
+    speakerCount: Int
+  ) {
+    self.text = text
+    self.turns = turns
+    self.speakerNames = speakerNames
+    self.echoTurnIDs = echoTurnIDs
+    self.speakerCount = speakerCount
+  }
 }
 
 /// Merges per-track turns into one transcript (#3972 §3.7, R5). Pure and deterministic.

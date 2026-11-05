@@ -90,12 +90,16 @@ enum MeetingsPresentation {
     return blocks
   }
 
-  /// A live block's header: "You", "Speaker N", or "Speaker" while unresolved.
-  static func liveSpeakerHeader(_ key: LiveWordsAssembler.LiveSpeakerKey) -> String {
+  /// A live block's header: "You", the call app's name for the speaker (`names`, by number),
+  /// "Speaker N", or "Speaker" while unresolved.
+  static func liveSpeakerHeader(
+    _ key: LiveWordsAssembler.LiveSpeakerKey, names: [Int: String] = [:]
+  ) -> String {
     switch key {
     case .you:
       return String(localized: "You", comment: "EnviousMeet: the microphone level meter's label.")
     case .remote(let number):
+      if let value = Int(number), let name = names[value] { return name }
       return String(
         localized: "Speaker \(number)",
         comment:

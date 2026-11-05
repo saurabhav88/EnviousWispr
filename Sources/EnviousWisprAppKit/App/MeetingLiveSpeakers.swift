@@ -1,6 +1,7 @@
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLivePreview
+import EnviousWisprPipeline
 import Foundation
 import Observation
 import os
@@ -25,6 +26,9 @@ struct MeetingLiveSpeakerLabels: Sendable, Equatable {
   /// Bumped once per applied batch that settled at least one piece to a speaker (the live view
   /// announces each bump once).
   var revision = 0
+  /// The call app's name for a speaker number, from the latest naming pass (replaced every pass,
+  /// never permanent). A number without one shows as "Speaker N".
+  var names: [Int: String] = [:]
 
   func key(for piece: MeetingTimedPiece, track: MeetingTrackKind)
     -> LiveWordsAssembler.LiveSpeakerKey
@@ -79,6 +83,8 @@ final class MeetingLiveSpeakers {
           directory: directory, admit: admit, publish: publish, onReleased: onReleased)
       }
     var makePump: () -> MeetingLiveAudioPump = { MeetingLiveAudioPump() }
+    /// How often names are proposed while the model is ready; nil runs no loop (tests tick).
+    var namingInterval: Duration? = .seconds(2)
     /// Activity updates waiting for the main actor, at most (`Handoff`): about three minutes of
     /// the model's steps.
     var handoffActivityLimit = 256
@@ -153,6 +159,10 @@ final class MeetingLiveSpeakers {
     var handoff: Handoff?
     var wake: AsyncStream<Void>.Continuation?
     var consumer: Task<Void, Never>?
+    var naming: Task<Void, Never>?
+    /// Each released call chunk's written position and acquisition time (writer queue appends,
+    /// pruned with the evidence on the main actor), for the naming projection.
+    let clock = OSAllocatedUnfairLock<[MeetingLiveNaming.ClockEntry]>(initialState: [])
     /// The writer run each reset sent to the analysis starts, in order (the consumer appends, the
     /// matching `.reset` publication takes the first).
     let resetRuns = OSAllocatedUnfairLock<[Int]>(initialState: [])
@@ -164,6 +174,15 @@ final class MeetingLiveSpeakers {
   }
 
   private let deps: Dependencies
+  /// Set by the bootstrapper: the call-app speaker log of THIS meeting so far
+  /// (`MeetingCoordinator.liveCallSpeakerLog`), nil when none is being read.
+  var currentCallLog: @MainActor (UUID) -> CallSpeakerLog? = { _ in nil }
+  /// Set by the bootstrapper: the recording's anchor host time
+  /// (`MeetingCoordinator.liveRecordingAnchor`); nil leaves names off.
+  var currentAnchor: @MainActor (UUID) -> UInt64? = { _ in nil }
+  /// Settled pieces' naming evidence (solo stretches of their speaker), for the naming pass.
+  private var namingEvidence: [MeetingAudioSpan: MeetingLiveNaming.Evidence] = [:]
+
   /// Set by the bootstrapper: waits until a Settings check of the model has released it.
   var waitForCheckRelease: @MainActor () async -> Void = {}
   /// Called with the current labels whenever they change, for the recording's meeting.
@@ -230,16 +249,29 @@ final class MeetingLiveSpeakers {
 
   /// A new recording: its call audio is buffered from the first sample. Returns the feed for the
   /// call track's written audio.
-  func prepareCapture(meetingID: UUID) -> @Sendable (UnsafeBufferPointer<Float>, MeetingAudioSpan)
-    -> Void
-  {
+  func prepareCapture(meetingID: UUID) -> @Sendable (
+    UnsafeBufferPointer<Float>, MeetingReleasedChunk
+  ) -> Void {
     retire(clearLabels: true)
     generation += 1
     let pump = deps.makePump()
-    recording = Recording(generation: generation, meetingID: meetingID, pump: pump)
+    let current = Recording(generation: generation, meetingID: meetingID, pump: pump)
+    recording = current
     labelsMeetingID = meetingID
-    return { samples, span in pump.admit(samples, span: span) }
+    let clock = current.clock
+    // Writer queue: copy into the pump and note the chunk's clock pair; nothing else.
+    return { samples, chunk in
+      pump.admit(samples, span: chunk.span)
+      let entry = MeetingLiveNaming.ClockEntry(chunk)
+      clock.withLock { entries in
+        entries.append(entry)
+        if entries.count > Self.clockLimit { entries.removeFirst() }
+      }
+    }
   }
+
+  /// Clock pairs kept at most (one per released chunk); the oldest goes first beyond it.
+  nonisolated static let clockLimit = 8_192
 
   /// Capture started. With call sound, loads the model (if admitted) once any earlier copy is
   /// released, then starts feeding. Without it, nothing loads.
@@ -394,6 +426,7 @@ final class MeetingLiveSpeakers {
     case .ready(let epoch):
       current.state = .ready
       current.epoch = epoch
+      startNaming(current)
     case .activity(let activities, let unpositioned):
       current.unpositionedFrames += unpositioned
       for activity in activities where activity.epoch == current.epoch {
@@ -408,6 +441,7 @@ final class MeetingLiveSpeakers {
       current.epoch = epoch
       current.activities.removeAll()
       current.reach.removeAll()
+      revokeNames(before: epoch, meetingID: current.meetingID)
       let recorded = current.resetRuns.withLock { runs in runs.isEmpty ? nil : runs.removeFirst() }
       // Production always records the run; without one, the newest pending run is kept when
       // pieces of several runs wait, else everything waiting settles.
@@ -448,6 +482,14 @@ final class MeetingLiveSpeakers {
         labels.numbers[span] = number
         settled.insert(span)
         changed = true
+        if let anchor = currentAnchor(current.meetingID) {
+          let solo = MeetingLiveNaming.soloStretches(
+            span: span, slot: slot, epoch: epoch, activities: current.activities)
+          namingEvidence[span] = MeetingLiveNaming.Evidence(
+            speakerID: MeetingLiveNaming.speakerID(epoch: epoch, slot: slot), epoch: epoch,
+            soloMs: MeetingLiveNaming.observationStretches(
+              solo, run: span.run, clock: current.clock.withLock { $0 }, anchor: anchor))
+        }
       } else if span.endSample <= current.reach[span.run] ?? 0 {
         settled.insert(span)  // final evidence passed it without an owner: "Speaker" for good
       } else {
@@ -475,6 +517,62 @@ final class MeetingLiveSpeakers {
     }
     let excess = current.activities.count - Self.evidenceLimit
     if excess > 0 { current.activities.removeFirst(excess) }
+    let pendingStarts = earliest
+    let textEnds = textEnd
+    current.clock.withLock { entries in
+      entries.removeAll { entry in
+        let frontier = pendingStarts[entry.run] ?? textEnds[entry.run] ?? 0
+        return entry.endSample <= frontier
+      }
+    }
+  }
+
+  // MARK: - Names
+
+  /// One periodic naming pass per recording, cancelled at its retirement.
+  private func startNaming(_ current: Recording) {
+    guard current.naming == nil, let interval = deps.namingInterval else { return }
+    let gen = current.generation
+    current.naming = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: interval)  // the plan's naming cadence, not a settle wait
+        guard !Task.isCancelled else { return }
+        self?.proposeNames(generation: gen)
+      }
+    }
+  }
+
+  /// Runs the shipped namer over this meeting's settled solo speech and its call-app log, and
+  /// replaces the names with its answer. Synchronous on the main actor: no result can arrive
+  /// after the recording moved on.
+  func proposeNames(generation gen: Int? = nil) {
+    guard let current = recording, gen == nil || current.generation == gen,
+      current.state == .ready
+    else { return }
+    let log = currentCallLog(current.meetingID)
+    let (composition, eligibility) = MeetingLiveNaming.inputs(Array(namingEvidence.values))
+    let result = MeetingSpeakerNamer.propose(
+      composition: composition, eligibility: eligibility, log: log)
+    var numberByID: [String: Int] = [:]
+    for (key, number) in numberOf {
+      numberByID[MeetingLiveNaming.speakerID(epoch: key.epoch, slot: key.slot)] = number
+    }
+    var names: [Int: String] = [:]
+    for (id, name) in result.proposals {
+      if let number = numberByID[id] { names[number] = name }
+    }
+    guard names != labels.names else { return }
+    labels.names = names
+    onLabelsChanged?(current.meetingID, labels)
+  }
+
+  /// A reset: names and naming evidence of earlier epochs go before new evidence can name them.
+  private func revokeNames(before epoch: Int, meetingID: UUID) {
+    namingEvidence = namingEvidence.filter { $0.value.epoch >= epoch }
+    let oldNumbers = Set(numberOf.filter { $0.key.epoch < epoch }.map(\.value))
+    guard !oldNumbers.isDisjoint(with: labels.names.keys) else { return }
+    labels.names = labels.names.filter { !oldNumbers.contains($0.key) }
+    onLabelsChanged?(meetingID, labels)
   }
 
   private func settleAllPendingUnresolved() {
@@ -485,6 +583,7 @@ final class MeetingLiveSpeakers {
   private func retire(clearLabels: Bool) {
     if let current = recording {
       current.start?.cancel()
+      current.naming?.cancel()
       current.analysis?.close()
       current.wake?.finish()  // the consumer ends; anything still queued is this stale meeting's
       _ = current.pump.retire()
@@ -509,5 +608,6 @@ final class MeetingLiveSpeakers {
     pending = []
     settled = []
     textEnd = [:]
+    namingEvidence = [:]
   }
 }

@@ -2945,6 +2945,20 @@ final class MeetingCoordinator {
   #endif
 
   /// The meeting's speaker session, removed from the coordinator; nil when it has none.
+  /// #4355 PR C: the host time `meetingID`'s timeline starts at while it records (the recorder
+  /// anchor both the track writer and the call-app log count from), for live names.
+  func liveRecordingAnchor(meetingID: UUID) -> UInt64? {
+    guard case .recording(let current, _) = phase, current == meetingID else { return nil }
+    return recorder?.anchor
+  }
+
+  /// #4355 PR C: the call-app speaker log collected so far for `meetingID` while it records, for
+  /// live names; nil for any other meeting or when none is being read.
+  func liveCallSpeakerLog(meetingID: UUID) -> CallSpeakerLog? {
+    guard let current = speakerSession, current.meetingID == meetingID else { return nil }
+    return current.session.currentLog
+  }
+
   private func takeSpeakerSession(_ meetingID: UUID) -> CallSpeakerSession? {
     if speakerMuteRules?.meetingID == meetingID { speakerMuteRules = nil }
     guard let current = speakerSession, current.meetingID == meetingID else { return nil }
