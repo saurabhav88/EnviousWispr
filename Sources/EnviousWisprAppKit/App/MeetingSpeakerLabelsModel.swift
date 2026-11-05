@@ -305,6 +305,12 @@ final class MeetingSpeakerLabelsModel {
     checkIfNeeded()
   }
 
+  /// A meeting's live speakers wait here before loading their own copy: a check stopped by the
+  /// meeting start may still be releasing its model.
+  func waitForCheckRelease() async {
+    await checkTask?.value
+  }
+
   /// `ModelDeliveryHome.drainLiveSpeakerHoldersBeforeRemoval`: invalidate any check and wait
   /// until it released the model, so the files are never deleted under it.
   func releaseForRemoval() async {

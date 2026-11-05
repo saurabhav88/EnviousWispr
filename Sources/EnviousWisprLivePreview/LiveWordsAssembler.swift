@@ -40,12 +40,11 @@ package struct LiveWordsAssembler: Sendable, Equatable {
     /// The line's finalized text as timed pieces, untrimmed (#4355). A provisional line's text
     /// and an uncertain line's frozen guess are one piece with unknown timing.
     package let pieces: [MeetingTimedPiece]
-    /// Who spoke this line, once live speakers assign one (PR C). Always nil in PR A.
-    package let speakerKey: LiveSpeakerKey?
   }
 
-  /// Who a live line belongs to (#4355 plan §4): the user, one separated remote voice (its
-  /// live speaker id), or a remote stretch that could not be attributed.
+  /// Who a live piece belongs to (#4355 plan §4): the user, one separated remote voice (its
+  /// displayed speaker number, `MeetingLiveSpeakerLabels`), or remote text not attributed.
+  /// Assigned per piece, never per line (PR C).
   package enum LiveSpeakerKey: Sendable, Equatable {
     case you
     case remote(String)
@@ -110,7 +109,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
           index,
           Line(
             id: entry.id, track: entry.track, kind: entry.kind, startMs: entry.startMs,
-            endMs: entry.endMs, text: text, pieces: entry.pieces, speakerKey: nil)
+            endMs: entry.endMs, text: text, pieces: entry.pieces)
         ))
     }
     for track in MeetingTrackKind.allCases {
@@ -124,7 +123,7 @@ package struct LiveWordsAssembler: Sendable, Equatable {
           Line(
             id: "\(track.rawValue)-provisional", track: track, kind: .provisional,
             startMs: provisional.startMs, endMs: provisional.endMs, text: text,
-            pieces: MeetingTimedPiece.untimed(provisional.text), speakerKey: nil)
+            pieces: MeetingTimedPiece.untimed(provisional.text))
         ))
     }
     return

@@ -2547,6 +2547,15 @@ package final class WisprBootstrapper {
           await MeetingLiveWordsChoice.liveInventory(universalAdmitted: universalAdmitted)
         },
         appleEquivalent: MeetingLiveWordsChoice.liveAppleEquivalent))
+    // #4355 PR C: the recording meeting's live speaker labels. The model is read once per meeting
+    // through the delivery door; dictation (recording, transcribing or polishing on either engine)
+    // goes first.
+    let meetingLiveSpeakers = MeetingLiveSpeakers(
+      dependencies: .init(
+        admittedDirectory: { [modelDelivery] in
+          await modelDelivery.admittedLiveSpeakerModelDirectory()
+        },
+        isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive }))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
         resolveChoice: { [meetingLiveWordsChoice] forcing in
@@ -2577,7 +2586,7 @@ package final class WisprBootstrapper {
               settings: settings, dictationActive: liveRecordingState.isDictationActive)
           }
         }),
-      choiceOwner: meetingLiveWordsChoice)
+      choiceOwner: meetingLiveWordsChoice, speakers: meetingLiveSpeakers)
     // #3973: removing the Universal model lets dictation's preview and the meeting's live
     // words both go before the one residency wait and the delete.
     PreviewModelRemoval.install(
@@ -2756,8 +2765,13 @@ package final class WisprBootstrapper {
     let meetingSpeakerLabels = MeetingSpeakerLabelsModel(
       environment: .live(home: modelDelivery, isMeetingActive: meetingIsActive))
     self.meetingSpeakerLabels = meetingSpeakerLabels
-    modelDelivery.drainLiveSpeakerHoldersBeforeRemoval = { [weak meetingSpeakerLabels] in
+    modelDelivery.drainLiveSpeakerHoldersBeforeRemoval = {
+      [weak meetingSpeakerLabels, weak meetingLiveSpeakers = meetingLiveWords.speakers] in
       await meetingSpeakerLabels?.releaseForRemoval()
+      await meetingLiveSpeakers?.waitForRelease()
+    }
+    meetingLiveWords.speakers?.waitForCheckRelease = { [weak meetingSpeakerLabels] in
+      await meetingSpeakerLabels?.waitForCheckRelease()
     }
     self.meetingIdleObserver = MeetingIdleObserver(
       isActive: meetingIsActive,

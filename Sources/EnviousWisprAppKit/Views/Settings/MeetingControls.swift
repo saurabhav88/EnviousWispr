@@ -92,7 +92,8 @@ struct MeetingLivePanel: View {
       }
       meters
       // #4248: static text in reading order, right under the "You" meter it explains.
-      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp) {
+      if let line = MeetingsPresentation.muteLine(meetings.muteState, callApp: meetings.muteCallApp)
+      {
         Text(line)
           .font(.stHelper)
           .foregroundStyle(.stTextSecondary)
@@ -186,9 +187,10 @@ struct MeetingProcessingPanel: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(
-        MeetingsPresentation.stage(processing, waitingOnSummary: meetings.passWaitsOnSummary))
-        .font(.stRowTitle)
-        .foregroundStyle(.stTextPrimary)
+        MeetingsPresentation.stage(processing, waitingOnSummary: meetings.passWaitsOnSummary)
+      )
+      .font(.stRowTitle)
+      .foregroundStyle(.stTextPrimary)
       if let fraction = MeetingsPresentation.progress(processing) {
         ProgressView(value: fraction)
       } else {
@@ -266,11 +268,12 @@ struct MeetingCallSoundRow: View {
         "",
         isOn: Binding(
           get: { !settings.meetingCaptureCallSound },
-          set: { settings.meetingCaptureCallSound = !$0 }))
-        .labelsHidden()
-        .toggleStyle(BrandedToggleStyle())
-        .fixedSize()
-        .accessibilityLabel(Text(MeetingsCopy.callSoundTitle))
+          set: { settings.meetingCaptureCallSound = !$0 })
+      )
+      .labelsHidden()
+      .toggleStyle(BrandedToggleStyle())
+      .fixedSize()
+      .accessibilityLabel(Text(MeetingsCopy.callSoundTitle))
     }
   }
 }
@@ -399,7 +402,7 @@ struct MeetingConsentNote: View {
   }
 }
 
-/// The recording meeting's live words (#3973): lines labelled by track as people speak, words
+/// The recording meeting's live words (#3973): blocks headed You, Speaker N or Speaker (#4355 PR C) as people speak, words
 /// still changing and words the engine was unsure of shown lighter. The status lines say when
 /// a track has no live words and why. The full transcript, with speakers, comes after the
 /// meeting.
@@ -431,22 +434,33 @@ struct MeetingLiveWordsView: View {
       } else {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 10) {
-            ForEach(transcript.lines) { line in
+            // #4355 PR C: speaker blocks, after each piece was assigned. Runs keep their line's
+            // identity, so regrouping never re-creates text the user selected.
+            ForEach(
+              MeetingsPresentation.liveBlocks(transcript.lines, labels: transcript.speakerLabels)
+            ) {
+              block in
               VStack(alignment: .leading, spacing: 2) {
                 Text(
                   verbatim:
-                    "\(MeetingsPresentation.liveSpeaker(line.track)) · \(MeetingsPresentation.clock(ms: line.startMs))"
+                    "\(MeetingsPresentation.liveSpeakerHeader(block.speaker)) · \(MeetingsPresentation.clock(ms: block.startMs))"
                 )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.stTextSecondary)
-                Text(line.text)
-                  .font(.stBody)
-                  .italic(line.kind == .uncertain)
-                  .foregroundStyle(
-                    superseded || line.kind != .confirmed ? Color.stTextSecondary : Color.stTextPrimary)
-                  .textSelection(.enabled)
+                .accessibilityAddTraits(.isHeader)
+                ForEach(block.runs) { run in
+                  Text(run.text)
+                    .font(.stBody)
+                    .italic(run.kind == .uncertain)
+                    .foregroundStyle(
+                      superseded || run.kind != .confirmed
+                        ? Color.stTextSecondary : Color.stTextPrimary
+                    )
+                    .textSelection(.enabled)
+                    .id(run.id)
+                }
               }
-              .id(line.id)
+              .id(block.id)
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -458,6 +472,12 @@ struct MeetingLiveWordsView: View {
     }
     .padding(14)
     .background(Color.stSectionBg, in: RoundedRectangle(cornerRadius: 12))
+    // #4355 PR C: one announcement per applied batch that moved text under a speaker, never
+    // per model update, and never a claim about who is talking now.
+    .onChange(of: transcript.speakerLabels.revision) { old, new in
+      guard new > old, !superseded else { return }
+      AccessibilityNotification.Announcement(MeetingsPresentation.liveSpeakersUpdated).post()
+    }
   }
 }
 
@@ -534,7 +554,8 @@ struct MeetingCallAppsRow: View {
       }
       .disabled(
         settings.meetingCallDetection == CallDetectionPolicy.Mode.off.rawValue
-          || !CallMicrophoneWatcher.isSupported)
+          || !CallMicrophoneWatcher.isSupported
+      )
       .environment(\.settingsArrivalRegisteredID, SettingsMapID.meetingCallApps)
       Label {
         Text(MeetingsCopy.callAppsPrivacy)

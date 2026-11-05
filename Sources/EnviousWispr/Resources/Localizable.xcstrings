@@ -19672,6 +19672,28 @@
         }
       }
     },
+    "Speaker" : {
+      "comment" : "History, Live Preview of a recording meeting: header of call words not yet given to one voice.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecher"
+          }
+        }
+      }
+    },
+    "Speaker %@" : {
+      "comment" : "History, Live Preview of a recording meeting: header of words one separated call voice said, numbered by first appearance, such as Speaker 2.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecher %@"
+          }
+        }
+      }
+    },
     "Speaker detection didn't finish for this recording." : {
       "localizations" : {
         "de" : {
@@ -19711,6 +19733,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Downloadfortschritt der Sprecherkennzeichnung"
+          }
+        }
+      }
+    },
+    "Speaker labels updated." : {
+      "comment" : "VoiceOver announcement while a meeting records: some live call text was just placed under its speaker's header.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnung aktualisiert."
           }
         }
       }
