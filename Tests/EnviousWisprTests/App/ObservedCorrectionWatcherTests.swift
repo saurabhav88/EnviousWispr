@@ -273,7 +273,7 @@ func waitUntil(deadlineMs: Int = 2000, _ condition: @MainActor () -> Bool) async
 // MARK: - Watcher
 
 @MainActor
-@Suite("ObservedCorrectionWatcher (#996 steps 1–7)", .tags(.productOutcome), .serialized)
+@Suite("ObservedCorrectionWatcher (#996 steps 1–7)", .tags(.productOutcome, .localParallel), .serialized)
 struct ObservedCorrectionWatcherTests {
   typealias T = TelemetryService.LearnFromEditsTelemetry
 

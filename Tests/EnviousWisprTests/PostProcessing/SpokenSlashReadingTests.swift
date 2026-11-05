@@ -19,7 +19,7 @@ import Testing
 ///
 /// The setting is OFF in every row unless stated: that is the shipped default and the whole
 /// point of the change.
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct SpokenSlashReadingTests {
 
   private static let itn = InverseTextNormalizer()

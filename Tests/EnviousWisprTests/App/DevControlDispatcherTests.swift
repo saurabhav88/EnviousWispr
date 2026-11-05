@@ -19,7 +19,7 @@
   /// Harness Contract: the dispatcher is the instrument agents set app state through. When
   /// this fails, a UAT script reads the wrong setting, writes one it asked not to force,
   /// or gets a refusal it cannot tell apart. No customer sees it.
-  @Suite(.tags(.harnessContract))
+  @Suite(.tags(.harnessContract, .localParallel))
   @MainActor
   struct DevControlDispatcherTests {
     private static func make() -> (SettingsManager, DevControlDispatcher) {

@@ -8,7 +8,7 @@ import Testing
 /// main window calls them from the right places with the real pages, that the one instance
 /// reaches the main window, and that the History page's notice holder feeds the alert and both
 /// detail views.
-@Suite("History Paste wiring (#4101)", .tags(.driftGuard))
+@Suite("History Paste wiring (#4101)", .tags(.driftGuard, .localParallel))
 struct HistoryPasteWiringTests {
 
   private static let sources = "Sources/EnviousWisprAppKit"

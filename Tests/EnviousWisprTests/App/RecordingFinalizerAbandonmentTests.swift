@@ -38,7 +38,7 @@ import Testing
 /// scope.
 @MainActor
 /// Class: `.productOutcome` — an abandoned recovery keeps its overlay, or loses it while still working.
-@Suite("RecordingFinalizer — abandonment (#2087)", .tags(.productOutcome))
+@Suite("RecordingFinalizer — abandonment (#2087)", .tags(.productOutcome, .localParallel))
 struct RecordingFinalizerAbandonmentTests {
 
   #if DEBUG

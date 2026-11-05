@@ -56,7 +56,7 @@ struct EGOneLanguageNamingDecisionTests {
 /// #3111 cloud review: a Polish dictation carrying an English clause must not be named Polish,
 /// because EG-1 then translated the clause (4 of 20 measured). When this fails, a Polish user
 /// quoting an English email gets the quote back in Polish.
-@Suite("EG-1 language naming: English stretches", .tags(.productOutcome))
+@Suite("EG-1 language naming: English stretches", .tags(.productOutcome, .localParallel))
 struct EGOneEnglishStretchTests {
 
   /// The four measured sentences EG-1 translated when told "Polish".

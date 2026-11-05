@@ -11,7 +11,7 @@ import Testing
 /// `ollamaModel` preference survives both (it powers the Download-suggestion
 /// copy).
 @MainActor
-@Suite("SettingsManager Ollama model truth (#1305)")
+@Suite("SettingsManager Ollama model truth (#1305)", .tags(.localParallel))
 struct SettingsManagerOllamaTruthTests {
 
   private func freshSettings(seed: ((UserDefaults) -> Void)? = nil) -> SettingsManager {

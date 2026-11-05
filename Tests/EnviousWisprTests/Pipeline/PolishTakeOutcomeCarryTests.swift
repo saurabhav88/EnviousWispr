@@ -14,7 +14,7 @@ import Testing
 /// card or warning is raised by another take, by a stale setup, twice, or never.
 @MainActor
 @Suite(
-  "A take's polish outcome is frozen, carried and handed back once (#3438)", .tags(.productOutcome))
+  "A take's polish outcome is frozen, carried and handed back once (#3438)", .tags(.productOutcome, .localParallel))
 struct PolishTakeOutcomeCarryTests {
 
   @MainActor

@@ -11,7 +11,7 @@ import Testing
 /// user had, shows it with another pass's hidden echo lines, or a crash leaves a meeting whose
 /// committed transcript never reaches History.
 @MainActor
-@Suite("MeetingTranscriptReplacement", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("MeetingTranscriptReplacement", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingTranscriptReplacementTests {
   typealias Harness = MeetingCoordinatorTests.Harness
 

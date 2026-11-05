@@ -120,7 +120,7 @@ private final class HeldAliasSuggester: AliasSuggesting, @unchecked Sendable {
 }
 
 @MainActor
-@Suite("ContactsImportCoordinator — orchestration (#636)")
+@Suite("ContactsImportCoordinator — orchestration (#636)", .tags(.localParallel))
 struct ContactsImportCoordinatorTests {
   private static func tempDir() -> URL {
     let dir = TestTemporaryDirectory.url

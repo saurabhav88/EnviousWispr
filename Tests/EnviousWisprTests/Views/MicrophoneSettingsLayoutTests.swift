@@ -9,7 +9,7 @@ import Testing
 /// Hosts the production picker and shared row. Whole-page lifecycle and native menu input
 /// remain running-app UAT; this off-screen host supplies geometry, not an AX tree.
 @MainActor
-@Suite("Microphone settings layout (#3385)", .tags(.productOutcome))
+@Suite("Microphone settings layout (#3385)", .tags(.productOutcome, .localParallel))
 struct MicrophoneSettingsLayoutTests {
   init() { _ = NSApplication.shared }
 

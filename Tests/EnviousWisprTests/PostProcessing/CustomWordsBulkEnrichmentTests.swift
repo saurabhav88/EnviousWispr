@@ -11,7 +11,7 @@ import EnviousWisprAppKitTestSupport
 /// Every test drives a real manager against a temp file, matching
 /// `CustomWordsImportCommitTests`'s harness shape.
 @MainActor
-@Suite("CustomWordsManager — bulk-import enrichment")
+@Suite("CustomWordsManager — bulk-import enrichment", .tags(.localParallel))
 struct CustomWordsBulkEnrichmentTests {
 
   // MARK: - Harness

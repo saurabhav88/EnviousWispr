@@ -308,7 +308,7 @@ struct ReadinessRetryTelemetryContractTests {
 
   /// `.productOutcome`: when one of these fails, a dictation the user recorded is
   /// gone. `.serialized` because the telemetry hook is process-global.
-  @Suite("Readiness retry recovery outcomes (#2207)", .serialized, .tags(.productOutcome))
+  @Suite("Readiness retry recovery outcomes (#2207)", .serialized, .tags(.productOutcome, .localParallel))
   @MainActor
   struct ReadinessRetryRecoveryTests {
 
