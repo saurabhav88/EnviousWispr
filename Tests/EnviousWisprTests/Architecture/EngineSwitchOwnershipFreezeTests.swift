@@ -23,7 +23,7 @@ import Testing
 // Mirrors `KernelOwnershipFreezeTests` / `EngineIdentityFreezeTests` (comment-
 // skipping scanner, fail-closed counts, adversarial + negative controls).
 
-@Suite struct EngineSwitchOwnershipFreezeTests {
+@Suite(.tags(.localParallel)) struct EngineSwitchOwnershipFreezeTests {
 
   // A METHOD CALL on a receiver: `foo.switchBackend(to: ...)`. The leading `\.`
   // excludes the `func switchBackend(to type:)` declarations in the ASR managers.

@@ -13,7 +13,7 @@ import Testing
 /// bytes a character, every counter at its largest and the longest text values, and goes
 /// through the real storage encoder and store. Building, saving and reading 345,600 samples
 /// takes about eight seconds in a Debug build: that size is the subject.
-@Suite("Speaker log size", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Speaker log size", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct CallSpeakerLogSizeTests {
   private static let limits = CallEvidenceLimits.current
 

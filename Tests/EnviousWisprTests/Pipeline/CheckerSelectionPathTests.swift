@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprPipeline
 
 @MainActor
-@Suite("Checker selection paths (#3105)", .tags(.productOutcome))
+@Suite("Checker selection paths (#3105)", .tags(.productOutcome, .localParallel))
 struct CheckerSelectionPathTests {
   private struct Approver: LearnedWordChecking {
     let armName = "test_ready"

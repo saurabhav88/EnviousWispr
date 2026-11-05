@@ -14,7 +14,7 @@ import Testing
 // the assertions (the loop's inter-poll sleep still runs, kept to ≤2 iterations).
 
 @MainActor
-@Suite struct VADMonitorLoopTests {
+@Suite(.tags(.localParallel)) struct VADMonitorLoopTests {
 
   /// Records the loop's callbacks. `@MainActor` so the loop's `@MainActor`
   /// closures mutate it without data races; `keepRecording` flips it off.

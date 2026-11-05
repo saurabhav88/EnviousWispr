@@ -20,7 +20,7 @@ import Testing
 /// assertion here while silently disabling the #286 VRAM unload, so local and
 /// unknown models each have their own must-evict test.
 @MainActor
-@Suite("PipelineSettingsSync Ollama eviction suppression (#1914)")
+@Suite("PipelineSettingsSync Ollama eviction suppression (#1914)", .tags(.localParallel))
 struct PipelineSettingsSyncOllamaEvictionTests {
 
   // MARK: - Fixture

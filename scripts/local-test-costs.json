@@ -59,7 +59,7 @@
     "EnviousWisprTests/WordDiffTests": 2.866977,
     "EnviousWisprTests/ITNGeneratedDataTests": 1.277164,
     "EnviousWisprTests/RecognizerMarksTests": 0.931171,
-    "__protected__": 209.911173,
+    "__protected__": 177.603239,
     "EnviousWisprTests/WordCheckRuntimeTerminationTests": 4.31805,
     "EnviousWisprTests/LanguageGateBenchmarkTests": 49.789993,
     "EnviousWisprTests/MeetingCoordinatorTests": 11.523142,
@@ -79,7 +79,22 @@
     "EnviousWisprTests/TestTemporaryDirectoryTests": 1.008887,
     "EnviousWisprTests/MeetingPauseFinderTests": 0.90349,
     "EnviousWisprTests/SmartImportSourceTests": 0.840623,
-    "EnviousWisprTests/CaptureVADSignalSourceTests": 0.792424
+    "EnviousWisprTests/CaptureVADSignalSourceTests": 0.792424,
+    "EnviousWisprTests/CallSpeakerLogSizeTests": 8.844635,
+    "EnviousWisprTests/SnippetsManagerImportCeilingTests": 3.354905,
+    "EnviousWisprTests/DevControlSettingsTests": 2.827438,
+    "EnviousWisprTests/EngineSwitchOwnershipFreezeTests": 2.544548,
+    "EnviousWisprTests/RecordingChimeLayoutTests": 2.423082,
+    "EnviousWisprTests/CheckerSelectionPathTests": 2.107551,
+    "EnviousWisprTests/VADMonitorLoopTests": 2.017133,
+    "EnviousWisprTests/PipelineSettingsSyncOllamaEvictionTests": 1.530391,
+    "EnviousWisprTests/RecordingFinalizerCancelPathTests": 1.359668,
+    "EnviousWisprTests/DebugImportDoorTests": 1.214258,
+    "EnviousWisprTests/StorageRootClaimRaceTests": 0.863041,
+    "EnviousWisprTests/KernelDictationDriverBridgeMatrixTests": 0.885192,
+    "EnviousWisprTests/MeetingCoordinatorTelemetryTests": 0.826644,
+    "EnviousWisprTests/WhisperGatedLoadFreezeTests": 0.812643,
+    "EnviousWisprTests/KernelOwnershipFreezeTests": 0.696805
   },
   "blocks": [
     {
@@ -507,6 +522,156 @@
         {
           "suite": "EnviousWisprTests/CaptureVADSignalSourceTests",
           "file": "Tests/EnviousWisprTests/Pipeline/CaptureVADSignalSourceTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "storage/CallSpeakerLogSizeTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CallSpeakerLogSizeTests",
+          "file": "Tests/EnviousWisprTests/Storage/CallSpeakerLogSizeTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "postprocessing/SnippetsManagerImportCeilingTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SnippetsManagerImportCeilingTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/SnippetsManagerImportTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/DevControlSettingsTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/DevControlSettingsTests",
+          "file": "Tests/EnviousWisprTests/App/DevControlSettingsTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "architecture/EngineSwitchOwnershipFreezeTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EngineSwitchOwnershipFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/EngineSwitchOwnershipFreezeTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "views/RecordingChimeLayoutTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/RecordingChimeLayoutTests",
+          "file": "Tests/EnviousWisprTests/Views/RecordingChimeLayoutTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/CheckerSelectionPathTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CheckerSelectionPathTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/CheckerSelectionPathTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/VADMonitorLoopTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/VADMonitorLoopTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/VADMonitorLoopTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/PipelineSettingsSyncOllamaEvictionTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/PipelineSettingsSyncOllamaEvictionTests",
+          "file": "Tests/EnviousWisprTests/App/PipelineSettingsSyncOllamaEvictionTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/RecordingFinalizerCancelPathTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/RecordingFinalizerCancelPathTests",
+          "file": "Tests/EnviousWisprTests/App/RecordingFinalizerCancelPathTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/DebugImportDoorTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/DebugImportDoorTests",
+          "file": "Tests/EnviousWisprTests/App/DebugImportDoorTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "core/StorageRootClaimRaceTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/StorageRootClaimRaceTests",
+          "file": "Tests/EnviousWisprTests/Core/StorageRootTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/KernelDictationDriverBridgeMatrixTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/KernelDictationDriverBridgeMatrixTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/KernelDictationDriverBridgeMatrixTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/MeetingCoordinatorTelemetryTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingCoordinatorTelemetryTests",
+          "file": "Tests/EnviousWisprTests/App/MeetingCoordinatorTelemetryTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "architecture/WhisperGatedLoadFreezeTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/WhisperGatedLoadFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/WhisperGatedLoadFreezeTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "architecture/KernelOwnershipFreezeTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/KernelOwnershipFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/KernelOwnershipFreezeTests.swift"
         }
       ]
     }

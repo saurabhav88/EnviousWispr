@@ -15,7 +15,7 @@ import Testing
 /// plain buttons are not NSViews and hosted views expose no accessibility tree, so the two
 /// buttons' own rectangles and presses are final Live UAT; the cards' frames are measured.
 @MainActor
-@Suite("Recording chime layout (#3385)", .tags(.productOutcome))
+@Suite("Recording chime layout (#3385)", .tags(.productOutcome, .localParallel))
 struct RecordingChimeLayoutTests {
 
   init() { _ = NSApplication.shared }

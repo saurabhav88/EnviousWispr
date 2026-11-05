@@ -31,7 +31,7 @@ import Testing
 #if DEBUG
 
   @MainActor
-  @Suite struct KernelDictationDriverBridgeMatrixTests {
+  @Suite(.tags(.localParallel)) struct KernelDictationDriverBridgeMatrixTests {
 
     // MARK: Harness
 

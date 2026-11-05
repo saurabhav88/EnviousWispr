@@ -13,7 +13,7 @@
   /// Harness Contract: the door is the instrument Live UAT reads a verdict through. When
   /// this fails, a UAT run reports the wrong instance's row, waits on a file the user
   /// replaced, or reads a refusal as an acceptance; no user sees any of it.
-  @Suite(.tags(.harnessContract))
+  @Suite(.tags(.harnessContract, .localParallel))
   @MainActor
   struct DebugImportDoorTests {
     /// Replies the door posted, in order, plus a deadline-bounded wait for one with a

@@ -18,7 +18,7 @@
   ///
   /// Expectations come from the source declaration and from key paths written here by
   /// hand, never from the table under test.
-  @Suite(.tags(.driftGuard))
+  @Suite(.tags(.driftGuard, .localParallel))
   @MainActor
   struct DevControlSettingsTests {
     private static var repoRoot: URL {
