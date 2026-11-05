@@ -61,8 +61,8 @@ through the same shared reader, with its own policy:
   validated run ID. Nothing from the record block is printed.
 
 `CLOUD_MODEL_ROUTINE_ENABLED` must be exactly `"true"` or `"false"`. It is
-`"false"` until activation: the section then says the routine is not activated
-and makes no run-log request. `"true"` needs a valid issue number and writer
+`"true"` since activation (#4353 PR 5). `"false"` makes the section say the
+routine is not activated and make no run-log request. `"true"` needs a valid issue number and writer
 login. Activation (`workers/cloud-models-routine/README.md` "Activation checklist") sets all three,
 deploys this Worker and reads the deployed vars back in the same step that
 enables the routine; disabling the routine reverses them the same way.

@@ -97,12 +97,14 @@ struct CloudModelListTests {
     let bundled = try Data(contentsOf: Self.bundledSeed)
     #expect(website == bundled)
     let list = try Self.seed()
-    #expect(list.models.count == 66)
+    // The weekly routine adds rows (#4353 PR 5), so only the original 66 seed rows are pinned.
+    let original = list.models.filter { Self.deletedTelemetryAllowlist.contains($0.id) }
+    #expect(original.count == 66)
     #expect(
-      Dictionary(grouping: list.models, by: \.provider).mapValues(\.count)
+      Dictionary(grouping: original, by: \.provider).mapValues(\.count)
         == [.openAI: 34, .gemini: 18, .claude: 14])
     #expect(
-      list.models.allSatisfy { $0.released == nil && $0.medianPolishMs == nil },
+      original.allSatisfy { $0.released == nil && $0.medianPolishMs == nil },
       "the seed invents no dates and no measurements")
     #expect(list.models.allSatisfy { !$0.hidden }, "hiding stays with the compiled kind filters")
   }
@@ -259,12 +261,13 @@ struct CloudModelListTests {
   @MainActor
   func seedMatchesDeletedPresentationSets() throws {
     let seed = try Self.seed()
-    let rows = seed.models
+    // Rows the weekly routine added (#4353 PR 5) are not part of the deleted sets.
+    let rows = seed.models.filter { Self.deletedTelemetryAllowlist.contains($0.id) }
     // #2905: GPT-4o mini and Haiku 4.5 keep ordinary requests.
     let ordinaryOnly = Set(rows.filter { !$0.allowsFileBatch }.map(\.id))
     #expect(ordinaryOnly == ["gpt-4o-mini", "claude-haiku-4-5"])
     // Every id the deleted allowlist recognised is still recognised, for its own provider, and
-    // the list recognises nothing the allowlist did not.
+    // each one is still a row in the list.
     #expect(Self.deletedTelemetryAllowlist.count == 66)
     for id in Self.deletedTelemetryAllowlist {
       #expect(

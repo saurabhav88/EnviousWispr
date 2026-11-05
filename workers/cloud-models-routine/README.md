@@ -18,7 +18,8 @@ The routine only adds rows for new models. It never hides, un-hides or edits a r
 The activation values below are set. The routine is enabled only after every item in "Activation checklist" passes with read-back evidence. The evidence and the current state live in the operations note `.claude/knowledge/cloud-model-routine.md` (main checkout), not in this file.
 
 - **Verified in the repository:** the Stage 1 workflow, `workflow.py` (including `verify-run`), `propose.py` and their offline tests (`workflow.py --self-test`, `propose.py --self-test`).
-- **Proven only by the live activation proofs:** routine creation, its environment, the read and merge routes, the footer behavior and every live merge.
+- **Proven by the live activation runs:** the environment, the read, write and merge routes and the commit message ("Write, read and merge routes").
+- **Not yet proven live:** the rehearsal, the scheduled routine and serialization ("Activation checklist" items 5 to 7).
 
 ## Activation values
 
@@ -41,6 +42,7 @@ Founder decision 2026-11-05 (#4353 plan, "Stage 2 redesign"): routine PRs need n
 
 The routine runs in the claude.ai cloud environment `cloud model stage2`. Do not use `enviouswispr general` (`.claude/knowledge/cloud-environment.md`): its service account reads every secret in the business vault.
 - No provider keys, no GCP credentials, no `get-key` access and no setup script.
+- Network access is limited to `api.github.com`, `github.com` and `*.blob.core.windows.net` (artifact downloads).
 - Its GitHub access is the cloud session's own (the founder's account): the GitHub tools for writes, and `gh api` with the session's token for reads, as "Write, read and merge routes" records.
 - It runs on Ubuntu, with no Xcode and no local Codex CLI. Stage 2 never uses `gh pr` or `gh issue`.
 
@@ -88,9 +90,14 @@ The routine runs in the claude.ai cloud environment `cloud model stage2`. Do not
 
 - **Write:** the cloud session's GitHub tools, `add_issue_comment` and `update_issue_comment`, on the run-log issue only. Stage 2 sends the receipt line and the state block without a footer; the tool appends its footer once. An update sends the whole new body, again without a footer.
 - **Read:** `gh api` with the cloud session's own GitHub token. `verify-run` and `check-pr` use the same token (`GH_TOKEN`).
-- **Merge:** one squash merge call that refuses a moved head: GraphQL `mergePullRequest` with `expectedHeadOid`, REST `PUT /repos/{owner}/{repo}/pulls/{n}/merge` with `sha`, or the GitHub tool's merge if its schema takes an expected head. The commit title is the PR title and the commit message is exactly `Part of #4353.`. A call that cannot refuse a moved head is never used, and neither is a call that skips a required check or a branch rule. Founder approval for a head-locked merge of an already-clean PR: 2026-11-05, the #4353 plan, "Merge route amendment"; the redesign keeps the head lock and drops the earlier GraphQL-only wording.
+- **Merge:** the GitHub tool `merge_pull_request` with `owner` `saurabhav88`, `repo` `EnviousWispr`, `pullNumber`, `merge_method` `squash`, `commit_title` = the PR title, `commit_message` exactly `Part of #4353.` and `expectedHeadSha` = the saved head. A call without `expectedHeadSha` is never used, and neither is a call that skips a required check or a branch rule. Founder approval for a head-locked merge of an already-clean PR: 2026-11-05, the #4353 plan, "Merge route amendment".
 
-Activation records here which read token and which merge call were proven in the cloud, and the exact commit title and message the merge produced. If the only working merge call adds a footer or trailer to the commit, the founder decides before the routine is enabled.
+Proven in the cloud (activation run 3, session `cse_018PEvKK1gHsLY4GBHU5GU6N`, 2026-11-05):
+- `merge_pull_request` with an all-zero `expectedHeadSha` was refused with `409 Head branch was modified. Review and try the merge again.`, and PR #4401 stayed open with the same head.
+- The real call merged #4401 as `8cf2d985977881916257935eb8df18fcb3187e38`. Its commit message read back as the PR title, a blank line and `Part of #4353.`, with no footer and no trailer.
+- `gh api` reads as `saurabhav88`. The session's GitHub proxy refuses GraphQL and numeric `repositories/{id}/...` paths, so Stage 2 uses `repos/{owner}/{repo}/...` REST paths only.
+- `verify-run` downloads run artifacts, which redirect to `*.blob.core.windows.net`; the environment allows that host.
+- The GitHub tools wrote and updated the run-log records on #4384 as `saurabhav88`, with the footer once and `created_at` unchanged.
 
 ## Run verification (`workflow.py verify-run`)
 

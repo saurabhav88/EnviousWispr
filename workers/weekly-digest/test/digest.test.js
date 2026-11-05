@@ -1655,27 +1655,29 @@ test("cloud: disabled configuration makes zero cloud reads and says it is not ac
   assert.doesNotMatch(cloudText(h), /WARNING|temporarily unavailable/);
 });
 
-test("cloud: the committed wrangler.toml keeps the routine off and carries valid activation values", async () => {
+test("cloud: the committed wrangler.toml turns the routine on with valid activation values", async () => {
   const { readFileSync } = await import("node:fs");
   const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
   const read = (name) => new RegExp(`^${name} = "([^"]*)"$`, "m").exec(toml)?.[1];
-  // Off until activation deploys "true" (workers/cloud-models-routine/README.md "Activation values").
-  assert.equal(read("CLOUD_MODEL_ROUTINE_ENABLED"), "false");
+  // On since activation (#4353 PR 5; workers/cloud-models-routine/README.md "Activation values").
+  assert.equal(read("CLOUD_MODEL_ROUTINE_ENABLED"), "true");
   assert.equal(read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"), "4384");
   assert.equal(read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN"), "saurabhav88");
   const vars = {
     CLOUD_MODEL_ROUTINE_LOG_ISSUE: read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"),
     CLOUD_MODEL_ROUTINE_WRITER_LOGIN: read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN"),
   };
-  const off = harness();
-  await off.run({ ...ENV, ...vars, CLOUD_MODEL_ROUTINE_ENABLED: read("CLOUD_MODEL_ROUTINE_ENABLED") });
-  assert.equal(off.state.cloudRequests, undefined);
-  // The same values with the switch on read issue #4384, so flipping only ENABLED activates it.
+  // The committed values read issue #4384.
   const on = harness({ comments: () => ok([]) });
-  await on.run({ ...ENV, ...vars, CLOUD_MODEL_ROUTINE_ENABLED: "true" });
+  await on.run({ ...ENV, ...vars, CLOUD_MODEL_ROUTINE_ENABLED: read("CLOUD_MODEL_ROUTINE_ENABLED") });
   const reads = (on.state.commentUrls || []).filter((u) => new URL(u).pathname === "/repos/saurabhav88/EnviousWispr/issues/4384/comments");
   assert.equal(reads.length, 1);
   assert.doesNotMatch(cloudText(on), /temporarily unavailable|not activated/);
+  // The same values with the switch off read nothing, so flipping only ENABLED disables it.
+  const off = harness();
+  await off.run({ ...ENV, ...vars, CLOUD_MODEL_ROUTINE_ENABLED: "false" });
+  assert.equal(off.state.cloudRequests, undefined);
+  assert.equal((off.state.commentUrls || []).filter((u) => new URL(u).pathname.endsWith("/issues/4384/comments")).length, 0);
 });
 
 test("cloud: a missing or inexact enabled state fails the section instead of disabling it", async () => {
