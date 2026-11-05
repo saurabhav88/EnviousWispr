@@ -7,12 +7,14 @@ order: 4
 keywords: ["street address", "mailing address", "zip code", "numbers", "dates", "times", "money", "dollars", "percent", "phone number", "email address", "url", "version number", "ip address", "formatting numbers", "writes out numbers", "spelled out", "numbers come out as words", "web address wrong", "one twenty"]
 related: ["spoken-punctuation-and-emoji", "how-text-gets-pasted-into-your-app"]
 seeAlso: "spoken-text-formatting-dates-numbers-emails"
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr writes spoken numbers, money, dates, times, phone numbers, email addresses and web addresses the way you would type them, instead of spelling out every word you said. It is on from the moment you install the app, and there is nothing to configure.
 
 ### What do numbers, dates and times look like?
+
+These examples are for English dictation.
 
 | You say | You get |
 |---|---|
@@ -30,11 +32,11 @@ EnviousWispr writes spoken numbers, money, dates, times, phone numbers, email ad
 
 ### Why are small numbers written as words?
 
-Numbers below ten are written out as words, and numbers from ten upwards use digits. That follows the standard style used in most professional and general writing. A full street address is the exception: its house and apartment numbers are written as digits.
+In English, numbers below ten are written out as words, and numbers from ten upwards use digits. That follows the standard style used in most professional and general writing. A full street address is the exception: its house and apartment numbers are written as digits.
 
 ### How are street addresses written?
 
-A US street address said in full, from the house number through the state and ZIP code, comes out with digits and commas, in the words you said. For example, "five twenty West Forty Fifth Street, apartment three ten, New York, New York one zero zero three six" becomes 520 West 45th Street, apartment 310, New York, New York 10036.
+An English dictation of a US street address said in full, from the house number through the state and ZIP code, comes out with digits and commas, in the words you said. For example, "five twenty West Forty Fifth Street, apartment three ten, New York, New York one zero zero three six" becomes 520 West 45th Street, apartment 310, New York, New York 10036.
 
 Street and state names are not shortened to postal abbreviations. An address without a state or a ZIP code is left as you spoke it. So is a ZIP code the speech engine misheard.
 
@@ -60,14 +62,23 @@ Number formatting runs before any AI polish. If polish is switched off or hits a
 
 ### Do numbers, dates and times work in other languages?
 
-Spoken number words are converted only in English. When you dictate in another language, the speech engine usually writes numbers as digits itself. EnviousWispr then tidies addresses, links and codes said with that language's own words.
+English has the broadest number-formatting rules. In other languages, the speech engine often writes numbers as digits itself, and EnviousWispr has additional rules for these cases:
 
-First, set your dictation language under **Dictation Settings** > **Engine** so EnviousWispr knows the language. Then it handles these:
+| Language | Additional formatting |
+|---|---|
+| German | Percent signs after written numbers, postcode cleanup, phone numbers and recognised clock-time phrases. |
+| French, Spanish, Italian and Portuguese | International phone numbers introduced by a plus sign or the language's word for plus, and recognised clock-time phrases. |
+| Dutch | International phone numbers introduced by a plus sign or the word for plus, and recognised clock-time phrases, such as "We beginnen om half negen." becoming "We beginnen om 8.30." |
+| Polish, Swedish and Ukrainian | International phone numbers introduced by a plus sign or the language's word for plus. |
+
+These rules look for specific phone-number and time patterns. They do not convert every spoken number or date in these languages. For an international phone number, include the plus sign or spoken plus word and the country code.
+
+Set your dictation language under **Dictation Settings** > **Engine** so EnviousWispr knows the language. Address, link and code cleanup also handles these:
 
 - **Email addresses** with the local words for "at" and "dot", including names with accents. "maría punto lópez arroba gmail punto com" becomes maría.lópez@gmail.com.
 - **Web addresses** with the local words for "dot", "slash" and "colon" in French, Spanish, Polish, Dutch, German, Russian, Portuguese and Italian. "beispiel Punkt de Schrägstrich hilfe" becomes beispiel.de/hilfe.
-- **Codes** with a spoken dash between letters and a number. "S trattino 1" becomes S-1. A Dutch digit after a Dutch dash word is the only number word read outside English, so "GPT streepje vier" becomes GPT-4.
+- **Codes** with a spoken dash between letters and a number. "S trattino 1" becomes S-1. A Dutch digit word after a Dutch dash word is also read in this code pattern, so "GPT streepje vier" becomes GPT-4.
 - **Version numbers and IP addresses** with a spoken dot between digits. "2 Punkt 5 Punkt 0" becomes 2.5.0.
 - **Dates** the speech engine wrote without leading zeros.
 
-A word the speech engine misheard is left as it is. Add the right word to your custom words and it formats correctly from then on. Any other wording is left as you spoke it.
+A word the speech engine misheard can prevent a match. Adding the right word to your custom words can help. A pattern the app does not recognise is left as it was transcribed.
