@@ -21,7 +21,7 @@ import os
   /// `kssMZb`); the rules are the bundled file; storage and processing are the real coordinator
   /// with stand-in recorder and job.
   @MainActor
-  @Suite("Live speaker capture", .tags(.productOutcome), .timeLimit(.minutes(1)))
+  @Suite("Live speaker capture", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
   struct CallSpeakerObserverTests {
     typealias Harness = MeetingCoordinatorTests.Harness
 

@@ -8,7 +8,7 @@ import EnviousWisprAppKitTestSupport
 /// #3269: the bug-report outbox. Temporary folders, a scripted HTTP recorder, a fake network path
 /// and a settable clock; no real network. The scheduled wake never fires on its own here (the
 /// sleeper throws), so each test drives `drain()` explicitly.
-@Suite("Feedback outbox (#3269)", .tags(.productOutcome))
+@Suite("Feedback outbox (#3269)", .tags(.productOutcome, .localParallel))
 struct FeedbackOutboxTests {
 
   final class FakePath: FeedbackPathMonitoring, @unchecked Sendable {

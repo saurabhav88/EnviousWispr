@@ -12,7 +12,7 @@ import EnviousWisprAppKitTestSupport
 /// 2026-07-19. The filter tests carry the most weight: importing a word the
 /// user deliberately deleted in another app is the worst thing these adapters
 /// could do, and it would look like success.
-@Suite("SmartImport")
+@Suite("SmartImport", .tags(.localParallel))
 struct SmartImportSourceTests {
 
   private func makeDirectory() -> URL {

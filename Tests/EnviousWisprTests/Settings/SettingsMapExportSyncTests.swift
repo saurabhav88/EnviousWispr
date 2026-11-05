@@ -8,7 +8,7 @@ import Testing
 /// fields say what they should. Expectations come from the inventory fixture and literals here,
 /// not from the exporter under test. The Markdown rendering of the same export is compared by
 /// `scripts/settings-map/export.sh --check` in CI.
-@Suite("Settings Map export sync (#3482)", .tags(.driftGuard))
+@Suite("Settings Map export sync (#3482)", .tags(.driftGuard, .localParallel))
 struct SettingsMapExportSyncTests {
   static let committedPath = "reference/settings-map.json"
 

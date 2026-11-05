@@ -12,60 +12,74 @@
     "weights": "Qualified B0 summed execution leaves; replace the nine targeted parser-family weights with the one successful E3/E2 verification. No wall-time prediction.",
     "protected": "All unlisted suites, desktop-effects/ASR bundles, live UI and unreviewed resources remain together. Shutdown and LanguageGate fixtures are unchanged; only their E5 suite allocation is screened. #4279: admission is the .localParallel tag in the suite source, kept across edits; TestInventoryFreezeTests fails when tags and this list differ. Left the list on 2026-10-31: MeetingCoordinatorTests (its #4102 tests race a real 1-second deadline), KernelFinalizationWiringTests (a real 100 ms deadline must not win) and WordCheckRuntimeTerminationTests (two everyday tests load the installed real model on the GPU).",
     "integration_base_head": "a01dab18ec4999f00e244c557f375aa29dab333d",
-    "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates."
+    "integration_note": "Main #4093 already migrated test temporary paths to process-owned cleanup roots. Reviewed source hashes include that migration; measured B0 weights remain estimates.",
+    "integration_note_4089_2026_11_04": "Costs refreshed from one qualified baseline full run on 056e786ea (2026-11-04, build/lanes 1793843710-869): summed case durations per suite from the four worker xcresults. __protected__ is the protected worker's residual excluding every explicit key. 54 suites admitted after transitive review (#4089 run folder verdicts-batch-*.txt)."
   },
   "costs": {
-    "EnviousWisprTests/TestInventoryFreezeTests": 0.5254440307617188,
-    "EnviousWisprTests/ClipboardIsolationFreezeTests": 1.534214973449707,
-    "EnviousWisprTests/EngineMutationInventoryFreezeTests": 0.5960216522216797,
-    "EnviousWisprTests/TelemetryEmitterRegistryTests": 0.36428236961364746,
-    "EnviousWisprTests/DesktopEffectIsolationFreezeTests": 0.7972891330718994,
-    "EnviousWisprTests/ProviderSetupCredentialOwnershipTests": 0.17821788787841797,
-    "EnviousWisprTests/SettingsMapRegistrationTests": 20.445401191711426,
-    "EnviousWisprTests/SentryScopeWriterFreezeTests": 0.1880629062652588,
-    "EnviousWisprTests/CachedSwiftParserTests": 0.005199909210205078,
-    "EnviousWisprTests/ClipboardSettingsWiringTests": 0.028582096099853516,
-    "EnviousWisprTests/EngineProtocolSurfaceFreezeTests": 0.6023142337799072,
-    "EnviousWisprTests/LivePreviewSettingsWiringTests": 0.4929206371307373,
-    "EnviousWisprTests/MarkedUpPassageAccessibilityFreezeTests": 6.812692642211914,
-    "EnviousWisprTests/MicrophoneCaptureWiringTests": 0.275402307510376,
-    "EnviousWisprTests/MicrophoneSettingsWiringTests": 0.07171750068664551,
-    "EnviousWisprTests/ModelPreparingImpressionPlacementTests": 0.06792855262756348,
-    "EnviousWisprTests/RecordingChimeWiringTests": 0.09918999671936035,
-    "EnviousWisprTests/SettingsControlAffordanceTests": 0.5907683372497559,
-    "EnviousWisprTests/SettingsNavigationProducerTests": 1.4286162853240967,
-    "EnviousWisprTests/SettingsShellWiringTests": 0.17749714851379395,
-    "EnviousWisprTests/SettingsSearchBenchParityTests": 12.797623872756958,
-    "EnviousWisprTests/SettingsSearchUnigramTokenizerTests": 10.465254545211792,
-    "EnviousWisprTests/SettingsSearchBothLegsTests": 8.633872747421265,
-    "EnviousWisprTests/SettingsSearchTelemetryTests": 7.407750368118286,
-    "EnviousWisprTests/SettingsSearchMeaningEncoderTests": 5.340547800064087,
-    "EnviousWisprTests/SettingsSearchVocabularyTests": 4.24594521522522,
-    "EnviousWisprTests/SettingsSearchMatchingTests": 2.4562034606933594,
-    "EnviousWisprTests/SettingsSearchMeaningAssetsTests": 1.0030312538146973,
-    "EnviousWisprTests/SettingsSearchModelTests": 0.9959642887115479,
-    "EnviousWisprTests/ParakeetUpgradePolicyTests": 24.32341718673706,
-    "EnviousWisprTests/ModelDeliveryControllerTests": 7.934262752532959,
-    "EnviousWisprTests/ManifestFetchTaskTests": 0.14577913284301758,
-    "EnviousWisprTests/EGOneAdapterLifecycleTests": 11.614131212234497,
-    "EnviousWisprTests/EGOneOutsideStopRecoveryTests": 20.36182951927185,
-    "EnviousWisprTests/InverseTextNormalizerParityTests": 10.383347511291504,
-    "EnviousWisprTests/SpokenPunctuationToggleTests": 8.215462923049927,
-    "EnviousWisprTests/ContactsImportCorrectorBenchmark": 4.638360977172852,
-    "EnviousWisprTests/ImportFileParserTests": 3.0348927974700928,
-    "EnviousWisprTests/SnippetImportParsersTests": 2.9378955364227295,
-    "EnviousWisprTests/LanguageNumberParserTests": 2.903146505355835,
-    "EnviousWisprTests/WordDiffTests": 2.861257553100586,
-    "EnviousWisprTests/ITNGeneratedDataTests": 0.9870517253875732,
-    "EnviousWisprTests/RecognizerMarksTests": 0.9311544895172119,
-    "__protected__": 225.46830427646637,
-    "EnviousWisprTests/WordCheckRuntimeTerminationTests": 70.9241316318512,
-    "EnviousWisprTests/LanguageGateBenchmarkTests": 49.566404819488525,
-    "EnviousWisprTests/MeetingCoordinatorTests": 5.977246046066284,
-    "EnviousWisprTests/ModelDeliveryHomeTests": 7.117426633834839,
-    "EnviousWisprTests/OnboardingSetupKickTests": 6.921501874923706,
-    "EnviousWisprTests/KernelFinalizationWiringTests": 4.802134990692139,
-    "EnviousWisprTests/RecordingSessionKernelScenarioTests": 3.6047263145446777
+    "EnviousWisprTests/TestInventoryFreezeTests": 1.375904,
+    "EnviousWisprTests/ClipboardIsolationFreezeTests": 2.0421,
+    "EnviousWisprTests/EngineMutationInventoryFreezeTests": 0.725354,
+    "EnviousWisprTests/TelemetryEmitterRegistryTests": 0.427058,
+    "EnviousWisprTests/DesktopEffectIsolationFreezeTests": 0.831749,
+    "EnviousWisprTests/ProviderSetupCredentialOwnershipTests": 0.25921,
+    "EnviousWisprTests/SettingsMapRegistrationTests": 26.494268,
+    "EnviousWisprTests/SentryScopeWriterFreezeTests": 0.237078,
+    "EnviousWisprTests/CachedSwiftParserTests": 3.167845,
+    "EnviousWisprTests/ClipboardSettingsWiringTests": 0.003967,
+    "EnviousWisprTests/EngineProtocolSurfaceFreezeTests": 0.017318,
+    "EnviousWisprTests/LivePreviewSettingsWiringTests": 0.016892,
+    "EnviousWisprTests/MarkedUpPassageAccessibilityFreezeTests": 0.207448,
+    "EnviousWisprTests/MicrophoneCaptureWiringTests": 0.011561,
+    "EnviousWisprTests/MicrophoneSettingsWiringTests": 0.002752,
+    "EnviousWisprTests/ModelPreparingImpressionPlacementTests": 0.001943,
+    "EnviousWisprTests/RecordingChimeWiringTests": 0.004092,
+    "EnviousWisprTests/SettingsControlAffordanceTests": 0.628253,
+    "EnviousWisprTests/SettingsNavigationProducerTests": 0.016334,
+    "EnviousWisprTests/SettingsShellWiringTests": 0.00651,
+    "EnviousWisprTests/SettingsSearchBenchParityTests": 13.143996,
+    "EnviousWisprTests/SettingsSearchUnigramTokenizerTests": 11.045282,
+    "EnviousWisprTests/SettingsSearchBothLegsTests": 12.929768,
+    "EnviousWisprTests/SettingsSearchTelemetryTests": 7.989621,
+    "EnviousWisprTests/SettingsSearchMeaningEncoderTests": 6.530555,
+    "EnviousWisprTests/SettingsSearchVocabularyTests": 4.524948,
+    "EnviousWisprTests/SettingsSearchMatchingTests": 2.685425,
+    "EnviousWisprTests/SettingsSearchMeaningAssetsTests": 1.058147,
+    "EnviousWisprTests/SettingsSearchModelTests": 1.055548,
+    "EnviousWisprTests/ParakeetUpgradePolicyTests": 17.737194,
+    "EnviousWisprTests/ModelDeliveryControllerTests": 4.672239,
+    "EnviousWisprTests/ManifestFetchTaskTests": 0.141291,
+    "EnviousWisprTests/EGOneAdapterLifecycleTests": 13.310302,
+    "EnviousWisprTests/EGOneOutsideStopRecoveryTests": 10.63698,
+    "EnviousWisprTests/InverseTextNormalizerParityTests": 10.830328,
+    "EnviousWisprTests/SpokenPunctuationToggleTests": 7.961289,
+    "EnviousWisprTests/ContactsImportCorrectorBenchmark": 4.695371,
+    "EnviousWisprTests/ImportFileParserTests": 2.421186,
+    "EnviousWisprTests/SnippetImportParsersTests": 2.596689,
+    "EnviousWisprTests/LanguageNumberParserTests": 3.54294,
+    "EnviousWisprTests/WordDiffTests": 2.866977,
+    "EnviousWisprTests/ITNGeneratedDataTests": 1.277164,
+    "EnviousWisprTests/RecognizerMarksTests": 0.931171,
+    "__protected__": 209.911173,
+    "EnviousWisprTests/WordCheckRuntimeTerminationTests": 4.31805,
+    "EnviousWisprTests/LanguageGateBenchmarkTests": 49.789993,
+    "EnviousWisprTests/MeetingCoordinatorTests": 11.523142,
+    "EnviousWisprTests/ModelDeliveryHomeTests": 10.840826,
+    "EnviousWisprTests/OnboardingSetupKickTests": 7.122002,
+    "EnviousWisprTests/KernelFinalizationWiringTests": 4.309386,
+    "EnviousWisprTests/RecordingSessionKernelScenarioTests": 3.805021,
+    "EnviousWisprTests/CallSpeakerObserverTests": 15.204858,
+    "EnviousWisprTests/BundledVocabularyPackTests": 3.020399,
+    "EnviousWisprTests/CustomWordsExportActionTests": 2.398077,
+    "EnviousWisprTests/DrainReadyWorkSettleTests": 1.923397,
+    "EnviousWisprTests/SettingsMapExportSyncTests": 2.020518,
+    "EnviousWisprTests/EGOneSlotObservationTests": 1.591058,
+    "EnviousWisprTests/FeedbackOutboxTests": 1.168588,
+    "EnviousWisprTests/OverlayReduceMotionTests": 1.33285,
+    "EnviousWisprTests/FileImportCoordinatorSpeakerTests": 1.193076,
+    "EnviousWisprTests/TestTemporaryDirectoryTests": 1.008887,
+    "EnviousWisprTests/MeetingPauseFinderTests": 0.90349,
+    "EnviousWisprTests/SmartImportSourceTests": 0.840623,
+    "EnviousWisprTests/CaptureVADSignalSourceTests": 0.792424
   },
   "blocks": [
     {
@@ -363,6 +377,136 @@
         {
           "suite": "EnviousWisprTests/RecordingSessionKernelScenarioTests",
           "file": "Tests/EnviousWisprTests/Pipeline/Simulator/RecordingSessionKernelScenarioTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/CallSpeakerObserverTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CallSpeakerObserverTests",
+          "file": "Tests/EnviousWisprTests/App/CallSpeakerObserverTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "postprocessing/BundledVocabularyPackTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/BundledVocabularyPackTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/VocabularyPackTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/CustomWordsExportActionTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CustomWordsExportActionTests",
+          "file": "Tests/EnviousWisprTests/App/CustomWordsExportActionTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/DrainReadyWorkSettleTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/DrainReadyWorkSettleTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/Simulator/DrainReadyWorkSettleTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "settings/SettingsMapExportSyncTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SettingsMapExportSyncTests",
+          "file": "Tests/EnviousWisprTests/Settings/SettingsMapExportSyncTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "llm/EGOneSlotObservationTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EGOneSlotObservationTests",
+          "file": "Tests/EnviousWisprTests/LLM/EGOneAdapterLifecycleTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "services/FeedbackOutboxTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/FeedbackOutboxTests",
+          "file": "Tests/EnviousWisprTests/Services/FeedbackOutboxTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/OverlayReduceMotionTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/OverlayReduceMotionTests",
+          "file": "Tests/EnviousWisprTests/App/Overlay/OverlayReduceMotionTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/FileImportCoordinatorSpeakerTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/FileImportCoordinatorSpeakerTests",
+          "file": "Tests/EnviousWisprTests/App/FileImportCoordinatorSpeakerTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "support/TestTemporaryDirectoryTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/TestTemporaryDirectoryTests",
+          "file": "Tests/EnviousWisprTests/Support/TestTemporaryDirectoryTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "core/MeetingPauseFinderTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingPauseFinderTests",
+          "file": "Tests/EnviousWisprTests/Core/MeetingPauseFinderTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "postprocessing/SmartImportSourceTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/SmartImportSourceTests",
+          "file": "Tests/EnviousWisprTests/PostProcessing/SmartImportSourceTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/CaptureVADSignalSourceTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CaptureVADSignalSourceTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/CaptureVADSignalSourceTests.swift"
         }
       ]
     }
