@@ -47,7 +47,9 @@ struct InverseTextNormalizationDeadlineSeamTests {
       try? await Task.sleep(for: .milliseconds(700))
       return "de"
     }
-    _ = try await step.process(germanTakeLabelledEnglish())
+    let out = try await step.process(germanTakeLabelledEnglish())
+    // The probe spent the whole 0.5 s budget; unbounded execution still runs the work.
+    #expect(out.text == "Das ist gut. Es geht weiter")
     #expect(step.lastRun?.punctuationLanguage == "de", "the probe's answer was used")
     #expect(step.lastRun?.punctuationResolutionSource == "engine_text")
   }

@@ -242,11 +242,16 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let probe: @Sendable (Double, @escaping @Sendable () async -> String?) async -> String??
     let work: @Sendable (Double, @escaping @Sendable () async -> ITNWorkResult) async -> ITNWorkResult?
 
+    /// A work budget of zero (the routing probe spent it all, #3624) skips the work here, so the
+    /// refusal belongs to the real deadline and `.unbounded` never inherits it.
     static let real = Deadlines(
       probe: { seconds, operation in await withDeadline(seconds: seconds, operation: operation) },
-      work: { seconds, operation in await withDeadline(seconds: seconds, operation: operation) })
+      work: { seconds, operation in
+        seconds > 0 ? await withDeadline(seconds: seconds, operation: operation) : nil
+      })
 
-    /// Runs each operation to completion, off the main actor like `withDeadline` does.
+    /// Runs each operation to completion, off the main actor like `withDeadline` does, whatever
+    /// budget remains.
     static let unbounded = Deadlines(
       probe: { _, operation in await operation() },
       work: { _, operation in await operation() })
@@ -532,13 +537,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
     let maybeResult: ITNWorkResult?
-    if request.deadlineSeconds > 0 {
-      maybeResult = await deadlines.work(request.deadlineSeconds) {
-        engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
-        return await work(request)
-      }
-    } else {
-      maybeResult = nil
+    // A zero budget is refused inside `Deadlines.real` (#4405), so production still skips the
+    // work when the probe spent everything.
+    maybeResult = await deadlines.work(request.deadlineSeconds) {
+      engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
+      return await work(request)
     }
     // `latency_ms` is the whole step: the routing probe (#3624) plus normalization.
     // `engine_started` and `queue_wait_ms` describe normalization only.
