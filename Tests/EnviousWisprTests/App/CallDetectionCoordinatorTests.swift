@@ -14,7 +14,7 @@
   /// nothing or the wrong app, No starts a recording, the tips nag or never come, or a meeting
   /// keeps recording after the call ended.
   @MainActor
-  @Suite("Call detection panel and answers", .tags(.productOutcome), .timeLimit(.minutes(1)))
+  @Suite("Call detection panel and answers", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
   struct CallDetectionCoordinatorTests {
     @MainActor
     final class FakePanel: CallPromptPresenting {

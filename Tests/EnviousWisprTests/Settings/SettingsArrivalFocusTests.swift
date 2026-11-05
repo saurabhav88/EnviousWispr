@@ -13,7 +13,7 @@ import Testing
 /// has no key window); the decisions, the adapters each page publishes, the one-shot request and
 /// the no-new-tab-stop rule are, and the live check covers the rest.
 @MainActor
-@Suite("Settings search arrival focus (#3482)", .tags(.productOutcome))
+@Suite("Settings search arrival focus (#3482)", .tags(.productOutcome, .localParallel))
 struct SettingsArrivalFocusTests {
   typealias Planner = SettingsArrivalFocusPlanner
 

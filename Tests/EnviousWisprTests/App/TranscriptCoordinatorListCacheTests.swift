@@ -13,7 +13,7 @@
   /// with the list, or the window stops redrawing when something changes, because the list is
   /// now built once and kept.
   @MainActor
-  @Suite("History kept list", .tags(.productOutcome))
+  @Suite("History kept list", .tags(.productOutcome, .localParallel))
   struct TranscriptCoordinatorListCacheTests {
 
     /// What the coordinators read from EnviousMeet and the notes owner. Observable on its own,

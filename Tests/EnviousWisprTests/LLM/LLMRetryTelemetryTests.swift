@@ -13,7 +13,7 @@ import os
 /// and nobody could say whether the 200 ms / 400 ms backoff rescues a
 /// rate-limited or 5xx call. Without this event the next tuning of the backoff
 /// is a guess again. Observability contract, not product coverage.
-@Suite(.tags(.observabilityContract))
+@Suite(.tags(.observabilityContract, .localParallel))
 struct LLMRetryTelemetryTests {
 
   /// One reported retry attempt, as the sink saw it.

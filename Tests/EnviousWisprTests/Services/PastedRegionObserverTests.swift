@@ -366,7 +366,7 @@ final class PastedRegionFakeScheduler: PastedRegionScheduling {
 
 // MARK: - Pure geometry
 
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct PastedRegionLocatorTests {
   typealias L = PastedRegionLocator
 
