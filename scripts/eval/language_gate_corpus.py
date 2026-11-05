@@ -15,7 +15,7 @@ Whisper rows in `transcripts.jsonl` are HISTORICAL WhisperKit large-v3-turbo out
 (September 2026, the gitignored `scripts/multilingual-eval/runner`; WhisperKit was retired in
 #3735); `--whisper-fixture` writes current transcribe.cpp rows to their own file. The Parakeet
 model is explicit (#3546): `transcripts.jsonl` holds the historical v3 rows (September 2026
-audio, kept byte-for-byte), and `transcripts-ultra.jsonl` holds Parakeet Ultra rows only.
+audio, kept byte-for-byte except the privacy-redacted `en_us_english_01` rows noted below), and `transcripts-ultra.jsonl` holds Parakeet Ultra rows only.
 
 Every case carries its oracle, written BEFORE any run and independent of the
 chain: `must_keep` names the words that are lexical in the sentence's language
@@ -34,6 +34,12 @@ or an engine and you must delete the affected outputs yourself; the fixture
 stage refuses to write when either engine lacks a row for any case, so a
 killed or partial engine run cannot become a fixture, but a STALE complete run
 can. The `_meta` header records the repo revision and the run name.
+
+Privacy redaction, stated: on 2026-11-04 the `en_us_english_01` sentence and its
+fixture rows were changed from the founder's real phone number to 212-555-0147
+(rows marked `privacy_redacted`). A cached WAV or engine output for that case in an
+old run directory still speaks the real number: delete that case's cached files
+before regenerating, or the fixture stage will silently reuse them.
 
 Usage (three stages, each resumable):
   ~/.claude/bin/get-key launch azure-speech-key AZURE_SPEECH_KEY -- \\
