@@ -16,7 +16,7 @@ import Testing
 /// SYNTHETIC composition (one call speaker, one microphone turn). The evidence files are
 /// SYNTHETIC logs (`CallSpeakerTestLog`) saved and read through the real meeting store.
 @MainActor
-@Suite("Meeting processing names call speakers", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Meeting processing names call speakers", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingSpeakerNamingProcessingTests {
   typealias Harness = MeetingCoordinatorTests.Harness
 

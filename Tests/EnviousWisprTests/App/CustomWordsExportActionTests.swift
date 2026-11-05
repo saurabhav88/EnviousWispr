@@ -13,7 +13,7 @@ import EnviousWisprAppKitTestSupport
 /// the property directly, so they passed with it disconnected. Testing the
 /// ingredients is not testing the dish.
 @MainActor
-@Suite("CustomWordsExportAction")
+@Suite("CustomWordsExportAction", .tags(.localParallel))
 struct CustomWordsExportActionTests {
 
   /// `@MainActor`-isolated recorder rather than a captured var: the write

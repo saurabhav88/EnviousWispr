@@ -29,7 +29,7 @@ import Testing
 /// difference row is paired with a control proving the instrument is deterministic, so a renderer
 /// returning noise would fail rather than pass.
 @MainActor
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct OverlayReduceMotionTests {
 
   init() { _ = NSApplication.shared }

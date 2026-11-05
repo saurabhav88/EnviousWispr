@@ -14,7 +14,7 @@ import EnviousWisprAppKitTestSupport
 /// that never starts after Save, or a verdict about an old key that survives a Clear or a
 /// failed store.
 @MainActor
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct CredentialWriterTests {
   /// A key store in its own temporary folder; never the real Keychain or key files.
   private static func fixtureKeychain(storage: (any LegacyKeyFileStorage)? = nil)

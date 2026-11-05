@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprPipeline
 
 @MainActor
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct FileImportBatchTests {
   private static let passages = [
     "the color of the center is important to everyone on the design team",

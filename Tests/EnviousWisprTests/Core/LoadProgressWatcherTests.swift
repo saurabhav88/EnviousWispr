@@ -20,7 +20,7 @@ import Testing
 /// The watcher is `@MainActor`-isolated; tests must run on `@MainActor`.
 /// Synthetic signal streams are injected directly (no real ProgressFile).
 @MainActor
-@Suite("LoadProgressWatcher — signal-based wedge detection")
+@Suite("LoadProgressWatcher — signal-based wedge detection", .tags(.localParallel))
 struct LoadProgressWatcherTests {
 
   /// Deterministic monotonic-clock stand-in for tests that drive watcher

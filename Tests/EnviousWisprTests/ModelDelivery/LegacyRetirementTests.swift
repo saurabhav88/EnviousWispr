@@ -12,7 +12,7 @@ import EnviousWisprAppKitTestSupport
 /// asserting "did not crash" cannot tell "refused correctly" from "never ran". So every
 /// refusal case asserts a **positive** — the named file still exists, the hash count is zero,
 /// the verdict is the specific one claimed.
-@Suite struct LegacyRetirementTests {
+@Suite(.tags(.localParallel)) struct LegacyRetirementTests {
 
   // MARK: - Fixtures
 

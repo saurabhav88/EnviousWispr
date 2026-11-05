@@ -13,7 +13,7 @@
   /// started, stops or deletes the wrong meeting, or reads back text it was not asked for. No
   /// customer sees the door; the UAT that proves EnviousMeet does.
   @MainActor
-  @Suite("EnviousMeet dev-control commands", .tags(.harnessContract), .timeLimit(.minutes(1)))
+  @Suite("EnviousMeet dev-control commands", .tags(.harnessContract, .localParallel), .timeLimit(.minutes(1)))
   struct DevControlMeetingTests {
     @MainActor
     final class Rig {

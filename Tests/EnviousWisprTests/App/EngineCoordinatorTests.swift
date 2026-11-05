@@ -18,7 +18,7 @@ import EnviousWisprAppKitTestSupport
 /// `TelemetryService.shared.testEventHook`; serial execution prevents one test
 /// clearing the hook while another awaits (mirrors the prior #1171 suite).
 @MainActor
-@Suite("EngineCoordinator (#1171)", .serialized)
+@Suite("EngineCoordinator (#1171)", .serialized, .tags(.localParallel))
 struct EngineCoordinatorTests {
 
   // MARK: - Latest-wins / single-flight

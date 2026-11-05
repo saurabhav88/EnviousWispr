@@ -16,7 +16,7 @@ import os
 /// maps the model, the model reloads while it is being deleted, or a meeting's recording or
 /// Apple live words stop because someone removed the Universal engine.
 @MainActor
-@Suite("Universal model removal with meeting live words (#3973)", .tags(.productOutcome), .serialized)
+@Suite("Universal model removal with meeting live words (#3973)", .tags(.productOutcome, .localParallel), .serialized)
 struct PreviewModelRemovalTests {
   typealias World = MeetingLiveWordsTests.World
   typealias Gate = MeetingLiveWordsTests.Gate

@@ -12,7 +12,7 @@ import Testing
 
 #if DEBUG
   @MainActor
-  @Suite("Crash qualification endpoint", .tags(.harnessContract))
+  @Suite("Crash qualification endpoint", .tags(.harnessContract, .localParallel))
   struct CrashQualificationEndpointTests {
     private func makeEndpoint(
       action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void = { _ in },

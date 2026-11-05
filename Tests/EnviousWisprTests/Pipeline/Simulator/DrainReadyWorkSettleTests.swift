@@ -25,7 +25,7 @@ import Testing
 // — it never settles while a delivered exit is still unconsumed.
 
 @MainActor
-@Suite("drainReadyWork settle — recording-exit hand-off")
+@Suite("drainReadyWork settle — recording-exit hand-off", .tags(.localParallel))
 struct DrainReadyWorkSettleTests {
 
   private func makeContext(

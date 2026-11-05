@@ -8,7 +8,7 @@ import Testing
 @testable import EnviousWisprWhisperPreviewAdapter
 
 /// #2108, #3735: what a Universal preview session delivers, and how big it can get.
-@Suite struct TranscribeCppPreviewSessionTests {
+@Suite(.tags(.localParallel)) struct TranscribeCppPreviewSessionTests {
 
   /// Wait for the publisher task to deliver, on a bounded real-time poll.
   ///

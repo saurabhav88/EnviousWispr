@@ -154,6 +154,185 @@ class QueueContract(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    # --- #4089/#4090: short runs go first ------------------------------------
+    def spawn(self, helper, kind=None):
+        fd = self.descriptor()
+        args = [sys.executable, str(helper), "acquire", str(fd)]
+        if kind:
+            args += ["--kind", kind]
+        proc = subprocess.Popen(args, pass_fds=(fd,), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(self.reap, proc)
+        return proc, fd
+
+    def reap(self, proc):
+        if proc.poll() is None:
+            proc.terminate()
+        proc.communicate(timeout=10)
+
+    def wait_exit(self, procs, count, seconds=8):
+        deadline = time.monotonic() + seconds
+        while sum(p.poll() is not None for p in procs) < count and time.monotonic() < deadline:
+            time.sleep(0.01)  # deadline-fallback: wait for the acquisition exit signal
+        return [p for p in procs if p.poll() is not None]
+
+    def release(self, fd):
+        os.close(fd)
+        self.fds.remove(fd)
+
+    def hold(self, kind=None):
+        owner = self.descriptor()
+        args = ["acquire", owner] + (["--kind", kind] if kind else [])
+        self.call(self.helpers[0], *args, fd=owner)
+        return owner
+
+    def test_registered_shorts_all_go_before_a_waiting_full(self):
+        owner = self.hold("full")
+        full, full_fd = self.spawn(self.helpers[1], "full")
+        self.waiting_line(full)
+        shorts = []
+        for helper in (self.helpers[2], self.helpers[0]):
+            proc, fd = self.spawn(helper, "short")
+            self.waiting_line(proc)
+            shorts.append((proc, fd))
+        # Two registered shorts and one full are waiting. Release the slot three
+        # times; each release must admit a short until no short is left.
+        self.release(owner)
+        done = self.wait_exit([p for p, _ in shorts], 1)
+        self.assertEqual(len(done), 1, "the first release must admit one short")
+        self.assertIsNone(full.poll(), "a full run took the slot while a short was registered")
+        first_fd = next(fd for p, fd in shorts if p in done)
+        self.release(first_fd)
+        self.assertEqual(len(self.wait_exit([p for p, _ in shorts], 2)), 2)
+        self.assertIsNone(full.poll(), "a full run took the slot while a short was registered")
+        second_fd = next(fd for p, fd in shorts if fd != first_fd)
+        self.release(second_fd)
+        self.assertEqual(self.wait_exit([full], 1), [full])
+        self.assertEqual(full.returncode, 0)
+
+    def test_full_never_takes_a_free_slot_while_a_short_is_registered(self):
+        # This test plays a registered short: it holds priority.lock shared while
+        # the slot is free. A full waiter must not take the free slot until the
+        # registration is gone.
+        registration = os.open(self.lock.with_name("priority.lock"), os.O_RDWR)
+        self.fds.append(registration)
+        fcntl.flock(registration, fcntl.LOCK_SH)
+        full, _ = self.spawn(self.helpers[1], "full")
+        self.waiting_line(full)
+        self.assertEqual(self.wait_exit([full], 1, seconds=2.5), [], "a full run ignored a registered short")
+        self.release(registration)
+        self.assertEqual(self.wait_exit([full], 1), [full])
+        self.assertEqual(full.returncode, 0)
+
+    def test_waiting_short_holds_its_registration_until_it_has_the_slot(self):
+        owner = self.hold("full")
+        short, short_fd = self.spawn(self.helpers[1], "short")
+        self.waiting_line(short)
+        probe = os.open(self.lock.with_name("priority.lock"), os.O_RDWR)
+        self.fds.append(probe)
+        with self.assertRaises(BlockingIOError):
+            fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.release(owner)
+        self.assertEqual(self.wait_exit([short], 1), [short])
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)  # registration dropped after acquiring
+        with self.assertRaises(BlockingIOError):
+            fcntl.flock(self.descriptor(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # slot still held via short_fd
+
+    def test_full_waiter_proceeds_when_no_short_is_queued(self):
+        owner = self.hold("full")
+        fulls = [self.spawn(h, "full") for h in self.helpers[1:]]
+        for proc, _ in fulls:
+            self.waiting_line(proc)
+        self.release(owner)
+        done = self.wait_exit([p for p, _ in fulls], 1)
+        self.assertEqual(len(done), 1)
+        self.assertEqual(sum(p.poll() is None for p, _ in fulls), 1, "two full runs shared the slot")
+
+    def test_short_waits_for_a_full_that_already_holds_the_slot(self):
+        owner = self.hold("full")
+        short, _ = self.spawn(self.helpers[1], "short")
+        self.waiting_line(short)
+        self.assertEqual(self.wait_exit([short], 1, seconds=1.5), [], "a short entered a held slot")
+        self.release(owner)
+        self.assertEqual(self.wait_exit([short], 1), [short])
+        self.assertEqual(short.returncode, 0)
+
+    def test_older_helper_without_kind_still_excludes(self):
+        owner = self.hold()  # an older runner's call shape: no --kind
+        short, _ = self.spawn(self.helpers[1], "short")
+        self.waiting_line(short)
+        self.assertEqual(self.wait_exit([short], 1, seconds=1.5), [])
+        self.release(owner)
+        self.assertEqual(self.wait_exit([short], 1), [short])
+
+    def test_unknown_kind_is_refused(self):
+        fd = self.descriptor()
+        self.call(self.helpers[0], "acquire", fd, "--kind", "medium", fd=fd, rc=2)
+
+    def bash_cancel(self, kind, register_short_first):
+        owner = self.hold("full")
+        if register_short_first:
+            blocker, _ = self.spawn(self.helpers[2], "short")
+            self.waiting_line(blocker)
+        rival = self.descriptor()
+        proc = subprocess.Popen(["bash", "-c", 'trap "" INT; exec "$@"', "ignored-int",
+                                 sys.executable, str(self.helpers[1]), "acquire", str(rival),
+                                 "--kind", kind],
+                                pass_fds=(rival,), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(self.reap, proc)
+        self.waiting_line(proc)
+        proc.send_signal(signal.SIGINT)
+        proc.communicate(timeout=10)
+        self.assertEqual(proc.returncode, 130)
+        with self.assertRaises(BlockingIOError):
+            fcntl.flock(rival, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.release(owner)
+
+    def test_cancel_a_short_waiting_for_the_slot(self):
+        self.bash_cancel("short", register_short_first=False)
+
+    def test_cancel_a_full_polling_for_the_slot(self):
+        self.bash_cancel("full", register_short_first=False)
+
+    def test_cancel_a_full_waiting_on_the_priority_gate(self):
+        self.bash_cancel("full", register_short_first=True)
+
+    def test_cancelled_short_drops_its_registration(self):
+        owner = self.hold("full")
+        short, _ = self.spawn(self.helpers[1], "short")
+        self.waiting_line(short)
+        short.send_signal(signal.SIGTERM)
+        short.communicate(timeout=10)
+        full, _ = self.spawn(self.helpers[2], "full")
+        self.waiting_line(full)
+        self.release(owner)
+        self.assertEqual(self.wait_exit([full], 1), [full], "a cancelled short kept blocking full runs")
+
+    def non_regular_priority(self, make):
+        priority = self.lock.with_name("priority.lock")
+        priority.unlink()
+        make(priority)
+        fd = self.descriptor()
+        self.call(self.helpers[0], "acquire", fd, "--kind", "short", fd=fd, rc=2)
+        return priority
+
+    def test_symlinked_priority_file_is_refused_without_touching_target(self):
+        target = self.root / "keep-priority"
+        target.write_text("keep")
+        self.non_regular_priority(lambda p: p.symlink_to(target))
+        self.assertEqual(target.read_text(), "keep")
+
+    def test_directory_priority_file_is_refused(self):
+        self.assertTrue(self.non_regular_priority(lambda p: p.mkdir()).is_dir())
+
+    def test_fifo_priority_file_is_refused(self):
+        self.non_regular_priority(lambda p: os.mkfifo(p))
+
+    def test_prepare_creates_both_lock_files(self):
+        self.assertTrue(self.lock.is_file())
+        self.assertTrue(self.lock.with_name("priority.lock").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

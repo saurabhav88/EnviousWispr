@@ -13,6 +13,7 @@ import Testing
 /// truly does not fit — and it means checking all 54 languages rather than "the longest name",
 /// because character count is the wrong unit when scripts render at different widths.
 @MainActor
+@Suite(.tags(.localParallel))
 struct LivePreviewPackCopyTests {
 
   /// The pill's real numbers, read from `RecordingPillDesign.readingWell`: 400 pt wide with

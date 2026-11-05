@@ -11,7 +11,7 @@ import Testing
 /// "color" appear while they speak and then gets "colour" pasted, or the preview asks Apple for
 /// the wrong model, or dictation is handed a regional code.
 @MainActor
-@Suite("Live preview English (UK)", .tags(.productOutcome))
+@Suite("Live preview English (UK)", .tags(.productOutcome, .localParallel))
 struct LivePreviewEnglishSpellingTests {
 
   @Test("the preview asks for en-GB only when British is in force; everything else passes through")

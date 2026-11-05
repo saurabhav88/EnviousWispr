@@ -11,7 +11,7 @@ import EnviousWisprAppKitTestSupport
 /// required build-check job and the pre-push hook). These tests are the Swift-side
 /// twin of that self-test: they freeze
 /// the invariants the release-notes renderer and the Settings screen both depend on.
-@Suite("What's New content", .tags(.driftGuard))
+@Suite("What's New content", .tags(.driftGuard, .localParallel))
 struct WhatsNewContentTests {
 
   private struct ReleaseNoteEntry: Codable, Equatable, Sendable {

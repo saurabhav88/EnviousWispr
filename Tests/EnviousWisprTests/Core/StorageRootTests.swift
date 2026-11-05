@@ -649,7 +649,7 @@ struct StorageRootWiringGuardTests {
 /// root as free and writing its claim, another could commit an interrupted
 /// handoff there — and the rename would destroy it, which is exactly what the
 /// five readings of the record exist to prevent.
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct StorageRootClaimRaceTests {
 
   /// Collects results from many threads. `@unchecked Sendable` because the lock

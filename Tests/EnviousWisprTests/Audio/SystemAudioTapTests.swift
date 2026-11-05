@@ -9,7 +9,7 @@ import os
 
 /// #3972 R2: when these fail, the call side of a meeting is garbled, shifted in time, silently
 /// incomplete, or capture hangs or restarts after the user pressed Stop.
-@Suite("SystemAudioTap", .tags(.productOutcome))
+@Suite("SystemAudioTap", .tags(.productOutcome, .localParallel))
 struct SystemAudioTapTests {
 
   // MARK: - Fixtures

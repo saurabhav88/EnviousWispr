@@ -11,7 +11,7 @@ import Testing
 /// press during the switch records on a model that is being replaced.
 @MainActor
 @Suite(
-  "EngineCoordinator Parakeet upgrade activation (#3546 A3)", .serialized, .tags(.productOutcome))
+  "EngineCoordinator Parakeet upgrade activation (#3546 A3)", .serialized, .tags(.productOutcome, .localParallel))
 struct EngineCoordinatorUpgradeActivationTests {
 
   /// Holds the fake activation open until the test releases it, or until the deadline,

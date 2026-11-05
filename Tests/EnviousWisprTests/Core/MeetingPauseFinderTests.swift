@@ -4,7 +4,7 @@ import Testing
 @testable import EnviousWisprCore
 
 /// #3972 R16: when these fail, a meeting transcript loses or splits words where pieces join.
-@Suite("MeetingPauseFinder", .tags(.productOutcome))
+@Suite("MeetingPauseFinder", .tags(.productOutcome, .localParallel))
 struct MeetingPauseFinderTests {
 
   /// Loud "speech" everywhere except silent gaps at the given seconds.

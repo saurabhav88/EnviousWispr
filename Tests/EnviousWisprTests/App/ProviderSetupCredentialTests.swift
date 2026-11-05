@@ -16,7 +16,7 @@ import EnviousWisprAppKitTestSupport
 /// When this fails, the user sees a key field that does not empty after Clear, a missing-key
 /// notice after a successful Save, a failure with no message, or a key check that never runs.
 @MainActor
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct ProviderSetupKeyActionTests {
   private struct FailingStorage: LegacyKeyFileStorage {
     func store(key: String, value: String) throws { throw KeyStoreError.storeFailed(-25308) }

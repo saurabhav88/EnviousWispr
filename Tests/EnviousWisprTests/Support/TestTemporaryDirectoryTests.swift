@@ -5,7 +5,7 @@ import Testing
 /// Test temp paths hang off one per-process root that is removed at exit, so a
 /// test run no longer leaves folders in the system temporary directory, where
 /// macOS keeps them for about three days (measured 2026-10-25: ~25 GB a day).
-@Suite(.tags(.harnessContract))
+@Suite(.tags(.harnessContract, .localParallel))
 struct TestTemporaryDirectoryTests {
 
   /// The only test code allowed to name the system temporary directory, each

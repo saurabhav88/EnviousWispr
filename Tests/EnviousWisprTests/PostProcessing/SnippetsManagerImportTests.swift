@@ -252,7 +252,7 @@ struct SnippetsManagerImportTests {
 /// Plan §3a: the locked import at the ceiling, measured on the dev machine and SKIPPED on the
 /// hosted runner (`CI` is set there). Elapsed times go to the test log; the bound is for THIS
 /// Mac and proves nothing about the slowest supported one.
-@Suite("Snippet store import at the ceiling (#2997)", .tags(.harnessContract))
+@Suite("Snippet store import at the ceiling (#2997)", .tags(.harnessContract, .localParallel))
 struct SnippetsManagerImportCeilingTests {
 
   static var runsOnThisMachine: Bool {

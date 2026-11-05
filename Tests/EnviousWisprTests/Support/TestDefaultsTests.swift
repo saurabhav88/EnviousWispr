@@ -4,7 +4,7 @@ import EnviousWisprAppKitTestSupport
 
 /// Binds `TestDefaults` (#2998): the registered suites' plists are the ones removed, nothing else is,
 /// and no test file mints a named suite any other way.
-@Suite("TestDefaults: test suites leave no plist behind (#2998)", .tags(.driftGuard))
+@Suite("TestDefaults: test suites leave no plist behind (#2998)", .tags(.driftGuard, .localParallel))
 struct TestDefaultsTests {
   private static func tempDirectory() throws -> URL {
     let url = URL(fileURLWithPath: TestTemporaryDirectory.path)

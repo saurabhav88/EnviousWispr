@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 /// they refused twice learned again, or "Forget learning memory" leave
 /// something behind.
 @MainActor
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 struct LearnMemoryTests {
 
   // MARK: Fixtures

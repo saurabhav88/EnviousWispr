@@ -122,7 +122,7 @@ enum BoundedWait {
 
 /// The deadline itself works: a signal nobody fires and a task that never finishes both fail
 /// within their deadline instead of hanging.
-@Suite("Bounded waits fail instead of hanging (#3735)", .tags(.harnessContract))
+@Suite("Bounded waits fail instead of hanging (#3735)", .tags(.harnessContract, .localParallel))
 struct BoundedWaitTests {
   @Test("a signal that never fires expires")
   func silentSignalExpires() async {

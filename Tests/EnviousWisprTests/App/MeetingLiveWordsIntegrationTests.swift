@@ -22,7 +22,7 @@ import os
 /// **What the user sees when this fails:** a meeting loses audio, Stop hangs, or the transcript
 /// waits for live words because the live-words engine stalled.
 @MainActor
-@Suite("Meeting live words through the coordinator (#3973)", .tags(.productOutcome), .serialized)
+@Suite("Meeting live words through the coordinator (#3973)", .tags(.productOutcome, .localParallel), .serialized)
 struct MeetingLiveWordsIntegrationTests {
   typealias World = MeetingLiveWordsTests.World
   typealias Gate = MeetingLiveWordsTests.Gate

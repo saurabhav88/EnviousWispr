@@ -220,7 +220,7 @@ struct VocabularyPackTests {
 /// overfitting). Everyday/multilingual inputs are drawn from the polish eval
 /// corpus `scripts/eval/corpus/ci_corpus.jsonl` (clean-noop / language-
 /// preservation / named-entity categories).
-@Suite("Vocabulary Pack — real bundled data")
+@Suite("Vocabulary Pack — real bundled data", .tags(.localParallel))
 struct BundledVocabularyPackTests {
 
   /// All 5 packs flattened (no user/builtin terms), so ANY correction is

@@ -30,7 +30,7 @@ import Testing
 /// with both bundled models installed, attributing each polish request to the runtime that
 /// served it rather than to the card the user clicked. See the chunk-2 UAT record.
 @MainActor
-@Suite("File-import local polish runtime (#2772)", .tags(.productOutcome))
+@Suite("File-import local polish runtime (#2772)", .tags(.productOutcome, .localParallel))
 struct FileImportLocalPolishRuntimeTests {
 
   private func makeSync(

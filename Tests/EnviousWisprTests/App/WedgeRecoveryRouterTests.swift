@@ -8,7 +8,7 @@ import Testing
 
 /// PR8 of #763 — unit tests for `WedgeRecoveryRouter`.
 @MainActor
-@Suite("WedgeRecoveryRouter")
+@Suite("WedgeRecoveryRouter", .tags(.localParallel))
 struct WedgeRecoveryRouterTests {
 
   @Test("init installs the capture-stall callback on audioCapture")

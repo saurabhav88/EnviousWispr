@@ -12,7 +12,7 @@ import EnviousWisprAppKitTestSupport
 /// about which snippets exist, an edit made during an import is silently undone, every
 /// snippet is switched off for the session, or a stale review is shown as a failure.
 @MainActor
-@Suite("Snippets coordinator import (#2997)", .tags(.productOutcome))
+@Suite("Snippets coordinator import (#2997)", .tags(.productOutcome, .localParallel))
 struct SnippetsCoordinatorImportTests {
 
   private func makeCoordinator() -> (SnippetsCoordinator, SnippetsManager) {

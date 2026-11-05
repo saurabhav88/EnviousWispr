@@ -15,7 +15,7 @@ import EnviousWisprPipeline
 /// this fails, the user switches back to EG-1 and polish silently stops until
 /// they touch the setting again.
 @MainActor
-@Suite("PipelineSettingsSync local-engine switch (#2649)", .tags(.productOutcome))
+@Suite("PipelineSettingsSync local-engine switch (#2649)", .tags(.productOutcome, .localParallel))
 struct PipelineSettingsSyncLocalEngineSwitchTests {
 
   private func makeSync(

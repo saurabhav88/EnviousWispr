@@ -24,7 +24,7 @@ import Testing
 /// verified against the thing beside it rather than against the producer. These
 /// tests drive the real capture and read the real slot.
 @MainActor
-@Suite("Escape Recovery completion producer (#2087)", .tags(.productOutcome))
+@Suite("Escape Recovery completion producer (#2087)", .tags(.productOutcome, .localParallel))
 struct EscapeRecoveryCompletionProducerTests {
 
   #if DEBUG

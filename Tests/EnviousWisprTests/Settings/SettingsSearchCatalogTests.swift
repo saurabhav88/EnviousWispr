@@ -6,7 +6,7 @@ import Testing
 /// #3482 PR A: the search catalog is the Settings Map's searchable nodes and nothing else, and
 /// its join with the vocabulary fails loudly on any gap. Expectations come from the inventory
 /// fixture (`Tests/Fixtures/settings-map/inventory.json`), not from the projection under test.
-@Suite("Settings search catalog (#3482)", .tags(.driftGuard))
+@Suite("Settings search catalog (#3482)", .tags(.driftGuard, .localParallel))
 struct SettingsSearchCatalogTests {
   @Test("the catalog is exactly the inventory's mapped ids, in map order, with no structure")
   func exactProjection() throws {

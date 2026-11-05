@@ -10,7 +10,7 @@ import Testing
 /// #3972 R11: when these fail, the founder's first-release adoption and quality query counts a
 /// meeting twice, misses one, or reports the wrong outcome, entry point or gap count.
 @MainActor
-@Suite("Meeting ended telemetry", .tags(.observabilityContract), .timeLimit(.minutes(1)))
+@Suite("Meeting ended telemetry", .tags(.observabilityContract, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingCoordinatorTelemetryTests {
   typealias Harness = MeetingCoordinatorTests.Harness
 

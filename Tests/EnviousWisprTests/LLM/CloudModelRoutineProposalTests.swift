@@ -9,7 +9,7 @@ import EnviousWisprAppKitTestSupport
 /// harness go through the real `scripts/cloud-models/propose.py`, so the Python checker is
 /// proven against Swift's own encoding rather than hand-written fixtures. Offline: fake
 /// vendors, fake keys, the committed list at this checkout's HEAD as the recorded base.
-@Suite("Cloud model routine proposal (#4353 PR 5)", .tags(.harnessContract))
+@Suite("Cloud model routine proposal (#4353 PR 5)", .tags(.harnessContract, .localParallel))
 struct CloudModelRoutineProposalTests {
   typealias H = CloudModelRoutineHarnessTests
   typealias S = CloudModelRoutineSearchTests

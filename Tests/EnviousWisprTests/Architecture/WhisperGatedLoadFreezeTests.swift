@@ -14,7 +14,7 @@ import Testing
 /// a caller no runtime test exercises. The admission halves (the dictation model loads only an
 /// admitted path; the preview refuses an unadmitted model) are behavior tests:
 /// `TranscribeCppPreviewRealBoundaryTests` and the Whisper adapter/backend suites.
-@Suite(.tags(.driftGuard)) struct WhisperGatedLoadFreezeTests {
+@Suite(.tags(.driftGuard, .localParallel)) struct WhisperGatedLoadFreezeTests {
 
   /// The ONLY production file that may import the native transcribe.cpp module.
   private static let nativeBoundary =

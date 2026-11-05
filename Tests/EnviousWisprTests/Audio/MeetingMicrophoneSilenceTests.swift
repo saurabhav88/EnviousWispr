@@ -17,7 +17,7 @@ import os
 ///
 /// Audio is SYNTHETIC: a constant 0.25 signal (16-bit file value 8192), so any sample the hold
 /// zeroes reads back as exactly 0 and every other sample as non-zero.
-@Suite("Meeting microphone silence hold", .serialized, .tags(.productOutcome))
+@Suite("Meeting microphone silence hold", .serialized, .tags(.productOutcome, .localParallel))
 struct MeetingMicrophoneSilenceTests {
   static let level: Float = 0.25
   static let rate = 16_000

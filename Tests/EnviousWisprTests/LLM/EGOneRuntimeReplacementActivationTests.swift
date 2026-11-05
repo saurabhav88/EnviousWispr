@@ -15,7 +15,7 @@ import EnviousWisprAppKitTestSupport
 /// `server_binary_missing` health transition, while an inactive admitted
 /// state stays `yellow(not_started)`. Signal-based waits only — the health
 /// event stream is the signal; no wall-clock polling.
-@Suite struct EGOneRuntimeReplacementActivationTests {
+@Suite(.tags(.localParallel)) struct EGOneRuntimeReplacementActivationTests {
   @MainActor
   private final class ProviderBox {
     var isEGOneActive: Bool

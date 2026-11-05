@@ -13,7 +13,7 @@ import Testing
 /// a crash-recovery replay). Each test switches the selection away and checks whether the shared
 /// holder kept or dropped the classifier.
 @MainActor
-@Suite("PipelineSettingsSync output classifier demand (#3853)", .tags(.productOutcome))
+@Suite("PipelineSettingsSync output classifier demand (#3853)", .tags(.productOutcome, .localParallel))
 struct PipelineSettingsSyncOutputClassifierDemandTests {
 
   private struct StubClassifier: OutputClassifierProtocol {

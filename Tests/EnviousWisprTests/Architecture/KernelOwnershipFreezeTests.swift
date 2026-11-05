@@ -21,7 +21,7 @@ import Testing
 // Known blind spot (named, not fixed): a second FSM declared under a DIFFERENT
 // enum name evades invariant 1; code review covers it.
 
-@Suite struct KernelOwnershipFreezeTests {
+@Suite(.tags(.localParallel)) struct KernelOwnershipFreezeTests {
 
   // Whole-word so `KernelDictationDriver` / `KernelDictationDriverFactory` do
   // not false-positive on the deleted `DictationPipeline` protocol name.

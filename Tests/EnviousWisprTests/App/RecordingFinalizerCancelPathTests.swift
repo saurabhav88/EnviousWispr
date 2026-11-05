@@ -31,7 +31,7 @@
   ///     Whisper branching).
   ///   - Construction does not crash.
   @MainActor
-  @Suite struct RecordingFinalizerCancelPathTests {
+  @Suite(.tags(.localParallel)) struct RecordingFinalizerCancelPathTests {
 
     private struct Fixture {
       let finalizer: RecordingFinalizer

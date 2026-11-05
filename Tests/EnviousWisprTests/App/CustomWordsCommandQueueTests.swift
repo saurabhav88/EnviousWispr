@@ -13,7 +13,7 @@ import Testing
 /// asked for, and a "nothing changed" or failed save is never reported as saved.
 /// Holding the worker proves responsiveness, not disk speed. Class: `.productOutcome`.
 @MainActor
-@Suite(.tags(.productOutcome)) struct CustomWordsCommandQueueTests {
+@Suite(.tags(.productOutcome, .localParallel)) struct CustomWordsCommandQueueTests {
 
   /// Holds the file worker at its first transaction until `release()`.
   final class WorkerGate: @unchecked Sendable {

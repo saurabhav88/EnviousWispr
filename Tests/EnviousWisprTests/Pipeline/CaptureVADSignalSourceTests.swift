@@ -12,7 +12,7 @@ import Testing
 // `speechEvidenceAtStop()` tri-state, and `SessionID` stamping.
 
 @MainActor
-@Suite struct CaptureVADSignalSourceTests {
+@Suite(.tags(.localParallel)) struct CaptureVADSignalSourceTests {
 
   @Test("noteAutoStopTriggered yields an autoStop signal stamped with the current session")
   func autoStopBridging() async {

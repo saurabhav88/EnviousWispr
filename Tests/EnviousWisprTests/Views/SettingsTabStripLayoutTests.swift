@@ -9,7 +9,7 @@ import Testing
 /// height/paint. Offscreen SwiftUI hosts do not expose the app's AX/focus tree;
 /// the offline navigator fixtures and Claude's live check cover that boundary.
 @MainActor
-@Suite("Settings tab strip wrapping", .tags(.productOutcome))
+@Suite("Settings tab strip wrapping", .tags(.productOutcome, .localParallel))
 struct SettingsTabStripLayoutTests {
   init() { _ = NSApplication.shared }
 

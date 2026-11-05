@@ -10,7 +10,7 @@ import Testing
 /// full check (and sends a telemetry row) on every activation and every dictation.
 @MainActor
 @Suite(
-  "Apple Intelligence report repairs itself after the user fixes it (#3897)", .tags(.productOutcome)
+  "Apple Intelligence report repairs itself after the user fixes it (#3897)", .tags(.productOutcome, .localParallel)
 )
 struct AIAvailabilityRecheckPolicyTests {
 

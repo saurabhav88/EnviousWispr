@@ -102,7 +102,7 @@ private actor DelayRecorder {
 }
 
 @MainActor
-@Suite("BulkImportEnrichmentCoordinator (#1701 Chunk 2)")
+@Suite("BulkImportEnrichmentCoordinator (#1701 Chunk 2)", .tags(.localParallel))
 struct BulkImportEnrichmentCoordinatorTests {
 
   private func makeCoordinator() -> (CustomWordsCoordinator, URL) {

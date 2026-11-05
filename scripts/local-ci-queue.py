@@ -5,6 +5,14 @@ Bash holds descriptor 9 for the entire run. The acquiring child shares that
 open-file description, so its exit does not release the parent's flock. Never
 explicitly unlock or remove the persistent file. The kernel releases the slot
 when the last shared descriptor closes, including inherited descendants.
+
+Short runs go first (#4089, #4090). A short (filtered) waiter registers by
+holding a shared lock on the sibling priority.lock while it waits for the slot,
+and drops it once the slot is its own. A full waiter takes the slot only while
+it holds priority.lock exclusively, so it never takes the slot while a short
+waiter is registered, and it never blocks on the slot while holding that lock:
+it polls. No FIFO order, bounded delay or freedom from starvation is promised.
+An older copy of this helper (no --kind) still excludes but skips priority.
 """
 
 import fcntl
@@ -22,10 +30,18 @@ import time
 LOCK_PATH = Path(pwd.getpwuid(os.getuid()).pw_dir) / "Library/Caches/EnviousWispr/local-ci/runner.lock"
 
 
-def checked_descriptor(fd):
+KINDS = ("short", "full")
+
+
+def priority_path():
+    return LOCK_PATH.with_name("priority.lock")
+
+
+def checked_descriptor(fd, path=None):
+    path = LOCK_PATH if path is None else path
     if fd < 3:
         raise ValueError("the CI queue needs a dedicated inherited descriptor")
-    expected = LOCK_PATH.lstat()
+    expected = path.lstat()
     actual = os.fstat(fd)
     if not stat.S_ISREG(expected.st_mode) or not stat.S_ISREG(actual.st_mode):
         raise ValueError("CI queue resource must be a regular file, never a symlink")
@@ -33,17 +49,69 @@ def checked_descriptor(fd):
         raise ValueError("CI queue descriptor does not name the fixed resource")
 
 
+def open_checked(path):
+    """Open (creating if absent) one persistent lock file; never follow a link."""
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        checked_descriptor(fd, path)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 def prepare():
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        checked_descriptor(fd)
-    finally:
-        os.close(fd)
+    for path in (LOCK_PATH, priority_path()):
+        os.close(open_checked(path))
     print(LOCK_PATH)
 
 
-def acquire(fd):
+WAITING = "==> Local CI queue: another run is using this Mac; waiting for its slot (short runs go first)"
+
+
+def wait_short(fd):
+    # Registered from the moment the shared lock is held until the slot is ours.
+    pfd = open_checked(priority_path())
+    try:
+        fcntl.flock(pfd, fcntl.LOCK_SH)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(WAITING + " [short run]", flush=True)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+    finally:
+        os.close(pfd)  # releases only the priority registration
+
+
+def wait_full(fd):
+    announced = False
+    while True:
+        pfd = open_checked(priority_path())
+        try:
+            try:
+                fcntl.flock(pfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if not announced:
+                    print(WAITING + " [full run; a short run is queued]", flush=True)
+                    announced = True
+                fcntl.flock(pfd, fcntl.LOCK_EX)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                pass
+        finally:
+            os.close(pfd)
+        if not announced:
+            print(WAITING + " [full run]", flush=True)
+            announced = True
+        time.sleep(1)  # poll: never block on the slot while holding priority.lock
+
+
+def acquire(fd, kind="full"):
+    if kind not in KINDS:
+        raise ValueError(f"queue kind must be one of {', '.join(KINDS)}")
     checked_descriptor(fd)
 
     def interrupted(signum, _frame):
@@ -54,11 +122,10 @@ def acquire(fd):
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, interrupted)
     started = time.monotonic()
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        print("==> Local CI queue: another run is using this Mac; waiting for its slot", flush=True)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+    if kind == "short":
+        wait_short(fd)
+    else:
+        wait_full(fd)
     print(f"==> phase local CI queue wait: {time.monotonic() - started:.3f}s", flush=True)
     print("==> Local CI queue: slot acquired (one local test run at a time)", flush=True)
     # No LOCK_UN here. The parent runner still owns the same descriptor.
@@ -71,9 +138,11 @@ def main(argv):
         elif argv == ["prepare"]:
             prepare()
         elif len(argv) == 2 and argv[0] == "acquire":
-            acquire(int(argv[1]))
+            acquire(int(argv[1]))  # an older runner copy: treated as a full run
+        elif len(argv) == 4 and argv[0] == "acquire" and argv[2] == "--kind":
+            acquire(int(argv[1]), argv[3])
         else:
-            raise ValueError("usage: local-ci-queue.py path|prepare|acquire FD")
+            raise ValueError("usage: local-ci-queue.py path|prepare|acquire FD [--kind short|full]")
     except (OSError, ValueError) as error:
         print(f"ERROR: local CI queue: {error}", file=sys.stderr)
         return 2

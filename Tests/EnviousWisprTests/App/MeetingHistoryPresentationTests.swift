@@ -12,7 +12,7 @@ import EnviousWisprAppKitTestSupport
 /// dictation", counted as a practice dictation, or hidden echo lines reach the list, search,
 /// Copy, Save, Share or Paste.
 @MainActor
-@Suite("Meeting rows in History", .tags(.productOutcome))
+@Suite("Meeting rows in History", .tags(.productOutcome, .localParallel))
 struct MeetingHistoryPresentationTests {
   /// "Hello there." (You, 0..<12), then "Hello there." again on the mic (echo, 13..<25),
   /// then "Yes, I agree." (Speaker 1, 26..<39).

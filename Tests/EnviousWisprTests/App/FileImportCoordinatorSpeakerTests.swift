@@ -15,7 +15,7 @@ import Testing
 /// after the user has moved on, or a refused raw save still runs an analysis on words
 /// nobody kept, or the speaker step silently analyzes an empty buffer because the
 /// coordinator's own array was already released.** Product coverage.
-@Suite(.tags(.productOutcome))
+@Suite(.tags(.productOutcome, .localParallel))
 @MainActor
 struct FileImportCoordinatorSpeakerTests {
 

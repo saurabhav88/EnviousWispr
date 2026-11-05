@@ -15,7 +15,7 @@ import Testing
 /// previous recording's words or the Mac runs two preview decodes at once; or the preview
 /// model stays in memory after the user turned the preview off, changed engine or removed it.
 @Suite(
-  "Universal preview recognizer on transcribe.cpp (#3735)", .serialized, .tags(.productOutcome))
+  "Universal preview recognizer on transcribe.cpp (#3735)", .serialized, .tags(.productOutcome, .localParallel))
 struct TranscribeCppPreviewRecognizerTests {
 
   /// A native boundary under test control: decodes hold until released (cancellation does not

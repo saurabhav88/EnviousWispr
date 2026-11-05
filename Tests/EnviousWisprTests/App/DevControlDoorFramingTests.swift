@@ -13,7 +13,7 @@
   /// Harness Contract: the door is the instrument agents drive the dev build through. When
   /// this fails, a UAT script reaches no app, the wrong app, or an app another user could
   /// reach; no customer sees any of it.
-  @Suite(.serialized, .tags(.harnessContract))
+  @Suite(.serialized, .tags(.harnessContract, .localParallel))
   @MainActor
   struct DevControlDoorFramingTests {
     private static var repoRoot: URL {
