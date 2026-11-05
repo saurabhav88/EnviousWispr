@@ -12,7 +12,7 @@ import Testing
 /// wrong language, is saved although it breaks the rules, or leaves no reason on screen. Layout,
 /// focus order and VoiceOver are not proven here; those wait for the hands-on pass in the dev app.
 @MainActor
-@Suite("Start word editor (#2450)", .tags(.productOutcome))
+@Suite("Start word editor (#2450)", .tags(.productOutcome, .localParallel))
 struct SpokenPunctuationStartWordEditorTests {
 
   /// Most of these tests edit German, so the dictation language is locked to it and the picker opens

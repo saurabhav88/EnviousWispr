@@ -21,7 +21,7 @@ import EnviousWisprAppKitTestSupport
 /// transitions are validated by Live UAT (the pipelines' `state` is
 /// `public private(set)` and not writeable from tests).
 @MainActor
-@Suite("LiveRecordingState")
+@Suite("LiveRecordingState", .tags(.localParallel))
 struct LiveRecordingStateTests {
 
   @Test("init wires four references; default state returns idle pipeline state")

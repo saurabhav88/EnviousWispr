@@ -11,7 +11,7 @@ import EnviousWisprAppKitTestSupport
 /// throws without writing when an EXISTING file cannot be read, instead of
 /// silently substituting an empty library and saving it over the real one.
 @MainActor
-@Suite("CustomWordsManager — fail-closed persistence (#1646)")
+@Suite("CustomWordsManager — fail-closed persistence (#1646)", .tags(.localParallel))
 struct CustomWordsManagerPersistenceTests {
   // MARK: - Fixtures
 

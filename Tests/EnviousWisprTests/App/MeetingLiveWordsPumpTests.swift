@@ -11,7 +11,7 @@ import os
 ///
 /// Expected samples are built from arithmetic (sample index or block number), never read back
 /// through the pump.
-@Suite("Meeting live-words pump (#3973)", .tags(.productOutcome))
+@Suite("Meeting live-words pump (#3973)", .tags(.productOutcome, .localParallel))
 struct MeetingLiveWordsPumpTests {
 
   private static let bank = MeetingLiveAudioPump.bankSamples

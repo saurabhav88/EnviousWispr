@@ -8,7 +8,7 @@ import EnviousWisprAppKitTestSupport
 /// #1846 — the cross-vendor join key's acceptance contract, its survival through
 /// the REAL final-payload redactor, and the freeze that keeps PostHog's
 /// `distinct_id` anonymous.
-@Suite("Telemetry join key (#1846)")
+@Suite("Telemetry join key (#1846)", .tags(.localParallel))
 struct TelemetryJoinKeyTests {
 
   /// A canonical PostHog anonymous ID: lowercase, hyphenated, 8-4-4-4-12.

@@ -16,7 +16,7 @@ import Testing
 /// test hook received, not proof of vendor delivery.
 @MainActor
 @Suite(
-  "meeting.ended reports the names History kept", .tags(.productOutcome), .timeLimit(.minutes(1)))
+  "meeting.ended reports the names History kept", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingEndedNamingTests {
   typealias Harness = MeetingCoordinatorTests.Harness
 

@@ -12,7 +12,7 @@ import os
 /// blocks its caller, `runWithin` suspends it). When this is wrong, Delete All or quit hangs past
 /// its deadline, deletes History after a mark that never landed, or loses a late result.
 /// Serialized: it holds the one process-wide writer queue with a gate.
-@Suite("Meeting file writer bounded operations (#4102)", .serialized, .tags(.productOutcome))
+@Suite("Meeting file writer bounded operations (#4102)", .serialized, .tags(.productOutcome, .localParallel))
 struct MeetingFileWriterTests {
 
   struct Failed: Error {}

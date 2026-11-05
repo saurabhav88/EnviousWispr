@@ -19,7 +19,7 @@ import Testing
 /// the disclosure→reason mapping cannot drift and only a verified device removal
 /// can ever be forwarded as `.deviceRemoved`.
 @MainActor
-@Suite("PipelineStateChangeHandlerFactory — interruption reason matrix (#1408/#1567)")
+@Suite("PipelineStateChangeHandlerFactory — interruption reason matrix (#1408/#1567)", .tags(.localParallel))
 struct PipelineStateChangeHandlerFactoryCopyTests {
 
   @MainActor

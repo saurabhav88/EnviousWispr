@@ -18,7 +18,7 @@ import Testing
 /// list, switching engines loses or invents a language, an older lookup overwrites the user's
 /// newer pick, or a finished download is shown under another language.
 @MainActor
-@Suite("Meeting live words row (#4105)", .tags(.productOutcome))
+@Suite("Meeting live words row (#4105)", .tags(.productOutcome, .localParallel))
 struct MeetingLiveWordsRowModelTests {
   typealias Choice = MeetingLiveWordsChoice
   typealias Status = MeetingLiveWordsRowModel.Status

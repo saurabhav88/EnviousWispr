@@ -205,7 +205,7 @@ private func makePresenterRecordingAccepts(
   return (presenter, fake, accepted)
 }
 
-@Suite("LanguageSuggestionPresenter state machine")
+@Suite("LanguageSuggestionPresenter state machine", .tags(.localParallel))
 @MainActor
 struct LanguageSuggestionPresenterTests {
 

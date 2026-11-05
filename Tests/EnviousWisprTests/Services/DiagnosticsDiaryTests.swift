@@ -7,7 +7,7 @@ import EnviousWisprAppKitTestSupport
 /// #3269: the local diagnostics diary. Every test uses its own temporary directory and a
 /// controlled clock, so nothing touches the real Application Support folder and nothing sleeps.
 @MainActor
-@Suite("Diagnostics diary (#3269)", .tags(.productOutcome))
+@Suite("Diagnostics diary (#3269)", .tags(.productOutcome, .localParallel))
 struct DiagnosticsDiaryTests {
 
   /// A settable clock the diary reads on its queue.

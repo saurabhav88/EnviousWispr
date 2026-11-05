@@ -16,7 +16,7 @@ import EnviousWisprAppKitTestSupport
 /// #3972 C4a: when these fail, a meeting loads a model the delivery code is replacing, keeps a
 /// model locked after it finished or failed, or History's delete of a meeting leaves its audio.
 @MainActor
-@Suite("Meeting wiring", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Meeting wiring", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingWiringTests {
 
   // MARK: - Model claim

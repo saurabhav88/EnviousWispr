@@ -41,7 +41,7 @@ import Testing
 /// Known limit, stated rather than discovered later: it proves no OTHER site
 /// constructs or closes a panel, not that the one remaining site is correct —
 /// the host suite owns that.
-@Suite(.tags(.driftGuard))
+@Suite(.tags(.driftGuard, .localParallel))
 struct OverlayRetainedWindowTests {
 
   /// Every `NSPanel(...)` construction and every `.close()` call in a file,

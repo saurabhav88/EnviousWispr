@@ -9,7 +9,7 @@ import EnviousWisprAppKitTestSupport
 /// against a temp file, so "one write or none" is verified against disk, not
 /// a mock.
 @MainActor
-@Suite("CustomWordsImportCommit")
+@Suite("CustomWordsImportCommit", .tags(.localParallel))
 struct CustomWordsImportCommitTests {
 
   // MARK: - Harness
