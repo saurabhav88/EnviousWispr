@@ -4,10 +4,10 @@ description: "Which AI Polish options keep your text on your Mac, and what is se
 category: "privacy-and-security"
 section: "Privacy"
 order: 3
-keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to google", "leaves my mac", "third party", "who sees my text", "confidential", "work data", "hipaa", "turn off ai polish", "keep my text private"]
+keywords: ["cloud", "does it send my text anywhere", "sent to openai", "sent to google", "leaves my mac", "third party", "who sees my text", "confidential", "work data", "hipaa", "turn off ai polish", "keep my text private", "meeting summary", "enviousmeet summary", "what does a meeting summary send"]
 related: ["privacy-overview", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
 seeAlso: "cloud-ai-polish-not-stored"
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "show_but_always_send"
 ---
 Whether your text leaves your Mac for polishing depends on which AI Polish option you picked. Your audio never leaves your Mac on any option. To check your choice, open **Settings** > **AI Polish**.
@@ -32,7 +32,7 @@ OpenAI, Gemini, Claude, and Ollama's hosted models run on the provider's servers
 - The name of the app you are dictating into.
 - Your API key, a private password from the provider that shows the request is yours. Ollama's hosted models use your Ollama sign-in instead.
 
-EnviousWispr adds nothing to the request that identifies you or your Mac. The provider still sees the ordinary details of any internet connection, such as your IP address.
+For dictation, EnviousWispr adds nothing to the request that identifies you or your Mac. The provider still sees the ordinary details of any internet connection, such as your IP address.
 
 With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of the request. That is a request to the provider, not something EnviousWispr can enforce. Your text still has to reach their servers to be polished.
 
@@ -44,6 +44,12 @@ With OpenAI and Gemini, EnviousWispr also asks them not to keep a copy of the re
 ### How do I stop my text from being sent?
 
 Pick an option that stays on your Mac: Apple Intelligence, EG-1, S1-mini, or an Ollama model you downloaded. To run no AI step at all, turn off **Enable AI Polish** at the top of **Settings** > **AI Polish**. Filler-word removal and your custom words still apply.
+
+### What about EnviousMeet summaries?
+
+Meeting summaries have their own choice, under **Summary engine** on the **Summaries** tab of the EnviousMeet page. It is separate from AI Polish, and turning off **Enable AI Polish** does not turn off meeting summaries.
+
+EG-1, Apple Intelligence and an Ollama model you downloaded keep the summary on your Mac. A cloud summary engine (OpenAI, Gemini, Claude, or an Ollama hosted model) receives, straight from your Mac: the meeting transcript, your notes, and meeting details such as the start time, recorded length and call app, plus, when available, the calendar event's title and the invited people's names and email details. Envious Labs never receives any of it. To keep summaries on your Mac, choose an on-Mac summary engine. See [EnviousMeet: Record a Meeting](/help/enviousmeet-record-a-meeting/).
 
 ### What do I get if AI Polish fails?
 

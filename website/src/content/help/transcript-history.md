@@ -1,27 +1,27 @@
 ---
 title: "History"
-description: "Find, reuse and delete your past dictations and transcripts, and paste your last dictation again."
+description: "Find, reuse and delete your past dictations, transcripts and meetings, and paste your last dictation again."
 category: "features"
 section: "History"
 order: 1
-keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log", "paste again", "paste last dictation", "copy last dictation", "history is empty", "paste last dictation greyed out", "cancelled dictation saved", "delete history"]
+keywords: ["history", "past dictations", "transcripts", "speaker labels", "previous", "find an old dictation", "where did my text go", "recover", "lost text", "copy again", "log", "paste again", "paste last dictation", "copy last dictation", "history is empty", "paste last dictation greyed out", "cancelled dictation saved", "delete history", "meetings", "find a meeting", "search by invited person"]
 related: ["transcribe-a-file", "transcribe-a-file-speaker-labels", "clipboard-preservation", "escape-recovery"]
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr saves everything it transcribes so you can find it again later. To see it, click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**. The window opens on **History**.
 
 ### What History holds
 
-History holds two kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/).
+History holds three kinds of item. A **dictation** is a recording you made with your keybind. A **transcript** is a recording you imported with [Transcribe a File](/help/transcribe-a-file/). A **meeting** is a recording made with [EnviousMeet](/help/enviousmeet-record-a-meeting/).
 
-Each row says which kind it is. The **All**, **Dictations** and **Transcripts** buttons above the list show one kind or both. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on. Click a name to rename it. What the labels mean, and what **Both** and **Not fully polished** mean, is in [speaker labels in Transcribe a File](/help/transcribe-a-file-speaker-labels/).
+Each row says which kind it is. The **A**, **D**, **T** and **M** tabs above the list mean **All**, **Dictations**, **Transcripts** and **Meetings**. Point at a tab to see its full name. A transcript with more than one voice shows its speakers, named **Speaker 1**, **Speaker 2** and so on. Click a name to rename it. What the labels mean, and what **Both** and **Not fully polished** mean, is in [speaker labels in Transcribe a File](/help/transcribe-a-file-speaker-labels/).
 
 ### Find, copy or delete a past dictation
 
-- **Search.** Type in **Search history** to find text from an earlier dictation or transcript, the name of an imported file, or a speaker you renamed.
+- **Search.** Type in **Search history** to find text from an earlier dictation or transcript, the name of an imported file, or a speaker you renamed. Finished meetings can also be found by their transcript, title, speaker names, notes, or an invited person's name, email or email domain. "Invited" means the person was on the calendar invitation, not that they joined.
 - **Copy or paste.** Copy a past dictation or transcript back to your clipboard, or paste it straight into the app you are in.
-- **Delete records.** Remove a single dictation or transcript you no longer need, or delete all of them at once. Delete all removes every item in History, including any a filter or search is hiding.
+- **Delete records.** Remove a single dictation, transcript or meeting you no longer need, or delete all of them at once. Delete all removes every item in History, including meetings and any item a filter or search is hiding.
 
 ### Is a cancelled dictation saved?
 
@@ -44,13 +44,13 @@ Your **Restore clipboard after paste** setting works here too: see [Clipboard Pr
 
 ### Paste Last Dictation is greyed out
 
-Paste Last Dictation uses the newest dictation in History that it can reuse. It skips imported transcripts, cancelled dictations still counting down, and deleted items. The menu item is greyed out only when no dictation it can reuse is left.
+Paste Last Dictation uses the newest dictation in History that it can reuse. It skips imported transcripts, meetings, cancelled dictations still counting down, and deleted items. The menu item is greyed out only when no dictation it can reuse is left.
 
 Two other things to know. Nothing happens while you are recording. And paste does nothing while an EnviousWispr window such as History is in front, though copy still works.
 
 ### Where History is kept
 
-Your past dictations and transcripts are stored on your Mac, inside your user folder. They survive quitting the app, updating it, and restarting your computer. Envious Labs never receives a copy of your History, and there is no limit on how many items are kept.
+Your past dictations, transcripts and meetings are stored on your Mac, inside your user folder. They survive quitting the app, updating it, and restarting your computer. Envious Labs never receives a copy of your History, and there is no limit on how many items are kept.
 
 ### History looks empty
 
