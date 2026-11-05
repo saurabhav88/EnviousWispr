@@ -83,7 +83,7 @@ POLISH_INSTRUCTIONS_DEFAULT = (
 # #1196: a local sweep burned ~$19 on personal-key grading. #4234 routes
 # grading through the existing funded Azure owner instead. Generation below still
 # uses the requested polish provider; its credential and budget are separate.
-APPROVED_JUDGE_MODEL = "azure/gpt-5-6-luna"
+APPROVED_JUDGE_MODEL = funded_judge.AZURE_JUDGE_DEPLOYMENT_ID
 BENCH_JUDGE_MODEL = os.environ.get("EW_BENCH_JUDGE", APPROVED_JUDGE_MODEL)
 BENCH_JUDGE_REPLICATIONS = 2
 BENCH_BOOTSTRAP_RESAMPLES = 2000

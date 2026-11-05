@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Behavior-aware polish judge — Type B corpus scorer (issue #1199).
 
-Run-on-demand PERSONAL scorer for the gitignored Type B mega-corpus. NOT the CI
-gate (`acceptance_gate.py` over `ci_corpus.jsonl` stays the only CI gate, on its
-own corpus, untouched). This is a local-lane tool (gitignored under
-`scripts/eval/*`), same eval family + same judge plumbing — a new SCORER over a
-candidate-output file, not a parallel harness.
+Run-on-demand scorer for private polish corpora, in the canonical eval family.
+CI runs key-free checks, not model grading. `acceptance_gate.py` shares the
+funded transport and approved judge but retains its own five-axis rubric.
 
 Why this exists: the shipped 5-axis grader (run_provider_judge.py / acceptance_
 gate.py) scores each candidate vs the RAW transcript on five 0-3 axes. That bar
@@ -86,7 +84,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Judge backend. Default = Azure on the startup credits since 2026-08-11; the
 # on-subscription Claude CLI is still supported and is no longer the default, so
-# this no longer mirrors acceptance_gate.py, which stays on Sonnet as the CI gate.
+# acceptance_gate.py shares the approved default and transport, not this rubric.
 # DO NOT alter the Claude sandbox flags; each one earned a Codex round
 # (polish-eval.md FACT: bench-judge-is-claude-sonnet, whose sandbox invariants are
 # still live even though its judge SELECTION is marked historical).
@@ -97,11 +95,13 @@ CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-5"  # founder decision 2026-07-02, supers
 # published 1,890-case research run, which it graded
 # (runs/prompt-tune-2026-07-01/full1890/*/summary.json "judge": "claude-sonnet-5").
 
-AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-5-6-luna"  # founder decision 2026-08-11: the
-# DEFAULT judge, on the expiring Azure startup credits. The reason is which scarce
+AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-6-1-sol"  # founder decision 2026-11-05
+AZURE_JUDGE_REASONING_EFFORT = "low"
+# The primary judge stays on the expiring Azure startup credits. The reason is which scarce
 # resource each option burns, not accuracy: the Claude subscription is building
 # capacity (~99% used by Thursday) and the Codex plan is adversarial review, while an
-# unspent credit is a pure loss. Validated over 12 local arms before the switch —
+# unspent credit is a pure loss. Historical Luna validation before the 2026-08-11 switch:
+# 12 local arms —
 # 0 of 12 shipped labels moved, delta median 0.0pp, and on the three substantive
 # disagreements spot-checked by hand Luna was right all three times. The full comparison
 # is recorded on issue #1950; the receipts themselves are local only, which is why the
@@ -112,6 +112,14 @@ AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-5-6-luna"  # founder decision 2026-08-11:
 # blanket "never mix judge models" was retired by the founder on 2026-08-11 because
 # re-benchmarking is routine here, which makes the cheap judge the enabling one.
 DEFAULT_JUDGE = os.environ.get("EW_JUDGE", AZURE_JUDGE_DEPLOYMENT_ID)
+
+
+def _azure_judge_settings(deployment: str) -> dict[str, str]:
+    """One effective setting for the primary judge's probe, requests and identity."""
+    return ({"reasoning_effort": AZURE_JUDGE_REASONING_EFFORT}
+            if f"azure/{deployment}" == AZURE_JUDGE_DEPLOYMENT_ID else {})
+
+
 CLAUDE_JUDGE_MAX_WORKERS = 6            # subprocess per call; cap fan-out. Raised
 # from 3 (#1199 speed pass, 2026-06-30), then 20 -> 32 (founder 2026-07-02:
 # faster judging: no metered cost on the subscription judge, only a transient
@@ -401,7 +409,7 @@ def call_azure(deployment: str, system: str, user: str) -> str:
     move here because it is bulk, parallel and nobody is waiting on it.
 
     `deployment` is an Azure DEPLOYMENT name, not a vendor model id. The two differ:
-    `gpt-5-6-luna` is what our resource calls it.
+    `gpt-6-1-sol` is what our resource calls the primary judge.
     """
     endpoint = _validated_azure_endpoint()
     url = (f"{endpoint}/openai/deployments/{deployment}/chat/completions"
@@ -423,6 +431,7 @@ def call_azure(deployment: str, system: str, user: str) -> str:
         # for the reasoning burns the whole budget and returns EMPTY (handled below).
         # 16000 carried chunks of 8 cases with rationales across all 12 arms.
         "max_completion_tokens": 16000,
+        **_azure_judge_settings(deployment),
     }
     req = urllib.request.Request(
         url,
@@ -572,7 +581,8 @@ def _azure_served_model(deployment: str) -> str:
     req = urllib.request.Request(
         url,
         data=json.dumps({"messages": [{"role": "user", "content": "."}],
-                         "max_completion_tokens": 16}).encode(),
+                         "max_completion_tokens": 16,
+                         **_azure_judge_settings(deployment)}).encode(),
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
@@ -617,6 +627,9 @@ def judge_identity(model: str) -> str:
     three of those stay the same. That is the only axis a client cannot read from its own
     configuration, so it is read from the deployment itself. See `_azure_served_model`.
 
+    Effective request settings are part of the identity too: Sol at low effort must
+    never reuse receipts from the same deployment at a different reasoning effort.
+
     Returns a DIGEST of the endpoint host, never the host itself. The value is written into a
     hashed stamp and printed to a terminal, and neither is a place to put a resource name.
 
@@ -631,8 +644,11 @@ def judge_identity(model: str) -> str:
     served = _azure_served_model(model[len("azure/"):])
     global _azure_pinned_model, _resolved_judge_identity
     _azure_pinned_model = served
-    digest = hashlib.sha256(
-        f"{host}|{AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
+    identity_input = f"{host}|{AZURE_API_VERSION}|{served}"
+    settings = _azure_judge_settings(model[len("azure/"):])
+    if settings:
+        identity_input += "|" + json.dumps(settings, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(identity_input.encode()).hexdigest()[:12]
     _resolved_judge_identity = f"{model}@{digest}"
     return _resolved_judge_identity
 
@@ -653,7 +669,7 @@ def refuse_paid_key_judge(model: str) -> None:
     print(
         f"REFUSED: --judge {model} has no approved funded grading route. Grading runs "
         f"on the startup credits, never on a personal vendor API key.\n"
-        f"  Use:  --judge azure/gpt-5-6-luna\n"
+        f"  Use:  --judge {AZURE_JUDGE_DEPLOYMENT_ID}\n"
         f"  The subscription Claude CLI judge (--judge claude-sonnet-5) still works "
         f"but consumes the weekly budget needed for building.\n"
         f"  An unrecognised id is refused for the same reason: no funded route matches "
@@ -698,7 +714,7 @@ def preflight_judge(model: str) -> None:
         _resolved_judge_identity = model
     except Exception as e:
         print(f"INFRA-ERROR: Claude judge CLI unavailable/unauthed ({e}); aborting. "
-              f"Run `claude` once to log in, or pass --judge azure/gpt-5-6-luna.",
+              f"Run `claude` once to log in, or pass --judge {AZURE_JUDGE_DEPLOYMENT_ID}.",
               file=sys.stderr)
         sys.exit(2)
 
@@ -1223,10 +1239,12 @@ For each case you are given:
 - raw_transcript: ONE speech recogniser's attempt at what was said (lowercase, little
   punctuation). It is the engine's INPUT, not ground truth, and it can contain
   mis-hearings -- especially of people's names.
-- spoken_truth: what was ACTUALLY said, when available (may be empty). Use it for ONE
-  purpose only: deciding whether a proper noun, name, address or number in
-  candidate_output is CORRECT or INVENTED. Do NOT grade content, phrasing, fillers or
-  structure against it -- removing disfluencies that appear here is exactly the job.
+- spoken_truth: what was ACTUALLY said, when available (may be empty). Use it to
+  decide whether a proper noun, name, address or number is CORRECT or INVENTED.
+  For the EMAIL-ENVELOPE REQUIREMENT only, it may also establish that ASR fused or
+  obscured a spoken greeting. This exception does not permit grading other content,
+  phrasing, fillers or structure against spoken_truth. With no spoken_truth, infer
+  no greeting from that field. Removing disfluencies remains the engine's job.
 - candidate_output: the polish engine output to evaluate
 - production_output: the currently shipped engine's output, or null if unavailable
 - behavior: the behavior bucket (for reporting)
@@ -1263,6 +1281,32 @@ break, not the character.
 When list_format_required is false this rule is silent and must NEVER reward
 list formatting. Judge structure under the case's own behavior. Imposing list
 structure on connected prose or an inline enumeration is itself wrong_format.
+
+EMAIL-ENVELOPE REQUIREMENT (POLICY-EMAIL-v1, E1-E6)
+
+A spoken greeting WORD addressed to someone ("Hi Sam", "Hello Priya", "Hey",
+"Dear Dr Okafor", "Good morning Marcus") goes on its own line, with a blank line
+between the greeting and body. A bare fronted NAME is an addressee, not a greeting:
+"Priya, can you check the invoice?" stays inline as ordinary prose.
+
+A spoken closing ("Thanks", "Best", "Cheers", "Talk soon") used as a sign-off
+goes on its own line after a blank line. A sender name spoken after the closing
+goes on the line BELOW it. Do not mistake an ordinary body sentence containing
+"thanks" for a sign-off.
+
+Neither greeting, closing nor sender name is invented. A message without a spoken
+greeting or sign-off gets none. Relocate the spoken envelope; do not supply one.
+The body still obeys every meaning, correction, restraint and structure rule.
+
+Required envelope line breaks are behavior, not cosmetic punctuation or allowed
+paragraph-separator variants. Missing the greeting/body break, leaving a genuine
+sign-off inline, or lifting a bare addressee into a greeting block is wrong_format
+/ major_fail / S3 when the content and meaning survive. An envelope change that
+alters or drops a name or intent takes the higher meaning-based severity under
+the existing automatic-S4 rules. Inventing only a generic greeting or closing
+such as "Hello" or "Thanks", with no new entity, fact, action or commitment, is
+also an envelope-format S3, not an automatic S4. An invented named recipient or
+sender still takes S4. Do not call a layout-only fault an S4.
 
 The deterministic layer handles number/date/URL/custom-vocabulary normalization
 BEFORE this AI step, so do NOT fail a case for unconverted numbers, lowercase
@@ -2269,6 +2313,9 @@ def main() -> int:
         # in the sidecar stamp because the report reads receipts, not stamps, and a consumer that
         # cannot see the identity cannot refuse to mix it.
         "judge_model_version": _azure_pinned_model,
+        "judge_request_settings": (
+            _azure_judge_settings(args.judge[len("azure/"):])
+            if external_verdicts is None and args.judge.startswith("azure/") else None),
         # The FULL identity the sweep resolved: judge id plus a digest of the endpoint host, the
         # API version and the served model. Passed in rather than recomputed so every arm records
         # the same value, and so the report can distinguish two Azure resources that serve the

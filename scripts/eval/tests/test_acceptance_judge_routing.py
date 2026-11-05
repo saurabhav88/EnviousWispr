@@ -48,6 +48,20 @@ class FundedAcceptanceTests(unittest.TestCase):
                 lambda: gate.mode_bench('bench', self.corpus, 0),
                 lambda: gate.mode_tier_bench(['gpt-4o-mini'], self.corpus, 'tier', None, None)]
 
+    def test_approved_primary_is_sol_despite_an_environment_override(self):
+        program = '''
+import sys
+sys.path.insert(0, sys.argv[1])
+import acceptance_gate as g
+assert g.APPROVED_JUDGE_MODEL == "azure/gpt-6-1-sol", g.APPROVED_JUDGE_MODEL
+assert g.funded_judge.DEFAULT_JUDGE == "azure/not-approved"
+'''
+        env = os.environ.copy()
+        env['EW_JUDGE'] = 'azure/not-approved'
+        result = subprocess.run([sys.executable, '-c', program, str(EVAL)], env=env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_dispatch_preserves_payload_and_has_no_direct_fallback(self):
         with patch.object(gate.funded_judge, 'dispatch_judge', return_value='[]') as dispatch:
             self.assertEqual(gate._dispatch_judge(gate.APPROVED_JUDGE_MODEL, 'rubric', 'cases', True), '[]')

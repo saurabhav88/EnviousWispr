@@ -32,6 +32,7 @@ TWO STUB LAYERS, BOTH CHOSEN SO THE TEST REACHES ITS SUBJECT.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -2036,7 +2037,7 @@ def test_refusal_exits_two_and_names_the_funded_alternative():
             assert e.code == 2, (model, e.code)
         else:
             raise AssertionError(f"{model} was not refused")
-        assert "azure/gpt-5-6-luna" in err.getvalue(), err.getvalue()
+        assert bj.AZURE_JUDGE_DEPLOYMENT_ID in err.getvalue(), err.getvalue()
 
 
 def test_the_two_funded_judges_are_not_refused():
@@ -2080,6 +2081,58 @@ def _azure_error(payload):
         except RuntimeError as e:
             return str(e)
     raise AssertionError(f"call_azure accepted {payload!r}")
+
+
+@contextlib.contextmanager
+def _capture_azure_requests(served="gpt-6.1-sol-2026-09-29"):
+    requests = []
+    saved = (bj._key, bj._http_json, bj._azure_pinned_model,
+             bj._resolved_judge_identity)
+    bj._key = lambda name: ("https://stub-test.openai.azure.com"
+                            if "endpoint" in name else "stub-key")
+    def reply(opener, request, timeout):
+        requests.append(json.loads(request.data))
+        return {"model": served, "choices": [{"message": {"content": "[]"},
+                                               "finish_reason": "stop"}]}
+    bj._http_json = reply
+    bj._azure_pinned_model = None
+    try:
+        yield requests
+    finally:
+        (bj._key, bj._http_json, bj._azure_pinned_model,
+         bj._resolved_judge_identity) = saved
+
+
+def test_sol_probe_and_grading_requests_explicitly_use_low():
+    with _capture_azure_requests() as requests:
+        bj.judge_identity("azure/gpt-6-1-sol")
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"
+    assert len(requests) == 2, requests
+    assert all(r.get("reasoning_effort") == "low" for r in requests), requests
+
+
+def test_legacy_luna_keeps_its_unspecified_effort_and_identity():
+    served = "gpt-5.6-luna-2026-07-09"
+    with _capture_azure_requests(served) as requests:
+        identity = bj.judge_identity("azure/gpt-5-6-luna")
+        assert bj.call_azure("gpt-5-6-luna", "rubric", "cases") == "[]"
+    digest = hashlib.sha256(
+        f"stub-test.openai.azure.com|{bj.AZURE_API_VERSION}|{served}".encode()).hexdigest()[:12]
+    assert identity == f"azure/gpt-5-6-luna@{digest}", identity
+    assert len(requests) == 2 and all("reasoning_effort" not in r for r in requests)
+
+
+def test_changing_effort_changes_the_requested_setting_and_judge_identity():
+    with _capture_azure_requests() as requests:
+        low = bj.judge_identity("azure/gpt-6-1-sol")
+        original = bj.AZURE_JUDGE_REASONING_EFFORT
+        try:
+            bj.AZURE_JUDGE_REASONING_EFFORT = "high"
+            high = bj.judge_identity("azure/gpt-6-1-sol")
+        finally:
+            bj.AZURE_JUDGE_REASONING_EFFORT = original
+    assert [r.get("reasoning_effort") for r in requests] == ["low", "high"]
+    assert low != high, (low, high)
 
 
 def test_azure_returns_the_assistant_text_on_a_good_reply():
@@ -2978,13 +3031,16 @@ def test_registry_survives_an_ordinary_edit_to_the_scorer():
     # behavior_judge.py reject the whole registry. Simulated here by replacing the
     # live identity with one that is neither stamped nor live, exactly as a scorer
     # edit would: the group must still load, because its OTHER member is stamped.
+    # The group is historical; a new scoring rubric need not belong to it.
     import model_registry
-    live = model_registry.live_rubric_identity()
-
     def as_if_the_scorer_moved(doc):
         ids = doc["_rubricEquivalence"][0]["identities"]
-        assert live in ids, (live, ids)
-        ids[ids.index(live)] = "0123456789ab"
+        stamped = {e.get("rubricIdentity") for a in doc["artifacts"]
+                   for e in a.get("evaluations") or []}
+        # Exercise the recorded score-neutral group, independently of whether the
+        # current scorer is a genuinely NEW rubric with no equivalence to it.
+        moving = next((r for r in ids if r not in stamped), ids[-1])
+        ids[ids.index(moving)] = "0123456789ab"
 
     doc = _registry_with(as_if_the_scorer_moved)          # must NOT raise
     assert doc["_rubricEquivalence"][0]["identities"][0] in {
@@ -2992,19 +3048,29 @@ def test_registry_survives_an_ordinary_edit_to_the_scorer():
         for e in a.get("evaluations") or []}, "the surviving member must be a stamped one"
 
 
-def test_check_live_reports_the_recorded_identity():
+def test_check_live_distinguishes_recorded_from_new_rubrics():
     # Two-way control on the WRITE-time gate: it says OK for the identity actually
     # recorded, and the test above covers the refusal direction for load(). Without
     # this, a check-live that always printed OK would look identical.
     import model_registry
     doc = model_registry.load()
-    live = model_registry.live_rubric_identity()
     listed = {r for g in doc.get("_rubricEquivalence") or [] for r in g["identities"]}
     stamped = {e.get("rubricIdentity") for a in doc["artifacts"]
                for e in a.get("evaluations") or []}
-    assert live in listed or live in stamped, (
-        f"the committed scorer emits {live}, which is neither recorded nor stamped; "
-        f"run `python3 scripts/eval/model_registry.py check-live`")
+    recorded = next(r for r in listed | stamped if r is not None)
+    unrecorded = "ffffffffffff"
+    assert unrecorded not in listed | stamped
+    real = model_registry.live_rubric_identity
+    try:
+        for identity, code, message in [(recorded, 0, "OK:"),
+                                         (unrecorded, 1, "UNRECORDED:")]:
+            model_registry.live_rubric_identity = lambda: identity
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                assert model_registry.cmd_check_live(None) == code
+            assert message in output.getvalue() and identity in output.getvalue()
+    finally:
+        model_registry.live_rubric_identity = real
 
 
 def test_floor_cli_reports_the_real_sealed_floor():
@@ -3085,7 +3151,7 @@ def test_floor_compares_blinding_exactly():
     assert "blind=no" in why, why
 
 
-EXPECTED_TESTS = 141
+EXPECTED_TESTS = 144
 
 
 def _run() -> int:
