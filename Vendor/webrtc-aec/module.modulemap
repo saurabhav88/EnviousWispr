@@ -1,0 +1,9 @@
+framework module CWebRTCAEC {
+    header "CWebRTCAEC.h"
+
+    link "c++"
+    link framework "CoreFoundation"
+    link framework "Foundation"
+
+    export *
+}

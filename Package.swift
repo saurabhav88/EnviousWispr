@@ -37,6 +37,9 @@ let package = Package(
     // binary framework through `.package(product: "CTranscribe")`, the same way it
     // consumes Sparkle and the other external products.
     .library(name: "CTranscribe", targets: ["CTranscribe"]),
+    // #4355: exported so the Tuist graph can link and embed the meeting echo cleaner
+    // binary framework through `.package(product: "CWebRTCAEC")`, as CTranscribe above.
+    .library(name: "CWebRTCAEC", targets: ["CWebRTCAEC"]),
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
@@ -191,6 +194,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "FluidAudio",
+        "CWebRTCAEC",
       ],
       path: "Sources/EnviousWisprAudio"
     ),
@@ -231,6 +235,17 @@ let package = Package(
       url:
         "https://github.com/saurabhav88/transcribe.cpp/releases/download/ew-3735-v0.4.0.5/TranscribeCpp.xcframework.zip",
       checksum: "62e13128aed0df806e9b3bd0c33116a32980f703ff9f5658870c6d0dd437d640"
+    ),
+    // #4355: WebRTC AEC3 (webrtc-audio-processing v2.1) behind a narrow C boundary, the
+    // meeting echo cleaner. Dynamic macOS arm64 framework, minimum macOS 14.0, built by
+    // `Vendor/webrtc-aec/build-xcframework.sh` and served from our own R2 bucket
+    // (`enviouslabs-models`, models.enviouswispr.com). Provenance:
+    // Sources/EnviousWispr/Resources/webrtc-aec-PROVENANCE.md.
+    .binaryTarget(
+      name: "CWebRTCAEC",
+      url:
+        "https://models.enviouswispr.com/frameworks/cwebrtcaec/ew-4355.3/CWebRTCAEC.xcframework.zip",
+      checksum: "20fc4c7c747bbf9b1ff0f537f5cb89140764105dd4329bc9167d467b69010ddc"
     ),
     // #3735: the thin Swift boundary over CTranscribe. Mechanism only (sessions,
     // runs, language probability, progress, abort, UTF-8 repair); no app policy.

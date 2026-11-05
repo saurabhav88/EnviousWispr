@@ -29,6 +29,48 @@ public enum MeetingTrackKind: String, Sendable, Equatable, Codable, CaseIterable
   }
 }
 
+/// The physical copy a microphone segment file holds (#4355 PR B). One logical microphone
+/// track can have two copies on disk: the audio as captured (`raw`, what playback and every
+/// existing reader use) and the echo-cleaned copy (`cleaned`, `micclean-…`), written in the same
+/// segments at the same timeline positions. The call sound only ever has `raw`.
+public enum MeetingSegmentVariant: String, Sendable, Equatable, Hashable, Codable {
+  case raw
+  case cleaned
+}
+
+/// The echo cleaner a recording's cleaned microphone copy was made with, recorded at Start
+/// (#4355 PR B). A cleaned copy is used only with the provenance it was recorded under; a later
+/// build never invents it from the library it happens to ship.
+public struct MeetingEchoProvenance: Sendable, Equatable, Hashable, Codable {
+  /// `ew_aec_version()` of the library that ran, for example
+  /// "webrtc-audio-processing 2.1 846fe90 ew-4355.3".
+  public let library: String
+  /// The fixed configuration it ran with (sample rate, frame size, which stages were on).
+  public let configuration: String
+
+  public init(library: String, configuration: String) {
+    self.library = library
+    self.configuration = configuration
+  }
+}
+
+/// What one writer's cleaned copy finished (#4355 PR B): every twin it finalized, as written.
+public struct MeetingCleanedProof: Sendable, Equatable, Codable {
+  public let segments: [MeetingSegmentInfo]
+
+  public init(segments: [MeetingSegmentInfo]) {
+    self.segments = segments
+  }
+}
+
+/// Which microphone copy a final transcript attempt read (#4355 PR B), frozen once per attempt,
+/// with the recording-time echo provenance either way: a raw attempt of a recording that had a
+/// cleaned copy is still identified by the cleaner that recorded it (nil when it had none).
+public enum MeetingMicrophoneCopy: Sendable, Equatable, Hashable, Codable {
+  case raw(MeetingEchoProvenance?)
+  case cleaned(MeetingEchoProvenance)
+}
+
 /// One finished segment file of one track (#3972 R3).
 ///
 /// `startMs` is measured from the meeting's anchor. On the call-sound track it comes from the
@@ -182,6 +224,11 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
   public var requestedTranscriptEngine: MeetingEngineChoice?
   public var transcriptEngineUsed: MeetingEngineChoice?
   public var transcriptEngineFallbackReason: MeetingTranscriptFallbackReason?
+  /// #4355 PR B: the echo cleaner that wrote this meeting's cleaned microphone copy, set at
+  /// Start when cleaning runs. Absent (older meetings, or no cleaning) means the raw copy is the
+  /// only one the final pass may use. The cleaned segment files themselves are not listed here:
+  /// the folder is their authority, as recovery already is for raw segments.
+  public var echoProvenance: MeetingEchoProvenance?
 
   /// The generation of the committed transcript, or nil when none committed. A ready record
   /// written before attempts existed committed the legacy generation.
@@ -272,6 +319,7 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
     self.requestedTranscriptEngine = nil
     self.transcriptEngineUsed = nil
     self.transcriptEngineFallbackReason = nil
+    self.echoProvenance = nil
   }
 
   /// Nothing was captured, the user's notes are kept (#3972 R53, R56). Raises the format so an
@@ -316,18 +364,45 @@ public struct MeetingRecord: Sendable, Equatable, Codable, Identifiable {
 public enum MeetingSegmentNaming {
   public struct Parsed: Sendable, Equatable {
     public let track: MeetingTrackKind
+    /// `.cleaned` only for `micclean-…` (the microphone's echo-cleaned copy).
+    public let variant: MeetingSegmentVariant
     public let index: Int
     public let startMs: Int
     public let partial: Bool
   }
 
+  /// The stem of the microphone's echo-cleaned copy (#4355 PR B): `micclean-00003-s000120000.caf`
+  /// is the twin of `mic-00003-s000120000.caf`.
+  public static let cleanedMicrophoneStem = "micclean"
+
+  /// #4355 PR B: the proof a recording's cleaned copy finished whole, written durably by the
+  /// writer only after its last twin did and only if no step of the cleaned copy failed:
+  /// `micclean-complete-00001-00003.json` covers twins 1 to 3. The final pass uses a cleaned twin
+  /// only when a proof lists it; any failure, crash or missing write leaves no proof, so the
+  /// pass reads raw without depending on any cleanup having worked. Not a segment name.
+  public static let cleanedProofPrefix = "micclean-complete-"
+
+  public static func cleanedProofName(first: Int, last: Int) -> String {
+    "\(cleanedProofPrefix)\(padded(first, 5))-\(padded(last, 5)).json"
+  }
+
+  public static func isCleanedProof(_ name: String) -> Bool {
+    name.hasPrefix(cleanedProofPrefix) && name.hasSuffix(".json")
+  }
+
   /// One timing policy for names and metadata: callers pass a start that is already
   /// non-negative (the writer clamps a start before the anchor to 0 once, and records the same
-  /// value in `MeetingSegmentInfo`). A negative start is a caller defect.
-  public static func fileName(track: MeetingTrackKind, index: Int, startMs: Int, partial: Bool) -> String {
+  /// value in `MeetingSegmentInfo`). A negative start is a caller defect. Only the microphone
+  /// has a `.cleaned` variant.
+  public static func fileName(
+    track: MeetingTrackKind, variant: MeetingSegmentVariant = .raw, index: Int, startMs: Int,
+    partial: Bool
+  ) -> String {
     precondition(index > 0 && startMs >= 0, "segment index must be positive and start non-negative")
+    precondition(variant == .raw || track == .microphone, "only the microphone has a cleaned copy")
     let ext = partial ? MeetingAudioFormat.partialExtension : MeetingAudioFormat.fileExtension
-    return "\(track.fileStem)-\(padded(index, 5))-s\(padded(startMs, 9)).\(ext)"
+    let stem = variant == .cleaned ? cleanedMicrophoneStem : track.fileStem
+    return "\(stem)-\(padded(index, 5))-s\(padded(startMs, 9)).\(ext)"
   }
 
   /// Zero-padded decimal of a full `Int` (no 32-bit `%d` narrowing: a start past 2^31 ms, about
@@ -344,11 +419,19 @@ public enum MeetingSegmentNaming {
     let ext = partial ? MeetingAudioFormat.partialExtension : MeetingAudioFormat.fileExtension
     let stem = name.dropLast(ext.count + 1)
     let parts = stem.split(separator: "-")
-    guard parts.count == 3, parts[2].hasPrefix("s"),
-      let track = MeetingTrackKind.allCases.first(where: { $0.fileStem == parts[0] }),
-      let index = Int(parts[1]), index > 0,
+    guard parts.count == 3, parts[2].hasPrefix("s") else { return nil }
+    let identity: (MeetingTrackKind, MeetingSegmentVariant)
+    if parts[0] == cleanedMicrophoneStem {
+      identity = (.microphone, .cleaned)
+    } else if let track = MeetingTrackKind.allCases.first(where: { $0.fileStem == parts[0] }) {
+      identity = (track, .raw)
+    } else {
+      return nil
+    }
+    guard let index = Int(parts[1]), index > 0,
       let start = Int(parts[2].dropFirst()), start >= 0
     else { return nil }
-    return Parsed(track: track, index: index, startMs: start, partial: partial)
+    return Parsed(
+      track: identity.0, variant: identity.1, index: index, startMs: start, partial: partial)
   }
 }

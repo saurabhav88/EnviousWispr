@@ -1,4 +1,5 @@
 import AVFoundation
+import CWebRTCAEC
 import CoreAudio
 import EnviousWisprCore
 import Foundation
@@ -84,6 +85,43 @@ public final class MeetingRecorder {
   public struct StartResult: Sendable, Equatable {
     public let microphone: MeetingTrackStatus
     public let callSound: MeetingTrackStatus
+    /// #4355 PR B: the echo cleaner this recording's cleaned microphone copy is made with, when
+    /// echo cleanup runs (call sound captured and the library available). Frozen here, at Start;
+    /// the owner saves it with the record. Nil: the recording has no cleaned copy to use.
+    public let echoProvenance: MeetingEchoProvenance?
+
+    public init(
+      microphone: MeetingTrackStatus, callSound: MeetingTrackStatus,
+      echoProvenance: MeetingEchoProvenance? = nil
+    ) {
+      self.microphone = microphone
+      self.callSound = callSound
+      self.echoProvenance = echoProvenance
+    }
+  }
+
+  /// #4355 PR B: the fixed configuration `CWebRTCAEC` runs (Vendor/webrtc-aec/CWebRTCAEC.cc) and
+  /// the worker's trust policy, as one identity string.
+  public static let echoConfiguration =
+    "aec3-full 16000Hz mono frame=160 ns=off agc1=off agc2=off hpf=off delay-seed=0 trust=2-reads"
+
+  /// The provenance of the library this build ships.
+  public static var echoProvenance: MeetingEchoProvenance {
+    MeetingEchoProvenance(library: String(cString: ew_aec_version()), configuration: echoConfiguration)
+  }
+
+  /// #4355 PR B: Stop's one absolute budget for the work it adds, fixed when Stop begins: the
+  /// same 1 s Quit gives its whole close (`MeetingCoordinator.prepareForTermination`). Echo
+  /// settling gets its first half, as in Quit (`echoSettleDeadline`); at the end the worker
+  /// substitutes raw for whatever it has not finished, so the budget costs echo removal on the
+  /// last moments, never audio. The files then finish as before echo cleanup existed (Stop's
+  /// writer finish has no deadline; Quit's `close(until:)` has the rest of the shared one).
+  static let stopBudget: DispatchTimeInterval = .seconds(1)
+
+  /// The echo stage's share of one Stop or Quit deadline: its first half.
+  nonisolated static func echoSettleDeadline(_ deadline: DispatchTime, now: UInt64) -> UInt64 {
+    let end = deadline.uptimeNanoseconds
+    return end > now ? now + (end - now) / 2 : now
   }
 
   /// How each track's file ended. Nil: that track never had a writer.
@@ -94,6 +132,9 @@ public final class MeetingRecorder {
     /// call-sound source was running then (off, unsupported, failed to start, or a Stop that
     /// won before its start finished).
     public var callSoundSummary: CallSoundSummary? = nil
+    /// #4355 PR B: what echo cleanup did, frozen when the bridge settled; `.noReference` for a
+    /// recording without call sound. Nil when no worker could be made for a call-sound recording.
+    public var echoSummary: MeetingEchoSummary? = nil
   }
 
   public typealias CallSoundReportHandler = @Sendable (CallSoundChangeReport) -> Void
@@ -132,6 +173,13 @@ public final class MeetingRecorder {
     /// When the microphone writer's silence hold releases due audio (#4248). Its clock is
     /// `hostTime`, so a test's clock and the hold agree.
     var releaseScheduler: MeetingTrackWriter.ReleaseScheduler = .live
+    /// #4355 PR B: the recording's echo worker; nil means no echo cleanup.
+    var makeEchoCanceller: @Sendable (UUID) -> MeetingEchoCanceller? = {
+      MeetingEchoCanceller(recording: $0)
+    }
+    /// How often settled echo results are handed to the writer when no microphone buffer
+    /// arrives; nil leaves it to admissions and explicit pumps (tests).
+    var echoPumpInterval: DispatchTimeInterval? = .milliseconds(20)
 
     static var live: Sources {
       Sources(
@@ -172,6 +220,8 @@ public final class MeetingRecorder {
   private var micWriter: MeetingTrackWriter?
   private var callSound: MeetingCallSoundSource?
   private var callWriter: MeetingTrackWriter?
+  /// #4355 PR B: the echo cleanup of this recording, when it runs.
+  private var echo: MeetingEchoBridge?
   private var reopenTask: Task<Void, Never>?
   private var reportedFailure: Set<MeetingTrackKind> = []
   /// Why the microphone being opened by `start` was lost before the start finished.
@@ -232,6 +282,9 @@ public final class MeetingRecorder {
     var reopenTaskForTesting: Task<Void, Never>? { reopenTask }
     /// #4121: the microphone writer, so a test can hold its close and stop again meanwhile.
     var microphoneWriterForTesting: MeetingTrackWriter? { micWriter }
+    /// #4355 PR B: hands settled echo results to the writer now.
+    func pumpEchoForTesting() { echo?.pump() }
+    var echoBridgeForTesting: MeetingEchoBridge? { echo }
   #endif
 
   /// The device the microphone actually bound, as the source reported it.
@@ -337,14 +390,25 @@ public final class MeetingRecorder {
     guard lifecycle == .idle else { throw RecorderError.alreadyStarted }
     lifecycle = .starting
     let startGeneration = generation
-    let micWriter = makeWriter(.microphone)
+    // #4355 PR B: echo cleanup is eligible whenever the call sound is asked for; it is turned off
+    // below if the call sound does not start. The worker is made now so microphone audio from
+    // before the call sound starts is already paired (substituted raw until reference arrives).
+    let canceller = config.captureCallSound ? sources.makeEchoCanceller(config.meetingID) : nil
+    let micWriter = makeWriter(.microphone, cleanedCopy: canceller != nil)
     self.micWriter = micWriter
+    if let canceller {
+      echo = MeetingEchoBridge(
+        recording: config.meetingID, canceller: canceller, writer: micWriter,
+        pumpInterval: sources.echoPumpInterval)
+    }
     do {
       try await openMicrophone(
         targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration)
     } catch {
       closeLiveSamples()
       self.micWriter = nil
+      echo?.settleAndFlush(deadline: 0)
+      echo = nil
       _ = await micWriter.finish()
       if lifecycle == .starting { lifecycle = .stopped }
       if let recorderError = error as? RecorderError { throw recorderError }
@@ -357,17 +421,27 @@ public final class MeetingRecorder {
     var callStatus: MeetingTrackStatus = .off
     if config.captureCallSound {
       let writer = makeWriter(.callSound)
+      let echo = self.echo
+      let onCallSoundReport = self.onCallSoundReport
       let source = sources.makeCallSound(
         { samples, hostTime, startsNewRun in
+          // #4355 PR B: the unmuted reference reaches the echo worker by its acquisition time,
+          // never by written position; the call sound itself is written once, as before.
+          echo?.render(samples, hostTime: hostTime, runBreak: startsNewRun)
           // Live words get the call sound from the writer's release, once placed (#4355).
           writer.append(samples, hostTime: hostTime, startsNewRun: startsNewRun)
         },
         { [weak self] reason in
+          // #4355 PR B: no reference follows, so echo cleanup stops trusting what it learned.
+          echo?.callSoundLost()
           Task { @MainActor in
             self?.trackFailed(.callSound, CallSoundError.captureStopped(reason))
           }
         },
-        onCallSoundReport)
+        { report in
+          echo?.callSoundChanged(report)
+          onCallSoundReport(report)
+        })
       if let source {
         // The writer is the recorder's before the wait: a stop or quit during it closes the
         // file and its admission, so audio the late tap delivers (its start or its stop tail)
@@ -390,6 +464,9 @@ public final class MeetingRecorder {
         callStatus = .unsupported
       }
     }
+    // #4355 PR B: no call sound, no echo cleanup: the worker is settled raw and the cleaned copy
+    // stops, so this recording's final pass reads raw.
+    if callStatus != .captured { echo?.disable(noCallSound: true) }
     // The call-sound start suspends (it runs off the main actor), and so can the writer finish
     // above: a stop or a microphone loss can come in meanwhile. A stop owns teardown of what it
     // saw; a source that started after it is stopped here; a loss during start fails the start.
@@ -404,7 +481,9 @@ public final class MeetingRecorder {
       throw RecorderError.microphoneUnavailable(reason)
     }
     lifecycle = .running
-    return StartResult(microphone: .captured, callSound: callStatus)
+    return StartResult(
+      microphone: .captured, callSound: callStatus,
+      echoProvenance: echo != nil && callStatus == .captured ? Self.echoProvenance : nil)
   }
 
   /// Starts the call-sound source on a background thread and resumes with its result. The
@@ -445,6 +524,7 @@ public final class MeetingRecorder {
     let admission = micAdmission
     let health = micHealthBox
     let hostTime = sources.hostTime
+    let echo = self.echo
     // Read and cleared by the first admitted buffer only (audio thread; no allocation).
     let pendingRunBreak = OSAllocatedUnfairLock(initialState: startsNewRun)
     source.onSamples = { samples, audioLevel in
@@ -462,7 +542,13 @@ public final class MeetingRecorder {
           return pending
         }
         samples.withUnsafeBufferPointer {
-          writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
+          // #4355 PR B: through the echo worker when it runs (one ordered route, raw kept for
+          // anything it refuses); straight to the writer otherwise.
+          if let echo {
+            echo.microphone($0, hostTime: firstSampleHost, runBreak: runBreak)
+          } else {
+            writer.append($0, hostTime: firstSampleHost, startsNewRun: runBreak)
+          }
         }
         return true
       }
@@ -556,14 +642,25 @@ public final class MeetingRecorder {
   @discardableResult
   public func stop() async -> StopReport {
     if let stopReport { return stopReport }
+    let deadline = DispatchTime.now() + Self.stopBudget
     stopCapture()
+    // #4355 PR B: the echo worker finishes what it accepted (raw for what it cannot within the
+    // budget), and every microphone chunk reaches the writer before the writer closes. Off the
+    // main actor: settling waits on the worker.
+    if let echo {
+      let settleBy = Self.echoSettleDeadline(deadline, now: DispatchTime.now().uptimeNanoseconds)
+      await Task.detached(priority: .userInitiated) { echo.settleAndFlush(deadline: settleBy) }
+        .value
+      // A Quit during that wait closed the files and owns the report.
+      if let stopReport { return stopReport }
+    }
     // Each writer releases its accepted tail through `liveSamples` while it finishes;
     // deliveries end for good after both files closed.
     async let mic = micWriter?.finish()
     async let call = callWriter?.finish()
     let report = StopReport(
       microphone: await mic, callSound: await call,
-      callSoundSummary: frozenCallSoundSummary ?? nil)
+      callSoundSummary: frozenCallSoundSummary ?? nil, echoSummary: frozenEchoSummary)
     closeLiveSamples()
     stopReport = report
     lifecycle = .stopped
@@ -577,13 +674,23 @@ public final class MeetingRecorder {
   public func stopForQuit(deadline: DispatchTime) -> StopReport {
     if let stopReport { return stopReport }
     stopCapture()
+    // #4355 PR B: the echo worker settles within the FIRST HALF of the same shared deadline
+    // (raw for whatever it has not finished), so the files still have the rest to close in.
+    echo?.settleAndFlush(
+      deadline: Self.echoSettleDeadline(deadline, now: DispatchTime.now().uptimeNanoseconds))
     let report = StopReport(
       microphone: micWriter?.close(until: deadline), callSound: callWriter?.close(until: deadline),
-      callSoundSummary: frozenCallSoundSummary ?? nil)
+      callSoundSummary: frozenCallSoundSummary ?? nil, echoSummary: frozenEchoSummary)
     closeLiveSamples()
     stopReport = report
     lifecycle = .stopped
     return report
+  }
+
+  /// #4355: read after the bridge settled (its first settle froze it).
+  private var frozenEchoSummary: MeetingEchoSummary? {
+    if let echo { return echo.summary }
+    return config.captureCallSound ? nil : .noReference
   }
 
   /// Admission off and both sources stopped, before any file is closed.
@@ -618,7 +725,9 @@ public final class MeetingRecorder {
     onFailure(track, error)
   }
 
-  private func makeWriter(_ track: MeetingTrackKind) -> MeetingTrackWriter {
+  private func makeWriter(_ track: MeetingTrackKind, cleanedCopy: Bool = false)
+    -> MeetingTrackWriter
+  {
     let onSegment = self.onSegment
     // Both tracks: the written audio goes to live words on the writer's queue, with its span.
     let released = Self.release(track, to: liveBox)
@@ -631,7 +740,8 @@ public final class MeetingRecorder {
         // catches a jump the pipeline could not see.
         gapThresholdMs: track == .microphone ? 1_500 : 250,
         // #4248: the microphone is held so a late mute reading can still decide it.
-        silenceHoldSeconds: track == .microphone ? Self.silenceHoldSeconds : nil),
+        silenceHoldSeconds: track == .microphone ? Self.silenceHoldSeconds : nil,
+        cleanedCopy: cleanedCopy),
       onSegmentFinalized: { info in onSegment(track, info) },
       onFailure: { [weak self] error in
         Task { @MainActor in self?.trackFailed(track, error) }
@@ -705,4 +815,332 @@ final class HALMeetingMicrophone: MeetingMicrophoneSource {
   }
 
   func stopNow() { source.stopSynchronously() }
+}
+
+// MARK: - Echo cleanup bridge (#4355 PR B)
+
+/// Connects one recording's capture to its `MeetingEchoCanceller` and microphone writer.
+///
+/// **Order.** Every admitted microphone chunk takes one slot in a FIFO, in capture order: a
+/// chunk the worker accepted waits for its result; a chunk it refused is kept raw. Slots reach
+/// the writer strictly in that order, so a refused chunk never overtakes older accepted audio
+/// and every sample is handed over exactly once, paired with its cleaned copy (the worker's
+/// output, raw again where the worker substituted, or raw for a refused chunk). The writer then
+/// applies the one mute, trim and placement decision to both.
+///
+/// **Delivery.** Results are drained on every microphone admission and by a timer on the
+/// bridge's own queue (`pumpInterval`), so audio still reaches the writer when no further
+/// microphone buffer arrives. Draining only copies into the writer's reserved handoff under the
+/// bridge lock; it never waits for native work.
+///
+/// **Disabled.** When the call sound is off, failed or unsupported, or the library could not be
+/// created, the bridge settles the worker and hands every later chunk raw with NO cleaned copy:
+/// the writer then stops its cleaned copy, so no proof is written and the final pass reads raw.
+///
+/// **Bounds.** Accepted slots are bounded by the worker's own bounds (500 ms waiting, its 500 ms
+/// deadline timer, its results store). Raw slots kept behind an awaiting one are capped at
+/// `rawHoldCapacitySamples`; past it the bridge disables itself (settling the worker raw), so
+/// nothing is lost and nothing grows.
+///
+/// **Teardown.** `settleAndFlush(deadline:)` (Stop and Quit, after capture admission closed)
+/// stops the timer, settles the worker against the caller's shared deadline, and hands every
+/// remaining slot to the writer before the caller closes it. After it, nothing reaches the
+/// writer; a late native result is the worker's to drop.
+final class MeetingEchoBridge: @unchecked Sendable {
+  // @unchecked Sendable: every mutable property is guarded by `lock`, except `timer`, which is
+  // created at init and cancelled once under `lock`.
+  static let rawHoldCapacitySamples = Int(MeetingAudioFormat.sampleRate) * 4
+
+  private enum Slot {
+    /// Accepted by the worker. The raw copy is kept so a teardown that cannot wait for the
+    /// result still hands the samples over (raw, as a worker substitution would).
+    case awaiting(samples: [Float], hostTime: UInt64, runBreak: Bool)
+    /// `eligible`: kept while echo cleanup was on, so its raw copy counts as passthrough.
+    case raw(samples: [Float], hostTime: UInt64, runBreak: Bool, eligible: Bool)
+  }
+
+  private let recording: UUID
+  private let canceller: MeetingEchoCanceller
+  private let writer: MeetingTrackWriter
+  private let lock = OSAllocatedUnfairLock()
+  private var fifo: [Slot] = []
+  private var rawHeldSamples = 0
+  private var micRun = 0
+  private var renderRun = 0
+  private var disabled = false
+  private var closed = false
+  /// One terminal owner: the first `settleAndFlush` settles the worker; a later one joins it
+  /// until its own deadline, then takes over (`settleDone` is entered once by the owner).
+  private var settling = false
+  /// #4355 telemetry: microphone samples offered to echo cleanup, and those written with the raw
+  /// audio as their cleaned copy. Counted once, when each sample reaches the writer.
+  private var eligibleSamples = 0
+  private var passthroughSamples = 0
+  /// The call sound was never captured: nothing to clean against (`aec_init_outcome`).
+  private var noReference = false
+  private var frozen: MeetingEchoSummary?
+  private let settleDone = DispatchGroup()
+  private var timer: DispatchSourceTimer?
+  #if DEBUG
+    /// Called once the owning settle began (off the lock), so a test can overlap a second one.
+    var onSettleBeganForTesting: (@Sendable () -> Void)? {
+      get { lock.withLockUnchecked { settleBeganHook } }
+      set { lock.withLockUnchecked { settleBeganHook = newValue } }
+    }
+    private var settleBeganHook: (@Sendable () -> Void)?
+    var countersForTesting: MeetingEchoCanceller.Counters { canceller.counters }
+  #endif
+
+  init(
+    recording: UUID, canceller: MeetingEchoCanceller, writer: MeetingTrackWriter,
+    pumpInterval: DispatchTimeInterval?
+  ) {
+    self.recording = recording
+    self.canceller = canceller
+    self.writer = writer
+    if let pumpInterval {
+      let source = DispatchSource.makeTimerSource(
+        queue: DispatchQueue(label: "com.enviouswispr.meeting.echo.pump", qos: .userInitiated))
+      source.schedule(deadline: .now() + pumpInterval, repeating: pumpInterval)
+      source.setEventHandler { [weak self] in self?.pump() }
+      source.resume()
+      timer = source
+    }
+  }
+
+  deinit { timer?.cancel() }
+
+  private func time(_ hostTicks: UInt64) -> MeetingAcquisitionTime {
+    MeetingAcquisitionTime(recording: recording, hostTicks: hostTicks, provenance: .estimated)
+  }
+
+  /// One admitted microphone chunk (capture thread, inside the recorder's admission step).
+  func microphone(_ samples: UnsafeBufferPointer<Float>, hostTime: UInt64, runBreak: Bool) {
+    lock.lock()
+    defer { lock.unlock() }
+    if closed { return }
+    if runBreak { micRun += 1 }
+    if disabled {
+      // Behind any slot still owed, raw without a copy; directly when nothing is owed.
+      // #4355 telemetry: still eligible (and passthrough) unless there was never any call
+      // sound to clean against; a failed or stopped cleaner is a fallback, not ineligible audio.
+      if fifo.isEmpty {
+        if !noReference {
+          eligibleSamples += samples.count
+          passthroughSamples += samples.count
+        }
+        writer.append(samples, cleaned: nil, hostTime: hostTime, startsNewRun: runBreak)
+      } else {
+        holdRaw(samples, hostTime: hostTime, runBreak: runBreak, eligible: !noReference)
+      }
+      drainLocked([])
+      return
+    }
+    switch canceller.admitMicrophone(samples, acquired: time(hostTime), run: micRun) {
+    case .accepted:
+      fifo.append(.awaiting(samples: Array(samples), hostTime: hostTime, runBreak: runBreak))
+    case .refusedEmpty:
+      return
+    case .refusedClosed, .refusedOtherRecording, .refusedResultsNotTaken, .refusedTooLong:
+      // Kept raw, in order; its cleaned copy is the raw audio, as a worker substitution is.
+      holdRaw(samples, hostTime: hostTime, runBreak: runBreak, eligible: true)
+    }
+    drainLocked([])
+  }
+
+  /// The unmuted call-sound reference, before its writer places it (tap thread).
+  func render(_ samples: UnsafeBufferPointer<Float>, hostTime: UInt64, runBreak: Bool) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !closed, !disabled else { return }
+    if runBreak { renderRun += 1 }
+    canceller.admitRender(samples, acquired: time(hostTime), run: renderRun)
+  }
+
+  /// A call-sound change the tap reported (`SystemAudioTap.CaptureReport.Outcome`). Every
+  /// outcome restarts AEC3 with the reference before it dropped: a rebuild keeps reference
+  /// coming; a rate stop, a layout stop, a failed rebuild, or any outcome not known here means
+  /// none follows, so trust ends and later audio is substituted raw (`.noReference`).
+  func callSoundChanged(_ report: CallSoundChangeReport) {
+    let reason: MeetingEchoResetReason
+    switch report.outcome {
+    case "start_rebuilt", "rebuilt": reason = .callSoundRebuilt
+    case "stopped_rate_mismatch": reason = .sampleRateChanged
+    default: reason = .callSoundLost
+    }
+    reset(reason)
+  }
+
+  /// The call sound stopped after it started (its failure callback): no more reference.
+  func callSoundLost() { reset(.callSoundLost) }
+
+  private func reset(_ reason: MeetingEchoResetReason) {
+    lock.lock()
+    let live = !closed && !disabled
+    lock.unlock()
+    if live { canceller.requestReset(reason) }
+  }
+
+  /// No echo cleanup for this recording from now on (call sound off, failed or unsupported, or
+  /// the library unavailable). What the worker held is settled raw and handed over in order.
+  func disable(noCallSound: Bool = false) {
+    lock.lock()
+    let already = disabled || closed
+    if noCallSound, !closed { noReference = true }
+    disabled = true
+    lock.unlock()
+    guard !already else { return }
+    let settled = canceller.settle(deadline: 0)
+    lock.lock()
+    drainLocked(settled)
+    lock.unlock()
+  }
+
+  /// Drains results the worker settled since the last drain (timer and tests).
+  func pump() {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !closed else { return }
+    drainLocked([])
+  }
+
+  /// Stop and Quit, after capture admission closed: settle within `deadline` (monotonic
+  /// nanoseconds, the caller's share of its one budget) and hand everything to the writer.
+  /// Returns only when every slot reached the writer. Repeatable and overlap-safe: the first
+  /// caller owns the settle; a caller arriving meanwhile (Quit during Stop) waits for it until
+  /// its own deadline, then hands every slot still owed over raw from its kept copy and closes,
+  /// so the owner's late results are dropped and no sample is lost or written twice.
+  func settleAndFlush(deadline: UInt64) {
+    lock.lock()
+    if closed {
+      lock.unlock()
+      return
+    }
+    if settling {
+      lock.unlock()
+      if settleDone.wait(timeout: DispatchTime(uptimeNanoseconds: deadline)) == .timedOut {
+        lock.lock()
+        if !closed { flushAllLocked() }
+        lock.unlock()
+      }
+      return
+    }
+    settling = true
+    settleDone.enter()
+    #if DEBUG
+      let began = settleBeganHook
+    #endif
+    lock.unlock()
+    #if DEBUG
+      began?()
+    #endif
+    timer?.cancel()
+    let settled = canceller.settle(deadline: deadline)
+    lock.lock()
+    if !closed {
+      drainLocked(settled)
+      flushAllLocked()
+    }
+    lock.unlock()
+    settleDone.leave()
+  }
+
+  /// #4355: what echo cleanup did, frozen once when Stop or Quit settled the bridge; nil before.
+  var summary: MeetingEchoSummary? { lock.withLockUnchecked { frozen } }
+
+  // MARK: Locked helpers (`lock` held)
+
+  /// Teardown: every slot still owed goes to the writer raw, in order, then nothing more.
+  private func flushAllLocked() {
+    while let slot = fifo.first {
+      fifo.removeFirst()
+      switch slot {
+      case .awaiting(let samples, let hostTime, let runBreak):
+        appendRaw(samples, hostTime: hostTime, runBreak: runBreak, eligible: true)
+      case .raw(let samples, let hostTime, let runBreak, let eligible):
+        appendRaw(samples, hostTime: hostTime, runBreak: runBreak, eligible: eligible)
+      }
+    }
+    rawHeldSamples = 0
+    closed = true
+    freezeLocked()
+  }
+
+  private func freezeLocked() {
+    guard frozen == nil else { return }
+    let counters = canceller.counters
+    let outcome: MeetingEchoSummary.InitOutcome? =
+      noReference ? .noReference : counters.nativeCreated.map { $0 ? .ok : .failed }
+    frozen = MeetingEchoSummary(
+      eligibleSamples: eligibleSamples, passthroughSamples: passthroughSamples,
+      initOutcome: outcome, resetCount: counters.resets, resetCauses: counters.resetCauses)
+  }
+
+  private func holdRaw(
+    _ samples: UnsafeBufferPointer<Float>, hostTime: UInt64, runBreak: Bool, eligible: Bool
+  ) {
+    fifo.append(
+      .raw(samples: Array(samples), hostTime: hostTime, runBreak: runBreak, eligible: eligible))
+    rawHeldSamples += samples.count
+    if rawHeldSamples > Self.rawHoldCapacitySamples, !disabled {
+      // The worker stopped answering beyond its own bounds: settle it raw and stop cleaning, so
+      // what is held flows and nothing else is kept.
+      disabled = true
+      drainLocked(canceller.settle(deadline: 0))
+    }
+  }
+
+  private func appendRaw(_ samples: [Float], hostTime: UInt64, runBreak: Bool, eligible: Bool) {
+    if eligible {
+      eligibleSamples += samples.count
+      passthroughSamples += samples.count
+    }
+    samples.withUnsafeBufferPointer { raw in
+      writer.append(
+        raw, cleaned: disabled ? nil : raw, hostTime: hostTime, startsNewRun: runBreak)
+    }
+  }
+
+  /// Hands every slot that can go now to the writer, in order. `extra`: results already taken
+  /// from the worker (a settle); more are taken here.
+  private func drainLocked(_ extra: [MeetingEchoResult]) {
+    // After teardown every slot already reached the writer; a late result is not written.
+    guard !closed else { return }
+    var results = extra + canceller.takeResults()
+    var next = 0
+    while let slot = fifo.first {
+      switch slot {
+      case .raw(let samples, let hostTime, let runBreak, let eligible):
+        fifo.removeFirst()
+        rawHeldSamples -= samples.count
+        appendRaw(samples, hostTime: hostTime, runBreak: runBreak, eligible: eligible)
+      case .awaiting(_, _, let runBreak):
+        guard next < results.count else { return }
+        let result = results[next]
+        next += 1
+        fifo.removeFirst()
+        if result.substitution == .nativeUnavailable { disabled = true }
+        eligibleSamples += result.raw.count
+        if result.substitution != nil { passthroughSamples += result.raw.count }
+        result.raw.withUnsafeBufferPointer { raw in
+          result.cleaned.withUnsafeBufferPointer { cleaned in
+            writer.append(
+              raw, cleaned: disabled ? nil : cleaned, hostTime: result.acquired.hostTicks,
+              startsNewRun: runBreak)
+          }
+        }
+      }
+    }
+    // Results with no slot cannot happen (one result per accepted chunk); kept, not dropped.
+    if next < results.count {
+      results.removeFirst(next)
+      for result in results {
+        eligibleSamples += result.raw.count
+        passthroughSamples += result.raw.count
+        result.raw.withUnsafeBufferPointer { raw in
+          writer.append(raw, cleaned: nil, hostTime: result.acquired.hostTicks, startsNewRun: false)
+        }
+      }
+    }
+  }
 }

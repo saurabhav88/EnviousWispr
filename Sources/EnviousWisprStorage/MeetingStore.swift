@@ -155,37 +155,41 @@ public struct MeetingStore: Sendable {
 
   public struct SegmentFile: Sendable, Equatable {
     public let track: MeetingTrackKind
+    /// #4355 PR B: `.cleaned` for the microphone's echo-cleaned twin (`micclean-…`).
+    public let variant: MeetingSegmentVariant
     public let index: Int
     public let startMs: Int
     public let partial: Bool
     public let url: URL
   }
 
-  /// Every recognized segment file in the folder (finals AND partials, duplicates included), in
-  /// (track, numeric index, partial-after-final) order. Throws when the folder cannot be read.
+  /// Every recognized segment file in the folder (finals AND partials, duplicates included, both
+  /// microphone copies), in (track, copy, numeric index, partial-after-final) order. Throws when
+  /// the folder cannot be read.
   public func segmentFiles(meeting id: UUID) throws -> [SegmentFile] {
     let dir = folder(for: id)
     let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
     return names.compactMap { name -> SegmentFile? in
       guard let parsed = MeetingSegmentNaming.parse(name) else { return nil }
       return SegmentFile(
-        track: parsed.track, index: parsed.index, startMs: parsed.startMs, partial: parsed.partial,
-        url: dir.appendingPathComponent(name))
+        track: parsed.track, variant: parsed.variant, index: parsed.index,
+        startMs: parsed.startMs, partial: parsed.partial, url: dir.appendingPathComponent(name))
     }.sorted { lhs, rhs in
       if lhs.track != rhs.track { return lhs.track.rawValue < rhs.track.rawValue }
+      if lhs.variant != rhs.variant { return lhs.variant.rawValue < rhs.variant.rawValue }
       if lhs.index != rhs.index { return lhs.index < rhs.index }
       return !lhs.partial && rhs.partial
     }
   }
 
   /// The highest index any recognized file of `track` occupies, so a writer continues past
-  /// every occupied identity (finals, partials and duplicates alike).
+  /// every occupied identity (finals, partials and duplicates alike, either microphone copy).
   public func highestIndex(meeting id: UUID, track: MeetingTrackKind) throws -> Int {
     try segmentFiles(meeting: id).filter { $0.track == track }.map(\.index).max() ?? 0
   }
 
-  /// Bytes used by the meeting's audio files. Throws when any listed file cannot be measured,
-  /// so a failed read is never shown as a size.
+  /// Bytes used by the meeting's audio files, both microphone copies. Throws when any listed
+  /// file cannot be measured, so a failed read is never shown as a size.
   public func audioBytes(meeting id: UUID) throws -> Int64 {
     try segmentFiles(meeting: id).reduce(0) { total, file in
       guard let size = try file.url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
@@ -197,13 +201,19 @@ public struct MeetingStore: Sendable {
 
   // MARK: - Deletion
 
-  /// Removes every audio file of the meeting (finals and partials), its work folder and its
-  /// call-speaker evidence (#4013); keeps `meeting.json` and the notes and summary. Refuses a
-  /// meeting a newer build wrote.
+  /// Removes every audio file of the meeting (finals and partials, both microphone copies), its
+  /// work folder and its call-speaker evidence (#4013); keeps `meeting.json` and the notes and
+  /// summary. Refuses a meeting a newer build wrote.
   public func deleteAudio(meeting id: UUID) throws {
     try refuseNewerFormat(id)
     for file in try segmentFiles(meeting: id) {
       try FileManager.default.removeItem(at: file.url)
+    }
+    // #4355 PR B: the cleaned-copy proofs go with the audio they describe.
+    let dir = folder(for: id)
+    for name in try FileManager.default.contentsOfDirectory(atPath: dir.path)
+    where MeetingSegmentNaming.isCleanedProof(name) {
+      try FileManager.default.removeItem(at: dir.appendingPathComponent(name))
     }
     try removeCallSpeakers(meeting: id)
     let work = workDirectory(for: id)

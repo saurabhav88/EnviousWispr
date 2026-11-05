@@ -26,6 +26,7 @@ import worker, {
   formatWebsite,
   formatDownloads,
   formatAppUsage,
+  formatMeetingEcho,
   fetchOllamaListStatus,
   formatOllamaList,
   fetchCloudModelListStatus,
@@ -129,6 +130,12 @@ const POSTHOG_ROWS = {
   download_sources: { results: [["github_readme", 20], ["reddit", 8]], columns: ["bucket", "n"] },
   app_usage: { results: [[189, 51]], columns: ["active", "fresh"] },
   onboard_activate: { results: [[31, 24]], columns: ["onboarded", "activated"] },
+  meeting_echo: {
+    results: [[12, 10, 8, 1, 1, 7_200_000, 360_000, 5, 3]],
+    columns: ["attempts", "known", "init_ok", "init_failed", "init_no_reference",
+      "eligible_ms", "passthrough_ms", "resets", "attempts_with_resets"],
+  },
+  meeting_echo_reasons: { results: [["call_rebuild", 2], ["multiple", 1]], columns: ["bucket", "n"] },
 };
 
 const CF_BODY = {
@@ -331,11 +338,11 @@ test("never more than 2 PostHog requests in flight, and the cap is actually reac
   assert.equal(h.state.peakInFlight, 2, "cap must be reached, not merely never exceeded");
 });
 
-test("a clean run makes exactly 6 PostHog requests: 1 preflight + 5 metrics", async () => {
+test("a clean run makes exactly 8 PostHog requests: 1 preflight + 7 metrics", async () => {
   const h = harness();
   await h.run();
   // Equality, so both an added query and a silently dropped one fail.
-  assert.equal(h.state.posthogCalls, 6);
+  assert.equal(h.state.posthogCalls, 8);
   assert.equal(h.state.queryNames.filter((q) => q === "weekly_digest_dev_ids").length, 1);
 });
 
@@ -347,6 +354,8 @@ test("every query name carries the weekly_digest label, never daily_report", asy
     "weekly_digest_dev_ids",
     "weekly_digest_download_sources",
     "weekly_digest_downloads",
+    "weekly_digest_meeting_echo",
+    "weekly_digest_meeting_echo_reasons",
     "weekly_digest_onboard_activate",
     "weekly_digest_website",
   ]);
@@ -420,11 +429,11 @@ test("a dev_ids 401 costs app usage only; a METRIC 401 fails the whole run", asy
   const devAuth = harness({ posthog: { dev_ids: () => fail(401) } });
   await assert.rejects(() => devAuth.run(), /unavailable sections/);
   assert.equal(devAuth.state.posts.length, 1, "a partial digest still posts");
-  assert.equal(devAuth.state.posts[0].embeds.length, 7);
+  assert.equal(devAuth.state.posts[0].embeds.length, 8);
   // Sentry is a different vendor entirely, so a PostHog credential failure must
   // not cost it. A section that failed because an unrelated API failed would be
   // a coupling this design does not have.
-  assert.doesNotMatch(devAuth.state.posts[0].embeds[6].title, /unavailable/);
+  assert.doesNotMatch(devAuth.state.posts[0].embeds[7].title, /unavailable/);
 
   const metricAuth = harness({ posthog: { website: () => fail(401) } });
   await assert.rejects(() => metricAuth.run(), /HTTP 401/);
@@ -573,14 +582,14 @@ test("GitHub non-2xx on the first page degrades instead of returning '?'", async
 
 // ---- Payload -----------------------------------------------------------------
 
-test("the digest posts seven section embeds carrying the brand colour", async () => {
+test("the digest posts eight section embeds carrying the brand colour", async () => {
   const h = harness();
   await h.run();
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 7);
+  assert.equal(digest.embeds.length, 8);
   assert.deepEqual(digest.embeds.map((e) => e.title), [
     "All website traffic", "Tracked visitor activity", "Downloads", "App usage",
-    "Ollama model list", "Cloud model list", "Errors, last 7 days",
+    "Meeting echo cleanup", "Ollama model list", "Cloud model list", "Errors, last 7 days",
   ]);
   for (const embed of digest.embeds) {
     assert.equal(embed.color, 0x7c3aed);
@@ -1008,7 +1017,7 @@ test("the weekly Sentry section spends the fixed call budget and scopes to the r
   assert.equal(h.state.sentryCalls, SENTRY_CALLS_PER_DIGEST,
     "five fixed Sentry calls, never a per-issue fan-out");
   const [digest] = h.state.posts;
-  const sentry = digest.embeds[6];
+  const sentry = digest.embeds[7];
   assert.match(sentry.description, /25 people: microphone capture stalled/);
   assert.match(sentry.description, /13 people: paste fell back to the clipboard/);
   // 8 more people than the prior week (38 vs 30).
@@ -1039,12 +1048,12 @@ test("a Sentry outage costs the Sentry section and nothing else", async () => {
   const h = harness({ sentry: () => fail(503) });
   await assert.rejects(() => h.run(), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 7, "the digest still posts, whole");
-  assert.match(digest.embeds[6].title, /unavailable today/);
-  assert.match(digest.embeds[6].description, /not a report of zero/);
-  // The other five sections are untouched and REAL.
+  assert.equal(digest.embeds.length, 8, "the digest still posts, whole");
+  assert.match(digest.embeds[7].title, /unavailable today/);
+  assert.match(digest.embeds[7].description, /not a report of zero/);
+  // The other seven sections are untouched and REAL.
   assert.match(digest.embeds[0].title, /All website traffic/);
-  for (const embed of digest.embeds.slice(0, 5)) {
+  for (const embed of digest.embeds.slice(0, 7)) {
     assert.doesNotMatch(embed.title, /unavailable/);
     // The DESCRIPTION too: these sections put their degraded wording in the
     // body, so a title-only check would pass a mutation that degraded all five.
@@ -1060,8 +1069,8 @@ test("a worker without the Sentry credential degrades that section only", async 
   const h = harness();
   await assert.rejects(() => h.run(noToken), /unavailable sections/);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 7);
-  assert.match(digest.embeds[6].title, /unavailable today/);
+  assert.equal(digest.embeds.length, 8);
+  assert.match(digest.embeds[7].title, /unavailable today/);
   assert.equal(h.state.sentryCalls, 0, "a missing credential makes no request at all");
 });
 
@@ -1210,7 +1219,7 @@ test("every broken Ollama input costs this section only, then fails the run afte
     await assert.rejects(() => h.run(env), /ollama_list/, name);
     assert.equal(h.state.posts.length, 1, `${name}: the digest still posts`);
     const [digest] = h.state.posts;
-    assert.equal(digest.embeds.length, 7, name);
+    assert.equal(digest.embeds.length, 8, name);
     assert.match(ollamaEmbed(h).description, /^Ollama list figures were temporarily unavailable when this digest ran\.$/, name);
     for (const embed of digest.embeds.filter((e) => e.title !== "Ollama model list")) {
       assert.doesNotMatch(embed.description, /temporarily unavailable/, `${name}: ${embed.title}`);
@@ -1251,6 +1260,80 @@ test("issue mode with picks links the issue it filed", async () => {
   await h.run();
   assert.match(ollamaEmbed(h).description, /proposed 3 models: https:\/\/github\.com\/saurabhav88\/EnviousWispr\/issues\/9997$/m);
 });
+
+// ----- #4355 PR B: meeting echo cleanup ------------------------------------
+
+const ECHO_ROW = {
+  attempts: 12, known: 10, init_ok: 8, init_failed: 1, init_no_reference: 1,
+  eligible_ms: 7_200_000, passthrough_ms: 360_000, resets: 5, attempts_with_resets: 3,
+};
+
+test("meeting echo: populated week reports coverage, start outcomes, passthrough share and reasons", () => {
+  const lines = formatMeetingEcho(ECHO_ROW, [{ bucket: "call_rebuild", n: 2 }, { bucket: "multiple", n: 1 }]);
+  assert.equal(lines[0], "Meeting echo cleanup");
+  const text = lines.join("\n");
+  assert.match(text, /^10 of 12 meetings reported echo cleanup; 2 came from older versions or were not known\.$/m);
+  assert.match(text, /^Echo cleaner start: 8 started, 1 failed, 1 had no call sound\.$/m);
+  // 360,000 / 7,200,000 = 5.0%; 7,200,000 ms = 2.0 hours.
+  assert.match(text, /^2\.0 hours of microphone audio were eligible; 5\.0% of it passed through uncleaned\.$/m);
+  assert.match(text, /^5 cleaner restarts in 3 meetings\.$/m);
+  assert.match(text, /^Restart reasons \(meetings\): call_rebuild 2, multiple 1\.$/m);
+  assert.match(text, /a Transcribe again repeats its recording/);
+});
+
+test("meeting echo: unavailable, empty week, older-only and zero eligible are each said, never a confident zero", () => {
+  assert.match(formatMeetingEcho(null, null).join("\n"), /temporarily unavailable/);
+  assert.match(formatMeetingEcho({ ...ECHO_ROW, attempts: 0, known: 0 }, []).join("\n"), /^No meetings ended this week\.$/m);
+  const older = formatMeetingEcho({ ...ECHO_ROW, attempts: 4, known: 0 }, []).join("\n");
+  assert.match(older, /^4 meetings ended; none reported echo cleanup/m);
+  assert.doesNotMatch(older, /passed through|hours/);
+  const zero = formatMeetingEcho({ ...ECHO_ROW, eligible_ms: 0, passthrough_ms: 0 }, []).join("\n");
+  assert.match(zero, /^No microphone audio was eligible for cleaning\.$/m);
+  assert.doesNotMatch(zero, /% of it/);
+  const noResets = formatMeetingEcho({ ...ECHO_ROW, resets: 0, attempts_with_resets: 0 }, null).join("\n");
+  assert.match(noResets, /^The cleaner never had to restart\.$/m);
+  assert.doesNotMatch(noResets, /Restart reasons/);
+  assert.match(formatMeetingEcho(ECHO_ROW, null).join("\n"), /^Restart reasons were temporarily unavailable\.$/m);
+});
+
+test("meeting echo: both queries read meeting.ended over the production population, sums only over known rows", async () => {
+  const h = harness();
+  await h.run();
+  const echo = h.state.sql.find((q) => q.includes("AS attempts_with_resets"));
+  const reasons = h.state.sql.find((q) => q.includes("GROUP BY bucket") && q.includes("aec_reset_reason"));
+  for (const sql of [echo, reasons]) {
+    assert.ok(sql, "query sent");
+    assert.match(sql, /event = 'meeting\.ended'/);
+    assert.match(sql, /properties\.environment = 'production'/);
+  }
+  // Coalesced: a week with no known row sums to NULL in HogQL and the reader refuses NULL
+  // (the 2026-11-04 production smoke failed this section exactly that way).
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_eligible_ms\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS eligible_ms/);
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_passthrough_ms\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS passthrough_ms/);
+  assert.match(echo, /coalesce\(sumIf\(toFloat\(properties\.aec_reset_count\), properties\.aec_eligible_ms IS NOT NULL\), 0\) AS resets/);
+  assert.match(reasons, /properties\.aec_reset_reason != 'none'/);
+  const embed = h.state.posts[0].embeds.find((e) => e.title === "Meeting echo cleanup");
+  assert.match(embed.description, /10 of 12 meetings reported echo cleanup/);
+});
+
+test("meeting echo: a failed or malformed echo query costs that section only, then fails the run after delivery", async () => {
+  for (const [name, override] of [
+    ["503", { meeting_echo: () => fail(503) }],
+    ["missing column", { meeting_echo: () => ok({ results: [[1, 1]], columns: ["attempts", "known"] }) }],
+    ["no row", { meeting_echo: () => ok({ results: [], columns: ECHO_COLUMNS }) }],
+  ]) {
+    const h = harness({ posthog: override });
+    await assert.rejects(() => h.run(), /meeting_echo/, name);
+    const [digest] = h.state.posts;
+    assert.equal(digest.embeds.length, 8, name);
+    const embed = digest.embeds.find((e) => e.title === "Meeting echo cleanup");
+    assert.match(embed.description, /temporarily unavailable/, name);
+    assert.match(digest.embeds.find((e) => e.title === "App usage").description, /189 people used/, name);
+  }
+});
+
+const ECHO_COLUMNS = ["attempts", "known", "init_ok", "init_failed", "init_no_reference",
+  "eligible_ms", "passthrough_ms", "resets", "attempts_with_resets"];
 
 // ---- Cloud model list (#4353 PR 5) -------------------------------------------
 
@@ -1607,7 +1690,7 @@ test("cloud: a broken cloud source costs only its section, then fails the run af
   });
   assert.equal(h.state.posts.length, 1);
   const [digest] = h.state.posts;
-  assert.equal(digest.embeds.length, 7);
+  assert.equal(digest.embeds.length, 8);
   for (const embed of digest.embeds.filter((e) => e.title !== "Cloud model list")) {
     assert.doesNotMatch(embed.description, /temporarily unavailable/, embed.title);
   }

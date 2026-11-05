@@ -51,12 +51,15 @@ enum MeetingsPresentation {
 
   /// What the live words are and how each track is doing, one sentence each (#3973): words
   /// appear as people speak; a track that is off or stopped says why; skipped live audio is
-  /// named. The full transcript, with speakers and echo hidden, comes after the meeting.
+  /// named. The full transcript, with speakers, comes after the meeting. Echo is not mentioned
+  /// (#4355 PR B, founder 2026-11-04): the microphone is cleaned while recording, and whether the
+  /// final pass hides repeated call words (raw microphone only) is not known until it runs; the
+  /// finished transcript's own echo toggle shows what it hid.
   ///
   /// `recordingEnded`: the kept words after Stop, until the transcript replaces them. Nothing
   /// then promises more words or a recording that goes on.
   static func liveStatusLines(
-    _ live: MeetingLiveWords.Transcript, callSoundRecorded: Bool, recordingEnded: Bool = false
+    _ live: MeetingLiveWords.Transcript, recordingEnded: Bool = false
   ) -> [String] {
     var lines = [
       recordingEnded
@@ -89,16 +92,6 @@ enum MeetingsPresentation {
         String(
           localized: "Some Live Preview text was skipped. The full transcript comes after the meeting.",
           comment: "History, a meeting: some audio did not reach the Live Preview."))
-    }
-    if callSoundRecorded {
-      lines.append(
-        recordingEnded
-          ? String(
-            localized: "Echo is hidden in the full transcript.",
-            comment: "History, a stopped meeting: repeated call lines are hidden only in the final transcript.")
-          : String(
-            localized: "Echo is hidden when the meeting ends.",
-            comment: "History, a recording meeting: repeated call lines are hidden only in the final transcript."))
     }
     return lines
   }

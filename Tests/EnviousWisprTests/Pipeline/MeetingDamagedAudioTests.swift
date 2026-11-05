@@ -31,7 +31,8 @@ struct MeetingDamagedAudioTests {
   private func listed(_ urls: [(URL, Int)]) -> [MeetingStore.SegmentFile] {
     urls.enumerated().map { i, file in
       MeetingStore.SegmentFile(
-        track: .microphone, index: i + 1, startMs: file.1, partial: false, url: file.0)
+        track: .microphone, variant: .raw, index: i + 1, startMs: file.1, partial: false,
+        url: file.0)
     }
   }
 

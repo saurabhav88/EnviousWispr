@@ -99,7 +99,7 @@ struct MeetingProcessingRealBoundaryTests {
 
   /// In the test process the app's resources are not `Bundle.main`; the speaker models come
   /// from the same fixture bundle the real speaker-analyzer test builds from the repo's resources.
-  private func realJob() throws -> (MeetingTranscriptionJob, MeetingParakeetEngine) {
+  func realJob() throws -> (MeetingTranscriptionJob, MeetingParakeetEngine) {
     let speakerBundle = try Self.speakerModelBundle()
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting, parakeetSelection: ParakeetSelectionProvider())

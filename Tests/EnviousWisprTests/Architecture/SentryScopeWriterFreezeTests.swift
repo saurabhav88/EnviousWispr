@@ -62,8 +62,12 @@ struct SentryScopeWriterFreezeTests {
   /// breadcrumb when the keyboard listener cannot install without the Accessibility grant: fixed
   /// stage `input`, fixed message, data = fixed `mechanism` and `hotkey.failure_mode` plus the
   /// closed `hotkey_kind` and `key_shape` strings. No key code or text.
+  /// #4355 PR B: `TelemetryService.trackMeetingEnded` adds one breadcrumb per meeting attempt
+  /// that has an echo summary: fixed stage `meeting`, fixed message, data =
+  /// `meetingEchoBreadcrumbData` (aec_eligible_ms, aec_passthrough_ms, aec_reset_count integers
+  /// and the closed aec_init_outcome / aec_reset_reason strings). No title, word, path or id.
   static let inventoryFingerprint =
-    "a4b1021642dd06a61ed642c40149244be549fc2dc1ecdfff9e56148037fd99ff"
+    "9aafa91904c36ab791fb5f06d685ebb5a4f96335e0b2d6a18ea570f097bbcb02"
 
   struct Site: Hashable, Comparable {
     let file: String

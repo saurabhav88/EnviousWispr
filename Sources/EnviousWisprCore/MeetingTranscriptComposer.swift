@@ -102,7 +102,12 @@ public enum MeetingTranscriptComposer {
   /// call's word). A longer unpaired run is the user's own speech and ends the passage.
   public static let echoMaxUnpairedRun = 1
 
-  public static func compose(tracks: [MeetingTrackInput]) -> MeetingComposition {
+  /// `hidesEcho` (#4355 PR B, founder 2026-11-04): whether microphone turns that repeat the call
+  /// sound are marked echo. True only when the microphone was read RAW (no echo cleanup proof,
+  /// an older recording, a crash, cleaning unavailable). On the echo-cleaned copy the echo was
+  /// removed from the audio (residual echo and warm-up passthrough remain possible), and text
+  /// matching there hid the user's own words, so it is off.
+  public static func compose(tracks: [MeetingTrackInput], hidesEcho: Bool) -> MeetingComposition {
     var trackTurns: [(kind: MeetingTrackKind, turn: Turn, text: String, echo: Bool)] = []
     let joinedTracks = tracks.map { (track: $0, joined: joinPieces($0.pieces)) }
 
@@ -170,7 +175,7 @@ public enum MeetingTranscriptComposer {
         }
         turns = turns.flatMap { splitAtPauses($0, entries: joined.entries) }
         flagged = turns.map { ($0, false) }
-        if track.kind == .microphone, !callWords.words.isEmpty {
+        if hidesEcho, track.kind == .microphone, !callWords.words.isEmpty {
           flagged = turns.flatMap { splitAtEcho($0, entries: joined.entries, callWords: callWords) }
         }
       }

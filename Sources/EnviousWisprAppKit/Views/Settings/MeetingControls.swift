@@ -401,12 +401,10 @@ struct MeetingConsentNote: View {
 
 /// The recording meeting's live words (#3973): lines labelled by track as people speak, words
 /// still changing and words the engine was unsure of shown lighter. The status lines say when
-/// a track has no live words and why. The full transcript, with speakers and echo hidden, comes
-/// after the meeting.
+/// a track has no live words and why. The full transcript, with speakers, comes after the
+/// meeting.
 struct MeetingLiveWordsView: View {
   let transcript: MeetingLiveWords.Transcript
-  /// The call sound is recorded: echo is hidden only in the final transcript.
-  let callSoundRecorded: Bool
   /// After Stop, until the transcript replaces them: greyed, and the copy says the recording
   /// ended.
   var superseded = false
@@ -415,7 +413,7 @@ struct MeetingLiveWordsView: View {
     VStack(alignment: .leading, spacing: 8) {
       ForEach(
         MeetingsPresentation.liveStatusLines(
-          transcript, callSoundRecorded: callSoundRecorded, recordingEnded: superseded),
+          transcript, recordingEnded: superseded),
         id: \.self
       ) {
         line in

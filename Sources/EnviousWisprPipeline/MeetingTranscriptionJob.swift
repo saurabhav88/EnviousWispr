@@ -185,8 +185,10 @@ package final class MeetingTranscriptionJob {
   }
 
   /// Bumped whenever segmentation or ownership changes what a piece contains; a checkpoint
-  /// from another version is discarded.
-  package nonisolated static let processingVersion = 5
+  /// from another version is discarded. 6 (#4355 PR B): the microphone may be read from its
+  /// echo-cleaned copy, and the key says which copy. This is not the checkpoint FILE format
+  /// (`MeetingProcessingCheckpoint.currentFormatVersion`, still 4: the new key field is optional).
+  package nonisolated static let processingVersion = 6
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -323,8 +325,13 @@ package final class MeetingTranscriptionJob {
   ///
   /// `callSpeakers` (#4013 chunk 12A) is the meeting's saved speaker evidence, read once by the
   /// caller before the pass; the pass names call-sound speakers from it after composition.
+  ///
+  /// `microphoneCopy` (#4355 PR B) says which microphone copy `tracks[.microphone]` was built
+  /// from; the caller decided it once for this attempt. Transcription and speaker analysis both
+  /// read that same track; the checkpoint key records the choice.
   package func run(
-    tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
+    tracks: [MeetingTrackKind: MeetingTrackAudio], microphoneCopy: MeetingMicrophoneCopy = .raw(nil),
+    language: String?,
     checkpoint access: CheckpointAccess? = nil,
     missingAudio: [MeetingTrackKind: [MissingAudio]] = [:],
     callSpeakers: MeetingCallSpeakerEvidence = .absent,
@@ -382,7 +389,7 @@ package final class MeetingTranscriptionJob {
       let key = try? await Task.detached(priority: .utility) {
         try Self.key(
           meetingID: meetingID, attemptID: attempt.attemptID, tracks: tracks, order: order,
-          language: language, engine: engine, config)
+          language: language, engine: engine, microphoneCopy: microphoneCopy, config)
       }.value
       if let key {
         if let stored = await access.load(), stored.key == key,
@@ -511,9 +518,16 @@ package final class MeetingTranscriptionJob {
         kind: kind, pieces: pieces.sorted { $0.startMs < $1.startMs },
         speakerSegments: segments[kind] ?? [])
     }
+    // #4355 PR B: text echo hiding only for a raw microphone. On the cleaned copy the echo was
+    // removed from the audio (residual echo and warm-up passthrough remain possible), and text
+    // matching there hid the user's own words, so it does not run.
+    let hidesEcho: Bool
+    if case .cleaned = microphoneCopy { hidesEcho = false } else { hidesEcho = true }
     let composition = try await unit {
-      await Task.detached(priority: .utility) { MeetingTranscriptComposer.compose(tracks: inputs) }
-        .value
+      await Task.detached(priority: .utility) {
+        MeetingTranscriptComposer.compose(tracks: inputs, hidesEcho: hidesEcho)
+      }
+      .value
     }
     // 4. #4013 chunk 12A: name call-sound speakers from the saved evidence, after composition
     // and from what the pass knew before composition (real pieces, markers, diarized ids).
@@ -824,7 +838,7 @@ package final class MeetingTranscriptionJob {
   nonisolated static func key(
     meetingID: UUID, attemptID: UUID, tracks: [MeetingTrackKind: MeetingTrackAudio],
     order: [MeetingTrackKind], language: String?, engine: MeetingProcessingCheckpoint.Engine,
-    _ configuration: Configuration
+    microphoneCopy: MeetingMicrophoneCopy, _ configuration: Configuration
   ) throws -> MeetingProcessingCheckpoint.Key {
     MeetingProcessingCheckpoint.Key(
       meetingID: meetingID, attemptID: attemptID, processingVersion: processingVersion,
@@ -832,7 +846,7 @@ package final class MeetingTranscriptionJob {
       pieceSearchSeconds: configuration.pieceSearchSeconds,
       seamPaddingSeconds: configuration.seamPaddingSeconds,
       cutsPieces: configuration.cutsPieces,
-      transcriptLanguage: language, engine: engine,
+      transcriptLanguage: language, engine: engine, microphoneCopy: microphoneCopy,
       inputs: try order.map { kind in
         MeetingProcessingCheckpoint.TrackInventory(
           track: kind,

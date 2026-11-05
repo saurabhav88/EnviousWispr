@@ -90,8 +90,10 @@ final class MeetingMicrophoneSilence {
     let end: UInt64
   }
 
-  /// Receives each released chunk on the writer's queue. The buffer is valid only during the call.
-  typealias Emit = (UnsafeBufferPointer<Float>, MeetingHeldChunk) -> Void
+  /// Receives each released chunk on the writer's queue: the raw samples and, for a paired
+  /// hold, the cleaned copy (nil when the producer gave none for this chunk). Both were masked
+  /// by the same decisions at the same samples. The buffers are valid only during the call.
+  typealias Emit = (UnsafeBufferPointer<Float>, UnsafeBufferPointer<Float>?, MeetingHeldChunk) -> Void
 
   private struct Held {
     var start: Int
@@ -100,6 +102,8 @@ final class MeetingMicrophoneSilence {
     var provenance: MeetingAcquisitionTime.Provenance
     var afterDrop: Bool
     var sourceBreak: Bool
+    /// A paired hold only: the producer gave a cleaned copy of exactly this chunk.
+    var hasCleaned: Bool
     /// The arrival contract's cutoff, fixed when the chunk was accepted: its samples before this
     /// are live, never frozen-masked.
     var liveBefore: UInt64
@@ -115,6 +119,8 @@ final class MeetingMicrophoneSilence {
   let intervalCapacity: Int
 
   private var samples: [Float] = []
+  /// #4355 PR B: the cleaned copy, sample for sample beside `samples`; nil for an unpaired hold.
+  private var cleaned: [Float]?
   private var chunks: [Held] = []
   /// The latest decisions, read only for time at or after C.
   private var pending: [TickSpan] = []
@@ -141,9 +147,11 @@ final class MeetingMicrophoneSilence {
   /// Frames that arrived stamped more than `lateArrival` before C (judged as live).
   private(set) var lateFrames = 0
 
+  /// `paired`: the hold also carries a cleaned copy of every chunk (#4355 PR B), reserved to the
+  /// same capacity and given the same release, masking and order.
   init(
     recording: UUID, holdSeconds: Double, sampleCapacity: Int, chunkCapacity: Int,
-    intervalCapacity: Int = 64
+    intervalCapacity: Int = 64, paired: Bool = false
   ) {
     self.recording = recording
     holdTicks = Self.ticks(nanos: UInt64(max(0, holdSeconds) * 1_000_000_000))
@@ -151,6 +159,11 @@ final class MeetingMicrophoneSilence {
     self.chunkCapacity = max(1, chunkCapacity)
     self.intervalCapacity = max(1, intervalCapacity)
     samples.reserveCapacity(self.sampleCapacity)
+    if paired {
+      var copy: [Float] = []
+      copy.reserveCapacity(self.sampleCapacity)
+      cleaned = copy
+    }
     chunks.reserveCapacity(self.chunkCapacity)
     pending.reserveCapacity(self.intervalCapacity)
     frozen.reserveCapacity(self.intervalCapacity)
@@ -217,12 +230,15 @@ final class MeetingMicrophoneSilence {
     }
   }
 
-  /// Holds a copy of `frames`. A chunk larger than the free room is held in pieces, each with the
-  /// acquisition time of its first sample; room is made by releasing the oldest chunks early.
+  /// Holds a copy of `frames` (and, in a paired hold, of `cleanedFrames`, which must have the
+  /// same count; another count, or nil, holds the chunk without a cleaned copy). A chunk larger
+  /// than the free room is held in pieces, each with the acquisition time of its first sample;
+  /// room is made by releasing the oldest chunks early.
   func accept(
-    _ frames: UnsafeBufferPointer<Float>, acquired: MeetingAcquisitionTime, afterDrop: Bool,
-    sourceBreak: Bool, emit: Emit
+    _ frames: UnsafeBufferPointer<Float>, cleaned cleanedFrames: UnsafeBufferPointer<Float>? = nil,
+    acquired: MeetingAcquisitionTime, afterDrop: Bool, sourceBreak: Bool, emit: Emit
   ) {
+    let pair = cleanedFrames.flatMap { $0.count == frames.count ? $0 : nil }
     assert(acquired.recording == recording, "audio of another recording reached this hold")
     let hostTime = acquired.hostTicks
     let liveBefore = releasedTicks > lateArrivalTicks ? releasedTicks - lateArrivalTicks : 0
@@ -245,8 +261,14 @@ final class MeetingMicrophoneSilence {
           start: samples.count, count: take,
           hostTime: first ? hostTime : hostTime &+ Self.ticks(forSamples: offset),
           provenance: acquired.provenance, afterDrop: first && afterDrop, sourceBreak: first && sourceBreak,
-          liveBefore: liveBefore))
+          hasCleaned: pair != nil, liveBefore: liveBefore))
       samples.append(contentsOf: UnsafeBufferPointer(rebasing: frames[offset..<(offset + take)]))
+      if cleaned != nil {
+        // Without a cleaned copy the slot holds raw, so the two stay the same length; the chunk
+        // says it has none and is emitted without one.
+        let source = pair ?? frames
+        cleaned!.append(contentsOf: UnsafeBufferPointer(rebasing: source[offset..<(offset + take)]))
+      }
       offset += take
     }
   }
@@ -269,16 +291,25 @@ final class MeetingMicrophoneSilence {
     guard count > 0 else { return }
     beforeRelease?()
     var consumed = 0
+    // Moved out and back (no copy): the twin storage stays the one reserved at init.
+    var copy: [Float] = []
+    let paired = cleaned != nil
+    if paired { swap(&copy, &cleaned!) }
+    defer { if paired { swap(&copy, &cleaned!) } }
     samples.withUnsafeMutableBufferPointer { all in
+      copy.withUnsafeMutableBufferPointer { twin in
       for held in chunks[0..<count] {
-        let frames = UnsafeMutableBufferPointer(
-          rebasing: all[held.start..<(held.start + held.count)])
+        let range = held.start..<(held.start + held.count)
+        let frames = UnsafeMutableBufferPointer(rebasing: all[range])
+        let twinFrames = twin.isEmpty ? nil : UnsafeMutableBufferPointer(rebasing: twin[range])
         let chunkEnd = end(of: held)
         let cut = min(max(held.hostTime, releasedTicks), chunkEnd)
-        // Before C: the frozen decisions. From C on: the latest, which this release freezes.
+        // Before C: the frozen decisions. From C on: the latest, which this release freezes. The
+        // cleaned copy takes the same zeros at the same samples.
         silence(
-          frames, held.hostTime, frozen, from: max(held.hostTime, held.liveBefore), to: cut)
-        silence(frames, held.hostTime, pending, from: cut, to: chunkEnd)
+          frames, twinFrames, held.hostTime, frozen, from: max(held.hostTime, held.liveBefore),
+          to: cut)
+        silence(frames, twinFrames, held.hostTime, pending, from: cut, to: chunkEnd)
         // Freezes from the previous C, not from this chunk's start: capture stamps chunks by
         // arrival, so a few ticks can separate one chunk's end from the next one's start. Freezing
         // that gap too keeps a long mute one frozen decision; split at every gap, a mute filled
@@ -294,14 +325,17 @@ final class MeetingMicrophoneSilence {
         }
         emit(
           UnsafeBufferPointer(frames),
+          held.hasCleaned ? twinFrames.map { UnsafeBufferPointer($0) } : nil,
           MeetingHeldChunk(
             acquired: MeetingAcquisitionTime(
               recording: recording, hostTicks: held.hostTime, provenance: held.provenance),
             afterDrop: held.afterDrop, sourceBreak: held.sourceBreak))
         consumed = held.start + held.count
       }
+      }
     }
     samples.removeSubrange(0..<consumed)
+    if paired { copy.removeSubrange(0..<consumed) }
     chunks.removeSubrange(0..<count)
     for i in chunks.indices { chunks[i].start -= consumed }
     let horizon = retirementHorizon
@@ -309,16 +343,18 @@ final class MeetingMicrophoneSilence {
     pending.removeAll { $0.end <= releasedTicks }
   }
 
-  /// Zeroes the samples of a chunk whose times lie in `[from, to)` and in one of `mask`.
+  /// Zeroes the samples of a chunk (and of its cleaned twin, at the same indices) whose times lie
+  /// in `[from, to)` and in one of `mask`.
   private func silence(
-    _ frames: UnsafeMutableBufferPointer<Float>, _ chunkHostTime: UInt64,
-    _ mask: [TickSpan], from: UInt64, to: UInt64
+    _ frames: UnsafeMutableBufferPointer<Float>, _ twin: UnsafeMutableBufferPointer<Float>?,
+    _ chunkHostTime: UInt64, _ mask: [TickSpan], from: UInt64, to: UInt64
   ) {
     guard to > from else { return }
     for interval in mask {
       guard let part = Self.clip(interval, from: from, to: to) else { continue }
       let range = Self.silencedRange(of: part, chunkHostTime: chunkHostTime, count: frames.count)
       for i in range { frames[i] = 0 }
+      if let twin { for i in range { twin[i] = 0 } }
       silencedFrames += range.count
     }
   }

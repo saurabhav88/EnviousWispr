@@ -36,7 +36,8 @@ extension MeetingRecorder: MeetingRecording {}
 @MainActor
 protocol MeetingProcessing: AnyObject {
   func run(
-    tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
+    tracks: [MeetingTrackKind: MeetingTrackAudio], microphoneCopy: MeetingMicrophoneCopy,
+    language: String?,
     checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
     missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
     callSpeakers: MeetingCallSpeakerEvidence,
@@ -655,7 +656,8 @@ final class MeetingCoordinator {
         audioSeconds: audioSeconds, yieldCount: yieldCount, gapCount: gapCount,
         echoHiddenCount: echoHiddenCount, diskStopped: facts.diskStopped,
         summaryPlan: summaryPlan, hasNotes: hasNotes, callSound: facts.callSound,
-        speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance)
+        speakerNaming: speakerNaming, muteFollow: facts.muteFollow, provenance: facts.provenance,
+        echo: facts.echo)
     }
   }
 
@@ -666,6 +668,8 @@ final class MeetingCoordinator {
     var callSound: CallSoundSummary?
     /// #4248: the recording's mute following, frozen at stop; nil when none.
     var muteFollow: MuteFollowSummary?
+    /// #4355 PR B: what echo cleanup did in the recording, frozen at stop; nil when not known.
+    var echo: MeetingEchoSummary?
     /// #3973 C3: the engine this attempt's pass resolved to, once it did.
     var resolvedEngine: MeetingEngineChoice?
     /// #4249: the stop reason (first accepted stop wins) and the call facts call detection
@@ -1179,6 +1183,10 @@ final class MeetingCoordinator {
     let callSound: MeetingTrackStatus =
       callSoundFailedWhileStarting ? .failed : result.callSound
     record.trackStatus[.callSound] = callSound
+    // #4355 PR B: the echo cleaner this recording ran with, frozen at Start and saved with the
+    // record, so the final pass never reconstructs it. A call sound that failed meanwhile has
+    // none (its cleaned copy was stopped).
+    record.echoProvenance = callSound == .captured ? result.echoProvenance : nil
     callSoundStatus = callSound
     if callSound == .failed { notice = .callSoundFailed }
     if callSound == .unsupported { notice = .callSoundUnavailable }
@@ -1479,6 +1487,10 @@ final class MeetingCoordinator {
   /// #4121: keeps the recorder's frozen call-sound summary on the open attempt, for its
   /// `meeting.ended` row. A report without one changes nothing.
   private func adoptCallSoundSummary(_ report: MeetingRecorder.StopReport?, for meetingID: UUID) {
+    // #4355 PR B: frozen by the recorder when its echo worker settled, first stop wins.
+    if let echo = report?.echoSummary, openAttempts[meetingID]?.echo == nil {
+      openAttempts[meetingID]?.echo = echo
+    }
     guard let summary = report?.callSoundSummary else { return }
     openAttempts[meetingID]?.callSound = summary
   }
@@ -1649,6 +1661,7 @@ final class MeetingCoordinator {
     // outlives the pass or loses its cancellation (the pass checks ownership after each).
     let report = await Task.detached(priority: .utility) { recover(folder) }.value
     for problem in report.problems { deps.log("meeting recovery problem \(problem)") }
+    for problem in report.cleanedProblems { deps.log("meeting cleaned copy problem \(problem)") }
     var tracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
     var damaged: Set<String> = Set(
       report.problems.compactMap(MeetingDamagedAudio.damagedFileName))
@@ -1662,6 +1675,37 @@ final class MeetingCoordinator {
       for problem in audio.problems { deps.log("meeting track problem \(problem)") }
       damaged.formUnion(audio.problems.compactMap(MeetingDamagedAudio.damagedFileName))
       if !audio.isEmpty { tracks[kind] = audio }
+    }
+    // #4355 PR B: the microphone copy this attempt reads, decided once here and handed to both
+    // transcription and speaker analysis. The echo-cleaned copy only as a complete, matching set
+    // with its recording-time provenance; otherwise the raw copy, whole. Damage marking above
+    // used raw files only, so a damaged cleaned copy never becomes a gap.
+    let recordedProvenance = (live[meetingID] ?? records[meetingID])?.echoProvenance
+    var microphoneCopy = MeetingMicrophoneCopy.raw(recordedProvenance)
+    if let rawMic = tracks[.microphone],
+      let record = live[meetingID] ?? records[meetingID]
+    {
+      switch MeetingMicrophoneSelection.decide(
+        raw: report.segments[.microphone] ?? [], report: report,
+        provenance: record.echoProvenance)
+      {
+      case .cleaned(let cleaned, let provenance):
+        let files = cleaned.map {
+          (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs)
+        }
+        let audio = await Task.detached(priority: .utility) { MeetingTrackAudio(files: files) }
+          .value
+        if MeetingMicrophoneSelection.readMatches(audio, raw: rawMic) {
+          tracks[.microphone] = audio
+          microphoneCopy = .cleaned(provenance)
+        } else {
+          deps.log("meeting microphone source raw reason=cleaned_read_mismatch")
+        }
+      case .raw(let reason):
+        if reason != .noProvenance {
+          deps.log("meeting microphone source raw reason=\(reason.rawValue)")
+        }
+      }
     }
     var onDisk: [MeetingStore.SegmentFile] = []
     do {
@@ -1739,7 +1783,8 @@ final class MeetingCoordinator {
     do {
       // #4105, #3973 C2: the saved attempt's language and engine, from the record only.
       result = try await job.run(
-        tracks: tracks, language: resolution.effectiveLanguage, checkpoint: access,
+        tracks: tracks, microphoneCopy: microphoneCopy,
+        language: resolution.effectiveLanguage, checkpoint: access,
         missingAudio: missingAudio, callSpeakers: callSpeakers,
         onStage: { [weak self] stage in self?.processing?.stage = stage },
         attempt: attempt)

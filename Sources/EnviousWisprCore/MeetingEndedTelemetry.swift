@@ -108,6 +108,9 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
   /// #4249: how the recording ended and how it related to a call, frozen at its stop. Nil when
   /// not known (an attempt recovered after a relaunch, a Start that never recorded).
   public let provenance: Provenance?
+  /// #4355 PR B: what echo cleanup did in the recording, frozen at its stop; nil when not known
+  /// (a Start that failed, an attempt recovered after a relaunch). A Retry inherits it.
+  public let echo: MeetingEchoSummary?
 
   /// #4249: why the recording stopped (closed values, diagnostic only).
   public enum StopReason: String, Sendable, CaseIterable, Equatable {
@@ -196,7 +199,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     audioSeconds: Double, yieldCount: Int, gapCount: Int, echoHiddenCount: Int, diskStopped: Bool?,
     summaryPlan: SummaryPlan, hasNotes: Bool, callSound: CallSoundSummary? = nil,
     speakerNaming: SpeakerNamingSummary? = nil, muteFollow: MuteFollowSummary? = nil,
-    provenance: Provenance? = nil
+    provenance: Provenance? = nil, echo: MeetingEchoSummary? = nil
   ) {
     self.outcome = outcome
     self.entryPoint = entryPoint
@@ -223,6 +226,7 @@ public struct MeetingEndedTelemetry: Equatable, Sendable {
     self.speakerReadHealth = speakerNaming?.readHealth
     self.muteFollow = muteFollow
     self.provenance = provenance
+    self.echo = echo
   }
 
   /// Processing seconds per audio second; 0 when there was no audio or either value is not a

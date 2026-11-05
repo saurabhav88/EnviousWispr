@@ -369,6 +369,7 @@ let project = Project(
       dependencies: [
         .target(name: "EnviousWisprCore"),
         .package(product: "FluidAudio"),
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner (WebRTC AEC3 binary framework)
       ]),
     firstPartyLibrary(
       "EnviousWisprServices",
@@ -409,6 +410,7 @@ let project = Project(
         // #3735: the transcribe.cpp boundary for the Whisper engine.
         .target(name: "EnviousWisprTranscribeCpp"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
       ]),
@@ -497,6 +499,7 @@ let project = Project(
         // #3735: the transcribe.cpp boundary for the Universal preview engine.
         .target(name: "EnviousWisprTranscribeCpp"),
         .package(product: "CTranscribe"),
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         // NO `.target(name: "EnviousWisprModelDelivery")`. The limb receives
         // resolved paths and an admission ANSWER as values; giving it the
         // delivery module would let a future edit import a fetch-capable API
@@ -522,6 +525,7 @@ let project = Project(
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -560,6 +564,7 @@ let project = Project(
         .target(name: "EnviousWisprAppKit"),
         .target(name: "EnviousWisprCore"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -574,6 +579,7 @@ let project = Project(
         .target(name: "EnviousWisprServices"),
         // Same transitive-propagation reason as AppLive below.
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -592,6 +598,7 @@ let project = Project(
         // "unable to resolve module dependency: 'FastClusterWrapper'" — a
         // FluidAudio internal named nowhere in this project's source.
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -748,6 +755,7 @@ let project = Project(
         // #3735: dynamic framework, a direct app dep so Tuist embeds
         // CTranscribe.framework into the .app (same reason as Sparkle).
         .package(product: "CTranscribe"),
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
       ],
       settings: appSettings
     ),
@@ -784,6 +792,7 @@ let project = Project(
         .target(name: "EnviousWisprAppKitTestSupport"),
         .target(name: "EnviousWisprDesktopEffects"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
@@ -819,6 +828,7 @@ let project = Project(
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above
         .package(product: "Sparkle"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
         // parser. Test-target-only — never reaches the app or XPC targets
         // above (see Package.swift for the matching SPM dependency).
@@ -848,6 +858,7 @@ let project = Project(
         .package(product: "MLX"),  // #3242, as EnviousWisprTests
         .package(product: "Sparkle"),
         .package(product: "CTranscribe"),  // #3735, as EnviousWisprTests
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
       ],
       settings: testTargetSettings
     ),
@@ -868,6 +879,7 @@ let project = Project(
         // #3735: TranscribeCppRealBoundaryTests import the boundary directly.
         .target(name: "EnviousWisprTranscribeCpp"),
         .package(product: "CTranscribe"),  // #3735: transcribe.cpp; Xcode does not propagate it transitively
+        .package(product: "CWebRTCAEC"),  // #4355: meeting echo cleaner; Xcode does not propagate it transitively
         // Static-link FluidAudio: the test bundle links EnviousWisprASR (a
         // static framework that uses FluidAudio), so its symbols must be
         // resolved here too (Xcode doesn't propagate transitive static-link).

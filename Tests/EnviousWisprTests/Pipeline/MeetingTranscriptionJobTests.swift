@@ -1696,6 +1696,7 @@ struct MeetingTranscriptionJobTests {
       meetingID: meetingID, attemptID: MeetingTestAttempt.id, tracks: [.microphone: audio],
       order: [.microphone], language: nil,
       engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:r1"),
+      microphoneCopy: .raw(nil),
       { var c = MeetingTranscriptionJob.Configuration(); c.pieceTargetSeconds = 20; c.pieceSearchSeconds = 5; return c }())
     let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
     for bad in [

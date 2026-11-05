@@ -91,10 +91,11 @@ GENERATED_RESOURCE_TARGETS = {
     # #4013: the bundled talker rules (`Sources/EnviousWisprServices/Resources`).
     "EnviousWispr_EnviousWisprServices",
 }
-# Binary-framework wrapper targets Xcode makes for a SwiftPM binaryTarget (#3735: CTranscribe).
-# They compile nothing; with the compilation cache on (CI) Xcode still writes a `.cas-config`
-# into their `.build` folder. Accepted only while that folder holds no `.stringsdata` at all.
-BINARY_PRODUCT_TARGETS = {"CTranscribe-product"}
+# Binary-framework wrapper targets Xcode makes for a SwiftPM binaryTarget (#3735: CTranscribe;
+# #4355: CWebRTCAEC, the meeting echo cleaner). They compile nothing; with the compilation cache
+# on (CI) Xcode still writes a `.cas-config` into their `.build` folder. Accepted only while that
+# folder holds no `.stringsdata` at all.
+BINARY_PRODUCT_TARGETS = {"CTranscribe-product", "CWebRTCAEC-product"}
 # Retired targets whose stale `.build` folder can survive in an old derived-data tree. Accepted
 # only while every `.stringsdata` it holds is Xcode's ExtractedAppShortcutsMetadata (written even
 # with extraction off); an empty folder or any real extraction still stops the run.

@@ -319,17 +319,25 @@ struct MeetingRecorderTests {
   func startStopRecordsBothTracks() async throws {
     let r = try rig()
     let result = try await r.recorder.start()
-    #expect(result == .init(microphone: .captured, callSound: .captured))
+    #expect(
+      result
+        == .init(
+          microphone: .captured, callSound: .captured,
+          echoProvenance: MeetingRecorder.echoProvenance))
     #expect(r.recorder.boundMicrophoneUID == "BuiltInMicrophoneDevice")
     #expect(r.microphones[0].openTargets == ["Chosen"])
     speak(r.microphones[0], r.clock, seconds: 1)
     let call = [Float](repeating: 0.2, count: 16_000)
     call.withUnsafeBufferPointer { r.calls()[0].handler($0, r.recorder.anchor, false) }
     let report = await r.recorder.stop()
+    // #4355 PR B: the echo summary is frozen at stop; every microphone sample was offered.
+    let echo = try #require(report.echoSummary)
+    #expect(echo.eligibleSamples == 16_000)
     #expect(
       report
         == .init(
-          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary()))
+          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary(),
+          echoSummary: echo))
     #expect(r.segments.of(.microphone).map(\.frameCount) == [16_000])
     #expect(r.segments.of(.callSound).map(\.frameCount) == [16_000])
     #expect(r.microphones[0].stopCount == 1)
@@ -638,10 +646,13 @@ struct MeetingRecorderTests {
     let report = r.recorder.stopForQuit(deadline: .now() + .seconds(5))
     #expect(r.microphones[0].stopCount == 1)
     #expect(r.calls()[0].stopCount == 1)
+    let echo = try #require(report.echoSummary)
+    #expect(echo.eligibleSamples == 8_000)
     #expect(
       report
         == .init(
-          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary()))
+          microphone: .finalized, callSound: .finalized, callSoundSummary: CallSoundSummary(),
+          echoSummary: echo))
     #expect(r.segments.of(.microphone).map(\.frameCount) == [8_000])
   }
 

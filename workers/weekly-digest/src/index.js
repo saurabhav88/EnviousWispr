@@ -2,9 +2,9 @@
  * EnviousWispr Weekly Digest - Cloudflare Worker (issues #1243, #1589)
  *
  * Runs Monday 09:00 America/New_York via QStash HTTP trigger (#3570) and posts ONE Discord
- * message with seven sections: all website traffic (Cloudflare), tracked visitor
- * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), the
- * Ollama model list and its weekly routine (#3837), the cloud model routine
+ * message with eight sections: all website traffic (Cloudflare), tracked visitor
+ * activity (PostHog), downloads (GitHub + PostHog), app usage (PostHog), meeting
+ * echo cleanup (PostHog, #4355), the Ollama model list and its weekly routine (#3837), the cloud model routine
  * (#4353), and the week's errors on the current release line (Sentry, #1965).
  *
  * ORCHESTRATION OWNERSHIP. This file resolves the report window ONCE, resolves
@@ -658,6 +658,42 @@ export function onboardActivateSql(prod, win) {
     WHERE event = 'onboarding.completed' AND ${prod} AND ${win}`;
 }
 
+/** #4355 PR B: echo cleanup across the week's `meeting.ended` rows, one row per
+ * meeting ATTEMPT (a Retry repeats its recording's figures), production
+ * population only. `known` counts rows that carry the echo fields at all;
+ * older versions and attempts recovered after a relaunch carry none, and their
+ * durations are left out of both sums, never read as zero. A week with no known row
+ * sums to NULL in HogQL (measured 2026-11-04, the first production smoke), so each
+ * sum is coalesced to 0; `known` = 0 is what tells the reader nothing was measured. */
+export function meetingEchoSql(prod, win) {
+  const known = "properties.aec_eligible_ms IS NOT NULL";
+  return `SELECT
+      count() AS attempts,
+      countIf(${known}) AS known,
+      countIf(properties.aec_init_outcome = 'ok') AS init_ok,
+      countIf(properties.aec_init_outcome = 'failed') AS init_failed,
+      countIf(properties.aec_init_outcome = 'no_reference') AS init_no_reference,
+      coalesce(sumIf(toFloat(properties.aec_eligible_ms), ${known}), 0) AS eligible_ms,
+      coalesce(sumIf(toFloat(properties.aec_passthrough_ms), ${known}), 0) AS passthrough_ms,
+      coalesce(sumIf(toFloat(properties.aec_reset_count), ${known}), 0) AS resets,
+      countIf(${known} AND properties.aec_reset_reason != 'none') AS attempts_with_resets
+    FROM events
+    WHERE event = 'meeting.ended' AND ${prod} AND ${win}`;
+}
+
+/** #4355 PR B: the reset reasons of attempts that reset (`multiple` is its own
+ * value: an attempt with several causes). A GROUP BY of its own, like the
+ * download sources, so zero rows is a legitimate week with no resets. */
+export function meetingEchoResetReasonsSql(prod, win) {
+  return `SELECT properties.aec_reset_reason AS bucket, count() AS n
+    FROM events
+    WHERE event = 'meeting.ended' AND properties.aec_eligible_ms IS NOT NULL
+      AND properties.aec_reset_reason != 'none' AND ${prod} AND ${win}
+    GROUP BY bucket
+    ORDER BY n DESC
+    LIMIT 12`;
+}
+
 /** Website traffic. NO production predicate, deliberately.
  *
  * `productionClauseFor` always begins `properties.environment = 'production'`,
@@ -840,6 +876,46 @@ export function formatAppUsage(usage, funnel) {
     ? `${n(funnel.onboarded)} people finished setting up. Of those, ${n(funnel.activated)} also dictated.`
     : `Setup and first-dictation figures were ${UNAVAILABLE}.`);
   lines.push("", "Dev machines are excluded from every number here.");
+  return lines;
+}
+
+const MEETING_ECHO_TITLE = "Meeting echo cleanup";
+
+const hoursOf = (ms) => (ms / 3_600_000).toFixed(1);
+
+/** #4355 PR B. `echo` null: the figures could not be read. `reasons` null: only
+ * the reason breakdown could not be read. Zero attempts, zero known rows and
+ * zero eligible audio each say so in words; none of them reads as cleaning
+ * that worked. */
+export function formatMeetingEcho(echo, reasons) {
+  if (!echo) return [MEETING_ECHO_TITLE, `Echo cleanup figures were ${UNAVAILABLE} when this digest ran.`];
+  const lines = [MEETING_ECHO_TITLE];
+  if (echo.attempts === 0) {
+    lines.push("No meetings ended this week.");
+    return lines;
+  }
+  const older = echo.attempts - echo.known;
+  if (echo.known === 0) {
+    lines.push(`${n(echo.attempts)} meetings ended; none reported echo cleanup (older app versions or not known).`);
+    return lines;
+  }
+  lines.push(`${n(echo.known)} of ${n(echo.attempts)} meetings reported echo cleanup${older > 0 ? `; ${n(older)} came from older versions or were not known` : ""}.`);
+  lines.push(`Echo cleaner start: ${n(echo.init_ok)} started, ${n(echo.init_failed)} failed, ${n(echo.init_no_reference)} had no call sound.`);
+  if (echo.eligible_ms <= 0) {
+    lines.push("No microphone audio was eligible for cleaning.");
+  } else {
+    const share = Math.min(100, Math.max(0, (100 * echo.passthrough_ms) / echo.eligible_ms));
+    lines.push(`${hoursOf(echo.eligible_ms)} hours of microphone audio were eligible; ${share.toFixed(1)}% of it passed through uncleaned.`);
+  }
+  lines.push(echo.resets > 0
+    ? `${n(echo.resets)} cleaner restarts in ${n(echo.attempts_with_resets)} meetings.`
+    : "The cleaner never had to restart.");
+  if (echo.resets > 0) {
+    lines.push(reasons == null
+      ? `Restart reasons were ${UNAVAILABLE}.`
+      : `Restart reasons (meetings): ${reasons.map((r) => `${r.bucket ?? "unknown"} ${n(r.n)}`).join(", ")}.`);
+  }
+  lines.push("", "Counted per meeting attempt, so a Transcribe again repeats its recording. Dev machines are excluded.");
   return lines;
 }
 
@@ -1075,6 +1151,8 @@ export async function runDigest(env, deps = {}) {
   if (prod) {
     posthogTasks.push(() => querySection(env, appUsageSql(prod, window.win), "app_usage", hogqlOpts));
     posthogTasks.push(() => querySection(env, onboardActivateSql(prod, window.win), "onboard_activate", hogqlOpts));
+    posthogTasks.push(() => querySection(env, meetingEchoSql(prod, window.win), "meeting_echo", hogqlOpts));
+    posthogTasks.push(() => querySection(env, meetingEchoResetReasonsSql(prod, window.win), "meeting_echo_reasons", hogqlOpts));
   }
 
   const [posthogOutcome, cfOutcome, ghOutcome, sentryOutcome, ollamaOutcome, cloudOutcome] = await Promise.allSettled([
@@ -1122,6 +1200,8 @@ export async function runDigest(env, deps = {}) {
   //
   //   PostHog rows      site.views/.visitors, downloads.intents/.bots_excluded,
   //                     usage.active/.fresh          readAggregate, finite numbers
+  //                     meetingEcho.* (9 columns)    readAggregate, finite numbers
+  //                     meetingEchoReasons[].n/.bucket  readGrouped, as sources
   //                     sources[].n                  readGrouped, finite number
   //                     sources[].bucket             readGrouped, present, string or null
   //                     devIds[]                     shared resolveDevIds, non-empty strings
@@ -1237,13 +1317,20 @@ export async function runDigest(env, deps = {}) {
     return rows;
   };
 
-  let site, downloads, sources, usage, funnel;
+  let site, downloads, sources, usage, funnel, meetingEcho, meetingEchoReasons;
   try {
     site = readAggregate(0, "website", ["views", "visitors"]);
     downloads = readAggregate(1, "downloads", ["intents", "bots_excluded"]);
     sources = readGrouped(2, "download_sources", ["bucket", "n"]);
     usage = prod ? readAggregate(3, "app_usage", ["active", "fresh"]) : null;
     funnel = prod ? readAggregate(4, "onboard_activate", ["onboarded", "activated"]) : null;
+    meetingEcho = prod
+      ? readAggregate(5, "meeting_echo", [
+          "attempts", "known", "init_ok", "init_failed", "init_no_reference",
+          "eligible_ms", "passthrough_ms", "resets", "attempts_with_resets",
+        ])
+      : null;
+    meetingEchoReasons = prod ? readGrouped(6, "meeting_echo_reasons", ["bucket", "n"]) : null;
   } catch (err) {
     await postFailureNotice(env, label, { fetchFn });
     throw err;
@@ -1257,7 +1344,7 @@ export async function runDigest(env, deps = {}) {
 
   // Rendered inside its own try, so a section that computes cleanly and formats
   // badly costs only itself. Validated at delivery it would fail the whole
-  // payload and take the other six sections down with it.
+  // payload and take the other seven sections down with it.
   let sentryLines;
   try {
     sentryLines = sentry === null
@@ -1275,6 +1362,7 @@ export async function runDigest(env, deps = {}) {
       toEmbed(formatWebsite(site, downloads ? downloads.intents : null)),
       toEmbed(formatDownloads(gh, sources, downloads ? downloads.bots_excluded : null)),
       toEmbed(formatAppUsage(usage, funnel)),
+      toEmbed(formatMeetingEcho(meetingEcho, meetingEchoReasons)),
       toEmbed(formatOllamaList(ollama)),
       toEmbed(formatCloudModelList(cloud)),
       toEmbed(sentryLines),

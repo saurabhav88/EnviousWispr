@@ -21,6 +21,7 @@ struct MeetingProcessingCheckpointStoreTests {
       meetingID: UUID(), attemptID: UUID(), processingVersion: 3, pieceTargetSeconds: 60,
       pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
       engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:rev"),
+      microphoneCopy: .raw(nil),
       inputs: [
         .init(
           track: .microphone,
@@ -155,7 +156,7 @@ struct MeetingProcessingCheckpointStoreTests {
         pieceSearchSeconds: base.pieceSearchSeconds, seamPaddingSeconds: base.seamPaddingSeconds,
         cutsPieces: base.cutsPieces, transcriptLanguage: language,
         engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: model),
-        inputs: base.inputs)
+        microphoneCopy: base.microphoneCopy ?? .raw(nil), inputs: base.inputs)
     }
     #expect(key() == base)
     #expect(key(language: "de") != base)
@@ -173,7 +174,7 @@ struct MeetingProcessingCheckpointStoreTests {
         processingVersion: base.processingVersion, pieceTargetSeconds: base.pieceTargetSeconds,
         pieceSearchSeconds: base.pieceSearchSeconds, seamPaddingSeconds: base.seamPaddingSeconds,
         cutsPieces: base.cutsPieces, transcriptLanguage: language, engine: base.engine,
-        inputs: base.inputs)
+        microphoneCopy: base.microphoneCopy ?? .raw(nil), inputs: base.inputs)
     }
     #expect(key(nil) == key(""))
     #expect(key(nil) == base)

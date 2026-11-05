@@ -86,6 +86,19 @@ COMPONENTS=(
   "ggml (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-ggml-LICENSE.txt|https://github.com/ggml-org/ggml|"
   "miniz (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-miniz-LICENSE.txt|https://github.com/richgel999/miniz|"
   "Silero VAD (bundled in CTranscribe.framework)|n/a|MIT|repo:Sources/EnviousWispr/Resources/transcribe-cpp-silero-vad-LICENSE.txt|https://github.com/snakers4/silero-vad|"
+  # #4355: the meeting echo cleaner is a SwiftPM BINARY target (CWebRTCAEC.framework, built by
+  # Vendor/webrtc-aec/build-xcframework.sh from upstream webrtc-audio-processing v2.1 846fe90 and
+  # served from our R2 bucket), so it has no .build/checkouts source. Its BSD-3 text, the WebRTC
+  # patent grant, abseil (Apache-2.0, statically linked) and the third-party code vendored in
+  # the upstream tree are copied verbatim from that commit (the repo: scheme, as above).
+  "webrtc-audio-processing (bundled CWebRTCAEC.framework)|v2.1 (846fe90a)|BSD-3-Clause|repo:Sources/EnviousWispr/Resources/webrtc-aec-LICENSE.txt|https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing|"
+  "WebRTC patent grant (bundled in CWebRTCAEC.framework)|n/a|Patent grant|repo:Sources/EnviousWispr/Resources/webrtc-aec-PATENTS.txt|https://webrtc.googlesource.com/src|"
+  "Abseil (bundled in CWebRTCAEC.framework)|20240722.0|Apache-2.0|repo:Sources/EnviousWispr/Resources/webrtc-aec-abseil-LICENSE.txt|https://github.com/abseil/abseil-cpp|"
+  "PFFFT (bundled in CWebRTCAEC.framework)|n/a|BSD-like|repo:Sources/EnviousWispr/Resources/webrtc-aec-pffft-LICENSE.txt|https://bitbucket.org/jpommier/pffft|"
+  "RNNoise (bundled in CWebRTCAEC.framework)|n/a|BSD-3-Clause|repo:Sources/EnviousWispr/Resources/webrtc-aec-rnnoise-LICENSE.txt|https://github.com/xiph/rnnoise|"
+  "Ooura FFT (bundled in CWebRTCAEC.framework)|n/a|Ooura licence|repo:Sources/EnviousWispr/Resources/webrtc-aec-ooura-LICENSE.txt|http://www.kurims.kyoto-u.ac.jp/~ooura/fft.html|"
+  "spl_sqrt_floor (bundled in CWebRTCAEC.framework)|n/a|Public domain grant|repo:Sources/EnviousWispr/Resources/webrtc-aec-spl-sqrt-floor-LICENSE.txt|https://webrtc.googlesource.com/src|"
+  "Olesen FFT (bundled in CWebRTCAEC.framework)|n/a|Permissive notice|repo:Sources/EnviousWispr/Resources/webrtc-aec-fft-LICENSE.txt|https://webrtc.googlesource.com/src|"
   # #1413: mediaremote-adapter is NOT a SwiftPM dep either — the framework is
   # built from the pinned upstream commit and committed at Vendor/ with its perl script
   # (Sources/EnviousWispr/Resources/mediaremote-adapter-PROVENANCE.md); its

@@ -28,12 +28,12 @@ enum MeetingAudioFixture {
   /// `index` and `startMs`.
   @discardableResult
   static func writeSegment(
-    in folder: URL, track: MeetingTrackKind = .microphone, index: Int, startMs: Int,
-    frames: Int, seed: Int = 0, partial: Bool = false, sampleRate: Double = 16_000,
-    float: Bool = false
+    in folder: URL, track: MeetingTrackKind = .microphone, variant: MeetingSegmentVariant = .raw,
+    index: Int, startMs: Int, frames: Int, seed: Int = 0, partial: Bool = false,
+    sampleRate: Double = 16_000, float: Bool = false
   ) throws -> URL {
     let name = MeetingSegmentNaming.fileName(
-      track: track, index: index, startMs: startMs, partial: partial)
+      track: track, variant: variant, index: index, startMs: startMs, partial: partial)
     let url = folder.appendingPathComponent(name)
     try writeFile(url, frames: frames, seed: seed, sampleRate: sampleRate, float: float)
     return url

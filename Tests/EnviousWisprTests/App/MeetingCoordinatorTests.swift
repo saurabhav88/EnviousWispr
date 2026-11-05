@@ -50,6 +50,9 @@ struct MeetingCoordinatorTests {
       self.start = start
     }
 
+    static let echoProvenance = MeetingEchoProvenance(
+      library: "webrtc-audio-processing 2.1 846fe90 ew-4355.3", configuration: "test")
+
     func start() async throws -> MeetingRecorder.StartResult {
       if case .failEmpty = start {
         throw MeetingRecorder.RecorderError.microphoneUnavailable("no_device")
@@ -59,7 +62,10 @@ struct MeetingCoordinatorTests {
         in: configuration.folder, index: 1, startMs: 0, frames: 16_000)
       switch start {
       case .succeed(let callSound):
-        return MeetingRecorder.StartResult(microphone: .captured, callSound: callSound)
+        // #4355 PR B: as the real recorder, provenance only when the call sound was captured.
+        return MeetingRecorder.StartResult(
+          microphone: .captured, callSound: callSound,
+          echoProvenance: callSound == .captured ? Self.echoProvenance : nil)
       case .fail, .failEmpty:
         throw MeetingRecorder.RecorderError.microphoneUnavailable("microphone_lost")
       case .hold:
@@ -158,6 +164,8 @@ struct MeetingCoordinatorTests {
     private(set) var cancelled = false
     private(set) var runs = 0
     private(set) var receivedTracks: [MeetingTrackKind: MeetingTrackAudio] = [:]
+    /// #4355 PR B: the microphone copy each run was told it reads, in order.
+    private(set) var receivedMicrophoneCopies: [MeetingMicrophoneCopy] = []
     /// #4105: the transcript language each run was given, in order.
     private(set) var receivedLanguages: [String?] = []
     private(set) var receivedAttempts: [MeetingAttemptConfiguration] = []
@@ -178,7 +186,8 @@ struct MeetingCoordinatorTests {
     }
 
     func run(
-      tracks: [MeetingTrackKind: MeetingTrackAudio], language: String?,
+      tracks: [MeetingTrackKind: MeetingTrackAudio], microphoneCopy: MeetingMicrophoneCopy,
+      language: String?,
       checkpoint access: MeetingTranscriptionJob.CheckpointAccess?,
       missingAudio: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]],
       callSpeakers: MeetingCallSpeakerEvidence,
@@ -188,6 +197,7 @@ struct MeetingCoordinatorTests {
       runs += 1
       receivedCallSpeakers.append(callSpeakers)
       receivedTracks = tracks
+      receivedMicrophoneCopies.append(microphoneCopy)
       receivedLanguages.append(language)
       receivedAttempts.append(attempt)
       receivedMissingAudio = missingAudio
@@ -569,7 +579,7 @@ struct MeetingCoordinatorTests {
         meetingID: meetingID, attemptID: UUID(), processingVersion: 3, pieceTargetSeconds: 60,
         pieceSearchSeconds: 15, seamPaddingSeconds: 1, cutsPieces: true, transcriptLanguage: nil,
         engine: .init(requested: .parakeet, resolved: .parakeet, modelIdentity: "ultra:rev"),
-        inputs: []),
+        microphoneCopy: .raw(nil), inputs: []),
       tracks: [:])
   }
 
@@ -1286,6 +1296,28 @@ struct MeetingCoordinatorTests {
     await coordinator.stop(reason: .user)
     await Self.eventually("ready") { coordinator.record(id: meetingID)?.state == .ready }
     #expect(try harness.store.load(id: meetingID).trackStatus[.microphone] == .failed)
+  }
+
+  @Test("#4355: the echo provenance the recorder froze at Start is saved with the meeting; none without call sound")
+  func startSavesEchoProvenance() async throws {
+    for callSound in [MeetingTrackStatus.captured, .off] {
+      let harness = try Harness()
+      harness.callSound = callSound == .captured
+      harness.recorderStart = .succeed(callSound: callSound)
+      let coordinator = harness.coordinator
+      let outcome = await coordinator.start(from: .history)
+      guard case .recording(let meetingID) = outcome else {
+        Issue.record("the Start did not record: \(outcome)")
+        return
+      }
+      let expected = callSound == .captured ? FakeRecorder.echoProvenance : nil
+      #expect(coordinator.record(id: meetingID)?.echoProvenance == expected)
+      await Self.eventually("saved") {
+        (try? harness.store.load(id: meetingID))?.echoProvenance == expected
+      }
+      #expect(try harness.store.load(id: meetingID).echoProvenance == expected)
+      await coordinator.stop(reason: .user)
+    }
   }
 
   @Test(
@@ -2031,6 +2063,63 @@ struct MeetingCoordinatorTests {
     let saved = try harness.store.load(id: record.id)
     #expect(saved.failureCode == "audio_damaged")
     #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent(damagedName).path))
+  }
+
+  @Test("#4355: a complete cleaned microphone set with its provenance is the copy the pass reads; a damaged twin reads raw, with no gap")
+  func passReadsTheChosenMicrophoneCopy() async throws {
+    let provenance = MeetingEchoProvenance(library: "ew-4355.3", configuration: "aec3-16k-mono")
+    for damageTwin in [false, true] {
+      let harness = try Harness()
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      record.echoProvenance = provenance
+      try harness.store.create(record)
+      record.state = .queued
+      try harness.store.save(record)
+      let folder = harness.store.folder(for: record.id)
+      for index in 1...2 {
+        try MeetingAudioFixture.writeSegment(
+          in: folder, index: index, startMs: (index - 1) * 1_000, frames: 16_000, seed: 1)
+        try MeetingAudioFixture.writeSegment(
+          in: folder, variant: .cleaned, index: index, startMs: (index - 1) * 1_000,
+          frames: 16_000, seed: 2)
+      }
+      // The writer's proof that the cleaned copy finished whole.
+      let twins = (1...2).map { index in
+        MeetingSegmentInfo(
+          index: index,
+          fileName: MeetingSegmentNaming.fileName(
+            track: .microphone, variant: .cleaned, index: index, startMs: (index - 1) * 1_000,
+            partial: false),
+          startMs: (index - 1) * 1_000, frameCount: 16_000)
+      }
+      try JSONEncoder().encode(MeetingCleanedProof(segments: twins)).write(
+        to: folder.appendingPathComponent(MeetingSegmentNaming.cleanedProofName(first: 1, last: 2)))
+      if damageTwin {
+        let twin = MeetingSegmentNaming.fileName(
+          track: .microphone, variant: .cleaned, index: 2, startMs: 1_000, partial: false)
+        try Data(repeating: 7, count: 4_096).write(to: folder.appendingPathComponent(twin))
+      }
+
+      let coordinator = harness.coordinator
+      coordinator.launch()
+      await Self.eventually("ready") { coordinator.record(id: record.id)?.state == .ready }
+      let job = try #require(harness.jobs.first)
+      let names = (job.receivedTracks[.microphone]?.segments ?? []).map(\.url.lastPathComponent)
+      #expect(names.count == 2)
+      if damageTwin {
+        #expect(job.receivedMicrophoneCopies == [.raw(provenance)])
+        #expect(names.allSatisfy { $0.hasPrefix("mic-") })
+        // The damaged copy is only a derivative: no gap, no damaged-audio mark.
+        #expect(job.receivedMissingAudio.isEmpty)
+        #expect(try harness.store.load(id: record.id).failureCode == nil)
+      } else {
+        #expect(job.receivedMicrophoneCopies == [.cleaned(provenance)])
+        #expect(names.allSatisfy { $0.hasPrefix(MeetingSegmentNaming.cleanedMicrophoneStem + "-") })
+      }
+      // The saved inventory is the raw recording, whichever copy the pass read.
+      let saved = try harness.store.load(id: record.id)
+      #expect((saved.segments[.microphone] ?? []).map(\.fileName).allSatisfy { $0.hasPrefix("mic-") })
+    }
   }
 
   @Test("deleting during a slow History save waits for it; ready is never written")

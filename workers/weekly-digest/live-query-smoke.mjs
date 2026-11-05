@@ -5,6 +5,7 @@
 // Usage (secrets injected by the launcher, never inline):
 //   ~/.claude/bin/get-key launch posthog-personal-api-key POSTHOG_KEY -- \
 //     ~/.claude/bin/get-key launch cloudflare-global-api-key CF_KEY -- \
+//     ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
 //     node workers/weekly-digest/live-query-smoke.mjs
 //
 // Deliberately drives `runDigest` rather than reassembling the digest from
@@ -39,18 +40,33 @@ for (const name of CLOUD_VARS) {
 
 const CAPTURED_WEBHOOK = "https://smoke.invalid/never-posted";
 
+// The deployed worker's plain configuration is wrangler.toml's [vars]; the smoke reads that
+// same table instead of keeping its own copy, so a var the worker needs (OLLAMA_ROUTINE_LOG_ISSUE
+// was missing here, #4355 PR B) cannot drift out of the smoke. Only `KEY = "string"` lines exist
+// in [vars]; anything else there fails loudly rather than being skipped.
+export function wranglerVars(toml) {
+  const vars = {};
+  let inVars = false;
+  for (const raw of toml.split("\n")) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    if (line.startsWith("[")) { inVars = line === "[vars]"; continue; }
+    if (!inVars) continue;
+    const m = line.match(/^([A-Z0-9_]+)\s*=\s*"([^"]*)"$/);
+    if (!m) throw new Error(`wrangler.toml [vars] line not understood: ${raw}`);
+    vars[m[1]] = m[2];
+  }
+  return vars;
+}
+
+const vars = wranglerVars(readFileSync(new URL("./wrangler.toml", import.meta.url), "utf8"));
 const env = {
-  POSTHOG_PROJECT_ID: "354235",
+  ...vars,
   POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
-  CF_ZONE_ID: "b4416a0f0ebd699e96969a331c7ad7ff",
   CF_EMAIL: process.env.CF_EMAIL || "saurabhav@gmail.com",
   CF_API_KEY: process.env.CF_KEY,
-  GITHUB_REPO: "saurabhav88/EnviousWispr",
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   DISCORD_WEBHOOK_URL: CAPTURED_WEBHOOK,
-  SENTRY_ORG: "envious-labs-llc",
-  SENTRY_PROJECT_ID: "4511097112428544",
-  SENTRY_PROJECT_SLUG: "enviouswispr",
   SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
   ...cloudVars,
 };

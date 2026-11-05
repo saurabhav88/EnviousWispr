@@ -17,7 +17,9 @@ struct MeetingLiveWordsPresentationTests {
   static let intro = "Live Preview, as people speak. The full transcript comes after the meeting."
   static let removal = "Live Preview stopped while the Universal engine is being removed."
   static let skipped = "Some Live Preview text was skipped. The full transcript comes after the meeting."
-  static let echo = "Echo is hidden when the meeting ends."
+  /// #4355 PR B: echo is removed while recording, so a recording meeting never says this
+  /// sentence again (it was shown while recording before PR B).
+  static let retiredEcho = "Echo is hidden when the meeting ends."
 
   static func live(
     _ mic: Status?, _ call: Status?, dropped: Set<MeetingTrackKind> = [],
@@ -43,13 +45,13 @@ struct MeetingLiveWordsPresentationTests {
     var standIn = Self.live(.running, .running)
     standIn.appleStandingIn = true
     #expect(
-      P.liveStatusLines(standIn, callSoundRecorded: false) == [
+      P.liveStatusLines(standIn) == [
         Self.intro, "Apple is showing Live Preview until the Universal engine is downloaded.",
       ])
     #expect(
-      P.liveStatusLines(standIn, callSoundRecorded: false, recordingEnded: true).contains(
+      P.liveStatusLines(standIn, recordingEnded: true).contains(
         "Apple showed Live Preview because the Universal engine was not downloaded yet."))
-    #expect(P.liveStatusLines(Self.live(.running, .running), callSoundRecorded: false) == [Self.intro])
+    #expect(P.liveStatusLines(Self.live(.running, .running)) == [Self.intro])
   }
 
   @Test("every track status says the approved sentence, or nothing while words can come")
@@ -94,39 +96,46 @@ struct MeetingLiveWordsPresentationTests {
   func statusMatrix() {
     // Both running, no call sound recorded: only what live words are.
     #expect(
-      P.liveStatusLines(Self.live(.running, .running), callSoundRecorded: false) == [Self.intro])
+      P.liveStatusLines(Self.live(.running, .running)) == [Self.intro])
     // One captured track: the other says nothing.
     #expect(
-      P.liveStatusLines(Self.live(.running, .off(.notCaptured)), callSoundRecorded: false)
+      P.liveStatusLines(Self.live(.running, .off(.notCaptured)))
         == [Self.intro])
     // The same reason on both tracks is said once.
     #expect(
       P.liveStatusLines(
-        Self.live(.stopped(.modelRemoved), .stopped(.modelRemoved)), callSoundRecorded: true)
-        == [Self.intro, Self.removal, Self.echo])
+        Self.live(.stopped(.modelRemoved), .stopped(.modelRemoved)))
+        == [Self.intro, Self.removal])
     #expect(
       P.liveStatusLines(
-        Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.engineNotDownloaded(engine: .universal, languageName: "German"))),
-        callSoundRecorded: true)
+        Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.engineNotDownloaded(engine: .universal, languageName: "German"))))
         == [
           Self.intro,
           "Live Preview needs the Universal engine. Download it in EnviousMeet settings, Models, Live Preview.",
-          Self.echo,
         ])
     // Different outcomes per track: each said, microphone first.
     #expect(
       P.liveStatusLines(
-        Self.live(.stopped(.engineFailed), .running, dropped: [.callSound]),
-        callSoundRecorded: true)
+        Self.live(.stopped(.engineFailed), .running, dropped: [.callSound]))
         == [
           Self.intro, "Live Preview stopped for You. The recording continues.", Self.skipped,
-          Self.echo,
         ])
+    // #4355 PR B (founder 2026-11-04): no live words line speaks of echo, while recording or
+    // after Stop; the finished transcript's own echo toggle shows what the final pass hid.
+    for status: Status in [.starting, .running, .stopped(.engineFailed)] {
+      for ended in [false, true] {
+        let lines = P.liveStatusLines(
+          Self.live(status, status, dropped: [.microphone]), recordingEnded: ended)
+        #expect(!lines.contains(Self.retiredEcho), "\(status) ended=\(ended)")
+        #expect(
+          !lines.contains { $0.localizedCaseInsensitiveContains("echo") },
+          "\(status) ended=\(ended)")
+      }
+    }
     // Dropped audio on both tracks: one note.
     #expect(
       P.liveStatusLines(
-        Self.live(.running, .running, dropped: [.microphone, .callSound]),
-        callSoundRecorded: false)
+        Self.live(.running, .running, dropped: [.microphone, .callSound]))
         == [Self.intro, Self.skipped])
   }
 
@@ -146,11 +155,11 @@ struct MeetingLiveWordsPresentationTests {
 
   @Test("after Stop the kept live words promise no more words and no recording going on")
   func afterStop() {
-    let ended = { (live: MeetingLiveWords.Transcript, call: Bool) in
-      P.liveStatusLines(live, callSoundRecorded: call, recordingEnded: true)
+    let ended = { (live: MeetingLiveWords.Transcript) in
+      P.liveStatusLines(live, recordingEnded: true)
     }
     // Empty tracks still starting or running when Stop came.
-    #expect(ended(Self.live(.starting, .starting), false) == [Self.endedIntro])
+    #expect(ended(Self.live(.starting, .starting)) == [Self.endedIntro])
     #expect(
       P.emptyLiveWords(Self.live(.running, .running), recordingEnded: true)
         == "Live Preview heard no words.")
@@ -163,28 +172,27 @@ struct MeetingLiveWordsPresentationTests {
         == nil)
     // An earlier failure, dropped audio and echo, in past terms.
     #expect(
-      ended(Self.live(.stopped(.engineFailed), .running, dropped: [.microphone]), true)
+      ended(Self.live(.stopped(.engineFailed), .running, dropped: [.microphone]))
         == [
           Self.endedIntro, "Live Preview stopped for You before the recording ended.", Self.skipped,
-          "Echo is hidden in the full transcript.",
         ])
     #expect(
-      ended(Self.live(.stopped(.modelRemoved), .off(.modelBeingRemoved)), false)
+      ended(Self.live(.stopped(.modelRemoved), .off(.modelBeingRemoved)))
         == [Self.endedIntro, "Live Preview stopped while the Universal engine was being removed."])
     #expect(
-      ended(Self.live(.off(.previousStillClosing), .off(.previousStillClosing)), false)
+      ended(Self.live(.off(.previousStillClosing), .off(.previousStillClosing)))
         == [Self.endedIntro, "Live Preview was not available for this meeting."])
     #expect(
-      ended(Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.notCaptured)), false)
+      ended(Self.live(.off(.engineNotDownloaded(engine: .universal, languageName: "German")), .off(.notCaptured)))
         == [
           Self.endedIntro,
           "Live Preview needed the Universal engine, which was not downloaded.",
         ])
     #expect(
-      ended(Self.live(.off(.engineNotDownloaded(engine: .apple, languageName: "German")), .off(.notCaptured)), false)
+      ended(Self.live(.off(.engineNotDownloaded(engine: .apple, languageName: "German")), .off(.notCaptured)))
         == [Self.endedIntro, "Live Preview needed Apple's German model, which was not downloaded."])
     #expect(
-      ended(Self.live(.off(.notSetUp), .off(.notCaptured)), false)
+      ended(Self.live(.off(.notSetUp), .off(.notCaptured)))
         == [Self.endedIntro, "Live Preview was not set up for this meeting."])
     // No sentence after Stop speaks of a recording that goes on or words still to come.
     let every: [MeetingLiveWords.Status] = [
@@ -195,7 +203,7 @@ struct MeetingLiveWordsPresentationTests {
     ]
     for status in every {
       let all =
-        ended(Self.live(status, status, dropped: [.microphone]), true)
+        ended(Self.live(status, status, dropped: [.microphone]))
         + [P.emptyLiveWords(Self.live(status, status), recordingEnded: true) ?? ""]
       for line in all {
         #expect(!line.contains("continues"), "\(status): \(line)")
