@@ -482,7 +482,13 @@
       #expect(outcomes[2].contains("cmd=settings.set ok=true forced=true code=none"))
       #expect(outcomes[3].contains("cmd=settings.set ok=false forced=false code=checkFailed"))
       for line in outcomes {
-        #expect(line.contains("4321") == false)
+        // The first field is a random correlation UUID, which can contain "4321" by chance
+        // (#4307). Prove it is only a UUID, then check the rest of the line for the value.
+        let fields = line.split(separator: " ", maxSplits: 1).map(String.init)
+        try #require(fields.count == 2, "outcome line: \(line)")
+        #expect(fields[0].hasPrefix("corr="))
+        #expect(UUID(uuidString: String(fields[0].dropFirst("corr=".count))) != nil)
+        #expect(fields[1].contains("4321") == false)
         #expect(line.contains("toggleKeyCode") == false)
         #expect(line.contains("cancelKeyCode") == false)
       }

@@ -51,8 +51,13 @@ struct SettingsMapRenderingTests {
   /// without that wrapper (#3545).
   @TaskLocal static var pageTag: SettingsArrivalContent?
 
+  /// Tab stops the page itself declares. A focused text field hosts AppKit's shared field editor
+  /// (an `NSTextView` with `isFieldEditor`), which also answers `canBecomeKeyView`; it is editing
+  /// machinery that comes and goes with focus, not a stop the page adds, so it is not counted
+  /// (#4224: whether a field held focus at the counting instant changed the count).
   static func keyViewCount(_ view: NSView) -> Int {
-    (view.canBecomeKeyView && !view.isHidden ? 1 : 0)
+    if let editor = view as? NSTextView, editor.isFieldEditor { return 0 }
+    return (view.canBecomeKeyView && !view.isHidden ? 1 : 0)
       + view.subviews.reduce(0) { $0 + keyViewCount($1) }
   }
 

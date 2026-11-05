@@ -1019,6 +1019,9 @@ struct MeetingCoordinatorTests {
     await coordinator.start(from: .menu)
     let meeting = try onlyMeeting(harness)
     await coordinator.stop(reason: .user)
+    // Idle alone is not an end: right after Stop there is a gap before the final pass claims
+    // its unit, and `isWorkInFlight` reads false in it (#4390). Wait for the pass to end first.
+    await Self.livePassFinished(coordinator, meeting.id)
     await Self.eventually("idle") { !coordinator.isWorkInFlight }
     #expect(harness.store.loadContext(meeting: meeting.id) == .absent)
     #expect(coordinator.documents.context(meeting.id) == nil)
