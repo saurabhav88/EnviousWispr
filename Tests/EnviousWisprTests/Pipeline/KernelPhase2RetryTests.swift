@@ -764,7 +764,8 @@ struct KernelPhase2RetryTests {
     deliverVoicedCapture(ctx)
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.engine.retryDecodeCallCount == 1 && log.starts.count == 1 }, what: "retry in flight")
     let kernel = ctx.wrapper.testKernel
     #expect(log.starts.count == 1, "the attempt is counted at the start, not at the resolution")
     #expect(log.resolutions.isEmpty, "staging: the retry must still be parked")
@@ -780,7 +781,7 @@ struct KernelPhase2RetryTests {
     await ctx.wrapper.drainUntilConcluded()
 
     ctx.clock.advance(by: 3)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil({ log.resolutions.count == 1 }, what: "stale retry resolved")
 
     let resolved = log.resolutions
     #expect(resolved.count == 1, "an abandoned resolution must still be reported, not dropped")
@@ -845,7 +846,8 @@ struct KernelPhase2RetryTests {
     // Cancel once: Escape Recovery KEEPS the take and runs the ordinary
     // pipeline, so the decode fails and the one retry is spent and parked.
     await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.engine.retryDecodeCallCount == 1 && log.starts.count == 1 }, what: "retry in flight")
     #expect(log.starts.count == 1, "staging: the retry must have been attempted")
     #expect(log.resolutions.isEmpty, "staging: the retry must still be parked")
 
@@ -853,7 +855,7 @@ struct KernelPhase2RetryTests {
     await ctx.wrapper.apply(.cancel)
     await ctx.wrapper.drainReadyWork()
     ctx.clock.advance(by: 3)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil({ log.resolutions.count == 1 }, what: "abandoned retry resolved")
 
     let resolved = log.resolutions
     #expect(resolved.count == 1, "an abandoned resolution must still be reported, not dropped")

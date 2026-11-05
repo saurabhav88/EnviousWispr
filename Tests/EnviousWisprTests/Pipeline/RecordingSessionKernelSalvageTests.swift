@@ -475,7 +475,11 @@ struct ExhaustedRetrySpoolDeletionTests {
       await startRecording(context)
 
       wrapper.testKernel.externalEngineInterrupted(.engineLost)
-      await wrapper.drainReadyWork()
+      await wrapper.drainUntil(
+        {
+          wrapper.testKernel.state == .delivering
+            && wrapper.testKernel.deliveringPhase == .transcribing
+        }, what: "salvage transcribing")
       #expect(
         wrapper.testKernel.state == .delivering
           && wrapper.testKernel.deliveringPhase == .transcribing,
