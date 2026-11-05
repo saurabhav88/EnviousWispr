@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-04",
+  "updated": "2026-11-05",
   "models": [
     {
       "provider": "openAI",
@@ -787,6 +787,45 @@
       },
       "supportsChatCompletions": false,
       "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6.1-terra",
+      "released": "2026-10-13",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true,
+      "medianPolishMs": 1359
+    },
+    {
+      "provider": "claude",
+      "id": "claude-haiku-5-5",
+      "released": "2026-10-07",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "thinkingDisabled"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 853
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-argon",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 2807
     }
   ]
 }
