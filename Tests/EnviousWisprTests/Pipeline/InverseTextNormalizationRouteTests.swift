@@ -205,6 +205,31 @@ struct InverseTextNormalizationRouteTests {
     return c
   }
 
+  @MainActor
+  private final class TimeoutSeen {
+    var value = false
+  }
+
+  /// Runs the REAL step on `context`. The step abandons its work at a real 0.5 s wall-clock floor
+  /// and then returns the input unchanged, which on a loaded runner says nothing about routing
+  /// (#4282: both failed expectations were that give-up). A give-up is told apart by the step's
+  /// own timeout hook, not by the text, and that take is run again; the first run that finished
+  /// is judged. Three give-ups in a row is a failure in its own right.
+  private func judgedRun(
+    _ context: TextProcessingContext, lid: Bool
+  ) async throws -> (out: TextProcessingContext, step: InverseTextNormalizationStep) {
+    for _ in 1...3 {
+      let timedOut = TimeoutSeen()
+      let step = InverseTextNormalizationStep(
+        registry: .production, onTimeoutForTesting: { _ in timedOut.value = true })
+      step.backendSupportsLID = lid
+      let out = try await step.process(context)
+      if !timedOut.value { return (out, step) }
+    }
+    Issue.record("the ITN step gave up at its deadline on all three tries")
+    throw CancellationError()
+  }
+
   /// A German sentence carrying (1) a word the English engine misreads, `7 am`, and (2) a spoken
   /// dash code the neutral subset reads. Whatever skipped route a take takes, only the second may
   /// change, and the result must be exactly this literal.
@@ -223,9 +248,8 @@ struct InverseTextNormalizationRouteTests {
       ("lid_backend_nil", nil, false, true, "lid_backend_nil"),
     ]
     for (label, language, vetoed, lid, reason) in cases {
-      let step = InverseTextNormalizationStep()
-      step.backendSupportsLID = lid
-      let out = try await step.process(ctx(Self.mixed, language: language, vetoed: vetoed))
+      let (out, step) = try await judgedRun(
+        ctx(Self.mixed, language: language, vetoed: vetoed), lid: lid)
       #expect(out.text == Self.mixedNeutral, "\(label): neutral subset only")
       #expect(step.lastRun?.ran == false, "\(label)")
       #expect(step.lastRun?.changed == true, "\(label)")
@@ -242,9 +266,7 @@ struct InverseTextNormalizationRouteTests {
     for (language, vetoed, lid) in [("fi", false, true), (nil, true, true), (nil, false, true)]
       as [(String?, Bool, Bool)]
     {
-      let step = InverseTextNormalizationStep()
-      step.backendSupportsLID = lid
-      let out = try await step.process(ctx(input, language: language, vetoed: vetoed))
+      let (out, step) = try await judgedRun(ctx(input, language: language, vetoed: vetoed), lid: lid)
       #expect(
         Array(out.text.utf8) == Array(input.utf8), "language=\(language ?? "nil") vetoed=\(vetoed)")
       #expect(step.lastRun?.changed == false)
@@ -256,16 +278,13 @@ struct InverseTextNormalizationRouteTests {
 
   @Test("neutral conversion still happens on a foreign take, English conversion on an English one")
   func positiveControls() async throws {
-    let neutral = InverseTextNormalizationStep()
-    neutral.backendSupportsLID = true
-    let n = try await neutral.process(
-      ctx("mandalo a marco arroba esempio punto com", language: "fi"))
+    let (n, neutral) = try await judgedRun(
+      ctx("mandalo a marco arroba esempio punto com", language: "fi"), lid: true)
     #expect(n.text == "mandalo a marco@esempio.com")
     #expect(neutral.lastRun?.ran == false)
 
-    let english = InverseTextNormalizationStep()
-    english.backendSupportsLID = true
-    let e = try await english.process(ctx("the code is two zero three", language: "en"))
+    let (e, english) = try await judgedRun(
+      ctx("the code is two zero three", language: "en"), lid: true)
     #expect(e.text == "the code is 203")
     #expect(english.lastRun?.ran == true)
     #expect(english.lastRun?.skipReason == nil)

@@ -527,10 +527,19 @@ import os
     @Test("a simulation stops the real watcher, and quit stops everything")
     func simulationStopsRealWatcher() async throws {
       let scan = Scan()
-      let sources = discovery(scan)
+      // A frozen clock keeps the 1 s tick from asking for more scans (#4316).
+      let sources = CallSourceDiscovery(
+        dependencies: .init(
+          evidence: { _, _ in .unknown }, now: { Date(timeIntervalSinceReferenceDate: 0) },
+          scan: { scan.read() }, listens: false))
       sources.beginRecordingDemand()
       #expect(sources.watching)
-      await eventually("first read") { scan.calls.withLock { $0 } >= 1 }
+      // Starting asks for two scans (the watcher's start and the recording's own read). Wait
+      // until both have run and returned, so no scan begun before the simulation can still
+      // arrive after `calls` is taken below (#4316).
+      await eventually("both startup reads finished") {
+        scan.calls.withLock { $0 } >= 2 && scan.running.withLock { $0.now } == 0
+      }
       sources.simulate([.init(holder: Self.zoom, evidence: .call(family: .zoom, room: "sim"))])
       #expect(!sources.watching, "the real watcher is off while simulated")
       let calls = scan.calls.withLock { $0 }
