@@ -223,6 +223,8 @@ let criticalTestSources: SourceFilesList = [
   "Tests/EnviousWisprTests/Services/StoredTelemetrySwitchesTests.swift",
   "Tests/EnviousWisprTests/Settings/AIPolishKeychainFailureMessageTests.swift",
   "Tests/EnviousWisprTests/Settings/SettingsMapExportTests.swift",
+  // #4402: the weekly cloud model routine merges list PRs on this check alone.
+  "Tests/EnviousWisprTests/LLM/CloudModelListTests.swift",
 ]
 
 // #4089: Xcode supplies optimized, compiler-matched parser libraries. Link them only in
