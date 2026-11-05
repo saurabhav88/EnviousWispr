@@ -6,10 +6,10 @@ section: "Basics"
 order: 1
 keywords: ["what is it", "overview", "how does it work", "dictation app", "voice to text", "speech to text", "talk to type"]
 related: ["is-enviouswispr-free", "privacy-overview", "what-is-ai-polish", "live-preview-words-on-screen", "escape-recovery", "adding-a-word-from-your-selection", "using-snippets"]
-updated: 2026-10-28
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
-EnviousWispr is a free, open-source dictation app for macOS. You hold a keybind, speak into your microphone, and your spoken words appear as written text in whatever app you are using. It needs a Mac with Apple Silicon and macOS 14 or later. There is also a separate [EnviousWispr for Android](/android/) app for phones; this help center covers the Mac app.
+EnviousWispr is a free, open-source dictation app for macOS. You hold a keybind, speak into your microphone, and your spoken words appear as written text in whatever app you are using. It needs a Mac with Apple Silicon and macOS 14 or later. There is also a separate [EnviousWispr for Android](/android/) app for phones, with its own [Android help articles](/help/android/). The other articles here cover the Mac app.
 
 ### How do I dictate with it?
 

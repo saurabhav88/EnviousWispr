@@ -5,7 +5,7 @@ category: "features"
 section: "Recording"
 order: 6
 keywords: ["live preview", "preview", "see words as i speak", "see my words", "words on screen", "on screen preview", "while i speak", "recording pill", "watch it type", "is it hearing me", "nothing appears", "no words showing", "install new languages", "preview language", "preview engine"]
-updated: 2026-10-15
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 Live Preview shows a rough draft of your words in the recording pill while you are still speaking, so you can see that EnviousWispr is hearing you. It is on unless you switch it off.
@@ -17,7 +17,7 @@ The preview is only a draft. It is thrown away when the recording ends and never
 Your dictation is not affected when the preview is empty, and an empty preview never means a lost recording. Check these in order.
 
 1. **Read the status bar.** Open **Dictation Settings** > **Live Preview**. The bar at the top says whether the preview is off, ready, waiting for a download, or unavailable for your language. That answers most cases.
-2. **Check the language.** If you speak one language and the preview is set to another, the pill stays empty instead of showing wrong words. This is the most common cause. Click the language at the top of the **Live Preview** tab, or change it under **Dictation Settings** > **Engine**.
+2. **Check the language.** If you speak one language and the preview is set to another, the pill may stay empty or show the wrong words. Click the language at the top of the **Live Preview** tab, or change it under **Dictation Settings** > **Engine**.
 3. **Check for a missing language.** On the Apple engine, a language your Mac does not have needs a download first. The status bar says so and offers **Browse downloads**, which opens the list with that language already searched for. Until you download it, there is nothing to show.
 4. **Check Faster Transcription.** On the Universal engine, the preview pauses when [Faster Transcription](/help/live-transcription-streaming-asr/) is on with the Fast engine, or with All Languages while a language is locked, so your dictation keeps its full speed. The status bar says **Paused while Faster Transcription is on** when this is the reason. Turn Faster Transcription off to see the preview again.
 
@@ -55,7 +55,7 @@ If you are on macOS 26 and Apple supports your language, use Apple. Choose Unive
 
 Which language the preview uses depends on the engine. It only matters if your dictation language is set to **Auto-detect language**.
 
-- **On Apple**, the preview follows the language you picked for dictation on the **Engine** tab. On Auto-detect it has nothing to follow, because it must commit to one language before you say your first word. It goes by your Mac's language instead. Dictation still understands whatever you speak. Only the words on screen may come out in the wrong language until you pick one.
+- **On Apple**, the preview follows the language you picked for dictation on the **Engine** tab. On Auto-detect it has nothing to follow, because it must commit to one language before you say your first word. It goes by your Mac's language instead. Dictation still understands whatever you speak. Only the preview may be empty or in the wrong language until you pick one.
 - **On Universal**, if you picked a language for dictation, the preview uses it. If your dictation language is Auto-detect, this engine works out the language itself as you speak.
 
 To change it, click the language at the top of the **Live Preview** page. This sets your dictation language everywhere, not only the preview. The list starts with **Auto-detect**, so you can hand the choice back to the app.

@@ -6,7 +6,7 @@ section: "Privacy"
 order: 2
 keywords: ["what data", "analytics", "telemetry", "collected", "do you see my text", "do you store", "opt out", "turn off", "tracking", "crash reports", "usage metrics", "diagnostics", "send feedback privacy", "help check", "TypeSafe", "share usage metrics"]
 related: ["privacy-overview"]
-updated: 2026-10-09
+updated: 2026-11-05
 deflection: "show_but_always_send"
 ---
 EnviousWispr collects anonymous usage data and crash reports, and you can turn either one off. Nothing you say is part of that. Usage data can include a Settings search that found nothing, after the app filters it. Your audio never reaches Envious Labs, the company that makes the app. The app never sends us your dictations or transcripts, unless you type them into a feedback message yourself.
@@ -15,7 +15,7 @@ EnviousWispr collects anonymous usage data and crash reports, and you can turn e
 
 Your dictations and transcripts are saved to your History so you can find them later. They sit in your user folder, and Envious Labs never receives a copy.
 
-Your custom words, settings, and API keys live there too. An API key is a private password that lets the app use an AI service under your own account. These stay on your Mac unless you turn on cloud polish, which sends your text to the AI company you pick.
+Your custom words, settings, and API keys live there too. An API key is a private password that lets the app use an AI service under your own account. Cloud polish sends the selected text and, when applicable, your custom words and API key directly to the provider you picked. EnviousMeet summaries have a separate engine choice; a cloud summary engine receives the meeting transcript, your notes and meeting details. Envious Labs receives none of that.
 
 The app also keeps a short diagnostics diary on your Mac. It stays there unless you choose to attach it to a feedback report.
 
@@ -83,7 +83,7 @@ Two switches control this, in **App Settings** > **Privacy**. Each one works on 
 - **Crash sessions have their own ID.** When crash reports are on, the short "app is running" notes sent to Sentry, the crash-reporting service, keep Sentry's random installation ID, even with usage metrics off. Turning off crash reports stops these notes after a restart.
 - **Reports saved before you turned it off.** A crash report the app saved but had not sent yet stays on your Mac while crash reports are off. It is not deleted, and it may be sent if you turn crash reports back on.
 - **Feedback still works.** With crash reports off, you can still send feedback, and feedback you already sent may be retried.
-- **The app still uses the network.** With both switches off, EnviousWispr still checks for updates, downloads the models you choose, and sends your text to a cloud polish provider if you picked one. When you press Send on a feedback report, it also runs the help check and then sends the report if you choose to.
+- **The app still uses the network.** With both switches off, EnviousWispr still checks for updates, downloads the models you choose, and sends the text for AI Polish or meeting summaries to a cloud provider if you picked one. When you press Send on a feedback report, it also runs the help check and then sends the report if you choose to.
 - **Only the app.** These switches cover the app. They do not change anything on this website.
 
 ## What is the diagnostics diary?
@@ -128,5 +128,7 @@ Your report is saved on your Mac first. It is sent as soon as the app can reach 
 Only if you choose it. Polish runs on your Mac by default. If you choose OpenAI, Gemini, or Claude instead, you add your own API key. Your text is then sent to that provider, along with your custom words and the name of the app you are dictating into, so the model gets your spellings and tone right. Audio is never sent. The app tells you this when you set it up. That connection is your account with that company, governed by their terms.
 
 Ollama works in two ways, and only one of them keeps your text on your Mac. A model you download runs on your Mac and sends nothing anywhere. A hosted model runs on Ollama's servers, so your text goes to Ollama in the same way it would go to any other cloud provider. EnviousWispr lists the two kinds under separate headings so you can tell which you are picking.
+
+EnviousMeet has its own **Summary engine** choice under **EnviousMeet** > **Summaries**. It is separate from dictation's AI Polish. If you choose a cloud summary engine, it receives the meeting transcript, your notes, and meeting details such as the start time, recorded length, call app and, when available, the calendar title and invited people. Turning off **Enable AI Polish** does not change that choice. See [AI Polish and Cloud Data](/help/ai-polish-and-cloud-data/) for what each option receives.
 
 Envious Labs is not in the middle of any of these requests. Everything goes straight from your Mac to the provider, so Envious Labs never sees it either way.

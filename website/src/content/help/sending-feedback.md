@@ -6,10 +6,10 @@ section: "Getting Help"
 order: 9
 keywords: ["send feedback", "feedback", "report a bug", "bug report", "bug button", "ladybug", "feature request", "contact", "support", "reply", "suggestion", "include diagnostics", "diagnostics", "help check", "send greyed out", "send button disabled", "couldn't send", "solved don't send"]
 related: ["what-data-is-collected", "source-code-and-contributing", "app-crashes-or-asr-engine-crashes", "privacy-overview"]
-updated: 2026-10-02
+updated: 2026-11-05
 deflection: "never_intervene"
 ---
-Found a bug or have an idea? You can tell us from inside EnviousWispr. Every message you send reaches the team directly, and we read every one.
+You can send bugs and ideas from inside EnviousWispr. The form can suggest help articles before you choose whether to send your report to the team.
 
 ## How do I send feedback?
 

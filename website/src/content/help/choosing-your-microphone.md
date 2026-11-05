@@ -6,7 +6,7 @@ section: "Input Configuration"
 order: 1
 keywords: ["microphone", "mic", "input device", "which microphone", "headset", "usb mic", "external mic", "built in mic", "change microphone", "wrong microphone", "music", "spotify", "pause music", "lower the volume", "duck", "mute music while dictating", "other audio", "youtube", "audio interface", "focusrite", "scarlett", "virtual microphone", "wrong input", "records silence"]
 related: ["bluetooth-and-airpods", "empty-or-missing-transcription"]
-updated: 2026-10-17
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr follows whichever microphone your Mac is set to, or uses a specific device you choose. Both choices live under **Dictation Settings** \> **Microphone**.
@@ -21,7 +21,7 @@ The **Microphone** tab shows which device Auto is using.
 
 ### Auto picked a virtual device and records silence
 
-If your Mac's input is not a real microphone, EnviousWispr records from an available real microphone instead. Virtual devices from Krisp, Loopback, BlackHole, meeting apps and aggregate devices deliver only silence, so Auto skips them. If a virtual device is the only input on your Mac, it is still used.
+If your Mac's input is a virtual or aggregate device, **Auto** uses an available real microphone instead, because the virtual input may not carry your voice. If a virtual device is the only input on your Mac, it is still used. If you deliberately route your microphone through a virtual device, choose that device explicitly in the picker.
 
 ### Always use one specific microphone
 

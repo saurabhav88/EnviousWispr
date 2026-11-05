@@ -6,7 +6,7 @@ section: "Polish"
 order: 5
 keywords: ["apple intelligence", "apple ai", "on device ai", "free ai", "macos 26", "set up apple intelligence", "enable apple intelligence", "turn on apple intelligence polish"]
 related: ["apple-intelligence-not-available", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "s1-mini-by-superwhisper-and-writing-style"]
-updated: 2026-10-30
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 Apple Intelligence is Apple's built-in system for processing language on your Mac. EnviousWispr can use it to tidy up your dictation by removing filler words and fixing punctuation. It is free, needs no API key, and keeps your text on your Mac. A fresh install starts with it selected, but it only works on macOS 26 or later.
@@ -23,7 +23,7 @@ Apple Intelligence is Apple's built-in system for processing language on your Ma
 2. **Open AI Polish.** In EnviousWispr, open **Settings** > **AI Polish**.
 3. **Select Apple Intelligence.** Choose **Apple Intelligence** under **On this Mac**.
 
-You know it worked when your next dictation comes back with the filler words removed and the punctuation corrected.
+Check that the **AI Polish** page shows Apple Intelligence is available. Then dictate a full sentence and compare the result with **Enable AI Polish** off and on. Very short dictations can skip polish. Filler removal and punctuation alone do not show that AI Polish ran, because the speech engine and earlier cleanup can also produce them.
 
 ### What if Apple Intelligence is not available?
 

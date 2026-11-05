@@ -6,17 +6,17 @@ section: "Dictionary"
 order: 1
 keywords: ["custom words", "vocabulary", "add a word", "my name", "names", "jargon", "technical terms", "spells my name wrong", "dictionary", "teach it a word", "acronyms", "how do I add a name", "where is your words", "fix a misspelled name", "turn on vocabulary packs", "import my contacts", "wrong spelling", "word keeps coming out wrong", "custom word not working", "Enable Dictionary"]
 related: ["self-learning-dictionary", "why-is-my-dictation-inaccurate", "how-custom-word-correction-works", "using-snippets"]
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
-When EnviousWispr keeps misspelling a name or a specialised word, add it to your words and it writes your spelling from then on. You often do not need to add it by hand: fix the word once in text EnviousWispr recently pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
+When EnviousWispr keeps misspelling a name or a specialised word, add it to your words to help it use your spelling. You often do not need to add it by hand: fix the word once in text EnviousWispr recently pasted, and the [Self-Learning Dictionary](/help/self-learning-dictionary/) adds it for you.
 
 ### Add a word it keeps getting wrong
 
 1. **Open your words.** Click the EnviousWispr icon in your menu bar, choose **Open EnviousWispr**, then go to **Dictionary** > **Your Words**.
 2. **Add the word.** Click **Add word** and type the exact spelling you want to appear.
 
-From then on, when you speak that word, EnviousWispr writes your spelling. If it writes "Chat G P T", adding "ChatGPT" fixes that in every dictation.
+EnviousWispr then looks for matching mishearings and applies your spelling. For example, adding "ChatGPT" helps it correct "Chat G P T". If it still misses your word, add the exact wrong version as a mishearing; a custom word cannot catch every recognition mistake.
 
 If a word you added still comes out wrong, see [How Custom Word Correction Works](/help/how-custom-word-correction-works/).
 

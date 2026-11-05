@@ -6,7 +6,7 @@ section: "Audio Processing"
 order: 4
 keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long", "voice activity detection", "stop recording on silence", "pause duration", "stops mid sentence"]
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "show_but_always_send"
 ---
 EnviousWispr can end a recording by itself once you stop talking, so you do not have to press your keybind again. This is off by default. Switch it on first.
@@ -37,8 +37,8 @@ Check that **Stop recording on silence** is switched on. It is off by default. I
 
 ### Silence is cut out of my dictation
 
-Before your speech is transcribed, EnviousWispr finds the parts of the recording where you were talking and sends only those to the speech engine. In a quiet or normal room that comes to the same thing as removing the silence at the start and the end. Anything the app does not recognise as speech can be left out, wherever it falls in the recording.
+EnviousWispr identifies speech so it can trim silence before a batch transcription. Fast can remove gaps between speech; All Languages can trim the beginning and end. When trimming would remove too much or has no usable speech range, the app can use the full recording instead. Faster Transcription processes audio while you speak, so it does not use the same trimming path.
 
-This trimming happens whether or not auto-stop is switched on. It runs entirely on your Mac and needs no setup. It works from a copy of your audio with low rumble (fans, engines, air conditioners) taken out. Your recording and the audio your engine transcribes are untouched.
+This trimming happens whether or not auto-stop is switched on. It runs entirely on your Mac and needs no setup. It works from a copy of your audio with low rumble (fans, engines, air conditioners) taken out. That rumble filter is used only to detect speech. It is not applied to the audio the speech engine transcribes.
 
 If a noisy room is the problem, read [_Noise Suppression_](/help/noise-suppression/).

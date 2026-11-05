@@ -6,10 +6,10 @@ section: "Transcription Issues"
 order: 3
 keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound", "meter is flat", "cant hear me"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
-updated: 2026-10-17
+updated: 2026-11-05
 deflection: "show_but_always_send"
 ---
-A brief press without speech can end quietly with nothing pasted. If you spoke and no text appeared, work through these checks in order, from the most common cause to the least.
+A brief press without speech can end quietly with nothing pasted. If you spoke and no text appeared, open **History** first. If your dictation is there, use [Paste Not Working?](/help/paste-not-working/) to get it back. If no transcript was created, work through the microphone and model checks below.
 
 ### Microphone not working: check that EnviousWispr can hear you
 
@@ -29,13 +29,13 @@ A physical mute switch stops your voice reaching the app even when everything el
 
 EnviousWispr needs to listen to the device you are actually speaking into. Open **Dictation Settings** > **Microphone**. When it is set to **Auto**, EnviousWispr records from whatever input your Mac is using, which may not be the device at your mouth. Pick a specific device from the list to remove the doubt.
 
-If your Mac's default input is a virtual device, such as one installed by Krisp, Loopback, BlackHole, an aggregate device or a meeting app, **Auto** skips it and records from a real microphone, because a virtual device delivers only silence. A virtual device is still used when it is the only input on your Mac.
+If your Mac's default input is a virtual or aggregate device, **Auto** uses an available real microphone instead, because the virtual input may not carry your voice. A virtual device is still used when it is the only input on your Mac. If you deliberately route your microphone through one, choose it explicitly in the picker.
 
 If you record through an audio interface with more than one input, such as a Focusrite Scarlett, also check the **Mic is on** control next to the device picker. EnviousWispr listens to Input 1 unless you pick another, and a microphone plugged into Input 2 records silence until you do. See [_Choosing Your Microphone_](/help/choosing-your-microphone/).
 
 ### Wait for the speech model to finish downloading
 
-The app downloads its speech model on first launch. Until that download finishes, there is nothing to transcribe your voice with. Progress is shown on screen. If the speech model was not ready when you finished speaking, your recording is kept and given another go rather than lost.
+The app downloads its speech model on first launch. Until that download finishes, there is nothing to transcribe your voice with. Progress is shown on screen. If you press your keybind before the model is installed or ready, EnviousWispr shows a notice and does not start recording. Wait for it to be ready, then press the keybind again and speak.
 
 ### Recording was too short
 

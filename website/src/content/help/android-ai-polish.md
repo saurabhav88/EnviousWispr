@@ -6,7 +6,7 @@ section: "Using EnviousWispr on Android"
 order: 6
 keywords: ["android ai polish", "s1-mini", "polish on this phone", "cloud polish android", "openai key android", "gemini key android", "claude key android", "tone structure context", "writing style android"]
 related: ["android-phone-requirements", "android-privacy", "android-model-downloads"]
-updated: 2026-10-28
+updated: 2026-11-05
 deflection: "never_intervene"
 ---
 AI polish turns what you said into clear writing after speech recognition finishes. On Android you choose where it runs in the **AI Polish** tab, under **1 · WHERE POLISH RUNS**.
@@ -41,4 +41,4 @@ Under **WRITING STYLE**, three settings shape S1-mini's output. A new pick appli
 |---|---|---|
 | **Tone** | Casual, Semi-casual, Semi-formal, Formal | Semi-formal keeps capitals and full stops. Casual and semi-casual write the way you would text. |
 | **Structure** | Prose, Lists | Lists turns a spoken run of items into bullet points. Prose keeps everything as sentences. |
-| **Context** | General, Email | Email lays out a greeting line and a sign-off block when you dictate them. It changes nothing else. |
+| **Context** | General, Email | Email asks S1-mini to lay out a greeting line and a sign-off block when you dictate them. Check the result, as AI can still change wording or make a mistake. |
