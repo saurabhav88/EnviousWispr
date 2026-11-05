@@ -284,7 +284,10 @@ fi
 # shared file or explicitly unlock from the child.
 CI_QUEUE_PATH="$(python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" prepare)"
 exec 9<>"$CI_QUEUE_PATH"
-python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 &
+# #4089/#4090: a filtered run is short and goes before a queued full run.
+CI_QUEUE_KIND="full"
+[ "${#TEST_ARGS[@]}" -gt 0 ] && CI_QUEUE_KIND="short"
+python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KIND" &
 CI_QUEUE_PID=$!
 if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
 # #4293: this checkout's build lock (scripts/lib/build-folder-lock.py), held on
