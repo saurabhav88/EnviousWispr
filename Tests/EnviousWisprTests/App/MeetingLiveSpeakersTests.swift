@@ -175,11 +175,17 @@ struct MeetingLiveSpeakersTests {
     #expect(
       blocks.map(\.startMs) == [0, 0, 6],  // sample 100 at 16 kHz is 6.25 ms
       "a second speaker inside one line is stamped from its own first word, not the line's start")
-    // The view draws one flat list of runs: "Right." keeps its row while its block changes, and
-    // only the run opening a block carries a header.
+    // The view draws one row per live line, before and after the labels arrived, so no line's
+    // text row is removed or reparented; the second speaker inside "c-1" is a header within it.
+    let before = MeetingsPresentation.liveRows(
+      MeetingsPresentation.liveBlocks(lines, labels: MeetingLiveSpeakerLabels()))
     let rows = MeetingsPresentation.liveRows(blocks)
-    #expect(rows.map(\.id) == ["m-1#0", "c-1#0", "c-1#1", "c-2#0"])
-    #expect(rows.map { $0.header?.speaker } == [.you, .remote("1"), .remote("2"), nil])
+    #expect(before.map(\.id) == ["m-1", "c-1", "c-2"])
+    #expect(rows.map(\.id) == ["m-1", "c-1", "c-2"])
+    #expect(rows.map { $0.header?.speaker } == [.you, .remote("1"), nil])
+    #expect(rows[1].segments.map(\.text) == ["Yes,", "and no."])
+    #expect(rows[1].segments.map { $0.header?.speaker } == [nil, .remote("2")])
+    #expect(rows[2].segments.map(\.text) == ["Right."], "continues Speaker 2's block, no header")
   }
 
   @Test("untimed text, a reset and stale results never produce a label")

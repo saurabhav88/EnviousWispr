@@ -412,6 +412,22 @@ struct MeetingLiveWordsView: View {
   /// ended.
   var superseded = false
 
+  private func liveHeader(_ header: MeetingsPresentation.LiveRow.Header) -> String {
+    "\(MeetingsPresentation.liveSpeakerHeader(header.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: header.startMs))"
+  }
+
+  /// One line's text; a speaker change inside it starts a new paragraph under its own header.
+  private func liveText(_ row: MeetingsPresentation.LiveRow) -> Text {
+    row.segments.enumerated().reduce(Text(verbatim: "")) { text, item in
+      let (index, segment) = item
+      guard index > 0 else { return text + Text(segment.text) }
+      guard let header = segment.header else { return text + Text(" " + segment.text) }
+      return text + Text(verbatim: "\n\n")
+        + Text(verbatim: liveHeader(header)).font(.caption.weight(.semibold))
+          .foregroundColor(.stTextSecondary) + Text(verbatim: "\n") + Text(segment.text)
+    }
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       ForEach(
@@ -434,9 +450,10 @@ struct MeetingLiveWordsView: View {
       } else {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 2) {
-            // #4355 PR C: speaker blocks, after each piece was assigned, drawn as one flat list
-            // of runs keyed by their line's identity. A header rides on the run that opens its
-            // block, so regrouping moves headers and never reparents selected or focused text.
+            // #4355 PR C: speaker blocks, after each piece was assigned, drawn as one row per
+            // live line keyed by the line's identity. Regrouping changes headers only: a line's
+            // text is never removed or reparented, so selection and focus stay with it. A
+            // speaker change inside a line is a header inside that line's text.
             ForEach(
               MeetingsPresentation.liveRows(
                 MeetingsPresentation.liveBlocks(
@@ -445,19 +462,16 @@ struct MeetingLiveWordsView: View {
               row in
               VStack(alignment: .leading, spacing: 2) {
                 if let header = row.header {
-                  Text(
-                    verbatim:
-                      "\(MeetingsPresentation.liveSpeakerHeader(header.speaker, names: transcript.speakerLabels.names)) · \(MeetingsPresentation.clock(ms: header.startMs))"
-                  )
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(.stTextSecondary)
-                  .accessibilityAddTraits(.isHeader)
+                  Text(verbatim: liveHeader(header))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.stTextSecondary)
+                    .accessibilityAddTraits(.isHeader)
                 }
-                Text(row.run.text)
+                liveText(row)
                   .font(.stBody)
-                  .italic(row.run.kind == .uncertain)
+                  .italic(row.kind == .uncertain)
                   .foregroundStyle(
-                    superseded || row.run.kind != .confirmed
+                    superseded || row.kind != .confirmed
                       ? Color.stTextSecondary : Color.stTextPrimary
                   )
                   .textSelection(.enabled)

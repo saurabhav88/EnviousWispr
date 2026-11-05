@@ -43,6 +43,8 @@ enum MeetingsPresentation {
   struct LiveBlock: Identifiable, Equatable {
     struct Run: Identifiable, Equatable {
       let id: String
+      /// The live line this run's text came from.
+      let lineID: String
       let text: String
       let kind: LiveWordsAssembler.Line.Kind
     }
@@ -67,7 +69,8 @@ enum MeetingsPresentation {
         let text = run.text.trimmingCharacters(in: .whitespacesAndNewlines)
         current = nil
         guard !text.isEmpty else { return }
-        let item = LiveBlock.Run(id: "\(line.id)#\(runStart)", text: text, kind: line.kind)
+        let item = LiveBlock.Run(
+          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind)
         if let last = blocks.indices.last, blocks[last].speaker == run.key {
           blocks[last].runs.append(item)
         } else {
@@ -90,27 +93,52 @@ enum MeetingsPresentation {
     return blocks
   }
 
-  /// One row of the live words: a run, with its block's header when it opens a block. The view
-  /// shows rows as one flat list keyed by run, so regrouping moves headers and never reparents
-  /// text the user selected or focused.
+  /// One row of the live words: ONE live line, keyed by the line's identity, so regrouping
+  /// never removes or reparents a line's text (merging or splitting runs only changes headers).
+  /// `header` is the block header above the row when the line opens a block; a speaker change
+  /// inside the line is a `segments` entry with its own header, drawn inside the row's text.
   struct LiveRow: Identifiable, Equatable {
-    let run: LiveBlock.Run
-    /// The block's speaker and start, on the block's first run only.
-    let header: (speaker: LiveWordsAssembler.LiveSpeakerKey, startMs: Int)?
-    var id: String { run.id }
-
-    static func == (lhs: LiveRow, rhs: LiveRow) -> Bool {
-      lhs.run == rhs.run && lhs.header?.speaker == rhs.header?.speaker
-        && lhs.header?.startMs == rhs.header?.startMs
+    struct Header: Equatable {
+      let speaker: LiveWordsAssembler.LiveSpeakerKey
+      let startMs: Int
     }
+    struct Segment: Equatable {
+      /// Nil when the segment continues the block above.
+      let header: Header?
+      let text: String
+    }
+    let id: String
+    let kind: LiveWordsAssembler.Line.Kind
+    let header: Header?
+    let segments: [Segment]
   }
 
   static func liveRows(_ blocks: [LiveBlock]) -> [LiveRow] {
-    blocks.flatMap { block in
-      block.runs.enumerated().map { index, run in
-        LiveRow(run: run, header: index == 0 ? (block.speaker, block.startMs) : nil)
+    var rows: [LiveRow] = []
+    var lineID: String?
+    var kind: LiveWordsAssembler.Line.Kind = .confirmed
+    var header: LiveRow.Header?
+    var segments: [LiveRow.Segment] = []
+    func flush() {
+      guard let id = lineID else { return }
+      rows.append(LiveRow(id: id, kind: kind, header: header, segments: segments))
+    }
+    for block in blocks {
+      for (index, run) in block.runs.enumerated() {
+        let opens = index == 0 ? LiveRow.Header(speaker: block.speaker, startMs: block.startMs) : nil
+        if run.lineID != lineID {
+          flush()
+          lineID = run.lineID
+          kind = run.kind
+          header = opens
+          segments = [LiveRow.Segment(header: nil, text: run.text)]
+        } else {
+          segments.append(LiveRow.Segment(header: opens, text: run.text))
+        }
       }
     }
+    flush()
+    return rows
   }
 
   /// When a run starts: its first piece's written audio position, so a later speaker in a long
