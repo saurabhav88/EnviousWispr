@@ -42,7 +42,7 @@ import Testing
       echo: Int = 7, disk: Bool? = false, callSound: CallSoundSummary? = nil,
       engine: MeetingEngineChoice? = .parakeet, speakerNaming: SpeakerNamingSummary? = nil,
       muteFollow: MuteFollowSummary? = nil, provenance: MeetingEndedTelemetry.Provenance? = nil,
-      echoSummary: MeetingEchoSummary? = nil
+      echoSummary: MeetingEchoSummary? = nil, liveSpeakers: MeetingLiveSpeakerSummary? = nil
     ) -> MeetingEndedTelemetry {
       MeetingEndedTelemetry(
         outcome: outcome, entryPoint: entry, durationSeconds: duration, microphoneTrack: .captured,
@@ -51,7 +51,7 @@ import Testing
         audioSeconds: audio, yieldCount: 4, gapCount: 2, echoHiddenCount: echo, diskStopped: disk,
         summaryPlan: .scheduled, hasNotes: true, callSound: callSound,
         speakerNaming: speakerNaming, muteFollow: muteFollow, provenance: provenance,
-        echo: echoSummary)
+        echo: echoSummary, liveSpeakers: liveSpeakers)
     }
 
     private static let echoKeys: Set<String> = [
@@ -77,6 +77,48 @@ import Testing
         .union(row.boolProps.keys)
       #expect(keys == Self.approvedKeys.union(Self.echoKeys))
     }
+
+    @Test("#4355 PR C: live speaker labels add a state, a share bucket and whole counts")
+    func liveSpeakerFields() throws {
+      let summary = MeetingLiveSpeakerSummary(
+        modelRevision: "25a90f97", state: .ready, remoteWords: 200, attributedWords: 160,
+        namedSpeakers: 2, backlogSkippedMs: 1_250, updateDrops: 3, unpositionedMs: 40,
+        liveWordsUnpositionedMs: 900)
+      let row = try #require(capture(event(liveSpeakers: summary)))
+      #expect(row.stringProps["live_speaker_state"] == "ready")
+      #expect(row.stringProps["live_speaker_model_revision"] == "25a90f97")
+      #expect(row.stringProps["live_attributed_share"] == "75%+")
+      #expect(row.intProps["live_named_speaker_count"] == 2)
+      #expect(row.intProps["live_backlog_skipped_ms"] == 1_250)
+      #expect(row.intProps["live_update_drops"] == 3)
+      #expect(row.intProps["live_unpositioned_ms"] == 40)
+      #expect(row.intProps["live_words_unpositioned_ms"] == 900)
+      // The same keys, and only those, ride the content-free Sentry breadcrumb.
+      let crumb = try #require(
+        TelemetryService.meetingLiveSpeakersBreadcrumbData(event(liveSpeakers: summary)))
+      #expect(Set(crumb.keys) == Self.liveKeys)
+      #expect(crumb["live_speaker_state"] as? String == "ready")
+      #expect(TelemetryService.meetingLiveSpeakersBreadcrumbData(event()) == nil)
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(keys == Self.approvedKeys.union(Self.liveKeys))
+      // No live call words: no share (never a 0% bucket); no summary: no live key at all.
+      let silent = MeetingLiveSpeakerSummary(
+        modelRevision: nil, state: .absent, remoteWords: 0, attributedWords: 0, namedSpeakers: 0,
+        backlogSkippedMs: 0, updateDrops: 0, unpositionedMs: 0, liveWordsUnpositionedMs: 0)
+      let quiet = try #require(capture(event(liveSpeakers: silent)))
+      #expect(quiet.stringProps["live_attributed_share"] == nil)
+      #expect(quiet.stringProps["live_speaker_model_revision"] == nil)
+      #expect(quiet.stringProps["live_speaker_state"] == "absent")
+      let none = try #require(capture(event()))
+      #expect(Set(none.stringProps.keys).union(none.intProps.keys).isDisjoint(with: Self.liveKeys))
+    }
+
+    private static let liveKeys: Set<String> = [
+      "live_speaker_state", "live_speaker_model_revision", "live_attributed_share",
+      "live_named_speaker_count", "live_backlog_skipped_ms", "live_update_drops",
+      "live_unpositioned_ms", "live_words_unpositioned_ms",
+    ]
 
     @Test("#4355: one cause names itself, none says none; no reference is a known zero")
     func echoReasonAndNoReference() throws {

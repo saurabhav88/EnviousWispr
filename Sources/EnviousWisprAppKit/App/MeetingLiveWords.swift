@@ -345,8 +345,12 @@ final class MeetingLiveWords {
   /// session's terminal) is applied by that cleanup while these lines are still this meeting's
   /// (#4097); the cleanup then closes admission. The lines stay until `transcriptReady`.
   func stop() {
+    // #4355 PR C: both live-words pumps' unpositioned audio (one pump per track for the whole
+    // recording), read before retirement.
+    let unpositioned = recording?.tracks.values.reduce(0) { $0 + $1.pump.accounting.unpositioned }
     retireCurrent(clearOutput: false, drainHeldAudio: true)
-    speakers?.stop()
+    // The speaker summary is frozen from the lines this stop applied.
+    speakers?.stop(lines: transcript?.lines ?? [], liveWordsUnpositionedSamples: unpositioned ?? 0)
   }
 
   /// Delete: the same, and the live words go now.

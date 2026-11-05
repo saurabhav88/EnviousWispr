@@ -77,6 +77,7 @@ struct MeetingSpeakerLabelsModelTests {
     var requests: [Bool] = []
     var cancels = 0
     var removes = 0
+    var reports: [Bool] = []
     let directory = URL(fileURLWithPath: "/speaker-live-fixture", isDirectory: true)
     let check = FakeCheck()
 
@@ -97,7 +98,8 @@ struct MeetingSpeakerLabelsModelTests {
         },
         admittedDirectory: { [unowned self] in state == .admitted ? directory : nil },
         isMeetingActive: { [unowned self] in meetingActive },
-        check: { [check] in await check.run($0) }))
+        check: { [check] in await check.run($0) },
+        report: { [unowned self] in reports.append($0) }))
 
     /// Admitted, check started and answered.
     func admitAndCheck(_ outcome: LiveSpeakerLoadCheckOutcome) async throws {
@@ -163,6 +165,26 @@ struct MeetingSpeakerLabelsModelTests {
     #expect(rig.check.directories == [rig.directory])
     rig.model.checkIfNeeded()
     #expect(rig.check.calls == 1)
+  }
+
+  @Test("each completed check reports its real result once; a stopped check reports nothing")
+  func checkResultsAreReported() async throws {
+    let rig = Rig()
+    try await rig.admitAndCheck(.failed)
+    rig.model.retryCheck()
+    try await BoundedWait.until(rig.check.entered(1))
+    rig.check.answer(.loaded)
+    try await rig.finishCheck()
+    rig.state = .notReady
+    rig.model.checkIfNeeded()
+    rig.state = .admitted
+    rig.model.checkIfNeeded()
+    try await BoundedWait.until(rig.check.entered(2))
+    rig.check.answerLateOnCancel(.cancelled)
+    rig.meetingActive = true
+    rig.model.meetingBecameActive()
+    try await rig.finishCheck()
+    #expect(rig.reports == [false, true], "loaded and failed once each; the stopped check is not a failure")
   }
 
   @Test("a failed load leaves Try Again, which checks again")

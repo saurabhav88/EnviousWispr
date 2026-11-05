@@ -43,6 +43,7 @@ struct MeetingLiveSpeakersTests {
     }
     func reset() { events.withLock { $0.append("reset") } }
     func close() { closed.withLock { $0 = true } }
+    var droppedSamples: Int { 0 }
   }
 
   @Observable @MainActor final class Dictation { var active = false }
@@ -290,7 +291,7 @@ struct MeetingLiveSpeakersTests {
   func boundedHandoffKeepsResets() async throws {
     let rig = Rig()
     rig.handoffActivityLimit = 2
-    _ = try await rig.startMeeting()
+    let id = try await rig.startMeeting()
     var applied: [LiveSpeakerUpdate] = []
     let resetApplied = BoundedWait.Signal()
     rig.speakers.receivedForTests = { update in
@@ -308,7 +309,39 @@ struct MeetingLiveSpeakersTests {
     #expect(applied.count == 4, "ready, two activities, reset")
     #expect(applied.last == .reset(epoch: 1))
     rig.speakers.stop()
-    #expect(rig.speakers.lastFacts?.droppedActivityUpdates == 1)
+    #expect(rig.speakers.frozenSummary(for: id)?.updateDrops == 1)
+  }
+
+  @Test("Stop freezes the meeting's speaker summary; the next meeting cannot change it")
+  func summaryIsFrozenAtStop() async throws {
+    let rig = Rig()
+    let id = try await rig.startMeeting()
+    rig.try_publishReady()
+    let lines = [
+      Self.line("m-1", .microphone, [MeetingTimedPiece(text: "not counted here", span: nil)]),
+      Self.line(
+        "c-1", .callSound,
+        [
+          MeetingTimedPiece(text: "one two three", span: Self.span(0, 100)),
+          MeetingTimedPiece(text: " four", span: nil),
+        ]),
+    ]
+    rig.speakers.linesChanged(lines, meetingID: id)
+    try await rig.publishAndWait(.activity([Self.activity(0, 100, [0])], unpositionedFrames: 0))
+    rig.speakers.stop(lines: lines, liveWordsUnpositionedSamples: 16_000)
+    let frozen = try #require(rig.speakers.frozenSummary(for: id))
+    #expect(frozen.liveWordsUnpositionedMs == 1_000, "the live-words pumps' count, in ms")
+    #expect(frozen.unpositionedMs == 0, "kept apart from the speaker pump's")
+    #expect(frozen.state == .ready)
+    #expect(frozen.remoteWords == 4, "untimed call words count; microphone words never do")
+    #expect(frozen.attributedWords == 3)
+    #expect(frozen.namedSpeakers == 0)
+    rig.analyses[0].onReleased()
+    let next = try await rig.startMeeting()
+    rig.speakers.stop(lines: [])
+    #expect(rig.speakers.frozenSummary(for: id) == nil, "the summary belongs to its own meeting")
+    #expect(rig.speakers.frozenSummary(for: next)?.remoteWords == 0)
+    #expect(frozen.attributedShare == 0.75)
   }
 }
 

@@ -13,6 +13,8 @@ protocol LiveSpeakerAnalysis: Sendable {
   func submit(_ chunk: MeetingLiveAudioChunk)
   func reset()
   func close()
+  /// Queued audio dropped for the backlog bound so far, in samples.
+  var droppedSamples: Int { get }
 }
 
 extension LiveSpeakerSession: LiveSpeakerAnalysis {}
@@ -88,17 +90,8 @@ final class MeetingLiveSpeakers {
     /// Activity updates waiting for the main actor, at most (`Handoff`): about three minutes of
     /// the model's steps.
     var handoffActivityLimit = 256
-  }
-
-  /// What one recording's analysis did, frozen at its end (for meeting.ended in chunk 7).
-  struct Facts: Equatable, Sendable {
-    var modelState: ModelState
-    /// Call audio the pump kept without a written position (`Accounting.unpositioned`).
-    var unpositionedSamples: Int
-    /// Emitted model frames whose audio had no written position.
-    var unpositionedFrames: Int
-    /// Activity updates dropped because the main actor fell behind (`Handoff`).
-    var droppedActivityUpdates: Int
+    /// The bundled speaker model's revision (nil: none in this build), for the summary.
+    var modelRevision: @MainActor () -> String? = { nil }
   }
 
   /// Ordered handoff from the analysis queue to the main actor, bounded. Activity updates beyond
@@ -153,7 +146,6 @@ final class MeetingLiveSpeakers {
     var activities: [LiveSpeakerActivity] = []
     /// Per writer run, the end of the furthest final evidence of the current epoch.
     var reach: [Int: Int] = [:]
-    var unpositionedFrames = 0
     var start: Task<Void, Never>?
     /// The ordered update handoff, its wake (finished at retirement) and its main-actor consumer.
     var handoff: Handoff?
@@ -206,7 +198,13 @@ final class MeetingLiveSpeakers {
   /// The meeting the current labels belong to.
   private var labelsMeetingID: UUID?
   private let dictationActive = OSAllocatedUnfairLock(initialState: false)
-  private(set) var lastFacts: Facts?
+  /// The last retired recording's summary, frozen at its stop (`meeting.ended`).
+  private var frozen: (meetingID: UUID, summary: MeetingLiveSpeakerSummary)?
+
+  /// The summary frozen when `meetingID` stopped; nil for any other meeting.
+  func frozenSummary(for meetingID: UUID) -> MeetingLiveSpeakerSummary? {
+    frozen?.meetingID == meetingID ? frozen?.summary : nil
+  }
 
   private struct LiveSpeakerKeyID: Hashable {
     let epoch: Int
@@ -303,7 +301,42 @@ final class MeetingLiveSpeakers {
 
   /// Stop, Quit: closes the analysis now (its release follows on its own queue). The labels stay
   /// until the transcript replaces the live words.
-  func stop() { retire(clearLabels: false) }
+  func stop(lines: [LiveWordsAssembler.Line] = [], liveWordsUnpositionedSamples: Int = 0) {
+    freeze(lines: lines, liveWordsUnpositionedSamples: liveWordsUnpositionedSamples)
+    retire(clearLabels: false)
+  }
+
+  /// Counts what the labels achieved for the recording now stopping (call words from the final
+  /// live lines; microphone words never count).
+  private func freeze(lines: [LiveWordsAssembler.Line], liveWordsUnpositionedSamples: Int) {
+    guard let current = recording else { return }
+    var remote = 0
+    var attributed = 0
+    for line in lines where line.track == .callSound {
+      for piece in line.pieces {
+        let words = piece.text.split(whereSeparator: \.isWhitespace).count
+        remote += words
+        if let span = piece.span, labels.numbers[span] != nil { attributed += words }
+      }
+    }
+    let state: MeetingLiveSpeakerSummary.State =
+      switch current.state {
+      case .absent: .absent
+      case .loading: .loading
+      case .ready: .ready
+      case .failed: .failed
+      }
+    frozen = (
+      current.meetingID,
+      MeetingLiveSpeakerSummary(
+        modelRevision: deps.modelRevision(), state: state, remoteWords: remote,
+        attributedWords: attributed, namedSpeakers: labels.names.count,
+        backlogSkippedMs: MeetingTranscriptionJob.ms(current.analysis?.droppedSamples ?? 0),
+        updateDrops: current.handoff?.droppedActivities ?? 0,
+        unpositionedMs: MeetingTranscriptionJob.ms(current.pump.accounting.unpositioned),
+        liveWordsUnpositionedMs: MeetingTranscriptionJob.ms(liveWordsUnpositionedSamples))
+    )
+  }
 
   /// Delete, or the transcript replaced the live words: the labels go too.
   func clear(meetingID: UUID) {
@@ -427,8 +460,7 @@ final class MeetingLiveSpeakers {
       current.state = .ready
       current.epoch = epoch
       startNaming(current)
-    case .activity(let activities, let unpositioned):
-      current.unpositionedFrames += unpositioned
+    case .activity(let activities, _):
       for activity in activities where activity.epoch == current.epoch {
         current.activities.append(activity)
         let run = activity.span.run
@@ -587,10 +619,6 @@ final class MeetingLiveSpeakers {
       current.analysis?.close()
       current.wake?.finish()  // the consumer ends; anything still queued is this stale meeting's
       _ = current.pump.retire()
-      lastFacts = Facts(
-        modelState: current.state, unpositionedSamples: current.pump.accounting.unpositioned,
-        unpositionedFrames: current.unpositionedFrames,
-        droppedActivityUpdates: current.handoff?.droppedActivities ?? 0)
       recording = nil
       generation += 1
     }

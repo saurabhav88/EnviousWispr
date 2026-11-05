@@ -248,8 +248,13 @@ struct TelemetryEmitterRegistryTests {
   /// request plus terminal per help click, or one completed hover summary; typed metadata
   /// only. Reader: exact OS/build help-lifetime investigation after the carrying release.
   /// Removing this one scanner-reported site reproduces the prior fingerprint exactly.
+  /// #4355 PR C: one new per_user_action speaker_labels.load_check site
+  /// (`trackSpeakerLabelsLoadCheck`), kept whole; one row per completed Speaker labels load
+  /// check (a stopped check sends nothing): a closed outcome and the bundled model revision.
+  /// Reader: the weekly-digest Live speaker labels section. The meeting.ended site did not move;
+  /// it gained seven optional live_* keys.
   static let sitesFingerprint =
-    "2d56440d58b47ec7f3c5d836196b40cbefac6c808bc1dbda7b2afbb9012a151d"
+    "2804fced4411c88f81af5aaa21fa6a235851da8203d5de4a402d6402eb594375"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

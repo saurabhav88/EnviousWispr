@@ -2555,7 +2555,10 @@ package final class WisprBootstrapper {
         admittedDirectory: { [modelDelivery] in
           await modelDelivery.admittedLiveSpeakerModelDirectory()
         },
-        isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive }))
+        isDictationActive: { [liveRecordingState] in liveRecordingState.isDictationActive },
+        modelRevision: { [modelDelivery] in
+          modelDelivery.speakerLiveRegistration?.manifest.identity.revision
+        }))
     let meetingLiveWords = MeetingLiveWords(
       dependencies: .init(
         resolveChoice: { [meetingLiveWordsChoice] forcing in

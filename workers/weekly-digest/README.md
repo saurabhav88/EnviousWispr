@@ -5,6 +5,10 @@ activity, downloads, and app usage for the previous seven days, the Ollama
 model list and its weekly routine, the cloud model routine, and the week's
 errors.
 
+## Live speaker labels section (#4355 PR C)
+
+Four production-only queries over the week: `meetingLiveSpeakersSql` (one row per `meeting.ended` attempt: known rows with `live_speaker_state`, the state split, how many had live call words, how many showed a call-app name, backlog skips, dropped model updates and unpositioned call audio; sums coalesce to 0 and `known` = 0 says nothing was measured), `meetingLiveShareSql` (attempts per `live_attributed_share` range; ranges are listed, never averaged), `speakerLabelsLoadCheckSql` (`speaker_labels.load_check` loaded vs failed) `speakerLabelsFailedOsSql` (failed checks by the macOS version the check itself reported) and `speakerLabelsFailedMachinesSql` (installs with a failed check, by the Mac model their `app.launched` rows reported in the window; counts installs, not checks). Counts are per meeting ATTEMPT (Transcribe again repeats a recording). A failed query degrades only its part of the section, says so, and fails the run after delivery.
+
 ## Ollama model list section (#3837)
 
 Reads `OLLAMA_LIBRARY_FEED_URL` (row count and `updated` date) and the comments

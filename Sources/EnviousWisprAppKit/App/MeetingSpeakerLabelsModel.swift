@@ -1,6 +1,7 @@
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprModelDelivery
+import EnviousWisprServices
 import Foundation
 import Observation
 import os
@@ -129,6 +130,9 @@ final class MeetingSpeakerLabelsModel {
     /// A meeting records or processes (`MeetingCoordinator.isMeetingActive`).
     let isMeetingActive: @MainActor () -> Bool
     let check: @Sendable (URL) async -> LiveSpeakerLoadCheckOutcome
+    /// Called once per completed check with its real result (loaded or failed); a stopped check
+    /// is not a result and is never reported (`speaker_labels.load_check`).
+    var report: @MainActor (_ loaded: Bool) -> Void = { _ in }
 
     static func live(
       home: ModelDeliveryHome, isMeetingActive: @escaping @MainActor () -> Bool
@@ -143,7 +147,11 @@ final class MeetingSpeakerLabelsModel {
         remove: { [home] in home.removeLiveSpeakerModel() },
         admittedDirectory: { [home] in await home.admittedLiveSpeakerModelDirectory() },
         isMeetingActive: isMeetingActive,
-        check: { await LiveSpeakerLoadCheck.run(directory: $0) })
+        check: { await LiveSpeakerLoadCheck.run(directory: $0) },
+        report: { [home] loaded in
+          TelemetryService.shared.trackSpeakerLabelsLoadCheck(
+            loaded: loaded, modelRevision: home.speakerLiveRegistration?.manifest.identity.revision)
+        })
     }
   }
 
@@ -338,6 +346,12 @@ final class MeetingSpeakerLabelsModel {
       }
       guard self?.generation == current else { return }
       let outcome = await environment.check(directory)
+      // The probe's own terminal answer, whatever the card does with it next.
+      switch outcome {
+      case .loaded: environment.report(true)
+      case .failed: environment.report(false)
+      case .cancelled: break
+      }
       self?.finish(current, outcome)
     }
   }
