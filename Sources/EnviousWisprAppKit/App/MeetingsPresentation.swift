@@ -61,7 +61,7 @@ enum MeetingsPresentation {
     var blocks: [LiveBlock] = []
     for line in lines {
       var runStart = 0
-      var current: (key: LiveWordsAssembler.LiveSpeakerKey, text: String)?
+      var current: (key: LiveWordsAssembler.LiveSpeakerKey, text: String, startMs: Int)?
       func flush() {
         guard let run = current else { return }
         let text = run.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -72,7 +72,7 @@ enum MeetingsPresentation {
           blocks[last].runs.append(item)
         } else {
           blocks.append(
-            LiveBlock(id: item.id, speaker: run.key, startMs: line.startMs, runs: [item]))
+            LiveBlock(id: item.id, speaker: run.key, startMs: run.startMs, runs: [item]))
         }
       }
       for (index, piece) in line.pieces.enumerated() {
@@ -82,12 +82,21 @@ enum MeetingsPresentation {
         } else {
           flush()
           runStart = index
-          current = (key, piece.text)
+          current = (key, piece.text, runStartMs(piece, line: line))
         }
       }
       flush()
     }
     return blocks
+  }
+
+  /// When a run starts: its first piece's written audio position, so a later speaker in a long
+  /// line is not stamped with the line's start. Never before the line's own start (written
+  /// positions can trail the meeting clock after a capture gap); untimed pieces use the line's.
+  private static func runStartMs(_ piece: MeetingTimedPiece, line: LiveWordsAssembler.Line) -> Int
+  {
+    guard let span = piece.span else { return line.startMs }
+    return max(line.startMs, MeetingTranscriptionJob.ms(span.startSample))
   }
 
   /// A live block's header: "You", the call app's name for the speaker (`names`, by number),

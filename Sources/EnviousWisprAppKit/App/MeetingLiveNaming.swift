@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
+import os
 
 /// #4355 PR C plan §3.3 Live names: turns the recording meeting's settled live speaker evidence
 /// into the shipped namer's inputs. Naming policy stays entirely in `MeetingSpeakerNamer`.
@@ -43,6 +44,39 @@ enum MeetingLiveNaming {
     }
 
     var endSample: Int { startSample + sampleCount }
+  }
+
+  /// The clock pairs of one recording, kept for naming. The writer queue
+  /// (`MeetingRecorder.liveSamples`: never blocks, no allocation) writes into preallocated slots
+  /// with `withLockIfAvailable`; when the main actor holds the lock, the pair is dropped. A
+  /// dropped or replaced pair only leaves that audio out of name evidence
+  /// (`observationStretches` skips parts in no chunk), never gives it a wrong time.
+  final class ClockRing: Sendable {
+    private struct State: Sendable {
+      var slots: [ClockEntry?]
+      var next = 0
+    }
+    private let state: OSAllocatedUnfairLock<State>
+
+    init(capacity: Int) {
+      precondition(capacity > 0)
+      state = OSAllocatedUnfairLock(
+        initialState: State(slots: [ClockEntry?](repeating: nil, count: capacity)))
+    }
+
+    /// Writer queue: never waits and never allocates. The main actor reads copies
+    /// (`entries()`), so the slot storage is never shared when this writes into it.
+    func note(_ entry: ClockEntry) {
+      _ = state.withLockIfAvailable { s in
+        s.slots[s.next] = entry
+        s.next = (s.next + 1) % s.slots.count
+      }
+    }
+
+    /// Main actor: a fresh copy of the pairs kept, in no particular order.
+    func entries() -> [ClockEntry] {
+      state.withLock { s in s.slots.compactMap { $0 } }
+    }
   }
 
   /// Written stretches of `run` on the call-app log's clock, through the chunks that hold them.

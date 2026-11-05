@@ -152,9 +152,9 @@ final class MeetingLiveSpeakers {
     var wake: AsyncStream<Void>.Continuation?
     var consumer: Task<Void, Never>?
     var naming: Task<Void, Never>?
-    /// Each released call chunk's written position and acquisition time (writer queue appends,
-    /// pruned with the evidence on the main actor), for the naming projection.
-    let clock = OSAllocatedUnfairLock<[MeetingLiveNaming.ClockEntry]>(initialState: [])
+    /// Each released call chunk's written position and acquisition time (the writer queue notes
+    /// them without waiting), for the naming projection.
+    let clock = MeetingLiveNaming.ClockRing(capacity: MeetingLiveSpeakers.clockLimit)
     /// The writer run each reset sent to the analysis starts, in order (the consumer appends, the
     /// matching `.reset` publication takes the first).
     let resetRuns = OSAllocatedUnfairLock<[Int]>(initialState: [])
@@ -260,15 +260,11 @@ final class MeetingLiveSpeakers {
     // Writer queue: copy into the pump and note the chunk's clock pair; nothing else.
     return { samples, chunk in
       pump.admit(samples, span: chunk.span)
-      let entry = MeetingLiveNaming.ClockEntry(chunk)
-      clock.withLock { entries in
-        entries.append(entry)
-        if entries.count > Self.clockLimit { entries.removeFirst() }
-      }
+      clock.note(MeetingLiveNaming.ClockEntry(chunk))
     }
   }
 
-  /// Clock pairs kept at most (one per released chunk); the oldest goes first beyond it.
+  /// Clock pairs kept at most (one per released chunk); a new pair replaces the oldest.
   nonisolated static let clockLimit = 8_192
 
   /// Capture started. With call sound, loads the model (if admitted) once any earlier copy is
@@ -520,7 +516,7 @@ final class MeetingLiveSpeakers {
           namingEvidence[span] = MeetingLiveNaming.Evidence(
             speakerID: MeetingLiveNaming.speakerID(epoch: epoch, slot: slot), epoch: epoch,
             soloMs: MeetingLiveNaming.observationStretches(
-              solo, run: span.run, clock: current.clock.withLock { $0 }, anchor: anchor))
+              solo, run: span.run, clock: current.clock.entries(), anchor: anchor))
         }
       } else if span.endSample <= current.reach[span.run] ?? 0 {
         settled.insert(span)  // final evidence passed it without an owner: "Speaker" for good
@@ -549,14 +545,8 @@ final class MeetingLiveSpeakers {
     }
     let excess = current.activities.count - Self.evidenceLimit
     if excess > 0 { current.activities.removeFirst(excess) }
-    let pendingStarts = earliest
-    let textEnds = textEnd
-    current.clock.withLock { entries in
-      entries.removeAll { entry in
-        let frontier = pendingStarts[entry.run] ?? textEnds[entry.run] ?? 0
-        return entry.endSample <= frontier
-      }
-    }
+    // The clock ring is fixed-size and replaces its oldest pairs itself; pruning it here would
+    // make the main actor hold the lock the writer queue must never wait for.
   }
 
   // MARK: - Names

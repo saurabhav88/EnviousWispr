@@ -172,6 +172,9 @@ struct MeetingLiveSpeakersTests {
     #expect(blocks.map(\.speaker) == [.you, .remote("1"), .remote("2")])
     #expect(blocks.map { $0.runs.map(\.text) } == [["Can we ship?"], ["Yes,"], ["and no.", "Right."]])
     #expect(blocks.map(\.id) == ["m-1#0", "c-1#0", "c-1#1"], "runs keep their line's identity")
+    #expect(
+      blocks.map(\.startMs) == [0, 0, 6],  // sample 100 at 16 kHz is 6.25 ms
+      "a second speaker inside one line is stamped from its own first word, not the line's start")
   }
 
   @Test("untimed text, a reset and stale results never produce a label")
