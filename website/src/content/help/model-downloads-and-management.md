@@ -42,6 +42,7 @@ It is set to **Never** by default, so the model stays loaded. The other choices 
 You can remove local models you no longer need and download them again later.
 
 - **Remove the Whisper model.** Open **Dictation Settings** > **Engine** and click **Remove Model**.
+- **Remove the Universal preview model.** Open **Dictation Settings** > **Live Preview**, click **Change**, and click **Remove** on the Universal card. Choosing Universal again downloads it again.
 - **Remove an older WhisperKit copy.** Some older versions left a copy of the old All Languages model in a folder other apps share. [Uninstalling EnviousWispr](/help/uninstalling-enviouswispr/) shows how to find and remove it.
 - **Remove EG-1.** EG-1 is the polish model EnviousWispr built. Open **AI Polish** and use the remove button there. The button appears once EG-1 is installed and ready. If a newer EG-1 is waiting to install, that row offers the upgrade instead, and the remove button comes back once the upgrade finishes.
 - **Remove S1-mini.** S1-mini is the small polish model made by Superwhisper. It has the same card on the **AI Polish** page as EG-1, with the same remove button once it is installed and ready.
