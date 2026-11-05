@@ -6,6 +6,7 @@ The cloud model list is `website/public/cloud-models.json`, with a byte-identica
 |---|---|
 | `validate-list.py` | Validates a list document against the shared fixtures in `fixtures/`, the same ones `CloudModelListTests` runs through the Swift parser. `--same A B` also requires the two copies to be byte-identical. |
 | `propose.py` | The weekly routine's only owner of permitted automated list changes. It only adds rows for new models; it never hides, un-hides or edits a row (founder decision 14). `generate` writes a proposal and `check` verifies one. Both call the same permission engine. |
+| `app_token.py` | Stage 2's only GitHub route. `exec -- <command>` mints a short-lived installation token for the Stage 2 App (`STAGE2_APP_ID`, `STAGE2_APP_PRIVATE_KEY`), scoped to this repository alone, and runs the command with it in `GH_TOKEN`. It never prints the token. `--self-test` runs `app_token_test.py` against a throwaway key and a fake GitHub. Usage: `workers/cloud-models-routine/README.md` "Footer-free write route". |
 
 Engineering changes to the list (a recommendation, a request edit, a label, hiding a row) are ordinary reviewed PRs. They are outside `propose.py`'s policy. The workflow decides which PRs are routine PRs (#4353 PR 5, chunk 7).
 

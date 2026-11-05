@@ -1557,19 +1557,22 @@ test("cloud: disabled configuration makes zero cloud reads and says it is not ac
   assert.doesNotMatch(cloudText(h), /WARNING|temporarily unavailable/);
 });
 
-test("cloud: the committed wrangler.toml keeps the routine not activated with no invented values", async () => {
+test("cloud: the committed wrangler.toml carries the activation values and the section reads that run log", async () => {
   const { readFileSync } = await import("node:fs");
   const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
   const read = (name) => new RegExp(`^${name} = "([^"]*)"$`, "m").exec(toml)?.[1];
-  assert.equal(read("CLOUD_MODEL_ROUTINE_ENABLED"), "false");
-  assert.equal(read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"), "");
-  assert.equal(read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN"), "");
-  const h = harness();
+  // Activation values (workers/cloud-models-routine/README.md "Activation values").
+  assert.equal(read("CLOUD_MODEL_ROUTINE_ENABLED"), "true");
+  assert.equal(read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"), "4384");
+  assert.equal(read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN"), "envious-cloud-model-stage2[bot]");
+  const h = harness({ comments: () => ok([]) });
   await h.run({ ...ENV,
     CLOUD_MODEL_ROUTINE_ENABLED: read("CLOUD_MODEL_ROUTINE_ENABLED"),
     CLOUD_MODEL_ROUTINE_LOG_ISSUE: read("CLOUD_MODEL_ROUTINE_LOG_ISSUE"),
     CLOUD_MODEL_ROUTINE_WRITER_LOGIN: read("CLOUD_MODEL_ROUTINE_WRITER_LOGIN") });
-  assert.equal(h.state.cloudRequests, undefined);
+  const cloudReads = (h.state.commentUrls || []).filter((u) => new URL(u).pathname === "/repos/saurabhav88/EnviousWispr/issues/4384/comments");
+  assert.equal(cloudReads.length, 1);
+  assert.doesNotMatch(cloudText(h), /temporarily unavailable|not activated/);
 });
 
 test("cloud: a missing or inexact enabled state fails the section instead of disabling it", async () => {

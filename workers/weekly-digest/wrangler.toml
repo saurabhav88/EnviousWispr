@@ -32,14 +32,14 @@ OLLAMA_LIBRARY_FEED_URL = "https://enviouswispr.com/ollama-library.json"
 # routine is activated; it is configuration, not a live read of the scheduler,
 # and must be exactly "true" or "false" (anything else fails the section).
 # "false" reads nothing and says the routine is not activated. The run-log issue
-# and the Stage 2 writer login are activation values: they stay empty until
-# activation creates them (workers/cloud-models-routine/README.md "Activation checklist"),
-# and "true" with either one empty or invalid fails the section. Enable or
+# and the Stage 2 writer login are activation values
+# (workers/cloud-models-routine/README.md "Activation values"), and "true" with
+# either one empty or invalid fails the section. Enable or
 # disable the routine, change these, deploy, and read the deployed vars back in
 # one activation step.
-CLOUD_MODEL_ROUTINE_ENABLED = "false"
-CLOUD_MODEL_ROUTINE_LOG_ISSUE = ""
-CLOUD_MODEL_ROUTINE_WRITER_LOGIN = ""
+CLOUD_MODEL_ROUTINE_ENABLED = "true"
+CLOUD_MODEL_ROUTINE_LOG_ISSUE = "4384"
+CLOUD_MODEL_ROUTINE_WRITER_LOGIN = "envious-cloud-model-stage2[bot]"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
 #   POSTHOG_PERSONAL_API_KEY  - GCP secret `posthog-personal-api-key`
