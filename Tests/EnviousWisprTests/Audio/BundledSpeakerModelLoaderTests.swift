@@ -60,14 +60,28 @@ struct BundledSpeakerModelLoaderTests {
 
     let models = try BundledSpeakerModelLoader.load(in: bundle)
 
-    // #2809 addendum §2.5 item 2: FBank runs on CPU, the rest use `.all` — the library's
-    // own default inference policy, frozen here at the CONSTRUCTION site since nothing
-    // else in this app builds these models.
+    // #2809 addendum §2.5 item 2: segmentation, embedding and PLDA use `.all`, frozen here at
+    // the CONSTRUCTION site since nothing else in this app builds these models. FBank follows
+    // the OS policy (#4376), checked below.
     #expect(models.segmentationModel.configuration.computeUnits == .all)
-    #expect(models.fbankModel.configuration.computeUnits == .cpuOnly)
+    #expect(
+      models.fbankModel.configuration.computeUnits
+        == BundledSpeakerModelLoader.fbankComputeUnits(
+          ProcessInfo.processInfo.operatingSystemVersion))
     #expect(models.embeddingModel.configuration.computeUnits == .all)
     #expect(models.pldaRhoModel.configuration.computeUnits == .all)
     #expect(!models.pldaPsi.isEmpty)
+  }
+
+  /// #4376: what fails when this fails: on macOS 14 the app quits in the speaker step of
+  /// Transcribe a File and of a meeting's final pass, and runs that finish find one speaker.
+  @Test("macOS 14 keeps FBank off the CPU-only path that crashes there; macOS 15+ keeps CPU")
+  func fbankAvoidsBNNSOnMacOS14() {
+    let units = BundledSpeakerModelLoader.fbankComputeUnits
+    #expect(units(OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)) == .cpuAndGPU)
+    #expect(units(OperatingSystemVersion(majorVersion: 14, minorVersion: 8, patchVersion: 9)) == .cpuAndGPU)
+    #expect(units(OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0)) == .cpuOnly)
+    #expect(units(OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 0)) == .cpuOnly)
   }
 
   @Test("throws resourceNotFound naming the missing model, not a generic failure")
