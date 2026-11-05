@@ -358,4 +358,34 @@ extension MeetingLiveSpeakersTests.Rig {
   func try_publishReady() {
     analyses.last?.publish(.ready(epoch: 0))
   }
+
+  @Test("call audio the speaker pump drops while the model loads counts as skipped; with no model, nothing does")
+  func pumpDropsCountAsSkipped() async throws {
+    // More than the pump holds (about 28.8 s), fed before the model start runs.
+    let bank = [Float](repeating: 0, count: MeetingLiveAudioPump.bankSamples)
+    func overfill(_ feed: @Sendable (UnsafeBufferPointer<Float>, MeetingReleasedChunk) -> Void) {
+      for index in 0..<(MeetingLiveAudioPump.queuedBanks + 4) {
+        let span = Self.span(index * bank.count, bank.count)
+        bank.withUnsafeBufferPointer { feed($0, Self.released(span)) }
+      }
+    }
+    let rig = Rig()
+    let loading = UUID()
+    overfill(rig.speakers.prepareCapture(meetingID: loading))
+    rig.speakers.stop(lines: [])
+    let skipped = try #require(rig.speakers.frozenSummary(for: loading))
+    #expect(skipped.state == .loading)
+    #expect(skipped.backlogSkippedMs > 0, "evicted call audio is reported, not zero")
+
+    rig.directory = nil
+    let absent = UUID()
+    let feed = rig.speakers.prepareCapture(meetingID: absent)
+    rig.speakers.captureStarted(meetingID: absent, callSound: true)
+    _ = try await BoundedWait.result(of: try #require(rig.speakers.startTaskForTests))
+    overfill(feed)
+    rig.speakers.stop(lines: [])
+    let none = try #require(rig.speakers.frozenSummary(for: absent))
+    #expect(none.state == .absent)
+    #expect(none.backlogSkippedMs == 0, "audio refused on purpose without a model is not skipped")
+  }
 }

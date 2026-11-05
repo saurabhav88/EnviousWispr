@@ -327,11 +327,20 @@ final class MeetingLiveSpeakers {
       MeetingLiveSpeakerSummary(
         modelRevision: deps.modelRevision(), state: state, remoteWords: remote,
         attributedWords: attributed, namedSpeakers: labels.names.count,
-        backlogSkippedMs: MeetingTranscriptionJob.ms(current.analysis?.droppedSamples ?? 0),
+        backlogSkippedMs: MeetingTranscriptionJob.ms(skippedSamples(current)),
         updateDrops: current.handoff?.droppedActivities ?? 0,
         unpositionedMs: MeetingTranscriptionJob.ms(current.pump.accounting.unpositioned),
         liveWordsUnpositionedMs: MeetingTranscriptionJob.ms(liveWordsUnpositionedSamples))
     )
+  }
+
+  /// Call audio of an eligible recording the analysis never saw: the analysis inbox's drops plus
+  /// the speaker pump's (evicted while the model loaded or an earlier copy released, or refused
+  /// while its lock was busy). With no model the pump is retired on purpose, and nothing counts.
+  private func skippedSamples(_ current: Recording) -> Int {
+    let analysis = current.analysis?.droppedSamples ?? 0
+    guard current.state != .absent else { return analysis }
+    return analysis + current.pump.accounting.dropped
   }
 
   /// Delete, or the transcript replaced the live words: the labels go too.

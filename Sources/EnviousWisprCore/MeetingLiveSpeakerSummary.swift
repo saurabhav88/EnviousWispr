@@ -22,8 +22,10 @@ public struct MeetingLiveSpeakerSummary: Sendable, Equatable {
   public let attributedWords: Int
   /// Speakers showing a call-app name at stop.
   public let namedSpeakers: Int
-  /// Call audio the speaker analysis never analysed because its backlog bound dropped it
-  /// (`LiveSpeakerSession.droppedSamples`), in milliseconds.
+  /// Call audio of an eligible recording the speaker analysis never analysed, in milliseconds:
+  /// its backlog bound's drops (`LiveSpeakerSession.droppedSamples`) plus the speaker pump's
+  /// (`MeetingLiveAudioPump.Accounting.dropped`, e.g. evicted while the model loaded). Zero
+  /// when no model was downloaded.
   public let backlogSkippedMs: Int
   /// Model evidence updates dropped at the main-actor handoff (`MeetingLiveSpeakers.Handoff`).
   public let updateDrops: Int
