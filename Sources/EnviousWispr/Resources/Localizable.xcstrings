@@ -28643,74 +28643,272 @@
         }
       }
     },
-    "whatsNew.keep-period-as-a-word.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry keep-period-as-a-word).",
+    "whatsNew.introducing-enviousmeet.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry introducing-enviousmeet).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keep \"Period\" as a Word"
+            "value" : "Introducing \"EnviousMeet\" (Beta)"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Period“ als Wort behalten"
+            "value" : "Neu: „EnviousMeet“ (Beta)"
           }
         }
       }
     },
-    "whatsNew.keep-period-as-a-word.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry keep-period-as-a-word).",
+    "whatsNew.introducing-enviousmeet.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry introducing-enviousmeet).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Say \"full stop\" instead of \"period\"? Open Configure beside Spoken punctuation and turn \"period\" off. It stays a normal word, and \"full stop\" still makes a dot."
+            "value" : "Meet your new AI meeting notepad: free, offline, and open source, with no awkward bots joining your calls. Jot down your own notes while EnviousMeet transcribes the conversation in the background and generates a clean summary right inside EnviousWispr. Every recording, transcript, and note stays on your Mac. Open EnviousMeet in Settings to set it up."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du sagst „full stop“ statt „period“? Öffne „Einrichten“ neben „Gesprochene Satzzeichen“ und schalte „period“ aus. Es bleibt ein normales Wort, und „full stop“ setzt weiterhin einen Punkt."
+            "value" : "Dein neuer KI-Notizblock für Meetings: kostenlos, offline und Open Source, ohne lästige Bots in deinen Calls. Schreib deine eigenen Notizen, während EnviousMeet das Gespräch im Hintergrund transkribiert und direkt in EnviousWispr eine übersichtliche Zusammenfassung erstellt. Jede Aufnahme, jedes Transkript und jede Notiz bleibt auf deinem Mac. Öffne EnviousMeet in den Einstellungen, um es einzurichten."
           }
         }
       }
     },
-    "whatsNew.picking-universal-downloads-it.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry picking-universal-downloads-it).",
+    "whatsNew.introducing-enviousmeet.bullet.0" : {
+      "comment" : "Settings > What's New: point 1 of the list under one feature announcement (entry introducing-enviousmeet).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Picking Universal Downloads It"
+            "value" : "Automatic call detection: Notices Zoom, Teams, Google Meet, and Slack huddles so it can ask to record or start by itself, and can leave your voice out while you are muted in Zoom, Teams, and Meet."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Auswahl der Engine „Universal“ startet den Download"
+            "value" : "Automatische Call-Erkennung: Erkennt Zoom, Teams, Google Meet und Slack-Huddles, kann dann fragen, ob aufgenommen werden soll, oder von selbst starten, und kann deine Stimme weglassen, solange du in Zoom, Teams und Meet stummgeschaltet bist."
           }
         }
       }
     },
-    "whatsNew.picking-universal-downloads-it.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry picking-universal-downloads-it).",
+    "whatsNew.introducing-enviousmeet.bullet.1" : {
+      "comment" : "Settings > What's New: point 2 of the list under one feature announcement (entry introducing-enviousmeet).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose Universal for Live Preview and its download starts right away. Until it finishes, Apple shows your words where your Mac supports it."
+            "value" : "Live words and real speaker names: With Live Preview and the Speaker labels download, words appear as people talk and can group by speaker using participant names from supported call apps in both the live view and final transcript."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle die Engine „Universal“ für die Live-Vorschau aus, und der Download startet sofort. Bis er abgeschlossen ist, zeigt Apple deine Wörter an, sofern dein Mac das unterstützt."
+            "value" : "Live-Wörter und echte Sprechernamen: Mit der Live-Vorschau und dem Download „Sprecherkennzeichnung“ erscheinen Wörter, während gesprochen wird. In der Live-Ansicht und im fertigen Transkript können sie anhand der Teilnehmernamen aus unterstützten Call-Apps nach Sprechern gruppiert werden."
+          }
+        }
+      }
+    },
+    "whatsNew.introducing-enviousmeet.bullet.2" : {
+      "comment" : "Settings > What's New: point 3 of the list under one feature announcement (entry introducing-enviousmeet).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "100% local or bring-your-own-key: Summarize offline with Apple Intelligence, EG-1, or Ollama, or use your own OpenAI, Gemini, or Claude key. If you allow Calendar access and turn on \"Name meetings from my calendar\", the matching event's title and invitees are saved with the meeting."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "100 % lokal oder mit eigenem Schlüssel: Fasse offline mit Apple Intelligence, EG-1 oder Ollama zusammen, oder nutze deinen eigenen OpenAI-, Gemini- oder Claude-Schlüssel. Wenn du den Kalenderzugriff erlaubst und „Meetings nach meinem Kalender benennen“ einschaltest, werden Titel und Eingeladene des passenden Termins mit dem Meeting gespeichert."
+          }
+        }
+      }
+    },
+    "whatsNew.faster-history-and-new-tabs.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry faster-history-and-new-tabs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster History and new tabs"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnellerer Verlauf und neue Tabs"
+          }
+        }
+      }
+    },
+    "whatsNew.faster-history-and-new-tabs.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry faster-history-and-new-tabs).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "History opens, searches, and scrolls quickly even with a very large library, and Delete All now finishes in the background. The tabs are now A, D, T, and M for All, Dictations, Transcripts, and Meetings (hover over any tab to see its full name)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Verlauf öffnet, sucht und scrollt auch bei einer sehr großen Sammlung schnell, und „Alle löschen“ wird jetzt im Hintergrund abgeschlossen. Die Tabs heißen jetzt A, D, T und M für Alle, Diktate, Transkripte und Meetings (zeige auf einen Tab, um seinen vollen Namen zu sehen)."
+          }
+        }
+      }
+    },
+    "whatsNew.sticky-cloud-models-smarter-polish.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry sticky-cloud-models-smarter-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sticky cloud models and smarter AI Polish"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud-Modelle bleiben gewählt, smartere KI-Nachbearbeitung"
+          }
+        }
+      }
+    },
+    "whatsNew.sticky-cloud-models-smarter-polish.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry sticky-cloud-models-smarter-polish).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation, Transcribe a File, and EnviousMeet each remember your chosen model per cloud provider, add new models without an app update, and let you download any Ollama library model by exact name in AI Polish. Polishing also preserves openings like \"Sure,\" and \"Got it.\", restarts EG-1 or S1-mini on your next dictation if stopped externally, and updates Apple Intelligence status and warnings without a relaunch."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat, „Datei transkribieren“ und EnviousMeet merken sich jeweils dein gewähltes Modell pro Cloud-Anbieter, bekommen neue Modelle ohne App-Update, und in der KI-Nachbearbeitung kannst du jedes Modell aus der Ollama-Bibliothek über seinen genauen Namen herunterladen. Die Nachbearbeitung behält jetzt auch Einstiege wie „Sure,“ und „Got it.“, startet EG-1 oder S1-mini beim nächsten Diktat neu, wenn sie von außen beendet wurden, und aktualisiert den Status und die Warnungen von Apple Intelligence ohne Neustart."
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-learning-imports-punctuation.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry smarter-learning-imports-punctuation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarter word learning, imports, and punctuation"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smarteres Wörterlernen, Importe und Satzzeichen"
+          }
+        }
+      }
+    },
+    "whatsNew.smarter-learning-imports-punctuation.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry smarter-learning-imports-punctuation).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Learn from edits now picks up a name spelling if you fix it a second time, stops after two undos, preserves endings like \"ChatGPT's\", and shows blocked fixes in Dictionary with a Forget button to clear them. You can also import words and snippets from another dictation app, or turn off the spoken English \"period\" command via the new Configure… button next to Spoken punctuation."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Selbstlernendes Wörterbuch“ übernimmt jetzt eine Namensschreibweise, wenn du sie ein zweites Mal korrigierst, hört nach zwei Rückgängig-Aktionen auf, behält Endungen wie „ChatGPT's“ und zeigt blockierte Korrekturen im Wörterbuch, mit einer Schaltfläche „Vergessen“, um sie zu löschen. Außerdem kannst du Wörter und Textbausteine aus einer anderen Diktier-App importieren oder den gesprochenen englischen Befehl „period“ über die neue Schaltfläche „Einrichten…“ neben „Gesprochene Satzzeichen“ ausschalten."
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-pasting.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry more-reliable-pasting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More reliable pasting"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuverlässigeres Einfügen"
+          }
+        }
+      }
+    },
+    "whatsNew.more-reliable-pasting.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry more-reliable-pasting).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasting works across more apps and text boxes, including Raycast, Alfred, and Dvorak or other keyboard layouts, with fewer false \"Copied\" notices."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfügen funktioniert in mehr Apps und Textfeldern, auch in Raycast, Alfred und mit Dvorak oder anderen Tastaturbelegungen, mit weniger falschen „Kopiert“-Hinweisen."
+          }
+        }
+      }
+    },
+    "whatsNew.easier-mic-setup-steadier-performance.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry easier-mic-setup-steadier-performance).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Easier mic setup and steadier performance"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einfachere Mikrofon-Einrichtung und stabilere Leistung"
+          }
+        }
+      }
+    },
+    "whatsNew.easier-mic-setup-steadier-performance.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry easier-mic-setup-steadier-performance).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your first dictation asks for microphone access before recording, offers a quick button to fix missing permissions or microphones, and no longer ends early during pauses on certain USB webcam mics. This update also fixes a crash when quitting and resolves a macOS 14 issue where Transcribe a File could quit while finding speakers."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein erstes Diktat fragt vor der Aufnahme nach dem Mikrofonzugriff, bietet eine schnelle Schaltfläche, um fehlende Berechtigungen oder Mikrofone zu beheben, und endet bei bestimmten USB-Webcam-Mikrofonen nicht mehr vorzeitig in Sprechpausen. Dieses Update behebt außerdem einen Absturz beim Beenden und ein Problem unter macOS 14, bei dem „Datei transkribieren“ beim Erkennen der Sprecher beendet werden konnte."
           }
         }
       }
