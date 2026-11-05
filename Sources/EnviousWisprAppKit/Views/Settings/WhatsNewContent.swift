@@ -54,32 +54,67 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v2.5.6
+    // MARK: - v2.6.0
 
-    // Draft group opened by #4216 (2.5.5 shipped 2026-10-19). Founder reviews the wording at release.
-    // Facts behind the claim: the Configure button sits beside the Spoken punctuation switch
-    // (SpeechEngineSettingsView), the switch is "English: say "period" for a dot", default ON, and
-    // "full stop" converts in both positions (SpokenPunctuationRules.englishRules).
+    // Founder-approved group, 2026-11-05 (Claude Doc "EnviousWispr 2.6.0 Release Notes"). The founder
+    // wrote this copy; it ships verbatim (whats-new-protocol.md). Founder decisions recorded there:
+    // "offline" and "Every recording, transcript, and note stays on your Mac" are his core-product pitch
+    // (all processing runs on the Mac); cloud summaries are disclosed in the privacy policy and the
+    // GitHub notes. Codex verified the claims against b49253441 (run 20261105-082632-release-v2-6-0-notes).
+    // Replaces the v2.5.6 draft entries "keep-period-as-a-word" (#4230) and
+    // "picking-universal-downloads-it" (#4335), which were never released.
     Entry(
-      id: "keep-period-as-a-word",
-      icon: "textformat.abc",
-      title: "Keep \"Period\" as a Word",
+      id: "introducing-enviousmeet",
+      icon: "person.2.wave.2",
+      title: "Introducing \"EnviousMeet\" (Beta)",
       description:
-        "Say \"full stop\" instead of \"period\"? Open Configure beside Spoken punctuation and turn \"period\" off. It stays a normal word, and \"full stop\" still makes a dot.",
-      version: "2.5.6"
+        "Meet your new AI meeting notepad: free, offline, and open source, with no awkward bots joining your calls. Jot down your own notes while EnviousMeet transcribes the conversation in the background and generates a clean summary right inside EnviousWispr. Every recording, transcript, and note stays on your Mac. Open EnviousMeet in Settings to set it up.",
+      bullets: [
+        "Automatic call detection: Notices Zoom, Teams, Google Meet, and Slack huddles so it can ask to record or start by itself, and can leave your voice out while you are muted in Zoom, Teams, and Meet.",
+        "Live words and real speaker names: With Live Preview and the Speaker labels download, words appear as people talk and can group by speaker using participant names from supported call apps in both the live view and final transcript.",
+        "100% local or bring-your-own-key: Summarize offline with Apple Intelligence, EG-1, or Ollama, or use your own OpenAI, Gemini, or Claude key. If you allow Calendar access and turn on \"Name meetings from my calendar\", the matching event's title and invitees are saved with the meeting.",
+      ],
+      version: "2.6.0"
     ),
-    // #4325 (founder grill 2026-11-02): picking the Universal Live Preview engine starts its
-    // shared download (LivePreviewSettingsView.choose -> ModelDeliveryHome.requestPreviewDownload);
-    // while it is not downloaded, Apple's preview stands in only where Apple's preview runs
-    // (macOS 26 with the language installed: LivePreviewInstaller.appleStandingIn). EnviousMeet
-    // is left out of the copy until it ships to users.
     Entry(
-      id: "picking-universal-downloads-it",
-      icon: "arrow.down.circle",
-      title: "Picking Universal Downloads It",
+      id: "faster-history-and-new-tabs",
+      icon: "clock.arrow.circlepath",
+      title: "Faster History and new tabs",
       description:
-        "Choose Universal for Live Preview and its download starts right away. Until it finishes, Apple shows your words where your Mac supports it.",
-      version: "2.5.6"
+        "History opens, searches, and scrolls quickly even with a very large library, and Delete All now finishes in the background. The tabs are now A, D, T, and M for All, Dictations, Transcripts, and Meetings (hover over any tab to see its full name).",
+      version: "2.6.0"
+    ),
+    Entry(
+      id: "sticky-cloud-models-smarter-polish",
+      icon: "cloud",
+      title: "Sticky cloud models and smarter AI Polish",
+      description:
+        "Dictation, Transcribe a File, and EnviousMeet each remember your chosen model per cloud provider, add new models without an app update, and let you download any Ollama library model by exact name in AI Polish. Polishing also preserves openings like \"Sure,\" and \"Got it.\", restarts EG-1 or S1-mini on your next dictation if stopped externally, and updates Apple Intelligence status and warnings without a relaunch.",
+      version: "2.6.0"
+    ),
+    Entry(
+      id: "smarter-learning-imports-punctuation",
+      icon: "text.book.closed",
+      title: "Smarter word learning, imports, and punctuation",
+      description:
+        "Learn from edits now picks up a name spelling if you fix it a second time, stops after two undos, preserves endings like \"ChatGPT's\", and shows blocked fixes in Dictionary with a Forget button to clear them. You can also import words and snippets from another dictation app, or turn off the spoken English \"period\" command via the new Configure… button next to Spoken punctuation.",
+      version: "2.6.0"
+    ),
+    Entry(
+      id: "more-reliable-pasting",
+      icon: "doc.on.clipboard",
+      title: "More reliable pasting",
+      description:
+        "Pasting works across more apps and text boxes, including Raycast, Alfred, and Dvorak or other keyboard layouts, with fewer false \"Copied\" notices.",
+      version: "2.6.0"
+    ),
+    Entry(
+      id: "easier-mic-setup-steadier-performance",
+      icon: "mic",
+      title: "Easier mic setup and steadier performance",
+      description:
+        "Your first dictation asks for microphone access before recording, offers a quick button to fix missing permissions or microphones, and no longer ends early during pauses on certain USB webcam mics. This update also fixes a crash when quitting and resolves a macOS 14 issue where Transcribe a File could quit while finding speakers.",
+      version: "2.6.0"
     ),
 
     // MARK: - v2.5.5
