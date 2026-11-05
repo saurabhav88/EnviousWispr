@@ -5,7 +5,7 @@ category: "getting-started"
 section: "Basics"
 order: 2
 keywords: ["requirements", "supported macs", "will it run", "intel", "apple silicon", "m1", "m2", "m3", "m4", "macos version", "sonoma", "sequoia", "compatible", "does it work on my mac", "old mac", "disk space", "how much space", "download size", "storage", "8 GB", "memory"]
-updated: 2026-10-28
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr is a free dictation app for macOS. It runs on any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or later. Intel Macs are not supported. The separate [Android app](/android/) needs Android 13 or later on a 64-bit phone with at least 6 GB of memory.
@@ -20,7 +20,7 @@ You need three things:
 
 ### How much disk space does EnviousWispr need?
 
-The application file is small. The first time you run it, it downloads a speech model of about 480 MB.
+The application file is small. The first time you run it, it downloads the Parakeet Ultra speech model, about 632 MB.
 
 After setup, EnviousWispr can download two more small models for the [Self-Learning Dictionary](/help/self-learning-dictionary/):
 

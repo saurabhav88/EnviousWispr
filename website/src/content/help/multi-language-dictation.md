@@ -6,10 +6,10 @@ section: "Transcription"
 order: 2
 keywords: ["language", "languages", "spanish", "french", "german", "hindi", "not english", "foreign language", "bilingual", "multilingual", "change language", "accent", "british english", "british spelling", "uk english", "english uk", "colour", "organise", "american spelling", "wrong language", "greek letters", "cyrillic", "lock language"]
 related: ["choosing-a-speech-engine-parakeet-vs-whisperkit", "filler-word-removal", "live-preview-words-on-screen"]
-updated: 2026-10-15
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
-EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which you start with, recognizes 25 European languages and detects which one you are speaking on its own. For other languages, switch to the **All Languages** engine (Whisper), which supports 99+.
+EnviousWispr handles dozens of languages. The **Fast** engine (Parakeet), which you start with, recognizes 25 European languages without needing you to pick one first. For other languages, switch to the **All Languages** engine (Whisper), which supports 99+.
 
 ### Lock or auto-detect my language
 
@@ -64,4 +64,4 @@ See [Filler Word Removal](/help/filler-word-removal/).
 
 ### Live Preview shows another language
 
-The words shown in the pill while you speak come from a separate engine with its own language setting. You pick its language on the **Live Preview** page. Some languages need a language pack from macOS or the Universal engine. See [Live Preview](/help/live-preview-words-on-screen/).
+The words shown in the pill while you speak come from a separate engine, but share your dictation language choice. Changing the language on the **Live Preview** page also changes it for dictation. With Auto-detect, Apple preview uses your Mac's language, while Universal detects the preview language itself. Some languages need a language pack from macOS or the Universal engine. See [Live Preview](/help/live-preview-words-on-screen/).

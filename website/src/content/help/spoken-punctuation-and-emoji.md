@@ -1,5 +1,5 @@
 ---
-title: "Spoken Punctuation and Emoji"
+title: "Spoken Punctuation, Emoji and Start Words"
 description: "How to dictate slash commands, punctuation marks, brackets, quotes, other symbols and emoji, including punctuation in German, French, Spanish and Italian, and which settings control them."
 category: "features"
 section: "Text Processing"
@@ -7,7 +7,7 @@ order: 3
 keywords: ["punctuation", "say comma", "period", "full stop", "slash", "backslash", "new line", "new paragraph", "emoji", "thumbs up", "smiley", "spoken commands", "emoji not working", "comma written as a word", "period in the middle of my sentence", "keep period as a word", "period written as a full stop", "say full stop instead of period", "start word", "German punctuation", "Satzzeichen diktieren", "Diktiere Punkt", "neuer Absatz", "French punctuation", "Place point", "Spanish punctuation", "Añade punto", "Italian punctuation", "Metti punto", "Punkt written as a word", "spoken punctuation other languages", "double period", "two commas in a row", "extra comma next to my comma", "doubled punctuation", "casual mode", "full stop at the end", "period at the end of every dictation", "remove the final period", "no period at the end", "turn off the final full stop", "parenthesis", "left parenthesis", "brackets", "quotes", "open quote", "underscore", "hyphen", "symbols", "say a symbol"]
 related: ["numbers-dates-and-times"]
 seeAlso: "speak-emoji-dictation"
-updated: 2026-10-30
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Dictation Settings** > **Engine**.

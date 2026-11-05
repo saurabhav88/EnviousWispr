@@ -6,7 +6,7 @@ section: "Transcription"
 order: 3
 keywords: ["download model", "model download", "stuck downloading", "download failed", "try again", "resume download", "how big", "disk space", "gb", "storage", "redownload", "model files", "where are the models", "unload model", "free memory", "remove model"]
 related: ["uninstalling-enviouswispr"]
-updated: 2026-10-15
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr keeps its speech models on your own Mac rather than on a server, which is what lets your audio stay on the device. The trade is a download the first time and some disk space to manage afterwards.
@@ -15,7 +15,7 @@ Each download is checked before it is used, so a broken or half-finished file is
 
 ### How big are the speech model downloads?
 
-- **Fast engine (Parakeet).** EnviousWispr downloads it for you during setup, and you watch the progress as it goes. It is about 480 MB.
+- **Fast engine (Parakeet Ultra).** EnviousWispr downloads it for you during setup, and you watch the progress as it goes. It is about 632 MB.
 - **All Languages engine (Whisper).** EnviousWispr does not download it for you. If you switch to it, go to **Dictation Settings** > **Engine**, click **Change**, choose **All Languages**, then click **Set up model**. It is about 886 MB.
 - **If you used All Languages before.** Older versions ran All Languages on WhisperKit with a larger model. If All Languages was your engine when you updated to the current version, EnviousWispr downloads the new model by itself and deletes the old one it had downloaded. Until the download finishes, a recording tells you the model is not downloaded yet. If you cancel the download, start it again under **Dictation Settings** > **Engine**.
 

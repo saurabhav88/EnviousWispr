@@ -6,7 +6,7 @@ section: "Paste System"
 order: 1
 keywords: ["paste", "how does it type", "where does the text go", "delivery", "spacing", "capitals", "capitalisation", "capitalization", "stop capitalising", "stop capitalizing", "capital letters", "extra space", "no space", "jams words together", "smart insertion", "middle of a sentence", "cursor", "wrong window", "address bar", "trailing space", "web address"]
 related: ["clipboard-preservation", "paste-not-working", "using-snippets"]
-updated: 2026-10-03
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 EnviousWispr delivers your text to the app, window and text box you were typing in when you started recording. It works anywhere you can type, including native Mac apps, web browsers, and apps built on web technology such as VS Code, Slack, Discord, and Notion.
@@ -19,12 +19,12 @@ If that window is gone by the time your text is ready, EnviousWispr does not pas
 
 ### How EnviousWispr delivers the text
 
-EnviousWispr tries these methods in order and stops at the first one that works:
+EnviousWispr chooses a delivery method based on what the target app supports and whether it can bring the right window forward:
 
-1. **Write directly into the text box.** This does not touch your clipboard.
-2. **Paste for you.** Some apps reject direct input. EnviousWispr then sends a normal paste (Cmd+V). In some apps, such as Word, Excel, Numbers and OneNote, it uses the app's own **Edit** > **Paste** menu instead.
-3. **Paste with a script.** If the normal paste does not work, EnviousWispr asks macOS to paste for it. macOS may ask for the Automation permission at this point. See [_Granting Permissions_](/help/granting-permissions-microphone-accessibility-and-automation/).
-4. **Copy to your clipboard and tell you.** You then paste it yourself. You never lose a dictation to a failed paste.
+- **Write directly into the text box**, when the app supports a write EnviousWispr can check. This does not touch your clipboard.
+- **Paste for you** with Cmd+V when that route is suitable. For some kinds of editor, it uses the app's own **Edit** > **Paste** menu instead.
+- **Ask macOS to paste with a script** when the target app cannot be brought forward for a normal paste. macOS may ask for the Automation permission at this point. See [_Granting Permissions_](/help/granting-permissions-microphone-accessibility-and-automation/).
+- **Copy to your clipboard and tell you** when an automatic route cannot deliver the text. You can then paste it yourself. If a missed paste cannot be detected, use [Paste Last Dictation](/help/paste-not-working/#get-my-last-dictation-back) or History to retrieve your words.
 
 If your text does not show up, see [_Paste Not Working?_](/help/paste-not-working/).
 

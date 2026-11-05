@@ -6,10 +6,10 @@ section: "Polish"
 order: 4
 keywords: ["s1-mini", "s1 mini", "superwhisper", "writing style", "tone", "casual", "formal", "lists", "prose", "email", "context", "lightweight", "small model", "8 gb mac", "on-device polish", "bullet points", "too formal", "too casual", "polish skipped on long dictation"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "model-downloads-and-management", "using-ollama-for-fully-offline-ai-polish"]
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
-S1-mini is a small AI model, made by Superwhisper, that tidies up dictated text. It is the lightest of the two on-device AI Polish options, next to EG-1. It runs entirely on your Mac, it is free, and there is no API key to manage. To use it, open **Settings** > **AI Polish** and pick **S1-mini**.
+S1-mini is a small AI model, made by Superwhisper, that tidies up dictated text. It is the smaller of the two downloadable polish models, next to EG-1. It runs entirely on your Mac, it is free, and there is no API key to manage. To use it, open **Settings** > **AI Polish** and pick **S1-mini**.
 
 ### Should I pick S1-mini or EG-1?
 
@@ -42,7 +42,7 @@ Set **Structure** on the **Writing style** card.
 Set **Context** on the **Writing style** card.
 
 - **General** is the default and changes nothing about layout.
-- **Email** lays out a greeting line and a sign-off block when you dictate them. It does not invent a greeting or a signature that you did not say, so a plain sentence comes out the same under either setting.
+- **Email** lays out a greeting line and a sign-off block when you dictate them. It is intended to format the greeting and sign-off you dictated, rather than invent them. Like any AI polish, it can still make a mistake, so check the result before sending it.
 
 Every writing style setting starts on its default. If you never open the card, S1-mini behaves the way it did before the card existed.
 

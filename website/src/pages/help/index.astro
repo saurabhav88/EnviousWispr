@@ -11,7 +11,6 @@ const articles = await getHelpArticles();
 await validateSeeAlso(articles);
 
 // The two reasons anyone opens a help centre. Everything else is browsing.
-const setUp = articlesInCategory(articles, 'getting-started');
 const fixIt = articlesInCategory(articles, 'troubleshooting');
 
 // Example queries, because an empty search box tells nobody what it can do.
@@ -65,7 +64,7 @@ const jsonLd = [
     <a class="help-task" href="/help/getting-started/">
       <span class="help-task-kicker">New here</span>
       <span class="help-task-title">Set up EnviousWispr</span>
-      <span class="help-task-desc">Install it, give it permission, and get your first words on screen. {setUp.length} steps.</span>
+      <span class="help-task-desc">Install it, grant permissions, and try your first dictation.</span>
     </a>
     <a class="help-task" href="/help/troubleshooting/">
       <span class="help-task-kicker">Something is wrong</span>

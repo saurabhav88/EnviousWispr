@@ -6,14 +6,14 @@ section: "Using EnviousWispr on Android"
 order: 9
 keywords: ["android privacy", "does my voice leave my phone", "audio uploaded android", "android usage reports", "android crash reports", "cloud polish privacy android", "feedback android"]
 related: ["android-ai-polish", "android-accessibility-access"]
-updated: 2026-10-28
+updated: 2026-11-05
 deflection: "never_intervene"
 ---
 Your voice stays on your phone. EnviousWispr for Android transcribes your speech on the phone, and audio never leaves it. You can read the same explanation in the app under Settings, then **Privacy**.
 
 ### What stays on your phone
 
-Your audio, your dictated words and your History stay on the phone. With AI polish set to **Off** or **This phone**, the polish step happens on the phone too.
+Your audio and History are kept on the phone. With AI polish set to **Off** or **This phone**, your dictated words are processed on the phone too. If you choose **Cloud**, the selected text goes to your provider as explained below.
 
 ### What goes to a cloud provider
 
@@ -27,6 +27,6 @@ They never include audio, your dictated words, names you enter, file contents or
 
 ### Feedback you choose to send
 
-**Send feedback** (the bug icon at the top of the app) sends only the message you write and an optional reply email to Envious Labs through Sentry. You can include technical diagnostics and preview them first. No audio or dictated words are attached.
+**Send feedback** (the bug icon at the top of the app) sends the message you write and an optional reply email to Envious Labs through Sentry. You can include technical diagnostics and preview them first. No audio or dictated words are attached. The report can link to earlier usage reports from the same install, even when you do not include diagnostics.
 
 Read the full [privacy policy](/privacy-policy/).

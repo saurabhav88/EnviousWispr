@@ -6,7 +6,7 @@ section: "Transcribe a File"
 order: 8
 keywords: ["transcribe a file", "import audio", "voice memo", "meeting recording", "lecture", "podcast", "mp3", "m4a", "video to text", "transcript", "file transcription", "audio to text", "file won't open", "no speech found", "no sound in file", "drag a file", "how long will it take"]
 related: ["transcribe-a-file-speaker-labels", "transcript-history", "choosing-a-speech-engine-parakeet-vs-whisperkit", "choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini", "ai-polish-and-cloud-data"]
-updated: 2026-09-29
+updated: 2026-11-05
 deflection: "can_resolve"
 ---
 Transcribe a File takes an audio or video file you already have and gives you back clean, readable text. The recording never leaves your Mac. When the recording has more than one voice and the app can tell them apart and match the words to them, the transcript comes back as speaker turns; see [speaker labels](/help/transcribe-a-file-speaker-labels/).
@@ -113,8 +113,8 @@ Below the chips you can:
 
 A finished transcript is saved in [History](/help/transcript-history/); the **Saved to History** chip on the Done step confirms it was kept. If the save did not go through, the Done step says **This version is not saved** instead, and Copy, Save and Share still work on the text in front of you.
 
-In History, the row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **All**, **Dictations**, **Transcripts** buttons show one kind or both. You can search, copy, paste, rename speakers and delete from there.
+In History, the row shows the first words of the transcript, the date it was made, and a tag with the name of the file it came from, so you can search for the recording by its file name. History labels each row as a **Dictation** (made with your keybind) or a **Transcript** (made here), and the **A**, **D**, **T** and **M** tabs mean **All**, **Dictations**, **Transcripts** and **Meetings**. Choose **T** to see imported transcripts, or point at a tab to see its full name. You can search, copy, paste, rename speakers and delete from there.
 
 ### Does my recording leave my Mac?
 
-The recording stays on your Mac. Transcription and speaker detection always run locally, and so does the cleanup when you pick EG-1, Apple Intelligence, S1-mini or a downloaded Ollama model. If you pick OpenAI, Gemini, Claude or a hosted Ollama model, the text of the transcript goes to that provider for the cleanup and nothing else does; the page says so while the file is running and again when it is done. What each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).
+The recording stays on your Mac. Transcription and speaker detection always run locally, and so does the cleanup when you pick EG-1, Apple Intelligence, S1-mini or a downloaded Ollama model. If you pick OpenAI, Gemini, Claude or a hosted Ollama model, the transcript text goes to that provider for cleanup, along with the instructions and any applicable custom words and credentials. Your audio is not sent. The page names the provider while the file is running and again when it is done. What each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).

@@ -56,5 +56,5 @@ Your past dictations, transcripts and meetings are stored on your Mac, inside yo
 
 If the History page shows nothing, check these two things.
 
-- **Complete a dictation, or import a file.** Finish at least one, so there is something to display. If a filter is on, choose **All**.
+- **Complete a dictation, or import a file.** Finish at least one, so there is something to display. If a filter is on, choose **A** for All.
 - **Check the storage folder.** If items you know you recorded are missing, check whether `~/Library/Application Support/EnviousWispr` was moved or deleted. Every copy of the app on your Mac reads that same folder.

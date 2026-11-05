@@ -6,7 +6,7 @@ section: "Basics"
 order: 6
 keywords: ["uninstall", "remove", "delete", "get rid of it", "clean up", "free up space", "leftover files", "models taking up space", "delete EnviousWispr", "remove models", "reinstall", "start fresh", "Trash"]
 related: ["model-downloads-and-management"]
-updated: 2026-10-15
+updated: 2026-11-05
 deflection: "show_but_always_send"
 ---
 Removing EnviousWispr takes two parts: deleting the application, and deleting the support files it saved on your Mac. Deleting the application alone leaves your history, custom words, snippets, and downloaded models in place.
@@ -21,7 +21,7 @@ Removing EnviousWispr takes two parts: deleting the application, and deleting th
 The support files can add up to a few gigabytes. To clear them:
 
 1. **Open the Go to Folder box.** In Finder, press **Shift+Cmd+G**.
-2. **Delete the support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your custom words, your snippets, and every model EnviousWispr downloaded: Parakeet, Whisper, the Live Preview model, EG-1, S1-mini, and the word-check models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
+2. **Delete the support folder.** Paste `~/Library/Application Support/EnviousWispr` into the box, press Enter, and move that folder to the Trash. It holds your dictation history, your EnviousMeet recordings and their audio, transcripts, notes and summaries, your custom words, your snippets, and models EnviousWispr downloaded: Parakeet, Whisper, the Live Preview model, EG-1, S1-mini, and the word-check models. Any recording that Escape Recovery was still holding for you sits in there too, and goes with it.
 3. **Delete the preferences file.** Press **Shift+Cmd+G** again, paste `~/Library/Preferences`, press Enter, and move `com.enviouswispr.app.plist` to the Trash. That file stores your settings.
 
 ### Remove an older Parakeet copy
