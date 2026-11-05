@@ -227,6 +227,37 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   /// leaves it nil; the real capture below always runs.
   private let onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)?
 
+  /// #4405: how the two real wall-clock deadlines (the routing probe and the work) are executed.
+  /// The production initializer always uses `.real` (`withDeadline`, which abandons work that
+  /// overruns). Tests that assert ROUTING or OUTPUT pass `.unbounded` through a test initializer,
+  /// so a loaded machine cannot turn a correct take into a deadline give-up and fail an assertion
+  /// that is not about the deadline (#4282). Tests OF the deadline keep `.real`. Immutable: fixed
+  /// at construction, with no setter, environment switch or global (code-validation RULE:
+  /// a-test-seam-on-a-GUARD-is-a-bypass-unless-it-is-logged; precedent: `TextProcessingRunner`'s
+  /// `TimeoutExecutor`).
+  ///
+  /// REVIEWED_OK(#4405): only test initializers accept a value; `init(normalizer:)`, the one
+  /// production construction path, has no parameter for it.
+  struct Deadlines: Sendable {
+    let probe: @Sendable (Double, @escaping @Sendable () async -> String?) async -> String??
+    let work: @Sendable (Double, @escaping @Sendable () async -> ITNWorkResult) async -> ITNWorkResult?
+
+    /// A work budget of zero (the routing probe spent it all, #3624) skips the work here, so the
+    /// refusal belongs to the real deadline and `.unbounded` never inherits it.
+    static let real = Deadlines(
+      probe: { seconds, operation in await withDeadline(seconds: seconds, operation: operation) },
+      work: { seconds, operation in
+        seconds > 0 ? await withDeadline(seconds: seconds, operation: operation) : nil
+      })
+
+    /// Runs each operation to completion, off the main actor like `withDeadline` does, whatever
+    /// budget remains.
+    static let unbounded = Deadlines(
+      probe: { _, operation in await operation() },
+      work: { _, operation in await operation() })
+  }
+  private let deadlines: Deadlines
+
   init(normalizer: InverseTextNormalizer = InverseTextNormalizer()) {
     self.normalizer = normalizer
     self.registry = .production
@@ -234,13 +265,26 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     self.workFactory = nil
     self.requestWorkOverride = nil
     self.onTimeoutForTesting = nil
+    self.deadlines = .real
+  }
+
+  /// #4405 test seam: the production step with the given deadline execution (see `Deadlines`).
+  init(normalizer: InverseTextNormalizer = InverseTextNormalizer(), deadlines: Deadlines) {
+    self.normalizer = normalizer
+    self.registry = .production
+    self.workOverride = nil
+    self.workFactory = nil
+    self.requestWorkOverride = nil
+    self.onTimeoutForTesting = nil
+    self.deadlines = deadlines
   }
 
   /// Test seam only: `work` replaces the whole operation under the same deadline.
   init(
     normalizer: InverseTextNormalizer = InverseTextNormalizer(),
     work: @escaping @Sendable (String, Bool) async -> String,
-    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
+    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil,
+    deadlines: Deadlines = .real
   ) {
     self.normalizer = normalizer
     self.registry = .production
@@ -248,6 +292,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     self.workFactory = nil
     self.requestWorkOverride = nil
     self.onTimeoutForTesting = onTimeoutForTesting
+    self.deadlines = deadlines
   }
 
   /// #2450 test seam: `requestWork` replaces the whole operation under the same deadline and sees the
@@ -255,7 +300,8 @@ final class InverseTextNormalizationStep: TextProcessingStep {
   init(
     normalizer: InverseTextNormalizer = InverseTextNormalizer(),
     requestWork: @escaping @Sendable (ITNWorkRequest) async -> ITNWorkResult,
-    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil
+    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil,
+    deadlines: Deadlines = .real
   ) {
     self.normalizer = normalizer
     self.registry = .production
@@ -263,6 +309,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     self.workFactory = nil
     self.requestWorkOverride = requestWork
     self.onTimeoutForTesting = onTimeoutForTesting
+    self.deadlines = deadlines
   }
 
   /// Package test seam (#1677): an injected immutable registry and an optional work factory that
@@ -282,6 +329,30 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     self.workFactory = workFactory
     self.requestWorkOverride = nil
     self.onTimeoutForTesting = onTimeoutForTesting
+    // A package signature cannot name the internal `Deadlines`; registry tests keep `.real`.
+    self.deadlines = .real
+  }
+
+  /// #4405 test seam: the injected-registry initializer with the given deadline execution. A
+  /// separate internal overload because the package initializer above cannot name the internal
+  /// `Deadlines` type; `deadlines` has no default here, so calls without it keep resolving there.
+  init(
+    normalizer: InverseTextNormalizer = InverseTextNormalizer(),
+    registry: LanguageRuleRegistry,
+    workFactory: (
+      @Sendable (InverseTextNormalizationGate.Route, LanguageRuleSet?) ->
+        @Sendable (String, Bool) async -> String
+    )? = nil,
+    onTimeoutForTesting: (@MainActor ([String: Any]) -> Void)? = nil,
+    deadlines: Deadlines
+  ) {
+    self.normalizer = normalizer
+    self.registry = registry
+    self.workOverride = nil
+    self.workFactory = workFactory
+    self.requestWorkOverride = nil
+    self.onTimeoutForTesting = onTimeoutForTesting
+    self.deadlines = deadlines
   }
 
   func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
@@ -331,7 +402,7 @@ final class InverseTextNormalizationStep: TextProcessingStep {
             settings: spokenPunctuationSnapshot)
         }
       let probeStart = probeNow()
-      let probed: String?? = await withDeadline(seconds: Self.floorSeconds, operation: probe)
+      let probed: String?? = await deadlines.probe(Self.floorSeconds, probe)
       probeSeconds = max(0, probeNow() - probeStart)
       language = probed ?? engineLanguage
     } else {
@@ -466,13 +537,11 @@ final class InverseTextNormalizationStep: TextProcessingStep {
     let engineStart = OSAllocatedUnfairLock<Double?>(initialState: nil)
     let start = CFAbsoluteTimeGetCurrent()
     let maybeResult: ITNWorkResult?
-    if request.deadlineSeconds > 0 {
-      maybeResult = await withDeadline(seconds: request.deadlineSeconds) {
-        engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
-        return await work(request)
-      }
-    } else {
-      maybeResult = nil
+    // A zero budget is refused inside `Deadlines.real` (#4405), so production still skips the
+    // work when the probe spent everything.
+    maybeResult = await deadlines.work(request.deadlineSeconds) {
+      engineStart.withLock { $0 = CFAbsoluteTimeGetCurrent() }
+      return await work(request)
     }
     // `latency_ms` is the whole step: the routing probe (#3624) plus normalization.
     // `engine_started` and `queue_wait_ms` describe normalization only.

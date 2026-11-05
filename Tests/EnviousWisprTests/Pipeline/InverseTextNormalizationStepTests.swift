@@ -31,7 +31,7 @@ import EnviousWisprPostProcessing
 
   @Test("Parakeet-class (no LID) + no language → runs on English-or-unknown")
   func runsForNonLIDBackendWithNilLanguage() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = false
     let out = try await step.process(ctx("the code is two zero three"))
     #expect(out.text == "the code is 203")
@@ -42,7 +42,7 @@ import EnviousWisprPostProcessing
 
   @Test("Whisper-class (LID) + nil language → defensively skips (low-confidence)")
   func skipsForLIDBackendWithNilLanguage() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx("the code is two zero three"))
     #expect(out.text == "the code is two zero three", "unchanged on skip")
@@ -57,7 +57,7 @@ import EnviousWisprPostProcessing
   /// a real dictation, and where they do not.
   @Test("a spoken address in the speaker's own words converts on a no-language take")
   func localisedAddressConvertsOnNilLanguageTake() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = false
     let out = try await step.process(ctx("mandalo a marco arroba esempio punto com"))
     #expect(out.text.contains("marco@esempio.com"))
@@ -68,7 +68,7 @@ import EnviousWisprPostProcessing
   /// language-neutral subset, so the address in the speaker's own words converts there too.
   @Test("the same address converts on a take resolved as Spanish, through the neutral subset")
   func localisedAddressConvertsOnResolvedNonEnglishTake() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx("mandalo a marco arroba esempio punto com", language: "es"))
     #expect(out.text == "mandalo a marco@esempio.com")
@@ -82,7 +82,7 @@ import EnviousWisprPostProcessing
   /// a foreign take, and a spoken code with digits converts.
   @Test("a skipped take converts digit codes and never English number words")
   func neutralSubsetOnSkippedTake() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     // Finnish: an unregistered non-English take runs the neutral subset (#1677 registers
     // de/fr/es/it/pt/nl/pl/sv/uk).
@@ -97,7 +97,7 @@ import EnviousWisprPostProcessing
   /// the meridiem ("7 am Abend" → "7:00 AM Abend"), the neutral subset must not (#2763).
   @Test("a German take keeps \"7 am Abend\": the English time rule never runs on it")
   func neutralSubsetNeverRunsEnglishTimeRule() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let input = "Ruf mich bitte um 7 am Abend an."
     let out = try await step.process(ctx(input, language: "de"))
@@ -107,7 +107,7 @@ import EnviousWisprPostProcessing
 
   @Test("explicit non-English language → skips (non_english)")
   func skipsForNonEnglishLanguage() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx("the code is two zero three", language: "fi"))
     #expect(out.text == "the code is two zero three")
@@ -117,7 +117,7 @@ import EnviousWisprPostProcessing
 
   @Test("explicit English language → runs (even on a LID backend)")
   func runsForExplicitEnglish() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx("the code is two zero three", language: "en"))
     #expect(out.text == "the code is 203")
@@ -126,7 +126,7 @@ import EnviousWisprPostProcessing
 
   @Test("English region tag (en-US) is treated as English")
   func runsForEnglishRegionTag() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx("the code is two zero three", language: "en-US"))
     #expect(out.text == "the code is 203")
@@ -134,7 +134,7 @@ import EnviousWisprPostProcessing
 
   @Test("empty language string falls through to the backend gate")
   func emptyLanguageUsesBackendGate() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = false
     let out = try await step.process(ctx("the code is two zero three", language: ""))
     #expect(out.text == "the code is 203", "empty == no language → Parakeet-class runs")
@@ -144,7 +144,7 @@ import EnviousWisprPostProcessing
 
   @Test("oh→0 phone formats through the step")
   func ohZeroPhoneThroughStep() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     let out = try await step.process(
       ctx("my number is o five five five one two three four five six"))
     #expect(out.text == "my number is 055-512-3456")
@@ -152,7 +152,7 @@ import EnviousWisprPostProcessing
 
   @Test("prose with an emoji and no numbers is an untouched no-op")
   func emojiProseNoOp() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     let input = "great work everyone 🎉"
     let out = try await step.process(ctx(input))
     #expect(out.text == input)
@@ -163,7 +163,7 @@ import EnviousWisprPostProcessing
 
   @Test("lastRun records lengths on a real run and an unchanged skip")
   func lastRunTelemetryShape() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = false
     _ = try await step.process(ctx("the code is two zero three"))
     #expect(step.lastRun?.lenBefore == "the code is two zero three".count)

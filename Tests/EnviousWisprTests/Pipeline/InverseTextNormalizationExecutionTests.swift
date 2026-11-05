@@ -62,7 +62,7 @@ struct InverseTextNormalizationExecutionTests {
 
   @Test("a German take runs the German phone and clock passes after the neutral subset (#1677)")
   func germanTakeRunsTheGermanPasses() async throws {
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(
       ctx("Ruf mich unter plus 49 176 9087654 um halb acht an, Frage B Bindestrich 2.", language: "de"))
@@ -122,7 +122,7 @@ struct InverseTextNormalizationExecutionTests {
           seen.withLock { $0.append(neutral) }
           return neutral + Self.marker
         }
-      })
+      }, deadlines: .unbounded)
     step.backendSupportsLID = true
     let out = try await step.process(ctx(Self.germanInput, language: "de-DE"))
     #expect(out.text == Self.germanNeutral + Self.marker)
@@ -149,7 +149,7 @@ struct InverseTextNormalizationExecutionTests {
             Gate.execute(
               text, route: route, rules: rules, normalizer: engine, spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
           }
-        })
+        }, deadlines: .unbounded)
       step.backendSupportsLID = true
       let out = try await step.process(ctx(Self.germanInput, language: language, vetoed: vetoed))
       #expect(out.text == Self.germanNeutral, "\(language) vetoed=\(vetoed)")
@@ -230,7 +230,7 @@ struct InverseTextNormalizationExecutionTests {
       let step = InverseTextNormalizationStep(work: { text, _ in
         calls.withLock { $0 += 1 }
         return "OVERRIDE:" + text
-      })
+      }, deadlines: .unbounded)
       step.backendSupportsLID = true
       let out = try await step.process(ctx("hello there", language: language, vetoed: vetoed))
       #expect(out.text == "OVERRIDE:hello there", "\(language ?? "nil") vetoed=\(vetoed)")
@@ -269,7 +269,7 @@ struct InverseTextNormalizationExecutionTests {
             spokenPunctuation: InverseTextNormalizer.bareEnglishSettings(enabled: spoken))
         }
       },
-      onTimeoutForTesting: { timeouts.append($0) })
+      onTimeoutForTesting: { timeouts.append($0) }, deadlines: .unbounded)
 
     step.spokenPunctuation = SpokenPunctuationSettings(enabled: true, startWordOverrides: [:], englishPeriodWord: true)
     step.backendSupportsLID = false
@@ -296,6 +296,8 @@ struct InverseTextNormalizationExecutionTests {
     #expect(out.text == Self.germanNeutral)
     #expect(step.lastRun?.ran == true)
     #expect(step.lastRun?.skipReason == nil)
-    #expect(timeouts.isEmpty, "the staged success case must not pass through timeout")
+    // #4405: this run uses unbounded deadline execution, so no timeout can occur; the timeout
+    // paths keep their own tests on the real deadline above.
+    #expect(timeouts.isEmpty)
   }
 }

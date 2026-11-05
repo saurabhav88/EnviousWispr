@@ -19,7 +19,11 @@ struct ContactsImportCorrectorBenchmark {
     }
   }
 
-  @Test("Corrector cost grows no worse than linearly in vocabulary size")
+  // #4405: both checks here are timing (a growth ratio and an absolute bound), which a busy Mac
+  // decides, so the benchmark runs only in the opt-in `scripts/xcode-test.sh --real-boundary` run.
+  @Test(
+    "Corrector cost grows no worse than linearly in vocabulary size",
+    .tags(.realBoundary), .realBoundaryRun)
   func latencyAtScale() {
     let sentence = "loop in Surnamenum1500 on the SSO thread before standup with the team"
     let sizes = [0, 500, 1000, 2000]

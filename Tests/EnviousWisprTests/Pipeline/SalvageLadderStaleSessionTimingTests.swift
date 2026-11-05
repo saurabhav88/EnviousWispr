@@ -39,7 +39,7 @@ struct SalvageLadderStaleSessionTimingTests {
         if call == 2 { kernel.testForceConclude(.completed) }
       }
 
-      await runToTerminal(ctx)
+      await runToTerminal(ctx, concluding: false)
 
       #expect(
         ctx.wrapper.asrTimingEndCount == 1,
@@ -53,7 +53,7 @@ struct SalvageLadderStaleSessionTimingTests {
     func liveLadderStampsItsOwnTiming() async {
       let ctx = makeContext()
 
-      await runToTerminal(ctx)
+      await runToTerminal(ctx, concluding: true)
 
       #expect(
         ctx.wrapper.asrTimingEndCount == 2,
@@ -95,13 +95,19 @@ struct SalvageLadderStaleSessionTimingTests {
       ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 63200)]
     }
 
-    private func runToTerminal(_ ctx: Context) async {
+    /// `concluding` waits for the kernel's own terminal before settling (#4405). The forced-conclude
+    /// case keeps the plain settle: its terminal is published by the test itself mid-ladder.
+    private func runToTerminal(_ ctx: Context, concluding: Bool) async {
       await ctx.wrapper.apply(.start)
       await ctx.wrapper.drainReadyWork()
       deliverDegradedLeadCapture(ctx)
       await ctx.wrapper.drainReadyWork()
       await ctx.wrapper.apply(.stop)
-      await ctx.wrapper.drainReadyWork()
+      if concluding {
+        await ctx.wrapper.drainUntilConcluded()
+      } else {
+        await ctx.wrapper.drainReadyWork()
+      }
     }
   #endif
 }

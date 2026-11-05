@@ -492,7 +492,7 @@ struct RecognizerMarksTests {
   private func run(_ take: Take) async throws -> String {
     let overrides: [String: String] =
       take.group == "startword" && take.lang == "en" ? ["en": take.start] : [:]
-    let step = InverseTextNormalizationStep()
+    let step = InverseTextNormalizationStep(deadlines: .unbounded)
     step.spokenPunctuation = SpokenPunctuationSettings(enabled: true, startWordOverrides: overrides, englishPeriodWord: true)
     step.backendSupportsLID = take.engine == "whisperKit"
     return try await step.process(TextProcessingContext(text: take.raw, language: take.lang)).text

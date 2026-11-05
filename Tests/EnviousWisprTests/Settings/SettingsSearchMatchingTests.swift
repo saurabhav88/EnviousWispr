@@ -313,8 +313,11 @@ struct SettingsSearchMatchingTests {
 
   /// Plan §3.2a: under 50 ms per keystroke for match and rank on this Mac. This Mac only; it
   /// says nothing about an M1.
+  // #4405: a millisecond bound is decided by how busy the Mac is, so it runs only in the opt-in
+  // `scripts/xcode-test.sh --real-boundary` run; the matching tests above stay in the everyday lane.
   @Test(
     "one keystroke's search takes under 50 ms on this Mac",
+    .tags(.realBoundary), .realBoundaryRun,
     .enabled(
       if: (ProcessInfo.processInfo.environment["CI"] ?? "").isEmpty,
       "Plan §3.2a is a local benchmark; hosted runs do not measure this Mac."))

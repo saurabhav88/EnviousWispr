@@ -76,7 +76,7 @@ struct KernelEngineHookCallSitesTests {
     fx.capture.deliverBuffer()
     await fx.wrapper.drainReadyWork()
     fx.kernel.requestStop()
-    await fx.wrapper.drainReadyWork()
+    await fx.wrapper.drainUntilConcluded()
   }
 
   /// Drive the kernel through a complete toggle-mode session (start + deliver
@@ -118,7 +118,7 @@ struct KernelEngineHookCallSitesTests {
   func preWarmEventTraceIsCacheThenWarm() async throws {
     let fx = makeFixture()
     try await fx.kernel.preWarm()
-    await fx.wrapper.drainReadyWork()
+    await fx.wrapper.drainUntil({ fx.engine.warmUpCallCount >= 1 }, what: "spawned warm-up entered")
     // The spawned warmUp() may interleave with the await; the canonical
     // ordering is: warmUpFromCache await (instant on FakeEngine), then the
     // spawned warmUp(). The first two events observed on the engine MUST
@@ -305,7 +305,7 @@ struct KernelEngineHookCallSitesTests {
     fx.engine.warmUpFromCacheThrows = true
     // preWarm must not throw — the kernel's `try?` swallows it.
     try await fx.kernel.preWarm()
-    await fx.wrapper.drainReadyWork()
+    await fx.wrapper.drainUntil({ fx.engine.warmUpCallCount >= 1 }, what: "spawned warm-up entered")
     #expect(
       fx.engine.warmUpFromCacheCallCount == 1,
       "warmUpFromCache must still have been called once")

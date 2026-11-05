@@ -63,7 +63,7 @@ import Testing
 
       await startToRecording(context)
       context.vad.emitWarning(remainingSeconds: 45)
-      await context.sut.drainReadyWork()
+      await wrapper.drainUntil({ observed.entries.count == 1 }, what: "warning forwarded")
 
       #expect(observed.entries.count == 1, "the warning must reach the callback exactly once")
       let entry = try #require(observed.entries.first)
@@ -105,7 +105,7 @@ import Testing
       // Positive control in the same session: the drop above is the stamp check
       // doing its job, not the callback being unreachable from this fixture.
       context.vad.emitWarning(remainingSeconds: 30)
-      await context.sut.drainReadyWork()
+      await wrapper.drainUntil({ observed.entries.count == 1 }, what: "warning forwarded")
       #expect(observed.entries.count == 1)
       let entry = try #require(observed.entries.first)
       let sessionTakeID = try #require(wrapper.telemetryState.takeID)

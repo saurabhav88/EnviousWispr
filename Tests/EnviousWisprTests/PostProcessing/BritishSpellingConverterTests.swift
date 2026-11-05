@@ -250,7 +250,40 @@ struct BritishSpellingConverterTests {
     return (best, last!)
   }
 
-  @Test("10,000 words with 50 protected sentinels convert inside the computed budget")
+  private static func sentinelText() -> (text: String, sentinels: [String]) {
+    let sentinels = (0..<50).map { "EWSNIP\(String(format: "%08x", $0 * 7919))" }
+    var text = ""
+    for index in 0..<1_000 {
+      text += "The organization analyzed ten color samples at the center today. "
+      if index % 20 == 0 { text += sentinels[index / 20] + " " }
+    }
+    return (text, sentinels)
+  }
+
+  private static let plainText = String(
+    repeating: "The organization analyzed ten color samples at the center today. ", count: 1_000)
+
+  @Test("10,000 words with 50 protected sentinels convert every word and keep every sentinel")
+  func tenThousandWordsWithSentinels() {
+    let (text, sentinels) = Self.sentinelText()
+    let result = Self.converter.convert(text, protectedSpans: sentinels)
+    #expect(result.swaps == 4_000)
+    for sentinel in sentinels {
+      #expect(result.text.contains(sentinel))
+    }
+  }
+
+  @Test("10,000 words convert every swappable word")
+  func tenThousandWords() {
+    #expect(Self.converter.convert(Self.plainText).swaps == 4_000)
+  }
+
+  // #4405: the time budgets below are decided by how busy the Mac is, so they run only in the
+  // opt-in `scripts/xcode-test.sh --real-boundary` run; the two tests above keep the conversion
+  // checks in the everyday lane.
+  @Test(
+    "10,000 words with 50 protected sentinels convert inside the computed budget",
+    .tags(.realBoundary), .realBoundaryRun)
   func tenThousandWordsWithSentinelsWithinBudget() {
     let sentinels = (0..<50).map { "EWSNIP\(String(format: "%08x", $0 * 7919))" }
     var text = ""
@@ -270,7 +303,9 @@ struct BritishSpellingConverterTests {
     #expect(elapsed < .milliseconds(150), "10,000 words with sentinels took \(elapsed) at best")
   }
 
-  @Test("10,000 words convert inside the step's computed budget for that input")
+  @Test(
+    "10,000 words convert inside the step's computed budget for that input",
+    .tags(.realBoundary), .realBoundaryRun)
   func tenThousandWordsWithinBudget() {
     let sentence = "The organization analyzed ten color samples at the center today. "
     let text = String(repeating: sentence, count: 1_000)

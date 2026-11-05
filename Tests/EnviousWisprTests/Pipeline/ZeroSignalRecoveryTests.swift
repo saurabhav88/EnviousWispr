@@ -213,7 +213,9 @@ struct ZeroSignalRecoveryTests {
     ctx.wrapper.testKernel.externalCaptureStalled(
       stallContext(ctx, failureMode: .becameZeroMidCapture))
     ctx.capture.releaseStabilizationGate()
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.wrapper.testKernel.lastRecordingDurationSeconds != nil },
+      what: "recording duration stamped")
 
     #expect(
       ctx.wrapper.testKernel.lastRecordingDurationSeconds != nil,
@@ -595,7 +597,8 @@ struct ZeroSignalRecoveryTests {
     ctx.vad.evidence = .confirmedNoSpeech
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.wrapper.deadMicRetireAttempts.count == 1 }, what: "retire attempt reported")
 
     #expect(ctx.wrapper.deadMicRetireAttempts.count == 1)
     let attempt = ctx.wrapper.deadMicRetireAttempts.first
@@ -619,7 +622,8 @@ struct ZeroSignalRecoveryTests {
     ctx.vad.evidence = .confirmedNoSpeech
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntil(
+      { ctx.wrapper.deadMicRetireAttempts.count == 1 }, what: "retire attempt reported")
 
     #expect(ctx.wrapper.deadMicRetireAttempts.count == 1)
     // The retire ran on the sample fact alone — the eligibility-gated stamp never
@@ -638,7 +642,7 @@ struct ZeroSignalRecoveryTests {
       ctx.vad.evidence = .confirmedNoSpeech
       await ctx.wrapper.drainReadyWork()
       await ctx.wrapper.apply(.stop)
-      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.drainUntilConcluded()
       await ctx.wrapper.apply(.reset)
       await ctx.wrapper.drainReadyWork()
     }
@@ -661,7 +665,7 @@ struct ZeroSignalRecoveryTests {
       ctx.vad.evidence = .confirmedNoSpeech
       await ctx.wrapper.drainReadyWork()
       await ctx.wrapper.apply(.stop)
-      await ctx.wrapper.drainReadyWork()
+      await ctx.wrapper.drainUntilConcluded()
       await ctx.wrapper.apply(.reset)
       await ctx.wrapper.drainReadyWork()
     }
@@ -1021,7 +1025,7 @@ struct ZeroSignalRecoveryTests {
     ctx.vad.evidence = .confirmedNoSpeech
     await ctx.wrapper.drainReadyWork()
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
   }
 
   @Test("#1578 STOP: a run already classified reactively and ACCEPTED adds nothing")
@@ -1126,7 +1130,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     assertDrainedExactlyOnce(ctx, log)
   }
@@ -1143,7 +1147,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     // The paired control: without it, a sink that fired unconditionally would
     // satisfy every positive cell above.
@@ -1163,7 +1167,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     assertDrainedExactlyOnce(ctx, log)
   }
@@ -1180,7 +1184,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(log.batches.isEmpty)
   }
@@ -1201,7 +1205,7 @@ struct ZeroSignalRecoveryTests {
     // tail rather than a direct terminal — that is the #1408 salvage design, and
     // it is why the normal-STOP drain point covers interruption too.
     ctx.wrapper.testKernel.externalEngineInterrupted(.deviceRemoved)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     assertDrainedExactlyOnce(ctx, log)
   }
@@ -1218,7 +1222,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     ctx.wrapper.testKernel.externalEngineInterrupted(.engineLost)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(log.batches.isEmpty)
   }
@@ -1287,7 +1291,7 @@ struct ZeroSignalRecoveryTests {
 
     // Clean up the new session and prove its OWN terminal is the consumer.
     await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
     #expect(ctx.capture.takePendingZeroSignalRefusalsCallCount == 3)
     #expect(log.flattened == Self.twoPending + [newSessionContext])
   }
@@ -1348,7 +1352,7 @@ struct ZeroSignalRecoveryTests {
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
     await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.drainUntilConcluded()
 
     #expect(log.flattened.count == 1)
     #expect(log.flattened.first?.reason == .muteUnverified)

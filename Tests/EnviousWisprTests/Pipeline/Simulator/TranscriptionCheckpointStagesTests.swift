@@ -237,7 +237,7 @@ struct TranscriptionCheckpointStagesTests {
 
     // The suspended stop now returns for the cancelled session.
     context.capture.releaseStopCaptureGate()
-    await wrapper.drainReadyWork()
+    await wrapper.drainUntil({ wrapper.effects.resourcesReleased }, what: "late stop released resources")
 
     #expect(wrapper.effects.resourcesReleased, "the late stop return did run")
     #expect(

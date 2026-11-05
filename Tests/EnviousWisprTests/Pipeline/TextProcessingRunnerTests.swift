@@ -734,7 +734,7 @@ extension TextProcessingRunnerTests {
   ) {
     let filler = FillerRemovalStep()
     filler.fillerRemovalEnabled = true
-    let itn = InverseTextNormalizationStep()
+    let itn = InverseTextNormalizationStep(deadlines: .unbounded)
     itn.spokenPunctuation = .off
     itn.backendSupportsLID = backendSupportsLID
     return ([filler, itn], itn)

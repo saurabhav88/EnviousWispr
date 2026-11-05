@@ -25,7 +25,7 @@ struct ListMarkerUpstreamCasingTests {
   private func corrected(_ input: String, vocabulary terms: [CustomWord]) async throws -> String {
     let correction = WordCorrectionStep()
     correction.correctorVocabulary = CorrectorVocabulary(terms: terms, generation: 1)
-    let itn = InverseTextNormalizationStep()
+    let itn = InverseTextNormalizationStep(deadlines: .unbounded)
     var context = TextProcessingContext(text: input, language: "en")
     context = try await correction.process(context)
     context = try await itn.process(context)
