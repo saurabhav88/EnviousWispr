@@ -190,6 +190,10 @@ final class MeetingSpeakerLabelsModel {
   private var checkTask: Task<Void, Never>?
   /// The latest check, so a test can wait for it to end.
   package var checkTaskForTests: Task<Void, Never>? { checkTask }
+  /// Set by the bootstrapper (`MeetingLiveSpeakers.waitForRelease`): a check waits until the last
+  /// meeting's speaker model physically released, because `MeetingLiveSpeakers.stop()` returns
+  /// before that release and two loaded copies would double the memory use.
+  var waitForMeetingRelease: @MainActor () async -> Void = {}
 
   init(environment: Environment) {
     self.environment = environment
@@ -337,8 +341,13 @@ final class MeetingSpeakerLabelsModel {
     let environment = environment
     readiness = .checking
     checkTask = Task { [weak self] in
-      // An earlier check releases its model before this one loads another copy.
+      // An earlier check, and the last meeting's speaker model, release before this check loads
+      // another copy. The generation guard comes first: a meeting that started meanwhile moved it,
+      // so this check never waits on that meeting's model.
       await previous?.value
+      guard let waitForMeetingRelease = self?.waitForMeetingRelease, self?.generation == current
+      else { return }
+      await waitForMeetingRelease()
       guard self?.generation == current else { return }
       guard let directory = await environment.admittedDirectory() else {
         self?.finish(current, .cancelled)

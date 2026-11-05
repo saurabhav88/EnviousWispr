@@ -535,7 +535,16 @@ struct MeetingSpeakerLabelsCard: View {
       }
     }
     // A check starts when the model is admitted while the card is shown, and when it appears.
-    .task(id: model.status) { model.checkIfNeeded() }
+    // Admission is part of the ID: validating an existing install and an admitted, unchecked
+    // model both show Checking, so the status alone would not change when admission finishes.
+    .task(id: CheckTrigger(status: model.status, installed: model.isInstalled)) {
+      model.checkIfNeeded()
+    }
+  }
+
+  private struct CheckTrigger: Equatable {
+    let status: MeetingSpeakerLabelsModel.Status
+    let installed: Bool
   }
 
   @ViewBuilder private var statusLine: some View {

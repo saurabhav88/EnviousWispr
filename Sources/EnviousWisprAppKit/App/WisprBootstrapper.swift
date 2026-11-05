@@ -2783,6 +2783,10 @@ package final class WisprBootstrapper {
     meetingLiveWords.speakers?.waitForCheckRelease = { [weak meetingSpeakerLabels] in
       await meetingSpeakerLabels?.waitForCheckRelease()
     }
+    meetingSpeakerLabels.waitForMeetingRelease = {
+      [weak meetingLiveSpeakers = meetingLiveWords.speakers] in
+      await meetingLiveSpeakers?.waitForRelease()
+    }
     self.meetingIdleObserver = MeetingIdleObserver(
       isActive: meetingIsActive,
       onIdle: { [modelDelivery, weak meetingSpeakerLabels] in

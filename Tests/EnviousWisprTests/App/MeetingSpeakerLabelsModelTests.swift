@@ -216,9 +216,18 @@ struct MeetingSpeakerLabelsModelTests {
     #expect(rig.model.status == .checking)
   }
 
-  @Test("a check due during a meeting waits for it to end, then runs")
+  @Test("a check due during a meeting waits for it to end and its model to release, then runs")
   func checkWaitsForTheMeeting() async throws {
     let rig = Rig()
+    // The meeting's speaker model is still releasing after Stop until the test opens this gate.
+    let openRelease = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
+    let releaseAsked = BoundedWait.Signal()
+    rig.model.waitForMeetingRelease = {
+      await withCheckedContinuation { continuation in
+        openRelease.withLock { $0 = continuation }
+        releaseAsked.fire()
+      }
+    }
     rig.meetingActive = true
     rig.state = .admitted
     rig.model.checkIfNeeded()
@@ -226,6 +235,9 @@ struct MeetingSpeakerLabelsModelTests {
     #expect(rig.check.calls == 0)
     rig.meetingActive = false
     rig.model.meetingBecameIdle()
+    try await BoundedWait.until(releaseAsked)
+    #expect(rig.check.calls == 0, "no second copy loads before the meeting's model released")
+    openRelease.withLock { $0 }?.resume()
     try await BoundedWait.until(rig.check.entered(0))
     rig.check.answer(.loaded)
     try await rig.finishCheck()
