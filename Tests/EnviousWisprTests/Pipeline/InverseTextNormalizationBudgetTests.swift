@@ -6,7 +6,7 @@ import Testing
 
 /// #2770: the ITN wall-clock budget scales with input length. A long dictation keeps its
 /// number, date and address formatting instead of losing it at the old fixed 0.5 s.
-@Suite("InverseTextNormalizationStep budget scales with length (#2770)", .tags(.productOutcome))
+@Suite("InverseTextNormalizationStep budget scales with length (#2770)", .tags(.productOutcome, .localParallel))
 struct InverseTextNormalizationBudgetTests {
 
   @Test(

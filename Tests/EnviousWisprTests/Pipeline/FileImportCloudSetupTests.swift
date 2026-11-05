@@ -9,7 +9,7 @@ import Testing
 /// model or the chosen model is gone, and says so with a typed outcome naming the model the run
 /// asked for. No model chosen is a bypass, never a "could not be cleaned up" failure.
 @MainActor
-@Suite("Transcribe a File with a cloud model problem (#4353)", .tags(.productOutcome))
+@Suite("Transcribe a File with a cloud model problem (#4353)", .tags(.productOutcome, .localParallel))
 struct FileImportCloudSetupTests {
   /// Every switch that rewrites words is off and spelling is American, so the deterministic
   /// floor of each passage is the passage itself, written out here as literals.

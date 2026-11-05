@@ -10,7 +10,7 @@ import EnviousWisprAppKitTestSupport
 /// cannot summarize, a long meeting overflows the model's window or loses words silently, a cut
 /// answer is saved as a summary, a bad key is retried, or a local model starts work while the
 /// user dictates.
-@Suite("Meeting summary writer", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Meeting summary writer", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingSummaryTests {
   /// Records every call, answers from `answers` in order, and counts admissions.
   final class Calls: @unchecked Sendable {

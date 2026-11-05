@@ -13,7 +13,7 @@ import EnviousWisprAppKitTestSupport
 /// model runs beside dictation or a final pass, a deleted meeting is summarized, a quit loses
 /// an owed summary, or `meeting.summary_finished` is sent zero or two times for one attempt.
 @MainActor
-@Suite("Meeting summary owner", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Meeting summary owner", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingSummaryOwnerTests {
   static func eventually(
     _ label: String, _ condition: @escaping @MainActor () -> Bool,

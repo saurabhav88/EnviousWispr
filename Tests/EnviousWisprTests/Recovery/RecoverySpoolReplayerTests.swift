@@ -23,7 +23,7 @@ import EnviousWisprAppKitTestSupport
 /// ran (the transient-Keychain deferral).
 /// `.serialized` — the telemetry tests set the process-global `testEventHook`.
 @MainActor
-@Suite("Recovery spool replayer (#1063 PR2, #1464)", .serialized)
+@Suite("Recovery spool replayer (#1063 PR2, #1464)", .serialized, .tags(.localParallel))
 struct RecoverySpoolReplayerTests {
 
   /// Minimal batch-ASR fake: returns a canned result, counts calls, runs an

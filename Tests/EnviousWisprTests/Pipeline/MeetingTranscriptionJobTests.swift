@@ -76,7 +76,7 @@ enum FakeSpeech {
 /// join, or meeting work runs while the user dictates.
 // #3973 C1: a suite-wide limit, so one parked fixture fails in a minute instead of holding the
 // shared local test queue (a hang here held it for 38 minutes).
-@Suite("MeetingTranscriptionJob", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("MeetingTranscriptionJob", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 @MainActor
 struct MeetingTranscriptionJobTests {
 

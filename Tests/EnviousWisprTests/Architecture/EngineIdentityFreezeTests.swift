@@ -16,7 +16,7 @@ import Testing
 // list (it became an identity reader once Rung 2A wired it through
 // `adapter.engineIdentity`).
 
-@Suite struct EngineIdentityFreezeTests {
+@Suite(.tags(.localParallel)) struct EngineIdentityFreezeTests {
 
   /// Matches the `.parakeet` enum-case literal (leading dot, identifier
   /// boundary trailing). Does NOT match `Parakeet` (capitalized engine name)

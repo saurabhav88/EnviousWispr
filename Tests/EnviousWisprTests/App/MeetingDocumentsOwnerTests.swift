@@ -11,7 +11,7 @@ import Testing
 /// notes come back, a meeting says "your notes are kept" before they are, or a meeting with no
 /// audio is transcribed again on every launch.
 @MainActor
-@Suite("Meeting notes owner", .tags(.productOutcome), .timeLimit(.minutes(1)))
+@Suite("Meeting notes owner", .tags(.productOutcome, .localParallel), .timeLimit(.minutes(1)))
 struct MeetingDocumentsOwnerTests {
   typealias Harness = MeetingCoordinatorTests.Harness
 

@@ -59,7 +59,7 @@
     "EnviousWisprTests/WordDiffTests": 2.866977,
     "EnviousWisprTests/ITNGeneratedDataTests": 1.277164,
     "EnviousWisprTests/RecognizerMarksTests": 0.931171,
-    "__protected__": 177.603239,
+    "__protected__": 155.701295,
     "EnviousWisprTests/WordCheckRuntimeTerminationTests": 4.31805,
     "EnviousWisprTests/LanguageGateBenchmarkTests": 49.789993,
     "EnviousWisprTests/MeetingCoordinatorTests": 11.523142,
@@ -94,7 +94,20 @@
     "EnviousWisprTests/KernelDictationDriverBridgeMatrixTests": 0.885192,
     "EnviousWisprTests/MeetingCoordinatorTelemetryTests": 0.826644,
     "EnviousWisprTests/WhisperGatedLoadFreezeTests": 0.812643,
-    "EnviousWisprTests/KernelOwnershipFreezeTests": 0.696805
+    "EnviousWisprTests/KernelOwnershipFreezeTests": 0.696805,
+    "EnviousWisprTests/MeetingSummaryOwnerTests": 3.454833,
+    "EnviousWisprTests/FileImportBatchTests": 3.03417,
+    "EnviousWisprTests/InverseTextNormalizationBudgetTests": 2.508339,
+    "EnviousWisprTests/EngineIdentityFreezeTests": 2.114389,
+    "EnviousWisprTests/MeetingTranscriptionJobTests": 1.977289,
+    "EnviousWisprTests/KernelDictationDriverTests": 1.660287,
+    "EnviousWisprTests/EngineCoordinatorTests": 1.594508,
+    "EnviousWisprTests/LivePreviewPackCopyTests": 1.318406,
+    "EnviousWisprTests/MeetingSummaryTests": 0.983548,
+    "EnviousWisprTests/MeetingDocumentsOwnerTests": 0.884451,
+    "EnviousWisprTests/FileImportCloudSetupTests": 0.855177,
+    "EnviousWisprTests/CustomWordsCommandQueueTests": 0.769658,
+    "EnviousWisprTests/RecoverySpoolReplayerTests": 0.746889
   },
   "blocks": [
     {
@@ -672,6 +685,136 @@
         {
           "suite": "EnviousWisprTests/KernelOwnershipFreezeTests",
           "file": "Tests/EnviousWisprTests/Architecture/KernelOwnershipFreezeTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/MeetingSummaryOwnerTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingSummaryOwnerTests",
+          "file": "Tests/EnviousWisprTests/App/MeetingSummaryOwnerTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/FileImportBatchTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/FileImportBatchTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/FileImportBatchTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/InverseTextNormalizationBudgetTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/InverseTextNormalizationBudgetTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/InverseTextNormalizationBudgetTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "architecture/EngineIdentityFreezeTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EngineIdentityFreezeTests",
+          "file": "Tests/EnviousWisprTests/Architecture/EngineIdentityFreezeTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/MeetingTranscriptionJobTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingTranscriptionJobTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/MeetingTranscriptionJobTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/KernelDictationDriverTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/KernelDictationDriverTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/KernelDictationDriverTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/EngineCoordinatorTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/EngineCoordinatorTests",
+          "file": "Tests/EnviousWisprTests/App/EngineCoordinatorTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/LivePreviewPackCopyTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/LivePreviewPackCopyTests",
+          "file": "Tests/EnviousWisprTests/App/LivePreviewPackCopyTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "llm/MeetingSummaryTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingSummaryTests",
+          "file": "Tests/EnviousWisprTests/LLM/MeetingSummaryTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/MeetingDocumentsOwnerTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/MeetingDocumentsOwnerTests",
+          "file": "Tests/EnviousWisprTests/App/MeetingDocumentsOwnerTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "pipeline/FileImportCloudSetupTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/FileImportCloudSetupTests",
+          "file": "Tests/EnviousWisprTests/Pipeline/FileImportCloudSetupTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "app/CustomWordsCommandQueueTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/CustomWordsCommandQueueTests",
+          "file": "Tests/EnviousWisprTests/App/CustomWordsCommandQueueTests.swift"
+        }
+      ]
+    },
+    {
+      "name": "recovery/RecoverySpoolReplayerTests",
+      "reason": "#4089 2026-11-04 transitive resource review: no shared defaults, Keychain, fixed path, pasteboard, device/model or real deadline found (verdicts in the #4089 run folder).",
+      "suites": [
+        {
+          "suite": "EnviousWisprTests/RecoverySpoolReplayerTests",
+          "file": "Tests/EnviousWisprTests/Recovery/RecoverySpoolReplayerTests.swift"
         }
       ]
     }

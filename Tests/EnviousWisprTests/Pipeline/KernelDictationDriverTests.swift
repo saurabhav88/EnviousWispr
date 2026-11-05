@@ -14,7 +14,7 @@ import Testing
 // PipelineEvent dispatch, the external-error surface, and the no-op contracts.
 
 @MainActor
-@Suite struct KernelDictationDriverTests {
+@Suite(.tags(.localParallel)) struct KernelDictationDriverTests {
 
   // MARK: RecordingSessionState -> PipelineState map (pure, total)
 
