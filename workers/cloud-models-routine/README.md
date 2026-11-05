@@ -99,17 +99,27 @@ python3 -I $W/trusted-main/scripts/cloud-models/app_token.py exec -- gh api <arg
 Activation proves this route by:
 - posting a test comment as the Stage 2 App and reading its body back unchanged
 - reading back a squash merge's commit title and message, with no footer and no trailer
-- showing that arming squash auto-merge refuses a head that has moved
+- showing that both merge calls refuse a head that has moved
 
-**Merge route:** squash auto-merge with an expected head, through GraphQL on the same route:
+**Merge route:** squash merge locked to an expected head, through GraphQL on the same route. It has two calls, tried in this order:
 
-```
-python3 -I $W/trusted-main/scripts/cloud-models/app_token.py exec -- gh api graphql \
-  -f query='mutation($id: ID!, $head: GitObjectID!, $title: String!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $head, commitHeadline: $title, commitBody: "Part of #4353."}) { pullRequest { autoMergeRequest { enabledAt } } } }' \
-  -f id=<PR node_id> -f head=<saved merge.head> -f title=<PR title>
-```
+1. Arm auto-merge:
 
-A reply with HTTP 200 can still carry `errors`. Only a reply with no `errors` and a non-null `autoMergeRequest` counts as armed. A direct REST squash merge (`PUT /repos/{owner}/{repo}/pulls/{n}/merge`) is not authorized. If the route fails, Stage 2 records `review-blocked` and never tries another way.
+   ```
+   python3 -I $W/trusted-main/scripts/cloud-models/app_token.py exec -- gh api graphql \
+     -f query='mutation($id: ID!, $head: GitObjectID!, $title: String!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $head, commitHeadline: $title, commitBody: "Part of #4353."}) { pullRequest { autoMergeRequest { enabledAt } } } }' \
+     -f id=<PR node_id> -f head=<saved merge.head> -f title=<PR title>
+   ```
+
+2. Only when call 1 is refused because the PR is already mergeable (an `errors` message containing `clean status`), merge it now with the same saved head:
+
+   ```
+   python3 -I $W/trusted-main/scripts/cloud-models/app_token.py exec -- gh api graphql \
+     -f query='mutation($id: ID!, $head: GitObjectID!, $title: String!) { mergePullRequest(input: {pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $head, commitHeadline: $title, commitBody: "Part of #4353."}) { pullRequest { merged mergeCommit { oid } } } }' \
+     -f id=<PR node_id> -f head=<saved merge.head> -f title=<PR title>
+   ```
+
+GitHub refuses auto-merge on a PR whose requirements already pass, and Stage 2 reaches this step only after `build-check` and the review gate passed, so call 2 is the usual path. Founder approval for call 2, 2026-11-05: the #4353 plan, "Merge route amendment". Both calls refuse a head that moved. A reply with HTTP 200 can still carry `errors`. Call 1 counts as armed only with no `errors` and a non-null `autoMergeRequest`; call 2 counts as merged only with no `errors` and `merged: true`. Any other refusal is final for this invocation: Stage 2 records `review-blocked` and never tries another way. A REST merge (`PUT /repos/{owner}/{repo}/pulls/{n}/merge`) is not authorized.
 
 ## Run verification (`workflow.py verify-run`)
 

@@ -22,7 +22,7 @@ You are the second stage of the EnviousWispr cloud model routine. Stage 1, a Git
 - MAC_CLEARANCE_LOGIN = `saurabhav88`
 - ACTIVATION_DAY = `2026-11-05`
 - **WRITE ROUTE:** `python3 -I $W/trusted-main/scripts/cloud-models/app_token.py exec -- gh api <arguments>`, from the trusted checkout made in Setup, never from a PR checkout. Every GitHub call in this prompt, read or write, goes through it. Where a step below says `gh api ...`, run it this way.
-- **MERGE ROUTE:** the `enablePullRequestAutoMerge` GraphQL call in README.md "Merge route", run through the WRITE ROUTE.
+- **MERGE ROUTE:** the two GraphQL calls in README.md "Merge route" (`enablePullRequestAutoMerge`, then `mergePullRequest` only on the clean-status refusal), both with the saved head as `expectedHeadOid`, run through the WRITE ROUTE.
 - **Read token:** where a step sets `GH_TOKEN=<read token of the WRITE ROUTE>`, run that command through the WRITE ROUTE instead (`app_token.py exec -- env ROUTINE_APP_BOT=... python3 -I ...`). The route sets `GH_TOKEN` itself.
 
 ## Rules that do not bend
@@ -185,7 +185,7 @@ For each run ID and the attempt you are evaluating:
    - `build-check` succeeded on this head
    - this head has a clean verdict (Step 4.5) or a valid Mac clearance (Step 4.6)
    - `head.sha` equals the head you checked, and `base.sha` still gives a passing `check-pr`
-2. Save the intent first (rule 7): `merge: {"state": "arming", "head": <head.sha>, "base": <base.sha>}`, and read it back. Then arm squash auto-merge through the proven MERGE ROUTE, with the expected head equal to the saved head. The commit title is the PR title, and the commit message is exactly `Part of #4353.`. Reconcile GitHub's PR state after the call, or after a lost reply on the next invocation, and save `merge.state: armed`. If the MERGE ROUTE is not proven, activation is blocked and you never reach this step. A direct REST merge is not authorized.
+2. Save the intent first (rule 7): `merge: {"state": "arming", "head": <head.sha>, "base": <base.sha>}`, and read it back. Then run the MERGE ROUTE with the expected head equal to the saved head: arm squash auto-merge, and only if GitHub refuses because the PR is already in clean status, run the route's immediate squash merge with the same saved head. The commit title is the PR title, and the commit message is exactly `Part of #4353.`. Reconcile GitHub's PR state after the call, or after a lost reply on the next invocation, and save `merge.state: armed` (or go straight to item 3 if it merged). Any other refusal means `review-blocked`. A REST merge is not authorized.
 3. On this or a later invocation, read `gh api repos/REPO/pulls/<N>`:
    - **Merged** (`merged_at` and `merge_commit_sha` set): confirm the PR's final head is the saved `merge.head`. If no saved merge intent exists (a merge nobody recorded), record `review-blocked` for a person. Fetch main and confirm that `website/public/cloud-models.json` at `merge_commit_sha` equals that head's copy byte for byte. Then record `state: merged`, `mergedSHA` and `result=merged`. If either check fails, record `review-blocked` for a person.
    - **Still open and armed on the saved head:** stay `pending`. If it is still open 24 hours after arming, record `review-blocked`, reason `merge-stalled`.
