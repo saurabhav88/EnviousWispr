@@ -46,6 +46,8 @@ package final class WisprBootstrapper {
   /// #4105: the Live words row's state and downloads, kept for the app run so closing Settings
   /// never drops a transfer's owner. Shares the choice owner meeting Start uses.
   let meetingLiveWordsRow: MeetingLiveWordsRowModel
+  /// #4355 PR C: the Speaker labels card (EnviousMeet > Models).
+  let meetingSpeakerLabels: MeetingSpeakerLabelsModel
   /// #4325: starts a Universal download that waited for the meeting to end.
   private let meetingIdleObserver: MeetingIdleObserver
   /// #3973 C3: EnviousMeet > Models' Transcript engine row.
@@ -2749,9 +2751,21 @@ package final class WisprBootstrapper {
     }
     modelDelivery.isMeetingActive = meetingIsActive
     whisper.setupService.isMeetingActive = meetingIsActive
+    // #4355 PR C: the Speaker labels card's model. Its load check releases the model before the
+    // delivery home deletes files, stops when a meeting starts and runs again when it ends.
+    let meetingSpeakerLabels = MeetingSpeakerLabelsModel(
+      environment: .live(home: modelDelivery, isMeetingActive: meetingIsActive))
+    self.meetingSpeakerLabels = meetingSpeakerLabels
+    modelDelivery.drainLiveSpeakerHoldersBeforeRemoval = { [weak meetingSpeakerLabels] in
+      await meetingSpeakerLabels?.releaseForRemoval()
+    }
     self.meetingIdleObserver = MeetingIdleObserver(
       isActive: meetingIsActive,
-      onIdle: { [modelDelivery] in modelDelivery.meetingBecameIdle() })
+      onIdle: { [modelDelivery, weak meetingSpeakerLabels] in
+        modelDelivery.meetingBecameIdle()
+        meetingSpeakerLabels?.meetingBecameIdle()
+      },
+      onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: settings, whisperSetup: whisper.setupService,
@@ -2810,7 +2824,11 @@ package final class WisprBootstrapper {
         openCalendarSettings: { [permissions] in permissions.openCalendarSettings() },
         callSoundSupported: { CallMicrophoneWatcher.isSupported },
         settings: settings,
-        emit: { TelemetryService.shared.trackMeetingSetup($0) }))
+        emit: { TelemetryService.shared.trackMeetingSetup($0) },
+        // #4355 PR C: the one speaker labels door, queued if a meeting is active.
+        requestSpeakerLabelsModel: { [modelDelivery] in
+          modelDelivery.requestLiveSpeakerModel(meetingActive: meetingIsActive())
+        }))
     let callDetection = CallDetectionCoordinator(
       dependencies: .init(
         settings: settings,
@@ -3386,6 +3404,7 @@ private struct MainWindowRoot: View {
       .environment(b.meetingStartFlow)
       .environment(b.meetingOnboardingModel)
       .environment(b.meetingLiveWordsRow)
+      .environment(b.meetingSpeakerLabels)
       .environment(b.meetingTranscriptEngineRow)
       .environment(b.liveRecordingState)
       .environment(b.lastRecordingResult)

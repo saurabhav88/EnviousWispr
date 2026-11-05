@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "et",
+    "title": "kõnelejate tähised",
+    "words": [
+      "häälte eristamine"
+    ],
+    "phrases": [
+      "kes koosolekul praegu räägib",
+      "näita kõnelejat reaalajas eelvaates"
+    ]
+  }
+}

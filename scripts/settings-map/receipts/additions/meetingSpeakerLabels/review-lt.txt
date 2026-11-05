@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "lt",
+    "title": "kalbėtojų žymos",
+    "words": [
+      "balsų atskyrimas"
+    ],
+    "phrases": [
+      "kas dabar kalba susitikime",
+      "rodyti kalbėtoją tiesioginėje peržiūroje"
+    ]
+  }
+}

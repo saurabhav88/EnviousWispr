@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "sk",
+    "title": "označenie hovoriacich",
+    "words": [
+      "rozlíšenie hlasov"
+    ],
+    "phrases": [
+      "kto práve hovorí na stretnutí",
+      "zobraziť hovoriaceho v živom náhľade"
+    ]
+  }
+}

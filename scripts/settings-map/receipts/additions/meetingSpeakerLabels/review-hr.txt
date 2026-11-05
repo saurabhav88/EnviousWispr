@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "hr",
+    "title": "oznake govornika",
+    "words": [
+      "razlikovanje glasova"
+    ],
+    "phrases": [
+      "tko trenutačno govori na sastanku",
+      "prikaži govornika u pregledu uživo"
+    ]
+  }
+}

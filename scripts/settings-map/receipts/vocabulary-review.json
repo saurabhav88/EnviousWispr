@@ -196,13 +196,18 @@
    "id": "meetingSummaryEngine.egOne",
    "review": "additions/meetingSummaryEngine.egOne-4319.json",
    "reviewSHA256": "af7a48095b617ac1885a6099d19f54150ba3ebe463fffde6545a8d707ad82903"
+  },
+  {
+   "id": "meetingSpeakerLabels",
+   "review": "additions/meetingSpeakerLabels.json",
+   "reviewSHA256": "161b6e86a308bd8ca2cb4cff57cccbed221dbe40d218fa784f96fcb280481273"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "01f63261e01077041f88573647ff9eda5533a54ffe751848c58e53916f22762e",
-  "bytes": 1809597
+  "sha256": "25b4f8c996996005c0e93c5f821e8c181182fe93b056485ca832f7964426e487",
+  "bytes": 1816067
  },
  "sources": [
   {
@@ -486,7 +491,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "8f7cecf036c431b89484d64109f47197ec3cd5609e9762dea0ec53d07b66172e",
+   "contentSHA256": "4f36742830bb814ee2cc7d449c96510dd8fed63d466dd98460b29ab708f43767",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1446,13 +1451,32 @@
       "sha256": "6b8c13fa6402ae377b2a447c1949c184cb4d417bcc4be089b1f19175919032bd"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-ar.txt",
+      "sha256": "b2729c30c8b65340be46b5dc4b56ab0fdf83fb3ea9d707283ac155dc8c3698b7"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "a32fe38603b9459ad000424b688fde9838f0d88734dcb6f9c2b520f55b8ca519",
+   "contentSHA256": "296d66437d9836590d03092f94668a73e4f9a9c52f6b62a96a701c4e2946efe0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2403,13 +2427,32 @@
       "sha256": "a23313d3ffa83d84bae6eeb51c42910079597672ac3183f9ffc55dea7a5a88ca"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-bg.txt",
+      "sha256": "6e69818b1aa6557dc40b4c5af8eed305811a16f8d16fa3b86885b2da0e0244ce"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "78863f1e292a680efe8f63ef5cbdb8b6469291ded6b058c887b632a29510fc9f",
+   "contentSHA256": "35de40b63c8eb15161c0e0748529ef718fa66b16190c75dcef0b06a9fc609771",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3360,13 +3403,32 @@
       "sha256": "e665222cc2e84c36bdfd6188623112d82a2529338fef4e6a391753c57c300d50"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-cs.txt",
+      "sha256": "9613f1f369ec1f81fbcf47146c6d072eb85f37dce76b66e47e79bed3036561f7"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "9dfc68bb896f240a9a2536398af9ac9f95d191c11f3e34a23d170f620f00c94b",
+   "contentSHA256": "b37db2217702ce313e5344d7ade271afa13c0ca39f25ec409fa6c084c5b96d17",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4317,13 +4379,32 @@
       "sha256": "fe559a9cd59cf4af116ee1f504a951b605937f342a5147d7b785de697659d0b2"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-da.txt",
+      "sha256": "8981b4212f6f464ead980abbab2401fc12eee1d9d30e5b0d7ef5d827cb9c7776"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "5f6b988c4ff8517e35af5b978542792d632a69b75d9c9ebc27f5793243bf1fb6",
+   "contentSHA256": "555b5eb129443cdbeec24f29d2fb3c599790fcf3fb432f84e8c5a6551ca7098c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5452,13 +5533,36 @@
       "path": "additions/meetingSummaryEngine.egOne-4319/council-de.json",
       "sha256": "7c93edf5c736401d16d98dfa8445858724e6033b77834cf495f99e1cbc3315bd"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-de.txt",
+      "sha256": "5e8da8af26075e2e93db3dc909d3ae074ba8737535fb14b9e693445ea26c5827"
+     },
+     "council": {
+      "path": "additions/meetingSpeakerLabels/council-de.json",
+      "sha256": "54e1c73194933cb38aef40fa38a8bf93f015163aa6c31c101dee13a719b61106"
+     },
+     "disposition": "adopted with the GPT+Gemini council corrections; see additions/meetingSpeakerLabels/council-de-digest.md"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "6439f91fc9ad4bcbebf5edce09d3b6e7220dcf0137eae69d127708ab89791b73",
+   "contentSHA256": "69abd2a894de57939786db27b6d25f71ad0922772520d43f3f643a927a330c45",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6418,13 +6522,32 @@
       "sha256": "285385ee633f4ea2bb5cd8cefe8d691acf22563dba651f52a9b1664b7e685649"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-el.txt",
+      "sha256": "0c76b15701224100881047f8f6ab8428486a48d814f03a596fb1df19d069d635"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "eec6e7931f53d4d850d2cc06facdbd22796c9fb923c419fb04ba10e67aa92979",
+   "contentSHA256": "d016d80067e85641d7b236e2a39eb1c1aee878b47441c57df1903cde90119a2d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7356,13 +7479,32 @@
       "sha256": "0fd8c0024fc95a89baba93590569fc74359a5949bebb95c56cbf2a59d7fc62c5"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-en.txt",
+      "sha256": "0df1ba76fd1c9d6ded5e6c26d14c973414fbb82181ed961d10ef68baf02597a5"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "724c2ec1eb517ec8e08cc4881f691c0b5e6f7df954808cafdf1c7c8eccb6c825",
+   "contentSHA256": "097ae3488218b1f6850629f496180e51fefa83ca7bb1dde910a2ff48d21687b4",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8322,13 +8464,32 @@
       "sha256": "ebc96741704ae5adef15735b53d884c699630b9973e0984bc1d4398bac4abff0"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-es.txt",
+      "sha256": "5fc1a2882c3c7f748b5f9a785ac4dba185d6f0120f71598557a60cba8e376111"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "8f30ff7068bd0c59099333ef2b7d6b91537c2eb5fe4f64c8aa1557392f20a677",
+   "contentSHA256": "6620f04f696e96545df412f85da140593da28adb1733ab11d7f5341c46fc1a86",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9279,13 +9440,32 @@
       "sha256": "20153a8a7eab9c6763bf76afadced3d1754c6adc79d3113ddb8519bb094f8587"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-et.txt",
+      "sha256": "db45e26e8c71372a6b665ab055d589421c306e7687dd7fcbe6e6803942d59765"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "a3831b70ab63824bf07520423675cd139ec9c326c51c6f60919ef7ef96e7aa44",
+   "contentSHA256": "4e1aa9ba28e89a13f79f39668048c4bf39e9941fc1419a736fc8fb30e78a626f",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10236,13 +10416,32 @@
       "sha256": "2ca6f6022b25237160d9c75437423e0b5ecea727084ccb6053dee1317cd5be6f"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-fi.txt",
+      "sha256": "5ee2fe2574c4501446632eefee8bd8ed060f8346417e4dc610a0a3337cc9c04f"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "749daf03e0e722b7fb13373969b16abd5f29cbac13487bcd9c9c810864a43460",
+   "contentSHA256": "a84df39308d570e4bc319b994993e3825a5ebedfff210fc7781881756d059b8a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11193,13 +11392,32 @@
       "sha256": "75b2b5eb3d9a0f469d569cdbe82936828e4fb41d0bf94dfde034e29a5d8929fc"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-fr.txt",
+      "sha256": "fa68069360ed4cad11ca75e98785fe92bf647457647c9d7727dcd5c8a486c2f4"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "8c8903342e4f5e5485a64e3ec6a16583e7ac2c050da45b908fb05f4d32af3d0e",
+   "contentSHA256": "c55c06738ac7b23aa46c0fcd1f73b73eaec22226fcddec35ad19447f79e82720",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12150,13 +12368,32 @@
       "sha256": "03c9914d2ad1d15e149542d7e026723d6f5a1cd4ccec71584e428c167b5d929e"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-hi.txt",
+      "sha256": "5ece164a0d535c49fc1cc1ac32d3ca902245237a914226eb43bab57f3476fe1a"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "6004f12f65a1c238661e578f9f8729df5a1de77c8e537dcc9735eb274585f784",
+   "contentSHA256": "dfce45e8ab1f11b98917393ccffd4f9cf05ce988bc75cf3a8ca7a71b1fe2985d",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13107,13 +13344,32 @@
       "sha256": "f531f0b37486ce12a9f7d3eea9254b85de6b2176dfb86479aa1e679d81aaf26c"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-hr.txt",
+      "sha256": "79b28ee13d5d80d3235180564d9b515fe377feba3447552c6168e720511880a4"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "5ff7bb41a88f5fbfeb79cd972adf65be8be1ec1d6258fa05b7441cfc45cc3ca4",
+   "contentSHA256": "2a4340f0d35d5f3c87539a72e87bf353043c72933a4edf2f83be1b259789f752",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14064,13 +14320,32 @@
       "sha256": "49a51b4c6369213e340d9851fdeb936fa2e6693c0bc5f3a5c4324db1a25fdec0"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-hu.txt",
+      "sha256": "3ee690d1496b31ce6e982a8d338457995b18b4c9863209b0a02aec40b89a4059"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "0d8fca0698f63844c1afc39d58dc348c4cf3f45c62778822f7367c067a142131",
+   "contentSHA256": "e5817a961caa7a679b05cf3179270f4f3a47c84be408bfc8b1a3fb50b4b3c85e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15030,13 +15305,32 @@
       "sha256": "e3dadd9bfe8dd1c01c9bb8b7a4ff67c88ed573310cfd94ba4c333ae8d0242b1f"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-it.txt",
+      "sha256": "72d2e6b9343cbb59af6b1883c114d688080639b80fea329869faec3d390e3367"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "1bafd40126d1733289564b35e66e7a6aab4c8abde017de47564fe3075bc427d1",
+   "contentSHA256": "f7100ae714d17c03ef3a4938b4226cf70cb576b2f140c93bb6b8aa854de7fd22",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15987,13 +16281,32 @@
       "sha256": "75d8e716cc33dcac77cea36163b378005ef36fba9e54cde63189f9652a977c01"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-ja.txt",
+      "sha256": "f49555e33f90348cd903c9458f69434416d07a74784f619b2b7c6192503719b3"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "2b676dc8b50c8db8799aed60356b097f317c28ee2c15b494b265b5a7dc3c313a",
+   "contentSHA256": "d5792f402f6c61801c43c4ba8b7ca2f22113e94d83ddd90a6201899497e9753e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -16944,13 +17257,32 @@
       "sha256": "3b1a1bd31817c91659183283beb4cf16e08fe021f81056ddec8644074a37bfbf"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-ko.txt",
+      "sha256": "ab7077278bed74796b82edcb6dba5b750cebbab71287b56e8ceaf3dc51bc3aa5"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "1a74ca1711fe2d86a6c75387a271378538ae41300b2a496886efb834b30d8053",
+   "contentSHA256": "2f2514e750df8f827a1bf4a66331fe0bbcd643b17d8b2f5db5f4e44642720cd7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17910,13 +18242,32 @@
       "sha256": "81412571100243fdd563db46229b43b41d0f87a0a8cc30bf3f52f4acb50b2805"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-lt.txt",
+      "sha256": "336d98ffd5eef6e52159689c23c142f3aebf07139adef018ec0fe6819c03aa91"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "178cd52565624f6dd41f14ee673f056d36fa451da6776b2d59fb5859276ed130",
+   "contentSHA256": "4357f69e1ed29d8dfb6a896e7588b894ffa3369b460910114056696a552bacfc",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18867,13 +19218,32 @@
       "sha256": "c9e8ee9340caf8dab263dd39d48e97a0121f6dca090968b98ce6865d2d7498af"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-lv.txt",
+      "sha256": "5200de3d73e503ff0f40a20d30223f0888d5812e9fe0ff8c7c9e9adb26ab06d1"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "5e4379b73d6d11f12494bf6b0bc12eb8dc1aacb2a2d203e9126e886b95a92df9",
+   "contentSHA256": "fad45683ec27ebb1b74fe2df2d9d517e5becee868c71213927c7f06cf2060233",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19833,13 +20203,32 @@
       "sha256": "ecae0e27b81f8b689969e229548bef30921073371d8fe9dc5b11ef2a018d3e0e"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-mt.txt",
+      "sha256": "0de88cf8e4563be5ebe073bd443c949f0ffef80f49a40218489ba90c98234b48"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "35fbc0245ded38d5dde17a51300726cf7a179f7df29ef1f3e1ba23efe1232998",
+   "contentSHA256": "0aa71633fe671d41a5f041a67e30ac7e988ba9763fec348cc7e2749e2304ea1e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20790,13 +21179,32 @@
       "sha256": "e968e6278b02e84c31f75f12d7b61e715524924f98c67b7c1a7e9aed12e67d08"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-nl.txt",
+      "sha256": "83d09acf6615c52ec6c41efab280520deddc365ce5de08158af9812e64df2352"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "8f8df7d5b96dcdea683dad6bf26471e070c7e489a21b108d5d88a9f4ba5b4887",
+   "contentSHA256": "fa947c791d6b509fdcd6014bd1bb72a3a6e307553609cb35328759c46d81d412",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21747,13 +22155,32 @@
       "sha256": "8ef2305ddd7d0727cd30139dfd4d8732624ed723cc5d28b040ac0d9e8169e942"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-pl.txt",
+      "sha256": "61144fcfb723c8768a2df8af0004d9ab5af2a6cb1c8980addb462d75f5a4ddeb"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "53d18f2e3f429086bb8f9b59422610079fa3ac1aed2da5a2d1f4472563c6e7ad",
+   "contentSHA256": "5fd4ec94c74adda9bde40e244932b2aec946095734cacc3e939854b34895c61a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22712,13 +23139,32 @@
       "sha256": "be3443c7c78676bb7e172ebec88a52a5b2cbe29622cffcd4906b0fb989d66aa3"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-pt.txt",
+      "sha256": "e339accd6bf49d2eaf4f6025425d112d640ef00242f9772756595362fecace01"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "34b6920121989f27cb8adf4e62138e66926ee7fdd4bb6ff221e84eb75cbeb9ab",
+   "contentSHA256": "a9a244bd51204dc92e54531ebe74c3229f64b6ef39ebae1f586d4078230616e2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23669,13 +24115,32 @@
       "sha256": "f9c45a48bfff41bcfd8340e691d440a0fa28d3e1a3ef2d29c1fe666a645bf5ad"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-ro.txt",
+      "sha256": "7498a64dee5d89c5bb96a14f7935659597752232c75cbf9ec7feedbffec15391"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "3307da6e9f65e5c02fe00f80e4b0f35e72efbe5e298ade1e1dd942ac10b9e016",
+   "contentSHA256": "2fbede8143c5570e1b777ab1636ea2bd3f47db5685639edc9df74a972a5fbbb0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24626,13 +25091,32 @@
       "sha256": "17c065a57d3abf12a2ad664b1c1efc29ab813e5a43f724d952a98a9e4932ff97"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-ru.txt",
+      "sha256": "36c507502d921ef207088ecb68e1aeea48c1b1e180eb6394025bf9eb43a82172"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "00070b2bf8492e0ec72dfa8baf58a6e5249c9bd2fdc0f70bb59408e72f251ca2",
+   "contentSHA256": "bf17d60943626b4ee4fa1f4604a215398a74f2d5c34fe853d6b66f77e87e752a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25583,13 +26067,32 @@
       "sha256": "9c5e46c97a262416a9a66d49e87e4a7f377e2e43ca310bbf2b3dcc2441fcd70a"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-sk.txt",
+      "sha256": "ddc153bddef3d9e85c374f5f2f365c8f101e03b7b438bed9aa1f8ba98f0e0348"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "a5ae23f2c7d3e6c1bc1e69a9c64eae2b1205dc0497f3c220527e2ce10875718d",
+   "contentSHA256": "7b72cf16214bbec903309953137b84889bb62d5be451389e27151b07d3df1a68",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26549,13 +27052,32 @@
       "sha256": "2422bf69afcdac0b552c07f132ed87e4aea43a13c3487f0e780e1928a58fa2a6"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-sl.txt",
+      "sha256": "b6961a7e70ba33bfc390ac9114a49e92b09387db5e8ca7bf2fc7f118e9b953a3"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "249e8d9d5b337effbd58772a4d1c6093613b3428f3a27e10eb4c041e16a5b694",
+   "contentSHA256": "937986bf842ab24ab7eb4d628a40da208868bf49027ad5192a34c91ecd4081cd",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27506,13 +28028,32 @@
       "sha256": "7ed02beda0e2997b6a37f1a375e69a113608fda89e5e86416cb91068a2992668"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-sv.txt",
+      "sha256": "a1a8745ba4c313847ea3d69b59a799138ce4a964c9242ff90d270fbdd3ff8fd9"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "0d6bda1df9fe18462bd64b119f355a3ee7faabe720a8ac951b449ded6f4c0817",
+   "contentSHA256": "6ce33d7e683f2192ba9f977c2c16ef997b07911e33299ebf5d2961f2f03e4ed8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28463,13 +29004,32 @@
       "sha256": "4d2c11135fe6f686ac408fdb1e37407d806347e61b104c02be76619b9a30138f"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-tr.txt",
+      "sha256": "4dc95f3bb50c4a51b2ee0d26deff6ce30839211843a4b8c59d6b86d7d2a5a78f"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "bb30a62e37b24204d1bb55326dcac1bd1876f2fb82eef2a42d10e75ad865ace3",
+   "contentSHA256": "903b754da3cfb1b89eb62ba0ede88c79175d721541b00c214bb1704af416c208",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29429,13 +29989,32 @@
       "sha256": "f97d70d9febdf3da83b75580ca73a4bb2d02143b5da96e82a1d9a73092fe5918"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-uk.txt",
+      "sha256": "a4f015a0a1b5127a921205ab37cf456086ef1e9c25dc7451defd0994a32c77ac"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "1d59f2a668f6666d1e266f55f5b2272e27720f45f2bf128275285f2b9da962af",
+   "contentSHA256": "bf12fa676a6ac4a5476f1a1e6e0662b5501ed606d6f2f6b517aa5b4399b0d537",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30386,13 +30965,32 @@
       "sha256": "abdfa16d7706ca53dfd6befb391be0a8f8af3d82c42b08762a6ba02dc7ad5623"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-vi.txt",
+      "sha256": "b56782bfb150c4b657fe649f1e9ec7d871723ca18db53d8f864889ac9f4f8703"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "e9ffd09090abfef4d31d912849ea9af21dbda5499d91dffda2bb0ab1f967fd21",
+   "contentSHA256": "f21f57390e0e9258260b800898886cd6465b6efaec0d59338f0879562e9f9219",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31343,6 +31941,25 @@
       "sha256": "b444723105c539e60bbb41d289681cb93217a3cef54853f48947cfe45140feb4"
      },
      "disposition": "adopted as returned by the review (additions/meetingSummaryEngine.egOne-4319.json)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "meetingSpeakerLabels",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with the meeting Live Preview, transcript engine and language places); first draft by scripts/settings-map/draft-vocabulary.sh (#4355 PR C)",
+     "date": "2026-11-04",
+     "draft": {
+      "path": "additions/meetingSpeakerLabels/draft-meetingSpeakerLabels.json",
+      "sha256": "ab9c051355003d4986abf675297b218575bac4fb4ce4761f42b3564acb08d40a"
+     },
+     "prompt": {
+      "path": "additions/meetingSpeakerLabels/review-driver.py.txt",
+      "sha256": "13d10c97facb0a060aaeeb20beac749d3915c49cb2d99f5397c94d177c77f6c6"
+     },
+     "output": {
+      "path": "additions/meetingSpeakerLabels/review-zh.txt",
+      "sha256": "acea299fff2c607ac107e199f6cd1681b3526815e995bc009b9c324e4610f8ed"
+     },
+     "disposition": "adopted in full"
     }
    ],
    "phraseExemptions": []
@@ -31455,6 +32072,7 @@
   "meetingLiveWords.keepCurrent": "284df1fa1b783db5f51ecf0e302045d22e19fe57ecddd7e6f96406e5b50325a8",
   "meetingLiveWords.universal": "c1acb29da84332b353c621c52d433c95655b48cfc27b5dedcd0832d5a7642028",
   "meetingLiveWordsLanguage": "77c308e505fe0f714e82151342dc2dd27b4cea356418b1c3e424ed5a4590f54c",
+  "meetingSpeakerLabels": "ced92b6aea5468858dc4aca36461b08589e2f1d4e8c73d18b7acc125f4074ca9",
   "meetingSummaryEngine": "a3e8025b87c7365d0648535e036b67256175573bc95b22dec330e897d6498cd1",
   "meetingSummaryEngine.appleIntelligence": "edd6d793908512b37d4e975095884986eb2a2f29e7caaa96f307310151d79c46",
   "meetingSummaryEngine.change": "e1ca508730be536a4a9e5ea18c8da092f8556ed27d487e446e3af43add2f1121",

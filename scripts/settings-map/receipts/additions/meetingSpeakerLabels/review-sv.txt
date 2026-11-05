@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "sv",
+    "title": "talaretiketter",
+    "words": [
+      "talarseparering"
+    ],
+    "phrases": [
+      "vem pratar just nu på mötet",
+      "visa vem som pratar i liveförhandsvisningen"
+    ]
+  }
+}

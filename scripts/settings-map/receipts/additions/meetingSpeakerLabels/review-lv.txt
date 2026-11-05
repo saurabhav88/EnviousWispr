@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "lv",
+    "title": "runātāju apzīmējumi",
+    "words": [
+      "balsu atšķiršana"
+    ],
+    "phrases": [
+      "kurš pašlaik runā sapulcē",
+      "rādīt runātājus sapulces priekšskatījumā"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "ro",
+    "title": "etichete pentru vorbitori",
+    "words": [
+      "diferențierea vocilor"
+    ],
+    "phrases": [
+      "cine vorbește acum în ședință",
+      "arată cine vorbește în previzualizarea live"
+    ]
+  }
+}

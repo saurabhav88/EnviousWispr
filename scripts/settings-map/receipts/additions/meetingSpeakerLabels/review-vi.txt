@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "vi",
+    "title": "nhãn người nói",
+    "words": [
+      "phân biệt giọng nói"
+    ],
+    "phrases": [
+      "ai đang nói trong cuộc họp",
+      "hiện người đang nói trong bản xem trước trực tiếp"
+    ]
+  }
+}

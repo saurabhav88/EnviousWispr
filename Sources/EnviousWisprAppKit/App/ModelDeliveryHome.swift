@@ -202,7 +202,7 @@ final class ModelDeliveryHome {
   static func whisperGGUFRegistration(
     manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
-    try ggufRegistration(
+    try bundledRegistration(
       resource: "whisper-delivery-manifest", directory: "whisper-gguf",
       manifestBundle: manifestBundle, appSupport: appSupport)
   }
@@ -212,12 +212,23 @@ final class ModelDeliveryHome {
   static func whisperPreviewGGUFRegistration(
     manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
-    try ggufRegistration(
+    try bundledRegistration(
       resource: "whisper-preview-delivery-manifest", directory: "whisper-preview-gguf",
       manifestBundle: manifestBundle, appSupport: appSupport)
   }
 
-  private static func ggufRegistration(
+  /// #4355 PR C: the live speaker model (speaker labels), built by `init`; installs into its own
+  /// `Models/speaker-live`, a sibling of every other model's folder, because admission treats an
+  /// install folder as exhaustive (see `whisperPreviewHandle`).
+  static func speakerLiveDeliveryRegistration(
+    manifestBundle: Bundle, appSupport: URL
+  ) throws -> DeliveryRegistration {
+    try bundledRegistration(
+      resource: "speaker-live-delivery-manifest", directory: "speaker-live",
+      manifestBundle: manifestBundle, appSupport: appSupport)
+  }
+
+  private static func bundledRegistration(
     resource: String, directory: String, manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
     let manifest = try DeliveryManifest.loadBundled(resource: resource, bundle: manifestBundle)
@@ -773,6 +784,32 @@ final class ModelDeliveryHome {
       }
     }
 
+    // #4355 PR C: the live speaker model. Same launch sequence as the preview model's (observer,
+    // first-run baseline, then the adopt-only probe that can never start a download). A download
+    // starts only through `requestLiveSpeakerModel(meetingActive:)`.
+    do {
+      let registration = try Self.speakerLiveDeliveryRegistration(
+        manifestBundle: manifestBundle, appSupport: appSupportRoot)
+      speakerLiveRegistration = registration
+      Task { await controller.sweepSupersededStaging(registration) }
+      speakerLiveHandle = DeliveredModelHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      let speakerHome = self
+      let speakerIdentity = registration.manifest.identity
+      Task {
+        await speakerHome.attachSpeakerLiveObserver(identity: speakerIdentity)
+        await speakerHome.recordFirstRunBaseline(for: registration)
+        _ = await speakerHome.controller.admitIfComplete(registration)
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Speaker labels model manifest unavailable: live speaker labels stay off and no "
+            + "download can supply what this build never shipped: \(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+
     // #3105: each engine's checker is a separate ModelIdentity and install
     // directory. The base registrations stay in WisprBootstrapper.
     let checkerDataDirectory =
@@ -1318,8 +1355,17 @@ final class ModelDeliveryHome {
     return startPreviewDownload() ? .started : .refused
   }
 
-  /// #4325: the meeting is no longer active. Starts a queued request exactly once.
+  /// #4325: the meeting is no longer active. Starts each queued request (the Universal preview
+  /// model's and, #4355 PR C, the speaker labels model's) exactly once.
   func meetingBecameIdle() {
+    if speakerLiveDownloadQueued {
+      let outcome = requestLiveSpeakerModel(meetingActive: false)
+      Task {
+        await AppLogger.shared.log(
+          "SPEAKER_LIVE_DOWNLOAD meeting ended, queued request outcome=\(outcome)", level: .info,
+          category: "Delivery")
+      }
+    }
     guard previewDownloadQueued else { return }
     let outcome = requestPreviewDownload(meetingActive: false)
     Task {
@@ -1546,6 +1592,274 @@ final class ModelDeliveryHome {
     previewScheduledEpoch = nil
     previewDownloadIntentEpoch += 1
     Task { await handle.cancelActiveFetch() }
+  }
+
+  // MARK: - #4355 PR C: the live speaker model (speaker labels)
+
+  /// Nil when the bundled manifest failed to load (or storage is unavailable): the Speaker labels
+  /// card then says it is unavailable in this build and nothing can download it.
+  private(set) var speakerLiveHandle: DeliveredModelHandle?
+  private(set) var speakerLiveRegistration: DeliveryRegistration?
+
+  /// Observable mirror of the speaker model's delivery state, kept here (not on the card) so a
+  /// download survives Settings closing. Its own apply guard, for the reason
+  /// `lastAppliedPreviewStateSeq` gives.
+  private(set) var speakerLiveState: DeliveryState = .notReady
+  private var lastAppliedSpeakerLiveStateSeq: UInt64 = 0
+
+  /// The download size the card shows, from the bundled manifest.
+  var speakerLiveDownloadBytes: Int64? {
+    speakerLiveRegistration?.manifest.files.reduce(0) { $0 + $1.sizeBytes }
+  }
+
+  private func attachSpeakerLiveObserver(identity: ModelIdentity) async {
+    let home = self
+    let sequencer = DeliveryStateSequencer()
+    await controller.addStateObserver { observedIdentity, state in
+      guard observedIdentity == identity else { return }
+      let seq = sequencer.next()
+      Task { @MainActor in
+        guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
+        home.lastAppliedSpeakerLiveStateSeq = seq
+        home.applySpeakerLiveState(state)
+      }
+    }
+  }
+
+  private func applySpeakerLiveState(_ state: DeliveryState) {
+    speakerLiveState = state
+    cancelStaleSpeakerLiveTransfer()
+  }
+
+  /// Applies a state as the delivery observer does, for tests that need one the fake fetch
+  /// cannot produce.
+  package func applySpeakerLiveStateForTests(_ state: DeliveryState) {
+    applySpeakerLiveState(state)
+  }
+
+  // The handoffs of this door, in order, and what orders each one (enumerated after two review
+  // rounds on the same class):
+  // 1. Request -> scheduled task: the scheduled epoch is reserved synchronously; a Cancel or
+  //    Remove before the task runs bumps the intent epoch and the task does nothing.
+  // 2. Scheduled task -> controller door: the task first waits for every cancellation already
+  //    sent (`speakerLivePendingCancel`), then re-checks its epoch, so a cancellation sent before
+  //    a retry always reaches the controller before the retry does.
+  // 3. Inside the door, before the controller registered the attempt: a Cancel's controller call
+  //    can find nothing. When that attempt then shows a transfer state, it is cancelled here, but
+  //    only while no newer request is scheduled and no cancellation is still running. A newer
+  //    request wants the download and joins that attempt instead.
+  // 4. Attempt registered: Cancel drains it (`cancelActiveFetch` returns after the drain).
+  // 5. Remove: requests are refused while it runs; the shared removal stops any attempt.
+
+  /// Stops an attempt whose request was cancelled before the controller registered it (handoff 3).
+  private func cancelStaleSpeakerLiveTransfer() {
+    guard let epoch = speakerLiveFetchEpoch, epoch != speakerLiveIntentEpoch,
+      speakerLiveScheduledEpoch == nil, !speakerLiveCancelRunning
+    else { return }
+    switch speakerLiveState {
+    case .preparing, .downloading, .verifying: break
+    case .notReady, .admitted, .cancelled, .failed: return
+    }
+    cancelSpeakerLiveTransfer()
+  }
+
+  /// Sends one cancellation, after any earlier one. A later request waits for it (handoff 2).
+  private func cancelSpeakerLiveTransfer() {
+    speakerLiveCancelRequestsForTests += 1
+    speakerLiveCancelSerial += 1
+    let serial = speakerLiveCancelSerial
+    let previous = speakerLivePendingCancel
+    speakerLiveCancelRunning = true
+    speakerLivePendingCancel = Task { [weak self] in
+      await previous?.value
+      if let substitute = self?.speakerLiveCancelOverrideForTests {
+        await substitute()
+      } else if let handle = self?.speakerLiveHandle {
+        await handle.cancelActiveFetch()
+      }
+      if self?.speakerLiveCancelSerial == serial { self?.speakerLiveCancelRunning = false }
+    }
+  }
+
+  /// What a request for the speaker labels model did (the `requestPreviewDownload` shape).
+  enum LiveSpeakerModelRequestOutcome: Equatable {
+    case alreadyAvailable
+    /// Scheduled now, or one is already scheduled or transferring.
+    case started
+    /// A meeting is active; the download starts by itself when it ends (`meetingBecameIdle`).
+    case queuedUntilMeetingEnds
+    /// Refused before any work (not in this build, or the delivery kill switch is off).
+    case refused
+  }
+
+  enum LiveSpeakerModelRemovalOutcome: Equatable {
+    case started
+    /// A meeting is active; nothing was drained or deleted.
+    case refusedMeetingActive
+    /// Not in this build, or a removal is already running.
+    case refused
+  }
+
+  /// A request made during a meeting, waiting for it to end. In memory only: a quit drops it and
+  /// the card shows Download on the next launch, so no download starts that nobody can see.
+  private(set) var speakerLiveDownloadQueued = false
+  /// The intent epoch of a scheduled download that has not finished; reserved synchronously so a
+  /// Cancel pressed right after Download stops it before it fetches.
+  private var speakerLiveScheduledEpoch: Int?
+  /// Bumped by every Cancel and Remove; a scheduled download whose epoch moved does nothing.
+  private var speakerLiveIntentEpoch = 0
+  /// The epoch of the request now inside the controller's fetch door (nil when none).
+  private var speakerLiveFetchEpoch: Int?
+  /// The last cancellation sent; each new one and each new download waits for it.
+  private var speakerLivePendingCancel: Task<Void, Never>?
+  private var speakerLiveCancelSerial = 0
+  /// A cancellation has been sent and has not finished.
+  private var speakerLiveCancelRunning = false
+  package var speakerLivePendingCancelForTests: Task<Void, Never>? { speakerLivePendingCancel }
+  /// The last request was refused (kill switch off). Cleared by the next scheduled request.
+  private(set) var speakerLiveDownloadRefused = false
+  package private(set) var speakerLiveDownloadTaskForTests: Task<Void, Never>?
+  /// Replaces the network fetch in tests (the registration points at a temporary folder, and a
+  /// test must not download 199 MB).
+  package var speakerLiveFetchOverrideForTests: (() async -> Void)?
+  /// Replaces the controller cancel in tests, so the handoff-window repair is observable.
+  package var speakerLiveCancelOverrideForTests: (() async -> Void)?
+  /// Cancel requests sent to the controller (counted when decided, before the cancel runs).
+  package private(set) var speakerLiveCancelRequestsForTests = 0
+  /// Replaces the admission-marker read in tests (the temporary folder is never admitted).
+  package var speakerLiveAdmittedOverrideForTests: (() async -> Bool)?
+
+  /// #4355 PR C: the one door for "the user wants speaker labels", from setup's last step and the
+  /// Models card. A download already running continues through a meeting; a request made during
+  /// one waits for it to end. A model that arrives during a meeting is first used by the next one
+  /// (the meeting reads the admitted folder once, at its start).
+  @discardableResult
+  func requestLiveSpeakerModel(meetingActive: Bool) -> LiveSpeakerModelRequestOutcome {
+    guard speakerLiveHandle != nil else {
+      speakerLiveDownloadRefused = true
+      return .refused
+    }
+    // A removal in flight owns the files until it finishes; a press then is a no-op.
+    guard speakerLiveRemovalTask == nil else { return .refused }
+    if speakerLiveState == .admitted {
+      if !meetingActive { speakerLiveDownloadQueued = false }
+      return .alreadyAvailable
+    }
+    if speakerLiveScheduledEpoch != nil { return .started }
+    if meetingActive {
+      speakerLiveDownloadQueued = true
+      Task {
+        await AppLogger.shared.log(
+          "SPEAKER_LIVE_DOWNLOAD queued until meeting ends", level: .info, category: "Delivery")
+      }
+      return .queuedUntilMeetingEnds
+    }
+    // Not in a meeting: this request also answers a queued one, so the idle signal that may come
+    // next finds nothing left to start.
+    speakerLiveDownloadQueued = false
+    return startSpeakerLiveDownload() ? .started : .refused
+  }
+
+  private func startSpeakerLiveDownload() -> Bool {
+    guard let handle = speakerLiveHandle else { return false }
+    guard handle.isEnabled() else {
+      Task {
+        await AppLogger.shared.log(
+          "Speaker labels download refused: the speaker_live delivery kill switch is off "
+            + "(modelDelivery.speaker_live.enabled = false)",
+          level: .info, category: "Delivery")
+      }
+      speakerLiveDownloadRefused = true
+      return false
+    }
+    speakerLiveDownloadRefused = false
+    let epoch = speakerLiveIntentEpoch
+    speakerLiveScheduledEpoch = epoch
+    speakerLiveDownloadTaskForTests = Task { [weak self] in
+      guard let self else { return }
+      defer { if self.speakerLiveScheduledEpoch == epoch { self.speakerLiveScheduledEpoch = nil } }
+      guard self.speakerLiveIntentEpoch == epoch else { return }
+      // Every cancellation sent before this request reaches the controller first.
+      await self.speakerLivePendingCancel?.value
+      guard self.speakerLiveIntentEpoch == epoch else { return }
+      self.speakerLiveFetchEpoch = epoch
+      defer { if self.speakerLiveFetchEpoch == epoch { self.speakerLiveFetchEpoch = nil } }
+      if let fetch = self.speakerLiveFetchOverrideForTests {
+        await fetch()
+      } else {
+        _ = await handle.ensureAvailable()
+      }
+    }
+    return true
+  }
+
+  /// Cancel: clears a queued or scheduled request and stops a transfer in flight (resumable
+  /// partials stay). Ungated by the kill switch, like every delivery Cancel.
+  func cancelLiveSpeakerModelDownload() {
+    speakerLiveDownloadQueued = false
+    speakerLiveScheduledEpoch = nil
+    speakerLiveIntentEpoch += 1
+    cancelSpeakerLiveTransfer()
+  }
+
+  /// Awaited before the files are deleted: the speaker labels check must have released the model
+  /// (an open mapping keeps the blocks allocated). Set by the bootstrapper to
+  /// `MeetingSpeakerLabelsModel.releaseForRemoval`.
+  var drainLiveSpeakerHoldersBeforeRemoval: (() async -> Void)?
+  private var speakerLiveRemovalTask: Task<Void, Never>?
+  package private(set) var speakerLiveRemovalStepsForTests: [String] = []
+  package var speakerLiveRemovalTaskForTests: Task<Void, Never>? { speakerLiveRemovalTask }
+  package var deleteSpeakerLiveModelOverrideForTests: (() async -> Bool)?
+
+  /// Remove: refused while a meeting is active, before any change. Otherwise the queued request is
+  /// cleared, the check releases the model, then the shared delivery removal deletes the files
+  /// (it also stops a transfer in flight). Single flight.
+  @discardableResult
+  func removeLiveSpeakerModel() -> LiveSpeakerModelRemovalOutcome {
+    guard !isMeetingActive() else {
+      Task {
+        await AppLogger.shared.log(
+          "Speaker labels removal refused: a meeting is active", level: .info, category: "Delivery")
+      }
+      return .refusedMeetingActive
+    }
+    guard let handle = speakerLiveHandle, speakerLiveRemovalTask == nil else { return .refused }
+    speakerLiveDownloadQueued = false
+    speakerLiveScheduledEpoch = nil
+    speakerLiveIntentEpoch += 1
+    speakerLiveRemovalStepsForTests = []
+    speakerLiveRemovalTask = Task { [weak self] in
+      await self?.drainLiveSpeakerHoldersBeforeRemoval?()
+      self?.speakerLiveRemovalStepsForTests.append("drain")
+      let removed: Bool
+      if let substitute = self?.deleteSpeakerLiveModelOverrideForTests {
+        removed = await substitute()
+      } else {
+        // False only when the kill switch is off (`DeliveredModelHandle.remove`, deliberate).
+        removed = await handle.remove()
+      }
+      self?.speakerLiveRemovalStepsForTests.append(removed ? "delete" : "refused")
+      self?.speakerLiveRemovalTask = nil
+    }
+    return .started
+  }
+
+  /// The admitted speaker model folder, or nil. Reads the admission marker; never fetches.
+  /// Read once when a meeting starts, so a model admitted mid-meeting waits for the next one.
+  /// Nil for the whole of an accepted removal (checked again after the suspended read), so no
+  /// check or meeting loads files that are being deleted.
+  func admittedLiveSpeakerModelDirectory() async -> URL? {
+    guard let handle = speakerLiveHandle, let registration = speakerLiveRegistration,
+      speakerLiveRemovalTask == nil
+    else { return nil }
+    let admitted: Bool
+    if let substitute = speakerLiveAdmittedOverrideForTests {
+      admitted = await substitute()
+    } else {
+      admitted = await handle.isAdmitted()
+    }
+    guard admitted, speakerLiveRemovalTask == nil else { return nil }
+    return registration.installDirectory
   }
 
   /// Settings-row Resume / Try Again: re-enters the single door (resume-aware

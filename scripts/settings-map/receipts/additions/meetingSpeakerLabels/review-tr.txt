@@ -1,0 +1,13 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "tr",
+    "title": "konuşmacı etiketleri",
+    "words": [
+      "sesleri ayırt etme"
+    ],
+    "phrases": [
+      "toplantıda şu an kim konuşuyor",
+      "canlı önizlemede konuşanı göster"
+    ]
+  }
+}

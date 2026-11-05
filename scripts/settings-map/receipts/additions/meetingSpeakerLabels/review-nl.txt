@@ -1,0 +1,1 @@
+{"meetingSpeakerLabels":{"language":"nl","title":"sprekerlabels","words":["sprekers onderscheiden"],"phrases":["wie praat er nu in de vergadering","toon wie er spreekt tijdens de vergadering"]}}

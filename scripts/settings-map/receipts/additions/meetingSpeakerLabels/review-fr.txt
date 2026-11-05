@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "fr",
+    "title": "identification des intervenants",
+    "words": [
+      "locuteurs",
+      "distinction des voix"
+    ],
+    "phrases": [
+      "qui parle en ce moment dans la réunion",
+      "afficher qui parle dans l’aperçu en direct"
+    ]
+  }
+}

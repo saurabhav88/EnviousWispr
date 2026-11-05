@@ -1,0 +1,14 @@
+{
+  "meetingSpeakerLabels": {
+    "language": "en",
+    "words": [
+      "diarization",
+      "speaker identification",
+      "speaker labels"
+    ],
+    "phrases": [
+      "who is talking in the meeting",
+      "show who is speaking in live preview"
+    ]
+  }
+}
