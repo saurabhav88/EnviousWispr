@@ -9,6 +9,7 @@ import FileDemo from '../../components/features/FileDemo.astro';
 import RecordingDeck from '../../components/features/RecordingDeck.astro';
 import ImportReassurance from '../../components/features/ImportReassurance.astro';
 import DownloadClosing from '../../components/DownloadClosing.astro';
+import FeatureHelpLink from '../../components/features/FeatureHelpLink.astro';
 ---
 
 <FeatureShell
@@ -35,5 +36,6 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
       { title: 'Put it to work.', copy: 'Copy the result or save a text file for the work ahead.' },
     ]}
   />
+  <FeatureHelpLink href="/help/transcribe-a-file/" label="How to transcribe a file, and which files work" />
   <DownloadClosing title="Make more of the recordings you keep." />
 </FeatureShell>

@@ -5,6 +5,7 @@ import FeatureShell from '../../layouts/FeatureShell.astro';
 import FeatureHero from '../../components/features/FeatureHero.astro';
 import FeatureFilm from '../../components/features/FeatureFilm.astro';
 import DownloadClosing from '../../components/DownloadClosing.astro';
+import FeatureHelpLink from '../../components/features/FeatureHelpLink.astro';
 ---
 
 <FeatureShell
@@ -34,5 +35,6 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
     </div>
     <p class="note">Preview is a live draft. Your transcription engine and cleanup produce the final text. Language support depends on the selected engine and installed resources.</p>
   </section>
+  <FeatureHelpLink href="/help/live-preview-words-on-screen/" label="How to turn Live Preview on or off" />
   <DownloadClosing title="Keep your thought in view." />
 </FeatureShell>
