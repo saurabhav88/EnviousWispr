@@ -2884,6 +2884,22 @@ struct CallDetectionPolicyTests {
         == .teams)
     #expect(CallMeetingURL.classify("https://teams.live.com/meet/9318226891234")?.family == .teams)
     #expect(CallMeetingURL.classify("https://teams.microsoft.com/v2/") == nil, "chat is not a call")
+    // #4436: company (teams.cloud.microsoft) and US government Teams hosts take the same
+    // meeting paths; light meetings stay teams.live.com only; China is not included.
+    for host in ["teams.cloud.microsoft", "gov.teams.microsoft.us", "dod.teams.microsoft.us"] {
+      let join = "https://\(host)/l/meetup-join/19%3ameeting_abc%40thread.v2/0"
+      #expect(CallMeetingURL.classify(join)?.family == .teams, "\(host)")
+      #expect(
+        CallMeetingURL.classify(join)?.room.hasPrefix(host + "/l/meetup-join/") == true,
+        "\(host): the host is part of the room")
+      #expect(CallMeetingURL.classify("https://\(host)/v2/") == nil, "\(host): chat is not a call")
+      #expect(
+        CallMeetingURL.classify("https://\(host)/light-meetings/launch?p=AbCd") == nil, "\(host)")
+    }
+    #expect(
+      CallMeetingURL.classify("https://teams.cloud.microsoft.example.com/l/meetup-join/x") == nil,
+      "the host must match exactly")
+    #expect(CallMeetingURL.classify("https://teams.microsoftonline.cn/l/meetup-join/x") == nil)
     // #4162: the page a teams.live.com meeting runs on; the p code is the room.
     let light = "https://teams.live.com/light-meetings/launch?p=AbCdEfGh12345678Xy&anon=true"
     #expect(CallMeetingURL.classify(light)?.family == .teams)

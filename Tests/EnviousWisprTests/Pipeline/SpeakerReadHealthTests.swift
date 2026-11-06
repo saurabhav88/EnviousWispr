@@ -102,6 +102,35 @@ struct SpeakerReadHealthTests {
         == nil)
   }
 
+  /// #4436: walks are counted before a stale copy is dropped, so the skipped-page share's
+  /// denominator is walks, never capture attempts (one stale walk: 2 refused walks, 1 attempt).
+  @Test("skipped pages are summed over walks, unknown when an old segment walked without them")
+  func skippedPagesOverWalks() throws {
+    var fresh = health(attempts: 1)
+    fresh.walkDurationCount = 2
+    fresh.skippedPageCaptures = 2
+    var quiet = health(attempts: 3)
+    quiet.walkDurationCount = 3
+    let read = try #require(SpeakerReadHealth(log: log([fresh, quiet])))
+    #expect(read.walkDurationCount == 5)
+    #expect(read.skippedPageCaptures == 2)
+    #expect(read.skippedPageShare == 2.0 / 5.0)
+    var older = quiet
+    older.skippedPageCaptures = nil
+    let unknown = try #require(SpeakerReadHealth(log: log([fresh, older])))
+    #expect(unknown.skippedPageCaptures == nil)
+    #expect(unknown.skippedPageShare == nil)
+    // A segment that never walked adds zero, not unknown.
+    var idle = health(attempts: 0)
+    idle.skippedPageCaptures = nil
+    #expect(SpeakerReadHealth(log: log([fresh, idle]))?.skippedPageCaptures == 2)
+    // Attempts with no recorded walk: no share.
+    #expect(SpeakerReadHealth(log: log([health(attempts: 2)]))?.skippedPageShare == nil)
+    let saved = log([fresh])
+    let decoded = try JSONDecoder().decode(CallSpeakerLog.self, from: JSONEncoder().encode(saved))
+    #expect(decoded.segments.first?.health?.skippedPageCaptures == 2)
+  }
+
   @Test("the tolerated counter survives the saved log's round trip")
   func logRoundTrip() throws {
     let saved = log([health(attempts: 4, unreadable: 1, tolerated: 9)])

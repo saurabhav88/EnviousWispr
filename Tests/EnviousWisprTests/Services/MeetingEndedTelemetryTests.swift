@@ -246,13 +246,36 @@ import Testing
 
     private func reads(
       attempts: Int = 100, unreadable: Int = 0, truncated: Int = 0, unresolved: Int = 0,
-      tolerated: Int? = 0
+      tolerated: Int? = 0, walks: Int = 0, skippedPages: Int? = nil
     ) -> SpeakerNamingSummary {
       SpeakerNamingSummary(
         surface: .zoomApp, outcome: .named, autoNamedCount: 1,
         readHealth: SpeakerReadHealth(
           captureAttempts: attempts, unreadableCaptures: unreadable, truncatedCaptures: truncated,
-          unresolvedScopeCaptures: unresolved, toleratedFailures: tolerated))
+          unresolvedScopeCaptures: unresolved, toleratedFailures: tolerated,
+          walkDurationCount: walks, skippedPageCaptures: skippedPages))
+    }
+
+    @Test("#4436: the skipped-page share is walks with a refused page over walks, or omitted")
+    func skippedPageShare() throws {
+      let row = try #require(
+        capture(event(speakerNaming: reads(walks: 40, skippedPages: 30))))
+      #expect(row.stringProps["speaker_reads_skipped_page_share_bucket"] == "75%+")
+      let keys = Set(row.stringProps.keys).union(row.intProps.keys).union(row.doubleProps.keys)
+        .union(row.boolProps.keys)
+      #expect(
+        keys
+          == Self.approvedKeys.union(Self.speakerNameKeys).union(Self.readHealthKeys)
+          .union(["speaker_reads_skipped_page_share_bucket"]))
+      func bucket(_ walks: Int, _ skipped: Int?) -> String? {
+        TelemetryService.meetingEndedProperties(
+          event(speakerNaming: reads(walks: walks, skippedPages: skipped)))[
+            "speaker_reads_skipped_page_share_bucket"] as? String
+      }
+      #expect(bucket(10, 0) == "0")
+      #expect(bucket(100, 4) == "<5%")
+      #expect(bucket(0, 0) == nil, "nothing walked")
+      #expect(bucket(10, nil) == nil, "an old segment made it unknown")
     }
 
     @Test("#4013 reading resilience: read health adds three closed strings and nothing else")
