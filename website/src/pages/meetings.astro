@@ -5,6 +5,7 @@ import ThemedLayout from '../layouts/ThemedLayout.astro';
 import '../styles/meetings/index.css';
 import DownloadClosing from '../components/DownloadClosing.astro';
 import { entryFor, webPage, breadcrumbs } from '../utils/features/structured-data.js';
+import { meetingsFaq } from '../data/meetings-faq.js';
 import MeetHero from '../components/meetings/MeetHero.astro';
 import MeetApps from '../components/meetings/MeetApps.astro';
 import MeetWhy from '../components/meetings/MeetWhy.astro';
@@ -17,9 +18,19 @@ const title = 'EnviousMeet: Free, Private AI Meeting Notes for Mac';
 const description = 'Premium meeting notes free on your Mac. EnviousMeet records calls with no bot, follows your mute, names speakers and writes summaries that can run offline.';
 const entry = entryFor(path);
 const ld = [webPage({ path, name: entry.name, description, updated: entry.updated }), breadcrumbs(path, entry.name)];
+// The FAQ answers shown on the page, as FAQPage JSON-LD (same source as MeetFaq.astro).
+ld.push({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: meetingsFaq.map(([, question, answer]) => ({
+    '@type': 'Question',
+    name: question,
+    acceptedAnswer: { '@type': 'Answer', text: answer.join(' ') },
+  })),
+});
 ---
 
-<ThemedLayout title={title} description={description} canonicalPath={path} activePage="meetings">
+<ThemedLayout title={title} description={description} canonicalPath={path} activePage="meetings" ogImage="/images/og/meetings.jpg" ogImageAlt="EnviousMeet: premium meeting notes, free on your Mac">
   <Fragment slot="head">
     {ld.map((block) => <script type="application/ld+json" set:html={JSON.stringify(block)} />)}
   </Fragment>
