@@ -7,6 +7,7 @@ import '../../styles/features/history-demo.css';
 import FeatureHero from '../../components/features/FeatureHero.astro';
 import HistoryFilm from '../../components/features/HistoryFilm.astro';
 import DownloadClosing from '../../components/DownloadClosing.astro';
+import FeatureHelpLink from '../../components/features/FeatureHelpLink.astro';
 ---
 
 <FeatureShell
@@ -71,5 +72,6 @@ import DownloadClosing from '../../components/DownloadClosing.astro';
       <div class="history-actions"><span>Copy</span></div>
     </div>
   </section>
+  <FeatureHelpLink href="/help/transcript-history/" label="How to find, copy or delete a past dictation" />
   <DownloadClosing title="Start using EnviousWispr." />
 </FeatureShell>

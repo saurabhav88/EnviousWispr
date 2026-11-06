@@ -6,6 +6,7 @@ import FeatureHero from '../../components/features/FeatureHero.astro';
 import BenchmarkBox from '../../components/features/BenchmarkBox.astro';
 import FeatureFilm from '../../components/features/FeatureFilm.astro';
 import DownloadClosing from '../../components/DownloadClosing.astro';
+import FeatureHelpLink from '../../components/features/FeatureHelpLink.astro';
 import { highlights, benchmarkRecordUrl } from '../../data/features/benchmark.js';
 const steps = [
   ['Define good writing.', 'Write the policy for meaning, voice and structure before creating answer keys.'],
@@ -83,5 +84,6 @@ const steps = [
     </div>
     <div class="benefit-visual"><FeatureFilm kind="correction" /></div>
   </section>
+  <FeatureHelpLink href="/help/your-first-dictation/" label="How to make your first dictation" />
   <DownloadClosing title="Try it with your own words." />
 </FeatureShell>

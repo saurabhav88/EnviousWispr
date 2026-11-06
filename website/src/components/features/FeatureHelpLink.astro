@@ -1,0 +1,11 @@
+---
+// One link from a feature page to the help article that owns its how-to steps,
+// for pages whose sections have no natural spot for an inline story-link.
+interface Props {
+  href: string;
+  label: string;
+}
+const { href, label } = Astro.props;
+---
+
+<p class="feature-help-link wrap"><a class="story-link" href={href}>{label} <span aria-hidden="true">→</span></a></p>
