@@ -228,6 +228,14 @@ final class ModelDeliveryHome {
       manifestBundle: manifestBundle, appSupport: appSupport)
   }
 
+  static func speakerFinalDeliveryRegistration(
+    manifestBundle: Bundle, appSupport: URL
+  ) throws -> DeliveryRegistration {
+    try bundledRegistration(
+      resource: "speaker-final-delivery-manifest", directory: "speaker-final",
+      manifestBundle: manifestBundle, appSupport: appSupport)
+  }
+
   private static func bundledRegistration(
     resource: String, directory: String, manifestBundle: Bundle, appSupport: URL
   ) throws -> DeliveryRegistration {
@@ -806,6 +814,29 @@ final class ModelDeliveryHome {
         await AppLogger.shared.log(
           "Speaker labels model manifest unavailable: live speaker labels stay off and no "
             + "download can supply what this build never shipped: \(error)",
+          level: .info, category: "Delivery")
+      }
+    }
+
+    // #4424: a sibling exhaustive install, never a revision of the working live model.
+    // Registration and adoption are local-only; the existing explicit speaker download door
+    // owns both artifacts and remains the only fetch owner.
+    do {
+      let registration = try Self.speakerFinalDeliveryRegistration(
+        manifestBundle: manifestBundle, appSupport: appSupportRoot)
+      speakerFinalRegistration = registration
+      speakerFinalHandle = DeliveredModelHandle(
+        controller: controller, registration: registration, defaults: deliveryFlagDefaults)
+      Task {
+        await controller.sweepSupersededStaging(registration)
+        await self.attachSpeakerLiveObserver(identity: registration.manifest.identity, finished: true)
+        await self.recordFirstRunBaseline(for: registration)
+        _ = await controller.admitIfComplete(registration)
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "Finished-call speaker model manifest unavailable; existing speaker analysis remains available",
           level: .info, category: "Delivery")
       }
     }
@@ -1600,25 +1631,43 @@ final class ModelDeliveryHome {
   /// card then says it is unavailable in this build and nothing can download it.
   private(set) var speakerLiveHandle: DeliveredModelHandle?
   private(set) var speakerLiveRegistration: DeliveryRegistration?
+  private(set) var speakerFinalHandle: DeliveredModelHandle?
+  private(set) var speakerFinalRegistration: DeliveryRegistration?
 
   /// Observable mirror of the speaker model's delivery state, kept here (not on the card) so a
   /// download survives Settings closing. Its own apply guard, for the reason
   /// `lastAppliedPreviewStateSeq` gives.
   private(set) var speakerLiveState: DeliveryState = .notReady
   private var lastAppliedSpeakerLiveStateSeq: UInt64 = 0
+  private(set) var speakerFinalState: DeliveryState = .notReady
+  private var lastAppliedSpeakerFinalStateSeq: UInt64 = 0
 
   /// The download size the card shows, from the bundled manifest.
   var speakerLiveDownloadBytes: Int64? {
     speakerLiveRegistration?.manifest.files.reduce(0) { $0 + $1.sizeBytes }
   }
 
-  private func attachSpeakerLiveObserver(identity: ModelIdentity) async {
+  /// Missing components only: a working low install is not offered as another download.
+  var speakerModelsDownloadBytes: Int64? {
+    guard speakerLiveRegistration != nil else { return nil }
+    return (speakerLiveState == .admitted ? 0 : speakerLiveDownloadBytes ?? 0)
+      + (speakerFinalState == .admitted ? 0 : speakerFinalRegistration?.manifest.totalBytes ?? 0)
+  }
+
+  private func attachSpeakerLiveObserver(identity: ModelIdentity, finished: Bool = false) async {
     let home = self
     let sequencer = DeliveryStateSequencer()
     await controller.addStateObserver { observedIdentity, state in
       guard observedIdentity == identity else { return }
       let seq = sequencer.next()
       Task { @MainActor in
+        if finished {
+          guard seq > home.lastAppliedSpeakerFinalStateSeq else { return }
+          home.lastAppliedSpeakerFinalStateSeq = seq
+          home.speakerFinalState = state
+          home.cancelStaleSpeakerLiveTransfer()
+          return
+        }
         guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
         home.lastAppliedSpeakerLiveStateSeq = seq
         home.applySpeakerLiveState(state)
@@ -1635,6 +1684,11 @@ final class ModelDeliveryHome {
   /// cannot produce.
   package func applySpeakerLiveStateForTests(_ state: DeliveryState) {
     applySpeakerLiveState(state)
+  }
+
+  package func applySpeakerFinalStateForTests(_ state: DeliveryState) {
+    speakerFinalState = state
+    cancelStaleSpeakerLiveTransfer()
   }
 
   // The handoffs of this door, in order, and what orders each one (enumerated after two review
@@ -1656,10 +1710,12 @@ final class ModelDeliveryHome {
     guard let epoch = speakerLiveFetchEpoch, epoch != speakerLiveIntentEpoch,
       speakerLiveScheduledEpoch == nil, !speakerLiveCancelRunning
     else { return }
-    switch speakerLiveState {
-    case .preparing, .downloading, .verifying: break
-    case .notReady, .admitted, .cancelled, .failed: return
-    }
+    guard [speakerLiveState, speakerFinalState].contains(where: { state in
+      switch state {
+      case .preparing, .downloading, .verifying: true
+      case .notReady, .admitted, .cancelled, .failed: false
+      }
+    }) else { return }
     cancelSpeakerLiveTransfer()
   }
 
@@ -1676,6 +1732,7 @@ final class ModelDeliveryHome {
         await substitute()
       } else if let handle = self?.speakerLiveHandle {
         await handle.cancelActiveFetch()
+        await self?.speakerFinalHandle?.cancelActiveFetch()
       }
       if self?.speakerLiveCancelSerial == serial { self?.speakerLiveCancelRunning = false }
     }
@@ -1722,6 +1779,8 @@ final class ModelDeliveryHome {
   /// Replaces the network fetch in tests (the registration points at a temporary folder, and a
   /// test must not download 199 MB).
   package var speakerLiveFetchOverrideForTests: (() async -> Void)?
+  /// A second controlled transfer when a test exercises the handoff between the pair.
+  package var speakerFinalFetchOverrideForTests: (() async -> Void)?
   /// Replaces the controller cancel in tests, so the handoff-window repair is observable.
   package var speakerLiveCancelOverrideForTests: (() async -> Void)?
   /// Cancel requests sent to the controller (counted when decided, before the cancel runs).
@@ -1741,7 +1800,9 @@ final class ModelDeliveryHome {
     }
     // A removal in flight owns the files until it finishes; a press then is a no-op.
     guard speakerLiveRemovalTask == nil else { return .refused }
-    if speakerLiveState == .admitted {
+    if speakerLiveState == .admitted,
+      speakerFinalHandle == nil || speakerFinalState == .admitted
+    {
       if !meetingActive { speakerLiveDownloadQueued = false }
       return .alreadyAvailable
     }
@@ -1786,8 +1847,23 @@ final class ModelDeliveryHome {
       defer { if self.speakerLiveFetchEpoch == epoch { self.speakerLiveFetchEpoch = nil } }
       if let fetch = self.speakerLiveFetchOverrideForTests {
         await fetch()
+        // Existing single-transfer fixtures replace the whole request. Paired fixtures opt in
+        // to observing the second handoff without ever reaching the network.
+        guard self.speakerFinalFetchOverrideForTests != nil else { return }
       } else {
-        _ = await handle.ensureAvailable()
+        let outcome = await handle.ensureAvailable()
+        guard case .admitted = outcome, self.speakerLiveIntentEpoch == epoch else { return }
+      }
+      guard self.speakerLiveIntentEpoch == epoch else { return }
+      guard let final = self.speakerFinalHandle else { return }
+      guard final.isEnabled() else {
+        self.speakerLiveDownloadRefused = true
+        return
+      }
+      if let fetch = self.speakerFinalFetchOverrideForTests {
+        await fetch()
+      } else {
+        _ = await final.ensureAvailable()
       }
     }
     return true
@@ -1836,7 +1912,9 @@ final class ModelDeliveryHome {
         removed = await substitute()
       } else {
         // False only when the kill switch is off (`DeliveredModelHandle.remove`, deliberate).
-        removed = await handle.remove()
+        let liveRemoved = await handle.remove()
+        let finalRemoved = await self?.speakerFinalHandle?.remove() ?? true
+        removed = liveRemoved && finalRemoved
       }
       self?.speakerLiveRemovalStepsForTests.append(removed ? "delete" : "refused")
       self?.speakerLiveRemovalTask = nil
@@ -1860,6 +1938,42 @@ final class ModelDeliveryHome {
     }
     guard admitted, speakerLiveRemovalTask == nil else { return nil }
     return registration.installDirectory
+  }
+
+  func admittedFinalSpeakerModelDirectory() async -> URL? {
+    guard let handle = speakerFinalHandle, let registration = speakerFinalRegistration,
+      speakerLiveRemovalTask == nil
+    else { return nil }
+    let admitted = await handle.isAdmitted()
+    guard admitted, speakerLiveRemovalTask == nil else { return nil }
+    return registration.installDirectory
+  }
+
+  /// A byte-use scope, not a runtime loader. Call inside the labeler-owned worker for final
+  /// analysis so waiting for this claim is included in that worker's deadline and cancellation.
+  func withSpeakerModelUse<T: Sendable>(
+    finished: Bool, work: @Sendable (URL) async throws -> T
+  ) async throws -> T? {
+    let handle = finished ? speakerFinalHandle : speakerLiveHandle
+    let registration = finished ? speakerFinalRegistration : speakerLiveRegistration
+    guard let handle, let registration, speakerLiveRemovalTask == nil else { return nil }
+    let gate = controller.meetingModelUseGate
+    let key = MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)
+    try await gate.beginUse(key)
+    do {
+      let admitted = await handle.isAdmitted()
+      guard admitted, speakerLiveRemovalTask == nil else {
+        await gate.endUse(key)
+        return nil
+      }
+      try Task.checkCancellation()
+      let result = try await work(registration.installDirectory)
+      await gate.endUse(key)
+      return result
+    } catch {
+      await gate.endUse(key)
+      throw error
+    }
   }
 
   /// Settings-row Resume / Try Again: re-enters the single door (resume-aware

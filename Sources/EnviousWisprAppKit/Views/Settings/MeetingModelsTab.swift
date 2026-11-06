@@ -527,9 +527,18 @@ struct MeetingSpeakerLabelsCard: View {
         // "Sprecherkennzeichnung" mid-word beside the chip).
         .rowStatus {
           VStack(alignment: .leading, spacing: 4) {
+            if model.finalStatus != nil { Text("Live Preview").font(.caption).foregroundStyle(.secondary) }
             ProviderStatusChip(
               status: MeetingEngineStatusPresentation.speakerLabels(model.status))
-            statusLine
+            statusLine(model.status)
+            if let finished = model.finalStatus {
+              Text("Finished calls").font(.caption).foregroundStyle(.secondary)
+              ProviderStatusChip(status: MeetingEngineStatusPresentation.speakerLabels(finished))
+              statusLine(finished)
+            }
+            if case .notDownloaded = model.actionStatus, let bytes = model.downloadBytes {
+              meetingStatusText(MeetingSpeakerLabelsCopy.downloadSize(bytes))
+            }
           }
         }
       }
@@ -537,7 +546,9 @@ struct MeetingSpeakerLabelsCard: View {
     // A check starts when the model is admitted while the card is shown, and when it appears.
     // Admission is part of the ID: validating an existing install and an admitted, unchecked
     // model both show Checking, so the status alone would not change when admission finishes.
-    .task(id: CheckTrigger(status: model.status, installed: model.isInstalled)) {
+    .task(id: CheckTrigger(
+      status: model.status, installed: model.isInstalled,
+      finished: model.finalStatus, finalInstalled: model.isFinalInstalled)) {
       model.checkIfNeeded()
     }
   }
@@ -545,17 +556,17 @@ struct MeetingSpeakerLabelsCard: View {
   private struct CheckTrigger: Equatable {
     let status: MeetingSpeakerLabelsModel.Status
     let installed: Bool
+    let finished: MeetingSpeakerLabelsModel.Status?
+    let finalInstalled: Bool
   }
 
-  @ViewBuilder private var statusLine: some View {
-    switch model.status {
+  @ViewBuilder private func statusLine(_ status: MeetingSpeakerLabelsModel.Status) -> some View {
+    switch status {
     case .unavailableInThisBuild:
       meetingStatusText(String(localized: MeetingSpeakerLabelsCopy.unavailable))
     case .notDownloaded:
       if model.downloadRefused {
         meetingStatusText(String(localized: MeetingsCopy.liveWordsDownloadUnavailable))
-      } else if let bytes = model.downloadBytes {
-        meetingStatusText(MeetingSpeakerLabelsCopy.downloadSize(bytes))
       }
     case .queuedForMeeting:
       meetingStatusText(LivePreviewEngineCopy.waitingForMeeting)
@@ -590,7 +601,18 @@ struct MeetingSpeakerLabelsCard: View {
   /// One action per state, at the row's trailing edge. Remove is off while a meeting is active (the
   /// delivery home refuses it too).
   @ViewBuilder private var action: some View {
-    switch model.status {
+    HStack(spacing: 8) {
+      primaryAction
+      if (model.isInstalled || model.isFinalInstalled),
+        model.actionStatus != .ready, model.actionStatus != .loadFailed
+      {
+        removeButton
+      }
+    }
+  }
+
+  @ViewBuilder private var primaryAction: some View {
+    switch model.actionStatus {
     case .unavailableInThisBuild, .checking, .waitingForMeeting:
       EmptyView()
     case .notDownloaded:
@@ -629,12 +651,12 @@ struct MeetingSpeakerLabelsCard: View {
 enum MeetingSpeakerLabelsCopy {
   static let title = LocalizedStringResource(
     "Speaker labels",
-    comment: "EnviousMeet Models page: the name of the live speaker labels feature and its card.")
+    comment: "EnviousMeet Models page: the name of the live and finished-call speaker labels card.")
   static let short = LocalizedStringResource(
     "Shows who is talking in Live Preview while a meeting records.",
     comment: "EnviousMeet Models page: the short line under Speaker labels.")
   static let help = LocalizedStringResource(
-    "While a meeting records, speaker labels separate the voices on the call, so Live Preview shows their words under Speaker 1, Speaker 2 and so on, and under names on call apps that show them. It needs one download. Labels can be wrong when people talk at the same time. The finished transcript and how speech is turned into text do not change.",
+    "Speaker labels distinguish voices during a call and can improve grouping in finished calls when saved call information is available. Use Download to get the required models. Names depend on what the call app shows. For existing recordings, select Transcribe again. Labels can be wrong, especially when people talk over each other.",
     comment: "EnviousMeet Models page: help for Speaker labels.")
   static let unavailable = LocalizedStringResource(
     "Not available in this version of EnviousWispr.",

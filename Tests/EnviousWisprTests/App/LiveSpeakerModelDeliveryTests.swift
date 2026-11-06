@@ -91,6 +91,99 @@ struct LiveSpeakerModelDeliveryTests {
     #expect(rig.home.speakerLiveHandle != nil)
   }
 
+  @Test("a low-only install remains usable while one joined request obtains the final model")
+  func lowOnlyCanDownloadFinal() async throws {
+    let rig = try Rig()
+    rig.home.applySpeakerLiveStateForTests(.admitted)
+    rig.home.speakerLiveAdmittedOverrideForTests = { true }
+    let final = FetchGate()
+    final.holdNext()
+    rig.home.speakerFinalFetchOverrideForTests = { await final.fetch() }
+    #expect(await rig.home.admittedLiveSpeakerModelDirectory() != nil)
+    #expect(rig.home.speakerModelsDownloadBytes == 199_162_403)
+    #expect(rig.home.requestLiveSpeakerModel(meetingActive: false) == .started)
+    try await BoundedWait.until(final.started)
+    #expect(rig.home.requestLiveSpeakerModel(meetingActive: false) == .started)
+    #expect(await rig.home.admittedLiveSpeakerModelDirectory() != nil)
+    final.release()
+    try await rig.finishDownload()
+    #expect(final.starts == 1)
+  }
+
+  @Test("Cancel between the component transfers prevents the final transfer")
+  func cancelAtPairHandoff() async throws {
+    let rig = try Rig()
+    let final = FetchGate()
+    rig.home.speakerFinalFetchOverrideForTests = { await final.fetch() }
+    rig.gate.holdNext()
+    rig.home.requestLiveSpeakerModel(meetingActive: false)
+    try await BoundedWait.until(rig.gate.started)
+    rig.home.cancelLiveSpeakerModelDownload()
+    rig.gate.release()
+    try await rig.finishDownload()
+    #expect(final.starts == 0)
+  }
+
+  @Test("disabling delivery during low prevents a new final attempt without withdrawing low")
+  func flagRecheckedAtFinalHandoff() async throws {
+    let rig = try Rig()
+    let final = FetchGate()
+    rig.gate.holdNext()
+    rig.home.speakerLiveAdmittedOverrideForTests = { true }
+    rig.home.speakerLiveFetchOverrideForTests = { [home = rig.home, gate = rig.gate] in
+      await gate.fetch()
+      home.applySpeakerLiveStateForTests(.admitted)
+    }
+    rig.home.speakerFinalFetchOverrideForTests = { await final.fetch() }
+    rig.home.requestLiveSpeakerModel(meetingActive: false)
+    try await BoundedWait.until(rig.gate.started)
+    rig.flags.set(false, forKey: DeliveryFlags.key("enabled", family: .speakerLive))
+    rig.gate.release()
+    try await rig.finishDownload()
+    #expect(final.starts == 0)
+    #expect(rig.home.speakerLiveDownloadRefused)
+    #expect(await rig.home.admittedLiveSpeakerModelDirectory() != nil)
+  }
+
+  @Test("a final-transfer failure preserves the working live install")
+  func finalFailureKeepsLive() async throws {
+    let rig = try Rig()
+    rig.home.speakerLiveAdmittedOverrideForTests = { true }
+    rig.home.speakerLiveFetchOverrideForTests = { [home = rig.home] in
+      home.applySpeakerLiveStateForTests(.admitted)
+    }
+    rig.home.speakerFinalFetchOverrideForTests = { [home = rig.home] in
+      home.applySpeakerFinalStateForTests(.failed(DeliveryFailure(reason: .sourceUnreachable)))
+    }
+    rig.home.requestLiveSpeakerModel(meetingActive: false)
+    try await rig.finishDownload()
+    #expect(rig.home.speakerLiveState == .admitted)
+    #expect(await rig.home.admittedLiveSpeakerModelDirectory() != nil)
+    #expect(await rig.home.admittedFinalSpeakerModelDirectory() == nil)
+  }
+
+  @Test("the shared Remove door deletes both owned speaker directories")
+  func removesBothComponents() async throws {
+    let rig = try Rig()
+    let live = try #require(rig.home.speakerLiveRegistration)
+    let final = try #require(rig.home.speakerFinalRegistration)
+    #expect(live.installDirectory != final.installDirectory)
+    var ownedFiles: [URL] = []
+    for registration in [live, final] {
+      for file in registration.manifest.files {
+        let url = registration.installDirectory.appendingPathComponent(file.resolvedInstallPath)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("owned fixture".utf8).write(to: url)
+        ownedFiles.append(url)
+      }
+    }
+    #expect(ownedFiles.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+    #expect(rig.home.removeLiveSpeakerModel() == .started)
+    let task = try #require(rig.home.speakerLiveRemovalTaskForTests)
+    _ = try await BoundedWait.result(of: task)
+    #expect(ownedFiles.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
+  }
+
   @Test("repeated requests join one download")
   func requestsJoinOneDownload() async throws {
     let rig = try Rig()

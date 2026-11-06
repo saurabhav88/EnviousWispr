@@ -5,6 +5,9 @@ import Foundation
 /// The speaker-analysis unit of an EnviousMeet pass for one track (#3972 R25): load the bundled
 /// models, analyse the whole track from its segment files, release the models when this returns.
 ///
+/// The default `analyze` entry point below keeps the bundled path; optional neural probes use
+/// the separate `analyzeNeural` entry point and never replace that default implicitly.
+///
 /// Same bundled models and vendor configuration as Transcribe a File, never a download. The
 /// race against the deadline and the join of the worker are `SpeakerLabeler`'s, unchanged (the
 /// deadline itself is the meeting policy below):
@@ -49,6 +52,41 @@ package enum MeetingSpeakerAnalyzer {
         analysisTask: { _ in Task { [] } })
     let outcome = await labeler.run(analysisTask: makeWork(audio), durationSeconds: durationSeconds)
     return analysis(from: outcome)
+  }
+
+  /// An optional neural probe uses the caller's remaining meeting budget, with the same
+  /// labeler-owned race and physical join as the bundled analysis. It never fetches bytes.
+  package static func analyzeNeural(
+    _ audio: MeetingTrackAudio, directory: URL, preset: MeetingNeuralSpeakerPreset,
+    remainingBudgetSeconds: Double,
+    canContinue: @escaping MeetingNeuralSpeakerAnalyzer.Admission,
+    makeWork: MakeWork? = nil
+  ) async -> MeetingSpeakerAnalysis {
+    let work: MakeWork = makeWork ?? { audio in
+      Task {
+        try Task.checkCancellation()
+        return try await MeetingNeuralSpeakerAnalyzer.analyze(
+          audio, directory: directory, preset: preset, canContinue: canContinue)
+      }
+    }
+    return await analyzeNeural(
+      audio, remainingBudgetSeconds: remainingBudgetSeconds, makeWork: work)
+  }
+
+  /// A claimed byte-use scope wraps numerical work inside the raced worker, so acquisition,
+  /// admission recheck, loading and inference all consume this same remaining budget (#4424).
+  package static func analyzeNeural(
+    _ audio: MeetingTrackAudio, remainingBudgetSeconds: Double, makeWork: @escaping MakeWork
+  ) async -> MeetingSpeakerAnalysis {
+    guard !Task.isCancelled else {
+      return MeetingSpeakerAnalysis(outcome: .failed, segments: [])
+    }
+    guard remainingBudgetSeconds.isFinite, remainingBudgetSeconds > 0 else {
+      return MeetingSpeakerAnalysis(outcome: .timedOut, segments: [])
+    }
+    let labeler = SpeakerLabeler(
+      deadlineSecondsOverride: remainingBudgetSeconds, analysisTask: { _ in Task { [] } })
+    return await analyze(audio, labeler: labeler, makeWork: makeWork)
   }
 
   /// The meeting outcome for a labeler outcome. Words are never dropped for any of these.

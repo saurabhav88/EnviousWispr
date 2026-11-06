@@ -65,6 +65,9 @@ package final class MeetingTranscriptionJob {
     /// #3973 C3: the engine this job's dependencies decode with, decided before the job was
     /// built. Nil means the attempt's requested engine.
     package var resolution: MeetingEngineResolution?
+    package var neuralSpeakersAvailable: @MainActor () async -> Bool
+    package var analyzeNeuralSpeakers: MeetingSpeakerSelection.Probe?
+    package var speakerSelectionObserved: @MainActor (MeetingSpeakerSelection.Observation) -> Void
 
     package init(
       isDictationIdle: @escaping @MainActor () -> Bool,
@@ -85,7 +88,10 @@ package final class MeetingTranscriptionJob {
       unitEnded: @escaping @MainActor () -> Void = {},
       passStarted: @escaping @MainActor (UUID?, Int) -> Void = { _, _ in },
       isOwnModelResident: @escaping @MainActor () -> Bool = { false },
-      resolution: MeetingEngineResolution? = nil
+      resolution: MeetingEngineResolution? = nil,
+      neuralSpeakersAvailable: @escaping @MainActor () async -> Bool = { false },
+      analyzeNeuralSpeakers: MeetingSpeakerSelection.Probe? = nil,
+      speakerSelectionObserved: @escaping @MainActor (MeetingSpeakerSelection.Observation) -> Void = { _ in }
     ) {
       self.isDictationIdle = isDictationIdle
       self.waitUntilDictationIdle = waitUntilDictationIdle
@@ -106,10 +112,14 @@ package final class MeetingTranscriptionJob {
       self.passStarted = passStarted
       self.isOwnModelResident = isOwnModelResident
       self.resolution = resolution
+      self.neuralSpeakersAvailable = neuralSpeakersAvailable
+      self.analyzeNeuralSpeakers = analyzeNeuralSpeakers
+      self.speakerSelectionObserved = speakerSelectionObserved
     }
   }
 
   package struct Configuration: Sendable {
+    package var speakerNow: @Sendable () -> ContinuousClock.Instant = { .now }
     package var pieceTargetSeconds: Double = 60
     package var pieceSearchSeconds: Double = 15
     package var seamPaddingSeconds: Double = 1
@@ -188,7 +198,9 @@ package final class MeetingTranscriptionJob {
   /// from another version is discarded. 6 (#4355 PR B): the microphone may be read from its
   /// echo-cleaned copy, and the key says which copy. This is not the checkpoint FILE format
   /// (`MeetingProcessingCheckpoint.currentFormatVersion`, still 4: the new key field is optional).
-  package nonisolated static let processingVersion = 6
+  /// 7 (#4424): finished-call speaker selection changes; discard earlier words and speakers once.
+  package nonisolated static let processingVersion = 7
+  private var activeSpeakerProbe: Task<MeetingSpeakerAnalysis?, Never>?
 
   private let dependencies: Dependencies
   private let configuration: Configuration
@@ -220,6 +232,8 @@ package final class MeetingTranscriptionJob {
   package func cancel() {
     cancelled = true
     pendingWait?.cancel()
+    // Optional probes cooperate within the unit; legacy units retain their finish-first policy.
+    activeSpeakerProbe?.cancel()
   }
 
   /// The wait in progress that `cancel()` interrupts: model-use acquisition or the wait for
@@ -361,6 +375,13 @@ package final class MeetingTranscriptionJob {
     let timelineEnd = order.compactMap { tracks[$0]?.endSample }.max() ?? 0
     dependencies.passStarted(
       access?.meetingID, Int((Double(timelineEnd) / MeetingAudioFormat.sampleRate).rounded()))
+    try checkCancelled()
+    // #4424: freeze availability before ASR; a download finishing during this pass waits for the next.
+    let probesEligible = tracks[.callSound] != nil
+      && MeetingSpeakerSelection.eligible(track: .callSound, evidence: callSpeakers)
+      && dependencies.analyzeNeuralSpeakers != nil
+    let neuralAvailable = probesEligible ? await dependencies.neuralSpeakersAvailable() : false
+    try checkCancelled()
 
     // 0. Progress already committed for exactly these inputs, settings, attempt and model.
     // #3973 C2: the model identity is read before any reuse, so even a fully covered checkpoint
@@ -492,7 +513,15 @@ package final class MeetingTranscriptionJob {
       try checkCancelled()
       try await waitForNormalMemory()
       onStage(.findingSpeakers(track: kind))
-      let analysis = try await unit { await self.dependencies.analyzeSpeakers(audio) }
+      let (speakerStarted, legacy) = try await unit {
+        let began = self.configuration.speakerNow()
+        let analysis = await self.dependencies.analyzeSpeakers(audio)
+        return (began, analysis)
+      }
+      let analysis = try await selectedSpeakers(
+        legacy: legacy, audio: audio, kind: kind, evidence: callSpeakers,
+        available: neuralAvailable, started: speakerStarted)
+      try checkCancelled()
       outcomes[kind] = analysis.outcome
       segments[kind] = analysis.segments
       if progress != nil {
@@ -556,6 +585,72 @@ package final class MeetingTranscriptionJob {
       processingSeconds: Date().timeIntervalSince(started),
       audioSeconds: Double(totalSamples) / MeetingAudioFormat.sampleRate, resolved: resolved,
       naming: naming)
+  }
+
+  /// Each optional probe is its own existing unit. Only the selected result reaches the
+  /// caller's checkpoint; cancellation before this finishes never caches the baseline instead.
+  private func selectedSpeakers(
+    legacy: MeetingSpeakerAnalysis, audio: MeetingTrackAudio, kind: MeetingTrackKind,
+    evidence: MeetingCallSpeakerEvidence, available: Bool, started: ContinuousClock.Instant
+  ) async throws -> MeetingSpeakerAnalysis {
+    try checkCancelled()
+    var offline: MeetingSpeakerAnalysis?
+    var low: MeetingSpeakerAnalysis?
+    func elapsed() -> Double {
+      let duration = started.duration(to: configuration.speakerNow()).components
+      return Double(duration.seconds) + Double(duration.attoseconds) / 1e18
+    }
+    func finish(_ decision: MeetingSpeakerSelection.Decision) -> MeetingSpeakerAnalysis {
+      dependencies.speakerSelectionObserved(.init(
+        reason: decision.reason, legacyCount: MeetingSpeakerSelection.count(legacy),
+        offlineCount: offline.map(MeetingSpeakerSelection.count),
+        lowCount: low.map(MeetingSpeakerSelection.count), elapsedSeconds: elapsed()))
+      return decision.analysis
+    }
+    func keep(_ reason: MeetingSpeakerSelection.Reason) -> MeetingSpeakerAnalysis {
+      finish(.init(analysis: legacy, reason: reason))
+    }
+    guard MeetingSpeakerSelection.eligible(track: kind, evidence: evidence) else { return keep(.legacyOnly) }
+    guard MeetingSpeakerSelection.succeeded(legacy) else { return keep(.legacyFailed) }
+    guard MeetingSpeakerSelection.count(legacy) <= 8 else { return keep(.capacity) }
+    guard available, let probe = dependencies.analyzeNeuralSpeakers else { return keep(.modelsUnavailable) }
+    let duration = Double(audio.endSample) / MeetingAudioFormat.sampleRate
+    let budget = MeetingSpeakerAnalyzer.meetingDeadlineSeconds(forDurationSeconds: duration)
+    let deadline = started.advanced(by: .seconds(budget))
+    for preset in [MeetingNeuralSpeakerPreset.offline, .low] {
+      try checkCancelled()
+      guard dependencies.isDictationIdle(), !dependencies.isMemoryPressureElevated() else {
+        return keep(.priorityChanged)
+      }
+      let result = try await unit {
+        let left = self.configuration.speakerNow().duration(to: deadline).components
+        let remaining = Double(left.seconds) + Double(left.attoseconds) / 1e18
+        guard remaining > 0, !self.dependencies.isMemoryPressureElevated() else { return nil as MeetingSpeakerAnalysis? }
+        let task = Task {
+          await probe(.init(
+            audio: audio, preset: preset, remainingBudgetSeconds: remaining,
+            canContinue: { [weak self] in
+              await MainActor.run {
+                guard let self else { return false }
+                return !self.cancelled && self.dependencies.isDictationIdle()
+                  && !self.dependencies.isMemoryPressureElevated()
+              }
+            }))
+        }
+        self.activeSpeakerProbe = task
+        defer { self.activeSpeakerProbe = nil }
+        return await task.value
+      }
+      try checkCancelled()
+      guard let result else { return keep(elapsed() >= budget ? .budgetExhausted : .probeFailed) }
+      guard MeetingSpeakerSelection.succeeded(result) else { return keep(.probeFailed) }
+      switch preset {
+      case .offline: offline = result
+      case .low: low = result
+      }
+    }
+    try checkCancelled()
+    return finish(MeetingSpeakerSelection.choose(legacy: legacy, offline: offline, low: low))
   }
 
   /// Who automatic naming may consider (#4013 r3 F1), from the pass's own pieces before

@@ -683,6 +683,8 @@ let project = Project(
         "Sources/EnviousWispr/Resources/word-check-delivery-manifest.json",
         // #4355 PR C: the live meeting speaker model (Nemotron3 diarizer, preset low).
         "Sources/EnviousWispr/Resources/speaker-live-delivery-manifest.json",
+        // #4424: the independent finished-call speaker model shares the explicit download.
+        "Sources/EnviousWispr/Resources/speaker-final-delivery-manifest.json",
         // #4353 D6: the bundled cloud model list, the offline fallback (Bundle.main).
         "Sources/EnviousWispr/Resources/cloud-models.json",
         "Sources/EnviousWispr/Resources/S1-MINI-LICENSE.txt",

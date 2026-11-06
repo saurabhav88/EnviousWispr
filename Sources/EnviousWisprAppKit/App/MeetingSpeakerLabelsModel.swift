@@ -21,6 +21,17 @@ enum LiveSpeakerLoadCheckOutcome: Sendable, Equatable {
 /// awaits this never deletes files under a loading model. Cancellation closes the session at
 /// once; a load already running finishes on the session's own queue and is dropped unused.
 enum LiveSpeakerLoadCheck {
+  static func runFinal(directory: URL) async -> LiveSpeakerLoadCheckOutcome {
+    do {
+      try await MeetingNeuralSpeakerAnalyzer.checkLoad(directory: directory, preset: .offline)
+      return Task.isCancelled ? .cancelled : .loaded
+    } catch is CancellationError {
+      return .cancelled
+    } catch {
+      return .failed
+    }
+  }
+
   static func run(
     directory: URL,
     loader: @escaping LiveSpeakerRuntimeLoader = Nemotron3LiveSpeakerRuntime.nemotron3Low
@@ -133,13 +144,19 @@ final class MeetingSpeakerLabelsModel {
     /// Called once per completed check with its real result (loaded or failed); a stopped check
     /// is not a result and is never reported (`speaker_labels.load_check`).
     var report: @MainActor (_ loaded: Bool) -> Void = { _ in }
+    var finalDeliveryState: @MainActor () -> DeliveryState? = { nil }
+    var finalAdmittedDirectory: @MainActor () async -> URL? = { nil }
+    var finalCheck: @Sendable (URL) async -> LiveSpeakerLoadCheckOutcome = { directory in
+      await LiveSpeakerLoadCheck.runFinal(directory: directory)
+    }
+    var includesFinalModel = false
 
     static func live(
       home: ModelDeliveryHome, isMeetingActive: @escaping @MainActor () -> Bool
     ) -> Environment {
       Environment(
         deliveryState: { [home] in home.speakerLiveHandle == nil ? nil : home.speakerLiveState },
-        downloadBytes: { [home] in home.speakerLiveDownloadBytes },
+        downloadBytes: { [home] in home.speakerModelsDownloadBytes },
         downloadQueued: { [home] in home.speakerLiveDownloadQueued },
         downloadRefused: { [home] in home.speakerLiveDownloadRefused },
         request: { [home] in home.requestLiveSpeakerModel(meetingActive: $0) },
@@ -147,11 +164,30 @@ final class MeetingSpeakerLabelsModel {
         remove: { [home] in home.removeLiveSpeakerModel() },
         admittedDirectory: { [home] in await home.admittedLiveSpeakerModelDirectory() },
         isMeetingActive: isMeetingActive,
-        check: { await LiveSpeakerLoadCheck.run(directory: $0) },
+        check: { [home] directory in
+          do {
+            return try await home.withSpeakerModelUse(finished: false) { admitted -> LiveSpeakerLoadCheckOutcome in
+              guard directory == admitted else { return .cancelled }
+              return await LiveSpeakerLoadCheck.run(directory: admitted)
+            } ?? .cancelled
+          } catch { return .cancelled }
+        },
         report: { [home] loaded in
           TelemetryService.shared.trackSpeakerLabelsLoadCheck(
             loaded: loaded, modelRevision: home.speakerLiveRegistration?.manifest.identity.revision)
-        })
+        },
+        finalDeliveryState: { [home] in
+          home.speakerFinalHandle == nil ? nil : home.speakerFinalState
+        },
+        finalAdmittedDirectory: { [home] in await home.admittedFinalSpeakerModelDirectory() },
+        finalCheck: { [home] directory in
+          do {
+            return try await home.withSpeakerModelUse(finished: true) { admitted -> LiveSpeakerLoadCheckOutcome in
+              guard directory == admitted else { return .cancelled }
+              return await LiveSpeakerLoadCheck.runFinal(directory: admitted)
+            } ?? .cancelled
+          } catch { return .cancelled }
+        }, includesFinalModel: true)
     }
   }
 
@@ -182,6 +218,7 @@ final class MeetingSpeakerLabelsModel {
 
   private let environment: Environment
   private(set) var readiness: Readiness = .unchecked
+  private(set) var finalReadiness: Readiness = .unchecked
   /// Bumped by every new check and every invalidation; a check whose generation moved publishes
   /// nothing.
   private var generation = 0
@@ -239,7 +276,38 @@ final class MeetingSpeakerLabelsModel {
     #if DEBUG
       if let stagedStatus { return stagedStatus }
     #endif
-    guard let state = environment.deliveryState() else { return .unavailableInThisBuild }
+    return status(for: environment.deliveryState(), readiness: readiness)
+  }
+
+  var finalStatus: Status? {
+    if isStaged { return nil }
+    guard environment.includesFinalModel || environment.finalDeliveryState() != nil else { return nil }
+    return status(for: environment.finalDeliveryState(), readiness: finalReadiness)
+  }
+
+  /// One action owner for the pair, without hiding a working live component.
+  var actionStatus: Status {
+    let live = status
+    guard let final = finalStatus else { return live }
+    for component in [live, final] {
+      switch component {
+      case .queuedForMeeting, .downloading: return component
+      case .unavailableInThisBuild, .notDownloaded, .downloadFailed, .checking,
+        .waitingForMeeting, .ready, .loadFailed: break
+      }
+    }
+    for component in [live, final] {
+      switch component {
+      case .notDownloaded, .downloadFailed: return component
+      case .unavailableInThisBuild, .queuedForMeeting, .downloading, .checking,
+        .waitingForMeeting, .ready, .loadFailed: break
+      }
+    }
+    return live == .ready ? final : live
+  }
+
+  private func status(for state: DeliveryState?, readiness: Readiness) -> Status {
+    guard let state else { return .unavailableInThisBuild }
     if environment.downloadQueued(), state != .admitted { return .queuedForMeeting }
     switch state {
     case .notReady, .cancelled:
@@ -265,6 +333,7 @@ final class MeetingSpeakerLabelsModel {
   var downloadBytes: Int64? { environment.downloadBytes() }
   var downloadRefused: Bool { environment.downloadRefused() }
   var isInstalled: Bool { environment.deliveryState() == .admitted }
+  var isFinalInstalled: Bool { environment.finalDeliveryState() == .admitted }
   /// Remove waits for the meeting to end (the delivery home refuses it too).
   var removeWaitsForMeeting: Bool { environment.isMeetingActive() }
 
@@ -272,12 +341,20 @@ final class MeetingSpeakerLabelsModel {
   /// checked; forget readiness once the model is no longer admitted.
   func checkIfNeeded() {
     guard !isStaged else { return }
-    guard environment.deliveryState() == .admitted else {
-      if readiness != .unchecked { invalidate() }
-      return
+    if environment.deliveryState() != .admitted {
+      if readiness == .checking { invalidate(resetAll: false) }
+      readiness = .unchecked
     }
-    guard readiness == .unchecked else { return }
-    startCheck()
+    if environment.finalDeliveryState() != .admitted {
+      if finalReadiness == .checking { invalidate(resetAll: false) }
+      finalReadiness = .unchecked
+    }
+    guard readiness != .checking, finalReadiness != .checking else { return }
+    if isInstalled, readiness == .unchecked {
+      startCheck()
+    } else if isFinalInstalled, finalReadiness == .unchecked {
+      startCheck(finished: true)
+    }
   }
 
   /// Download, or Try Again after a failed download.
@@ -299,21 +376,27 @@ final class MeetingSpeakerLabelsModel {
   /// Try Again after a failed load check.
   func retryCheck() {
     guard !isStaged else { return }
-    guard readiness == .failed, environment.deliveryState() == .admitted else { return }
-    startCheck()
+    if readiness == .failed, isInstalled {
+      startCheck()
+    } else if finalReadiness == .failed, isFinalInstalled {
+      startCheck(finished: true)
+    }
   }
 
   /// A meeting started: a check in progress stops (its load finishes on the session's queue and
   /// is dropped) and runs again when the meeting ends. Recording never waits for it.
   func meetingBecameActive() {
-    guard readiness == .checking else { return }
-    invalidate()
-    readiness = .waitingForMeeting
+    let liveChecking = readiness == .checking
+    let finalChecking = finalReadiness == .checking
+    guard liveChecking || finalChecking else { return }
+    invalidate(resetAll: false)
+    if liveChecking { readiness = .waitingForMeeting }
+    if finalChecking { finalReadiness = .waitingForMeeting }
   }
 
   func meetingBecameIdle() {
-    guard readiness == .waitingForMeeting else { return }
-    readiness = .unchecked
+    if readiness == .waitingForMeeting { readiness = .unchecked }
+    if finalReadiness == .waitingForMeeting { finalReadiness = .unchecked }
     checkIfNeeded()
   }
 
@@ -330,16 +413,16 @@ final class MeetingSpeakerLabelsModel {
     await task?.value
   }
 
-  private func startCheck() {
+  private func startCheck(finished: Bool = false) {
     guard !environment.isMeetingActive() else {
-      readiness = .waitingForMeeting
+      if finished { finalReadiness = .waitingForMeeting } else { readiness = .waitingForMeeting }
       return
     }
     generation += 1
     let current = generation
     let previous = checkTask
     let environment = environment
-    readiness = .checking
+    if finished { finalReadiness = .checking } else { readiness = .checking }
     checkTask = Task { [weak self] in
       // An earlier check, and the last meeting's speaker model, release before this check loads
       // another copy. The generation guard comes first: a meeting that started meanwhile moved it,
@@ -349,38 +432,49 @@ final class MeetingSpeakerLabelsModel {
       else { return }
       await waitForMeetingRelease()
       guard self?.generation == current else { return }
-      guard let directory = await environment.admittedDirectory() else {
-        self?.finish(current, .cancelled)
+      let directory = await (finished ? environment.finalAdmittedDirectory() : environment.admittedDirectory())
+      guard let directory else {
+        self?.finish(current, .cancelled, finished: finished)
         return
       }
       guard self?.generation == current else { return }
-      let outcome = await environment.check(directory)
+      let outcome = await (finished ? environment.finalCheck(directory) : environment.check(directory))
       // The probe's own terminal answer, whatever the card does with it next.
-      switch outcome {
-      case .loaded: environment.report(true)
-      case .failed: environment.report(false)
-      case .cancelled: break
+      if !finished {
+        // Preserve the existing live-check telemetry meaning; final readiness is local state.
+        switch outcome {
+        case .loaded: environment.report(true)
+        case .failed: environment.report(false)
+        case .cancelled: break
+        }
       }
-      self?.finish(current, outcome)
+      self?.finish(current, outcome, finished: finished)
     }
   }
 
-  private func finish(_ current: Int, _ outcome: LiveSpeakerLoadCheckOutcome) {
+  private func finish(_ current: Int, _ outcome: LiveSpeakerLoadCheckOutcome, finished: Bool) {
     guard current == generation else { return }
+    let next: Readiness
     switch outcome {
     case .loaded:
-      readiness = environment.deliveryState() == .admitted ? .ready : .unchecked
+      let admitted = finished ? isFinalInstalled : isInstalled
+      next = admitted ? .ready : .unchecked
     case .failed:
-      readiness = .failed
+      next = .failed
     case .cancelled:
-      readiness = .unchecked
+      next = .unchecked
     }
+    if finished { finalReadiness = next } else { readiness = next }
+    // A successful live check may have deferred an already admitted final model. The next
+    // check waits for this task to return; the two native models are never resident together.
+    if outcome != .cancelled { checkIfNeeded() }
   }
 
   @discardableResult
-  private func invalidate() -> Task<Void, Never>? {
+  private func invalidate(resetAll: Bool = true) -> Task<Void, Never>? {
     generation += 1
-    readiness = .unchecked
+    if resetAll || readiness == .checking { readiness = .unchecked }
+    if resetAll || finalReadiness == .checking { finalReadiness = .unchecked }
     checkTask?.cancel()
     return checkTask
   }

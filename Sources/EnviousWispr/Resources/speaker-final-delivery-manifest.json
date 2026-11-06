@@ -1,0 +1,74 @@
+{
+ "schemaVersion": 1,
+ "identity": {
+  "family": "speaker_live",
+  "name": "nemotron-3-diarization-coreml",
+  "revision": "25a90f97f254428d4b30374b76af9c74fdee8327",
+  "variant": "offline-v2",
+  "runtimeABI": "fluidAudio-fb506037"
+ },
+ "runtimeCompatibility": {
+  "minAppVersion": "2.6.0"
+ },
+ "optionalFiles": [],
+ "totalBytes": 199162403,
+ "files": [
+  {
+   "path": "monolithic/v2/Nemotron3Diarizer_offline.mlmodelc/analytics/coremldata.bin",
+   "installPath": "Nemotron3Diarizer_offline.mlmodelc/analytics/coremldata.bin",
+   "sizeBytes": 243,
+   "sha256": "491594df92282a4f2cef65e96d236e210a5c4627063e37e822ec858aaaad416d",
+   "component": "Nemotron3Diarizer_offline.mlmodelc"
+  },
+  {
+   "path": "monolithic/v2/Nemotron3Diarizer_offline.mlmodelc/coremldata.bin",
+   "installPath": "Nemotron3Diarizer_offline.mlmodelc/coremldata.bin",
+   "sizeBytes": 758,
+   "sha256": "8b790c919c65744648c17290a26d3371e0e55db655310e7f8445080757b0bf08",
+   "component": "Nemotron3Diarizer_offline.mlmodelc"
+  },
+  {
+   "path": "monolithic/v2/Nemotron3Diarizer_offline.mlmodelc/model.mil",
+   "installPath": "Nemotron3Diarizer_offline.mlmodelc/model.mil",
+   "sizeBytes": 505274,
+   "sha256": "ea5673d9e9ec785e7c8fb628acd82f9f86214c46b6584eaacdb6faddcb3f0277",
+   "component": "Nemotron3Diarizer_offline.mlmodelc"
+  },
+  {
+   "path": "monolithic/v2/Nemotron3Diarizer_offline.mlmodelc/weights/weight.bin",
+   "installPath": "Nemotron3Diarizer_offline.mlmodelc/weights/weight.bin",
+   "sizeBytes": 198654080,
+   "sha256": "bab76e5f190d0e4a4e174e7fcb1e9beea58c6b2be56e665e2cac8fba6d10f7f1",
+   "component": "Nemotron3Diarizer_offline.mlmodelc"
+  },
+  {
+   "path": "learnable_sil_emb.bin",
+   "installPath": "learnable_sil_emb.bin",
+   "sizeBytes": 2048,
+   "sha256": "d4417b3c0eabdf7c47032fac2b5b5a7ee83d819a6ddda8fd8eaf74e2b5cc4ac7",
+   "component": "learnable_sil_emb.bin"
+  }
+ ],
+ "sources": [
+  {
+   "id": "our_copy",
+   "baseURL": "https://models.enviouswispr.com/speaker-live/FluidInference/nemotron-3-diarization-coreml/25a90f97f254428d4b30374b76af9c74fdee8327/"
+  },
+  {
+   "id": "hf_pinned",
+   "baseURL": "https://huggingface.co/FluidInference/nemotron-3-diarization-coreml/resolve/25a90f97f254428d4b30374b76af9c74fdee8327/"
+  }
+ ],
+ "license": {
+  "name": "OpenMDW-1.1",
+  "url": "https://huggingface.co/FluidInference/nemotron-3-diarization-coreml/blob/25a90f97f254428d4b30374b76af9c74fdee8327/README.md"
+ },
+ "admission": {
+  "layout": "componentSet",
+  "installLocation": "speakerFinalModelsCache",
+  "diskHeadroomFactor": "2.2",
+  "evictPreviousRevisions": false,
+  "entrypointFile": "Nemotron3Diarizer_offline.mlmodelc/coremldata.bin"
+ },
+ "manifestDigest": "057d4d169f2300c891122e503fc14cb02f3109706837855c978320d7aeefe275"
+}

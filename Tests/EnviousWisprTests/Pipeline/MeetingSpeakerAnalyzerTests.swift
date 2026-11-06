@@ -93,4 +93,63 @@ struct MeetingSpeakerAnalyzerTests {
     #expect(result.outcome == .failed)
     #expect(finished.withLock { $0 })
   }
+
+  @Test("an exhausted shared probe budget starts no worker")
+  func neuralBudgetExhausted() async throws {
+    let starts = OSAllocatedUnfairLock(initialState: 0)
+    let result = await MeetingSpeakerAnalyzer.analyzeNeural(
+      try track(), directory: URL(fileURLWithPath: "/unused"), preset: .offline,
+      remainingBudgetSeconds: 0, canContinue: { true },
+      makeWork: { _ in
+        starts.withLock { $0 += 1 }
+        return Task { [] }
+      })
+    #expect(result.outcome == .timedOut && result.segments.isEmpty)
+    #expect(starts.withLock { $0 } == 0)
+  }
+
+  @Test("a neural probe uses the remaining budget and joins a late successful worker")
+  func neuralDeadlineJoins() async throws {
+    let finished = OSAllocatedUnfairLock(initialState: false)
+    let result = await MeetingSpeakerAnalyzer.analyzeNeural(
+      try track(), directory: URL(fileURLWithPath: "/unused"), preset: .offline,
+      remainingBudgetSeconds: 0.05, canContinue: { true },
+      makeWork: { _ in
+        Task {
+          // test-fixture-timer: work deliberately outlasts the supplied deadline.
+          try? await Task.sleep(for: .seconds(30))
+          finished.withLock { $0 = true }
+          return [SpeakerSegment(speakerId: "N0", startMs: 0, endMs: 100, quality: 1)]
+        }
+      })
+    #expect(result.outcome == .timedOut && result.segments.isEmpty)
+    #expect(finished.withLock { $0 })
+  }
+
+  @Test("cancelling a neural probe joins its worker and discards its result")
+  func neuralCancellationJoins() async throws {
+    let entered = BoundedWait.Signal()
+    let finished = OSAllocatedUnfairLock(initialState: false)
+    let audio = try track()
+    let subject = Task {
+      await MeetingSpeakerAnalyzer.analyzeNeural(
+        audio, directory: URL(fileURLWithPath: "/unused"), preset: .low,
+        remainingBudgetSeconds: 30, canContinue: { true },
+        makeWork: { _ in
+          Task {
+            entered.fire()
+            // test-fixture-timer: suspended work ends when cancellation is forwarded.
+            try? await Task.sleep(for: .seconds(30))
+            finished.withLock { $0 = true }
+            return [SpeakerSegment(speakerId: "N0", startMs: 0, endMs: 100, quality: 1)]
+          }
+        })
+    }
+    defer { subject.cancel() }
+    try await BoundedWait.until(entered)
+    subject.cancel()
+    let result = try await BoundedWait.result(of: subject).get()
+    #expect(result.outcome == .failed && result.segments.isEmpty)
+    #expect(finished.withLock { $0 })
+  }
 }

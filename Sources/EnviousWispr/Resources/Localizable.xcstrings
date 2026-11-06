@@ -9373,6 +9373,16 @@
         }
       }
     },
+    "Finished calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgeschlossene Anrufe"
+          }
+        }
+      }
+    },
     "Finished importing your words." : {
       "comment" : "Pill: the background import of Your Words finished.",
       "localizations" : {
@@ -19705,7 +19715,7 @@
       }
     },
     "Speaker labels" : {
-      "comment" : "EnviousMeet Models page: the name of the live speaker labels feature and its card.",
+      "comment" : "EnviousMeet Models page: the name of the live and finished-call speaker labels card.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19722,6 +19732,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Sprecherkennzeichnung konnte auf diesem Mac nicht starten. Versuche es erneut oder entferne den Download."
+          }
+        }
+      }
+    },
+    "Speaker labels distinguish voices during a call and can improve grouping in finished calls when saved call information is available. Use Download to get the required models. Names depend on what the call app shows. For existing recordings, select Transcribe again. Labels can be wrong, especially when people talk over each other." : {
+      "comment" : "EnviousMeet Models page: help for Speaker labels.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprecherkennzeichnungen unterscheiden Stimmen während eines Anrufs und können die Zuordnung in abgeschlossenen Anrufen verbessern, wenn gespeicherte Anrufinformationen verfügbar sind. Wähle „Laden“, um die erforderlichen Modelle herunterzuladen. Namen hängen davon ab, was die Anruf-App anzeigt. Wähle für vorhandene Aufnahmen „Erneut transkribieren“. Kennzeichnungen können ungenau sein, besonders wenn Personen gleichzeitig sprechen."
           }
         }
       }
@@ -24650,17 +24671,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anzuzeigende Wörter"
-          }
-        }
-      }
-    },
-    "While a meeting records, speaker labels separate the voices on the call, so Live Preview shows their words under Speaker 1, Speaker 2 and so on, and under names on call apps that show them. It needs one download. Labels can be wrong when people talk at the same time. The finished transcript and how speech is turned into text do not change." : {
-      "comment" : "EnviousMeet Models page: help for Speaker labels.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Während ein Meeting aufgenommen wird, unterscheidet die Sprecherkennzeichnung die Stimmen im Anruf. So zeigt die Live-Vorschau das Gesagte unter Sprecher 1, Sprecher 2 und so weiter sowie bei Anruf-Apps, die Namen anzeigen, unter deren Namen. Dafür ist ein einmaliger Download nötig. Wenn mehrere Personen gleichzeitig sprechen, kann die Zuordnung falsch sein. Das fertige Transkript und die Umwandlung von Sprache in Text ändern sich dadurch nicht."
           }
         }
       }

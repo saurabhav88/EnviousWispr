@@ -44,7 +44,8 @@ import EnviousWisprAppKitTestSupport
   }
 
   private func makeRegistration(
-    files: [(path: String, content: Data, component: String)]
+    files: [(path: String, content: Data, component: String)],
+    family: String = "parakeet", variant: String = "int8"
   ) throws -> DeliveryRegistration {
     let root = TestTemporaryDirectory.url
       .appendingPathComponent("controller-\(UUID().uuidString)", isDirectory: true)
@@ -63,7 +64,11 @@ import EnviousWisprAppKitTestSupport
       ],
     ]
     let manifest = try DeliveryManifest.load(
-      from: ManifestFixture.manifestJSON(files: files, sources: sources))
+      from: ManifestFixture.manifestJSON(files: files, sources: sources, family: family) { object in
+        var identity = object["identity"] as! [String: Any]
+        identity["variant"] = variant
+        object["identity"] = identity
+      })
     return DeliveryRegistration(
       manifest: manifest, installDirectory: install, metadataDirectory: metadata)
   }
@@ -583,6 +588,71 @@ import EnviousWisprAppKitTestSupport
   }
 
   // MARK: - #3972 R26 meeting gate at every install change
+
+  @Test("speaker mutations wait for use, withdraw on cancel, and delete after release",
+        .timeLimit(.minutes(1)))
+  func speakerMutationExclusion() async throws {
+    for variant in ["low-v2", "offline-v2"] {
+      let registration = try makeRegistration(
+        files: ManifestFixture.smallFiles, family: "speaker_live", variant: variant)
+      try seedValidCache(registration)
+      let controller = ModelDeliveryController(
+        defaults: testDefaults(), availableDiskBytes: { _ in .max })
+      let gate = controller.meetingModelUseGate
+      let key = gateKey(registration)
+      let file = registration.installDirectory.appendingPathComponent(ManifestFixture.smallFiles[0].path)
+      try await gate.beginUse(key)
+      let removal = Task { await controller.remove(registration) }
+      let asked = await withDeadline(seconds: 5) { await gate.waitForMutationRequest(); return true }
+      guard asked == true else {
+        await gate.endUse(key)
+        try await gate.beginMutation(key)
+        await gate.endMutation(key)
+        removal.cancel()
+        _ = await removal.value
+        Issue.record("speaker Remove did not request its matching use gate")
+        return
+      }
+      #expect(FileManager.default.fileExists(atPath: file.path))
+      removal.cancel()
+      let cancelled = try await BoundedWait.result(of: removal).get()
+      #expect(cancelled == .failed(DeliveryFailure(reason: .cancelled, detail: "remove:cancelled")))
+      #expect(try Data(contentsOf: file) == ManifestFixture.smallFiles[0].content)
+      // A cancelled mutation withdrew its claim: another reader can enter immediately.
+      try await gate.beginUse(key)
+      await gate.endUse(key)
+      let retry = Task { await controller.remove(registration) }
+      let retryAsked = await withDeadline(seconds: 5) { await gate.waitForMutationRequest(); return true }
+      await gate.endUse(key)
+      #expect(retryAsked == true)
+      #expect(try await BoundedWait.result(of: retry).get() == .removed)
+      #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+  }
+
+  @Test("a live speaker use does not block a separate final speaker install",
+        .timeLimit(.minutes(1)))
+  func speakerDirectoriesAreIndependent() async throws {
+    let live = try makeRegistration(
+      files: ManifestFixture.smallFiles, family: "speaker_live", variant: "low-v2")
+    let final = try makeRegistration(
+      files: ManifestFixture.smallFiles, family: "speaker_live", variant: "offline-v2")
+    try seedValidCache(live)
+    try seedValidCache(final)
+    let controller = ModelDeliveryController(defaults: testDefaults())
+    let gate = controller.meetingModelUseGate
+    try await gate.beginUse(gateKey(live))
+    let removal = Task { await controller.remove(final) }
+    do {
+      #expect(try await BoundedWait.result(of: removal, deadline: .seconds(5)).get() == .removed)
+    } catch {
+      await gate.endUse(gateKey(live))
+      _ = await removal.value
+      throw error
+    }
+    #expect(FileManager.default.fileExists(atPath: live.installDirectory.path))
+    await gate.endUse(gateKey(live))
+  }
 
   private func gateKey(_ registration: DeliveryRegistration) -> String {
     MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)

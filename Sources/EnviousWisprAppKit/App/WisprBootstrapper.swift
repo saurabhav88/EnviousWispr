@@ -2661,6 +2661,37 @@ package final class WisprBootstrapper {
         meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
     meetingInputs.liveWords = meetingLiveWords
+    meetingInputs.neuralSpeakersAvailable = { [modelDelivery] in
+      let live = await modelDelivery.admittedLiveSpeakerModelDirectory()
+      let final = await modelDelivery.admittedFinalSpeakerModelDirectory()
+      return live != nil && final != nil
+    }
+    meetingInputs.analyzeNeuralSpeakers = { [modelDelivery, meetingLiveSpeakers] request in
+      await MeetingSpeakerAnalyzer.analyzeNeural(
+        request.audio, remainingBudgetSeconds: request.remainingBudgetSeconds,
+        makeWork: { audio in
+          Task {
+            try Task.checkCancellation()
+            // A recording's retired live model and its stopped readiness check release before
+            // another speaker model loads. These waits belong inside the timed worker too.
+            await meetingLiveSpeakers.waitForCheckRelease()
+            await meetingLiveSpeakers.waitForRelease()
+            try Task.checkCancellation()
+            let finished: Bool
+            switch request.preset {
+            case .offline: finished = true
+            case .low: finished = false
+            }
+            let segments = try await modelDelivery.withSpeakerModelUse(finished: finished) { directory in
+              try await MeetingNeuralSpeakerAnalyzer.analyze(
+                audio, directory: directory, preset: request.preset,
+                canContinue: request.canContinue)
+            }
+            guard let segments else { throw CocoaError(.fileReadNoSuchFile) }
+            return segments
+          }
+        })
+    }
     // #4319: an EG-1 summary waits while a file import holds a bundled server.
     meetingInputs.importPinnedLocalProvider = {
       fileImportCoordinatorForGates?.pinnedLocalPolishProvider
