@@ -336,6 +336,84 @@ struct MeetingSpeakerPairNamerTests {
     #expect(result.pairProposals == 1)
   }
 
+  /// #4436 (live UAT 2026-11-06): a Teams app call with People open (rows tag guests
+  /// ` (Unverified)`, tiles ` (Guest)`), then the user shares (compact view live, main window
+  /// frozen). Before the fix the talkers were never on the roster and the share doubled every
+  /// name, so the meeting ended `no_signal`. SURVEY shapes rebuilt small.
+  @Test("a Teams call with People open and a screen share names both guests")
+  func teamsPeopleOpenAndShareNamesBoth() {
+    func tile(_ name: String, talking: Bool) -> CallAXNode {
+      CallAXNode(
+        role: "AXMenuItem",
+        description: "\(name) (Guest), \(talking ? "" : "muted, ")Context menu is available",
+        children: [
+          CallAXNode(
+            role: "AXGroup", domClassList: talking ? ["vdi-frame-occlusion"] : ["vdi-occlusion"])
+        ])
+    }
+    let rows = [
+      CallAXNode(role: "AXRow", description: "In this meeting, 3 total Mute all"),
+      CallAXNode(role: "AXRow", description: "Saurabh Vaish, Organizer, Muted"),
+      CallAXNode(role: "AXRow", description: "Alex Rivera (Unverified), Meeting guest, Muted"),
+      CallAXNode(role: "AXRow", description: "Priya Shah (Unverified), Meeting guest, Muted"),
+      CallAXNode(
+        role: "AXMenuItem", description: "Myself video, Saurabh Vaish, Muted, Has context menu"),
+    ]
+    let title = "Meeting with Saurabh Vaish"
+    func plain(_ talker: String) -> [CallAXWindow] {
+      [
+        CallAXWindow(
+          title: title,
+          root: CallAXNode(
+            role: "AXWindow",
+            children: rows + [
+              tile(Self.alex, talking: talker == Self.alex),
+              tile(Self.priya, talking: talker == Self.priya),
+            ]))
+      ]
+    }
+    func sharing(_ talker: String) -> [CallAXWindow] {
+      [
+        CallAXWindow(
+          title: "Meeting compact view | " + title,
+          root: CallAXNode(
+            role: "AXWindow",
+            children: [
+              tile(Self.alex, talking: talker == Self.alex),
+              tile(Self.priya, talking: talker == Self.priya),
+            ])),
+        // Frozen: both tiles as they were when the share began.
+        CallAXWindow(
+          title: title,
+          root: CallAXNode(
+            role: "AXWindow",
+            children: rows + [tile(Self.alex, talking: false), tile(Self.priya, talking: true)])),
+      ]
+    }
+    var accumulator = CallSpeakerAccumulator(
+      surface: .teamsApp, rules: nil, lag: CallSpeakerLag(milliseconds: 0), status: .observed)
+    let good = CallCaptureContext(completeness: .complete, scope: .resolved)
+    let plan: [(Int, Int, [CallAXWindow])] = [
+      (0, 9_000, plain(Self.alex)), (10_000, 19_000, plain(Self.priya)),
+      (20_000, 29_000, sharing(Self.alex)), (30_000, 39_000, sharing(Self.priya)),
+    ]
+    for (first, last, windows) in plan {
+      for ms in stride(from: first, through: last, by: 1_000) {
+        accumulator.add(
+          TeamsAppSpeakerReader.read(windows: windows), context: good, observationMs: ms)
+      }
+    }
+    let segment = accumulator.segment(endMs: 40_000, endReason: .recordingEnded)
+    #expect(segment.roster.names.filter { $0 == Self.alex }.count == 1, "one Alex, not two")
+    let result = propose(
+      [
+        Self.turn(Self.a, 0, 9_500), Self.turn(Self.b, 10_000, 19_500),
+        Self.turn(Self.a, 20_000, 29_500), Self.turn(Self.b, 30_000, 39_500),
+      ], [segment])
+    #expect(result.outcome == .named)
+    #expect(result.proposals == [Self.a: Self.alex, Self.b: Self.priya])
+  }
+
   @Test("a hidden-count stretch shorter than the minimum names nobody")
   func hiddenCountShortStretch() {
     var accumulator = CallSpeakerAccumulator(

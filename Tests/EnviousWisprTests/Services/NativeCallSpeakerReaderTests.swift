@@ -602,6 +602,102 @@ struct NativeCallSpeakerReaderTests {
     #expect(CallSpeakerAdmission.observationSpeaking(reading, context: good) == ["Priya Shah"])
   }
 
+  /// #4436 SURVEY (live UAT 2026-11-06, run 20261106-140401-4436-teams-live-uat-b045): the
+  /// Teams app's People rows tag browser guests ` (Unverified)` while their tiles say
+  /// ` (Guest)`. Both must give one name, or the talker is not on the roster and is never named.
+  static func teamsTile(_ label: String, talking: Bool) -> CallAXNode {
+    CallAXNode(
+      role: "AXMenuItem", description: label,
+      children: [
+        CallAXNode(
+          role: "AXGroup",
+          domClassList: talking ? ["fui-Flex", "vdi-frame-occlusion"] : ["fui-Flex", "vdi-occlusion"])
+      ])
+  }
+
+  static let unverifiedRows: [CallAXNode] = [
+    CallAXNode(role: "AXRow", description: "In this meeting, 3 total Mute all"),
+    CallAXNode(role: "AXRow", description: "Saurabh Vaish, Organizer, Muted"),
+    CallAXNode(role: "AXRow", description: "Alex Rivera (Unverified), Meeting guest, Unmuted"),
+    CallAXNode(role: "AXRow", description: "Priya Shah (Unverified), Meeting guest, Muted"),
+  ]
+
+  @Test("Teams: People rows tagged (Unverified) and tiles tagged (Guest) give one name per guest")
+  func teamsUnverifiedRows() {
+    let reading = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting with Saurabh Vaish",
+        Self.unverifiedRows + [
+          Self.teamsTile("Alex Rivera (Guest), Context menu is available", talking: true),
+          Self.teamsTile("Priya Shah (Guest), muted, Context menu is available", talking: false),
+          CallAXNode(
+            role: "AXMenuItem", description: "Myself video, Saurabh Vaish, Muted, Has context menu"),
+        ])
+    ])
+    #expect(reading.roster.names == ["Saurabh Vaish", "Alex Rivera", "Priya Shah"])
+    #expect(reading.speaking == ["Alex Rivera"])
+    #expect(reading.participants.count == 3, "the talker is a roster person, not an extra one")
+    #expect(reading.participantCount == 3)
+    let good = CallCaptureContext(completeness: .complete, scope: .resolved)
+    #expect(CallSpeakerAdmission.observationSpeaking(reading, context: good) == ["Alex Rivera"])
+    #expect(TeamsAppSpeakerReader.displayName("Lee (External)") == "Lee")
+    #expect(TeamsAppSpeakerReader.displayName("Lee (Guest) (Guest)") == "Lee (Guest)", "one tag")
+    // The user's own tagged row and tile still identify the user.
+    let tagged = TeamsAppSpeakerReader.read(windows: [
+      window(
+        "Meeting",
+        [
+          CallAXNode(role: "AXRow", description: "Sam Lee (Unverified), Organizer, Muted"),
+          CallAXNode(
+            role: "AXMenuItem",
+            description: "Myself video, Sam Lee (Unverified), Muted, Has context menu"),
+        ])
+    ])
+    #expect(tagged.roster.selfNames == ["Sam Lee"])
+  }
+
+  /// #4436 SURVEY (same run): while the user shares, Teams minimizes the meeting window and shows
+  /// "Meeting compact view | <title>". The compact view's tiles are live (the talker's tile holds
+  /// the frame); the minimized window's tiles are frozen (here a stale frame on Priya) but its
+  /// rows, count and self tile still read. SYNTHETIC: the stale self frame.
+  @Test("Teams: during a share the compact view's tiles supersede the frozen main window's")
+  func teamsShareCompactView() {
+    let main = window(
+      "Meeting with Saurabh Vaish",
+      Self.unverifiedRows + [
+        Self.teamsTile("Alex Rivera (Guest), muted, Context menu is available", talking: false),
+        Self.teamsTile("Priya Shah (Guest), muted, Context menu is available", talking: true),
+        CallAXNode(
+          role: "AXMenuItem", description: "Myself video, Saurabh Vaish, Muted, Has context menu",
+          children: [CallAXNode(role: "AXGroup", domClassList: ["vdi-frame-occlusion"])]),
+        CallAXNode(
+          role: "AXMenuItem",
+          children: [CallAXNode(role: "AXGroup", domClassList: ["vdi-frame-occlusion"])]),
+      ])
+    let compact = window(
+      "Meeting compact view | Meeting with Saurabh Vaish",
+      [
+        Self.teamsTile("Alex Rivera (Guest), Context menu is available", talking: true),
+        Self.teamsTile("Priya Shah (Guest), muted, Context menu is available", talking: false),
+      ])
+    let reading = TeamsAppSpeakerReader.read(windows: [compact, main])
+    #expect(reading.speaking == ["Alex Rivera"])
+    #expect(reading.sharedNames.isEmpty, "each guest is one person, not two")
+    #expect(reading.roster.selfNames == ["Saurabh Vaish"])
+    #expect(reading.participantCount == 3)
+    #expect(reading.participantIdentityEstablished)
+    let good = CallCaptureContext(completeness: .complete, scope: .resolved)
+    #expect(CallSpeakerAdmission.observationSpeaking(reading, context: good) == ["Alex Rivera"])
+    #expect(TeamsAppSpeakerReader.meetingTitles(windows: [compact, main]) == ["Meeting with Saurabh Vaish"])
+    // A compact view with no gallery (the "is speaking" shape) leaves the main window's tiles read.
+    let labelOnly = window(
+      "Meeting compact view | Meeting with Saurabh Vaish",
+      [CallAXNode(role: "AXGroup", description: "Alex Rivera (Guest) is speaking")])
+    let mixed = TeamsAppSpeakerReader.read(windows: [labelOnly, main])
+    #expect(mixed.speaking.contains("Priya Shah"), "the main window's tile frame is read")
+    #expect(mixed.speaking.contains("Saurabh Vaish"), "and its self-tile frame")
+  }
+
   /// SYNTHETIC: an unnamed tile with the talking frame beside a named talking tile, and a
   /// participant tile nested inside another tile.
   @Test("Teams: an unnamed talking tile withholds; a nested tile's frame is not the outer tile's")

@@ -700,11 +700,29 @@ package enum TeamsAppSpeakerReader {
       allCounts.formUnion(counts)
       if !names.isEmpty { rosters.append((names, counts)) }
     }
-    for node in windows.flatMap({ $0.root.allNodes }) {
+    // #4436: while the user shares, Teams minimizes the meeting window and shows
+    // "Meeting compact view | <title>"; the compact view's gallery is live (the talker's tile
+    // holds the frame) while the minimized window keeps readable but frozen tiles (live UAT
+    // 2026-11-06). Reading both repeated every name. A compact view with a gallery supersedes
+    // the gallery of its main window; that window's rows, counts and self-tile name still count.
+    let compactGalleryTitles = Set(
+      windows.compactMap { window -> String? in
+        guard let title = window.title, title.hasPrefix(compactViewPrefix),
+          window.root.allNodes.contains(where: { isGalleryTile($0) })
+        else { return nil }
+        return String(title.dropFirst(compactViewPrefix.count))
+      })
+    let nodes = windows.flatMap { window -> [(node: CallAXNode, superseded: Bool)] in
+      let superseded =
+        window.title.map { !$0.hasPrefix(compactViewPrefix) && compactGalleryTitles.contains($0) }
+        ?? false
+      return window.root.allNodes.map { ($0, superseded) }
+    }
+    for (node, superseded) in nodes {
       guard let label = node.label else {
         // A gallery tile with no label at all can still hold the talking frame: someone
         // unknown is talking.
-        if node.role == "AXMenuItem", hasTalkingFrame(node) { unnamedTalker = true }
+        if !superseded, node.role == "AXMenuItem", hasTalkingFrame(node) { unnamedTalker = true }
         continue
       }
       switch node.role {
@@ -714,8 +732,10 @@ package enum TeamsAppSpeakerReader {
       case "AXRow":
         if let name = rosterName(label) { rosterNames.append(name) }
       case "AXMenuItem" where label.hasPrefix(selfTilePrefix):
-        selfTiles.append(String(label.dropFirst(selfTilePrefix.count)))
-        if hasTalkingFrame(node) { selfTileTalking = true }
+        selfTiles.append(untaggedSelfTile(String(label.dropFirst(selfTilePrefix.count))))
+        if !superseded, hasTalkingFrame(node) { selfTileTalking = true }
+      case "AXMenuItem" where superseded:
+        break
       case "AXMenuItem":
         // The main window marks the talker's gallery tile with a frame carrying this class
         // (C1 Teams run 2, 2026-10-28; the signal Superwhisper reads).
@@ -894,7 +914,33 @@ package enum TeamsAppSpeakerReader {
     return name.isEmpty ? nil : name
   }
 
+  /// The identity tags Teams adds after a name (#4436): ` (Guest)` on tiles, ` (Unverified)`
+  /// on People rows for browser guests (live UAT 2026-11-06), and ` (External)`, which
+  /// Microsoft documents for people from another organization. One trailing tag is removed.
+  static let identityTags = [guestSuffix, " (Unverified)", " (External)"]
+
   static func displayName(_ raw: String) -> String {
-    raw.hasSuffix(guestSuffix) ? String(raw.dropLast(guestSuffix.count)) : raw
+    guard let tag = identityTags.first(where: { raw.hasSuffix($0) }) else { return raw }
+    return String(raw.dropLast(tag.count))
+  }
+
+  /// The self tile's text with one identity tag removed from right after the name, so its
+  /// name compares with the cleaned roster names: `Sam (Unverified), Muted, Has context menu`
+  /// → `Sam, Muted, Has context menu`. A tag that is not followed by tile states stays.
+  static func untaggedSelfTile(_ tile: String) -> String {
+    for tag in identityTags {
+      if tile.hasSuffix(tag) { return String(tile.dropLast(tag.count)) }
+      if let range = tile.range(of: tag + ", "),
+        tile[range.upperBound...].components(separatedBy: ", ").allSatisfy(tileStates.contains)
+      {
+        return tile.replacingCharacters(in: range, with: ", ")
+      }
+    }
+    return tile
+  }
+
+  /// A gallery tile of another participant: an `AXMenuItem` whose label parses as a tile.
+  static func isGalleryTile(_ node: CallAXNode) -> Bool {
+    node.role == "AXMenuItem" && (node.label.flatMap(tileName) != nil)
   }
 }
