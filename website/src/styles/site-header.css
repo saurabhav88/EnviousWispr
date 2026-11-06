@@ -842,6 +842,51 @@ html[data-nav-js] .chrome-header:not([data-nav-ready]) [data-nav-panel] {
     height: 27px;
   }
 }
+/* #4432: Dictation | Meetings switch beside the logo */
+.chrome-header .chrome-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.chrome-header .product-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--nav-soft);
+}
+.chrome-header .product-switch a {
+  padding: 6px 15px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--nav-muted);
+}
+.chrome-header .product-switch a:hover {
+  color: var(--nav-ink);
+}
+.chrome-header .product-switch a.on {
+  background: var(--nav-card);
+  color: var(--nav-ink);
+  box-shadow: 0 1px 6px #0000002a;
+}
+@media (max-width: 1100px) {
+  .chrome-header .chrome-left {
+    gap: 10px;
+  }
+  .chrome-header .chrome-left .chrome-brand span {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .chrome-header .product-switch a {
+    padding: 6px 11px;
+    font-size: 13.5px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .header-lips .lip-upper,
   .header-lips .lip-lower {

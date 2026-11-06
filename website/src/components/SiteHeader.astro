@@ -25,7 +25,14 @@ const { activePage = 'home', themed = false } = Astro.props;
 
 <header class="site-chrome chrome-header" data-active={activePage}>
   <div class="chrome-inner">
-    <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><Logo animate /><span>EnviousWispr</span></a>
+    <div class="chrome-left">
+      <a class="chrome-brand" href="/" aria-label="EnviousWispr home"><Logo animate /><span>EnviousWispr</span></a>
+      {/* #4432: the two products. Meetings is on for /meetings/, Dictation everywhere else. */}
+      <div class="product-switch" role="group" aria-label="Product">
+        <a href="/" class:list={{ on: activePage !== 'meetings' }} aria-current={activePage === 'home' ? 'page' : undefined}>Dictation</a>
+        <a href="/meetings/" class:list={{ on: activePage === 'meetings' }} aria-current={activePage === 'meetings' ? 'page' : undefined}>Meetings</a>
+      </div>
+    </div>
     <a
       class="chrome-mobile-trigger chrome-icon-button"
       href="#site-navigation"
@@ -82,7 +89,7 @@ const { activePage = 'home', themed = false } = Astro.props;
       <a class:list={['nav-link', { active: activePage === 'compare' }]} href="/compare/">Compare</a>
       <div class="resource-parent" data-nav-parent>
         <a
-          class:list={['nav-trigger', { active: resources.some(([label]) => activePage === label.toLowerCase()) }]}
+          class:list={['nav-trigger', { active: resources.some(([, , slug]) => activePage === slug) }]}
           href="/blog/"
           id="resources-trigger"
           aria-controls="resources-menu"
@@ -91,8 +98,8 @@ const { activePage = 'home', themed = false } = Astro.props;
         >
         <div class="resources-menu" id="resources-menu" data-nav-panel>
           {
-            resources.map(([label, href]) => (
-              <a href={href} class:list={{ active: activePage === label.toLowerCase() }}>
+            resources.map(([label, href, slug]) => (
+              <a href={href} class:list={{ active: activePage === slug }}>
                 {label}
               </a>
             ))

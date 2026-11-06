@@ -1,0 +1,37 @@
+---
+// MeetHero (#4432): ported from the approved EnviousMeet mock-up.
+import { heroArt } from '../../utils/home/hero-art.js';
+const art = await heroArt();
+const heroVars = `--hero-light:url(${art.light[1].src});--hero-dark:url(${art.dark[1].src})`;
+---
+
+<section class="hero" style={heroVars}><div class="hero-art" aria-hidden="true"></div><div class="hero-shade" aria-hidden="true"></div><div class="wrap hero-grid">
+  <div class="h-top">
+    <span class="eyebrow">EnviousMeet <span class="beta">BETA</span></span>
+    <h1><span class="l">Premium meeting notes.</span><br><em class="l">Free, on your Mac.</em></h1>
+    <p class="category">A private AI notetaker that works fully offline.</p>
+    <p class="desc">Record calls and meetings in the room. Get a transcript with who said what, written on your Mac, and an AI summary from the engine you choose.</p>
+    <div class="cta-row m-only">
+      <a class="btn dl" href="/download?source=onsite" data-download-source="meetings-hero">Download free for Mac <span aria-hidden="true">↓</span></a>
+      <span class="trust"><b>Free and open source</b><span>No account. No subscription.</span></span>
+    </div>
+  </div>
+  <div class="h-bottom">
+    <ul class="proofs">
+      <li><b>Follows your mute.</b> When it can see your mute button in the Zoom app, the Teams app or Google Meet in Chrome or Safari, your voice stays out of the notes while you are muted.</li>
+      <li><b>Your audio never leaves your Mac.</b> Transcripts and summaries can run with no internet.</li>
+      <li><b>Keep dictating.</b> EnviousWispr dictation still works while a meeting records.</li>
+    </ul>
+    <div class="cta-row d-only">
+      <a class="btn dl" href="/download?source=onsite" data-download-source="meetings-hero">Download free for Mac <span aria-hidden="true">↓</span></a>
+      <span class="trust"><b>Free and open source</b><span>No account. No subscription.</span></span>
+    </div>
+    <p class="compat">macOS 14+ · Apple Silicon (M1 or later) · Call sound needs macOS 14.2+</p>
+  </div>
+
+  <div class="demo">
+    <div class="vframe">
+      <video id="heroVideo" src="/meetings/enviousmeet-demo-dark.mp4" poster="/meetings/enviousmeet-poster-dark.jpg" autoplay muted loop playsinline preload="metadata" aria-label="EnviousMeet demo: it offers to take notes on a Zoom call, shows live words, then the finished notes."></video>
+    </div>
+  </div>
+</div></section>
