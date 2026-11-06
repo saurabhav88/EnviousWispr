@@ -18,7 +18,7 @@ const items = meetingsFaq.map(([section, question, answer], i) => ({
         </Fragment>
       ))}
     </div>
-    <div class="answer" id="answer" role="tabpanel" aria-labelledby="q0">
+    <div class="answer" id="answer" role="tabpanel" aria-labelledby="q0" aria-live="polite">
       {items.map((f) => (
         <div class="answer-in" hidden={f.i !== 0}>
           <span class="lbl">{f.section}</span>
