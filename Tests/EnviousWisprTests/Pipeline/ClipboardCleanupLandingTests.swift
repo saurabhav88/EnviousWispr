@@ -217,6 +217,71 @@ struct ClipboardCleanupLandingTests {
     return (pb, after)
   }
 
+  @Test("Live freshness gates restore ON and OFF after absence, while untouched misses still recover")
+  func inputAfterDecisionUsesOrdinaryCleanup() async throws {
+    for restore in [true, false] {
+      for inputChanged in [false, true] {
+        try await withCleanCleanupThrowing {
+          let ax = PastedRegionFakeAX()
+          let clock = PastedRegionFakeScheduler()
+          ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
+          ax.focused[42] = .element(PastedRegionFakeAX.field(42))
+          ax.reads = [.text("")]
+          let prepared = PasteArrivalCapture.prepare(
+            .init(tier: .cgEvent, pid: 42, takeID: "take-1", bundleID: "com.apple.TextEdit",
+                  payload: Self.dictation),
+            capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: clock,
+            report: { _ in })
+          guard let capture = prepared else { Issue.record("missing capture"); return }
+          capture.commit()
+          clock.advance(ms: 300)
+          #expect(capture.landing == .absent)
+
+          let pb = board(holding: Self.user)
+          let snap = snapshot(of: pb)
+          put(Self.adjusted, on: pb)
+          let afterPaste = pb.changeCount
+          let outcomes = Outcomes()
+          let exec = PasteCascadeExecutor(
+            pasteboard: pb, policy: .baseline,
+            onRetained: { _, count, _, report in
+              outcomes.all.append(.retained(changeCount: count))
+              report(false)
+            })
+          let request = PasteDeliveryRequest(
+            legacyText: Self.dictation, repairedText: nil, caretContext: nil,
+            candidateDeletesDictatedText: false, targetApp: nil, targetElement: nil,
+            targetElementIsRetried: false, restoreClipboardAfterPaste: restore,
+            keepDictationsOutOfClipboardHistory: false, terminalBudget: nil, takeID: "take-1")
+          var landing = try #require(exec.landingCheck(for: capture, request: request))
+          let gate = WakeGate(open: false)
+          landing.minimumWait = { try await gate.wait() }
+          if restore {
+            ClipboardCleanup.scheduleRestore(
+              snap, changeCountAfterPaste: afterPaste, markTransient: false, tier: .cgEvent,
+              on: pb, landing: landing)
+          } else {
+            ClipboardCleanup.scheduleLegacyRewrite(
+              legacyText: Self.dictation, submittedChangeCount: afterPaste, tier: .cgEvent,
+              on: pb, landing: landing)
+          }
+          try await gate.waitUntilEntered()
+          if inputChanged {
+            ax.inputActivity = .init(
+              keyDown: 1, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+          }
+          gate.release()
+          try await finished(ClipboardCleanup.pendingTaskForTests())
+          #expect(capture.landing == .absent, "the published observation remains historical")
+          #expect(pb.string(forType: .string) == (restore && inputChanged ? Self.user : Self.dictation))
+          #expect(pb.changeCount > afterPaste, "the ordinary restore or legacy rewrite actually ran")
+          #expect(outcomes.all == (inputChanged ? [] : [.retained(changeCount: pb.changeCount)]))
+          capture.cancel()
+        }
+      }
+    }
+  }
+
   // MARK: Restore ON
 
   @Test("A miss decided before the cleanup woke keeps the dictation and reports the board receipt")

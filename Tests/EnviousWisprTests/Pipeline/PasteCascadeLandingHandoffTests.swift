@@ -58,15 +58,17 @@ struct PasteCascadeLandingHandoffTests {
   final class Calls {
     var retained: [(String, Int)] = []
     var reports: [@MainActor (Bool) -> Void] = []
+    var freshness: [@MainActor () -> Bool] = []
   }
 
   private func executor(_ calls: Calls) -> PasteCascadeExecutor {
     let board = NSPasteboard.withUniqueName()
     return PasteCascadeExecutor(
       pasteboard: board, policy: .baseline,
-      onRetained: { takeID, count, report in
+      onRetained: { takeID, count, isStillFresh, report in
         calls.retained.append((takeID, count))
         calls.reports.append(report)
+        calls.freshness.append(isStillFresh)
       })
   }
 
@@ -117,12 +119,30 @@ struct PasteCascadeLandingHandoffTests {
   func keyRouteGetsACheck(tier: PasteTier) throws {
     let session = try capture(tier: tier)
     let check = try #require(executor(Calls()).landingCheck(for: session, request: request()))
+    session.commit()
     #expect(check.legacyText == "Sarah ")
     #expect(
       check.mayRetain(.absent)
         == PasteLandingPolicy.mayRetain(
           .absent, bundleID: "com.apple.TextEdit", appClass: session.appClass, tier: tier))
     #expect(check.mayRetain(.found(.sameField)) == false)
+  }
+
+  @Test("The retained callback carries a live predicate after the observation has ended")
+  func retainedCallbackKeepsLiveFreshness() throws {
+    let calls = Calls()
+    let session = try capture()
+    let check = try #require(executor(calls).landingCheck(for: session, request: request()))
+    session.commit()
+    scheduler.advance(ms: PastedRegionTiming.arrivalShadowMs)
+    #expect(check.mayRetain(.absent))
+    check.onOutcome(.retained(changeCount: 7))
+    let isStillFresh = try #require(calls.freshness.first)
+    #expect(isStillFresh())
+    ax.inputActivity = .init(keyDown: 1, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+    #expect(isStillFresh() == false)
+    #expect(check.mayRetain(.absent) == false)
+    #expect(session.landing == .absent)
   }
 
   @Test("Only a retained outcome reaches AppKit, once, with this take and the board receipt")

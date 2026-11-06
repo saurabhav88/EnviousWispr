@@ -121,7 +121,7 @@ struct EscapeRecoveryRestoreTests {
       settings: HeldDeliverySettings(
         smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false,
         keepDictationsOutOfClipboardHistory: false),
-      onRetained: { _, _, report in report(false) },
+      onRetained: { _, _, _, report in report(false) },
       deliver: { _, _, _, window, fieldWindow, _, _, _, _ in
         seen.calls += 1
         seen.window = window

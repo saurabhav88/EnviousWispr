@@ -130,7 +130,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }
     #expect(isShowing(d))
     #expect(log.announcements.count == 1)
     #expect(log.shown.count == 1 && log.shown.first?.0 == "take-1" && log.shown.first?.1 == true)
@@ -144,7 +144,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }
     #expect(log.shown.isEmpty, "nothing answered before the render")
     board.count = 11
     let render = try #require(deferred())
@@ -161,7 +161,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(Board(), log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }
     n.takeAccepted("take-2")
     let render = try #require(deferred())
     render()
@@ -178,16 +178,57 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(board, log)
 
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // not connected yet
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }  // not connected yet
     let counting = CountingHost(d)
     n.connect(counting)
     n.takeAccepted("take-2")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }  // older take
-    n.retained(takeID: "take-2", changeCount: 9) { log.shown.append(("take-2", $0)) }  // board moved since
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }  // older take
+    n.retained(takeID: "take-2", changeCount: 9, isStillValid: { true }) { log.shown.append(("take-2", $0)) }  // board moved since
     #expect(isShowing(d) == false)
     #expect(log.announcements.isEmpty)
     #expect(log.shown.map(\.1) == [false, false, false])
     #expect(counting.asked == 0, "a stale report must not ask the overlay at all")
+  }
+
+  @Test("Input after retention refuses immediate admission and reports false once")
+  func inputBeforeAdmissionRefuses() {
+    let log = Log()
+    let (d, _) = director(log, deferring: false)
+    let counting = CountingHost(d)
+    let board = Board()
+    let n = notice(board, log)
+    n.connect(counting)
+    n.takeAccepted("take-1")
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { false }) {
+      log.shown.append(("take-1", $0))
+    }
+    #expect(counting.asked == 0)
+    #expect(isShowing(d) == false)
+    #expect(log.announcements.isEmpty)
+    #expect(log.shown.map(\.1) == [false])
+    #expect(board.count == 10, "notice refusal does not rewrite the retained clipboard")
+  }
+
+  @Test("Input before a deferred render refuses the notice and reports false once")
+  func inputBeforeRenderRefuses() throws {
+    let log = Log()
+    let (d, deferred) = director(log, deferring: true)
+    let board = Board()
+    let n = notice(board, log)
+    n.connect(d)
+    n.takeAccepted("take-1")
+    var isFresh = true
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { isFresh }) {
+      log.shown.append(("take-1", $0))
+    }
+    #expect(log.shown.isEmpty)
+    isFresh = false
+    let render = try #require(deferred())
+    render()
+    #expect(isShowing(d) == false)
+    #expect(log.announcements.isEmpty)
+    #expect(log.shown.map(\.1) == [false])
+    #expect(board.count == 10)
   }
 
   @Test("An occupied overlay refuses it, and the notice reports it not shown")
@@ -199,7 +240,7 @@ struct RetainedPasteNoticeDirectorTests {
     let n = notice(Board(), log)
     n.connect(d)
     n.takeAccepted("take-1")
-    n.retained(takeID: "take-1", changeCount: 10) { log.shown.append(("take-1", $0)) }
+    n.retained(takeID: "take-1", changeCount: 10, isStillValid: { true }) { log.shown.append(("take-1", $0)) }
     #expect(isShowing(d) == false)
     #expect(log.announcements.count == announcedBefore)
     #expect(log.shown.first?.1 == false)
@@ -259,7 +300,31 @@ struct EscapeRecoveryNoticeTests {
   ) {
     EscapeRecoveryNotice.show(
       identity: "take-1", receipt: receipt, reason: nil, host: d,
-      reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
+      isStillValid: { true }, reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
+  }
+
+  @Test("Undo checked misses require freshness at admission and deferred render")
+  func checkedMissInputRefuses() throws {
+    for deferring in [false, true] {
+      let log = Log()
+      let (d, deferred) = director(log, deferring: deferring)
+      let board = Board()
+      var isFresh = deferring
+      EscapeRecoveryNotice.show(
+        identity: "take-1", receipt: 10, reason: nil, host: d,
+        isStillValid: { isFresh }, reportShown: { log.shown.append($0) },
+        boardChangeCount: { board.count })
+      if deferring {
+        #expect(log.shown.isEmpty)
+        isFresh = false
+        let render = try #require(deferred())
+        render()
+      }
+      #expect(isShowing(d) == false)
+      #expect(log.announcements.isEmpty)
+      #expect(log.shown == [false])
+      #expect(board.count == 10)
+    }
   }
 
   @Test("An idle overlay shows Copied once and reports it shown")
@@ -327,7 +392,7 @@ struct EscapeRecoveryNoticeTests {
           EscapeRecoveryNotice.show(
             identity: takeID ?? transcriptID.uuidString,
             receipt: result.fallbackClipboardChangeCount, reason: nil, host: d,
-            reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
+            isStillValid: { true }, reportShown: { log.shown.append($0) }, boardChangeCount: { board.count })
         },
         report: { _, _, _ in })
     }

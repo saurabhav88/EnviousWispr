@@ -207,6 +207,7 @@ package enum PasteArrivalLanding: Sendable, Equatable {
 
   package enum Inconclusive: String, Sendable, CaseIterable {
     case cancelled
+    case inputChanged = "input_changed"
     case budgetSpent = "budget_spent"
     case registrationIncomplete = "registration_incomplete"
     case countIncomplete = "count_incomplete"
@@ -316,7 +317,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
 /// shadow → one report. `cancel()` ends a committed session early. #996 asks the same session for
 /// its edit-watch target with `editWatchCapture`, on its own timer.
 ///
-/// Reads never overlap: every read is one synchronous `attemptArrival` on the main actor.
+/// Reads never overlap: preference and ordinary fallback run synchronously on the main actor.
 @MainActor
 package final class PasteArrivalCapture: PasteEditCapturing {
 
@@ -375,6 +376,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   let baseline: Baseline
   /// The active destination at prepare (#3423); nil for an edit-only session, which never decides.
   private let switchTokenBefore: DestinationSwitchToken?
+  private let inputBeforePreparation: PasteInputActivitySnapshot?
   /// Nil when the question could not be asked or answered: never "does not support it". An
   /// edit-only session asks it at #996's first request instead of before a write.
   private var manualAX: Bool?
@@ -432,6 +434,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private init(
     context: Context, application: AXUIElement, baseline: Baseline,
     switchTokenBefore: DestinationSwitchToken?,
+    inputBeforePreparation: PasteInputActivitySnapshot?,
     manualAX: Bool?, hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
     reporter: @escaping @MainActor (PasteArrivalObservation) -> Void,
@@ -441,6 +444,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     self.application = application
     self.baseline = baseline
     self.switchTokenBefore = switchTokenBefore
+    self.inputBeforePreparation = inputBeforePreparation
     self.manualAX = manualAX
     self.hostExposedFocus = hostExposedFocus
     self.targetWindow = targetWindow
@@ -463,6 +467,13 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       bundleIdentifier: context.bundleID, isManualAccessibilityHost: manualAX)
   }
 
+  /// Live through natural teardown: cleanup and deferred presentation must still reject input
+  /// after the historical observation. Cancellation, non-dispatch and edit-only never qualify.
+  package var negativeEvidenceIsFresh: Bool {
+    guard wasCommitted, !cancelled, let inputBeforePreparation else { return false }
+    return ax.inputActivitySnapshot() == inputBeforePreparation
+  }
+
   // MARK: Prepare
 
   /// Prepares and arms a session, synchronously, immediately before the paste command. Nil for a
@@ -480,6 +491,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     log: (@MainActor (String) -> Void)? = nil
   ) -> PasteArrivalCapture? {
     guard observedTiers.contains(context.tier) else { return nil }
+    let inputBeforePreparation = ax.inputActivitySnapshot()
     let budget = PasteLandingPrepareBudget(scheduler: scheduler, ax: ax)
     let application = ax.applicationElement(pid: context.pid)
     let switchTokenBefore = ax.destinationSwitchToken(pid: context.pid, budget: budget)
@@ -502,7 +514,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
     let session = PasteArrivalCapture(
       context: context, application: application, baseline: baseline,
-      switchTokenBefore: switchTokenBefore, manualAX: manualAX,
+      switchTokenBefore: switchTokenBefore, inputBeforePreparation: inputBeforePreparation,
+      manualAX: manualAX,
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
       ax: ax, scheduler: scheduler, reporter: report, log: log ?? Self.debugLog)
     session.arm(element: element, budget: budget)
@@ -524,7 +537,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     let session = PasteArrivalCapture(
       context: .init(tier: .axDirect, pid: pid, takeID: nil, bundleID: bundleID, payload: payload),
       application: ax.applicationElement(pid: pid), baseline: .unreadable,
-      switchTokenBefore: nil,
+      switchTokenBefore: nil, inputBeforePreparation: nil,
       manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
       reporter: { _ in }, log: { _ in })
     session.wasCommitted = true
@@ -540,8 +553,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   ) -> Baseline {
     guard budget.admit(element) else { return .unreadable }
     if SelectionReader.isSecureField(ax.subrole(of: element)) { return .unreadable }
-    // The one reader choice every focused read makes (`PastedRegionObserver.selectTextReader`),
-    // so a later attempt reaches the same reader for the same answers (#3863).
+    // Use the shared default choice for the before-image (#3863). Later reads may prefer this
+    // reader on this exact field when attribute availability changes after insertion (#4426).
     guard
       let (reader, read) = PastedRegionObserver.selectTextReader(
         of: element, ax: ax, admit: budget.admit),
@@ -684,11 +697,43 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
   // MARK: Reading
 
+  /// One capture-owned read policy for confirmation, negative evidence and learning (#4426).
+  /// A preferred reader may confirm a new occurrence, but may never make a negative stronger than
+  /// the ordinary selector: an alternate reader still vetoes absence, including during the shadow.
+  private func arrivalAttempt(forLearning: Bool = false) -> PastedRegionArrivalAttempt {
+    let preference: PastedRegionReaderPreference?
+    if case .field(let element, let baselineReader, _, _, _) = baseline,
+      baselineReader != .value
+    {
+      preference = .init(element: element, reader: baselineReader)
+    } else {
+      // AXValue already has ordinary first priority. Keep its native/WebKit fallback behavior
+      // unchanged instead of reading that same value twice on every ordinary paste.
+      preference = nil
+    }
+    let attempt = reader.attemptArrival(
+      pid: context.pid, pastedText: context.payload, preferredReader: preference)
+    guard let preference, case .readable(let field) = attempt,
+      CFEqual(field.element, preference.element), field.reader == preference.reader
+    else { return attempt }
+
+    if forLearning {
+      guard case .complete(let hits) = field.occurrences,
+        case .notYet = newRegion(in: field, hits: hits)
+      else { return attempt }
+    } else if newOccurrence(in: attempt) != nil {
+      return attempt
+    }
+    // Only a successful text read with no useful new occurrence reaches ordinary selection.
+    // Failed/unstable/over-limit reads returned above keep their original failure disposition.
+    return reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+  }
+
   /// One read. A new occurrence ends the watch at once (before the decision: `found`; during the
   /// shadow: a late hit). Anything else waits for the next wakeup.
   private func read() {
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     guard let found = newOccurrence(in: attempt) else {
       if phase == .shadowing, !stillObservable(attempt) { shadowObservable = false }
       return
@@ -735,14 +780,25 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   /// The deadline passed without a new occurrence: one bounded final read, then the negative rules.
   private func decideAtDeadline() {
     guard phase == .watching else { return }
+    // Bracket ALL final AX work, including the validity checks in negative(from:).
+    let inputBefore = ax.inputActivitySnapshot()
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     if let found = newOccurrence(in: attempt) {
       publish(.found(found))
       complete()
       return
     }
-    let decision = negative(from: attempt)
+    let negative = negative(from: attempt)
+    let inputAfter = ax.inputActivitySnapshot()
+    let decision: PasteArrivalLanding
+    switch negative {
+    case .inconclusive(.appTerminated), .inconclusive(.appSwitched), .cannotRead(.permissionLost):
+      decision = negative
+    default:
+      decision = inputBefore == inputBeforePreparation && inputAfter == inputBeforePreparation
+        ? negative : .inconclusive(.inputChanged)
+    }
     shadowObservable = stillObservable(attempt)
     publish(decision)
     if PasteLandingPolicy.isMiss(decision, appClass: appClass) {
@@ -1011,7 +1067,7 @@ extension PasteArrivalCapture {
 
   /// One read projected onto the watcher's capture answers, and whether it may be retried.
   private func editAttempt(pastedAtMs: Int) -> (PastedRegionCaptureOutcome, retryable: Bool) {
-    switch reader.attemptArrival(pid: context.pid, pastedText: context.payload) {
+    switch arrivalAttempt(forLearning: true) {
     case .readable(let field):
       guard case .complete(let hits) = field.occurrences else {
         return (.ended(.captureUnsupported), false)

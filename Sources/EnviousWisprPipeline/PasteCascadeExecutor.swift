@@ -692,6 +692,7 @@ internal final class PasteCascadeExecutor {
   typealias RetainedHandler =
     @MainActor (
       _ takeID: String, _ retainedChangeCount: Int,
+      _ isStillFresh: @escaping @MainActor () -> Bool,
       _ reportShown: @escaping @MainActor (Bool) -> Void
     ) -> Void
 
@@ -747,7 +748,7 @@ internal final class PasteCascadeExecutor {
       // answer was unknown at prepare can learn it during observation, and the session's own
       // `isMiss` judges the same decision with the class as it then stands.
       mayRetain: { landing in
-        PasteLandingPolicy.mayRetain(
+        capture.negativeEvidenceIsFresh && PasteLandingPolicy.mayRetain(
           landing, bundleID: bundleID, appClass: capture.appClass, tier: tier)
       },
       legacyText: request.legacyText,
@@ -767,7 +768,7 @@ internal final class PasteCascadeExecutor {
           report(false)
           return
         }
-        onRetained(takeID, changeCount, report)
+        onRetained(takeID, changeCount, { capture.negativeEvidenceIsFresh }, report)
       },
       onDecisionTimeout: { capture.cancel() })
   }

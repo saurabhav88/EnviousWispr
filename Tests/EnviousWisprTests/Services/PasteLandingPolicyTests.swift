@@ -28,7 +28,7 @@ struct PasteLandingPolicyTests {
     var others: [PasteArrivalLanding] = PasteArrivalLanding.Found.allCases.map { .found($0) }
     others += PasteArrivalLanding.CannotRead.allCases.map { .cannotRead($0) }
     others += PasteArrivalLanding.Inconclusive.allCases.map { .inconclusive($0) }
-    #expect(others.count == 1 + 5 + 17)
+    #expect(others.count == 1 + 5 + 18)
     for landing in others {
       for appClass in AppClass.allCases {
         #expect(
@@ -55,7 +55,7 @@ struct PasteLandingPolicyTests {
   @Test("A key route retains only evidence-backed misses; Tier 1 and clipboard-only never do")
   func retainsOnlyMissesOnKeyRoutes() {
     let landings = Self.allLandings()
-    #expect(landings.count == 2 + 1 + 5 + 17)
+    #expect(landings.count == 2 + 1 + 5 + 18)
     var retained = 0
     for landing in landings {
       for appClass in AppClass.allCases {

@@ -92,6 +92,311 @@ struct PasteArrivalCaptureTests {
 
   // MARK: Positives
 
+  private var keyboardInput: PasteInputActivitySnapshot {
+    .init(keyDown: 1, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+  }
+
+  @Test("Preparation absorbs prior activity, including zero counters, without hiding a real miss")
+  func unchangedInputPreservesMiss() throws {
+    for snapshot in [
+      PasteInputActivitySnapshot(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0),
+      .init(keyDown: 99, leftMouseDown: 7, rightMouseDown: 2, otherMouseDown: 5),
+    ] {
+      ax.inputActivity = snapshot
+      let session = try prepare()
+      #expect(session.negativeEvidenceIsFresh == false, "not dispatched yet")
+      session.commit()
+      scheduler.advance(ms: 300)
+      #expect(session.landing == .absent)
+      #expect(session.negativeEvidenceIsFresh)
+      session.cancel()
+    }
+  }
+
+  @Test("Keyboard and every mouse-button counter invalidate a negative, never confirm delivery")
+  func interveningInputInvalidatesMiss() throws {
+    let snapshots: [PasteInputActivitySnapshot] = [
+      keyboardInput,
+      .init(keyDown: 0, leftMouseDown: 1, rightMouseDown: 0, otherMouseDown: 0),
+      .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 1, otherMouseDown: 0),
+      .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 1),
+    ]
+    for changed in snapshots {
+      ax.inputActivity = .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+      let session = try prepare()
+      session.commit()
+      ax.inputActivity = changed
+      scheduler.advance(ms: 300)
+      #expect(session.landing == .inconclusive(.inputChanged))
+      #expect(session.negativeEvidenceIsFresh == false)
+    }
+  }
+
+  @Test("Input during baseline AX work cannot become part of the preparation token")
+  func inputDuringPreparationInvalidatesMiss() throws {
+    let changed = keyboardInput
+    ax.onValueRead = { _ in ax.inputActivity = changed }
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .inconclusive(.inputChanged))
+  }
+
+  @Test("The deadline brackets preferred reading, automatic fallback and later negative AX checks")
+  func inputDuringFinalAXWorkInvalidatesMiss() throws {
+    for boundary in 0..<3 {
+      ax.inputActivity = .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+      ax.reads = [.absent]
+      ax.counts = [.count(0)]
+      let session = try prepare()
+      let changed = keyboardInput
+      let deadlineMs = scheduler.nowMs + 300
+      let changeAtDeadline = {
+        if scheduler.nowMs >= deadlineMs { ax.inputActivity = changed }
+      }
+      switch boundary {
+      case 0: ax.onCharacterCount = changeAtDeadline
+      case 1: ax.onValueRead = { _ in changeAtDeadline() }
+      default: ax.onDestinationSwitchToken = changeAtDeadline
+      }
+      session.commit()
+      scheduler.advance(ms: 300)
+      #expect(session.landing == .inconclusive(.inputChanged), "boundary \(boundary)")
+      ax.onCharacterCount = nil
+      ax.onValueRead = nil
+      ax.onDestinationSwitchToken = nil
+    }
+  }
+
+  @Test("A comparable new occurrence remains positive evidence even after input")
+  func arrivalStillRequiresTextAfterInput() throws {
+    let session = try prepare()
+    session.commit()
+    ax.inputActivity = keyboardInput
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    #expect(session.landing == .found(.sameField))
+    #expect(session.negativeEvidenceIsFresh == false)
+  }
+
+  @Test("App loss, destination switching and permission loss keep precedence over input")
+  func wholeAppFailuresKeepPrecedence() throws {
+    for cause in 0..<3 {
+      ax.runningPIDs = [pid]
+      ax.frontmost = pid
+      ax.trusted = true
+      ax.inputActivity = .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+      let session = try prepare()
+      session.commit()
+      ax.inputActivity = keyboardInput
+      let expected: PasteArrivalLanding
+      switch cause {
+      case 0: ax.runningPIDs = []; expected = .inconclusive(.appTerminated)
+      case 1: ax.frontmost = 43; expected = .inconclusive(.appSwitched)
+      default: ax.trusted = false; expected = .cannotRead(.permissionLost)
+      }
+      scheduler.advance(ms: 300)
+      #expect(session.landing == expected)
+    }
+  }
+
+  @Test("Freshness survives natural teardown but refuses cancellation and non-observing sessions")
+  func freshnessOutlivesObservationOnly() throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: PastedRegionTiming.arrivalShadowMs)
+    #expect(session.phase == .finished)
+    #expect(session.landing == .absent)
+    #expect(session.negativeEvidenceIsFresh)
+    ax.inputActivity = keyboardInput
+    #expect(session.negativeEvidenceIsFresh == false)
+    #expect(session.landing == .absent, "the historical verdict is immutable")
+
+    let cancelled = try prepare()
+    cancelled.commit()
+    cancelled.cancel()
+    #expect(cancelled.negativeEvidenceIsFresh == false)
+    let notCommitted = try prepare()
+    notCommitted.cancelUnlessCommitted()
+    #expect(notCommitted.negativeEvidenceIsFresh == false)
+    let editOnly = PasteArrivalCapture.editOnly(
+      pid: pid, bundleID: "com.apple.TextEdit", payload: "Sarah ", ax: ax, scheduler: scheduler)
+    #expect(editOnly.negativeEvidenceIsFresh == false)
+  }
+
+  @Test("An empty range baseline confirms the paste through that reader when AXValue appears",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func emptyRangeBaselineKeepsComparableReader() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    ax.selectedRange = .range(location: 0, length: 0)
+    let session = try prepare()
+
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .found(.sameField))
+  }
+
+  @Test("A stale preferred range cannot authorize absence while AXValue exposes text")
+  func stalePreferredRangeCannotStrengthenMiss() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.reads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 300)
+
+    #expect(session.landing == .inconclusive(.readerChanged))
+    #expect(ax.rangeCalls.isEmpty, "the host still reports an empty range")
+  }
+
+  @Test("Absent and non-text preferred ranges may reselect, without cross-reader confirmation")
+  func unavailablePreferredRangeRemainsIncomparable() throws {
+    for unavailable in [PastedRegionValueRead.absent, .notText] {
+      ax.reads = [.absent]
+      ax.counts = [.count(0)]
+      let session = try prepare()
+      ax.reads = [.text("Sarah ")]
+      ax.counts = [.count(6)]
+      ax.rangeReads = [unavailable]
+      session.commit()
+      scheduler.advance(ms: 300)
+
+      #expect(session.landing == .inconclusive(.readerChanged))
+    }
+  }
+
+  @Test("A failed preferred range is not rescued by a populated AXValue")
+  func failedPreferredRangePreservesFailure() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.failed(.cannotComplete)]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .cannotRead(.queryFailed))
+    #expect(ax.readCount == valueReads, "query failure must not trigger alternate-reader rescue")
+  }
+
+  @Test("An unstable preferred range keeps its retryable final disposition")
+  func unstablePreferredRangePreservesUncertainty() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6), .count(7)]
+    ax.rangeReads = [.text("Sarah ")]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .inconclusive(.unstable))
+    #expect(ax.readCount == valueReads, "a changing range is not an unavailable attribute")
+  }
+
+  @Test("An over-limit preferred range refuses before reading another representation")
+  func overLimitPreferredRangeIsNotReselected() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .cannotRead(.unsupported))
+    #expect(ax.readCount == valueReads)
+    #expect(ax.rangeCalls.isEmpty, "over-limit text must not be materialized")
+  }
+
+  @Test("A reader preference never follows focus to a different field")
+  func preferredReaderIsBoundToItsOriginalField() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.focused[pid] = .element(AXUIElementCreateApplication(99))
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 300)
+
+    #expect(session.landing == .inconclusive(.moved))
+    #expect(ax.rangeCalls.isEmpty, "the original field's range reader cannot describe another field")
+  }
+
+  @Test("Learning keeps the comparable range reader and its anchors after insertion")
+  func editCaptureRetainsPreferredRangeReader() async throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 25)
+    let outcome = await startEditRequest(session, pastedAtMs: 7).result()
+    guard case .captured(let target) = outcome else {
+      Issue.record("expected the newly inserted range to be captured")
+      return
+    }
+
+    #expect(target.reader == .range)
+    #expect(target.renderedText == "Sarah ")
+    #expect(target.anchors == PastedRegionAnchors(before: "", after: ""))
+    #expect(target.pastedAtMs == 7)
+  }
+
+  @Test("Learning preserves automatic capture when the preferred range has no new occurrence")
+  func editCapturePreservesAutomaticNotYetFallback() async throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.reads = [.text("Sarah ")]
+    session.commit()
+    let outcome = await startEditRequest(session).result()
+    guard case .captured(let target) = outcome else {
+      Issue.record("expected the existing incomparable-reader single-occurrence capture")
+      return
+    }
+
+    #expect(target.reader == .value)
+    #expect(target.renderedText == "Sarah ")
+    #expect(session.landing == nil, "learning capture is not proof of arrival")
+    session.cancel()
+  }
+
+  @Test("Learning does not replace preferred-reader ambiguity with another reader's single hit")
+  func editCaptureDoesNotRescuePreferredAmbiguity() async throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(14)]
+    ax.rangeReads = [.text("thanks thanks ")]
+    ax.selectedRange = .unavailable
+    let session = try prepare("thanks ")
+    ax.reads = [.text("thanks ")]
+    ax.counts = [.count(21)]
+    ax.rangeReads = [.text("thanks thanks thanks ")]
+    let valueReads = ax.readCount
+    session.commit()
+    let outcome = await startEditRequest(session).result()
+
+    #expect(outcome == .ended(.anchorAmbiguous))
+    #expect(ax.readCount == valueReads, "ambiguity must not trigger alternate-reader rescue")
+    session.cancel()
+  }
+
   @Test("Ghostty's miss waits for its own 700 ms deadline; another app's is decided at 300 ms")
   func slowRevealAppWaitsLonger() throws {
     let ghostty = try prepare(bundle: "com.mitchellh.ghostty")
@@ -1032,11 +1337,14 @@ struct PasteArrivalCaptureTests {
   func markerSupportRecovers() throws {
     mailShapedBody(markerReads: [.text("")])
     let session = try prepare()
-    ax.markerRanges = [.absent, .range(PastedRegionFakeAX.markerRange)]
+    // Hold the capability unavailable for the first attempt, including preferred-reader
+    // fallback. Recovery is a host-state change, not a count of attribute queries (#4426).
+    ax.markerRanges = [.absent]
     ax.markerReads = [.text("Sarah ")]
     session.commit()
     scheduler.advance(ms: 25)
     #expect(session.landing == nil, "the value-reader attempt proves nothing")
+    ax.markerRanges = [.range(PastedRegionFakeAX.markerRange)]
     scheduler.advance(ms: 25)
     #expect(session.landing == .found(.sameField))
   }

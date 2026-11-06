@@ -11,6 +11,10 @@ import Testing
 /// values used only for identity (`CFEqual`).
 @MainActor
 final class PastedRegionFakeAX: PastedRegionAXOperations {
+  var inputActivity = PasteInputActivitySnapshot(
+    keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+  func inputActivitySnapshot() -> PasteInputActivitySnapshot { inputActivity }
+  var onDestinationSwitchToken: (() -> Void)?
   var trusted = true
   var runningPIDs: Set<pid_t> = [42]
   var focused: [pid_t: PastedRegionFocus] = [:]
@@ -74,7 +78,8 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   func destinationSwitchToken(pid: pid_t, budget: PasteLandingPrepareBudget?)
     -> DestinationSwitchToken
   {
-    DestinationActivityEvaluator.switchToken(
+    onDestinationSwitchToken?()
+    return DestinationActivityEvaluator.switchToken(
       pid: pid, front: { self.frontmost }, focus: { self.keyboardFocusRead(budget: budget) })
   }
   /// Runs on every subrole read: a test advances the clock here to spend time INSIDE the read.
@@ -154,10 +159,12 @@ final class PastedRegionFakeAX: PastedRegionAXOperations {
   /// `reads`; the last one repeats. Empty means the host has no such attribute.
   var counts: [PastedRegionCountRead] = []
   var countCalls = 0
+  var onCharacterCount: (() -> Void)?
   var rangeReads: [PastedRegionValueRead] = []
   var rangeCalls: [(location: Int, length: Int)] = []
   func characterCount(of element: AXUIElement) -> PastedRegionCountRead {
     countCalls += 1
+    onCharacterCount?()
     guard !counts.isEmpty else { return .absent }
     return counts.count > 1 ? counts.removeFirst() : counts[0]
   }

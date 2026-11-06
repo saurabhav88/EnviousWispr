@@ -102,6 +102,9 @@ private final class CaptureAX: PastedRegionAXOperations {
     self.value = value
     self.manual = manual
   }
+  func inputActivitySnapshot() -> PasteInputActivitySnapshot {
+    .init(keyDown: 0, leftMouseDown: 0, rightMouseDown: 0, otherMouseDown: 0)
+  }
   func isTrusted() -> Bool { true }
   func isProcessRunning(_ pid: pid_t) -> Bool { true }
   func applicationElement(pid: pid_t) -> AXUIElement { AXUIElementCreateApplication(pid) }

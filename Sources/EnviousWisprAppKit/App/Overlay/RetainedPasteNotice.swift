@@ -55,11 +55,12 @@ final class RetainedPasteNotice {
   /// moment, the receipt that says the board still holds it. `reportShown` completes the take's
   /// `paste.landing_retained` row: `true` only when the notice reached the screen.
   func retained(
-    takeID: String, changeCount: Int, reportShown: @escaping @MainActor (Bool) -> Void
+    takeID: String, changeCount: Int, isStillValid: @escaping @MainActor () -> Bool,
+    reportShown: @escaping @MainActor (Bool) -> Void
   ) {
-    // The same two facts `isStillWanted` re-checks at render, checked before asking at all, so a
+    // The same facts `isStillWanted` re-checks at render, checked before asking at all, so a
     // stale report never takes an admission.
-    guard takeID == latestTakeID, boardChangeCount() == changeCount, let host else {
+    guard takeID == latestTakeID, boardChangeCount() == changeCount, isStillValid(), let host else {
       Self.log(takeID: takeID, shown: false, why: "stale")
       reportShown(false)
       return
@@ -69,6 +70,7 @@ final class RetainedPasteNotice {
       isStillWanted: { [weak self] in
         guard let self else { return false }
         return self.latestTakeID == takeID && self.boardChangeCount() == changeCount
+          && isStillValid()
       })
     host.present(request) { result in
       switch result {

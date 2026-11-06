@@ -121,6 +121,7 @@ public enum KernelDictationDriverFactory {
   package typealias RetainedCallback =
     @MainActor (
       _ takeID: String, _ retainedChangeCount: Int,
+      _ isStillFresh: @escaping @MainActor () -> Bool,
       _ reportShown: @escaping @MainActor (Bool) -> Void
     ) -> Void
 
@@ -225,7 +226,7 @@ public enum KernelDictationDriverFactory {
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in
       },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-      onRetained: @escaping RetainedCallback = { _, _, report in report(false) },
+      onRetained: @escaping RetainedCallback = { _, _, _, report in report(false) },
       isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool
     ) {
       self.isSharedEngineHeldByOtherWorkload = isSharedEngineHeldByOtherWorkload
@@ -353,7 +354,7 @@ public enum KernelDictationDriverFactory {
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in
       },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-      onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
+      onRetained: @escaping RetainedCallback = { _, _, _, report in report(false) }
     ) {
       self.whisperModelIdentity = whisperModelIdentity
       self.audioCapture = audioCapture
@@ -549,7 +550,7 @@ public enum KernelDictationDriverFactory {
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
     onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
-    onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
+    onRetained: @escaping RetainedCallback = { _, _, _, report in report(false) }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
     // setup measures 105.6 ms cold — language resolution plus a tag-scheme

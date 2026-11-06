@@ -72,9 +72,10 @@ enum EscapeRecoveryWiring {
           deliver: { text, payload, takeID in
             await heldDelivery(
               text: text, payload: payload, takeID: takeID, settings: settings,
-              onRetained: { takeID, changeCount, reportShown in
+              onRetained: { takeID, changeCount, isStillFresh, reportShown in
                 EscapeRecoveryNotice.show(
                   identity: takeID, receipt: changeCount, reason: nil, host: overlay,
+                  isStillValid: isStillFresh,
                   reportShown: reportShown)
               })
           },
@@ -83,7 +84,7 @@ enum EscapeRecoveryWiring {
               identity: takeID ?? transcriptID.uuidString,
               receipt: result.fallbackClipboardChangeCount,
               reason: result.outcome == .accessibilityDenied ? "ax_denied" : nil, host: overlay,
-              reportShown: { _ in })
+              isStillValid: { true }, reportShown: { _ in })
           },
           report: report)
       }
@@ -156,16 +157,17 @@ enum EscapeRecoveryNotice {
   /// exactly once, on every path, with the director's actual verdict.
   static func show(
     identity: String, receipt: Int?, reason: String?, host: (any RetainedPasteNoticeHosting)?,
+    isStillValid: @escaping @MainActor () -> Bool,
     reportShown: @escaping @MainActor (Bool) -> Void,
     boardChangeCount: @escaping @MainActor () -> Int = { NSPasteboard.general.changeCount }
   ) {
-    guard let receipt, boardChangeCount() == receipt, let host else {
+    guard let receipt, boardChangeCount() == receipt, isStillValid(), let host else {
       Self.log(shown: false, why: "stale", reason: reason)
       reportShown(false)
       return
     }
     let request = PillRequest.retainedClipboardFallback(
-      takeID: identity, isStillWanted: { boardChangeCount() == receipt })
+      takeID: identity, isStillWanted: { boardChangeCount() == receipt && isStillValid() })
     host.present(request) { result in
       switch result {
       case .presented:
