@@ -70,11 +70,6 @@ package enum CallSpeakerSurfaceChoice {
     CallMeetingURL.classify(url)?.family == family
   }
 
-  /// The Teams app's own pages: it draws its meeting window and its home window as web pages
-  /// on these hosts (observed 2026-10-31: `https://teams.live.com/v2/`), never with a meeting
-  /// link, so the meeting-page filter dropped the window holding the microphone button (#4248).
-  static let teamsAppHosts: Set<String> = ["teams.live.com", "teams.microsoft.com"]
-
   /// Which web pages a copy of this app reads inside: in a browser only `family`'s meeting
   /// pages (other tabs stay unread); in the Teams app its own pages; in any other app only
   /// meeting pages, as before.
@@ -83,8 +78,12 @@ package enum CallSpeakerSurfaceChoice {
   {
     switch rule {
     case .callApp(.teams), .callWindow(.teams):
+      // The Teams app's own pages: it draws its meeting window and its home window as web pages
+      // on its hosts (observed 2026-10-31: `https://teams.live.com/v2/`), never with a meeting
+      // link, so the meeting-page filter dropped the window holding the microphone button
+      // (#4248). The hosts are `CallMeetingURL.teamsHosts` (#4436).
       guard let host = URLComponents(string: url)?.host?.lowercased() else { return false }
-      return teamsAppHosts.contains(host)
+      return CallMeetingURL.teamsHosts.contains(host)
     case .callApp, .callWindow, .browser:
       return isMeetingPage(url, family: family)
     }
@@ -692,12 +691,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// One copy's walk time and size.
   package mutating func noteWalk(
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
-    skippedWindows: Int = 0, toleratedFailures: Int = 0
+    skippedWindows: Int = 0, toleratedFailures: Int = 0, skippedPages: Int = 0
   ) {
     health.noteWalk(
       durationUs: durationUs, nodes: nodes, failedReads: failedReads,
       prunedControls: prunedControls, skippedWindows: skippedWindows,
-      toleratedFailures: toleratedFailures)
+      toleratedFailures: toleratedFailures, skippedPages: skippedPages)
   }
 
   /// The log of this one segment, still open.

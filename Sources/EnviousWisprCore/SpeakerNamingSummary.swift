@@ -96,11 +96,18 @@ public struct SpeakerReadHealth: Equatable, Sendable {
   /// Failed reads the capture policy tolerated; nil when a segment with attempts was saved
   /// before the counter existed.
   public let toleratedFailures: Int?
+  /// Naming walks recorded (#4436): the denominator for `skippedPageCaptures`. Walks are
+  /// counted before a stale copy is dropped, so this can exceed `captureAttempts`.
+  public let walkDurationCount: Int
+  /// Walks with at least one web page refused for its address (#4436); nil when a segment that
+  /// walked was saved before the counter existed.
+  public let skippedPageCaptures: Int?
 
   /// Counts as given; nil when `captureAttempts` is not above zero.
   public init?(
     captureAttempts: Int, unreadableCaptures: Int, truncatedCaptures: Int,
-    unresolvedScopeCaptures: Int, toleratedFailures: Int?
+    unresolvedScopeCaptures: Int, toleratedFailures: Int?, walkDurationCount: Int = 0,
+    skippedPageCaptures: Int? = nil
   ) {
     guard captureAttempts > 0 else { return nil }
     self.captureAttempts = captureAttempts
@@ -108,6 +115,8 @@ public struct SpeakerReadHealth: Equatable, Sendable {
     self.truncatedCaptures = truncatedCaptures
     self.unresolvedScopeCaptures = unresolvedScopeCaptures
     self.toleratedFailures = toleratedFailures
+    self.walkDurationCount = walkDurationCount
+    self.skippedPageCaptures = skippedPageCaptures
   }
 
   /// The log's summed segment health, or nil when it holds no capture attempt. Tolerated
@@ -121,11 +130,28 @@ public struct SpeakerReadHealth: Equatable, Sendable {
       unreadableCaptures: healths.reduce(0) { $0 + $1.unreadableCaptures },
       truncatedCaptures: healths.reduce(0) { $0 + $1.truncatedCaptures },
       unresolvedScopeCaptures: healths.reduce(0) { $0 + $1.unresolvedScopeCaptures },
-      toleratedFailures: healths.reduce(Optional(0)) { sum, health in
-        let walked = health.walkDurationCount > 0 || health.captureAttempts > 0
-        let known = health.toleratedFailures ?? (walked ? nil : 0)
-        return sum.flatMap { total in known.map { total + $0 } }
-      })
+      toleratedFailures: Self.optionalSum(healths, \.toleratedFailures),
+      walkDurationCount: healths.reduce(0) { $0 + $1.walkDurationCount },
+      skippedPageCaptures: Self.optionalSum(healths, \.skippedPageCaptures))
+  }
+
+  /// A counter that came after some saved logs: a segment that walked or attempted without it
+  /// makes the sum unknown; an untouched segment adds zero.
+  private static func optionalSum(
+    _ healths: [CallCaptureHealth], _ counter: KeyPath<CallCaptureHealth, Int?>
+  ) -> Int? {
+    healths.reduce(Optional(0)) { sum, health in
+      let walked = health.walkDurationCount > 0 || health.captureAttempts > 0
+      let known = health[keyPath: counter] ?? (walked ? nil : 0)
+      return sum.flatMap { total in known.map { total + $0 } }
+    }
+  }
+
+  /// Walks with a page refused for its address over recorded walks (#4436); nil when unknown or
+  /// nothing walked.
+  public var skippedPageShare: Double? {
+    guard let skippedPageCaptures, walkDurationCount > 0 else { return nil }
+    return Double(skippedPageCaptures) / Double(walkDurationCount)
   }
 
   /// Unreadable, truncated or out-of-scope copies over capture attempts.

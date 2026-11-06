@@ -4187,6 +4187,9 @@ public final class TelemetryService {
   /// `speaker_reads_unusable_reason` and `speaker_reads_tolerated_bucket` (strings) are omitted
   /// without a committed naming summary or capture attempts; the tolerated bucket also when a
   /// segment predates its counter.
+  /// #4436: `speaker_reads_skipped_page_share_bucket` (string): naming walks with a web page
+  /// refused for its address over recorded walks; omitted when that count is unknown, nothing
+  /// walked, or there is no read health.
   /// #4248: `mute_follow_enabled` (`Bool`), `mute_eligible_seconds_bucket`, `mute_reads_bucket`
   /// and, when anything was eligible, `mute_silenced_share_bucket` and `mute_unknown_share_bucket`
   /// (strings); all omitted when the attempt has no mute summary.
@@ -4227,6 +4230,10 @@ public final class TelemetryService {
       props["speaker_reads_unusable_reason"] = reads.unusableReason.rawValue
       if let tolerated = reads.toleratedFailures {
         props["speaker_reads_tolerated_bucket"] = speakerToleratedBucket(tolerated)
+      }
+      // #4436: filter activity, not failed meetings; omitted when unknown or nothing walked.
+      if let share = reads.skippedPageShare {
+        props["speaker_reads_skipped_page_share_bucket"] = meetingShareBucket(share)
       }
     }
     if let mute = event.muteFollow {

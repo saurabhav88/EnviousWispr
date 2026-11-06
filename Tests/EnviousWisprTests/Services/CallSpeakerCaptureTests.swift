@@ -326,6 +326,12 @@ struct CallSpeakerCaptureTests {
     let cases: [(String, CallAppFamily, CallAppCatalog.Rule, Bool)] = [
       ("https://teams.live.com/v2/", .teams, .callApp(.teams), true),
       ("https://teams.microsoft.com/v2/", .teams, .callWindow(.teams), true),
+      // #4436: the company and US government Teams hosts.
+      ("https://teams.cloud.microsoft/v2/", .teams, .callApp(.teams), true),
+      ("https://gov.teams.microsoft.us/v2/", .teams, .callApp(.teams), true),
+      ("https://dod.teams.microsoft.us/v2/", .teams, .callWindow(.teams), true),
+      ("https://teams.cloud.microsoft.example.com/v2/", .teams, .callApp(.teams), false),
+      ("https://teams.cloud.microsoft/v2/", .teams, .browser(.chrome), false),
       ("https://example.com/v2/", .teams, .callApp(.teams), false),
       ("not a url", .teams, .callApp(.teams), false),
       ("https://teams.live.com/v2/", .teams, .browser(.chrome), false),
@@ -474,14 +480,21 @@ struct CallSpeakerCaptureTests {
     #expect(CallAXBounds.teamsApp.maxNodes == CallAXBounds.standard.maxNodes)
   }
 
-  @Test("a Teams app copy through the production page rule reads the mute button")
-  func teamsAppMuteThroughCapture() {
-    // Window "Meeting with Sam" > web page teams.live.com/v2/ > the self tile and the button.
+  /// #4436: company meetings draw on teams.cloud.microsoft (government: *.teams.microsoft.us),
+  /// which the page rule refused before, leaving the button uncopied and the page counted.
+  @Test(
+    "a Teams app copy through the production page rule reads the mute button",
+    arguments: [
+      "https://teams.live.com/v2/", "https://teams.cloud.microsoft/v2/",
+      "https://gov.teams.microsoft.us/v2/", "https://dod.teams.microsoft.us/v2/",
+    ])
+  func teamsAppMuteThroughCapture(page: String) {
+    // Window "Meeting with Sam" > web page <page> > the self tile and the button.
     let tree = Tree()
     tree.node(1, "AXWindow", children: [2])
     tree.texts[1] = [.title: "Meeting with Sam"]
     tree.node(2, "AXWebArea", children: [3, 4])
-    tree.texts[2] = [.url: "https://teams.live.com/v2/"]
+    tree.texts[2] = [.url: page]
     tree.node(3, "AXMenuItem")
     tree.texts[3] = [.title: "Myself video, Saurabh Vaish, Muted"]
     tree.node(4, "AXButton")
@@ -493,14 +506,47 @@ struct CallSpeakerCaptureTests {
       tree, policy: CallSpeakerSurfaceChoice.capturePolicy(family: .teams, rule: rule),
       keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: .teams, rule: rule) })
     #expect(copy.completeness == .complete)
+    #expect(copy.skippedPages == 0)
     #expect(
       CallSelfMuteReader.read(surface: .teamsApp, capture: copy, rules: .testPackaged) == .muted)
-    // The meeting-page filter alone (before #4248) never copies the page: unknown.
+    // The meeting-page filter alone (before #4248) never copies the page: unknown, and the
+    // refused page is counted.
     let filtered = capture(
       tree, keepPage: { CallSpeakerSurfaceChoice.isMeetingPage($0, family: .teams) })
+    #expect(filtered.skippedPages == 1)
     #expect(
       CallSelfMuteReader.read(surface: .teamsApp, capture: filtered, rules: .testPackaged)
         == .unknown)
+  }
+
+  /// #4436: what `skippedPages` counts. A visited page refused for its address counts; a page
+  /// with no address and a page inside a refused page do not; a kept page's own refused page
+  /// does. Completeness is unchanged.
+  @Test("pages refused for their address are counted; addressless and unvisited pages are not")
+  func skippedPagesCount() {
+    let tree = Tree()
+    tree.node(1, "AXWindow", children: [2, 4, 5])
+    tree.node(2, "AXWebArea", children: [3])
+    tree.texts[2] = [.url: "https://mail.example.com/"]
+    tree.node(3, "AXWebArea")
+    tree.texts[3] = [.url: "https://inside-refused.example.com/"]
+    tree.node(4, "AXWebArea")
+    tree.node(5, "AXWebArea", children: [6, 7])
+    tree.texts[5] = [.url: "https://meeting.example.com/"]
+    tree.node(6, "AXWebArea")
+    tree.texts[6] = [.url: "https://ad.example.com/"]
+    tree.node(7, "AXStaticText")
+    tree.texts[7] = [.value: "Alex"]
+    let copy = capture(tree, keepPage: { $0 == "https://meeting.example.com/" })
+    #expect(copy.completeness == .complete)
+    #expect(copy.skippedPages == 2, "the refused top page and the refused page inside the kept one")
+    #expect(capture(tree).skippedPages == 0, "nothing refused")
+    // Health counts walks with a refusal, once per walk however many pages were refused.
+    var health = CallCaptureHealth()
+    health.noteWalk(durationUs: 1, nodes: 1, skippedPages: copy.skippedPages)
+    health.noteWalk(durationUs: 1, nodes: 1, skippedPages: 0)
+    #expect(health.skippedPageCaptures == 1)
+    #expect(health.walkDurationCount == 2)
   }
 
   // MARK: - Timeline
@@ -1039,7 +1085,7 @@ struct CallSpeakerCaptureTests {
         as? [String: Any])
     for key in [
       "invalidNameReadings", "evidenceCapacityDrops", "failedReads", "prunedControls",
-      "skippedWindows", "toleratedFailures",
+      "skippedWindows", "toleratedFailures", "skippedPageCaptures",
     ] {
       #expect(object.removeValue(forKey: key) != nil, "\(key)")
     }
@@ -1050,6 +1096,8 @@ struct CallSpeakerCaptureTests {
     #expect(CallCaptureHealth().failedReads == 0, "a new one starts at zero")
     #expect(health.toleratedFailures == nil)
     #expect(CallCaptureHealth().toleratedFailures == 0)
+    #expect(health.skippedPageCaptures == nil)
+    #expect(CallCaptureHealth().skippedPageCaptures == 0)
     var counting = health
     counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2, toleratedFailures: 1)
     #expect(counting.failedReads == 2)

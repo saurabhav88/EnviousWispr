@@ -152,6 +152,18 @@ public enum CallMeetingURL {
     public let room: String
   }
 
+  /// Every Teams web host, exact (#4436): personal (`teams.live.com`), commercial and GCC
+  /// (`teams.microsoft.com`, and `teams.cloud.microsoft`, the domain Microsoft is moving company
+  /// Teams to, Message Center MC1465764), GCC High (`gov.teams.microsoft.us`) and DoD
+  /// (`dod.teams.microsoft.us`), as Microsoft's sovereign-cloud Teams client table lists them.
+  /// The one list: `classify` applies its meeting paths to it, and
+  /// `CallSpeakerSurfaceChoice.keepsPage` keeps the Teams app's own pages on it. China
+  /// (`teams.microsoftonline.cn`) is not included.
+  package static let teamsHosts: Set<String> = [
+    "teams.live.com", "teams.microsoft.com", "teams.cloud.microsoft", "gov.teams.microsoft.us",
+    "dod.teams.microsoft.us",
+  ]
+
   public static func classify(_ text: String) -> Match? {
     guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespaces)),
       components.scheme?.lowercased() == "https", let host = components.host?.lowercased()
@@ -189,7 +201,7 @@ public enum CallMeetingURL {
       }
       return nil
     }
-    if host == "teams.microsoft.com" || host == "teams.live.com" {
+    if teamsHosts.contains(host) {
       // Only a meeting link counts (r3 F2): a join link (/l/meetup-join/…) or a personal room
       // (/meet/<id>). The web app's chat and calendar pages share the host and are not calls;
       // a meeting the web app opens without one of these paths is missed, never guessed.

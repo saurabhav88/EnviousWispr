@@ -213,6 +213,9 @@ package struct CallAXCapture: Sendable, Equatable {
   /// `failedReads`; they never decide completeness.
   package let toleratedFailures: Int
   package let prunedControls: Int
+  /// Visited web pages left unread because `keepPage` refused their address (#4436). A page
+  /// with no readable address and pages inside a refused one are not counted.
+  package let skippedPages: Int
   package let skippedWindows: Int
   /// The titles of the call app's checked accounts (`CallAccountMenu`), read from its menu bar
   /// after the windows, on the same queue, within its own small budget; `nil` when not read,
@@ -225,8 +228,9 @@ package struct CallAXCapture: Sendable, Equatable {
     completeness: CallCaptureContext.Completeness, readStartHostTime: UInt64,
     readEndHostTime: UInt64, nodesVisited: Int = 0, failedReads: Int = 0,
     prunedControls: Int = 0, skippedWindows: Int = 0, toleratedFailures: Int = 0,
-    accountTitles: [String]? = nil, cost: CallAXCopyCost = .init()
+    skippedPages: Int = 0, accountTitles: [String]? = nil, cost: CallAXCopyCost = .init()
   ) {
+    self.skippedPages = skippedPages
     self.toleratedFailures = toleratedFailures
     self.accountTitles = accountTitles
     self.cost = cost
@@ -319,7 +323,7 @@ package enum CallSpeakerCapture {
       readStartHostTime: started, readEndHostTime: ended, nodesVisited: walk.count,
       failedReads: walk.failedReads, prunedControls: walk.prunedControls,
       skippedWindows: skippedWindows, toleratedFailures: walk.toleratedFailures,
-      accountTitles: accountTitles,
+      skippedPages: walk.skippedPages, accountTitles: accountTitles,
       cost: {
         var cost = CallAXCopyCost()
         cost.windows = windowCosts
@@ -344,6 +348,7 @@ package enum CallSpeakerCapture {
     var failedReads = 0
     var toleratedFailures = 0
     var prunedControls = 0
+    var skippedPages = 0
     var documents: [CallAXDocument] = []
     var messages = 0
     var messageTime: Duration = .zero
@@ -503,6 +508,7 @@ package enum CallSpeakerCapture {
       if isPage {
         url = text(answer(.url))
         keptPage = url.map(keepPage) ?? false
+        if url != nil, !keptPage { skippedPages += 1 }
         // Message 3: a kept page's children, after its address decided.
         childrenRead = keptPage && !pruned && answers != nil ? read(element, .children) : nil
       }
