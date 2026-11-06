@@ -2672,10 +2672,10 @@ package final class WisprBootstrapper {
         makeWork: { audio in
           Task {
             try Task.checkCancellation()
-            // A recording's retired live model and its stopped readiness check release before
-            // another speaker model loads. These waits belong inside the timed worker too.
-            await meetingLiveSpeakers.waitForCheckRelease()
-            await meetingLiveSpeakers.waitForRelease()
+            // Join retired cleanup, but never wait for another recording's live model to end.
+            guard await meetingLiveSpeakers.prepareForFinishedAnalysis() else {
+              throw CancellationError()
+            }
             try Task.checkCancellation()
             let finished: Bool
             switch request.preset {
@@ -2685,7 +2685,10 @@ package final class WisprBootstrapper {
             let segments = try await modelDelivery.withSpeakerModelUse(finished: finished) { directory in
               try await MeetingNeuralSpeakerAnalyzer.analyze(
                 audio, directory: directory, preset: request.preset,
-                canContinue: request.canContinue)
+                canContinue: {
+                  guard await request.canContinue() else { return false }
+                  return await MainActor.run { meetingLiveSpeakers.modelState == nil }
+                })
             }
             guard let segments else { throw CocoaError(.fileReadNoSuchFile) }
             return segments

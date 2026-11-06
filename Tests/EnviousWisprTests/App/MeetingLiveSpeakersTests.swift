@@ -247,6 +247,36 @@ struct MeetingLiveSpeakersTests {
     #expect(rig.analyses.count == 2)
   }
 
+  @Test("finished analysis skips active recordings and joins only retired cleanup",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4424", "do not wait for an unrelated call"))
+  func finishedAnalysisDoesNotWaitForActiveRecording() async throws {
+    let rig = Rig()
+    _ = try await rig.startMeeting()
+    let analysis = try #require(rig.analyses.first)
+    defer { rig.speakers.stop(); analysis.onReleased() }
+    let active = Task { await rig.speakers.prepareForFinishedAnalysis() }
+    #expect(try await BoundedWait.result(of: active).get() == false,
+      "an active recording must not be awaited until Stop")
+    #expect(analysis.closed.withLock { $0 } == false, "optional work must not stop the recording")
+
+    rig.speakers.stop()
+    let entered = BoundedWait.Signal()
+    var returned = false
+    let retired = Task {
+      entered.fire()  // Start signal only; completion is awaited from the subject task below.
+      defer { returned = true }
+      return await rig.speakers.prepareForFinishedAnalysis()
+    }
+    try await BoundedWait.until(entered)
+    #expect(returned == false, "retired native cleanup is still physically held")
+    _ = rig.speakers.prepareCapture(meetingID: UUID())
+    analysis.onReleased()
+    #expect(try await BoundedWait.result(of: retired).get() == false,
+      "a new recording while cleanup drains takes priority")
+    rig.speakers.stop()
+    #expect(await rig.speakers.prepareForFinishedAnalysis(), "retired cleanup has now completed")
+  }
+
   @Test("evidence that arrives before the text is kept for two later finals")
   func evidenceAheadOfTextIsKept() async throws {
     let rig = Rig()
