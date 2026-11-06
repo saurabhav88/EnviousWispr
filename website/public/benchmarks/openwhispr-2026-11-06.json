@@ -1,0 +1,82 @@
+{
+  "test_date": "2026-11-06",
+  "author": "EnviousWispr developer",
+  "kind": "recorded-audio recognition component comparison; AI polish disabled",
+  "population": {
+    "primary": "120 English publisher-listener-validated recordings",
+    "supplementary": "960 publisher/source-referenced recordings, 24 languages; no new listening"
+  },
+  "results": {
+    "Ultra": {
+      "primary": {
+        "cases": 120,
+        "reference_words": 1100,
+        "errors": 78,
+        "wer": 0.07090909090909091,
+        "decode_failures": 0
+      },
+      "supplementary": {
+        "cases": 960,
+        "reference_words": 13694,
+        "errors": 1383,
+        "wer": 0.10099313567985979,
+        "decode_failures": 0
+      }
+    },
+    "Orukeet": {
+      "primary": {
+        "cases": 120,
+        "reference_words": 1100,
+        "errors": 115,
+        "wer": 0.10454545454545454,
+        "decode_failures": 0
+      },
+      "supplementary": {
+        "cases": 960,
+        "reference_words": 13694,
+        "errors": 2633,
+        "wer": 0.19227398860814957,
+        "decode_failures": 0
+      }
+    }
+  },
+  "completion": {
+    "expected": 1080,
+    "terminal": 1080,
+    "empty": 13,
+    "errors": 0
+  },
+  "orukeet": {
+    "version": "v0.1.0 ONNX INT8",
+    "consumer": "OpenWhispr 1.11.0 bundled sherpa-onnx",
+    "threads": 4,
+    "provider": "CPU",
+    "assets_sha256": {
+      "download-manifest.json": "7e80f93f0e9b923c392424b0f85d28a717feee0a4d2a6aa9bfa723693868e727",
+      "tokens.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+      "LICENSE-WEIGHTS": "23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2",
+      "joiner.int8.onnx": "1a7e90abf7172d926dd7e2edac2a5d5035c24dfb641a15e131d57b6a5f63cdd3",
+      "decoder.int8.onnx": "c185c2afb4c77c94bb1314807ecb3dc1623057a3dc540b83e10301af9bf4cfca",
+      "bpe.vocab": "41d5e71b3591642eff088151efd7acd4e750124cc0054c8ba9fa3245187a4804",
+      "encoder.int8.onnx": "7b55f2a504a20a8e462899f5befd45f4a1784948d76ed0127902d9cf39405487",
+      "NOTICE.md": "440361d963edd9621e744f251332b47f2c4de2e2594ecfe42b215e3f6223fa44"
+    },
+    "binary_sha256": "f324861a850e58623ba9c0aa51c65d1c546815ffa11f8450fb3901d80812a7c1"
+  },
+  "ultra": {
+    "model_revision": "95eaa59a39d4394f047a4dc5cce480388a60d1b6",
+    "runtime_revision": "6efc52ec8a9b6f4a560979166e1d8083bc132ce0",
+    "model_set_sha256": "dc3f4055dcafd28cf4745288f8fe8e720347defb0a9ecb3bb197cecb11853d68",
+    "compute": "Core ML CPU and Neural Engine",
+    "source": "frozen October 2026 U1 historical outputs; not newly executed or latest-app certification"
+  },
+  "scorer": "Unicode lexical word error rate: substitutions + deletions + insertions divided by reference words; empty outputs count as deletions",
+  "limitations": [
+    "model and runtime combinations, not isolated weights",
+    "not a complete app or speed benchmark",
+    "no microphone, app conditioning, segmentation or recovery",
+    "no Russian or long conversational qualification",
+    "no claim of model-vendor holdout",
+    "private audio and transcript text excluded"
+  ]
+}
