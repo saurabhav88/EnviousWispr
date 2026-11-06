@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprAudio
 @testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprStorage
@@ -78,6 +79,94 @@ struct MeetingSpeakerNamingProcessingTests {
       coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
     }
     return meetingID
+  }
+
+  /// Real production job/composer/selector/namer inside the existing coordinator publication
+  /// rig; only ASR and numerical model inference are fake. No prebuilt final transcript.
+  private func realSelectedPass(
+    _ harness: Harness, enabled: @escaping @MainActor () -> Bool
+  ) -> @MainActor (MeetingTranscriptionJob.CheckpointAccess?) async throws -> MeetingTranscriptionJob.Result {
+    { [weak harness] checkpoint in
+      let pass = try #require(harness?.jobs.last)
+      let attempt = try #require(pass.receivedAttempts.last)
+      var configuration = MeetingTranscriptionJob.Configuration()
+      configuration.cutsPieces = false
+      let job = MeetingTranscriptionJob(dependencies: .init(
+        isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
+        loadEngine: {}, transcribe: { samples, _ in FakeSpeech.transcribe(samples) }, unloadEngine: {},
+        analyzeSpeakers: { _ in MeetingSpeakerAnalysis(outcome: .labeled, segments: [
+          SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 15_000, quality: 1),
+          SpeakerSegment(speakerId: "S2", startMs: 15_000, endMs: 30_000, quality: 1),
+        ]) }, engineIdentity: { "synthetic:4424" }, neuralSpeakersAvailable: enabled,
+        analyzeNeuralSpeakers: { _ in MeetingNeuralSpeakerTestData.analysis(1) }), configuration: configuration)
+      return try await job.run(
+        tracks: pass.receivedTracks, microphoneCopy: pass.receivedMicrophoneCopies.last ?? .raw(nil),
+        language: pass.receivedLanguages.last ?? nil, checkpoint: checkpoint,
+        missingAudio: pass.receivedMissingAudio,
+        callSpeakers: pass.receivedCallSpeakers.last ?? .absent, onStage: { _ in }, attempt: attempt)
+    }
+  }
+
+  private func selectedFixture(_ harness: Harness) async throws -> UUID {
+    harness.recorderStart = .succeed(callSound: .captured)
+    return try await finishedMeeting(harness) { meetingID in
+      let recorder = try #require(harness.recorders.first)
+      _ = try MeetingAudioFixture.writeSegment(
+        in: recorder.configuration.folder, track: .callSound, index: 1, startMs: 0, frames: 480_000)
+      recorder.report = .init(microphone: .finalized, callSound: .finalized)
+      try harness.store.saveCallSpeakers(MeetingNeuralSpeakerTestData.pairLog(), meeting: meetingID)
+    }
+  }
+
+  private func selectedHistory(_ harness: Harness) -> TranscriptStore {
+    let store = TranscriptStore(directory: TestTemporaryDirectory.url
+      .appendingPathComponent("selected-speaker-history-\(UUID().uuidString)", isDirectory: true))
+    harness.history = TranscriptCoordinator(store: store)
+    return store
+  }
+
+  @Test("selected acoustic grouping reaches a durably saved automatic name")
+  func realSelectedJobPublishesName() async throws {
+    let harness = try Harness()
+    let history = selectedHistory(harness)
+    harness.jobBehavior = realSelectedPass(harness, enabled: { true })
+    let id = try await selectedFixture(harness)
+    await MeetingCoordinatorTests.livePassFinished(harness.coordinator, id)
+    let rows = try await history.loadAll()
+    let saved = try #require(rows.last)
+    #expect(saved.speakerNames?["sys:N0"] == "Alex Rivera")
+    #expect(saved.speakerNameSource(for: "sys:N0") == .auto)
+    #expect(saved.turns?.contains { $0.speakerId == "sys:S2" } == false)
+    #expect(saved.text.split(whereSeparator: \.isWhitespace).count == 62)
+  }
+
+  @Test("regrouping old fragments preserves the user's manual name at durable replacement")
+  func realRegroupingKeepsManualName() async throws {
+    let harness = try Harness()
+    let history = selectedHistory(harness)
+    var enabled = false
+    harness.jobBehavior = realSelectedPass(harness, enabled: { enabled })
+    let id = try await selectedFixture(harness)
+    await MeetingCoordinatorTests.livePassFinished(harness.coordinator, id)
+    let originalRows = try await history.loadAll()
+    let original = try #require(originalRows.last)
+    #expect(original.speakerNames?["sys:N0"] == nil)
+    let command = try #require(harness.history)
+    #expect(await command.renameSpeaker(
+      id: original.id, speakerId: "sys:S1", name: "My contact", isMeeting: true) == nil)
+    let renamedRows = try await history.loadAll()
+    let renamed = try #require(renamedRows.last)
+    #expect(renamed.speakerNameSource(for: "sys:S1") == .manual)
+    harness.historyFiles[original.id] = renamed
+    let generation = try #require(harness.coordinator.record(id: id)?.committedTranscriptGeneration)
+    enabled = true
+    #expect(await harness.coordinator.transcribeAgain(meetingID: id, engine: .parakeet))
+    await MeetingCoordinatorTests.livePassFinished(harness.coordinator, id, replacing: generation)
+    let replacedRows = try await history.loadAll()
+    let replaced = try #require(replacedRows.last)
+    #expect(replaced.speakerNames?["sys:N0"] == "My contact")
+    #expect(replaced.speakerNameSource(for: "sys:N0") == .manual)
+    #expect(replaced.text.split(whereSeparator: \.isWhitespace) == original.text.split(whereSeparator: \.isWhitespace))
   }
 
   @Test("saved evidence names the call speaker in the saved transcript, marked automatic")

@@ -1,7 +1,7 @@
 import Foundation
 
-/// Keeps a Parakeet install's files from being replaced or deleted while EnviousMeet's own
-/// engine uses them (#3972 R26).
+/// Keeps an admitted Parakeet or speaker-model install from being replaced or deleted while
+/// EnviousMeet uses it (#3972 R26, #4424).
 ///
 /// Keyed by install directory (`key(forInstallDirectory:)`), so a meeting using one model never
 /// delays a change to another one (retiring Ultra while a meeting reads v3, for example).

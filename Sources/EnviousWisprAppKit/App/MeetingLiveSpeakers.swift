@@ -357,6 +357,16 @@ final class MeetingLiveSpeakers {
     await released?.value
   }
 
+  /// #4424: finished analysis may join retired cleanup, never a currently recording session.
+  /// A new recording during either wait gets priority; the optional caller keeps its baseline.
+  func prepareForFinishedAnalysis() async -> Bool {
+    guard recording == nil, !Task.isCancelled else { return false }
+    await waitForCheckRelease()
+    guard recording == nil, !Task.isCancelled else { return false }
+    await released?.value
+    return recording == nil && !Task.isCancelled
+  }
+
   /// The live words changed: new call pieces become pending.
   func linesChanged(_ lines: [LiveWordsAssembler.Line], meetingID: UUID) {
     guard let current = recording, current.meetingID == meetingID,

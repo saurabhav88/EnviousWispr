@@ -193,19 +193,21 @@ public actor ModelDeliveryController {
   /// The gate EnviousMeet's own Parakeet engine holds for a whole after-recording pass. Every
   /// place this controller deletes or replaces a Parakeet install (validation removal,
   /// promotion, legacy migration, retirement, Remove) takes it as a MUTATION first, so a model
-  /// file can never change under a meeting load or decode. Other families are not gated.
+  /// file can never change under a meeting load or decode. Speaker-model readers use the same
+  /// directory-keyed contract (#4424); unrelated families are not gated.
   /// Owned here from construction, so no mutation can run before the gate exists; the
   /// composition root hands the same instance to EnviousMeet's engine.
   public nonisolated let meetingModelUseGate = MeetingModelUseGate()
 
   /// Acquires the meeting gate for one mutation of `registration`'s install; nil when no gate
-  /// applies (not Parakeet). Keyed by install directory, so a meeting reading one model never
+  /// applies (neither Parakeet nor speaker models). Keyed by install directory, so reading one model never
   /// delays a change to another. Throws `CancellationError` when the caller is cancelled while
   /// a meeting holds the model. Acquiring is an await, so every caller re-checks cancellation,
   /// generation and terminal-winner conditions after it, before mutating. The caller releases
   /// with an awaited `endInstallMutation` after the mutation (never across a network fetch).
   private func beginInstallMutation(_ registration: DeliveryRegistration) async throws -> String? {
-    guard registration.manifest.identity.family == .parakeet else { return nil }
+    let family = registration.manifest.identity.family
+    guard family == .parakeet || family == .speakerLive else { return nil }
     let key = MeetingModelUseGate.key(forInstallDirectory: registration.installDirectory)
     try await meetingModelUseGate.beginMutation(key)
     return key

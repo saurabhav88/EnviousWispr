@@ -80,7 +80,7 @@ struct MeetingTranscriptionJobProvenanceTests {
     #expect(rawUnderCleaner != rawUnderOther)
     #expect(rawUnderCleaner != cleaned)
     #expect(rawUnderCleaner.microphoneCopy == .raw(Self.provenance))
-    #expect(raw.processingVersion == 6)
+    #expect(raw.processingVersion == 7)
     #expect(raw != cleaned)
     #expect(cleaned != otherCleaner)
     #expect(raw.microphoneCopy == .raw(nil))

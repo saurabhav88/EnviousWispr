@@ -569,26 +569,38 @@ struct MeetingTranscriptionJobTests {
     languages: OSAllocatedUnfairLock<[String?]>? = nil,
     speakerSegments: [SpeakerSegment] = [
       SpeakerSegment(speakerId: "1", startMs: 0, endMs: 1_000, quality: 1)
-    ]
+    ], speakerOutcome: MeetingSpeakerOutcome = .single,
+    beforeTranscribe: @escaping @MainActor () async throws -> Void = {},
+    neuralAvailable: @escaping @MainActor () async -> Bool = { false },
+    neural: MeetingSpeakerSelection.Probe? = nil,
+    now: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
+    afterLegacy: @escaping @Sendable () -> Void = {},
+    pressure: @escaping @MainActor () -> Bool = { false },
+    observe: @escaping @MainActor (MeetingSpeakerSelection.Observation) -> Void = { _ in }
   ) -> MeetingTranscriptionJob {
     var config = MeetingTranscriptionJob.Configuration()
     config.pieceTargetSeconds = target
     config.pieceSearchSeconds = 5
     config.cutsPieces = cutsPieces
+    config.speakerNow = now
     return MeetingTranscriptionJob(
       dependencies: .init(
         isDictationIdle: { true }, waitUntilDictationIdle: {}, beginModelUse: {}, endModelUse: {},
         loadEngine: {},
         transcribe: { samples, language in
+          try await beforeTranscribe()
           languages?.withLock { $0.append(language) }
           return engine.transcribe(samples)
         },
         unloadEngine: {},
         analyzeSpeakers: { _ in
           analyses?.withLock { $0 += 1 }
-          return MeetingSpeakerAnalysis(outcome: .single, segments: speakerSegments)
+          afterLegacy()
+          return MeetingSpeakerAnalysis(outcome: speakerOutcome, segments: speakerSegments)
         },
-        engineIdentity: { identity }),
+        engineIdentity: { identity }, isMemoryPressureElevated: pressure,
+        neuralSpeakersAvailable: neuralAvailable, analyzeNeuralSpeakers: neural,
+        speakerSelectionObserved: observe),
       configuration: config)
   }
 
@@ -669,6 +681,232 @@ struct MeetingTranscriptionJobTests {
   }
 
   // MARK: - Automatic speaker naming (#4013 chunk 12A)
+
+  @Test("the selected acoustic result removes a false split, names it, and resumes selected IDs")
+  func neuralSelectionNamesAndResumes() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let legacy = [
+      SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 15_000, quality: 1),
+      SpeakerSegment(speakerId: "S2", startMs: 15_000, endMs: 30_000, quality: 1),
+    ]
+    let evidence = MeetingCallSpeakerEvidence.usable(MeetingNeuralSpeakerTestData.pairLog())
+    let old = try await checkpointJob(engine: FakeEngine(), speakerSegments: legacy, speakerOutcome: .labeled)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil, callSpeakers: evidence) { _ in }
+    #expect(old.naming?.result.proposals.isEmpty == true, "control: the real pair namer rejects the split")
+    let calls = OSAllocatedUnfairLock(initialState: [String]())
+    var availabilityReads = 0
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let meetingID = UUID()
+    let first = checkpointJob(
+      engine: FakeEngine(), speakerSegments: legacy, speakerOutcome: .labeled,
+      neuralAvailable: { availabilityReads += 1; return true },
+      neural: { request in
+        calls.withLock { $0.append(request.preset == .offline ? "offline" : "low") }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      })
+    let selected = try await first.runTestAttempt(
+      tracks: [.callSound: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+      callSpeakers: evidence) { _ in }
+    #expect(calls.withLock { $0 } == ["offline", "low"])
+    #expect(availabilityReads == 1)
+    #expect(selected.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
+    #expect(selected.composition.text.split(whereSeparator: \.isWhitespace)
+      == old.composition.text.split(whereSeparator: \.isWhitespace))
+    let analyses = OSAllocatedUnfairLock(initialState: 0)
+    let reused = try await checkpointJob(
+      engine: FakeEngine(), analyses: analyses, speakerSegments: legacy,
+      neuralAvailable: { false }, neural: { _ in Issue.record("selected checkpoint re-probed"); return nil }
+    ).runTestAttempt(tracks: [.callSound: audio], language: nil,
+      checkpoint: access(store, meetingID: meetingID), callSpeakers: evidence) { _ in }
+    #expect(analyses.withLock { $0 } == 0)
+    #expect(reused.naming == selected.naming)
+    #expect(reused.composition == selected.composition)
+
+    // A real v6 key is stale, including its word pieces; don't merely assert the new constant.
+    guard case .checkpoint(let saved) = store.load() else { Issue.record("missing selected checkpoint"); return }
+    var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+    var key = try #require(object["key"] as? [String: Any])
+    key["processingVersion"] = 6
+    object["key"] = key
+    try store.save(try JSONDecoder().decode(MeetingProcessingCheckpoint.self,
+      from: JSONSerialization.data(withJSONObject: object)))
+    let freshAnalyses = OSAllocatedUnfairLock(initialState: 0)
+    let fresh = try await checkpointJob(engine: FakeEngine(), analyses: freshAnalyses, speakerSegments: legacy)
+      .runTestAttempt(tracks: [.callSound: audio], language: nil,
+        checkpoint: access(store, meetingID: meetingID), callSpeakers: evidence) { _ in }
+    #expect(freshAnalyses.withLock { $0 } == 1)
+    #expect(fresh.resumedPieces == 0)
+  }
+
+  @Test("models installed during transcription wait for a fresh attempt",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4424", "freeze speaker availability at pass start"))
+  func neuralAvailabilityFrozenBeforeTranscription() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let evidence = MeetingCallSpeakerEvidence.usable(MeetingNeuralSpeakerTestData.pairLog())
+    let legacy = [
+      SpeakerSegment(speakerId: "S1", startMs: 0, endMs: 15_000, quality: 1),
+      SpeakerSegment(speakerId: "S2", startMs: 15_000, endMs: 30_000, quality: 1),
+    ]
+    let entered = BoundedWait.Signal()
+    let release = BoundedWait.Signal()
+    var available = false
+    var reads = 0
+    let probes = OSAllocatedUnfairLock(initialState: 0)
+    let first = checkpointJob(
+      engine: FakeEngine(), speakerSegments: legacy,
+      speakerOutcome: .labeled,
+      beforeTranscribe: { entered.fire(); try await BoundedWait.until(release) },
+      neuralAvailable: { reads += 1; return available }, neural: { _ in
+        probes.withLock { $0 += 1 }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      })
+    let subject = Task {
+      try await first.runTestAttempt(
+        tracks: [.callSound: audio], language: nil, callSpeakers: evidence) { _ in }
+    }
+    defer { release.fire(); first.cancel(); subject.cancel() }
+    try await BoundedWait.until(entered)
+    #expect(reads == 1, "availability is sampled before ASR starts")
+    available = true
+    release.fire()
+    let firstResult = try await BoundedWait.result(of: subject).get()
+    #expect(reads == 1)
+    #expect(probes.withLock { $0 } == 0)
+    #expect(firstResult.naming?.result.proposals.isEmpty == true)
+
+    let fresh = try await checkpointJob(
+      engine: FakeEngine(), speakerSegments: legacy,
+      speakerOutcome: .labeled,
+      neuralAvailable: { reads += 1; return available }, neural: { _ in
+        probes.withLock { $0 += 1 }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      }).runTestAttempt(tracks: [.callSound: audio], language: nil, callSpeakers: evidence) { _ in }
+    #expect(reads == 2, "a new attempt reevaluates availability")
+    #expect(probes.withLock { $0 } == 2)
+    #expect(fresh.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
+  }
+
+  @Test("all probes share baseline, load and inference time; exhausted budgets start no next worker")
+  func neuralSharedBudget() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let clock = OSAllocatedUnfairLock(initialState: ContinuousClock.now)
+    let budgets = OSAllocatedUnfairLock(initialState: [Double]())
+    let baseline = MeetingNeuralSpeakerTestData.analysis(2)
+    let job = checkpointJob(
+      engine: FakeEngine(), speakerSegments: baseline.segments, speakerOutcome: .labeled,
+      neuralAvailable: { true }, neural: { request in
+        budgets.withLock { $0.append(request.remainingBudgetSeconds) }
+        clock.withLock { $0 = $0.advanced(by: .seconds(request.preset == .offline ? 9 : 2)) }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      }, now: { clock.withLock { $0 } },
+      afterLegacy: { clock.withLock { $0 = $0.advanced(by: .seconds(8)) } })
+    let result = try await job.runTestAttempt(
+      tracks: [.callSound: audio], language: nil,
+      callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    #expect(budgets.withLock { $0 } == [12, 3])
+    #expect(result.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
+
+    let lateClock = OSAllocatedUnfairLock(initialState: ContinuousClock.now)
+    let starts = OSAllocatedUnfairLock(initialState: 0)
+    var reason: MeetingSpeakerSelection.Reason?
+    let late = checkpointJob(
+      engine: FakeEngine(), speakerSegments: baseline.segments, speakerOutcome: .labeled,
+      neuralAvailable: { true }, neural: { _ in
+        starts.withLock { $0 += 1 }
+        // Simulate a delayed return to the job after completed work, not a reset deadline.
+        lateClock.withLock { $0 = $0.advanced(by: .seconds(21)) }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      }, now: { lateClock.withLock { $0 } }, observe: { reason = $0.reason })
+    let fallback = try await late.runTestAttempt(
+      tracks: [.callSound: audio], language: nil,
+      callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    #expect(starts.withLock { $0 } == 1)
+    #expect(reason == .budgetExhausted)
+    #expect(fallback.naming?.eligibility.callSpeakerIDs == ["sys:N0", "sys:N1"])
+  }
+
+  @Test("job cancellation reaches a running probe, joins cleanup and saves no provisional speakers")
+  func neuralJobCancellationJoins() async throws {
+    let dir = try folder()
+    let meetingID = UUID()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let store = MeetingProcessingCheckpointStore(meetingFolder: dir)
+    let entered = BoundedWait.Signal()
+    let cancelled = BoundedWait.Signal()
+    let release = BoundedWait.Signal()
+    let finished = OSAllocatedUnfairLock(initialState: false)
+    let returned = OSAllocatedUnfairLock(initialState: false)
+    let job = checkpointJob(
+      engine: FakeEngine(), speakerSegments: MeetingNeuralSpeakerTestData.analysis(2).segments,
+      speakerOutcome: .labeled, neuralAvailable: { true }, neural: { request in
+        await MeetingSpeakerAnalyzer.analyzeNeural(
+          request.audio, remainingBudgetSeconds: request.remainingBudgetSeconds,
+          makeWork: { _ in Task {
+            entered.fire()
+            do {
+              // test-fixture-timer: cancellation, not elapsed time, ends the simulated native work.
+              try await Task.sleep(for: .seconds(60))
+            } catch { cancelled.fire() }
+            try await BoundedWait.until(release)
+            finished.withLock { $0 = true }
+            return MeetingNeuralSpeakerTestData.analysis(1).segments
+          } })
+      })
+    let subject = Task {
+      defer { returned.withLock { $0 = true } }
+      return try await job.runTestAttempt(
+        tracks: [.callSound: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+        callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    }
+    defer { release.fire(); job.cancel(); subject.cancel() }
+    try await BoundedWait.until(entered)
+    job.cancel()
+    try await BoundedWait.until(cancelled)
+    #expect(!returned.withLock { $0 }, "the job still owns native cleanup")
+    release.fire()
+    let outcome = try await BoundedWait.result(of: subject)
+    #expect(throws: MeetingTranscriptionJob.JobError.cancelled) { try outcome.get() }
+    #expect(finished.withLock { $0 })
+    guard case .checkpoint(let saved) = store.load() else { Issue.record("word checkpoint missing"); return }
+    #expect(saved.tracks[.callSound]?.speakers == nil)
+    let resumedProbes = OSAllocatedUnfairLock(initialState: 0)
+    let resumed = try await checkpointJob(
+      engine: FakeEngine(), speakerSegments: MeetingNeuralSpeakerTestData.analysis(2).segments,
+      speakerOutcome: .labeled, neuralAvailable: { true }, neural: { _ in
+        resumedProbes.withLock { $0 += 1 }
+        return MeetingNeuralSpeakerTestData.analysis(1)
+      }).runTestAttempt(
+        tracks: [.callSound: audio], language: nil, checkpoint: access(store, meetingID: meetingID),
+        callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    #expect(resumedProbes.withLock { $0 } == 2)
+    #expect(resumed.resumedPieces > 0)
+    #expect(resumed.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
+  }
+
+  @Test("a priority change aborts optional analysis and retains the completed baseline")
+  func neuralPressureFallback() async throws {
+    let dir = try folder()
+    let audio = MeetingTrackAudio(files: [try segment(in: dir, index: 1, startMs: 0, seconds: 30)])
+    let pressure = OSAllocatedUnfairLock(initialState: false)
+    let starts = OSAllocatedUnfairLock(initialState: 0)
+    let job = checkpointJob(
+      engine: FakeEngine(), speakerSegments: MeetingNeuralSpeakerTestData.analysis(2).segments,
+      speakerOutcome: .labeled, neuralAvailable: { true }, neural: { request in
+        starts.withLock { $0 += 1 }
+        #expect(await request.canContinue())
+        pressure.withLock { $0 = true }
+        #expect(await request.canContinue() == false)
+        return MeetingNeuralSpeakerTestData.analysis(0, outcome: .failed)
+      }, pressure: { pressure.withLock { $0 } })
+    let result = try await job.runTestAttempt(
+      tracks: [.callSound: audio], language: nil,
+      callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    #expect(starts.withLock { $0 } == 1)
+    #expect(result.naming?.eligibility.callSpeakerIDs == ["sys:N0", "sys:N1"])
+  }
 
   @Test("a pass names the call speaker from saved evidence; a resumed pass names the same way")
   func namesFromSavedEvidenceFreshAndResumed() async throws {

@@ -99,6 +99,8 @@ enum MeetingWiring {
     var analyzeSpeakers: @Sendable (MeetingTrackAudio) async -> MeetingSpeakerAnalysis = {
       await MeetingSpeakerAnalyzer.analyze($0)
     }
+    var neuralSpeakersAvailable: @MainActor () async -> Bool = { false }
+    var analyzeNeuralSpeakers: MeetingSpeakerSelection.Probe?
   }
 
   /// #4052: dictation's side of the shared Parakeet, as the bootstrapper owns it. The readiness
@@ -430,11 +432,24 @@ enum MeetingWiring {
       offlineModeAdmission: inputs.offlineModeAdmission, makeBackend: inputs.makeMeetingBackend,
       isModelSourceUsable: isDeliveryEnabled)
     let analyze = inputs.analyzeSpeakers
+    let neuralAvailable = inputs.neuralSpeakersAvailable
+    let neuralProbe = inputs.analyzeNeuralSpeakers
+    let log = inputs.log
     let claim = MeetingModelClaim(gate: inputs.modelUseGate, resolve: inputs.meetingSelection)
     let isIdle = admission(lane: lane, dictationIdle: inputs.isDictationIdle)
     let wakes = inputs.dictationWakes
     let pressure = inputs.memoryPressure
     let workChanged = inputs.workChanged
+    let forwardedNeural: MeetingSpeakerSelection.Probe?
+    if let neuralProbe {
+      forwardedNeural = { request in
+        let analysis = await neuralProbe(request)
+        await MainActor.run { workChanged() }
+        return analysis
+      }
+    } else {
+      forwardedNeural = nil
+    }
     let shared = inputs.sharedEngine
       let route: MeetingFinalEngineRoute
       if resolution.engine == .whisper, let whisper = inputs.whisper {
@@ -527,7 +542,13 @@ enum MeetingWiring {
             route.beginPass(meetingID: meetingID, meetingSeconds: seconds)
           },
           isOwnModelResident: { route.isOwnModelResident },
-          resolution: resolution),
+          resolution: resolution,
+          neuralSpeakersAvailable: neuralAvailable,
+          analyzeNeuralSpeakers: forwardedNeural,
+          speakerSelectionObserved: { observation in
+            let route = observation.reason == .selected ? "offline" : "legacy"
+            log("MEETING_SPEAKER_SELECTION route=\(route) reason=\(observation.reason.rawValue) legacy_count=\(observation.legacyCount) offline_count=\(observation.offlineCount ?? -1) low_count=\(observation.lowCount ?? -1) elapsed_seconds=\(observation.elapsedSeconds)")
+          }),
         configuration: configuration)
       // The route's dictation waits show the job's "Paused while you dictate".
       route.onWaitingForDictation = { [weak job] waiting in job?.onWaitingForDictation?(waiting) }

@@ -123,6 +123,39 @@ struct MeetingWiringTests {
 
   // MARK: - The real factory
 
+  @Test("the production job factory forwards the optional route, frozen evidence and saved name")
+  func realFactoryUsesNeuralSelection() async throws {
+    let rig = try Rig()
+    rig.dictation.backend = .parakeet
+    rig.dictation.hears = true
+    rig.dictation.published = Self.selection("neural-\(UUID().uuidString)")
+    let calls = OSAllocatedUnfairLock(initialState: [String]())
+    rig.inputs.analyzeSpeakers = { _ in
+      calls.withLock { $0.append("legacy") }
+      return MeetingNeuralSpeakerTestData.analysis(2)
+    }
+    var snapshots = 0
+    rig.inputs.neuralSpeakersAvailable = { snapshots += 1; return true }
+    rig.inputs.analyzeNeuralSpeakers = { request in
+      calls.withLock { $0.append(request.preset == .offline ? "offline" : "low") }
+      #expect(await request.canContinue())
+      return MeetingNeuralSpeakerTestData.analysis(1)
+    }
+    let folder = try MeetingAudioFixture.folder("neural-wiring")
+    let url = try MeetingAudioFixture.writeSegment(
+      in: folder, track: .callSound, index: 1, startMs: 0, frames: 480_000)
+    let job = MeetingWiring.makeJob(rig.inputs, lane: MeetingLocalModelLane())
+    let result = try await job.runTestAttempt(
+      tracks: [.callSound: MeetingTrackAudio(files: [(url, 0)])], language: nil,
+      callSpeakers: .usable(MeetingNeuralSpeakerTestData.pairLog())) { _ in }
+    #expect(calls.withLock { $0 } == ["legacy", "offline", "low"])
+    #expect(snapshots == 1)
+    #expect(result.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
+    #expect(result.composition.text.split(whereSeparator: \.isWhitespace).count == 30)
+    #expect(rig.lineBox.lines.contains { $0.contains("MEETING_SPEAKER_SELECTION route=offline reason=selected") })
+    #expect(!rig.lease.isBusy)
+  }
+
   @MainActor
   final class SilentVolume: OutputVolumeControlling {
     func identity(of device: AudioDeviceID) -> OutputDeviceIdentity? { nil }

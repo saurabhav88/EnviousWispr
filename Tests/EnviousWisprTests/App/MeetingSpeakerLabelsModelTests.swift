@@ -71,6 +71,7 @@ struct MeetingSpeakerLabelsModelTests {
 
   @MainActor final class Rig {
     var state: DeliveryState? = .notReady
+    var finalState: DeliveryState?
     var queued = false
     var refused = false
     var meetingActive = false
@@ -80,6 +81,8 @@ struct MeetingSpeakerLabelsModelTests {
     var reports: [Bool] = []
     let directory = URL(fileURLWithPath: "/speaker-live-fixture", isDirectory: true)
     let check = FakeCheck()
+    let finalCheck = FakeCheck()
+    let finalDirectory = URL(fileURLWithPath: "/speaker-final-fixture", isDirectory: true)
 
     lazy var model = MeetingSpeakerLabelsModel(
       environment: .init(
@@ -99,7 +102,10 @@ struct MeetingSpeakerLabelsModelTests {
         admittedDirectory: { [unowned self] in state == .admitted ? directory : nil },
         isMeetingActive: { [unowned self] in meetingActive },
         check: { [check] in await check.run($0) },
-        report: { [unowned self] in reports.append($0) }))
+        report: { [unowned self] in reports.append($0) },
+        finalDeliveryState: { [unowned self] in finalState },
+        finalAdmittedDirectory: { [unowned self] in finalState == .admitted ? finalDirectory : nil },
+        finalCheck: { [finalCheck] in await finalCheck.run($0) }))
 
     /// Admitted, check started and answered.
     func admitAndCheck(_ outcome: LiveSpeakerLoadCheckOutcome) async throws {
@@ -115,6 +121,77 @@ struct MeetingSpeakerLabelsModelTests {
       let task = try #require(model.checkTaskForTests)
       _ = try await BoundedWait.result(of: task)
     }
+  }
+
+  @Test("missing or failed final bytes do not erase live readiness")
+  func liveReadinessSurvivesFinalFailure() async throws {
+    let rig = Rig()
+    rig.finalState = .notReady
+    try await rig.admitAndCheck(.loaded)
+    #expect(rig.model.status == .ready)
+    #expect(rig.model.finalStatus == .notDownloaded)
+    #expect(rig.model.actionStatus == .notDownloaded)
+    rig.finalState = .admitted
+    rig.model.checkIfNeeded()
+    try await BoundedWait.until(rig.finalCheck.entered(0))
+    #expect(rig.model.status == .ready && rig.model.finalStatus == .checking)
+    rig.finalCheck.answer(.failed)
+    try await rig.finishCheck()
+    #expect(rig.model.status == .ready && rig.model.finalStatus == .loadFailed)
+    #expect(rig.reports == [true], "the existing live-check metric keeps its meaning")
+  }
+
+  @Test("component checks serialize; a meeting cancels only the pending final check")
+  func pairedChecksSerializeAndResume() async throws {
+    let rig = Rig()
+    rig.state = .admitted
+    rig.finalState = .admitted
+    rig.model.checkIfNeeded()
+    try await BoundedWait.until(rig.check.entered(0))
+    #expect(rig.finalCheck.calls == 0)
+    rig.check.answer(.loaded)
+    try await BoundedWait.until(rig.finalCheck.entered(0))
+    #expect(rig.check.returned == 1)
+    rig.finalCheck.answerLateOnCancel(.loaded)
+    rig.meetingActive = true
+    rig.model.meetingBecameActive()
+    try await rig.finishCheck()
+    #expect(rig.model.status == .ready)
+    #expect(rig.model.finalStatus == .waitingForMeeting)
+    rig.meetingActive = false
+    rig.model.meetingBecameIdle()
+    try await BoundedWait.until(rig.finalCheck.entered(1))
+    rig.finalCheck.answer(.loaded)
+    try await rig.finishCheck()
+    #expect(rig.model.status == .ready && rig.model.finalStatus == .ready)
+    #expect(rig.model.actionStatus == .ready)
+  }
+
+  @Test("active final transfer keeps Cancel visible during a live load check")
+  func finalTransferBeatsLiveChecking() async throws {
+    let rig = Rig()
+    let downloading = DeliveryState.downloading(fractionCompleted: 0.5, bytesWritten: 50, totalBytes: 100)
+    rig.state = .admitted
+    rig.finalState = downloading
+    rig.model.checkIfNeeded()
+    try await BoundedWait.until(rig.check.entered(0))
+    #expect(rig.model.status == .checking)
+    #expect(rig.model.actionStatus == .downloading(bytesWritten: 50, totalBytes: 100))
+    rig.check.answer(.failed)
+    try await rig.finishCheck()
+    #expect(rig.model.status == .loadFailed)
+    #expect(rig.model.actionStatus == .downloading(bytesWritten: 50, totalBytes: 100))
+  }
+
+  @Test("missing or failed final bytes keep Download and Retry visible despite live load failure")
+  func missingFinalBeatsLiveLoadFailure() async throws {
+    let rig = Rig()
+    try await rig.admitAndCheck(.failed)
+    rig.finalState = .notReady
+    #expect(rig.model.actionStatus == .notDownloaded)
+    let failure = DeliveryFailure(reason: .sourceUnreachable)
+    rig.finalState = .failed(failure)
+    #expect(rig.model.actionStatus == .downloadFailed(failure))
   }
 
   @Test(
@@ -144,6 +221,7 @@ struct MeetingSpeakerLabelsModelTests {
     rig.state = state
     rig.queued = queued
     #expect(rig.model.status == expected)
+    #expect(rig.model.actionStatus == expected, "live-only card behavior stays unchanged")
   }
 
   @Test("an offline download failure shows Try Again's reason, not Ready")

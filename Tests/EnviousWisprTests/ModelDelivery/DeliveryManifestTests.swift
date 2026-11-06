@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprPostProcessing
 import Foundation
 import Testing
+@preconcurrency import FluidAudio
 
 @testable import EnviousWisprLLM
 @testable import EnviousWisprModelDelivery
@@ -67,6 +68,65 @@ enum ManifestFixture {
     ("Encoder.mlmodelc/weights/weight.bin", Data("weights".utf8), "Encoder.mlmodelc"),
     ("vocab.json", Data("{\"a\":1}".utf8), "vocab.json"),
   ]
+}
+
+/// #4424: offline bytes must match the pinned runtime without replacing the admitted low set.
+@Suite(.tags(.driftGuard)) struct SpeakerFinalManifestTests {
+  private func load() throws -> DeliveryManifest {
+    let url = ParakeetShippedManifestTests.repoRoot.appendingPathComponent(
+      "Sources/EnviousWispr/Resources/speaker-final-delivery-manifest.json")
+    let data = try Data(contentsOf: url)
+    let manifest = try DeliveryManifest.load(from: data)
+    #expect(try DeliveryManifest.canonicalDigest(of: data) == manifest.manifestDigest)
+    return manifest
+  }
+
+  @Test func independentPinnedArtifact() throws {
+    let final = try load()
+    let live = try SpeakerLiveManifestTests.load().manifest
+    #expect(final.identity.family == .speakerLive)
+    #expect(final.identity.variant == "offline-v2")
+    #expect(final.identity.revision == SpeakerLiveManifestTests.revision)
+    #expect(final.identity.runtimeABI == live.identity.runtimeABI)
+    #expect(final.identity != live.identity)
+    #expect(final.totalBytes == 199_162_403)
+    #expect(final.files.count == 5)
+    #expect(final.sources.map(\.id) == live.sources.map(\.id))
+    #expect(final.sources.map(\.baseURL) == live.sources.map(\.baseURL))
+    #expect(live.manifestDigest == "f4dde60bf3cc7f5dda343486dcd66c94b08b1cd2540a5dcce31d53c88c31a8cb")
+    #expect(final.files.first { $0.path.hasSuffix("weights/weight.bin") }?.sha256
+      == "bab76e5f190d0e4a4e174e7fcb1e9beea58c6b2be56e665e2cac8fba6d10f7f1")
+    // #4424: the real app reads Bundle.main; source-tree fixture loading cannot prove shipping.
+    let project = try String(contentsOf: ParakeetShippedManifestTests.repoRoot
+      .appendingPathComponent("Project.swift"), encoding: .utf8)
+    let declarations = Set(project.split(separator: "\n").map {
+      $0.trimmingCharacters(in: .whitespaces)
+    })
+    for leaf in ["speaker-live-delivery-manifest.json", "speaker-final-delivery-manifest.json"] {
+      #expect(declarations.contains("\"Sources/EnviousWispr/Resources/\(leaf)\","),
+        "\(leaf) must ship in the app target for Bundle.main registration")
+    }
+  }
+
+  @Test func offlineLayoutMatchesPinnedRuntime() throws {
+    let final = try load()
+    let live = try SpeakerLiveManifestTests.load().manifest
+    let config = Nemotron3Config.offline
+    let model = config.modelFileName
+    let expected = Set([
+      "\(model)/analytics/coremldata.bin", "\(model)/coremldata.bin", "\(model)/model.mil",
+      "\(model)/weights/weight.bin", ModelNames.Nemotron3.silenceEmbeddingFile,
+    ])
+    #expect(Set(final.files.map(\.resolvedInstallPath)) == expected)
+    #expect(final.admission.entrypointFile == "\(model)/coremldata.bin")
+    #expect(final.files.filter { $0.component == model }.allSatisfy {
+      $0.path == "\(config.hubSubdirectory)/\($0.resolvedInstallPath)"
+    })
+    #expect(final.files.first { $0.path == ModelNames.Nemotron3.silenceEmbeddingFile }?.sha256
+      == live.files.first {
+        $0.path == ModelNames.Nemotron3.silenceEmbeddingFile
+      }?.sha256)
+  }
 }
 
 @Suite struct DeliveryManifestTests {
