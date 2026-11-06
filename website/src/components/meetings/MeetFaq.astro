@@ -1,11 +1,31 @@
 ---
-// MeetFaq (#4432): ported from the approved EnviousMeet mock-up.
+// MeetFaq (#4432): questions and answers rendered from src/data/meetings-faq.js so search engines
+// and AI tools read every answer; the page script only switches which answer shows.
+import { meetingsFaq } from '../../data/meetings-faq.js';
+const items = meetingsFaq.map(([section, question, answer], i) => ({
+  section, question, answer, i, first: i === 0 || meetingsFaq[i - 1][0] !== section,
+}));
 ---
 
 <section class="s"><div class="wrap">
   <div class="s-head center"><div><span class="eyebrow">Questions</span><h2>You might be <em>wondering.</em></h2></div></div>
   <div class="faqbox">
-    <div class="qlist" id="qlist" role="tablist" aria-label="Questions"></div>
-    <div class="answer" id="answer" role="tabpanel" aria-live="polite"></div>
+    <div class="qlist" id="qlist" role="tablist" aria-label="Questions">
+      {items.map((f) => (
+        <Fragment>
+          {f.first && <small aria-hidden="true">{f.section}</small>}
+          <button type="button" id={`q${f.i}`} role="tab" aria-controls="answer" aria-selected={f.i === 0 ? 'true' : 'false'} class:list={{ on: f.i === 0 }}>{f.question}</button>
+        </Fragment>
+      ))}
+    </div>
+    <div class="answer" id="answer" role="tabpanel" aria-labelledby="q0" aria-live="polite">
+      {items.map((f) => (
+        <div class="answer-in" hidden={f.i !== 0}>
+          <span class="lbl">{f.section}</span>
+          <h3>{f.question}</h3>
+          {f.answer.map((p) => <p>{p}</p>)}
+        </div>
+      ))}
+    </div>
   </div>
 </div></section>

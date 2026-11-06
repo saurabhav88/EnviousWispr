@@ -6,12 +6,12 @@ section: "EnviousMeet"
 order: 10
 keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "speaker names", "meeting summary", "summary engine", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "invited people", "meeting audio", "probable echo", "echo", "mute", "leave my voice out when muted", "turn off dictation during meetings", "live preview", "live words", "transcript engine", "transcript language", "long meeting summary"]
 related: ["enviousmeet-when-a-call-starts", "transcript-history", "transcribe-a-file-speaker-labels", "ai-polish-and-cloud-data", "privacy-overview"]
-updated: 2026-11-05
+updated: 2026-11-06
 deflection: "show_but_always_send"
 ---
 EnviousMeet records a call or a meeting on your Mac and writes a transcript that shows who said what. No bot joins your call. The audio stays on your Mac, and the transcript is written on your Mac.
 
-EnviousMeet is in Beta. It shows a **Beta** tag in the sidebar.
+EnviousMeet is in Beta. It shows a **Beta** tag in the sidebar. For a tour of what it does, see the [EnviousMeet page](/meetings/).
 
 ### Set up EnviousMeet
 
