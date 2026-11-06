@@ -72,9 +72,11 @@ var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: re
 })();
 
 function cycler(items, onShow, ms, holder) {
-  var i = 0, t = null, paused = false;
-  function go(n) { i = (n + items) % items; onShow(i); clearTimeout(t); if (!reduce) t = setTimeout(function () { if (!paused) go(i + 1); else go(i); }, typeof ms === 'function' ? ms(i) : ms); }
+  var i = 0, t = null, paused = false, stopped = false;
+  function go(n) { i = (n + items) % items; onShow(i); clearTimeout(t); if (!reduce && !stopped) t = setTimeout(function () { if (!paused) go(i + 1); else go(i); }, typeof ms === 'function' ? ms(i) : ms); }
   if (holder) { holder.addEventListener('mouseenter', function () { paused = true; }); holder.addEventListener('mouseleave', function () { paused = false; }); }
+  /* A visitor who picks an item takes over: automatic advancing stops for good. */
+  go.stop = function () { stopped = true; clearTimeout(t); };
   return go;
 }
 
@@ -95,13 +97,15 @@ function cycler(items, onShow, ms, holder) {
     var sc = cards[i].querySelector('.sc'); if (sc) sc.replaceWith(sc.cloneNode(true));
   }, function (i) { return i < 2 ? 10000 : i === 2 ? 8000 : i === 3 ? 9000 : i === 5 ? 9000 : i === 4 ? 9000 : 4200; }, document.getElementById('deck'));
   tabs.forEach(function (b, k) {
-    b.addEventListener('click', function () { go(k); });
+    b.addEventListener('click', function () { go.stop(); go(k); });
     b.addEventListener('keydown', function (e) {
       var n = { ArrowDown: k + 1, ArrowRight: k + 1, ArrowUp: k - 1, ArrowLeft: k - 1, Home: 0, End: tabs.length - 1 }[e.key];
       if (n === undefined) return;
-      e.preventDefault(); n = (n + tabs.length) % tabs.length; go(n); tabs[n].focus();
+      e.preventDefault(); go.stop(); n = (n + tabs.length) % tabs.length; go(n); tabs[n].focus();
     });
   });
+  /* Keyboard focus inside the tabs or cards also stops the automatic advance. */
+  var spotBox = document.querySelector('.spot'); if (spotBox) spotBox.addEventListener('focusin', function () { go.stop(); });
   go(0);
 })();
 
