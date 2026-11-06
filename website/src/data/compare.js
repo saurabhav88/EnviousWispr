@@ -104,7 +104,7 @@ export const groups = [
 export const directory = [
   ['Apple Dictation', 'apple-dictation'], ['Dragon', 'dragon'], ['FluidVoice', 'fluidvoice'],
   ['Gboard Voice Typing', 'gboard-voice-typing'], ['Google Docs Voice Typing', 'google-docs-voice-typing'], ['Handy', 'handy'], ['Juno', 'juno'],
-  ['MacWhisper', 'macwhisper'], ['Notta', 'notta'], ['Otter.ai', 'otter-ai'], ['Spokenly', 'spokenly'],
+  ['MacWhisper', 'macwhisper'], ['Notta', 'notta'], ['OpenWhispr', 'openwhispr'], ['Otter.ai', 'otter-ai'], ['Spokenly', 'spokenly'],
   ['Superwhisper', 'superwhisper'], ['TypeWhisper', 'typewhisper'], ['VoiceInk', 'voiceink'],
   ['Vox', 'vox'], ['whisper.cpp', 'whisper-cpp'], ['Willow Voice', 'willow-voice'], ['Wispr Flow', 'wisprflow'],
 ];

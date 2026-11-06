@@ -1,4 +1,6 @@
 ---
+import { directory } from '../data/compare.js';
+
 interface Props {
   id: string;
   heading: string;
@@ -15,7 +17,7 @@ const { id, heading } = Astro.props;
       <div class="decision-copy"><slot /></div>
       <p class="decision-links">
         Still deciding? See the <a href="/compare/best-dictation-apps-for-mac/">best Mac dictation apps by use case</a>
-        {' '}or browse <a href="/compare/">all 17 dictation app comparisons</a>.
+        {' '}or browse <a href="/compare/">all {directory.length} dictation app comparisons</a>.
       </p>
     </div>
   </div>

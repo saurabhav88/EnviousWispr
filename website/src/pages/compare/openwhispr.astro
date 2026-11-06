@@ -1,0 +1,444 @@
+---
+import CompareLayout from '../../layouts/CompareLayout.astro';
+import CompareDecisionSummary from '../../components/CompareDecisionSummary.astro';
+
+const meta = {
+  "slug": "openwhispr",
+  "title": "OpenWhispr vs EnviousWispr: Local Dictation Compared",
+  "description": "Compare EnviousWispr and OpenWhispr: free local dictation, AI polish, multilingual cleanup, self-learning dictionaries and recorded-audio accuracy results.",
+  "headline": "EnviousWispr vs OpenWhispr: Local Dictation Compared",
+  "breadcrumb": "EnviousWispr vs OpenWhispr",
+  "ogImage": "/og-image.png",
+  "datePublished": "2026-11-06T12:00:00-05:00",
+  "dateModified": "2026-11-06T12:00:00-05:00"
+};
+
+const faqs = [
+  {
+    "q": "Is OpenWhispr free like EnviousWispr?",
+    "a": "OpenWhispr offers unlimited free local dictation and bring-your-own-key options, alongside paid cloud plans. EnviousWispr is free with no account or subscription. Optional cloud AI polish uses your chosen provider and may incur that provider’s charges."
+  },
+  {
+    "q": "Can both apps work offline?",
+    "a": "Yes. Download the required models first and choose local processing. EnviousWispr transcribes on your Mac and offers local AI polish. OpenWhispr offers local speech and writing models too. Cloud processing in either app needs an internet connection."
+  },
+  {
+    "q": "What does EnviousWispr clean up without AI?",
+    "a": "Its fixed rules handle hesitation sounds, dictionary corrections and English numbers, dates, money and addresses. Targeted rules also handle spoken email addresses and links in nine languages, punctuation commands in five, and selected phone and clock expressions. Support varies by language and input pattern; general grammar repair still uses AI."
+  },
+  {
+    "q": "Does OpenWhispr have local AI polishing?",
+    "a": "Yes. OpenWhispr can run downloadable writing models locally through llama.cpp. The Qwen entries inspected point to standard public model releases and quantized versions, rather than OpenWhispr-specific dictation fine-tunes. EnviousWispr offers its own EG-1 polish model, S1-mini by Superwhisper, Apple Intelligence on macOS 26 or later, and Ollama with a downloaded local model. Model weights have their own licenses."
+  },
+  {
+    "q": "How do the self-learning dictionaries differ?",
+    "a": "OpenWhispr compares edits with pasted text, filters word substitutions by similarity and other rules, then saves corrected spellings as dictionary hints. EnviousWispr uses an on-device correction classifier, stores the original mishearing with the correction, and checks the sentence before applying that learned correction later. Both offer Undo. Neither approach retrains the speech model."
+  },
+  {
+    "q": "Was Orukeet less accurate than Parakeet Ultra in your test?",
+    "a": "In this recorded-audio component test, yes. On 120 English recordings, the frozen Ultra baseline had 7.09% word errors and the downloaded Orukeet engine had 10.45%. On 960 source-referenced recordings across 24 languages, the rates were 10.10% and 19.23%. These results compare particular model and runtime versions on the same audio. They do not establish a whole-app, speed or universal accuracy ranking."
+  },
+  {
+    "q": "Can OpenWhispr enhance uploaded recordings with AI?",
+    "a": "Yes. Its upload flow transcribes audio into a note, then AI actions can summarize it, extract action items or apply a template. The inspected upload flow does not run a separate automatic dictation-polishing pass over the transcript. EnviousWispr’s file-transcription workflow explicitly includes optional transcript cleanup."
+  },
+  {
+    "q": "Where does OpenWhispr offer more functionality?",
+    "a": "OpenWhispr offers a broader model catalog, a batch audio-import queue, URL imports and AI note actions. Its desktop app also has Windows and Linux versions. EnviousWispr’s Mac file-import workflow processes one recording at a time."
+  },
+  {
+    "q": "Is one app more private than the other?",
+    "a": "Both offer local processing. EnviousWispr keeps transcription audio on your Mac; choosing cloud polish sends selected text and relevant context directly to the provider you choose. OpenWhispr lets you choose local or cloud transcription and local or cloud AI processing. Judge privacy by the processing route you select, rather than the app name alone."
+  }
+];
+
+const rows = [
+  {
+    "label": "Price",
+    "ew": "Free, no subscription. Optional provider charges for cloud polish.",
+    "ow": "Unlimited local dictation free; optional paid cloud plans.",
+    "source": "https://openwhispr.com/pricing"
+  },
+  {
+    "label": "Local transcription",
+    "ew": "Parakeet Ultra and Whisper on Apple Silicon.",
+    "ow": "Broader catalog including Orukeet, Parakeet and Whisper.",
+    "source": "https://openwhispr.com/models"
+  },
+  {
+    "label": "Local AI polish",
+    "ew": "EG-1, S1-mini, Apple Intelligence on macOS 26+, or a downloaded Ollama model.",
+    "ow": "Downloadable writing models via llama.cpp, including standard Qwen models.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/models/modelRegistryData.json"
+  },
+  {
+    "label": "Cleanup without AI polish",
+    "ew": "Fixed rules for words, formatting and supported language patterns.",
+    "ow": "Whitespace, snippets, Chinese script conversion and targeted output filters; broader cleanup is delegated to AI.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/helpers/audioManager.js"
+  },
+  {
+    "label": "Spoken punctuation",
+    "ew": "Configurable command tables in English, German, French, Spanish and Italian. Off by default.",
+    "ow": "The cleanup prompt asks AI to convert spoken punctuation.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/locales/en/prompts.json"
+  },
+  {
+    "label": "Self-learning dictionary",
+    "ew": "Correction classifier, stored mishearing pairs, and a context check before reusing learned corrections.",
+    "ow": "Word-difference and similarity filters add corrected spellings to the dictionary.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/utils/correctionLearner.js"
+  },
+  {
+    "label": "Saved snippets",
+    "ew": "Keyword or literal triggers; date, time and clipboard fill-ins.",
+    "ow": "Saved trigger phrases expand into saved text.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/utils/snippets.ts"
+  },
+  {
+    "label": "Audio-file workflow",
+    "ew": "One file at a time, with optional transcript cleanup.",
+    "ow": "Batch queue and URL imports; AI note actions after transcription.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/components/notes/UploadAudioView.tsx"
+  },
+  {
+    "label": "App source code",
+    "ew": "GPLv3. Model licenses are separate.",
+    "ow": "MIT. Model licenses are separate.",
+    "source": "https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/LICENSE"
+  }
+];
+
+const advantages = [
+  {
+    "number": "01",
+    "title": "Cleanup before the AI step",
+    "text": "Numbers, addresses, custom words and supported spoken commands get their own rules. That cleanup still helps when AI Polish is off or fails."
+  },
+  {
+    "number": "02",
+    "title": "Language-aware rules",
+    "text": "English has the widest coverage. Other languages get targeted address, link, phone, time and punctuation handling, with protections for words that look like English fillers."
+  },
+  {
+    "number": "03",
+    "title": "A dictionary that remembers the mistake",
+    "text": "A learned word keeps the mishearing that caused it. A local check considers the current sentence before applying that correction again."
+  },
+  {
+    "number": "04",
+    "title": "Local polish choices",
+    "text": "Use our own EG-1 model, S1-mini by Superwhisper, Apple Intelligence on supported Macs, or a downloaded Ollama model. Local models work offline after setup."
+  },
+  {
+    "number": "05",
+    "title": "No account or subscription",
+    "text": "Install EnviousWispr, download your models and dictate. Cloud AI polish is a separate choice under your own provider account."
+  },
+  {
+    "number": "06",
+    "title": "Ready-made defaults",
+    "text": "EnviousWispr offers two speech engines. We set key defaults from our own tests; the public testing guide explains the results and their limits."
+  }
+];
+---
+
+<CompareLayout meta={meta} faqs={faqs}>
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+/* Table rules moved to global.css (.compare-table--duo) so one owner serves all
+   head-to-head pages and the phone layout there is not fighting 16 scoped copies. */
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--grad-purple-text);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+
+.source-link { display: block; margin-top: 6px; font-size: 12px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.method-note { max-width: 880px; margin: 24px auto 0; font-size: 14px; line-height: 1.75; color: var(--text-2); }
+.method-note p { margin: 0 0 12px; }
+.method-note a, .deep-dive-body a, .advantage-desc a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.benchmark-table { border-collapse: collapse; width: 100%; background: #fff; }
+.benchmark-table th, .benchmark-table td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border-hover); }
+.benchmark-table th { color: var(--text); font-size: 14px; }
+.benchmark-table td { color: var(--text-2); font-size: 15px; }
+.benchmark-table caption { text-align: left; padding: 18px 16px; color: var(--text-2); font-size: 14px; }
+.benchmark-table td:nth-child(2) { color: var(--accent); font-weight: 700; }
+.privacy-card.ow { border-color: var(--border-hover); background: #fff; }
+.privacy-card.ow .privacy-card-label { color: var(--accent); }
+.privacy-card.ow .privacy-step-num { background: var(--accent-soft); color: var(--accent); }
+.sources { font-size: 14px; line-height: 1.8; color: var(--text-2); }
+.sources li { margin: 8px 0; }
+@media (max-width: 600px) { .benchmark-table th, .benchmark-table td { padding: 12px 8px; font-size: 13px; } }
+</style>
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal"><span class="vs-brand accent">EnviousWispr</span><span class="vs-circle">VS</span><span class="vs-brand">OpenWhispr</span></div>
+    <h1 class="reveal">Local dictation.<br />Different ways to clean it up.</h1>
+    <p class="page-header-sub reveal">Two open-source dictation apps with free local processing. Compare the cleanup, dictionary learning and file workflows behind the finished text.</p>
+    <div class="hero-pills reveal"><span class="hero-pill">Free local dictation</span><span class="hero-pill">Cleanup compared</span><span class="hero-pill">Same-audio test results</span></div>
+    <div class="hero-cta reveal"><a href="/#download" class="btn-primary">Download EnviousWispr free</a></div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/">Saurabh Vaish</a>, EnviousWispr’s developer · Reviewed 6 November 2026 · <a href="/help/how-we-test-enviouswispr/">How we test</a></p>
+  </div>
+</header>
+<CompareDecisionSummary id="openwhispr-answer" heading="OpenWhispr or EnviousWispr?">
+  <p>Choose EnviousWispr for ready-made Mac dictation defaults, extensive fixed-rule cleanup and a dictionary that checks learned corrections in context. Choose OpenWhispr for a broader model catalog, batch recording imports and AI note workflows. Both offer free local transcription and local AI processing. OpenWhispr also sells cloud plans; EnviousWispr requires no account or subscription. We set key EnviousWispr defaults from our own tests.</p>
+</CompareDecisionSummary>
+<section class="section" aria-labelledby="feature-comparison">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Side by Side</div><h2 id="feature-comparison" class="section-title">What changes in everyday use?</h2><p class="section-sub">Local processing is available in both. The meaningful differences are what happens around recognition and AI polish.</p></div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table compare-table--duo">
+        <thead><tr><th scope="col">Feature</th><th scope="col">EnviousWispr</th><th scope="col">OpenWhispr</th></tr></thead>
+        <!-- Evidence: accessed and verified 2026-11-06. Confidence: source-verified.
+          OpenWhispr installed 1.11.0 source/bundles inspected; upstream reference commit
+          315ee2dea3140fd67f53684e85e9aa66dcc90c69. Each competitor cell links its primary source.
+          Source code: modelRegistryData.json, audioManager.js, prompts.json,
+          correctionLearner.js, snippets.ts, UploadAudioView.tsx and LICENSE in OpenWhispr/openwhispr.
+          Pricing: https://openwhispr.com/pricing. Local processing/model claims:
+          https://openwhispr.com/models. Upload AI actions: https://openwhispr.com/audio-to-text-app.
+          Official feature-page captures: openwhispr-2026-11-06-models.png,
+          openwhispr-2026-11-06-pricing.png and openwhispr-2026-11-06-uploads.png retained with research.
+          EW claims: public help on numbers/dates, spoken punctuation, dictionary learning,
+          local polish, snippets and file transcription; implementation checked at v2.6.0/main.
+          No full OpenWhispr app quality or permission comparison is asserted. -->
+        <tbody>{rows.map(row => <tr><td role="rowheader">{row.label}</td><td>{row.ew}</td><td>{row.ow}<a class="source-link" href={row.source} target="_blank" rel="noopener noreferrer" aria-label={`OpenWhispr source: ${row.label}`}>Source ↗</a></td></tr>)}</tbody>
+      </table>
+    </div>
+    <p class="method-note">Sources and code checked on 6 November 2026. We audited OpenWhispr 1.11.0’s installed files and current public source. The recognition test below ran its bundled engine on recorded audio; this is not a hands-on test of every app workflow. Features and prices can change.</p>
+  </div>
+</section>
+<section class="section" aria-labelledby="why-enviouswispr">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Why EnviousWispr</div><h2 id="why-enviouswispr" class="section-title">Cleanup around your words.</h2><p class="section-sub">Recognition and AI polish are only part of getting useful text into your app.</p></div>
+    <div class="advantages-grid">{advantages.map(card => <article class="advantage-card reveal"><div class="advantage-icon" aria-hidden="true">{card.number}</div><h3 class="advantage-title">{card.title}</h3><p class="advantage-desc">{card.text}</p></article>)}</div>
+    <p class="method-note">See <a href="/help/numbers-dates-and-times/">number and address formatting</a>, <a href="/help/spoken-punctuation-and-emoji/">spoken punctuation</a> and <a href="/help/self-learning-dictionary/">dictionary learning</a> for settings, language coverage and known limits.</p>
+  </div>
+</section>
+<section class="section" aria-labelledby="privacy-comparison">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Privacy</div><h2 id="privacy-comparison" class="section-title">Choose where processing happens.</h2><p class="section-sub">Both apps have an offline path. Cloud settings change what leaves your computer.</p></div>
+    <div class="privacy-split">
+      <article class="privacy-card ew reveal"><div class="privacy-card-label">EnviousWispr</div>
+        <div class="privacy-step"><span class="privacy-step-num">1</span><span>Transcription audio stays on your Mac.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">2</span><span>Fixed-rule cleanup runs locally, before optional AI polish.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">3</span><span>A downloaded local polish model keeps that step on your Mac too.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">4</span><span>Cloud polish sends selected text and relevant context directly to your chosen provider. Anonymous usage and crash reporting have separate switches.</span></div>
+      </article>
+      <article class="privacy-card ow reveal"><div class="privacy-card-label">OpenWhispr</div>
+        <div class="privacy-step"><span class="privacy-step-num">1</span><span>Local speech models process audio on your computer.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">2</span><span>Local writing models can clean up the transcript offline.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">3</span><span>Cloud transcription is another option and sends audio off-device.</span></div>
+        <div class="privacy-step"><span class="privacy-step-num">4</span><span>Cloud AI processing sends text to the selected service. Pick the local routes if you want both steps on-device.</span></div>
+      </article>
+    </div>
+    <p class="method-note">Read <a href="/help/what-data-is-collected/">EnviousWispr’s data explanation</a> and <a href="https://openwhispr.com/models" target="_blank" rel="noopener noreferrer">OpenWhispr’s processing options</a>. Neither app’s local mode should be confused with its cloud options. Ollama in EnviousWispr can use downloaded or hosted models; only a downloaded model is an offline choice.</p>
+  </div>
+</section>
+<section class="section" id="recognition-test" aria-labelledby="recognition-heading">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Recorded-Audio Test</div><h2 id="recognition-heading" class="section-title">Fewer word errors in this test.</h2><p class="section-sub">Parakeet Ultra’s frozen EnviousWispr test baseline made fewer word errors than the downloaded Orukeet engine on the same recordings.</p></div>
+    <div class="compare-table-wrap reveal"><table class="benchmark-table">
+      <caption>Word error rate, not AI-polish quality. Lower is better.</caption>
+      <thead><tr><th scope="col">Test set</th><th scope="col">Ultra baseline</th><th scope="col">Orukeet</th></tr></thead>
+      <tbody><tr><th scope="row">English · 120 recordings</th><td>7.09%</td><td>10.45%</td></tr><tr><th scope="row">24 languages · 960 recordings</th><td>10.10%</td><td>19.23%</td></tr></tbody>
+    </table></div>
+    <div class="method-note reveal">
+      <p>Tested on 6 November 2026 using 1,080 identical, hash-verified audio inputs and the same word-error scorer. The English set has 1,100 reference words and publisher listener validation. The multilingual set has 13,694 reference words with publisher/source transcripts; it is a separate evidence tier, not newly hand-checked speech.</p>
+      <p>Ultra made 78 English and 1,383 multilingual word errors; Orukeet made 115 and 2,633. Orukeet returned 13 empty transcripts, including two English cases. These remained in the score as missing words. Fresh connections reproduced the empty results.</p>
+      <details><summary>Method and limits</summary>
+        <p>The Ultra figures reuse frozen October 2026 U1 results: the Ultra model, FluidAudio runtime and EnviousWispr’s custom decoder policies. The new Orukeet run used the downloaded v0.1.0 ONNX INT8 files and the sherpa-onnx binary bundled with OpenWhispr 1.11.0, with its four-thread CPU setting. Ultra used Core ML with CPU and Neural Engine. This compares model-plus-runtime combinations, not isolated model weights or the latest complete EnviousWispr app.</p>
+        <p>AI polish was off. The test bypassed microphone capture, app audio conditioning, segmentation and recovery. It establishes no speed, whole-app or universal accuracy ranking. The corpus does not establish long-form conversational quality or Russian coverage. We did not claim the recordings were unseen by model vendors. General-purpose Qwen polishing was not part of this test.</p>
+        <p><a href="/benchmarks/openwhispr-2026-11-06.json">Download the aggregate results and model identities</a>. No private recordings or transcript text are included. The original Orukeet model is described by <a href="https://oruk.ai/research/orukeet" target="_blank" rel="noopener noreferrer">its maker, Oruk</a>.</p>
+      </details>
+    </div>
+  </div>
+</section>
+<section class="section" aria-labelledby="cleanup-heading">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Under the Hood</div><h2 id="cleanup-heading" class="section-title">What happens after recognition?</h2></div>
+    <div class="deep-dive-grid">
+      <article class="deep-dive-card reveal"><h3 class="deep-dive-title">Cleanup without AI polish</h3><div class="deep-dive-body">
+        <p>EnviousWispr has fixed rules for vocabulary correction, hesitation sounds, English numbers, dates, money, spoken emoji and British spelling. Spoken email and link patterns cover English, German, French, Spanish, Italian, Portuguese, Russian, Polish and Dutch. Punctuation commands cover English, German, French, Spanish and Italian when enabled.</p>
+        <p>Coverage is specific to each task. English has the widest number rules; supported non-English patterns do not mean every number, date or sentence gets rewritten.</p>
+        <p>OpenWhispr’s <a href="https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/locales/en/prompts.json">cleanup prompt</a> assigns filler removal, grammar, self-corrections, spoken punctuation and number formatting to AI. Its fixed transformations include whitespace cleanup, snippets, Chinese Simplified/Traditional conversion and dictionary-echo filtering.</p>
+      </div></article>
+      <article class="deep-dive-card reveal"><h3 class="deep-dive-title">Learning the correction, then checking it</h3><div class="deep-dive-body">
+        <p>OpenWhispr compares edits with pasted text. It filters word substitutions by character similarity, length, existing dictionary entries and an English common-word list, then saves the corrected spelling. That word can inform later recognition and AI cleanup.</p>
+        <p>EnviousWispr’s on-device classifier considers whether an edit is a vocabulary correction. It saves the original mishearing alongside the corrected term. When that known mishearing appears again, a separate local check considers the new sentence before replacing it.</p>
+        <p>Both offer Undo. EnviousWispr also remembers repeated user refusals and can block that correction pair. These checks can still make mistakes; neither dictionary retrains the speech model.</p>
+        <p><a href="https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/utils/correctionLearner.js">OpenWhispr’s learning rules</a> · <a href="/help/self-learning-dictionary/">How EnviousWispr learns</a></p>
+      </div></article>
+    </div>
+  </div>
+</section>
+<section class="section" aria-labelledby="openwhispr-strengths">
+  <div class="container">
+    <div class="section-head reveal"><div class="section-label-pill">Being Honest</div><h2 id="openwhispr-strengths" class="section-title">Where OpenWhispr offers more.</h2><p class="section-sub">These are useful reasons to choose it, especially if dictation is only one part of your workflow.</p></div>
+    <div class="deep-dive-grid">
+      <article class="deep-dive-card reveal"><h3 class="deep-dive-title">A queue for your recordings</h3><div class="deep-dive-body"><p>OpenWhispr accepts multiple audio files into a batch queue and supports importing from URLs. EnviousWispr’s current file workflow handles one recording at a time. If you regularly transcribe a folder of interviews or voice notes, that queue is a real advantage.</p><p>After transcription, OpenWhispr’s <a href="https://openwhispr.com/audio-to-text-app">AI note actions</a> can summarize, extract action items and format notes. We did not find an automatic dictation-polishing pass in the inspected upload flow, but it would be wrong to say uploaded transcripts cannot be processed with AI.</p></div></article>
+      <article class="deep-dive-card reveal"><h3 class="deep-dive-title">More models and desktop platforms</h3><div class="deep-dive-body"><p>OpenWhispr offers a broader speech and writing model catalog and has desktop versions for Mac, Windows and Linux. Its downloadable Qwen models are standard public releases or quantized versions; that gives users a choice of sizes and capabilities.</p><p>EnviousWispr’s Mac app needs Apple Silicon and macOS 14 or later. It offers two speech engines and local polish options including our own EG-1. We have not benchmarked OpenWhispr’s complete AI-polish setup, so the recognition results above should not be read as a polish-quality comparison.</p><p><a href="https://openwhispr.com/models">OpenWhispr’s model choices</a> · <a href="https://github.com/OpenWhispr/openwhispr">Desktop platforms and source</a></p></div></article>
+    </div>
+  </div>
+</section>
+<section class="section" aria-labelledby="faq-heading"><div class="container"><div class="section-head reveal"><div class="section-label-pill">Questions</div><h2 id="faq-heading" class="section-title">Before you choose.</h2></div><div class="faq-list">{faqs.map(({q,a}) => <article class="faq-item reveal"><h3 class="faq-q">{q}</h3><p class="faq-a">{a}</p></article>)}</div></div></section>
+<section class="section" aria-labelledby="sources-heading"><div class="container"><div class="section-head reveal"><div class="section-label-pill">Sources</div><h2 id="sources-heading" class="section-title">Check the details.</h2></div><ul class="sources">
+  <li><a href="https://openwhispr.com/pricing">OpenWhispr pricing</a>, <a href="https://openwhispr.com/models">models</a> and <a href="https://openwhispr.com/audio-to-text-app">audio uploads</a>, checked 6 November 2026.</li>
+  <li><a href="https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/helpers/audioManager.js">OpenWhispr processing</a>, <a href="https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/utils/correctionLearner.js">dictionary learning</a> and <a href="https://github.com/OpenWhispr/openwhispr/blob/315ee2dea3140fd67f53684e85e9aa66dcc90c69/src/models/modelRegistryData.json">model download catalog</a>, pinned to the inspected public revision.</li>
+  <li><a href="/help/how-we-test-enviouswispr/">EnviousWispr testing</a>, <a href="/help/numbers-dates-and-times/">formatting</a>, <a href="/help/self-learning-dictionary/">dictionary</a> and <a href="/help/what-data-is-collected/">data handling</a>.</li>
+</ul></div></section>
+<section class="section" aria-label="Related comparisons"><div class="container"><div class="hero-pills"><a class="hero-pill" href="/compare/fluidvoice/">FluidVoice</a><a class="hero-pill" href="/compare/superwhisper/">Superwhisper</a><a class="hero-pill" href="/compare/handy/">Handy</a><a class="hero-pill" href="/compare/typewhisper/">TypeWhisper</a><a class="hero-pill" href="/compare/spokenly/">Spokenly</a><a class="hero-pill" href="/compare/wisprflow/">Wispr Flow</a></div></div></section>
+<section class="cta-section"><div class="container"><h2 class="reveal">Try it with your own words.</h2><p class="reveal">Free dictation for Apple Silicon Macs. macOS 14 or later. No account or subscription.</p><div class="cta-actions reveal"><a href="/#download" class="btn-primary">Download EnviousWispr free</a><a href="/compare/" class="back-link">Browse comparisons →</a></div></div></section>
+</CompareLayout>
