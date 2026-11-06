@@ -24,6 +24,7 @@ const CATALOG_NOTES: Record<string, string> = {
   features: 'Every feature of the free Mac app, each on its own page.',
   privacy: 'What cloud dictation sends away, what EnviousWispr keeps local, and what goes out only if you choose cloud text polish or cloud meeting summaries.',
   customization: 'Record key, start and stop sounds, how text lands, and the overlay position.',
+  meetings: 'EnviousMeet, built into the free Mac app: meeting notes with no bot, a transcript with who said what, and an optional summary that can run on the Mac or use your own AI key.',
   android: 'The free Android app on Google Play: on-device speech recognition and AI polish, with text inserted where you type. Android 13+, 64-bit, 6 GB memory or more.',
 };
 

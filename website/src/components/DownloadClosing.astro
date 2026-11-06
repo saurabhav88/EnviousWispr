@@ -19,6 +19,8 @@ interface Props {
    * implies that page's feature runs on Android; 'primary' (the /android/
    * page) leads with Google Play and keeps a quiet Mac link. */
   android?: 'button' | 'link' | 'primary';
+  /** #4432: the small line above the title. */
+  kicker?: string;
 }
 const {
   title = 'Put your voice to work.',
@@ -26,6 +28,7 @@ const {
   source = 'features-closing',
   id,
   android = 'link',
+  kicker = 'A little more room for your ideas.',
 } = Astro.props;
 const widths = [1086, 2172];
 async function sources(src) {
@@ -40,7 +43,7 @@ const dark = await sources(twilight);
   <img class="download-closing-dark" src={dark.src} srcset={dark.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
   <img class="download-closing-light" src={light.src} srcset={light.srcset} sizes="100vw" alt="" width="2172" height="724" loading="lazy" decoding="async" />
   <div class="download-closing-content">
-    <span class="download-closing-kicker">A little more room for your ideas.</span>
+    <span class="download-closing-kicker">{kicker}</span>
     <h2 id="download-closing-title">{title}</h2>
     <p class="download-closing-description">{description}</p>
     {

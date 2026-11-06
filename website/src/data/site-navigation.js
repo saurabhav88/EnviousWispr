@@ -140,7 +140,7 @@ export const catalog = [
     path: '/why-offline/',
     name: 'Why Offline?',
     updated: '2026-09-28',
-    headerLink: true,
+    footerLink: true,
   },
   {
     slug: 'customization',
@@ -155,6 +155,14 @@ export const catalog = [
     name: 'EnviousWispr for Android',
     updated: '2026-10-28',
   },
+  {
+    // #4432: the EnviousMeet page; the header's Dictation | Meetings switch links here.
+    slug: 'meetings',
+    path: '/meetings/',
+    name: 'EnviousMeet',
+    updated: '2026-11-06',
+    footerLink: true,
+  },
 ];
 
 export const menuProducts = catalog.filter((entry) => entry.menuProduct);
@@ -162,14 +170,16 @@ export const menuFoot = catalog.filter((entry) => entry.menuFoot);
 export const headerLinks = catalog.filter((entry) => entry.headerLink);
 export const itemList = catalog.filter((entry) => entry.slug !== 'features');
 
+// #4432: [label, path, activePage slug]. Why Offline? moved here from the top bar.
 export const resources = [
-  ['Blog', '/blog/'],
-  ['Help', '/help/'],
-  ['Contact', '/contact/'],
+  ['Blog', '/blog/', 'blog'],
+  ['Help', '/help/', 'help'],
+  ['Why Offline?', '/why-offline/', 'privacy'],
+  ['Contact', '/contact/', 'contact'],
 ];
 
 export const footerLinks = catalog
-  .filter((entry) => entry.slug === 'features' || entry.headerLink || entry.slug === 'customization' || entry.slug === 'android')
+  .filter((entry) => entry.slug === 'features' || entry.headerLink || entry.footerLink || entry.slug === 'customization' || entry.slug === 'android')
   .map((entry) => [entry.name, entry.path]);
 
 export function byPath(pathname) {

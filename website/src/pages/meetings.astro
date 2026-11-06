@@ -1,0 +1,52 @@
+---
+// /meetings/ (#4432): the EnviousMeet page, ported from the approved mock-up (founder 2026-11-06).
+// Page-only styles and script; the shared header, footer and closing come from the site.
+import ThemedLayout from '../layouts/ThemedLayout.astro';
+import '../styles/meetings/index.css';
+import DownloadClosing from '../components/DownloadClosing.astro';
+import { entryFor, webPage, breadcrumbs } from '../utils/features/structured-data.js';
+import MeetHero from '../components/meetings/MeetHero.astro';
+import MeetApps from '../components/meetings/MeetApps.astro';
+import MeetWhy from '../components/meetings/MeetWhy.astro';
+import MeetSummaries from '../components/meetings/MeetSummaries.astro';
+import MeetDetails from '../components/meetings/MeetDetails.astro';
+import MeetCompare from '../components/meetings/MeetCompare.astro';
+import MeetFaq from '../components/meetings/MeetFaq.astro';
+const path = '/meetings/';
+const title = 'EnviousMeet: Free, Private AI Meeting Notes for Mac';
+const description = 'Premium meeting notes free on your Mac. EnviousMeet records calls with no bot, follows your mute, names speakers and writes summaries that can run offline.';
+const entry = entryFor(path);
+const ld = [webPage({ path, name: entry.name, description, updated: entry.updated }), breadcrumbs(path, entry.name)];
+---
+
+<ThemedLayout title={title} description={description} canonicalPath={path} activePage="meetings">
+  <Fragment slot="head">
+    {ld.map((block) => <script type="application/ld+json" set:html={JSON.stringify(block)} />)}
+  </Fragment>
+  <div class="meet-page">
+    <MeetHero />
+    <MeetApps />
+    <MeetWhy />
+    <MeetSummaries />
+    <MeetDetails />
+    <MeetCompare />
+    <MeetFaq />
+  </div>
+  <DownloadClosing
+    id="download"
+    source="meetings-closing"
+    android="link"
+    kicker="A little more room for your meetings."
+    title="Let your next meeting write itself down."
+    description="EnviousMeet comes with EnviousWispr for Mac. No account. No subscription."
+  >
+    <div class="brew-install">
+      <span>Prefer Homebrew?</span>
+      <div><code>brew install --cask saurabhav88/tap/enviouswispr</code></div>
+    </div>
+  </DownloadClosing>
+</ThemedLayout>
+
+<script>
+  import '../scripts/meetings/index.js';
+</script>

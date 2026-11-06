@@ -1,0 +1,108 @@
+---
+// MeetDetails (#4432): ported from the approved EnviousMeet mock-up.
+---
+
+<section class="s"><div class="wrap">
+  <div class="s-head"><div><span class="eyebrow rule">Premium, without the price</span><h2>Premium details,<br><em>free for everyone.</em></h2></div>
+  <p class="s-lede">Built for real calls: AirPods, mute buttons, people talking over each other, and meetings in a room. No paid plan, so nothing is locked.</p></div>
+  <div class="spot">
+    <div class="spot-tabs" id="spotTabs" role="tablist" aria-label="Premium details">
+      <button type="button" role="tab" class="on" style="--c:var(--r1)"><i></i>Respects your muted mic</button>
+      <button type="button" role="tab" style="--c:var(--r7)"><i></i>Real speaker names</button>
+      <button type="button" role="tab" style="--c:var(--r5)"><i></i>Play back any moment</button>
+      <button type="button" role="tab" style="--c:var(--r2)"><i></i>Synced with your calendar</button>
+      <button type="button" role="tab" style="--c:var(--r9)"><i></i>No bot in your call</button>
+      <button type="button" role="tab" style="--c:var(--r3)"><i></i>In-person meetings</button>
+    </div>
+    <div class="deck" id="deck">
+      <div class="flip on" style="--c:var(--r1)"><div><h3>Respects your muted mic.</h3><p>Muting yourself in Zoom does not turn off your Mac&rsquo;s microphone. We designed EnviousMeet to follow your mute in Zoom, Teams and Google Meet, so your side chatter stays out of the recording, transcript and summary.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-m2">
+  <img class="m2-bg" src="/meetings/office.webp" alt="" width="720" height="530" decoding="async" loading="lazy">
+  <div class="m2-lap"><div class="m2-scr">
+    <div class="m2-tiles"><span><b>MC</b><small>Maya</small></span><span><b>LP</b><small>Leo</small></span><span class="you"><b>You</b><em class="m2-muted">MUTED</em></span></div>
+    <div class="m2-bar"><i class="m2-mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21"/><path class="m2-slash" d="M4 4l16 16"/></svg></i><i class="m2-cam"></i><i class="m2-end"></i></div>
+  </div><div class="m2-base"></div></div>
+  <div class="m2-vis"><img class="m2-idle" src="/meetings/visitor-idle.webp" alt="" width="185" height="460"><div class="m2-wave"></div></div>
+  <img class="m2-w m2-back" src="/meetings/worker-back.webp" alt="" width="420" height="431" decoding="async" loading="lazy">
+  <img class="m2-w m2-turn" src="/meetings/worker-turn.webp" alt="" width="420" height="431" decoding="async" loading="lazy">
+  <b class="m2-b m2-b1">Got a sec?</b>
+  <b class="m2-b m2-b2">Sure, one min!</b>
+  <div class="m2-notes"><span class="m2-h">EnviousMeet notes</span>
+    <div class="m2-l m2-l1"><b>Maya</b>Q3 numbers look good.</div>
+    <div class="m2-l m2-l2"><mark>You were muted: side chat left out</mark></div>
+    <div class="m2-l m2-l3"><b class="you">You</b>Sorry, I&rsquo;m back. Let&rsquo;s ship it.</div>
+  </div>
+</div></div></div>
+      <div class="flip" style="--c:var(--r7)"><div><h3>Real speaker names.</h3><p>EnviousMeet picks up real names from Zoom, Teams and Google Meet, and it never guesses one. Your microphone is always marked You, with or without headphones.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-desk sc-nm"><svg viewBox="0 0 340 250" class="desk">
+  <rect class="dk-wall" x="0" y="0" width="340" height="250"/>
+  <rect x="10" y="10" width="320" height="108" rx="10" fill="#1b1530"/>
+  <rect x="18" y="18" width="71" height="70" rx="7" fill="#2e2650"/><rect class="nm-ring nm-r0" x="18" y="18" width="71" height="70" rx="7"/><text x="53.5" y="54" class="dk-ini">MC</text><text x="53.5" y="76" class="dk-nm">Maya Chen</text><rect x="95" y="18" width="71" height="70" rx="7" fill="#2e2650"/><rect class="nm-ring nm-r1" x="95" y="18" width="71" height="70" rx="7"/><text x="130.5" y="54" class="dk-ini">LP</text><text x="130.5" y="76" class="dk-nm">Leo Park</text><rect x="172" y="18" width="71" height="70" rx="7" fill="#2e2650"/><rect class="nm-ring nm-r2" x="172" y="18" width="71" height="70" rx="7"/><text x="207.5" y="54" class="dk-ini">PS</text><text x="207.5" y="76" class="dk-nm">Priya Shah</text><rect x="249" y="18" width="71" height="70" rx="7" fill="#4a2f86"/><rect class="nm-ring nm-r3" x="249" y="18" width="71" height="70" rx="7"/><text x="284.5" y="54" class="dk-ini">You</text><text x="284.5" y="76" class="dk-nm">You</text>
+  <circle cx="148" cy="103" r="7" fill="#3a3160"/><circle cx="170" cy="103" r="7" fill="#3a3160"/><rect x="186" y="97" width="28" height="12" rx="6" fill="#e23a55"/>
+  <rect class="dk-notes" x="10" y="128" width="320" height="114" rx="12"/>
+  <text x="24" y="148" class="dk-h">Transcript</text>
+  <g class="nm-badge"><rect x="226" y="137" width="92" height="16" rx="8" fill="#efe6fd"/><text x="272" y="148.5" class="nm-bt">Names found</text></g>
+  <g class="nm-line nm-w0"><text x="24" y="172" class="nm-lab nm-a">Speaker 1</text><text x="24" y="172" class="nm-lab nm-b c1">Maya Chen</text><text x="96" y="172" class="dk-l">Can we ship on Friday?</text></g><g class="nm-line nm-w1"><text x="24" y="192" class="nm-lab c3">You</text><text x="96" y="192" class="dk-l">Yes, if QA signs off.</text></g><g class="nm-line nm-w2"><text x="24" y="212" class="nm-lab nm-a">Speaker 2</text><text x="24" y="212" class="nm-lab nm-b c2">Leo Park</text><text x="96" y="212" class="dk-l">QA finishes today.</text></g><g class="nm-line nm-w3"><text x="24" y="232" class="nm-lab nm-a">Speaker 3</text><text x="24" y="232" class="nm-lab nm-b c4">Priya Shah</text><text x="96" y="232" class="dk-l">I'll tell support.</text></g>
+</svg></div></div></div>
+      <div class="flip" style="--c:var(--r5)"><div><h3>Hear any moment again.</h3><p>The audio stays on your Mac until you delete it. Every passage has a timestamp, and you can Transcribe again with another engine whenever you like.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-desk sc-pb"><svg viewBox="0 0 340 250" class="desk">
+  <rect class="dk-notes" x="0" y="0" width="340" height="250"/>
+  <text x="20" y="28" class="pb-title">Q3 roadmap sync</text>
+  <text x="20" y="43" class="pb-meta">Ready &#183; Parakeet &#183; 32 min, 10 sec &#183; Audio: 18 MB</text>
+  <rect x="20" y="52" width="92" height="17" rx="5" class="pb-btn"/><text x="66" y="63.8" class="pb-bt">&#8635; Transcribe again</text>
+  <rect x="117" y="52" width="66" height="17" rx="5" class="pb-btn"/><text x="150" y="63.8" class="pb-bt">Delete audio</text>
+  <g class="pb-play"><path d="M21 77.5l7 4.5-7 4.5z" fill="#1d1d1f"/></g>
+  <g class="pb-pause"><rect x="21" y="77.5" width="2.6" height="9" rx="1" fill="#1d1d1f"/><rect x="25.4" y="77.5" width="2.6" height="9" rx="1" fill="#1d1d1f"/></g>
+  <rect x="38" y="80.5" width="200" height="3" rx="1.5" fill="#e4dff0"/>
+  <rect class="pb-fill" x="38" y="80.5" width="200" height="3" rx="1.5" fill="#793bd4"/>
+  <circle class="pb-thumb" cx="38" cy="82" r="5.5" fill="#fff" stroke="#cfc6e2"/>
+  <text x="320" y="85" class="pb-clock pb-c1">3:10 / 32:10</text><text x="320" y="85" class="pb-clock pb-c2">12:04 / 32:10</text><text x="320" y="85" class="pb-clock pb-c3">12:07 / 32:10</text>
+  <rect x="20" y="96" width="300" height="18" rx="6" fill="#efeaf6"/><rect x="22" y="98" width="98" height="14" rx="5" fill="#fff" class="pb-seg"/>
+  <text x="71" y="108.3" class="pb-segt on">Transcript</text><text x="170" y="108.3" class="pb-segt">Notes</text><text x="270" y="108.3" class="pb-segt">Summary</text>
+  <text x="20" y="136" class="pb-who">Maya Chen</text><text x="79" y="136" class="pb-t">3:10</text><circle cx="108" cy="132.8" r="5.2" fill="none" stroke="#793bd4" stroke-width="1.2"/><path d="M106.4 130.20000000000002l4 2.6-4 2.6z" fill="#793bd4"/><text x="20" y="151" class="pb-say">Let&rsquo;s start with the launch date.</text><text x="20" y="172" class="pb-who">Leo Park</text><text x="67" y="172" class="pb-t">12:04</text><circle cx="102" cy="168.8" r="5.2" fill="none" stroke="#793bd4" stroke-width="1.2"/><path d="M100.4 166.20000000000002l4 2.6-4 2.6z" fill="#793bd4"/><text x="20" y="187" class="pb-say">Support needs the help pages by Friday.</text><text x="20" y="208" class="pb-who">You</text><text x="45" y="208" class="pb-t">12:31</text><circle cx="80" cy="204.8" r="5.2" fill="none" stroke="#793bd4" stroke-width="1.2"/><path d="M78.4 202.20000000000002l4 2.6-4 2.6z" fill="#793bd4"/><text x="20" y="223" class="pb-say">I&rsquo;ll draft them tomorrow.</text>
+  <g class="pb-cursor"><path d="M0 0v13l3.4-3.2 2.4 5.4 2.2-1-2.4-5.3H10z" fill="#1d1d1f" stroke="#fff" stroke-width="1"/></g>
+  <circle class="pb-click" cx="0" cy="0" r="8"/>
+</svg></div></div></div>
+      <div class="flip" style="--c:var(--r2)"><div><h3>Meeting notes named from your calendar.</h3><p>Optional. Each meeting takes the title of your calendar event, so it is easy to find in History. EnviousMeet also saves who was invited. The calendar is only read, never changed.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-cl2">
+  <div class="c2-cal">
+    <div class="c2-top"><b>Thursday, November 6</b><span>Today</span></div>
+    <div class="c2-grid">
+      <div class="c2-hr"><i>9 AM</i></div><div class="c2-hr"><i>10 AM</i></div><div class="c2-hr"><i>11 AM</i></div><div class="c2-hr"><i>12 PM</i></div>
+      <div class="c2-ev"><b class="c2-hl">Q4 launch planning</b><small>10:00 to 10:30 AM</small><small>Maya Chen, Leo Park, Priya Shah</small></div>
+    </div>
+  </div>
+  <div class="c2-app">
+    <div class="c2-bar"><i></i><i></i><i></i></div>
+    <div class="c2-body">
+      <div class="c2-side">
+        <b class="c2-h">History</b>
+        <div class="c2-seg"><span>A</span><span>D</span><span>T</span><span class="on">M</span></div>
+        <div class="c2-row on"><small><em></em>Nov 6, 10:00 AM</small><b class="c2-hl">Q4 launch planning</b><div class="c2-pv">Maya: Can we ship on Friday? Leo: QA is done.</div><span class="c2-chips"><span>Meeting</span><span>30 min</span></span></div>
+        <div class="c2-row"><small>Nov 5, 3:30 PM</small><b>Zoom call, Nov 5</b></div>
+      </div>
+      <div class="c2-main">
+        <b class="c2-title c2-hl">Q4 launch planning</b>
+        <div class="c2-inv">Invited: Maya Chen, Leo Park, Priya Shah</div>
+        <div class="c2-tabs"><span>Transcript</span><span>Notes</span><span class="on">Summary</span></div>
+        <b class="c2-sh">Key points</b>
+        <ul><li>Launch moves to Friday, Nov 14.</li><li>QA finishes this week.</li></ul>
+      </div>
+    </div>
+  </div>
+</div></div></div>
+      <div class="flip" style="--c:var(--r9)"><div><h3>Nobody sees a notetaker join.</h3><p>We skipped the meeting bot. EnviousMeet uses the Mac&rsquo;s own audio tools to record your microphone and the call sound directly, so the transcript starts from clean, first-hand audio. Call sound needs macOS 14.2 or later. Works with AirPods too.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-kb">
+  <div class="kb-floor"></div>
+  <div class="kb-lap"><div class="kb-scr">
+    <div class="kb-tiles"><span><b>MC</b></span><span><b>LP</b></span><span class="you"><b>You</b></span></div>
+    <div class="kb-toast kb-ask"><i>&#129302;</i>Notetaker bot wants to join</div>
+    <div class="kb-toast kb-ok"><i class="dot"></i>Recording on this Mac</div>
+  </div><div class="kb-base"></div></div>
+  <img class="kb-bot" src="/meetings/bot.webp" alt="" width="141" height="280" decoding="async" loading="lazy">
+  <b class="kb-pow">BOOT!</b>
+  <div class="kb-chibi"></div>
+</div></div></div>
+      <div class="flip" style="--c:var(--r3)"><div><h3>For the meeting in the room, too.</h3><p>Put your Mac on the table to record an in-person meeting. EnviousMeet tells voices apart and gives each one its own label, so you still see who said what. Start it from the menu bar.</p></div><div class="vis" aria-hidden="true"><div class="sc sc-r2"><div class="r2-art"><div class="r2-zoom"><img src="/meetings/room.webp" alt="" width="720" height="530" decoding="async" loading="lazy">
+  <i class="r2-ring r2-k0" style="left:18.8%;top:30%;--c:#1e7ad6"></i><i class="r2-ring r2-k1" style="left:50%;top:33%;--c:#c4561b"></i><i class="r2-ring r2-k2" style="left:81%;top:35%;--c:#1f8a5b"></i><b class="r2-tag r2-k0" style="left:18.8%;top:19%;--c:#1e7ad6">Speaker 1</b><b class="r2-tag r2-k1" style="left:50%;top:22%;--c:#c4561b">Speaker 2</b><b class="r2-tag r2-k2" style="left:81%;top:24%;--c:#1f8a5b">Speaker 3</b>
+  <i class="r2-rec" style="left:50%;top:75%"></i></div></div>
+  <div class="r2-tx"><span class="r2-h">Transcript<em>&#9679; Recording</em></span><div class="r2-l r2-l0"><b style="color:#1e7ad6">Speaker 1</b>Let&rsquo;s review the new layout.</div><div class="r2-l r2-l1"><b style="color:#c4561b">Speaker 2</b>It tested well with users.</div><div class="r2-l r2-l2"><b style="color:#1f8a5b">Speaker 3</b>Great, let&rsquo;s ship it Friday.</div></div>
+</div></div></div>
+    </div>
+  </div>
+</div></section>
