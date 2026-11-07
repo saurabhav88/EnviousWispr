@@ -38,6 +38,7 @@ const shapeCases = [
   [{ explicit: "github_readme", utmSource: null, utmMedium: null, referrerHost: "github.com" }, "github_readme", null],
   [{ isBot: true, ua: "curl/8.4.0" }, "bot_filtered", "bot_ua"],
   [{ isBot: true, ua: "Google-Safety" }, "bot_filtered", "bot_ua"],
+  [{ isBot: true, ua: "Click/1.0" }, "bot_filtered", "bot_ua"],
 ];
 
 // Bot heuristic (cloud review PR #1240): crawler signatures match; real humans
@@ -49,6 +50,11 @@ const botCases = [
   ["TelegramBot (like TwitterBot)", true],
   ["curl/8.4.0", true],
   ["Google-Safety", true],
+  ["Click/1.0", true],
+  ["Click/2.13", true],
+  // Whole-UA match only: a token inside a longer UA, or a bare name, is not the fetcher.
+  ["Mozilla/5.0 (Macintosh) Click/1.0 Safari/605.1.15", false],
+  ["Click", false],
   // Real humans in in-app WebViews — bare app name, no "bot": MUST be false.
   ["Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Discord/200.0", false],
   ["Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 ... Telegram", false],

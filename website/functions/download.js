@@ -57,8 +57,13 @@ const BOT_UA =
 // Google-Safety is Google's documented fetcher for checking publicly posted links
 // (developers.google.com/crawling/docs/crawlers-fetchers/google-special-case-crawlers);
 // it carries no "bot" token, so it is named explicitly (#2993).
+// `Click/<version>` is a bare scripted fetcher with no browser token; on 2026-11-06/07
+// it replayed one tagged Reddit link every 30 minutes and was counted as 28 downloads.
+// Matched as the WHOLE User-Agent so no real browser UA can hit it.
+const NAMED_FETCHER_UA = /^(Google-Safety|Click\/[0-9][0-9.]*)$/i;
+
 export function isLikelyBot(ua) {
-  return /^Google-Safety$/i.test(ua || "") || BOT_UA.test(ua || "");
+  return NAMED_FETCHER_UA.test(ua || "") || BOT_UA.test(ua || "");
 }
 
 // PostHog's browser SDK persists `{distinct_id, $sesid: [lastActivityMs,
