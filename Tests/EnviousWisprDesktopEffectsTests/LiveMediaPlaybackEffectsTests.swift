@@ -424,6 +424,8 @@ private final class FakeAdapter: @unchecked Sendable {
   /// Playback keeps moving while `send 1` is in flight: the position the source
   /// freezes at when the pause lands, applied on a successful pause command.
   var elapsedAfterPause: Double?
+  /// Finite responses model metadata that updates after the pause command returns.
+  var getResponses: [MediaRemoteAdapter.RunResult] = []
   /// Overrides the whole `get` answer (a broken adapter).
   var getOverride: MediaRemoteAdapter.RunResult?
   var rejectSend = false
@@ -448,6 +450,7 @@ private final class FakeAdapter: @unchecked Sendable {
       return lock.withLock {
         calls.append(command)
         if command.first == "get" {
+          if getResponses.isEmpty == false { return getResponses.removeFirst() }
           if let getOverride { return getOverride }
           guard let source else { return .init(status: 0, stdout: "null\n", stderr: "") }
           var dict: [String: Any] = ["bundleIdentifier": source.bundle, "playing": source.playing,
@@ -509,14 +512,14 @@ struct LiveMediaPlaybackAdapterRouteTests {
     #expect(adapter.isPlaying() == false)
     #expect(
       adapter.commands() == [
-        "get --no-artwork --allow-missing-title", "send 1", "get --no-artwork --allow-missing-title",
+        "get --now --no-artwork --allow-missing-title", "send 1", "get --now --no-artwork --allow-missing-title",
       ], "read, pause, then one re-read for the frozen position")
     #expect(players.events.isEmpty, "the adapter answered: no Apple event, no consent check")
 
     let resumed = await resume(effects, holdID)
     #expect(resumed == .resumed)
     #expect(adapter.isPlaying() == true)
-    #expect(adapter.commands().suffix(2) == ["get --no-artwork --allow-missing-title", "send 0"])
+    #expect(adapter.commands().suffix(2) == ["get --now --no-artwork --allow-missing-title", "send 0"])
   }
 
   @Test("Adapter says nothing is playing: no event, no prompt, even with Spotify running")
@@ -538,7 +541,7 @@ struct LiveMediaPlaybackAdapterRouteTests {
     let holdID = UUID()
     #expect(await pause(effects, holdID) == MediaPauseOutcome(.nothingPlaying, route: .adapter))
     #expect(await resume(effects, holdID) == .nothingToResume)
-    #expect(adapter.commands() == ["get --no-artwork --allow-missing-title"])
+    #expect(adapter.commands() == ["get --now --no-artwork --allow-missing-title"])
   }
 
   @Test("User pressed play mid-take: nothing is sent at the end")
@@ -624,6 +627,28 @@ struct LiveMediaPlaybackAdapterRouteTests {
     #expect(adapter.commands().last == "send 0")
   }
 
+  @Test("A stale playing snapshot does not strand the item we paused",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4438"))
+  func stalePlayingReadDoesNotStrandPausedMedia() async throws {
+    let adapter = FakeAdapter((bundle: "com.spotify.client", identity: "Test item", playing: true))
+    // The saved stale position was observed live. Separate OS callbacks can also
+    // leave the immediate post-pause read playing; model that path without clocks.
+    let playing = #"{"bundleIdentifier":"com.spotify.client","playing":true,"title":"Test item","elapsedTime":100.0,"elapsedTimeNow":110.2}"#
+    let paused = #"{"bundleIdentifier":"com.spotify.client","playing":false,"title":"Test item","elapsedTime":110.5,"elapsedTimeNow":110.5}"#
+    adapter.getResponses = [playing, playing, paused].map {
+      .init(status: 0, stdout: $0, stderr: "")
+    }
+    let effects = make(FakePlayers([:]), adapter)
+    let holdID = UUID()
+    let outcome = try #require(await pause(effects, holdID))
+    #expect(outcome.route == .adapter)
+    #expect(adapter.isPlaying() == false)
+    #expect(await resume(effects, holdID) == .resumed,
+      "Ordinary playback before our pause must not be mistaken for a user seek")
+    #expect(adapter.commands().last == "send 0")
+    #expect(adapter.isPlaying() == true)
+  }
+
   @Test("A different app is the source at the end: reported as source changed, nothing sent")
   func differentAppAtResume() async {
     let players = FakePlayers([:])
@@ -697,7 +722,7 @@ struct LiveMediaPlaybackAdapterRouteTests {
     let outcome = await pause(effects, holdID)
     #expect(outcome == .paused(targets: [T("com.google.Chrome", "yt-1")], route: .adapter))
     #expect(adapter.commands() == [
-      "get --no-artwork --allow-missing-title", "send 1", "get --no-artwork --allow-missing-title",
+      "get --now --no-artwork --allow-missing-title", "send 1", "get --now --no-artwork --allow-missing-title",
     ])
     #expect(await resume(effects, holdID) == .resumed)
     #expect(adapter.isPlaying() == true)
@@ -802,6 +827,20 @@ struct MediaRemoteAdapterParserTests {
     #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: "{}", stderr: "")) == .unavailable(.parse))
   }
 
+  @Test("Playing reads use current time while paused reads keep their frozen position",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4438"))
+  func currentAndPausedPositionsHaveDifferentAuthorities() {
+    let playing = #"{"bundleIdentifier":"com.spotify.client","playing":true,"title":"Test item","elapsedTime":100.0,"elapsedTimeNow":110.2}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: playing, stderr: ""))
+      == .playing(.init(bundleID: "com.spotify.client", identity: "Test item", elapsed: 110.2)))
+    let paused = #"{"bundleIdentifier":"com.spotify.client","playing":false,"title":"Test item","elapsedTime":110.5,"elapsedTimeNow":120.0}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: paused, stderr: ""))
+      == .paused(.init(bundleID: "com.spotify.client", identity: "Test item", elapsed: 110.5)))
+    let noEstimate = #"{"bundleIdentifier":"com.spotify.client","playing":true,"title":"Test item","elapsedTime":100.0}"#
+    #expect(MediaRemoteAdapter.parseGet(R(status: 0, stdout: noEstimate, stderr: ""))
+      == .playing(.init(bundleID: "com.spotify.client", identity: "Test item", elapsed: 100.0)))
+  }
+
   @Test("A recorded target round-trips; a title may contain pipes; elapsed is optional")
   func targetRoundTrip() {
     let source = MediaRemoteAdapter.Source(bundleID: "com.google.Chrome", identity: "A | B", elapsed: 12.5)
@@ -825,7 +864,7 @@ struct MediaRemoteAdapterParserTests {
     let a = MediaRemoteAdapter.bundled
     #expect(a.scriptURL.lastPathComponent == "mediaremote-adapter.pl")
     #expect(a.frameworkURL.lastPathComponent == "MediaRemoteAdapter.framework")
-    #expect(a.getArguments.suffix(3) == ["get", "--no-artwork", "--allow-missing-title"])
+    #expect(a.getArguments.suffix(4) == ["get", "--now", "--no-artwork", "--allow-missing-title"])
     #expect(a.sendArguments("1").suffix(2) == ["send", "1"])
   }
 }
