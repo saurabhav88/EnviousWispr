@@ -316,7 +316,8 @@ package struct PasteArrivalObservation: Sendable, Equatable {
 /// shadow → one report. `cancel()` ends a committed session early. #996 asks the same session for
 /// its edit-watch target with `editWatchCapture`, on its own timer.
 ///
-/// Reads never overlap: every read is one synchronous `attemptArrival` on the main actor.
+/// Reads never overlap: every read, including a preferred read and its ordinary fallback, runs
+/// synchronously on the main actor.
 @MainActor
 package final class PasteArrivalCapture: PasteEditCapturing {
 
@@ -684,11 +685,37 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
   // MARK: Reading
 
+  /// The one arrival read used for the landing decision and the late-hit shadow (#4426).
+  ///
+  /// When the before-image came from a reader other than `AXValue`, the same field keeps being read
+  /// through that reader, so a host that starts exposing `AXValue` only after the paste (WhatsApp,
+  /// Messages) still compares like with like. A preferred read may CONFIRM a new occurrence, but
+  /// may never make a negative stronger than the ordinary selector: a successful preferred read
+  /// with no new occurrence falls back to ordinary selection, whose reader then decides, exactly
+  /// as before #4426. Failed, unstable and over-limit preferred reads keep their own disposition.
+  /// #996's edit capture does not use this: it keeps ordinary selection.
+  private func arrivalAttempt() -> PastedRegionArrivalAttempt {
+    let preference: PastedRegionReaderPreference?
+    if case .field(let element, let baselineReader, _, _, _) = baseline, baselineReader != .value {
+      preference = .init(element: element, reader: baselineReader)
+    } else {
+      // AXValue already has ordinary first priority: reading it twice would change nothing.
+      preference = nil
+    }
+    let attempt = reader.attemptArrival(
+      pid: context.pid, pastedText: context.payload, preferredReader: preference)
+    guard let preference, case .readable(let field) = attempt,
+      CFEqual(field.element, preference.element), field.reader == preference.reader,
+      newOccurrence(in: attempt) == nil
+    else { return attempt }
+    return reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+  }
+
   /// One read. A new occurrence ends the watch at once (before the decision: `found`; during the
   /// shadow: a late hit). Anything else waits for the next wakeup.
   private func read() {
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     guard let found = newOccurrence(in: attempt) else {
       if phase == .shadowing, !stillObservable(attempt) { shadowObservable = false }
       return
@@ -736,7 +763,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private func decideAtDeadline() {
     guard phase == .watching else { return }
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     if let found = newOccurrence(in: attempt) {
       publish(.found(found))
       complete()

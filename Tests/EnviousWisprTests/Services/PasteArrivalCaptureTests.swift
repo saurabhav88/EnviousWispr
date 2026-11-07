@@ -90,6 +90,124 @@ struct PasteArrivalCaptureTests {
 
   var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
 
+  // MARK: Reader preference (#4426)
+
+  /// WhatsApp and Messages expose an EMPTY composer only through the range reader (no AXValue) and
+  /// the filled one through AXValue. Before #4426 the arrival read switched readers, so a landed
+  /// paste was `reader_changed` and, after a fast Send emptied the box, `absent` plus "Copied".
+  @Test("An empty range baseline confirms the paste through that reader when AXValue appears",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func emptyRangeBaselineKeepsComparableReader() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    ax.selectedRange = .range(location: 0, length: 0)
+    let session = try prepare()
+
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 300)
+
+    #expect(session.landing == .found(.sameField))
+  }
+
+  @Test("A stale preferred range cannot authorize absence while AXValue exposes text")
+  func stalePreferredRangeCannotStrengthenMiss() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.reads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 300)
+
+    #expect(session.landing == .inconclusive(.readerChanged))
+    #expect(ax.rangeCalls.isEmpty, "the host still reports an empty range")
+  }
+
+  @Test("Absent and non-text preferred ranges may reselect, without cross-reader confirmation")
+  func unavailablePreferredRangeRemainsIncomparable() throws {
+    for unavailable in [PastedRegionValueRead.absent, .notText] {
+      ax.reads = [.absent]
+      ax.counts = [.count(0)]
+      let session = try prepare()
+      ax.reads = [.text("Sarah ")]
+      ax.counts = [.count(6)]
+      ax.rangeReads = [unavailable]
+      session.commit()
+      scheduler.advance(ms: 300)
+
+      #expect(session.landing == .inconclusive(.readerChanged))
+    }
+  }
+
+  @Test("A failed preferred range is not rescued by a populated AXValue")
+  func failedPreferredRangePreservesFailure() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.failed(.cannotComplete)]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .cannotRead(.queryFailed))
+    #expect(ax.readCount == valueReads, "query failure must not trigger alternate-reader rescue")
+  }
+
+  @Test("An unstable preferred range keeps its retryable final disposition")
+  func unstablePreferredRangePreservesUncertainty() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6), .count(7)]
+    ax.rangeReads = [.text("Sarah ")]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .inconclusive(.unstable))
+    #expect(ax.readCount == valueReads, "a changing range is not an unavailable attribute")
+  }
+
+  @Test("An over-limit preferred range refuses before reading another representation")
+  func overLimitPreferredRangeIsNotReselected() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(PastedRegionTiming.maxValueUTF16 + 1)]
+    let valueReads = ax.readCount
+    scheduler.advance(ms: 25)
+
+    #expect(session.landing == .cannotRead(.unsupported))
+    #expect(ax.readCount == valueReads)
+    #expect(ax.rangeCalls.isEmpty, "over-limit text must not be materialized")
+  }
+
+  @Test("A reader preference never follows focus to a different field")
+  func preferredReaderIsBoundToItsOriginalField() throws {
+    ax.reads = [.absent]
+    ax.counts = [.count(0)]
+    let session = try prepare()
+    ax.focused[pid] = .element(AXUIElementCreateApplication(99))
+    ax.reads = [.text("Sarah ")]
+    ax.counts = [.count(6)]
+    ax.rangeReads = [.text("Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 300)
+
+    #expect(session.landing == .inconclusive(.moved))
+    #expect(ax.rangeCalls.isEmpty, "the original field's range reader cannot describe another field")
+  }
+
   // MARK: Positives
 
   @Test("Ghostty's miss waits for its own 700 ms deadline; another app's is decided at 300 ms")
@@ -1032,7 +1150,9 @@ struct PasteArrivalCaptureTests {
   func markerSupportRecovers() throws {
     mailShapedBody(markerReads: [.text("")])
     let session = try prepare()
-    ax.markerRanges = [.absent, .range(PastedRegionFakeAX.markerRange)]
+    // Two absent answers: since #4426 one arrival read asks the preferred marker reader first and,
+    // when it is unavailable, the ordinary selector asks again within the same read.
+    ax.markerRanges = [.absent, .absent, .range(PastedRegionFakeAX.markerRange)]
     ax.markerReads = [.text("Sarah ")]
     session.commit()
     scheduler.advance(ms: 25)
