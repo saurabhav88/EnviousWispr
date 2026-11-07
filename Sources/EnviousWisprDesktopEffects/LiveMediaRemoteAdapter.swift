@@ -56,8 +56,8 @@ package struct MediaRemoteAdapter: Sendable {
   package struct Source: Equatable, Sendable {
     package var bundleID: String
     package var identity: String?
-    /// The playback position (seconds) at the read; frozen while paused, so a
-    /// resume can tell our pause from one the user made later on the same item.
+    /// Playback seconds: the current estimate while playing, the frozen raw
+    /// position while paused. Resume can distinguish our pause from a later one.
     package var elapsed: Double?
     package init(bundleID: String, identity: String?, elapsed: Double? = nil) {
       self.bundleID = bundleID
@@ -119,7 +119,8 @@ package struct MediaRemoteAdapter: Sendable {
   package var getArguments: [String] {
     // `--no-artwork`: a cover image is hundreds of KB of base64 per read.
     // `--allow-missing-title`: untitled audio (a voice note) is still paused.
-    [scriptURL.path, frameworkURL.path, "get", "--no-artwork", "--allow-missing-title"]
+    // #4438: raw elapsedTime is anchored at timestamp, not the current position.
+    [scriptURL.path, frameworkURL.path, "get", "--now", "--no-artwork", "--allow-missing-title"]
   }
 
   package func sendArguments(_ command: String) -> [String] {
@@ -160,7 +161,12 @@ package struct MediaRemoteAdapter: Sendable {
     // untitled audio only.
     let title = (dict["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     let itemID = (dict["contentItemIdentifier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    let elapsed = (dict["elapsedTime"] as? NSNumber)?.doubleValue
+    let rawElapsed = (dict["elapsedTime"] as? NSNumber)?.doubleValue
+    let elapsedNow = (dict["elapsedTimeNow"] as? NSNumber)?.doubleValue
+    // Use the dependency's estimate for a moving item, including when the
+    // immediate post-pause read is stale. A paused read keeps its frozen position.
+    // Missing estimates retain the existing raw-position behavior.
+    let elapsed = playing ? (elapsedNow ?? rawElapsed) : rawElapsed
     let source = Source(bundleID: bundleID, identity: title ?? itemID, elapsed: elapsed)
     return playing ? .playing(source) : .paused(source)
   }
