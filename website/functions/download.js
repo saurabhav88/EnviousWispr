@@ -59,8 +59,10 @@ const BOT_UA =
 // it carries no "bot" token, so it is named explicitly (#2993).
 // `Click/<version>` is a bare scripted fetcher with no browser token; on 2026-11-06/07
 // it replayed one tagged Reddit link every 30 minutes and was counted as 28 downloads.
-// Matched as the WHOLE User-Agent so no real browser UA can hit it.
-const NAMED_FETCHER_UA = /^(Google-Safety|Click\/[0-9][0-9.]*)$/i;
+// `msh-pdfmin/<version>` is a non-browser fetcher seen since 2026-09-28 from a different
+// country on almost every hit, with no Referer, on README and on-site links (#4454).
+// Each is matched as the WHOLE User-Agent so no real browser UA can hit it.
+const NAMED_FETCHER_UA = /^(Google-Safety|Click\/[0-9][0-9.]*|msh-pdfmin\/[0-9][0-9.]*)$/i;
 
 export function isLikelyBot(ua) {
   return NAMED_FETCHER_UA.test(ua || "") || BOT_UA.test(ua || "");
