@@ -59,6 +59,7 @@ Usage (three stages, each resumable):
 from __future__ import annotations
 
 import argparse
+import collections
 import hashlib
 import html
 import json
@@ -106,7 +107,18 @@ VOICES = {
     "ru-RU": ["ru-RU-SvetlanaNeural", "ru-RU-DmitryNeural"],
     "uk-UA": ["uk-UA-PolinaNeural", "uk-UA-OstapNeural"],
     "en-US": ["en-US-AvaNeural", "en-US-AndrewNeural"],
+    # #4450: the international sealed exams' two non-European languages.
+    "hi-IN": ["hi-IN-SwaraNeural", "hi-IN-MadhurNeural"],
+    "zh-CN": ["zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural"],
 }
+
+# #4450: the sealed exams' languages and their voice locales. A scenario row names its
+# language; the locale (and so the voice pair) follows from it.
+SEALED_LOCALES = {"de": "de-DE", "fr": "fr-FR", "ru": "ru-RU", "es": "es-ES", "nl": "nl-NL",
+                  "pt": "pt-BR", "pl": "pl-PL", "it": "it-IT", "hi": "hi-IN", "zh": "zh-CN",
+                  "en": "en-US"}
+# Set by `--cases-file`: a sealed-scenario batch replaces the built-in language-gate cases.
+CASES_FILE: Path | None = None
 
 # Buckets:
 #   filler_collision  a word the filler regex strips (er, um, ah, mm, hmm, uh) that is
@@ -344,6 +356,8 @@ add("hr-HR", "filler_collision", "Um i tijelo su povezani.", keep=["Um"])
 
 
 def cases() -> list[dict]:
+    if CASES_FILE is not None:
+        return sealed_cases(CASES_FILE)
     rows = []
     for i, (cid, locale, bucket, text, keep, convert, drop) in enumerate(C):
         voices = VOICES[locale]
@@ -355,6 +369,34 @@ def cases() -> list[dict]:
     ids = [r["id"] for r in rows]
     assert len(ids) == len(set(ids)), "duplicate case ids"
     return rows
+
+
+def sealed_cases(path: Path) -> list[dict]:
+    """#4450: a generated scenario file (`gen_sealed_scenarios.py --lang`) as synthesis cases.
+    Voices alternate by row order within the language, so each shape hears both voices."""
+    rows, seen = [], collections.Counter()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        lang = r.get("lang") or "en"
+        locale = SEALED_LOCALES[lang]
+        voices = VOICES[locale]
+        rows.append({"id": r["id"], "locale": locale, "lang": lang, "bucket": r.get("shape"),
+                     "text": r["voice_text"], "voice": voices[seen[lang] % len(voices)],
+                     "must_keep": (), "must_convert": (), "must_drop": ()})
+        seen[lang] += 1
+    ids = [r["id"] for r in rows]
+    assert len(ids) == len(set(ids)), "duplicate case ids"
+    return rows
+
+
+def _audio_binding(r: dict) -> str:
+    """What a WAV was made from: reuse is allowed only when text, voice, locale and output
+    format all match (#4450; the size-only reuse could keep audio for edited text)."""
+    return hashlib.sha256(json.dumps(
+        [r["text"], r["voice"], r["locale"], "riff-16khz-16bit-mono-pcm"],
+        ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 # ---- Stage 1: Azure TTS ------------------------------------------------------------
@@ -376,11 +418,21 @@ def synth(run: Path) -> None:
     chars = sum(len(r["text"]) for r in rows)
     print(f"{len(rows)} cases, {chars:,} chars (~${chars / 1e6 * 15:.2f} on Azure credits)", file=sys.stderr)
     done = skipped = 0
+    ledger = os.environ.get("EW_JUDGE_USAGE_LOG")
     for r in rows:
         out = wav_dir / f"{r['id']}.wav"
-        if out.exists() and out.stat().st_size > 1000:
+        binding = out.with_suffix(".binding")
+        if CASES_FILE is not None:
+            if out.exists() and binding.exists() and binding.read_text().strip() == _audio_binding(r):
+                skipped += 1
+                continue
+        elif out.exists() and out.stat().st_size > 1000:
             skipped += 1
             continue
+        # #4450: spend check before the request (cap, when set, covers TTS too).
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import behavior_judge as _bj
+        _bj.precheck_spend("azure-tts", reserve_usd=len(r["text"]) / 1e6 * _bj.AZURE_TTS_PER_M_CHARS)
         body = ssml(r["text"], r["voice"], r["locale"]).encode("utf-8")
         req = urllib.request.Request(url, data=body, headers={
             "Ocp-Apim-Subscription-Key": key,
@@ -398,9 +450,19 @@ def synth(run: Path) -> None:
                     time.sleep(2 ** attempt)
                     continue
                 sys.exit(f"TTS failed for {r['id']}: HTTP {e.code} {e.read()[:200]!r}")
+        if ledger:
+            # One ledger row per completed paid request, written before anything can fail.
+            with open(ledger, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"deployment": "azure-tts", "chars": len(r["text"]),
+                                    "id": r["id"]}) + "\n")
+        if CASES_FILE is not None:
+            if out.stat().st_size <= 1000:
+                sys.exit(f"TTS returned no audio for {r['id']}")
+            binding.write_text(_audio_binding(r) + "\n")
         done += 1
         time.sleep(0.15)  # Azure asks for a gentle ramp rather than a spike
     print(f"synth: {done} new, {skipped} already present", file=sys.stderr)
+
     (run / "cases.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
 
 
@@ -705,8 +767,13 @@ def main() -> None:
     ap.add_argument("--whisper-fixture", metavar="DEST",
                     help="write the Whisper (transcribe.cpp) fixture here")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--cases-file", type=Path,
+                    help="#4450: synthesize/transcribe a generated sealed-scenario file instead "
+                         "of the built-in language-gate cases")
     a = ap.parse_args()
     run = Path(a.run)
+    global CASES_FILE
+    CASES_FILE = a.cases_file
     if a.list:
         for r in cases():
             print(json.dumps(r, ensure_ascii=False))

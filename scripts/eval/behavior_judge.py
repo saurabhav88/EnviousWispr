@@ -69,6 +69,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -112,6 +113,106 @@ AZURE_JUDGE_REASONING_EFFORT = "low"
 # blanket "never mix judge models" was retired by the founder on 2026-08-11 because
 # re-benchmarking is routine here, which makes the cheap judge the enabling one.
 DEFAULT_JUDGE = os.environ.get("EW_JUDGE", AZURE_JUDGE_DEPLOYMENT_ID)
+
+
+_usage_lock = threading.Lock()
+# Set once the cap is passed: every later Azure call in this process refuses before sending,
+# even where a worker thread swallowed the first stop.
+_spend_cap_hit = False
+
+
+def _record_usage(deployment: str, usage) -> None:
+    """#4450: opt-in token metering for spend receipts. Appends the response's own `usage`
+    object to EW_JUDGE_USAGE_LOG when that variable names a file; otherwise does nothing, so
+    grading behaviour and output are unchanged."""
+    path = os.environ.get("EW_JUDGE_USAGE_LOG")
+    if not path or not isinstance(usage, dict):
+        return
+    line = json.dumps({"deployment": deployment, "usage": usage}, sort_keys=True) + "\n"
+    with _usage_lock, open(path, "a", encoding="utf-8") as f:
+        f.write(line)
+    _enforce_spend_cap(path)
+
+
+# #4450: USD per 1M tokens (input, output) for the Azure deployments the exams use, and USD per
+# 1M characters for Azure neural TTS. Sources: Azure retail prices API (gpt-6.1-sol, global
+# standard short context, East US 2, read 2026-11-07); cloud-llm-credits.md (gpt-5.6-luna).
+AZURE_PRICES = {"gpt-6-1-sol": (2.0, 10.0), "gpt-5-6-luna": (0.20, 1.20)}
+AZURE_TTS_PER_M_CHARS = 16.0
+
+
+def azure_spend_usd(folder: Path) -> float:
+    """Azure spend recorded in every `usage-*.jsonl` ledger in `folder`. An unpriced Azure deployment is an
+    error, never zero: a cap that cannot price a call cannot enforce anything."""
+    total = 0.0
+    for log in sorted(folder.glob("usage-*.jsonl")):
+        for raw in log.read_text(encoding="utf-8").splitlines():
+            if not raw.strip():
+                continue
+            row = json.loads(raw)
+            dep = row.get("deployment", "")
+            if dep.startswith("anthropic/"):
+                continue
+            if dep == "azure-tts":
+                total += row["chars"] / 1e6 * AZURE_TTS_PER_M_CHARS
+                continue
+            if dep not in AZURE_PRICES:
+                raise RuntimeError(f"spend cap: no price for deployment {dep!r} in {log}")
+            pin, pout = AZURE_PRICES[dep]
+            u = row["usage"]
+            total += (u.get("prompt_tokens", 0) / 1e6 * pin
+                      + u.get("completion_tokens", 0) / 1e6 * pout)
+    return total
+
+
+def _cap_ledger() -> Path | None:
+    """The ledger a capped run must meter into, or None when no cap is set. A cap without a
+    usable ledger is refused: it could not count what it is meant to stop."""
+    cap = os.environ.get("EW_SPEND_CAP_USD")
+    if not cap:
+        return None
+    path = os.environ.get("EW_JUDGE_USAGE_LOG", "")
+    if not path or not Path(path).name.startswith("usage-") or not path.endswith(".jsonl"):
+        raise SystemExit("SPEND CAP: EW_SPEND_CAP_USD needs EW_JUDGE_USAGE_LOG=<folder>/usage-*.jsonl")
+    return Path(path)
+
+
+def precheck_spend(deployment: str, reserve_usd: float | None = None) -> None:
+    """Before any paid Azure request (#4450): the deployment must be priced and the ledger's
+    spend plus a reserve for requests still in flight must stay under the cap. Runs on every
+    request, so a restarted process over budget refuses before sending. Reserve: one worst-case
+    judge request (16,000 output tokens at the output price) per concurrent worker (12),
+    overridable with EW_SPEND_RESERVE_USD."""
+    ledger = _cap_ledger()
+    if ledger is None:
+        return
+    if deployment != "azure-tts" and deployment not in AZURE_PRICES:
+        raise SystemExit(f"SPEND CAP: no price for deployment {deployment!r}; refusing to send")
+    if reserve_usd is None:
+        reserve_usd = float(os.environ.get(
+            "EW_SPEND_RESERVE_USD", 12 * 16000 / 1e6 * max(p[1] for p in AZURE_PRICES.values())))
+    spent = azure_spend_usd(ledger.parent)
+    cap = float(os.environ["EW_SPEND_CAP_USD"])
+    if spent + reserve_usd > cap:
+        global _spend_cap_hit
+        _spend_cap_hit = True
+        raise SystemExit(f"SPEND CAP: Azure spend ${spent:.2f} + reserve ${reserve_usd:.2f} "
+                         f"would pass the ${cap:.2f} cap; refusing to send")
+
+
+def _enforce_spend_cap(path: str) -> None:
+    """Hard stop: when EW_SPEND_CAP_USD is set, every metered call re-sums the run's ledger
+    folder and aborts the process once Azure spend passes the cap."""
+    cap = os.environ.get("EW_SPEND_CAP_USD")
+    if not cap:
+        return
+    if not Path(path).name.startswith("usage-") or not path.endswith(".jsonl"):
+        raise SystemExit(f"SPEND CAP: ledger {path} must be named usage-*.jsonl to be counted")
+    spent = azure_spend_usd(Path(path).parent)
+    if spent > float(cap):
+        global _spend_cap_hit
+        _spend_cap_hit = True
+        raise SystemExit(f"SPEND CAP: Azure spend ${spent:.2f} passed the ${float(cap):.2f} cap; stopping")
 
 
 def _azure_judge_settings(deployment: str) -> dict[str, str]:
@@ -439,7 +540,11 @@ def call_azure(deployment: str, system: str, user: str) -> str:
         headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
         method="POST",
     )
+    if _spend_cap_hit:
+        raise SystemExit("SPEND CAP already passed in this process; refusing a new Azure call")
+    precheck_spend(deployment)
     data = _http_json(_no_redirect_opener(), req, 300)
+    _record_usage(deployment, data.get("usage"))
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
