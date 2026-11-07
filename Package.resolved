@@ -1,5 +1,5 @@
 {
-  "originHash" : "77ce4475b007278667cf7d87280271ea1c6ecbf17eab6d153fe777e370b6b95e",
+  "originHash" : "cf005b18818bdb60bde641c7edc7be20f7b7a48ddcfc9df5607db570e58f3a22",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -39,8 +39,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PhoneNumberKit/PhoneNumberKit.git",
       "state" : {
-        "revision" : "faf1703e6fc71c699e911ff0e306c58ad7c756c0",
-        "version" : "5.0.11"
+        "revision" : "eae725a2e62eb2f291d8188dd457e2a7b28d5003",
+        "version" : "5.0.13"
       }
     },
     {
@@ -48,8 +48,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "e7ddccc6cedb44bde5b484070f6a99c817ee192f",
-        "version" : "3.89.0"
+        "revision" : "2b6b6b4301c14c3b51cb1a7827c954bb17d1b083",
+        "version" : "3.92.7"
       }
     },
     {
@@ -65,8 +65,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle.git",
       "state" : {
-        "revision" : "eef1a539a373c1f1a320624b1130fc5de7b2e100",
-        "version" : "2.10.0"
+        "revision" : "ab7d71291238df6e0492143b120c9b696a35f603",
+        "version" : "2.10.1"
       }
     },
     {
