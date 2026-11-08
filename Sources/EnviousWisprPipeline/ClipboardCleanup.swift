@@ -18,9 +18,10 @@ import EnviousWisprServices
 /// **A checked cleanup (#3106 PR B) holds the slot longer.** It keeps the same
 /// 200 ms minimum, then waits for the paste's retention verdict before restoring or
 /// keeping the dictation. A paste seen in the field resolves it at first sight; a
-/// potential miss waits up to the app's learned patience (#4426: 300 to 2,500 ms
-/// after dispatch, 1,500 by default), so text an app reveals late is restored, not
-/// kept. The "same wall-clock moment" above holds for an unchecked cleanup; a
+/// potential miss waits for the effective patience frozen for that paste (#4426: the
+/// learned estimate floored by the app's deadline, scheduled 300 to 2,500 ms after
+/// dispatch, 1,500 for an app not yet learned), so text an app reveals late is
+/// restored, not kept. The "same wall-clock moment" above holds for an unchecked cleanup; a
 /// checked one restores at the later of 200 ms and the verdict.
 ///
 /// **DO NOT REPLACE THIS WITH "DETECT WHEN THE APP HAS READ IT". It was built,

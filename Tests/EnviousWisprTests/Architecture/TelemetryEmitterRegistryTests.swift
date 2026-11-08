@@ -253,8 +253,13 @@ struct TelemetryEmitterRegistryTests {
   /// check (a stopped check sends nothing): a closed outcome and the bundled model revision.
   /// Reader: the weekly-digest Live speaker labels section. The meeting.ended site did not move;
   /// it gained seven optional live_* keys.
+  /// #4426: `pasteLandingObserved` gains `patienceMs:` (property `patience_ms`, Int, on every
+  /// row), which changes that one site's enclosing-function identity. Same event, same single
+  /// site, same per_take cadence and sampling, no new row per month, same take_id join, no
+  /// content (a number of milliseconds); the event's row stays unchanged. Reader: the #4426 plan
+  /// release review of patience by app class and the late-hit rate split by version.
   static let sitesFingerprint =
-    "2804fced4411c88f81af5aaa21fa6a235851da8203d5de4a402d6402eb594375"
+    "2f803a7d4f2e0824abe4ac7faf569ab8b1bf0c00f3874615552417fb3eea0428"
   static let ungradedFingerprint =
     "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
 

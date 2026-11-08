@@ -33,7 +33,10 @@ struct PasteLandingTelemetryTests {
       ax.reads = [.text("Hello")]
       ax.selectedRange = .range(location: 5, length: 0)
     }
-    func prepare(tier: PasteTier = .cgEvent, takeID: String?, origin: String? = nil)
+    func prepare(
+      tier: PasteTier = .cgEvent, takeID: String?, origin: String? = nil,
+      patience: PasteRevealPatience? = nil
+    )
       -> PasteArrivalCapture?
     {
       PasteArrivalCapture.prepare(
@@ -41,7 +44,8 @@ struct PasteLandingTelemetryTests {
           tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit",
           payload: "send the draft to Maya", origin: origin),
         capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
-        scheduler: clock, patience: nil, report: { self.rows.append($0) }, log: { self.lines.append($0) })
+        scheduler: clock, patience: patience, report: { self.rows.append($0) },
+        log: { self.lines.append($0) })
     }
     var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
     /// Commit, then run the clock past the deadline and the whole late-hit shadow.
@@ -68,8 +72,34 @@ struct PasteLandingTelemetryTests {
         PasteArrivalObservation(
           takeID: "TAKE-ROW", tier: "cgevent", landing: .absent, appClass: .native,
           hostExposedFocus: true, targetWindow: .unknown, beforeMs: 0, resolveMs: 300,
-          lateCheck: .completedNoHit)
+          lateCheck: .completedNoHit, patienceMs: PasteRevealPatience.defaultMs)
       ])
+  }
+
+  @Test(
+    "The row carries the patience this paste froze, even after a later paste changed the estimate (#4426)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func patienceIsTheFrozenValue() throws {
+    let rig = Rig()
+    let patience = PasteRevealPatience()
+    let session = try prepared(rig.prepare(takeID: "TAKE-P", patience: patience))
+    session.commit()
+    rig.clock.advance(ms: 475)
+    // A later paste to the same app is seen late (2,000 ms), so the shared estimate grows to the
+    // cap while this paste is still watching.
+    let later = try #require(patience.recordDispatch(bundleID: "com.apple.TextEdit"))
+    #expect(patience.recordSighting(later, revealMs: 2_000))
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == PasteRevealPatience.capMs)
+    // This paste's own text then shows at 500 ms: a late hit, its decision still the 300 ms one.
+    rig.ax.reads = [.text("Hello send the draft to Maya")]
+    rig.clock.advance(ms: 25)
+    rig.clock.advance(ms: 2_500)
+    #expect(rig.rows.count == 1)
+    let row = try #require(rig.rows.first)
+    #expect(row.patienceMs == PasteRevealPatience.defaultMs)
+    #expect(row.landing == .absent && row.resolveMs == 300)
+    #expect(row.lateCheck == .found(ms: 500))
+    #expect(rig.lines.first?.contains("late_found_ms=500 patience_ms=1500 ") == true)
   }
 
   @Test("Each of the three key-paste tiers names itself")
@@ -169,9 +199,9 @@ struct PasteLandingTelemetryTests {
     private static let row = PasteArrivalObservation(
       takeID: "TAKE-RAW", tier: "cgevent", landing: .absent, appClass: .native,
       hostExposedFocus: true, targetWindow: .unknown, beforeMs: 3, resolveMs: 312,
-      lateCheck: .completedNoHit)
+      lateCheck: .completedNoHit, patienceMs: 1_800)
 
-    @Test("The live reporter sends exactly ten keys, each of the approved type")
+    @Test("The live reporter sends exactly eleven keys, each of the approved type")
     func rawShape() throws {
       let raws = rawRows { PasteArrivalCapture.liveReport(Self.row) }
       #expect(raws.count == 1)
@@ -179,7 +209,7 @@ struct PasteLandingTelemetryTests {
       #expect(
         Set(raw.keys) == [
           "take_id", "tier", "observed", "reason", "app_class", "target_window",
-          "host_exposed_focus", "before_ms", "resolve_ms", "late_check_status",
+          "host_exposed_focus", "before_ms", "resolve_ms", "late_check_status", "patience_ms",
         ])
       #expect(raw["take_id"] as? String == "TAKE-RAW")
       #expect(raw["tier"] as? String == "cgevent")
@@ -190,6 +220,7 @@ struct PasteLandingTelemetryTests {
       #expect(raw["host_exposed_focus"] as? Bool == true)
       #expect(raw["before_ms"] as? Int == 3 && raw["resolve_ms"] as? Int == 312)
       #expect(raw["late_check_status"] as? String == "completed_no_hit")
+      #expect(raw["patience_ms"] as? Int == 1_800)
     }
 
     @Test("A late hit adds late_found_ms as a number; a row with no take id omits the key")
@@ -197,23 +228,24 @@ struct PasteLandingTelemetryTests {
       let late = PasteArrivalObservation(
         takeID: nil, tier: "menu_paste", landing: .noTarget, appClass: .browser,
         hostExposedFocus: false, targetWindow: .same, beforeMs: 1, resolveMs: 300,
-        lateCheck: .found(ms: 640))
+        lateCheck: .found(ms: 640), patienceMs: 700)
       let raw = try #require(rawRows { PasteArrivalCapture.liveReport(late) }.first)
       #expect(raw["take_id"] == nil)
       #expect(raw["observed"] as? String == "no_target" && raw["reason"] as? String == "no_target")
       #expect(raw["late_check_status"] as? String == "found")
       #expect(raw["late_found_ms"] as? Int == 640)
-      #expect(raw.count == 10)
+      #expect(raw["patience_ms"] as? Int == 700)
+      #expect(raw.count == 11)
     }
 
-    @Test("An Undo restore's row adds origin as an eleventh key; nothing else changes (#3437)")
+    @Test("An Undo restore's row adds origin as a twelfth key; nothing else changes (#3437)")
     func rawOrigin() throws {
       let undo = PasteArrivalObservation(
         takeID: "TAKE-RAW", tier: "cgevent", landing: .absent, appClass: .native,
         hostExposedFocus: true, targetWindow: .unknown, beforeMs: 3, resolveMs: 312,
-        lateCheck: .completedNoHit, origin: "escape_recovery_undo")
+        lateCheck: .completedNoHit, patienceMs: 1_500, origin: "escape_recovery_undo")
       let raw = try #require(rawRows { PasteArrivalCapture.liveReport(undo) }.first)
-      #expect(raw.count == 11)
+      #expect(raw.count == 12)
       #expect(raw["origin"] as? String == "escape_recovery_undo")
     }
 

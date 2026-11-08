@@ -1161,6 +1161,12 @@ public final class TelemetryService {
   /// neither. `resolve_ms` is dispatch to the landing decision. `late_check_status` says whether a
   /// potential miss was watched afterwards (`not_applicable`, `completed_no_hit`, `found`,
   /// `censored`); `late_found_ms` (dispatch to the late sighting) is present only for `found`.
+  /// Since #4426 the watch runs to 2,500 ms after dispatch (1,500 before), so `completed_no_hit`
+  /// covers a longer horizon: compare it across that change only split by app version.
+  /// `patience_ms` (#4426) is the effective scheduled patience frozen at commit, not measured
+  /// verdict or notice latency: the learned estimate floored by the app's own deadline and capped
+  /// at the 2,500 ms scheduled observation cap (300 to 2,500; 1,500 for an app not yet learned).
+  /// Slow Accessibility reads or a busy main actor can run past it.
   /// Shape only: no text, selection, window title, bundle id or manual-accessibility flag.
   /// `take_id` is omitted, never invented, when the session carried none; the join's take-coverage
   /// query counts that row as a gap. Sampled by `TelemetryVolumePolicy` (an early `found` at the
@@ -1169,12 +1175,13 @@ public final class TelemetryService {
   public func pasteLandingObserved(
     takeID: String?, tier: String, observed: String, reason: String, appClass: String,
     hostExposedFocus: Bool, targetWindow: String, beforeMs: Int, resolveMs: Int,
-    lateCheckStatus: String, lateFoundMs: Int?, origin: String? = nil
+    lateCheckStatus: String, lateFoundMs: Int?, patienceMs: Int, origin: String? = nil
   ) {
     var props: [String: Any] = [
       "tier": tier, "observed": observed, "reason": reason, "app_class": appClass,
       "host_exposed_focus": hostExposedFocus, "target_window": targetWindow,
       "before_ms": beforeMs, "resolve_ms": resolveMs, "late_check_status": lateCheckStatus,
+      "patience_ms": patienceMs,
     ]
     if let lateFoundMs { props["late_found_ms"] = lateFoundMs }
     if let takeID { props["take_id"] = takeID }

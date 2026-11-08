@@ -6,8 +6,9 @@ import Foundation
 /// Why it exists: many apps reveal pasted text to Accessibility after the 300 ms landing decision
 /// (fleet, 30 days to 2026-11-07: 1,666 late sightings after an `absent` decision, p50 491 ms, p99
 /// 1,556 ms, mostly Chrome, Claude and Codex). Keeping the dictation on the clipboard and showing
-/// "Copied" for those is a false notice. The arrival session waits up to this patience for a
-/// potential miss before the clipboard is kept, and a sighting within it never keeps.
+/// "Copied" for those is a false notice. Each paste freezes an effective patience from this learned
+/// estimate (floored by the app's deadline, capped at 2,500 ms); a potential miss is not kept
+/// before that scheduled moment, and a sighting within it never keeps.
 ///
 /// One rule, "grow fast, shrink slowly", per bundle id:
 /// - start at `defaultMs`;

@@ -285,6 +285,9 @@ package struct PasteArrivalObservation: Sendable, Equatable {
   /// Dispatch to the landing decision.
   package let resolveMs: Int
   package let lateCheck: PasteArrivalLateCheck
+  /// #4426: the effective scheduled patience this paste froze at commit, not measured verdict or
+  /// notice latency. Never re-read from the learned estimate, which a later paste may change.
+  package let patienceMs: Int
   /// #3437: who asked for the paste (`escape_recovery_undo`), or nil for an ordinary dictation.
   package let origin: String?
 
@@ -292,7 +295,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
     takeID: String?, tier: String, landing: PasteArrivalLanding,
     appClass: TelemetryService.LearnFromEditsTelemetry.AppClass, hostExposedFocus: Bool,
     targetWindow: PasteLandingTargetWindow, beforeMs: Int, resolveMs: Int,
-    lateCheck: PasteArrivalLateCheck, origin: String? = nil
+    lateCheck: PasteArrivalLateCheck, patienceMs: Int, origin: String? = nil
   ) {
     self.takeID = takeID
     self.tier = tier
@@ -303,6 +306,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
     self.beforeMs = beforeMs
     self.resolveMs = resolveMs
     self.lateCheck = lateCheck
+    self.patienceMs = patienceMs
     self.origin = origin
   }
 }
@@ -434,7 +438,9 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private let patience: PasteRevealPatience?
   /// This paste's dispatch, taken at commit; a newer dispatch to the same app refuses its sample.
   private var dispatchToken: PasteRevealPatience.DispatchToken?
-  /// Frozen at commit: how long a potential miss may wait for a sighting before it is kept.
+  /// #4426: the effective patience, frozen at commit: when, after dispatch, a potential miss's
+  /// verdict is scheduled (the learned estimate floored by the app's deadline, capped at 2,500).
+  /// A schedule, not a measured latency.
   package private(set) var effectivePatienceMs = PasteRevealPatience.defaultMs
   private var patienceEnd: (any PastedRegionScheduledWork)?
   /// One learning sample per paste, at its first sighting.
@@ -996,7 +1002,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     let observation = PasteArrivalObservation(
       takeID: context.takeID, tier: context.tier.rawValue, landing: landing, appClass: appClass,
       hostExposedFocus: hostExposedFocus, targetWindow: targetWindow, beforeMs: beforeMs,
-      resolveMs: resolveMs, lateCheck: lateCheck, origin: context.origin)
+      resolveMs: resolveMs, lateCheck: lateCheck, patienceMs: effectivePatienceMs,
+      origin: context.origin)
     log(logLine(observation))
     reporter(observation)
     finish()
@@ -1011,7 +1018,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       + "target_window=\(o.targetWindow.rawValue) before_ms=\(o.beforeMs) resolve_ms=\(o.resolveMs) "
       + "late_check=\(o.lateCheck.status)"
     if case .found(let ms) = o.lateCheck { line += " late_found_ms=\(ms)" }
-    return line + " focus_reannounced=\(focusReannouncements)"
+    // #4426: after late_found_ms, so the runtime UAT's line pattern keeps its groups.
+    return line + " patience_ms=\(o.patienceMs) focus_reannounced=\(focusReannouncements)"
   }
 
   /// The production reporter: the vendor event.
@@ -1022,7 +1030,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       takeID: o.takeID, tier: o.tier, observed: o.landing.observed, reason: o.landing.reason,
       appClass: o.appClass.rawValue, hostExposedFocus: o.hostExposedFocus,
       targetWindow: o.targetWindow.rawValue, beforeMs: o.beforeMs, resolveMs: o.resolveMs,
-      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs, origin: o.origin)
+      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs, patienceMs: o.patienceMs,
+      origin: o.origin)
   }
 
   /// Returns once the session has finished: reported, or cancelled before commit. The one thing an
