@@ -46,8 +46,8 @@ Some apps built on web technology accept text input and then quietly drop it. En
 
 When EnviousWispr cannot deliver your words, it shows **Copied. Press ⌘V to paste** and leaves them on your clipboard. In most apps it does the same when it can see that a paste went nowhere, for example when no text box was selected.
 
-1. Click into a text box.
-2. Press Cmd+V.
+1. Look at the text box first. Some apps show your words a moment late, so they may already be there.
+2. If they are not, click into a text box and press Cmd+V.
 3. Check that EnviousWispr has the Accessibility permission, then click into the text box you want before your next recording.
 
 Because your words stay on the clipboard, whatever you had copied before that dictation is replaced. If you are not sure what is on your clipboard, click into a text box and press **Control Command V** (unless you changed that key), or choose **Paste Last Dictation** in the menu bar menu. If it does nothing right after a dictation, try again a moment later.
