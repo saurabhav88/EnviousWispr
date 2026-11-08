@@ -139,7 +139,11 @@ def _record_usage(deployment: str, usage) -> None:
               "total_tokens": count(usage, "total_tokens"),
               "reasoning_tokens": count(usage.get("completion_tokens_details"), "reasoning_tokens"),
               "cached_tokens": count(usage.get("prompt_tokens_details"), "cached_tokens")}
-    line = json.dumps({"deployment": deployment, "usage": tokens}, sort_keys=True) + "\n"
+    # The deployment is written as the price-table key it matches, so the ledger records only
+    # names this file defines. An unpriced name is written as "unpriced", which the spend
+    # reader refuses (azure_spend_usd raises on any deployment it cannot price).
+    priced = next((k for k in AZURE_PRICES if k == deployment), "unpriced")
+    line = json.dumps({"deployment": priced, "usage": tokens}, sort_keys=True) + "\n"
     with _usage_lock, open(path, "a", encoding="utf-8") as f:
         f.write(line)
     _enforce_spend_cap(path)
