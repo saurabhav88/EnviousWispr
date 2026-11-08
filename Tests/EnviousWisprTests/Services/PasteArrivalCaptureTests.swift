@@ -26,7 +26,8 @@ struct PasteArrivalCaptureTests {
   }
 
   func prepare(
-    _ payload: String = "Sarah ", tier: PasteTier = .cgEvent, bundle: String? = "com.apple.TextEdit"
+    _ payload: String = "Sarah ", tier: PasteTier = .cgEvent, bundle: String? = "com.apple.TextEdit",
+    patience: PasteRevealPatience? = nil
   ) throws -> PasteArrivalCapture {
     let reports = self.reports
     // Not `#require`: its expansion wants a Sendable value, and a session holds AX handles.
@@ -34,7 +35,7 @@ struct PasteArrivalCaptureTests {
       let session = PasteArrivalCapture.prepare(
         .init(tier: tier, pid: pid, takeID: "take-1", bundleID: bundle, payload: payload),
         capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: scheduler,
-        report: { reports.list.append($0) })
+        patience: patience, report: { reports.list.append($0) })
     else { throw NotPrepared() }
     return session
   }
@@ -208,6 +209,216 @@ struct PasteArrivalCaptureTests {
     #expect(ax.rangeCalls.isEmpty, "the original field's range reader cannot describe another field")
   }
 
+  // MARK: Retention verdict and learned patience (#4426)
+
+  /// Teaches `patience` `count` admitted sightings of `ms` for TextEdit, outside any session.
+  func teach(_ patience: PasteRevealPatience, _ ms: Int, count: Int = 1, bundle: String = "com.apple.TextEdit") {
+    for _ in 0..<count {
+      let token = patience.recordDispatch(bundleID: bundle)!
+      patience.recordSighting(token, revealMs: ms)
+    }
+  }
+
+  @Test("A found paste resolves the retention verdict at once, as found")
+  func foundResolvesRetentionAtOnce() async throws {
+    let session = try prepare()
+    ax.reads = [.text("Hi Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 25)
+    #expect(session.retentionSettled)
+    #expect(await session.retentionVerdict() == .found(.sameField))
+  }
+
+  @Test("A sighting at 500 ms, after the 300 ms absent decision, is found for the clipboard",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func lateHitWithinPatienceIsFoundForRetention() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    #expect(session.retentionSettled == false, "a potential miss waits for its patience")
+    scheduler.advance(ms: 175)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    #expect(await session.retentionVerdict() == .found(.sameField))
+    // The historical observation is unchanged.
+    #expect(reports.list.map(\.landing) == [.absent])
+    #expect(reports.list.first?.resolveMs == 300)
+    #expect(reports.list.first?.lateCheck == .found(ms: 500))
+  }
+
+  @Test("An untouched miss keeps its absent decision exactly at the default 1,500 ms patience")
+  func untouchedMissResolvesAtPatience() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 1_499)
+    #expect(session.retentionSettled == false)
+    scheduler.advance(ms: 1)
+    #expect(await session.retentionVerdict() == .absent)
+    #expect(reports.list.isEmpty, "still watched to the 2,500 ms cap")
+    scheduler.advance(ms: 1_000)
+    #expect(reports.list.map(\.lateCheck) == [.completedNoHit])
+  }
+
+  @Test("A sighting after patience keeps the verdict but teaches: 1,800 ms grows patience to 2,500")
+  func hitAfterPatienceTeachesWithoutRewriting() async throws {
+    let patience = PasteRevealPatience()
+    let session = try prepare(patience: patience)
+    session.commit()
+    scheduler.advance(ms: 1_500)
+    #expect(await session.retentionVerdict() == .absent)
+    scheduler.advance(ms: 275)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    #expect(await session.retentionVerdict() == .absent, "a resolved verdict is never rewritten")
+    #expect(reports.list.first?.lateCheck == .found(ms: 1_800))
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 2_500)
+  }
+
+  @Test("A sighting at the same moment patience runs out is found, not kept")
+  func sameMomentSightingBeatsPatience() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 1_499)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 1)
+    #expect(await session.retentionVerdict() == .found(.sameField))
+  }
+
+  @Test("Permission lost just before patience runs out never keeps the dictation")
+  func permissionLostAtPatienceDoesNotRetain() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 1_499)
+    ax.trusted = false
+    scheduler.advance(ms: 1)
+    #expect(await session.retentionVerdict() == nil)
+  }
+
+  @Test("A watch that lost its destination neither keeps nor learns when the text shows up later")
+  func lostThenReturnedTeachesNothing() async throws {
+    let patience = PasteRevealPatience()
+    teach(patience, 20, count: 9)
+    let session = try prepare(patience: patience)
+    session.commit()
+    scheduler.advance(ms: 300)
+    registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
+    #expect(await session.retentionVerdict() == nil)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 200)
+    #expect(await session.retentionVerdict() == nil, "a resolved verdict is never rewritten")
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_500, "still nine samples")
+  }
+
+  @Test("Patience never resolves sooner than the app's own deadline: Ghostty stays at 700 ms")
+  func patienceRespectsTheDeadlineFloor() throws {
+    let patience = PasteRevealPatience()
+    teach(patience, 20, count: 25, bundle: "com.mitchellh.ghostty")
+    #expect(patience.patienceMs(bundleID: "com.mitchellh.ghostty") == 300)
+    let session = try prepare(bundle: "com.mitchellh.ghostty", patience: patience)
+    session.commit()
+    #expect(session.effectivePatienceMs == 700)
+  }
+
+  @Test("Losing the destination before patience never keeps the dictation")
+  func lostComparisonBeforePatienceDoesNotRetain() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
+    #expect(session.retentionSettled)
+    #expect(await session.retentionVerdict() == nil)
+    #expect(session.landing == .absent, "the historical decision is unchanged")
+  }
+
+  @Test("Cancellation resolves an open verdict to nil and never rewrites a resolved one")
+  func cancellationAndResolvedVerdicts() async throws {
+    let open = try prepare()
+    open.commit()
+    scheduler.advance(ms: 300)
+    open.cancel()
+    #expect(await open.retentionVerdict() == nil)
+
+    let resolved = try prepare()
+    resolved.commit()
+    scheduler.advance(ms: 1_500)
+    resolved.cancel()
+    #expect(await resolved.retentionVerdict() == .absent)
+  }
+
+  @Test("Uncommitted and edit-only sessions have no verdict")
+  func uncommittedAndEditOnlyHaveNoVerdict() async throws {
+    let armed = try prepare()
+    #expect(await armed.retentionVerdict() == nil)
+    let editOnly = PasteArrivalCapture.editOnly(
+      pid: pid, bundleID: "com.apple.TextEdit", payload: "Sarah ", ax: ax, scheduler: scheduler)
+    #expect(await editOnly.retentionVerdict() == nil)
+  }
+
+  @Test("Concurrent waiters share one verdict")
+  func concurrentRetentionWaitersShareOneVerdict() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    let first = Task { await session.retentionVerdict() }
+    let second = Task { await session.retentionVerdict() }
+    await Self.awaitSignal("two waiters joined") { fire in
+      var joined = 0
+      session.onLandingWaiter = {
+        joined += 1
+        if joined == 2 { fire() }
+      }
+    }
+    scheduler.advance(ms: 1_200)
+    #expect(await first.value == .absent)
+    #expect(await second.value == .absent)
+  }
+
+  @Test("One paste teaches exactly one sample: the tenth admitted sample shrinks once, to 1,350")
+  func onePasteTeachesOneSample() throws {
+    let patience = PasteRevealPatience()
+    teach(patience, 20, count: 9)
+    let session = try prepare(patience: patience)
+    ax.reads = [.text("Hi Sarah ")]
+    session.commit()
+    scheduler.advance(ms: 25)
+    #expect(session.landing == .found(.sameField))
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_350)
+  }
+
+  @Test("An older paste's sighting is refused once a newer paste to the same app was dispatched")
+  func overlappedPasteDoesNotTeach() throws {
+    let patience = PasteRevealPatience()
+    let older = try prepare(patience: patience)
+    older.commit()
+    let newer = try prepare(patience: patience)
+    newer.commit()
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    // Both sessions see the text; only the newer dispatch may teach. One 25 ms sample during
+    // warm-up leaves the default; a refused one leaves it too, so check the count via warm-up.
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_500)
+    teach(patience, 20, count: 8)
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_500, "nine admitted so far")
+    teach(patience, 20)
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_350)
+  }
+
+  @Test("After a bounded contaminated sample (2,400 to 2,160), a 1,000 ms arrival is still found")
+  func contaminatedPatienceStillCoversASlowArrival() async throws {
+    let patience = PasteRevealPatience()
+    teach(patience, 1_600, count: 9)
+    teach(patience, 500)
+    #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 2_160)
+    let session = try prepare(patience: patience)
+    session.commit()
+    #expect(session.effectivePatienceMs == 2_160)
+    scheduler.advance(ms: 1_000)
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    #expect(await session.retentionVerdict() == .found(.sameField))
+  }
+
   // MARK: Positives
 
   @Test("Ghostty's miss waits for its own 700 ms deadline; another app's is decided at 300 ms")
@@ -281,7 +492,7 @@ struct PasteArrivalCaptureTests {
   // MARK: Negatives and their guards
 
   @Test(
-    "a stable field without the text is absent at 300 ms, then shadowed to 1.5 s before one report")
+    "a stable field without the text is absent at 300 ms, then watched to the 2.5 s cap before one report (#4426)")
   func stableMissShadowsThenReports() throws {
     let session = try prepare()
     session.commit()
@@ -291,7 +502,7 @@ struct PasteArrivalCaptureTests {
     #expect(session.landing == .absent)
     #expect(session.phase == .shadowing)
     #expect(reports.list.isEmpty, "a potential miss reports only after its shadow")
-    scheduler.advance(ms: 1_200)
+    scheduler.advance(ms: 2_200)
     #expect(reports.list.count == 1)
     #expect(reports.list.first?.landing == .absent)
     #expect(reports.list.first?.lateCheck == .completedNoHit)
@@ -346,7 +557,7 @@ struct PasteArrivalCaptureTests {
     #expect(session.landing == .absent)
     // Still a miss the shadow watches to the end: the re-announcement lost nothing.
     registration?.fire(.focusedElementChanged, element: field)
-    scheduler.advance(ms: 1_200)
+    scheduler.advance(ms: 2_200)
     #expect(reports.list.map(\.lateCheck) == [.completedNoHit])
   }
 
@@ -387,7 +598,7 @@ struct PasteArrivalCaptureTests {
     #expect(session.landing == .absent)
     registration?.fire(.focusedElementChanged, element: field)
     registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
-    scheduler.advance(ms: 1_200)
+    scheduler.advance(ms: 2_200)
     #expect(reports.list.map(\.lateCheck) == [.censored])
   }
 
@@ -643,7 +854,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 300)
     #expect(session.landing == .absent)
     registration?.fire(.focusedElementChanged)
-    scheduler.advance(ms: 1_200)
+    scheduler.advance(ms: 2_200)
     #expect(reports.list.map(\.lateCheck) == [.censored])
     #expect(reports.list.first?.landing == .absent, "the decision stands")
   }
@@ -659,7 +870,7 @@ struct PasteArrivalCaptureTests {
     // One shadow read of the same element through the same reader whose count spends its budget
     // (about 19,900 starts x 101 units), then the ordinary field again.
     ax.reads = [.text(String(repeating: "a", count: 19_999) + "b"), .text("Hi ")]
-    scheduler.advance(ms: 1_200)
+    scheduler.advance(ms: 2_200)
     #expect(reports.list.map(\.lateCheck) == [.censored])
   }
 
@@ -777,7 +988,7 @@ struct PasteArrivalCaptureTests {
   func editRequestRetriesOnItsOwnTimer() async throws {
     let session = try prepare()
     session.commit()
-    scheduler.advance(ms: 1_600)  // the landing session has decided and shadowed out
+    scheduler.advance(ms: 2_600)  // the landing session has decided and shadowed out
     #expect(session.phase == .finished)
     let probe = await startEditRequest(session)
     scheduler.advance(ms: 1_000)
@@ -885,7 +1096,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 500)
     #expect(count.attempts == before, "no read for a withdrawn request")
     session.cancelEditWatchCapture()  // idempotent
-    scheduler.advance(ms: 1_000)
+    scheduler.advance(ms: 2_000)
     #expect(reports.list.map(\.lateCheck) == [.completedNoHit], "the landing report is untouched")
   }
 

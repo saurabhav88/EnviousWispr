@@ -47,7 +47,7 @@ struct PasteLandingTelemetryTests {
     /// Commit, then run the clock past the deadline and the whole late-hit shadow.
     func ran(_ session: PasteArrivalCapture) {
       session.commit()
-      clock.advance(ms: 1_500)
+      clock.advance(ms: 2_500)
     }
   }
 
@@ -88,9 +88,9 @@ struct PasteLandingTelemetryTests {
     let rig = Rig()
     let cancelled = try prepared(rig.prepare(takeID: "TAKE-C"))
     cancelled.cancelUnlessCommitted()
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     let uncommitted = try prepared(rig.prepare(takeID: "TAKE-C"))
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     uncommitted.cancelUnlessCommitted()
     #expect(rig.rows.isEmpty)
 
@@ -106,12 +106,12 @@ struct PasteLandingTelemetryTests {
     found.ax.reads = [.text("Hello send the draft to Maya")]
     early.commit()
     found.registration?.fire(.valueChanged)
-    found.clock.advance(ms: 2_000)
+    found.clock.advance(ms: 3_000)
     #expect(found.rows.map(\.lateCheck) == [.notApplicable])
 
     let miss = Rig()
     miss.ran(try prepared(miss.prepare(takeID: "TAKE-M")))
-    miss.clock.advance(ms: 2_000)
+    miss.clock.advance(ms: 3_000)
     #expect(miss.rows.map(\.lateCheck) == [.completedNoHit])
 
     let cancel = Rig()
@@ -120,7 +120,7 @@ struct PasteLandingTelemetryTests {
     cancel.clock.advance(ms: 400)
     session.cancel()
     session.cancel()
-    cancel.clock.advance(ms: 2_000)
+    cancel.clock.advance(ms: 3_000)
     #expect(cancel.rows.map(\.lateCheck) == [.censored])
   }
 

@@ -932,8 +932,8 @@ import os
     #expect(holder.session?.landing == nil)
 
     telemetryState.takeID = "TAKE-43"  // the next take starts; this session keeps its own id
-    // A potential miss: decided at 300 ms, then shadowed to 1.5 s; its timers hold it weakly.
-    clock.advance(ms: 1_500)
+    // A potential miss: decided at 300 ms, then watched to the 2.5 s cap (#4426); its timers hold it weakly.
+    clock.advance(ms: 2_500)
     var iterator = lines.makeAsyncIterator()
     let line = try #require(await iterator.next())
     #expect(

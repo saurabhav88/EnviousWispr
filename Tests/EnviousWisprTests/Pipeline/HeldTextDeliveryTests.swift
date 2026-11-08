@@ -295,7 +295,7 @@ struct HeldTextDeliveryTests {
     delivered.arrivalCapture = nil
     // Let the delivery's task start awaiting the session, then run its clock to the report.
     await Task.yield()
-    scheduler.advance(ms: 1_500)
+    scheduler.advance(ms: 2_500)
 
     #expect(reports.lines == ["escape_recovery_undo"], "exactly one report, from a session nothing else held")
   }

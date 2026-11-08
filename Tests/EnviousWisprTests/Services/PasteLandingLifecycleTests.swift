@@ -545,7 +545,7 @@ extension PasteLandingLifecycleTests {
     let rig = Rig()
     let session = try prepared(rig.prepare())
     session.commit()
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .absent)
     #expect(
       rig.lines == [
@@ -564,7 +564,7 @@ extension PasteLandingLifecycleTests {
     session.commit()
     rig.registration?.fire(.focusedElementChanged, element: Self.field)
     rig.registration?.fire(.focusedElementChanged, element: Self.field)
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .absent)
     #expect(rig.lines.count == 1 && rig.lines[0].hasSuffix(" focus_reannounced=2"), "\(rig.lines)")
   }
@@ -638,7 +638,7 @@ extension PasteLandingLifecycleTests {
     let session = try prepared(rig.prepare(captured: nil))
     #expect(rig.registration?.registeredNotifications == [.focusedElementChanged])
     session.commit()
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .noTarget)
     #expect(rig.lines.first?.contains("host_exposed_focus=false") == true)
   }
