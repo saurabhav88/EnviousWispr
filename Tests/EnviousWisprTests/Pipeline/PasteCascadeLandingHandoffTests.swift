@@ -40,7 +40,7 @@ struct PasteCascadeLandingHandoffTests {
       let session = PasteArrivalCapture.prepare(
         .init(tier: tier, pid: pid, takeID: "take-1", bundleID: bundle, payload: "Sarah "),
         capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: scheduler,
-        report: { _ in })
+        patience: nil, report: { _ in })
     else { throw NotPrepared() }
     return session
   }
@@ -63,7 +63,7 @@ struct PasteCascadeLandingHandoffTests {
   private func executor(_ calls: Calls) -> PasteCascadeExecutor {
     let board = NSPasteboard.withUniqueName()
     return PasteCascadeExecutor(
-      pasteboard: board, policy: .baseline,
+      pasteboard: board, policy: .baseline, revealPatience: nil,
       onRetained: { takeID, count, report in
         calls.retained.append((takeID, count))
         calls.reports.append(report)
@@ -123,6 +123,51 @@ struct PasteCascadeLandingHandoffTests {
         == PasteLandingPolicy.mayRetain(
           .absent, bundleID: "com.apple.TextEdit", appClass: session.appClass, tier: tier))
     #expect(check.mayRetain(.found(.sameField)) == false)
+  }
+
+  @Test(
+    "The check waits for the late watch: a sighting at 500 ms is found, so the check forbids keeping it",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func checkAwaitsTheRetentionVerdict() async throws {
+    let session = try capture()
+    let check = try #require(executor(Calls()).landingCheck(for: session, request: request()))
+    session.commit()
+    scheduler.advance(ms: 475)
+    #expect(session.landing == .absent, "the 300 ms observation alone would keep the dictation")
+    ax.reads = [.text("Hi Sarah ")]
+    scheduler.advance(ms: 25)
+    let decision = await check.decision()
+    #expect(decision == .found(.sameField))
+    #expect(decision.map(check.mayRetain) == false, "a landed paste is never kept")
+  }
+
+  @Test(
+    "The check decides an untouched miss only when the app's patience ends, and then allows keeping it",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func untouchedMissWaitsForPatience() async throws {
+    let session = try capture()
+    let check = try #require(executor(Calls()).landingCheck(for: session, request: request()))
+    session.commit()
+    scheduler.advance(ms: PasteRevealPatience.defaultMs - 1)
+    #expect(session.landing == .absent)
+    #expect(session.retentionSettled == false, "the verdict still waits for the late watch")
+    scheduler.advance(ms: 1)
+    let decision = try #require(await check.decision())
+    #expect(decision == .absent)
+    #expect(check.mayRetain(decision))
+    session.cancel()
+  }
+
+  @Test(
+    "A cancelled watch gives the check no decision, which is never a miss",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func cancelledWatchReleasesTheCleanup() async throws {
+    let session = try capture()
+    let check = try #require(executor(Calls()).landingCheck(for: session, request: request()))
+    session.commit()
+    scheduler.advance(ms: 400)
+    session.cancel()
+    #expect(await check.decision() == nil)
   }
 
   @Test("Only a retained outcome reaches AppKit, once, with this take and the board receipt")
@@ -256,7 +301,9 @@ struct PasteCascadeLandingHandoffTests {
     ax.manualHosts = [pid]
     let check = try #require(executor(Calls()).landingCheck(for: session, request: request()))
     session.commit()
-    scheduler.advance(ms: PastedRegionTiming.landingDeadlineMs)
+    // #4426: the check's decision is the retention verdict, which a miss reaches only once its
+    // late watch ends; run the fake clock past the whole watch so the await cannot wait forever.
+    scheduler.advance(ms: PasteRevealPatience.capMs)
     let landing = try #require(await check.decision())
     #expect(landing == .absent)
     #expect(session.appClass == .manualAccessibility)
@@ -304,6 +351,76 @@ struct PasteCascadeLandingWiringTests {
 
   private static func source(_ path: String) throws -> String {
     try String(contentsOf: RepoRoot.sourceURL(path), encoding: .utf8)
+  }
+
+  /// Every argument labelled one of `labels`, as its expression text, in source order.
+  private static func arguments(labelled labels: Set<String>, in source: String) -> [String] {
+    final class Finder: SyntaxVisitor {
+      let labels: Set<String>
+      var found: [String] = []
+      init(labels: Set<String>) {
+        self.labels = labels
+        super.init(viewMode: .sourceAccurate)
+      }
+      override func visit(_ node: LabeledExprSyntax) -> SyntaxVisitorContinueKind {
+        if let label = node.label?.text, labels.contains(label) {
+          found.append(node.expression.trimmedDescription)
+        }
+        return .visitChildren
+      }
+    }
+    let finder = Finder(labels: labels)
+    finder.walk(CachedSwiftParser.parse(source: source))
+    return finder.found
+  }
+
+  /// Every call to `PasteRevealPatience()` (a new estimator) in `source`.
+  private static func estimatorConstructions(in source: String) -> Int {
+    calls(named: "PasteRevealPatience", in: source).count
+  }
+
+  @Test(
+    "One paste-patience estimate is built at launch and forwarded, never replaced, to every paste (#4426)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func onePatienceEstimateReachesEveryPaste() throws {
+    // Each hop's file, and the exact expressions its forwarding arguments must be. A fresh
+    // `PasteRevealPatience()` anywhere on the path, or a dropped hop, changes these lists.
+    let hops: [(path: String, label: String, expected: [String])] = [
+      (
+        "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", "revealPatience",
+        ["revealPatience", "revealPatience", "revealPatience"]
+      ),
+      (
+        "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift", "revealPatience",
+        ["inputs.revealPatience", "inputs.revealPatience", "revealPatience"]
+      ),
+      (
+        "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationLifecycleCoordinator.swift",
+        "revealPatience", ["self.revealPatience"]
+      ),
+      (
+        "Sources/EnviousWisprAppKit/App/EscapeRecoveryWiring.swift", "revealPatience",
+        ["revealPatience"]
+      ),
+      (
+        "Sources/EnviousWisprPipeline/HeldTextDelivery.swift", "revealPatience",
+        ["revealPatience"]
+      ),
+      ("Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift", "patience", ["revealPatience"]),
+    ]
+    var constructions = 0
+    for hop in hops {
+      let text = try Self.source(hop.path)
+      #expect(
+        Self.arguments(labelled: [hop.label], in: text) == hop.expected, "\(hop.path)")
+      constructions += Self.estimatorConstructions(in: text)
+    }
+    #expect(constructions == 1, "exactly one estimator, built at launch")
+    let boot = try Self.source("Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift")
+    #expect(boot.contains("let revealPatience = PasteRevealPatience()"))
+    // Undo's positional hand-off to the held delivery passes the same value last.
+    let wiring = try Self.source("Sources/EnviousWisprAppKit/App/EscapeRecoveryWiring.swift")
+    #expect(wiring.contains("settings, onRetained, revealPatience)"))
   }
 
   @Test("All three restore-ON key-paste cleanups and the restore-OFF one carry a landing check")

@@ -64,7 +64,7 @@ import Testing
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
         vendorDecodeOccupancy: VendorDecodeOccupancy(),
-        whisperModelIdentity: nil)
+        whisperModelIdentity: nil, revealPatience: PasteRevealPatience())
       return KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
     }
 
@@ -101,7 +101,7 @@ import Testing
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
         vendorDecodeOccupancy: VendorDecodeOccupancy(),
-        whisperModelIdentity: nil)
+        whisperModelIdentity: nil, revealPatience: PasteRevealPatience())
       _ = KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
       // Factory construction is synchronous and pure — no warm-up dispatch.
       // Backend's `isReady` flips to true only after `prepare()` completes.

@@ -911,7 +911,7 @@ import os
             tier: .cgEvent, pid: 42, takeID: request.takeID, bundleID: "com.apple.TextEdit",
             payload: request.legacyText),
           capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
-          scheduler: clock, report: { _ in }, log: { sink.yield($0) })
+          scheduler: clock, patience: nil, report: { _ in }, log: { sink.yield($0) })
         prepared?.commit()
         holder.session = prepared
         var result = Self.deliveredResult
@@ -1039,7 +1039,7 @@ import os
       let keyed = PasteArrivalCapture.prepare(
         .init(tier: .cgEvent, pid: 42, takeID: nil, bundleID: nil, payload: "hello "),
         capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: clock,
-        report: { _ in }, log: { _ in })
+        patience: nil, report: { _ in }, log: { _ in })
     else {
       Issue.record("the key-tier session did not prepare")
       return

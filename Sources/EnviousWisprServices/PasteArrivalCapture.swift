@@ -496,7 +496,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     _ context: Context, capturedTarget: AXUIElement?,
     restoringCapturedTimeoutTo restoreSeconds: Double,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
-    patience: PasteRevealPatience? = nil,
+    patience: PasteRevealPatience?,
     report: @escaping @MainActor (PasteArrivalObservation) -> Void = PasteArrivalCapture.liveReport,
     log: (@MainActor (String) -> Void)? = nil
   ) -> PasteArrivalCapture? {

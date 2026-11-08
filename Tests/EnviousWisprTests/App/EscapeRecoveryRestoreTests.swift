@@ -114,21 +114,31 @@ struct EscapeRecoveryRestoreTests {
     let held = CancelUndoPayload(
       transcriptID: UUID(), targetApp: nil, targetElement: nil, targetWindow: nil,
       targetFieldWindow: fieldWindow, takeFacts: .testNone)
-    final class Seen { var fieldWindow: AXUIElement?; var window: AXUIElement?; var calls = 0 }
+    final class Seen {
+      var fieldWindow: AXUIElement?
+      var window: AXUIElement?
+      var calls = 0
+      var patience: PasteRevealPatience?
+    }
     let seen = Seen()
+    let supplied = PasteRevealPatience()
     _ = await EscapeRecoveryWiring.heldDelivery(
       text: "kept", payload: held, takeID: "take-9",
       settings: HeldDeliverySettings(
         smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false,
         keepDictationsOutOfClipboardHistory: false),
+      revealPatience: supplied,
       onRetained: { _, _, report in report(false) },
-      deliver: { _, _, _, window, fieldWindow, _, _, _, _ in
+      deliver: { _, _, _, window, fieldWindow, _, _, _, _, patience in
         seen.calls += 1
         seen.window = window
         seen.fieldWindow = fieldWindow
+        seen.patience = patience
         return HeldTextDeliveryResult(outcome: .pasted, fallbackClipboardChangeCount: nil)
       })
     #expect(seen.calls == 1)
+    // #4426: the Undo paste learns into the one shared estimate, never a fresh one.
+    #expect(seen.patience === supplied)
     #expect(seen.fieldWindow.map { CFEqual($0, fieldWindow) } == true)
     #expect(seen.window == nil, "a captured-field take records no app window")
   }
@@ -148,6 +158,7 @@ struct EscapeRecoveryRestoreTests {
           smartInsertion: true, autoPasteToActiveApp: true, restoreClipboardAfterPaste: false,
           keepDictationsOutOfClipboardHistory: false)
       },
+      revealPatience: PasteRevealPatience(),
       report: { _, _, _ in })
 
     action(payload())

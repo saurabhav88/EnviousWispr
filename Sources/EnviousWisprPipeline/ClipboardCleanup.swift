@@ -16,10 +16,12 @@ import EnviousWisprServices
 /// changes is that the dictation no longer waits for it.
 ///
 /// **A checked cleanup (#3106 PR B) holds the slot longer.** It keeps the same
-/// 200 ms minimum, then waits for the paste's landing decision (300 ms after
-/// dispatch plus a final read) before restoring or keeping the dictation. The
-/// "same wall-clock moment" above holds for an unchecked cleanup; a checked one
-/// restores at the later of 200 ms and the decision.
+/// 200 ms minimum, then waits for the paste's retention verdict before restoring or
+/// keeping the dictation. A paste seen in the field resolves it at first sight; a
+/// potential miss waits up to the app's learned patience (#4426: 300 to 2,500 ms
+/// after dispatch, 1,500 by default), so text an app reveals late is restored, not
+/// kept. The "same wall-clock moment" above holds for an unchecked cleanup; a
+/// checked one restores at the later of 200 ms and the verdict.
 ///
 /// **DO NOT REPLACE THIS WITH "DETECT WHEN THE APP HAS READ IT". It was built,
 /// measured, and refused.** The obvious improvement is to stop waiting a fixed
@@ -209,7 +211,8 @@ public enum ClipboardCleanup {
   /// mid-dictation and now also refuses while cleanup is pending: a Sparkle
   /// relaunch inside the window would take the process down before the user's
   /// clipboard came back. Declining to *start* an install for 200 ms (through the
-  /// ~300 ms landing decision for a checked cleanup) is a strictly smaller
+  /// retention verdict for a checked cleanup, whose watch is scheduled to end by 2,500 ms since
+  /// #4426, with the 3.0 s decision bound catching any overrun) is a strictly smaller
   /// refusal than the one already shipping.
   ///
   /// **Includes an active takeover since #2465.** A Sparkle relaunch during one takes the process
@@ -692,7 +695,8 @@ public enum ClipboardCleanup {
 
   /// The arrival evidence a pending cleanup waits for, bound by the cascade for one paste.
   struct LandingCheck {
-    /// The committed arrival session's landing decision. Nil is never a miss.
+    /// The committed arrival session's retention verdict (#4426: `retentionVerdict()`, which waits
+    /// for a potential miss's late watch up to the app's patience). Nil is never a miss.
     let decision: @MainActor () async -> PasteArrivalLanding?
     /// `PasteLandingPolicy.mayRetain` for this paste's app, class and route.
     let mayRetain: @MainActor (PasteArrivalLanding) -> Bool
@@ -865,7 +869,9 @@ public enum ClipboardCleanup {
 
   /// How long Paste / Copy Last may wait for a held board to be released (#3135): the checked
   /// cleanup's own decision bound plus a margin. A failure bound; a healthy cleanup releases the
-  /// board within the landing decision (300 ms, Ghostty 700 ms).
+  /// board at the retention verdict, whose watch is scheduled to end by 2,500 ms after dispatch
+  /// (#4426). A slow Accessibility read or a busy main actor can overrun that schedule; the
+  /// decision bound and its non-retaining fallback cover the overrun.
   public static let manualWriteWaitBound: Duration = .milliseconds(
     Int(landingDecisionBoundSeconds * 1000) + 500)
 
@@ -1039,8 +1045,10 @@ public enum ClipboardCleanup {
   }
 
   /// How long a checked cleanup waits for its landing decision before treating it as not a miss.
-  /// Far above any deadline (`PasteLandingPolicy.landingDeadlineMs`, at most 700 ms) plus a final
-  /// read; only a decision that never comes reaches it.
+  /// Above the paste watch's scheduled cap (`PasteRevealPatience.capMs`, 2,500 ms, #4426) plus a
+  /// final read. A verdict delayed past it by slow Accessibility reads or a busy main actor, or
+  /// one that never comes, reaches it and is treated as not a miss.
+  /// `watchCapIsInsideTheDecisionBound` checks the gap.
   nonisolated static let landingDecisionBoundSeconds = 3.0
 
   /// Leave this take's legacy text on the board for a manual ⌘V, or yield to whoever wrote it.

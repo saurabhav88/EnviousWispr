@@ -1235,7 +1235,7 @@ struct PasteArrivalCaptureTests {
       PasteArrivalCapture.prepare(
         .init(tier: .axDirect, pid: pid, takeID: nil, bundleID: nil, payload: "x"),
         capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: scheduler,
-        report: { _ in }) == nil)
+        patience: nil, report: { _ in }) == nil)
     ax.manualHosts = [pid]
     let session = try prepare()
     #expect(ax.enableCalls == [], "the baseline reads the host as it is")

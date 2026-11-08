@@ -194,6 +194,10 @@ public enum KernelDictationDriverFactory {
     /// `onTakeAccepted`.
     package let onRetained: RetainedCallback
 
+    /// #4426: the shared per-app paste patience. Required, no default: one instance from the
+    /// composition root, shared with the other engine and Escape Recovery Undo.
+    package let revealPatience: PasteRevealPatience
+
     /// #4052: true while EnviousMeet's transcript holds the shared engine lease. Required, no
     /// default: the adapter's wedge recovery must not unload a model a meeting is decoding on.
     package let isSharedEngineHeldByOtherWorkload: @MainActor () -> Bool
@@ -225,6 +229,7 @@ public enum KernelDictationDriverFactory {
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in
       },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+      revealPatience: PasteRevealPatience,
       onRetained: @escaping RetainedCallback = { _, _, report in report(false) },
       isSharedEngineHeldByOtherWorkload: @escaping @MainActor () -> Bool
     ) {
@@ -249,6 +254,7 @@ public enum KernelDictationDriverFactory {
       self.transcriptionCheckpoint = transcriptionCheckpoint
       self.onTakeAccepted = onTakeAccepted
       self.onRetained = onRetained
+      self.revealPatience = revealPatience
     }
   }
 
@@ -322,6 +328,10 @@ public enum KernelDictationDriverFactory {
     /// `onTakeAccepted`.
     package let onRetained: RetainedCallback
 
+    /// #4426: the shared per-app paste patience. Required, no default: one instance from the
+    /// composition root, shared with the other engine and Escape Recovery Undo.
+    package let revealPatience: PasteRevealPatience
+
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
     /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
@@ -353,6 +363,7 @@ public enum KernelDictationDriverFactory {
       transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in
       },
       onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+      revealPatience: PasteRevealPatience,
       onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
     ) {
       self.whisperModelIdentity = whisperModelIdentity
@@ -377,6 +388,7 @@ public enum KernelDictationDriverFactory {
       self.transcriptionCheckpoint = transcriptionCheckpoint
       self.onTakeAccepted = onTakeAccepted
       self.onRetained = onRetained
+      self.revealPatience = revealPatience
     }
   }
 
@@ -469,7 +481,7 @@ public enum KernelDictationDriverFactory {
       escapeRecovery: inputs.escapeRecovery,
       transcriptionCheckpoint: inputs.transcriptionCheckpoint,
       onTakeAccepted: inputs.onTakeAccepted,
-      onRetained: inputs.onRetained)
+      revealPatience: inputs.revealPatience, onRetained: inputs.onRetained)
   }
 
   /// Build the driver stack for the Whisper engine. PR-5 Rung 5 flips the
@@ -522,7 +534,7 @@ public enum KernelDictationDriverFactory {
       escapeRecovery: inputs.escapeRecovery,
       transcriptionCheckpoint: inputs.transcriptionCheckpoint,
       onTakeAccepted: inputs.onTakeAccepted,
-      onRetained: inputs.onRetained)
+      revealPatience: inputs.revealPatience, onRetained: inputs.onRetained)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -549,6 +561,7 @@ public enum KernelDictationDriverFactory {
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
     transcriptionCheckpoint: @escaping @MainActor (TranscriptionCheckpointEvent) -> Void = { _ in },
     onTakeAccepted: @escaping @MainActor (String) -> Void = { _ in },
+    revealPatience: PasteRevealPatience,
     onRetained: @escaping RetainedCallback = { _, _, report in report(false) }
   ) -> KernelDictationDriver {
     // #1803: prepare the English word oracle off the heart path. Its one-time
@@ -672,7 +685,8 @@ public enum KernelDictationDriverFactory {
         // could attribute this delivery's copies to the NEXT dictation.
         let takeIDAtDelivery = telemetryState.takeID
         let result = await PasteCascadeExecutor(
-          pasteboard: .general, policy: Self.pasteDeliveryPolicy, onRetained: onRetained
+          pasteboard: .general, policy: Self.pasteDeliveryPolicy, revealPatience: revealPatience,
+          onRetained: onRetained
         ).deliver(request)
         // Scheduled AFTER delivery has returned and its latency is finalised, so the
         // observation's own work cannot land inside a delivery metric. It reports and returns

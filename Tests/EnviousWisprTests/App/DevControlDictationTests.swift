@@ -563,7 +563,7 @@
           transcriptStore: TranscriptStore(), keychainManager: KeychainManager(),
           captureTelemetry: CaptureTelemetryState(),
           pasteCompletionRegistry: PasteCompletionRegistry(),
-          engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }))
+          engineMutationScope: .alwaysAllowedForTesting, revealPatience: PasteRevealPatience(), isSharedEngineHeldByOtherWorkload: { false }))
       let waiter = PipelineStateWaiter(driver)
       let control = DevControlDictation.Control(
         activeBackend: { .parakeet },
@@ -758,7 +758,7 @@
         transcriptCoordinator: TranscriptCoordinator(store: DictationRuntimeFixtures.tempStore()),
         settings: settings, lastRecordingResult: last, languageSuggestionPresenter: nil,
         recordingLockedAccess: lockAccess, releaseEngineClaim: { lease.release($0) },
-        otherAudioHold: hold)
+        revealPatience: PasteRevealPatience(), otherAudioHold: hold)
       let recovery = RecoveryCoordinator(
         keyStore: RecoveryKeyStore(backend: .file, fileDirectory: directory.appending(path: "keys")),
         makeSpoolStore: { RecoverySpoolStore(directory: directory.appending(path: "spools")) },

@@ -34,7 +34,7 @@ struct PasteActivationAdmissionTests {
   func executor(_ effects: Effects, advanceMs: Int = 0) -> PasteCascadeExecutor {
     let scheduler = self.scheduler
     return PasteCascadeExecutor(
-      pasteboard: NSPasteboard.withUniqueName(), policy: .baseline, landingAX: ax,
+      pasteboard: NSPasteboard.withUniqueName(), policy: .baseline, revealPatience: nil, landingAX: ax,
       landingScheduler: scheduler,
       activationEffect: { _ in
         effects.activations += 1

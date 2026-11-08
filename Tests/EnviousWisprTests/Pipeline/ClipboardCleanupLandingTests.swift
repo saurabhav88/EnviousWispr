@@ -47,7 +47,8 @@ private final class FakeLanding {
         self?.askedWaiters.removeValue(forKey: id)?.resume(returning: false)
       }
     }
-    try #require(arrived, "the cleanup never asked for the landing decision", sourceLocation: sourceLocation)
+    try #require(
+      arrived, "the cleanup never asked for the landing decision", sourceLocation: sourceLocation)
   }
 
   func publish(_ landing: PasteArrivalLanding?) {
@@ -79,7 +80,9 @@ private final class WakeGate {
         enteredWaiters.removeAll()
       }
     } onCancel: {
-      Task { @MainActor in self.waiters.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
+      Task { @MainActor in
+        self.waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
+      }
     }
   }
 
@@ -95,7 +98,8 @@ private final class WakeGate {
         self?.enteredWaiters.removeValue(forKey: id)?.resume(returning: false)
       }
     }
-    try #require(arrived, "the cleanup never reached its minimum wait", sourceLocation: sourceLocation)
+    try #require(
+      arrived, "the cleanup never reached its minimum wait", sourceLocation: sourceLocation)
   }
 
   func release() {
@@ -117,12 +121,18 @@ private func finished(
   let completed = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
     Task { @MainActor in
       await task.value
-      if !once.done { once.done = true; c.resume(returning: true) }
+      if !once.done {
+        once.done = true
+        c.resume(returning: true)
+      }
     }
     Task { @MainActor in
       // deadline-fallback: a hang guard only; no assertion depends on this clock.
       try? await Task.sleep(for: .seconds(10))
-      if !once.done { once.done = true; c.resume(returning: false) }
+      if !once.done {
+        once.done = true
+        c.resume(returning: false)
+      }
     }
   }
   try #require(completed, "the cleanup task never finished", sourceLocation: sourceLocation)
@@ -135,7 +145,6 @@ private func finished(
   .clipboardCleanupExclusive)
 @MainActor
 struct ClipboardCleanupLandingTests {
-
 
   private func put(_ text: String, on pb: NSPasteboard) {
     pb.clearContents()
@@ -220,7 +229,7 @@ struct ClipboardCleanupLandingTests {
   // MARK: Restore ON
 
   @Test("A miss decided before the cleanup woke keeps the dictation and reports the board receipt")
-  func missDecidedEarlyIsKept()  async throws {
+  func missDecidedEarlyIsKept() async throws {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(.absent))
       let outcomes = Outcomes()
@@ -236,7 +245,9 @@ struct ClipboardCleanupLandingTests {
     }
   }
 
-  @Test("#3672: with the history setting off a kept dictation already on the board is not written again")
+  @Test(
+    "#3672: with the history setting off a kept dictation already on the board is not written again"
+  )
   func settingOffKeepShortCircuits() async throws {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(.absent))
@@ -251,7 +262,8 @@ struct ClipboardCleanupLandingTests {
     }
   }
 
-  @Test("#3672: with the history setting off a context-adjusted payload is still rewritten, unmarked")
+  @Test(
+    "#3672: with the history setting off a context-adjusted payload is still rewritten, unmarked")
   func settingOffAdjustedPayloadIsRewritten() async throws {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(.absent))
@@ -285,7 +297,7 @@ struct ClipboardCleanupLandingTests {
   }
 
   @Test("A context-adjusted payload is replaced by the legacy text before it is kept")
-  func adjustedPayloadIsRewrittenThenKept()  async throws {
+  func adjustedPayloadIsRewrittenThenKept() async throws {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(.absent))
       let outcomes = Outcomes()
@@ -307,7 +319,8 @@ struct ClipboardCleanupLandingTests {
       ("excluded route", .some(.absent), false),
     ])
   func notAPermittedMissRestores(name: String, landing: PasteArrivalLanding?, permitted: Bool)
-     async throws {
+    async throws
+  {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(landing))
       let outcomes = Outcomes()
@@ -349,7 +362,8 @@ struct ClipboardCleanupLandingTests {
       put("the next dictation", on: pb)
       let newFake = FakeLanding()
       ClipboardCleanup.scheduleRestore(
-        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
+        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent,
+        on: pb,
         landing: check(newFake, legacy: "the next dictation", into: outcomes))
 
       oldFake.publish(.absent)
@@ -380,19 +394,24 @@ struct ClipboardCleanupLandingTests {
       let pb = board(holding: Self.user)
       let undoSnapshot = ClipboardCleanup.snapshotForDelivery(from: pb)
       put("the held words ", on: pb)
-      #expect(pb.string(forType: .string) == "the held words ", "the board holds the submitted payload")
+      #expect(
+        pb.string(forType: .string) == "the held words ", "the board holds the submitted payload")
       ClipboardCleanup.scheduleRestore(
-        undoSnapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
+        undoSnapshot, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent,
+        on: pb,
         landing: check(undoFake, legacy: "the held words ", into: outcomes))
       try await undoFake.waitUntilAsked()
       let undoTask = try #require(ClipboardCleanup.pendingTaskForTests())
 
       let inherited = ClipboardCleanup.snapshotForDelivery(from: pb)
       put("the new dictation ", on: pb)
-      #expect(pb.string(forType: .string) == "the new dictation ", "the board holds the submitted payload")
+      #expect(
+        pb.string(forType: .string) == "the new dictation ", "the board holds the submitted payload"
+      )
       let dictationFake = FakeLanding()
       ClipboardCleanup.scheduleRestore(
-        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent, on: pb,
+        inherited, changeCountAfterPaste: pb.changeCount, markTransient: false, tier: .cgEvent,
+        on: pb,
         landing: check(dictationFake, legacy: "the new dictation ", into: outcomes))
 
       undoFake.publish(.absent)
@@ -436,7 +455,8 @@ struct ClipboardCleanupLandingTests {
 
       dictationFake.publish(.found(.sameField))
       try await finished(ClipboardCleanup.pendingTaskForTests())
-      #expect(pb.string(forType: .string) == "the new dictation ", "the latest delivery's text stays")
+      #expect(
+        pb.string(forType: .string) == "the new dictation ", "the latest delivery's text stays")
       #expect(outcomes.all.isEmpty)
     }
   }
@@ -507,7 +527,7 @@ struct ClipboardCleanupLandingTests {
   }
 
   @Test("Restore off, the paste landed: the rewrite stands and nothing is reported")
-  func restoreOffHitReportsNothing()  async throws {
+  func restoreOffHitReportsNothing() async throws {
     try await withCleanCleanupThrowing {
       let fake = FakeLanding(preset: .some(.found(.sameField)))
       let outcomes = Outcomes()
@@ -572,6 +592,117 @@ struct ClipboardCleanupLandingTests {
       #expect(pb.string(forType: .string) == Self.user, "the user's clipboard came back")
       #expect(outcomes.all.isEmpty, "an unverified board is not a receipt")
     }
+  }
+
+  // MARK: The executor's own check, driven by a real arrival session (#4426)
+
+  /// A committed TextEdit-shaped arrival session on a fake field and clock, the executor's real
+  /// landing check for it, and a board where the user's clipboard was replaced by the dictation.
+  /// The check's 200 ms minimum is opened so no case sleeps; everything else is the executor's.
+  @MainActor
+  private final class LiveRig {
+    let ax = PastedRegionFakeAX()
+    let clock = PastedRegionFakeScheduler()
+    var retained: [String] = []
+    let session: PasteArrivalCapture
+    let board: NSPasteboard
+    init(user: String, dictation: String) throws {
+      ax.focusedByApplication[42] = .element(PastedRegionFakeAX.field(42))
+      ax.focused[42] = .element(PastedRegionFakeAX.field(42))
+      ax.reads = [.text("Hi ")]
+      ax.selectedRange = .range(location: 3, length: 0)
+      let prepared = PasteArrivalCapture.prepare(
+        .init(
+          tier: .cgEvent, pid: 42, takeID: "take-1", bundleID: "com.apple.TextEdit",
+          payload: dictation),
+        capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: clock,
+        patience: nil, report: { _ in })
+      session = try #require(prepared)
+      board = NSPasteboard.withUniqueName()
+      board.clearContents()
+      board.setString(user, forType: .string)
+    }
+    /// Photographs the user's clipboard, writes the dictation, commits the paste and schedules
+    /// the cleanup with the executor's check, exactly as the cascade's CGEvent route does.
+    func paste(_ dictation: String) throws {
+      let snap = ClipboardSnapshot(
+        items: board.string(forType: .string).map { [[.string: Data($0.utf8)]] } ?? [],
+        changeCount: board.changeCount)
+      board.clearContents()
+      board.setString(dictation, forType: .string)
+      let executor = PasteCascadeExecutor(
+        pasteboard: board, policy: .baseline, revealPatience: nil,
+        onRetained: { takeID, _, report in
+          self.retained.append(takeID)
+          report(false)
+        })
+      let request = PasteDeliveryRequest(
+        legacyText: dictation, repairedText: nil, caretContext: nil,
+        candidateDeletesDictatedText: false, targetApp: nil, targetElement: nil,
+        targetElementIsRetried: false, restoreClipboardAfterPaste: true,
+        keepDictationsOutOfClipboardHistory: false, terminalBudget: nil, takeID: "take-1")
+      var check = try #require(executor.landingCheck(for: session, request: request))
+      check.minimumWait = {}
+      session.commit()
+      ClipboardCleanup.scheduleRestore(
+        snap, changeCountAfterPaste: board.changeCount, markTransient: false, tier: .cgEvent,
+        on: board, landing: check)
+    }
+  }
+
+  @Test(
+    "A paste the field shows at 500 ms gives the user's clipboard back and no Copied notice (#4426)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func lateRevealRestoresTheUsersClipboard() async throws {
+    try await withCleanCleanupThrowing {
+      let rig = try LiveRig(user: Self.user, dictation: Self.dictation)
+      try rig.paste(Self.dictation)
+      rig.clock.advance(ms: 475)
+      #expect(rig.session.landing == .absent, "the 300 ms observation alone saw nothing")
+      rig.ax.reads = [.text("Hi \(Self.dictation)")]
+      rig.clock.advance(ms: 25)
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(rig.board.string(forType: .string) == Self.user)
+      #expect(rig.retained.isEmpty, "a landed paste never asks for the Copied notice")
+      #expect(ClipboardCleanup.hasPending == false)
+      rig.session.cancel()
+    }
+  }
+
+  @Test(
+    "A paste the field never shows keeps the dictation once the app's patience ends (#4426)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func untouchedMissIsKeptAtPatience() async throws {
+    try await withCleanCleanupThrowing {
+      let rig = try LiveRig(user: Self.user, dictation: Self.dictation)
+      try rig.paste(Self.dictation)
+      rig.clock.advance(ms: PasteRevealPatience.defaultMs)
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(rig.board.string(forType: .string) == Self.dictation)
+      #expect(rig.retained == ["take-1"])
+      rig.session.cancel()
+    }
+  }
+
+  @Test(
+    "A paste watch cancelled before its verdict gives the user's clipboard back (#4426)",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func cancelledWatchRestoresTheUsersClipboard() async throws {
+    try await withCleanCleanupThrowing {
+      let rig = try LiveRig(user: Self.user, dictation: Self.dictation)
+      try rig.paste(Self.dictation)
+      rig.clock.advance(ms: 400)
+      rig.session.cancel()
+      try await finished(ClipboardCleanup.pendingTaskForTests())
+      #expect(rig.board.string(forType: .string) == Self.user)
+      #expect(rig.retained.isEmpty)
+      #expect(ClipboardCleanup.hasPending == false)
+    }
+  }
+
+  @Test("The paste watch cap stays inside the cleanup's decision bound (#4426)")
+  func watchCapIsInsideTheDecisionBound() {
+    #expect(Double(PasteRevealPatience.capMs) / 1000 < ClipboardCleanup.landingDecisionBoundSeconds)
   }
 
   @Test("A decision that never comes is bounded: the session is ended and today's restore runs")

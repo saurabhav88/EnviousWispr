@@ -282,7 +282,7 @@ struct HeldTextDeliveryTests {
         tier: .cgEvent, pid: pid, takeID: "take-1", bundleID: "com.apple.TextEdit",
         payload: "World. ", origin: "escape_recovery_undo"),
       capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: scheduler,
-      report: { reports.lines.append($0.origin ?? "nil") })
+      patience: nil, report: { reports.lines.append($0.origin ?? "nil") })
     try #require(session != nil)
     session?.commit()
     var delivered = PasteDeliveryResult(
@@ -358,7 +358,7 @@ struct HeldTextDeliveryTests {
       facts: Self.noFacts, settings: Self.settings(restore: restore),
       seams: seams(calls, caret: nil), pasteboard: board,
       cascade: { request in
-        await PasteCascadeExecutor(pasteboard: board, policy: .baseline).deliver(request)
+        await PasteCascadeExecutor(pasteboard: board, policy: .baseline, revealPatience: nil).deliver(request)
       },
       log: { _ in })
   }

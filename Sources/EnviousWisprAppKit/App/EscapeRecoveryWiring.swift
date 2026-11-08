@@ -58,6 +58,7 @@ enum EscapeRecoveryWiring {
     coordinator: TranscriptCoordinator,
     overlay: (any RetainedPasteNoticeHosting)?,
     settingsAtPress: @escaping @MainActor () -> HeldDeliverySettings,
+    revealPatience: PasteRevealPatience,
     report: @escaping (_ ageMs: Int, _ result: EscapeRecoveryPasteResult, _ takeID: String) -> Void
   ) -> (CancelUndoPayload) -> Void {
     { [weak coordinator, weak overlay] payload in
@@ -72,6 +73,7 @@ enum EscapeRecoveryWiring {
           deliver: { text, payload, takeID in
             await heldDelivery(
               text: text, payload: payload, takeID: takeID, settings: settings,
+              revealPatience: revealPatience,
               onRetained: { takeID, changeCount, reportShown in
                 EscapeRecoveryNotice.show(
                   identity: takeID, receipt: changeCount, reason: nil, host: overlay,
@@ -96,17 +98,19 @@ enum EscapeRecoveryWiring {
   @MainActor
   static func heldDelivery(
     text: String, payload: CancelUndoPayload, takeID: String?, settings: HeldDeliverySettings,
+    revealPatience: PasteRevealPatience,
     onRetained: @escaping KernelDictationDriverFactory.RetainedCallback,
     deliver: @MainActor (
       _ text: String, _ targetApp: NSRunningApplication?, _ targetElement: AXUIElement?,
       _ targetWindow: AXUIElement?, _ targetFieldWindow: AXUIElement?, _ takeID: String?,
       _ facts: InsertionTakeFacts, _ settings: HeldDeliverySettings,
-      _ onRetained: @escaping KernelDictationDriverFactory.RetainedCallback
+      _ onRetained: @escaping KernelDictationDriverFactory.RetainedCallback,
+      _ revealPatience: PasteRevealPatience
     ) async -> HeldTextDeliveryResult = HeldTextDelivery.deliver
   ) async -> HeldTextDeliveryResult {
     await deliver(
       text, payload.targetApp, payload.targetElement, payload.targetWindow,
-      payload.targetFieldWindow, takeID, payload.takeFacts, settings, onRetained)
+      payload.targetFieldWindow, takeID, payload.takeFacts, settings, onRetained, revealPatience)
   }
 
   /// The production restore reporter. Separate from `pasteAction` so a test can

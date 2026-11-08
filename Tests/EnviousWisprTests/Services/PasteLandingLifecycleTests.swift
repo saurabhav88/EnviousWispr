@@ -510,7 +510,7 @@ extension PasteLandingLifecycleTests {
       PasteArrivalCapture.prepare(
         .init(tier: tier, pid: 42, takeID: takeID, bundleID: bundleID, payload: payload),
         capturedTarget: captured, restoringCapturedTimeoutTo: restore, ax: ax, scheduler: clock,
-        report: { self.reports.append($0) }, log: { self.lines.append($0) })
+        patience: nil, report: { self.reports.append($0) }, log: { self.lines.append($0) })
     }
     /// The one landing registration the session made.
     var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }

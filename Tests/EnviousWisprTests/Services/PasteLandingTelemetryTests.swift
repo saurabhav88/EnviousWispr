@@ -41,7 +41,7 @@ struct PasteLandingTelemetryTests {
           tier: tier, pid: 42, takeID: takeID, bundleID: "com.apple.TextEdit",
           payload: "send the draft to Maya", origin: origin),
         capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
-        scheduler: clock, report: { self.rows.append($0) }, log: { self.lines.append($0) })
+        scheduler: clock, patience: nil, report: { self.rows.append($0) }, log: { self.lines.append($0) })
     }
     var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
     /// Commit, then run the clock past the deadline and the whole late-hit shadow.
