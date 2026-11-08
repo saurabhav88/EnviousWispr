@@ -771,7 +771,16 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     enableManualAccessibilityIfNeeded()
     let attempt = arrivalAttempt()
     guard let found = newOccurrence(in: attempt) else {
-      if phase == .shadowing, !stillObservable(attempt) { markUnobservable() }
+      if phase == .shadowing {
+        if !stillObservable(attempt) {
+          markUnobservable()
+        } else if !fieldUnchanged(attempt) {
+          // #4426: the field was edited without the text appearing. The 300 ms decision and the
+          // late check keep their meaning, but the comparison no longer proves a miss, so the
+          // clipboard must not keep the dictation (the same rule the deadline applies).
+          resolveRetention(nil)
+        }
+      }
       return
     }
     switch phase {
@@ -815,6 +824,15 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     default:
       return false
     }
+  }
+
+  /// #4426: the field still holds exactly its pre-write value (UTF-16 units, as the deadline's
+  /// negative rules compare it). Only a readable field read can differ; anything else is decided
+  /// by `stillObservable`.
+  private func fieldUnchanged(_ attempt: PastedRegionArrivalAttempt) -> Bool {
+    guard case .field(_, _, let beforeValue, _, _) = baseline, case .readable(let field) = attempt
+    else { return true }
+    return field.value.utf16.elementsEqual(beforeValue.utf16)
   }
 
   // MARK: The decision

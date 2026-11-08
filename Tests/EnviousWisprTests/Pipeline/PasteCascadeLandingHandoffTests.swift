@@ -136,6 +136,7 @@ struct PasteCascadeLandingHandoffTests {
     #expect(session.landing == .absent, "the 300 ms observation alone would keep the dictation")
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 25)
+    try #require(session.retentionSettled)
     let decision = await check.decision()
     #expect(decision == .found(.sameField))
     #expect(decision.map(check.mayRetain) == false, "a landed paste is never kept")
@@ -152,6 +153,7 @@ struct PasteCascadeLandingHandoffTests {
     #expect(session.landing == .absent)
     #expect(session.retentionSettled == false, "the verdict still waits for the late watch")
     scheduler.advance(ms: 1)
+    try #require(session.retentionSettled)
     let decision = try #require(await check.decision())
     #expect(decision == .absent)
     #expect(check.mayRetain(decision))
@@ -167,6 +169,7 @@ struct PasteCascadeLandingHandoffTests {
     session.commit()
     scheduler.advance(ms: 400)
     session.cancel()
+    try #require(session.retentionSettled)
     #expect(await check.decision() == nil)
   }
 
@@ -304,6 +307,7 @@ struct PasteCascadeLandingHandoffTests {
     // #4426: the check's decision is the retention verdict, which a miss reaches only once its
     // late watch ends; run the fake clock past the whole watch so the await cannot wait forever.
     scheduler.advance(ms: PasteRevealPatience.capMs)
+    try #require(session.retentionSettled)
     let landing = try #require(await check.decision())
     #expect(landing == .absent)
     #expect(session.appClass == .manualAccessibility)

@@ -26,7 +26,8 @@ struct PasteArrivalCaptureTests {
   }
 
   func prepare(
-    _ payload: String = "Sarah ", tier: PasteTier = .cgEvent, bundle: String? = "com.apple.TextEdit",
+    _ payload: String = "Sarah ", tier: PasteTier = .cgEvent,
+    bundle: String? = "com.apple.TextEdit",
     patience: PasteRevealPatience? = nil
   ) throws -> PasteArrivalCapture {
     let reports = self.reports
@@ -96,7 +97,8 @@ struct PasteArrivalCaptureTests {
   /// WhatsApp and Messages expose an EMPTY composer only through the range reader (no AXValue) and
   /// the filled one through AXValue. Before #4426 the arrival read switched readers, so a landed
   /// paste was `reader_changed` and, after a fast Send emptied the box, `absent` plus "Copied".
-  @Test("An empty range baseline confirms the paste through that reader when AXValue appears",
+  @Test(
+    "An empty range baseline confirms the paste through that reader when AXValue appears",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
   func emptyRangeBaselineKeepsComparableReader() throws {
     ax.reads = [.absent]
@@ -206,13 +208,17 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 300)
 
     #expect(session.landing == .inconclusive(.moved))
-    #expect(ax.rangeCalls.isEmpty, "the original field's range reader cannot describe another field")
+    #expect(
+      ax.rangeCalls.isEmpty, "the original field's range reader cannot describe another field")
   }
 
   // MARK: Retention verdict and learned patience (#4426)
 
   /// Teaches `patience` `count` admitted sightings of `ms` for TextEdit, outside any session.
-  func teach(_ patience: PasteRevealPatience, _ ms: Int, count: Int = 1, bundle: String = "com.apple.TextEdit") {
+  func teach(
+    _ patience: PasteRevealPatience, _ ms: Int, count: Int = 1,
+    bundle: String = "com.apple.TextEdit"
+  ) {
     for _ in 0..<count {
       let token = patience.recordDispatch(bundleID: bundle)!
       patience.recordSighting(token, revealMs: ms)
@@ -225,11 +231,12 @@ struct PasteArrivalCaptureTests {
     ax.reads = [.text("Hi Sarah ")]
     session.commit()
     scheduler.advance(ms: 25)
-    #expect(session.retentionSettled)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .found(.sameField))
   }
 
-  @Test("A sighting at 500 ms, after the 300 ms absent decision, is found for the clipboard",
+  @Test(
+    "A sighting at 500 ms, after the 300 ms absent decision, is found for the clipboard",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
   func lateHitWithinPatienceIsFoundForRetention() async throws {
     let session = try prepare()
@@ -240,6 +247,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 175)
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 25)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .found(.sameField))
     // The historical observation is unchanged.
     #expect(reports.list.map(\.landing) == [.absent])
@@ -254,6 +262,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 1_499)
     #expect(session.retentionSettled == false)
     scheduler.advance(ms: 1)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .absent)
     #expect(reports.list.isEmpty, "still watched to the 2,500 ms cap")
     scheduler.advance(ms: 1_000)
@@ -266,10 +275,12 @@ struct PasteArrivalCaptureTests {
     let session = try prepare(patience: patience)
     session.commit()
     scheduler.advance(ms: 1_500)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .absent)
     scheduler.advance(ms: 275)
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 25)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .absent, "a resolved verdict is never rewritten")
     #expect(reports.list.first?.lateCheck == .found(ms: 1_800))
     #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 2_500)
@@ -282,6 +293,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 1_499)
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 1)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .found(.sameField))
   }
 
@@ -292,6 +304,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 1_499)
     ax.trusted = false
     scheduler.advance(ms: 1)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == nil)
   }
 
@@ -303,9 +316,11 @@ struct PasteArrivalCaptureTests {
     session.commit()
     scheduler.advance(ms: 300)
     registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == nil)
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 200)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == nil, "a resolved verdict is never rewritten")
     #expect(patience.patienceMs(bundleID: "com.apple.TextEdit") == 1_500, "still nine samples")
   }
@@ -326,9 +341,26 @@ struct PasteArrivalCaptureTests {
     session.commit()
     scheduler.advance(ms: 300)
     registration?.fire(.focusedElementChanged, element: AXUIElementCreateApplication(7_777))
-    #expect(session.retentionSettled)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == nil)
     #expect(session.landing == .absent, "the historical decision is unchanged")
+  }
+
+  @Test(
+    "A field edited during the watch without the text appearing never keeps the dictation",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4426"))
+  func editedFieldDuringTheWatchDoesNotRetain() async throws {
+    let session = try prepare()
+    session.commit()
+    scheduler.advance(ms: 300)
+    #expect(session.landing == .absent)
+    ax.reads = [.text("Hi there ")]
+    scheduler.advance(ms: 25)
+    try #require(session.retentionSettled)
+    #expect(await session.retentionVerdict() == nil)
+    scheduler.advance(ms: 2_200)
+    #expect(session.landing == .absent, "the historical decision is unchanged")
+    #expect(reports.list.map(\.lateCheck) == [.completedNoHit], "the late check is unchanged")
   }
 
   @Test("Cancellation resolves an open verdict to nil and never rewrites a resolved one")
@@ -337,12 +369,14 @@ struct PasteArrivalCaptureTests {
     open.commit()
     scheduler.advance(ms: 300)
     open.cancel()
+    try #require(open.retentionSettled)
     #expect(await open.retentionVerdict() == nil)
 
     let resolved = try prepare()
     resolved.commit()
     scheduler.advance(ms: 1_500)
     resolved.cancel()
+    try #require(resolved.retentionSettled)
     #expect(await resolved.retentionVerdict() == .absent)
   }
 
@@ -370,6 +404,7 @@ struct PasteArrivalCaptureTests {
       }
     }
     scheduler.advance(ms: 1_200)
+    try #require(session.retentionSettled)
     #expect(await first.value == .absent)
     #expect(await second.value == .absent)
   }
@@ -416,6 +451,7 @@ struct PasteArrivalCaptureTests {
     scheduler.advance(ms: 1_000)
     ax.reads = [.text("Hi Sarah ")]
     scheduler.advance(ms: 25)
+    try #require(session.retentionSettled)
     #expect(await session.retentionVerdict() == .found(.sameField))
   }
 
@@ -492,7 +528,8 @@ struct PasteArrivalCaptureTests {
   // MARK: Negatives and their guards
 
   @Test(
-    "a stable field without the text is absent at 300 ms, then watched to the 2.5 s cap before one report (#4426)")
+    "a stable field without the text is absent at 300 ms, then watched to the 2.5 s cap before one report (#4426)"
+  )
   func stableMissShadowsThenReports() throws {
     let session = try prepare()
     session.commit()
@@ -1322,7 +1359,8 @@ struct PasteArrivalCaptureTests {
     session.cancel()
   }
 
-  @Test("a failed marker read is not quietly replaced by the empty value: the baseline is unreadable")
+  @Test(
+    "a failed marker read is not quietly replaced by the empty value: the baseline is unreadable")
   func failedMarkerReadPropagates() throws {
     ax.reads = [.text("")]
     ax.role = "AXWebArea"
