@@ -255,7 +255,8 @@ package enum PasteArrivalLanding: Sendable, Equatable {
 package enum PasteArrivalLateCheck: Sendable, Equatable {
   /// The decision was not a potential eligible miss: nothing was watched after it.
   case notApplicable
-  /// The shadow ran to `arrivalShadowMs` without seeing the text.
+  /// The shadow ran to its cap (#4426: `PasteRevealPatience.capMs`, 2,500 ms after dispatch;
+  /// `arrivalShadowMs` before) without seeing the text.
   case completedNoHit
   /// The text appeared after the decision, this many ms after dispatch: the deadline was too short
   /// for this paste.
@@ -613,7 +614,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // 700 ms), never later than the watch cap.
     effectivePatienceMs = min(
       PasteRevealPatience.capMs,
-      max(patience?.patienceMs(bundleID: context.bundleID) ?? PasteRevealPatience.defaultMs,
+      max(
+        patience?.patienceMs(bundleID: context.bundleID) ?? PasteRevealPatience.defaultMs,
         deadlineMs))
     dispatchToken = patience?.recordDispatch(bundleID: context.bundleID)
     deadline = scheduler.schedule(afterMs: deadlineMs) { [weak self] in
