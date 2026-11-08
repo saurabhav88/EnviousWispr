@@ -98,6 +98,7 @@ CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-5"  # founder decision 2026-07-02, supers
 
 AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-6-1-sol"  # founder decision 2026-11-05
 AZURE_JUDGE_REASONING_EFFORT = "low"
+AZURE_JUDGE_TIMEOUT_S = float(os.environ.get("EW_JUDGE_TIMEOUT_S", "60"))
 # The primary judge stays on the expiring Azure startup credits. The reason is which scarce
 # resource each option burns, not accuracy: the Claude subscription is building
 # capacity (~99% used by Thursday) and the Codex plan is adversarial review, while an
@@ -543,7 +544,12 @@ def call_azure(deployment: str, system: str, user: str) -> str:
     if _spend_cap_hit:
         raise SystemExit("SPEND CAP already passed in this process; refusing a new Azure call")
     precheck_spend(deployment)
-    data = _http_json(_no_redirect_opener(), req, 300)
+    # 60 s, not 300 (#4450): across 629 Sol judge calls (low effort, chunk 8, overlay prompt)
+    # the slowest SUCCESSFUL call took 19.1 s (p99 18.3 s, from the response's own
+    # latency_checkpoint). A stalled call waited the full 300 s before its retry and held a
+    # whole run for minutes; 60 s is 3x the slowest observed success. A timeout is a
+    # transient and retried, so this changes how long a stall costs, never what is graded.
+    data = _http_json(_no_redirect_opener(), req, AZURE_JUDGE_TIMEOUT_S)
     _record_usage(deployment, data.get("usage"))
     choices = data.get("choices") or []
     if not choices:
@@ -709,9 +715,14 @@ def _rubric_identity() -> str:
     direction: under-identifying lets two rubrics into one ranking, which is
     undetectable in the output."""
     try:
-        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+        base = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
     except OSError:
         return "unreadable"
+    # #4450: a language run's rubric is this scorer PLUS its overlay; a changed
+    # overlay is a different rubric and must not reuse receipts.
+    if _language is not None:
+        return f"{base}+{_language['code']}:{_language['overlay_sha256'][:12]}"
+    return base
 
 
 def judge_identity(model: str) -> str:
@@ -1530,6 +1541,76 @@ BLIND_JUDGE_SYSTEM = (
 )
 
 
+# --- language overlay (#4450) -------------------------------------------------
+# `--language <code>` grades a non-English sealed exam. It appends ONE section to
+# whichever system prompt the run uses (sighted or blind), so the primary and the
+# adjudication pass read identical instructions. The section carries that language's
+# POLICY overlay verbatim (docs/eval-policy/POLICY-v1-<code>.md, the same file the
+# key authors used) and asks for structured translation evidence. Absent, nothing
+# changes: the English prompt and payloads are byte-identical to the pre-#4450 ones.
+LANGUAGE_NAMES = {"de": "German", "fr": "French", "ru": "Russian", "es": "Spanish",
+                  "nl": "Dutch", "pt": "Portuguese", "pl": "Polish", "it": "Italian",
+                  "hi": "Hindi", "zh": "Chinese (Mandarin)"}
+LANGUAGE_OVERLAY_DIR = Path(__file__).resolve().parents[2] / "docs" / "eval-policy"
+INTRODUCED_TRANSLATION_VALUES = ("none", "word", "clause", "whole")
+# Set by main() from --language; read by coerce_new_score and the identities.
+_language: dict | None = None
+
+LANGUAGE_SECTION = """
+
+LANGUAGE: {name}
+
+This dictation was spoken in {name}. raw_transcript and spoken_truth are in {name}
+(they may contain English words the speaker used, and the recogniser's own script).
+candidate_output must stay in {name}. Every rule above applies; the {name} overlay
+below narrows them for this language (fillers, numbers and dates, register,
+quotation). Where the overlay and an English example above differ, the overlay wins.
+
+TRANSLATION. Decide whether candidate_output INTRODUCED a translation the speaker
+did not say:
+- "whole": the output, or nearly all of it, is in another language.
+- "clause": a clause or sentence was rendered in another language.
+- "word": one or more individual words were replaced by another language's word.
+- "none": no introduced translation.
+These are NOT translation: an English (or other) word the speaker actually used and
+that appears in raw_transcript; text kept in the script the recogniser produced
+(for example a Hindi speaker transcribed in Urdu script, or Latin-script brand names);
+normal {name} spelling or punctuation. Introduced translation changes the speaker's
+words: grade its severity with the rules above (a whole-output change of language is
+critical_fail). Report the language you judge candidate_output to be in as
+"output_language" (an ISO 639-1 code); it is diagnostic only and must not decide the
+verdict.
+
+Add these fields to every output object:
+"introduced_translation":"none|word|clause|whole",
+"translation_spans":["<the translated words or clause as they appear in candidate_output, [] if none>"],
+"output_language":"<ISO 639-1 code>"
+
+=== {name} OVERLAY ===
+{overlay}"""
+
+
+def load_language(code: str) -> dict:
+    """The overlay for --language <code>, or a clear refusal. A language with no
+    overlay file is refused rather than graded with the English rubric."""
+    if code not in LANGUAGE_NAMES:
+        raise SystemExit(f"--language {code!r}: unknown language; known: {', '.join(sorted(LANGUAGE_NAMES))}")
+    path = LANGUAGE_OVERLAY_DIR / f"POLICY-v1-{code}.md"
+    if not path.is_file():
+        raise SystemExit(f"--language {code}: overlay {path} is missing; refusing to grade without it")
+    overlay = path.read_text(encoding="utf-8")
+    return {"code": code, "name": LANGUAGE_NAMES[code], "overlay_path": str(path),
+            "overlay_text": overlay,
+            "overlay_sha256": hashlib.sha256(overlay.encode("utf-8")).hexdigest()}
+
+
+def language_system(system: str, language: dict | None) -> str:
+    """The effective system prompt: unchanged without a language."""
+    if language is None:
+        return system
+    return system + LANGUAGE_SECTION.format(name=language["name"], overlay=language["overlay_text"])
+
+
 def coerce_new_score(raw: dict, has_production: bool) -> dict:
     """Validate/repair one new-system score object into a known shape."""
     verdict = raw.get("verdict")
@@ -1584,7 +1665,20 @@ def coerce_new_score(raw: dict, has_production: bool) -> dict:
         "failure_types": ftypes,
         "changed_or_missing_content": changed,
         "rationale": str(raw.get("rationale", ""))[:300],
+        **(_translation_fields(raw) if _language is not None else {}),
     }
+
+
+def _translation_fields(raw: dict) -> dict:
+    """#4450: the structured translation evidence a --language run asks for. A value
+    outside the allowed set is kept as "unreadable", never read as "none"."""
+    it = raw.get("introduced_translation")
+    spans = raw.get("translation_spans") or []
+    if not isinstance(spans, list):
+        spans = [str(spans)]
+    return {"introduced_translation": it if it in INTRODUCED_TRANSLATION_VALUES else "unreadable",
+            "translation_spans": [str(x) for x in spans][:10],
+            "output_language": str(raw.get("output_language") or "")[:8]}
 
 
 SEVERITY_RANK = {s: i for i, s in enumerate(NEW_SEVERITIES)}  # S0=0 ... S4=4
@@ -1657,7 +1751,8 @@ def score_new(norm_cases: dict, cands: dict, prod: dict | None,
         # a blind adjudication would merge verdicts formed against different
         # evidence, and `_worse_new_score` would then resolve that mismatch by
         # always taking the harsher one.
-        judge_system = BLIND_JUDGE_SYSTEM if blind else NEW_JUDGE_SYSTEM
+        judge_system = language_system(BLIND_JUDGE_SYSTEM if blind else NEW_JUDGE_SYSTEM,
+                                       _language)
         if blind:
             payloads = [blind_payload(p) for p in payloads]
         print(f"[new] primary pass over {len(payloads)} cases"
@@ -2328,7 +2423,15 @@ def main() -> int:
                          "disclaiming it. Recorded in the receipt as judge_blind.")
     ap.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     ap.add_argument("--out", required=True, help="output directory")
+    ap.add_argument("--language", default=None,
+                    help="#4450: grade a non-English exam with docs/eval-policy/POLICY-v1-<code>.md "
+                         f"appended to the rubric ({', '.join(sorted(LANGUAGE_NAMES))}); absent = English")
     args = ap.parse_args()
+    global _language
+    _language = load_language(args.language) if args.language else None
+    if _language is not None and args.system != "new":
+        print("ERROR: --language needs --system new", file=sys.stderr)
+        return 2
 
     if args.reps < 1:
         print("ERROR: --reps must be >= 1", file=sys.stderr)
@@ -2467,6 +2570,12 @@ def main() -> int:
         # rubric identifier the verdicts file does not contain. Supplying one is a
         # separate change with its own flag.
         "rubric_identity": _rubric_identity() if external_verdicts is None else None,
+        # #4450: present only for a --language run, so English receipts keep their shape.
+        **({"language": _language["code"], "language_overlay": _language["overlay_path"],
+            "language_overlay_sha256": _language["overlay_sha256"],
+            "effective_system_sha256": hashlib.sha256(language_system(
+                BLIND_JUDGE_SYSTEM if args.blind else NEW_JUDGE_SYSTEM, _language).encode("utf-8")).hexdigest()}
+           if _language is not None else {}),
         "reps": args.reps if args.system == "old" else None,
         # WHETHER adjudication ran, not only how it was configured. `--no-adjudicate`
         # leaves pct/min at their defaults, so the two settings alone cannot tell an

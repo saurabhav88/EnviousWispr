@@ -3151,7 +3151,130 @@ def test_floor_compares_blinding_exactly():
     assert "blind=no" in why, why
 
 
-EXPECTED_TESTS = 144
+# --------------------------------------------------------------------------- #
+# #4450 --language overlay                                                    #
+# --------------------------------------------------------------------------- #
+
+def _head_constant(name):
+    """The prompt constant as committed at HEAD, read by AST from `git show`, so the
+    English-equivalence oracle is independent of the edited module."""
+    import ast
+    src = subprocess.run(["git", "-C", str(ROOT), "show", "HEAD:scripts/eval/behavior_judge.py"],
+                         capture_output=True, text=True, check=True).stdout
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"{name} not found at HEAD")
+
+
+@contextlib.contextmanager
+def _language_overlay(text="# Test overlay\nKeep 9 h 45 as spoken.\n", code="fr"):
+    with tempfile.TemporaryDirectory() as td:
+        (Path(td) / f"POLICY-v1-{code}.md").write_text(text, encoding="utf-8")
+        old_dir, old_lang = bj.LANGUAGE_OVERLAY_DIR, bj._language
+        bj.LANGUAGE_OVERLAY_DIR = Path(td)
+        try:
+            bj._language = bj.load_language(code)
+            yield bj._language
+        finally:
+            bj.LANGUAGE_OVERLAY_DIR, bj._language = old_dir, old_lang
+
+
+def _capture_systems(n=12, adj=True, blind=True, drop_primary=()):
+    norm, cands = corpus(n)
+    seen = []
+    real = bj.judge_chunk
+
+    def stub(model, system, payload_cases, attempt=1):
+        seen.append((system, [dict(c) for c in payload_cases]))
+        return [score(str(c["id"]), "major_fail", "S3") for c in payload_cases
+                if str(c["id"]) not in drop_primary]
+    bj.judge_chunk = stub
+    try:
+        report = bj.score_new(norm, cands, None, "stub-judge", 50, None, adjudicate=adj, blind=blind)
+    finally:
+        bj.judge_chunk = real
+    return seen, report
+
+
+def test_language_absent_sends_the_committed_english_prompts():
+    assert bj._language is None
+    head_new = _head_constant("NEW_JUDGE_SYSTEM")
+    assert bj.NEW_JUDGE_SYSTEM == head_new
+    assert bj.language_system(bj.NEW_JUDGE_SYSTEM, None) is bj.NEW_JUDGE_SYSTEM
+    seen, _ = _capture_systems()
+    assert seen and all(sys_ == bj.BLIND_JUDGE_SYSTEM for sys_, _ in seen)
+    assert "LANGUAGE:" not in seen[0][0] and "introduced_translation" not in seen[0][0]
+
+
+def test_language_overlay_reaches_primary_and_adjudication_identically():
+    with _language_overlay() as lang:
+        seen, _ = _capture_systems()
+    assert len(seen) >= 2, "expected a primary and an adjudication call"
+    systems = {sys_ for sys_, _ in seen}
+    assert len(systems) == 1, "primary and adjudication read different instructions"
+    only = systems.pop()
+    assert only.startswith(bj.BLIND_JUDGE_SYSTEM)
+    assert lang["overlay_text"] in only and "LANGUAGE: French" in only and "introduced_translation" in only
+
+
+def test_language_run_payloads_stay_blind_in_both_passes():
+    with _language_overlay():
+        seen, _ = _capture_systems()
+    assert all("reference_output" not in c for _, cases in seen for c in cases)
+
+
+def test_language_rubric_identity_changes_with_the_overlay():
+    base = bj._rubric_identity()
+    with _language_overlay("overlay one\n"):
+        one = bj._rubric_identity()
+    with _language_overlay("overlay two\n"):
+        two = bj._rubric_identity()
+    assert base != one != two and one.startswith(base + "+fr:")
+
+
+def test_unknown_language_and_missing_overlay_refuse():
+    for call in (lambda: bj.load_language("xx"),):
+        try:
+            call()
+            raise AssertionError("unknown language accepted")
+        except SystemExit as e:
+            assert "unknown language" in str(e)
+    with tempfile.TemporaryDirectory() as td:
+        old = bj.LANGUAGE_OVERLAY_DIR
+        bj.LANGUAGE_OVERLAY_DIR = Path(td)
+        try:
+            bj.load_language("de")
+            raise AssertionError("missing overlay accepted")
+        except SystemExit as e:
+            assert "missing" in str(e)
+        finally:
+            bj.LANGUAGE_OVERLAY_DIR = old
+
+
+def test_language_translation_fields_kept_and_unreadable_never_none():
+    raw = dict(score("A", "critical_fail", "S4"), introduced_translation="clause",
+               translation_spans=["the meeting"], output_language="fr")
+    assert "introduced_translation" not in bj.coerce_new_score(raw, False), "English shape changed"
+    with _language_overlay():
+        got = bj.coerce_new_score(raw, False)
+        bad = bj.coerce_new_score(dict(score("B"), introduced_translation="maybe"), False)
+        absent = bj.coerce_new_score(score("C"), False)
+    assert got["introduced_translation"] == "clause" and got["translation_spans"] == ["the meeting"]
+    assert bad["introduced_translation"] == "unreadable" and absent["introduced_translation"] == "unreadable"
+
+
+def test_language_run_with_a_dropped_primary_case_is_incomplete():
+    with _language_overlay():
+        seen, report = _capture_systems(drop_primary=("C03",))
+        with tempfile.TemporaryDirectory() as td:
+            bj.write_outputs(report, Path(td), "new")
+            receipt = json.loads((Path(td) / "summary.json").read_text())
+    assert receipt["cacheable"] is False
+    assert "C03" in report["missing_scores"]
+
+
+EXPECTED_TESTS = 151
 
 
 def _run() -> int:

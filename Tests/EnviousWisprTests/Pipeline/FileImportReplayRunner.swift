@@ -47,10 +47,12 @@ struct FileImportReplayRunner {
   /// The arms the exam grades. Mini occupies the EG-1 slot: everything is production except the
   /// endpoint the EG-1 connector is pointed at.
   enum Arm: String {
-    case egOne, appleIntelligence, none, mini
+    /// `canned` (#4450, founder 2026-11-08): answers written by another engine (EnviousDecode,
+    /// #4446) fill the EG-1 slot; everything after the model is production.
+    case egOne, appleIntelligence, none, mini, canned
     var provider: LLMProvider {
       switch self {
-      case .egOne, .mini: .egOne
+      case .egOne, .mini, .canned: .egOne
       case .appleIntelligence: .appleIntelligence
       case .none: .none
       }
@@ -383,6 +385,36 @@ struct CapturingPolisher: TranscriptPolisher {
   }
 }
 
+/// #4450: answers produced by another engine for the EG-1 slot. Each answer is handed to the
+/// real EG-1 connector parse, wrapped as the chat-completion body llama-server returns, so the
+/// truncation refusal, tag stripping and emptiness rule are production's. A case with no answer
+/// throws (infrastructure: the run is invalid, never graded as the model's output).
+struct ReplayAnswerPolisher: TranscriptPolisher {
+  let answers: [String: (output: String, finishReason: String)]
+  let log: ReplayCallLog
+
+  struct MissingAnswer: Error { let id: String }
+
+  func polish(
+    text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult { try await answer() }
+
+  func polish(
+    envelope: PromptEnvelope, config: LLMProviderConfig, onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult { try await answer() }
+
+  private func answer() async throws -> LLMResult {
+    let id = await log.currentCase
+    guard let a = answers[id] else { throw MissingAnswer(id: id) }
+    let body: [String: Any] = [
+      "choices": [["message": ["role": "assistant", "content": a.output],
+                   "finish_reason": a.finishReason]]
+    ]
+    return try EGOneConnector.parseSuccess(data: try JSONSerialization.data(withJSONObject: body))
+  }
+}
+
 /// Records the plan the production planner made, then returns it unchanged.
 struct RecordingPlanner: PromptPlanning {
   let inner: any PromptPlanning
@@ -619,12 +651,35 @@ final class ReplayRig {
     let egOneFamily = try #require(egOneManifest.promptFamily)
     let productionPlanner = DefaultPromptPlanner(egOneFamily: egOneFamily)
     let rigLog = ReplayCallLog()
+    // #4450: the canned arm's answers, {"id", "output", "finish_reason"} per line.
+    var cannedMap: [String: (output: String, finishReason: String)]?
+    var cannedSHA256: String?
+    if arm == .canned {
+      let path = try #require(
+        ProcessInfo.processInfo.environment["EW_REPLAY_CANNED"], "EW_REPLAY_CANNED")
+      let data = try Data(contentsOf: URL(fileURLWithPath: path))
+      cannedSHA256 = sha256(data)
+      var map: [String: (output: String, finishReason: String)] = [:]
+      for line in String(decoding: data, as: UTF8.self).split(separator: "\n") where !line.isEmpty {
+        let row = try #require(
+          try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        let id = try #require(row["id"] as? String)
+        let output = try #require(row["output"] as? String)
+        map[id] = (output, (row["finish_reason"] as? String) ?? "stop")
+      }
+      cannedMap = map
+    }
+    let canned = cannedMap
     let runner = FileImportRunner(
       keychainManager: KeychainManager(), egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: classifierHolder,
       languageIdentifier: DictationLanguageResolver.identify,
       makeEGOnePolisher: { endpoint in
-        CapturingPolisher(
+        if let canned {
+          return CapturingPolisher(
+            inner: ReplayAnswerPolisher(answers: canned, log: rigLog), provider: "canned", log: rigLog)
+        }
+        return CapturingPolisher(
           inner: productionEGOne(mini ?? endpoint), provider: mini == nil ? "egOne" : "mini",
           log: rigLog)
       },
@@ -694,13 +749,19 @@ final class ReplayRig {
     #if DEBUG
       identity["dev_adapter_polish_enabled"] = settingsBox.settings.devAdapterPolishEnabled
     #endif
+    if let cannedSHA256 {
+      identity["canned_answers_sha256"] = cannedSHA256
+      identity["canned_answers_path"] = ProcessInfo.processInfo.environment["EW_REPLAY_CANNED"]
+    }
     if let mini {
       identity["mini_endpoint_port"] = Int(mini.port)
       identity["mini_model_sha256"] = miniSHA256 ?? NSNull()
+      // #4450: the same EG-1 slot also serves EG-1 1.3 (Qwen3.5-4B); the driver names the model.
       identity["mini_label"] =
-        "Mini polishing in the EG-1 slot (production preparation, EG-1 prompt and request); the "
-        + "word check is served by EG-1's runtime and checker adapter, which a shipped Mini "
-        + "would replace with its own: an evaluation configuration, not a complete Mini stack"
+        ProcessInfo.processInfo.environment["EW_REPLAY_MINI_LABEL"]
+        ?? ("Mini polishing in the EG-1 slot (production preparation, EG-1 prompt and request); the "
+          + "word check is served by EG-1's runtime and checker adapter, which a shipped Mini "
+          + "would replace with its own: an evaluation configuration, not a complete Mini stack")
     }
     let rig = ReplayRig(
       arm: arm, identity: identity, root: root, settingsSuiteName: suiteName,
