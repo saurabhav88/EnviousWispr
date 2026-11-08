@@ -306,7 +306,7 @@ test("only the pageview query is host-scoped; download queries must NOT be", () 
   // Both download queries must count through the shared rule that excludes
   // the on-site redirect, null-safely, so pre-#2953 rows still count.
   assert.equal(
-    downloadsSql(win).includes("countIf((event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite'))) AS intents"),
+    downloadsSql(win).includes("countIf((event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite' AND NOT match(coalesce(properties.$raw_user_agent, ''), '(?i)^(Click/[0-9][0-9.]*|msh-pdfmin/[0-9][0-9.]*)$')))) AS intents"),
     true,
   );
   assert.match(downloadSourcesSql(win), /coalesce\(properties\.source_bucket, ''\) != 'onsite'/);

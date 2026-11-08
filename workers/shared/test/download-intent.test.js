@@ -5,6 +5,7 @@ import {
   DOWNLOAD_INTENT,
   DOWNLOAD_INTENT_SQL,
   OFFSITE_REDIRECT_SQL,
+  PRE_FILTER_BOT_UA_SQL,
   isOffsiteRedirect,
   qualifiesDownloadIntent,
 } from "../download-intent.js";
@@ -41,10 +42,31 @@ test("the SQL renderings are exactly the predicate, byte for byte", () => {
   assert.equal(DOWNLOAD_INTENT.onsiteBucket, "onsite");
   assert.equal(
     OFFSITE_REDIRECT_SQL,
-    "(event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite')",
+    "(event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite' AND NOT match(coalesce(properties.$raw_user_agent, ''), '(?i)^(Click/[0-9][0-9.]*|msh-pdfmin/[0-9][0-9.]*)$'))",
   );
   assert.equal(
     DOWNLOAD_INTENT_SQL,
-    "(event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite'))",
+    "(event = 'download_clicked' OR (event = 'download_redirect' AND coalesce(properties.excluded_reason, '') = '' AND coalesce(properties.source_bucket, '') != 'onsite' AND NOT match(coalesce(properties.$raw_user_agent, ''), '(?i)^(Click/[0-9][0-9.]*|msh-pdfmin/[0-9][0-9.]*)$')))",
   );
+});
+
+test("pre-filter robot clause matches only the WHOLE User-Agent of the two named fetchers", () => {
+  // HogQL `match` is RE2; JS RegExp agrees on this pattern, so pin its behavior here.
+  const m = PRE_FILTER_BOT_UA_SQL.match(/'\(\?i\)(.*)'\)$/);
+  assert.ok(m, "the clause must carry one case-insensitive regex literal");
+  const re = new RegExp(m[1], "i");
+  for (const ua of ["Click/1.0", "click/2.13", "msh-pdfmin/1", "msh-pdfmin/1.2"]) {
+    assert.equal(re.test(ua), true, ua);
+  }
+  for (const ua of [
+    "",
+    "Click",
+    "msh-pdfmin",
+    "Mozilla/5.0 (Macintosh) Click/1.0 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh) msh-pdfmin/1 Safari/605.1.15",
+    "Google-Safety",
+  ]) {
+    assert.equal(re.test(ua), false, ua);
+  }
+  assert.ok(OFFSITE_REDIRECT_SQL.endsWith(`AND ${PRE_FILTER_BOT_UA_SQL})`));
 });

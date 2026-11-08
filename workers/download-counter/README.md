@@ -42,6 +42,26 @@ or send a synthetic production test event. Back up the destination's live `hog` 
 from `workers/download-counter`, then PATCH only `hog` with the committed `hog-relay.hog`. Preserve
 `inputs`, `inputs_schema`, filters and secrets. Verify with a genuine download.
 
+## Correcting the counter
+
+When downloads were counted that should not have been (robot hits recorded before the doorway
+excluded them, #4456), lower the live counter with `POST /adjust`. Measure the wrong rows in PostHog
+first; the delta is that count, negative. A repeat of the same `adjustmentId` changes nothing, the
+same id with another delta is refused, and nothing posts to Discord: the next real download shows
+the corrected number. A worker-code change still needs `npx wrangler deploy` first; the `hog` relay
+is untouched.
+
+```bash
+curl -X POST https://enviouswispr-download-counter.saurabhav.workers.dev/adjust \
+  -H "x-trigger-secret: $(security find-generic-password -w -a m4pro_sv -s enviouswispr.download-counter-trigger-secret)" \
+  -H "Content-Type: application/json" \
+  -d '{"adjustmentId": "issue-<N>", "delta": -<count>}'
+```
+
+The response carries `before` and `after`. Also fix the query-time consumers in the same change
+(`workers/shared/download-intent.js`), or the weekly digest and marketing numbers disagree with the
+counter.
+
 ## Deploy (one-time)
 
 Cloudflare secrets are write-only — `wrangler secret put` accepts a value but

@@ -30,6 +30,12 @@ const DISCORD_ATTEMPT_TIMEOUT_MS = 4_000;
 const MAX_RETRY_DELAY_MS = 2_000;
 const DEDUP_WINDOW_MS = 30_000;
 
+// /adjust corrects the counter after the fact, e.g. robot downloads counted
+// before the doorway learned to exclude them (#4456). The bound keeps a typo
+// from wiping the counter; the id makes a retried call apply only once.
+const MAX_ADJUST_DELTA = 1000;
+const MAX_ADJUSTMENT_ID_LEN = 100;
+
 // Discord webhook `content` hard-fails with 400 above 2000 characters
 // (discord-webhooks.md FACT: posting-contract). Every field folded into the
 // message is forwarded, attacker-influenceable request data (referrer, page,
@@ -125,7 +131,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname !== "/count" && url.pathname !== "/seed") {
+    if (url.pathname !== "/count" && url.pathname !== "/seed" && url.pathname !== "/adjust") {
       return new Response("not found\n", { status: 404 });
     }
     if (request.method !== "POST") {
@@ -147,6 +153,21 @@ export default {
     if (url.pathname === "/seed") {
       if (!Number.isInteger(payload.total) || payload.total < 0) {
         return Response.json({ error: "invalid_total" }, { status: 400 });
+      }
+    } else if (url.pathname === "/adjust") {
+      if (
+        !Number.isInteger(payload.delta) ||
+        payload.delta === 0 ||
+        Math.abs(payload.delta) > MAX_ADJUST_DELTA
+      ) {
+        return Response.json({ error: "invalid_delta" }, { status: 400 });
+      }
+      if (
+        typeof payload.adjustmentId !== "string" ||
+        payload.adjustmentId.length === 0 ||
+        payload.adjustmentId.length > MAX_ADJUSTMENT_ID_LEN
+      ) {
+        return Response.json({ error: "invalid_adjustment_id" }, { status: 400 });
       }
     } else {
       if (!REQUIRED_EVENT_TYPES.includes(payload.event)) {
@@ -190,7 +211,40 @@ export class DownloadCounter {
     if (url.pathname === "/seed") {
       return this.handleSeed(payload);
     }
+    if (url.pathname === "/adjust") {
+      return this.handleAdjust(payload);
+    }
     return this.handleCount(payload);
+  }
+
+  // Moves the counter by `delta` once per `adjustmentId`. A repeat of the same
+  // id returns the first result and changes nothing, so a retried curl can
+  // never subtract twice. It posts nothing to Discord: the next real download
+  // simply shows the corrected number.
+  async handleAdjust({ adjustmentId, delta }) {
+    const storage = this.ctx.storage;
+    const key = `adjustment:${adjustmentId}`;
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const previous = await storage.get(key);
+      if (previous) {
+        if (previous.delta !== delta) {
+          return Response.json({ error: "adjustment_id_reused", ...previous }, { status: 409 });
+        }
+        return Response.json({ ...previous, reason: "already-applied" });
+      }
+      const before = await storage.get("counter");
+      if (before === undefined) {
+        return Response.json({ error: "not_seeded" }, { status: 409 });
+      }
+      const after = before + delta;
+      if (after < 0) {
+        return Response.json({ error: "would_go_negative", before }, { status: 409 });
+      }
+      const record = { delta, before, after, appliedAt: Date.now() };
+      // Atomic: the counter and the record of this adjustment commit together.
+      await storage.put({ counter: after, [key]: record });
+      return Response.json(record);
+    });
   }
 
   async handleSeed(payload) {
