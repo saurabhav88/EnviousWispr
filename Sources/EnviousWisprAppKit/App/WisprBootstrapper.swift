@@ -674,6 +674,9 @@ package final class WisprBootstrapper {
     // #3106 PR B: the late clipboard notice. Created BEFORE either driver, because both report into
     // it from their first dictation; connected to the overlay once `OverlayDirector` exists below.
     let retainedPasteNotice = RetainedPasteNotice()
+    // #4426: ONE estimate of how long each app takes to reveal a paste, for the whole process:
+    // both engines' deliveries and Escape Recovery Undo learn into and read from the same table.
+    let revealPatience = PasteRevealPatience()
     let kernelDriver = KernelDictationDriverFactory.makeForParakeet(
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
@@ -696,6 +699,7 @@ package final class WisprBootstrapper {
         onTakeAccepted: { [retainedPasteNotice] takeID in
           retainedPasteNotice.takeAccepted(takeID)
         },
+        revealPatience: revealPatience,
         onRetained: { [retainedPasteNotice] takeID, changeCount, reportShown in
           retainedPasteNotice.retained(
             takeID: takeID, changeCount: changeCount, reportShown: reportShown)
@@ -764,6 +768,7 @@ package final class WisprBootstrapper {
         onTakeAccepted: { [retainedPasteNotice] takeID in
           retainedPasteNotice.takeAccepted(takeID)
         },
+        revealPatience: revealPatience,
         onRetained: { [retainedPasteNotice] takeID, changeCount, reportShown in
           retainedPasteNotice.retained(
             takeID: takeID, changeCount: changeCount, reportShown: reportShown)
@@ -1720,6 +1725,7 @@ package final class WisprBootstrapper {
       releaseEngineClaim: { [abandonedDecodeHold] token in
         abandonedDecodeHold.releaseFromDictation(token)
       },
+      revealPatience: revealPatience,
       otherAudioHold: otherAudioHold
     )
     dictationLifecycleCoordinator.install()

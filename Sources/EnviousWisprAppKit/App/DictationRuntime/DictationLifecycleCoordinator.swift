@@ -168,6 +168,10 @@ final class DictationLifecycleCoordinator {
   private lazy var whisperStateHandler: PipelineStateChangeHandler =
     makeStateChangeHandler(backendLabel: "whisper")
 
+  /// #4426: the shared per-app paste patience, handed to Escape Recovery Undo so its paste learns
+  /// and waits exactly like a dictation's.
+  let revealPatience: PasteRevealPatience
+
   init(
     kernelDriver: KernelDictationDriver,
     whisperKernelDriver: KernelDictationDriver,
@@ -181,8 +185,10 @@ final class DictationLifecycleCoordinator {
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
     recordingLockedAccess: RecordingLockedAccess,
     releaseEngineClaim: @escaping @MainActor (EngineLease.Token) -> Void,
+    revealPatience: PasteRevealPatience,
     otherAudioHold: OtherAudioHold? = nil
   ) {
+    self.revealPatience = revealPatience
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.recordingOverlay = recordingOverlay
@@ -679,6 +685,7 @@ final class DictationLifecycleCoordinator {
                   }
                   return self.undoDeliverySettings()
                 },
+                revealPatience: self.revealPatience,
                 report: EscapeRecoveryWiring.restoreReporter(source: .pill))))
         },
         // The SAME `append` an ordinary completion uses. A held row differs by

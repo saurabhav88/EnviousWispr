@@ -64,7 +64,7 @@ struct DictationSettingsRenderHarness {
       recordingOverlay: overlay, hotkeyService: hotkey, settingsSync: sync,
       audioCapture: audio, transcriptCoordinator: TranscriptCoordinator(store: store),
       settings: settings, lastRecordingResult: last, languageSuggestionPresenter: nil,
-      recordingLockedAccess: locked, releaseEngineClaim: { lease.release($0) }, otherAudioHold: hold)
+      recordingLockedAccess: locked, releaseEngineClaim: { lease.release($0) }, revealPatience: PasteRevealPatience(), otherAudioHold: hold)
     let spoolDirectory = runDirectory.appending(path: "fixture-spools")
     let recovery = RecoveryCoordinator(
       keyStore: RecoveryKeyStore(backend: .file, fileDirectory: runDirectory.appending(path: "fixture-recovery-keys")),

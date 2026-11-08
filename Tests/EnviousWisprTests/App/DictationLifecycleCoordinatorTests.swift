@@ -74,7 +74,8 @@ import Testing
       ),
       // #2648: the real lease, so a row can hand the coordinator a live claim
       // and watch it come back on the session's terminal transition.
-      releaseEngineClaim: { [engineLease] token in engineLease.release(token) }
+      releaseEngineClaim: { [engineLease] token in engineLease.release(token) },
+      revealPatience: PasteRevealPatience()
     )
     return (coordinator, audio, pipeline, whisperKernelDriver, lockBox, engineLease)
   }

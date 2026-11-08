@@ -450,6 +450,17 @@ package enum PastedRegionTextReader: String, Sendable, Equatable {
   case textMarkers
 }
 
+/// A reader may be reused only for the exact field that supplied its before-image (#4426).
+package struct PastedRegionReaderPreference {
+  package let element: AXUIElement
+  package let reader: PastedRegionTextReader
+
+  package init(element: AXUIElement, reader: PastedRegionTextReader) {
+    self.element = element
+    self.reader = reader
+  }
+}
+
 /// One read of `AXTextMarkerRangeForUIElement` (#3863). The range is an opaque WebKit value,
 /// passed back unchanged to the string read; it is never an `AXValue` range.
 package enum PastedRegionMarkerRangeRead {
@@ -1506,7 +1517,10 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// - Parameter enableManualAccessibility: the legacy capture opts an Electron/Chromium host in
   ///   on EVERY capture (below); the arrival attempt never writes the attribute, because its
   ///   session enables it once after dispatch and then only reads (#3106 PR A).
-  private func readFocusedField(pid: pid_t, enableManualAccessibility: Bool) -> FocusedFieldRead {
+  private func readFocusedField(
+    pid: pid_t, enableManualAccessibility: Bool,
+    preferredReader: PastedRegionReaderPreference? = nil
+  ) -> FocusedFieldRead {
     guard ax.isTrusted() else { return .permissionLost }
     guard pid > 0, ax.isProcessRunning(pid) else { return .appTerminated }
     // A process-local focused element survives an app switch, so the ACTIVE
@@ -1546,14 +1560,28 @@ package final class PastedRegionObserver: PastedRegionObserving {
     // Secure fields are never observed. `unreadable` is secure (fail closed).
     if SelectionReader.isSecureField(ax.subrole(of: element)) { return .secureField }
 
-    // `AXValue` first. An editor that has none, or answers with something
+    // Default selection tries `AXValue` first. An editor that has none, or answers with something
     // that is not a string, may still expose its text through the
     // parameterized range attribute (#3073; Excel in edit mode is the
     // measured candidate). A FAILED value read is the host not answering,
     // not "no value", and is not retried through the other reader.
-    // `admit` never refuses here, so the optional is always a choice.
+    // A before-image stays comparable when the same field starts exposing another attribute
+    // after a paste (#4426: WhatsApp and Messages expose an empty composer only through the range
+    // reader and a filled one through AXValue). A failed, unstable or over-limit preferred read is
+    // not an absent attribute: preserve it rather than rescuing it through a different view.
+    var preferred: (reader: PastedRegionTextReader, read: PastedRegionValueRead)?
+    if let preferredReader, CFEqual(element, preferredReader.element) {
+      let read = readText(of: element, using: preferredReader.reader)
+      switch read {
+      case .absent, .notText: break
+      case .text, .failed, .tooLong, .unstable: preferred = (preferredReader.reader, read)
+      }
+    }
+    // `admit` never refuses here, so the optional is always a choice. The ordinary selector
+    // remains the one owner of fallback priority for every read without a usable preference.
     let (reader, read) =
-      Self.selectTextReader(of: element, ax: ax, admit: { _ in true }) ?? (.value, .absent)
+      preferred ?? Self.selectTextReader(of: element, ax: ax, admit: { _ in true })
+      ?? (.value, .absent)
     return .field(
       application: application, element: element, reader: reader, read: read,
       manualAccessibility: manualAccessibility)
@@ -1621,8 +1649,12 @@ package final class PastedRegionObserver: PastedRegionObserving {
   /// keeps its field, reader and value for the baseline comparison; an unstable read is never a
   /// stable absence; a repeated phrase is a readable field with several positions, not an
   /// ambiguity.
-  package func attemptArrival(pid: pid_t, pastedText: String) -> PastedRegionArrivalAttempt {
-    switch readFocusedField(pid: pid, enableManualAccessibility: false) {
+  package func attemptArrival(
+    pid: pid_t, pastedText: String, preferredReader: PastedRegionReaderPreference? = nil
+  ) -> PastedRegionArrivalAttempt {
+    switch readFocusedField(
+      pid: pid, enableManualAccessibility: false, preferredReader: preferredReader)
+    {
     case .permissionLost: return .permissionLost
     case .appTerminated: return .appTerminated
     case .destinationMismatch: return .destinationMismatch

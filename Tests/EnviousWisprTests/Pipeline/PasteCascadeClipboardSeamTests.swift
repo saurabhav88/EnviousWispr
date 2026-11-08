@@ -61,7 +61,7 @@ struct PasteCascadeClipboardSeamTests {
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
 
-    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline)
+    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline, revealPatience: nil)
     let result = await executor.deliver(request("the words the user just said"))
 
     #expect(result.tier == .clipboardOnly)
@@ -112,8 +112,8 @@ struct PasteCascadeClipboardSeamTests {
       second.releaseGlobally()
     }
 
-    let firstExecutor = PasteCascadeExecutor(pasteboard: first, policy: .baseline)
-    let secondExecutor = PasteCascadeExecutor(pasteboard: second, policy: .baseline)
+    let firstExecutor = PasteCascadeExecutor(pasteboard: first, policy: .baseline, revealPatience: nil)
+    let secondExecutor = PasteCascadeExecutor(pasteboard: second, policy: .baseline, revealPatience: nil)
     _ = await firstExecutor.deliver(request("first"))
     _ = await secondExecutor.deliver(request("second"))
 
@@ -127,7 +127,7 @@ struct PasteCascadeClipboardSeamTests {
   func tierThreeReturnsItsOwnReceipt() async throws {
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
-    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline)
+    let executor = PasteCascadeExecutor(pasteboard: board, policy: .baseline, revealPatience: nil)
     let before = board.changeCount
 
     let result = await executor.deliver(request("the held words"))

@@ -255,7 +255,8 @@ package enum PasteArrivalLanding: Sendable, Equatable {
 package enum PasteArrivalLateCheck: Sendable, Equatable {
   /// The decision was not a potential eligible miss: nothing was watched after it.
   case notApplicable
-  /// The shadow ran to `arrivalShadowMs` without seeing the text.
+  /// The shadow ran to its cap (#4426: `PasteRevealPatience.capMs`, 2,500 ms after dispatch;
+  /// `arrivalShadowMs` before) without seeing the text.
   case completedNoHit
   /// The text appeared after the decision, this many ms after dispatch: the deadline was too short
   /// for this paste.
@@ -285,6 +286,9 @@ package struct PasteArrivalObservation: Sendable, Equatable {
   /// Dispatch to the landing decision.
   package let resolveMs: Int
   package let lateCheck: PasteArrivalLateCheck
+  /// #4426: the effective scheduled patience this paste froze at commit, not measured verdict or
+  /// notice latency. Never re-read from the learned estimate, which a later paste may change.
+  package let patienceMs: Int
   /// #3437: who asked for the paste (`escape_recovery_undo`), or nil for an ordinary dictation.
   package let origin: String?
 
@@ -292,7 +296,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
     takeID: String?, tier: String, landing: PasteArrivalLanding,
     appClass: TelemetryService.LearnFromEditsTelemetry.AppClass, hostExposedFocus: Bool,
     targetWindow: PasteLandingTargetWindow, beforeMs: Int, resolveMs: Int,
-    lateCheck: PasteArrivalLateCheck, origin: String? = nil
+    lateCheck: PasteArrivalLateCheck, patienceMs: Int, origin: String? = nil
   ) {
     self.takeID = takeID
     self.tier = tier
@@ -303,6 +307,7 @@ package struct PasteArrivalObservation: Sendable, Equatable {
     self.beforeMs = beforeMs
     self.resolveMs = resolveMs
     self.lateCheck = lateCheck
+    self.patienceMs = patienceMs
     self.origin = origin
   }
 }
@@ -316,7 +321,8 @@ package struct PasteArrivalObservation: Sendable, Equatable {
 /// shadow → one report. `cancel()` ends a committed session early. #996 asks the same session for
 /// its edit-watch target with `editWatchCapture`, on its own timer.
 ///
-/// Reads never overlap: every read is one synchronous `attemptArrival` on the main actor.
+/// Reads never overlap: every read, including a preferred read and its ordinary fallback, runs
+/// synchronously on the main actor.
 @MainActor
 package final class PasteArrivalCapture: PasteEditCapturing {
 
@@ -422,6 +428,25 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   private var reported = false
   private var landingWaiters: [CheckedContinuation<PasteArrivalLanding?, Never>] = []
 
+  /// #4426: what the clipboard cleanup may judge, separate from the historical `landing`. Resolved
+  /// exactly once (`retentionResolved`); nil means "no evidence of a miss" (never retains).
+  private var retention: PasteArrivalLanding?
+  private var retentionResolved = false
+  /// Whether the retention verdict is fixed: a synchronous read for tests and the cleanup's logs.
+  package var retentionSettled: Bool { retentionResolved }
+  private var retentionWaiters: [CheckedContinuation<PasteArrivalLanding?, Never>] = []
+  /// The shared per-app estimate (#4426); nil teaches nothing and waits the default.
+  private let patience: PasteRevealPatience?
+  /// This paste's dispatch, taken at commit; a newer dispatch to the same app refuses its sample.
+  private var dispatchToken: PasteRevealPatience.DispatchToken?
+  /// #4426: the effective patience, frozen at commit: when, after dispatch, a potential miss's
+  /// verdict is scheduled (the learned estimate floored by the app's deadline, capped at 2,500).
+  /// A schedule, not a measured latency.
+  package private(set) var effectivePatienceMs = PasteRevealPatience.defaultMs
+  private var patienceEnd: (any PastedRegionScheduledWork)?
+  /// One learning sample per paste, at its first sighting.
+  private var sampleRecorded = false
+
   /// #996's request: one per session, on its own timer.
   private var editRequest: EditRequest?
   private var wasCommitted = false
@@ -434,10 +459,12 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     switchTokenBefore: DestinationSwitchToken?,
     manualAX: Bool?, hostExposedFocus: Bool, targetWindow: PasteLandingTargetWindow,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
+    patience: PasteRevealPatience?,
     reporter: @escaping @MainActor (PasteArrivalObservation) -> Void,
     log: @escaping @MainActor (String) -> Void
   ) {
     self.context = context
+    self.patience = patience
     self.application = application
     self.baseline = baseline
     self.switchTokenBefore = switchTokenBefore
@@ -476,6 +503,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     _ context: Context, capturedTarget: AXUIElement?,
     restoringCapturedTimeoutTo restoreSeconds: Double,
     ax: any PastedRegionAXOperations, scheduler: any PastedRegionScheduling,
+    patience: PasteRevealPatience?,
     report: @escaping @MainActor (PasteArrivalObservation) -> Void = PasteArrivalCapture.liveReport,
     log: (@MainActor (String) -> Void)? = nil
   ) -> PasteArrivalCapture? {
@@ -504,7 +532,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       context: context, application: application, baseline: baseline,
       switchTokenBefore: switchTokenBefore, manualAX: manualAX,
       hostExposedFocus: capturedTarget != nil, targetWindow: targetWindow,
-      ax: ax, scheduler: scheduler, reporter: report, log: log ?? Self.debugLog)
+      ax: ax, scheduler: scheduler, patience: patience, reporter: report, log: log ?? Self.debugLog)
     session.arm(element: element, budget: budget)
     let finished = budget.completedPreparation()
     session.beforeMs = finished.elapsedMs
@@ -526,7 +554,7 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       application: ax.applicationElement(pid: pid), baseline: .unreadable,
       switchTokenBefore: nil,
       manualAX: nil, hostExposedFocus: false, targetWindow: .unknown, ax: ax, scheduler: scheduler,
-      reporter: { _ in }, log: { _ in })
+      patience: nil, reporter: { _ in }, log: { _ in })
     session.wasCommitted = true
     session.phase = .finished
     return session
@@ -581,11 +609,22 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     // No Accessibility call here: `commit` runs on the delivery path, before the clipboard restore
     // is scheduled. The manual-accessibility opt-in happens at the first read instead.
     let generation = self.generation
-    deadline = scheduler.schedule(
-      afterMs: PasteLandingPolicy.landingDeadlineMs(bundleID: context.bundleID)
-    ) { [weak self] in
+    let deadlineMs = PasteLandingPolicy.landingDeadlineMs(bundleID: context.bundleID)
+    // #4426: frozen per paste. Never sooner than the app's own observational deadline (Ghostty's
+    // 700 ms), never later than the watch cap.
+    effectivePatienceMs = min(
+      PasteRevealPatience.capMs,
+      max(
+        patience?.patienceMs(bundleID: context.bundleID) ?? PasteRevealPatience.defaultMs,
+        deadlineMs))
+    dispatchToken = patience?.recordDispatch(bundleID: context.bundleID)
+    deadline = scheduler.schedule(afterMs: deadlineMs) { [weak self] in
       guard let self, generation == self.generation else { return }
       self.decideAtDeadline()
+    }
+    patienceEnd = scheduler.schedule(afterMs: effectivePatienceMs) { [weak self] in
+      guard let self, generation == self.generation else { return }
+      self.patienceElapsed()
     }
     schedulePoll()
   }
@@ -602,6 +641,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
   package func cancel() {
     cancelled = true
     if let request = editRequest { resolveEditRequest(request, .ended(.captureUnsupported)) }
+    // #4426: cancellation never keeps a dictation, and never rewrites a resolved verdict.
+    if phase != .armed { resolveRetention(nil) }
     switch phase {
     case .armed:
       cancelUnlessCommitted()
@@ -624,6 +665,20 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     if phase == .finished || phase == .armed { return nil }
     return await withCheckedContinuation { continuation in
       landingWaiters.append(continuation)
+      onLandingWaiter?()
+    }
+  }
+
+  /// What the clipboard cleanup may judge (#4426): the landing decision for anything that is not a
+  /// potential miss; for a potential miss, `.found(.sameField)` at a sighting within the frozen
+  /// patience, the original decision at patience only while the comparison stays intact, and nil
+  /// (never retains) when the comparison is lost first or the session is cancelled. Resolves exactly
+  /// once; nil for a session that was never committed or is edit-only. Concurrent callers share it.
+  package func retentionVerdict() async -> PasteArrivalLanding? {
+    if retentionResolved { return retention }
+    if phase == .finished || phase == .armed { return nil }
+    return await withCheckedContinuation { continuation in
+      retentionWaiters.append(continuation)
       onLandingWaiter?()
     }
   }
@@ -659,11 +714,11 @@ package final class PasteArrivalCapture: PasteEditCapturing {
         focusReannouncements += 1
       } else {
         sawFocusChanged = true
-        if phase == .shadowing { shadowObservable = false }
+        if phase == .shadowing { markUnobservable() }
       }
     case .elementDestroyed:
       sawElementDestroyed = true
-      if phase == .shadowing { shadowObservable = false }
+      if phase == .shadowing { markUnobservable() }
     case .valueChanged: break
     }
     // Every notification is a reason to look, never an answer by itself.
@@ -684,21 +739,62 @@ package final class PasteArrivalCapture: PasteEditCapturing {
 
   // MARK: Reading
 
+  /// The one arrival read used for the landing decision and the late-hit shadow (#4426).
+  ///
+  /// When the before-image came from a reader other than `AXValue`, the same field keeps being read
+  /// through that reader, so a host that starts exposing `AXValue` only after the paste (WhatsApp,
+  /// Messages) still compares like with like. A preferred read may CONFIRM a new occurrence, but
+  /// may never make a negative stronger than the ordinary selector: a successful preferred read
+  /// with no new occurrence falls back to ordinary selection, whose reader then decides, exactly
+  /// as before #4426. Failed, unstable and over-limit preferred reads keep their own disposition.
+  /// #996's edit capture does not use this: it keeps ordinary selection.
+  private func arrivalAttempt() -> PastedRegionArrivalAttempt {
+    let preference: PastedRegionReaderPreference?
+    if case .field(let element, let baselineReader, _, _, _) = baseline, baselineReader != .value {
+      preference = .init(element: element, reader: baselineReader)
+    } else {
+      // AXValue already has ordinary first priority: reading it twice would change nothing.
+      preference = nil
+    }
+    let attempt = reader.attemptArrival(
+      pid: context.pid, pastedText: context.payload, preferredReader: preference)
+    guard let preference, case .readable(let field) = attempt,
+      CFEqual(field.element, preference.element), field.reader == preference.reader,
+      newOccurrence(in: attempt) == nil
+    else { return attempt }
+    return reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+  }
+
   /// One read. A new occurrence ends the watch at once (before the decision: `found`; during the
   /// shadow: a late hit). Anything else waits for the next wakeup.
   private func read() {
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     guard let found = newOccurrence(in: attempt) else {
-      if phase == .shadowing, !stillObservable(attempt) { shadowObservable = false }
+      if phase == .shadowing {
+        if !stillObservable(attempt) {
+          markUnobservable()
+        } else if !fieldUnchanged(attempt) {
+          // #4426: the field was edited without the text appearing. The 300 ms decision and the
+          // late check keep their meaning, but the comparison no longer proves a miss, so the
+          // clipboard must not keep the dictation (the same rule the deadline applies).
+          resolveRetention(nil)
+        }
+      }
       return
     }
     switch phase {
     case .watching:
+      recordSighting()
       publish(.found(found))
       complete()
     case .shadowing:
-      lateCheck = .found(ms: scheduler.nowMs - committedAtMs)
+      let ms = scheduler.nowMs - committedAtMs
+      lateCheck = .found(ms: ms)
+      recordSighting()
+      // Within patience the paste counts as landed for the clipboard; after it the verdict stands
+      // and the sighting only teaches (`resolveRetention` ignores a second resolution).
+      resolveRetention(.found(found))
       complete()
     case .armed, .finished:
       break
@@ -730,20 +826,31 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     }
   }
 
+  /// #4426: the field still holds exactly its pre-write value (UTF-16 units, as the deadline's
+  /// negative rules compare it). Only a readable field read can differ; anything else is decided
+  /// by `stillObservable`.
+  private func fieldUnchanged(_ attempt: PastedRegionArrivalAttempt) -> Bool {
+    guard case .field(_, _, let beforeValue, _, _) = baseline, case .readable(let field) = attempt
+    else { return true }
+    return field.value.utf16.elementsEqual(beforeValue.utf16)
+  }
+
   // MARK: The decision
 
   /// The deadline passed without a new occurrence: one bounded final read, then the negative rules.
   private func decideAtDeadline() {
     guard phase == .watching else { return }
     enableManualAccessibilityIfNeeded()
-    let attempt = reader.attemptArrival(pid: context.pid, pastedText: context.payload)
+    let attempt = arrivalAttempt()
     if let found = newOccurrence(in: attempt) {
+      recordSighting()
       publish(.found(found))
       complete()
       return
     }
     let decision = negative(from: attempt)
     shadowObservable = stillObservable(attempt)
+    if !shadowObservable { resolveRetention(nil) }
     publish(decision)
     if PasteLandingPolicy.isMiss(decision, appClass: appClass) {
       startShadow()
@@ -836,12 +943,59 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     deadline?.cancel()
     deadline = nil
     let generation = self.generation
-    let remaining = max(0, PastedRegionTiming.arrivalShadowMs - (scheduler.nowMs - committedAtMs))
+    // #4426: watched to the cap, past the verdict, so an arrival later than patience still teaches.
+    let remaining = max(0, PasteRevealPatience.capMs - (scheduler.nowMs - committedAtMs))
     shadowEnd = scheduler.schedule(afterMs: remaining) { [weak self] in
       guard let self, generation == self.generation, self.phase == .shadowing else { return }
+      self.patienceElapsed()
+      // The final read inside `patienceElapsed` may have found the text and completed.
+      guard self.phase == .shadowing else { return }
       self.lateCheck = self.shadowObservable ? .completedNoHit : .censored
       self.complete()
     }
+    // Timers of equal delay carry no order guarantee: a patience equal to the deadline (both 300
+    // ms) must still resolve here rather than wait for the cap.
+    if scheduler.nowMs - committedAtMs >= effectivePatienceMs { patienceElapsed() }
+  }
+
+  // MARK: Retention verdict and learning (#4426)
+
+  /// The frozen patience ran out. A potential miss whose comparison is still intact keeps its
+  /// original decision; anything else has already resolved, or resolves at publication.
+  private func patienceElapsed() {
+    guard !retentionResolved, phase == .shadowing else { return }
+    // One fresh read first: a sighting, or a lost destination, that arrives at the same moment as
+    // the patience timer must decide the verdict instead of the last poll's cached evidence.
+    read()
+    guard !retentionResolved, phase == .shadowing, let landing else { return }
+    resolveRetention(shadowObservable ? landing : nil)
+  }
+
+  /// The destination stopped being comparable during the watch: before the verdict that means no
+  /// miss can be proven, so the dictation is not kept.
+  private func markUnobservable() {
+    shadowObservable = false
+    resolveRetention(nil)
+  }
+
+  /// Fixes the retention verdict once and releases its waiters.
+  private func resolveRetention(_ value: PasteArrivalLanding?) {
+    guard !retentionResolved else { return }
+    retentionResolved = true
+    retention = value
+    patienceEnd?.cancel()
+    patienceEnd = nil
+    let waiters = retentionWaiters
+    retentionWaiters = []
+    for waiter in waiters { waiter.resume(returning: value) }
+  }
+
+  /// Teaches the shared estimate this paste's first sighting, once.
+  private func recordSighting() {
+    // A watch that lost its destination teaches nothing, even if the text is seen after a return.
+    guard !sampleRecorded, shadowObservable, let patience, let dispatchToken else { return }
+    sampleRecorded = true
+    patience.recordSighting(dispatchToken, revealMs: scheduler.nowMs - committedAtMs)
   }
 
   // MARK: Publication and teardown
@@ -854,6 +1008,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     let waiters = landingWaiters
     landingWaiters = []
     for waiter in waiters { waiter.resume(returning: decision) }
+    // #4426: only a potential miss waits for the late watch before the clipboard may keep it.
+    if !PasteLandingPolicy.isMiss(decision, appClass: appClass) { resolveRetention(decision) }
   }
 
   /// The session's end after a commit: exactly one report, then teardown.
@@ -866,7 +1022,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     let observation = PasteArrivalObservation(
       takeID: context.takeID, tier: context.tier.rawValue, landing: landing, appClass: appClass,
       hostExposedFocus: hostExposedFocus, targetWindow: targetWindow, beforeMs: beforeMs,
-      resolveMs: resolveMs, lateCheck: lateCheck, origin: context.origin)
+      resolveMs: resolveMs, lateCheck: lateCheck, patienceMs: effectivePatienceMs,
+      origin: context.origin)
     log(logLine(observation))
     reporter(observation)
     finish()
@@ -881,7 +1038,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       + "target_window=\(o.targetWindow.rawValue) before_ms=\(o.beforeMs) resolve_ms=\(o.resolveMs) "
       + "late_check=\(o.lateCheck.status)"
     if case .found(let ms) = o.lateCheck { line += " late_found_ms=\(ms)" }
-    return line + " focus_reannounced=\(focusReannouncements)"
+    // #4426: after late_found_ms, so the runtime UAT's line pattern keeps its groups.
+    return line + " patience_ms=\(o.patienceMs) focus_reannounced=\(focusReannouncements)"
   }
 
   /// The production reporter: the vendor event.
@@ -892,7 +1050,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
       takeID: o.takeID, tier: o.tier, observed: o.landing.observed, reason: o.landing.reason,
       appClass: o.appClass.rawValue, hostExposedFocus: o.hostExposedFocus,
       targetWindow: o.targetWindow.rawValue, beforeMs: o.beforeMs, resolveMs: o.resolveMs,
-      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs, origin: o.origin)
+      lateCheckStatus: o.lateCheck.status, lateFoundMs: lateFoundMs, patienceMs: o.patienceMs,
+      origin: o.origin)
   }
 
   /// Returns once the session has finished: reported, or cancelled before commit. The one thing an
@@ -917,6 +1076,8 @@ package final class PasteArrivalCapture: PasteEditCapturing {
     deadline = nil
     shadowEnd?.cancel()
     shadowEnd = nil
+    // #4426: a session that ends unresolved proved no miss.
+    resolveRetention(nil)
     let waiters = landingWaiters
     landingWaiters = []
     for waiter in waiters { waiter.resume(returning: landing) }

@@ -61,7 +61,8 @@ package enum HeldTextDelivery {
     text: String, targetApp: NSRunningApplication?, targetElement: AXUIElement?,
     targetWindow: AXUIElement?, targetFieldWindow: AXUIElement?, takeID: String?,
     facts: InsertionTakeFacts, settings: HeldDeliverySettings,
-    onRetained: @escaping KernelDictationDriverFactory.RetainedCallback
+    onRetained: @escaping KernelDictationDriverFactory.RetainedCallback,
+    revealPatience: PasteRevealPatience
   ) async -> HeldTextDeliveryResult {
     await deliver(
       text: text, targetApp: targetApp, targetElement: targetElement, targetWindow: targetWindow,
@@ -70,7 +71,7 @@ package enum HeldTextDelivery {
       cascade: { request in
         await PasteCascadeExecutor(
           pasteboard: .general, policy: KernelDictationDriverFactory.pasteDeliveryPolicy,
-          onRetained: onRetained
+          revealPatience: revealPatience, onRetained: onRetained
         ).deliver(request)
       },
       log: { line in

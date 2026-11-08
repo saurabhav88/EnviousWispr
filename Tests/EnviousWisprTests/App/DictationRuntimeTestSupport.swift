@@ -147,7 +147,7 @@ enum DictationRuntimeFixtures {
         keychainManager: keychainManager,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
-        engineMutationScope: .alwaysAllowedForTesting, isSharedEngineHeldByOtherWorkload: { false }
+        engineMutationScope: .alwaysAllowedForTesting, revealPatience: PasteRevealPatience(), isSharedEngineHeldByOtherWorkload: { false }
       ))
   }
 
@@ -188,7 +188,8 @@ enum DictationRuntimeFixtures {
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
         vendorDecodeOccupancy: VendorDecodeOccupancy(),
-        whisperModelIdentity: nil
+        whisperModelIdentity: nil,
+        revealPatience: PasteRevealPatience()
       ))
   }
 

@@ -243,7 +243,8 @@ import Testing
         lastRecordingResult: lastRecordingResult,
         languageSuggestionPresenter: nil,
         recordingLockedAccess: lockAccess,
-        releaseEngineClaim: { [engineLease] token in engineLease.release(token) })
+        releaseEngineClaim: { [engineLease] token in engineLease.release(token) },
+        revealPatience: PasteRevealPatience())
       coordinator.install()
       lifecycle = coordinator
     } else {

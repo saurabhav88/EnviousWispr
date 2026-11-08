@@ -911,7 +911,7 @@ import os
             tier: .cgEvent, pid: 42, takeID: request.takeID, bundleID: "com.apple.TextEdit",
             payload: request.legacyText),
           capturedTarget: PastedRegionFakeAX.field(42), restoringCapturedTimeoutTo: 0, ax: ax,
-          scheduler: clock, report: { _ in }, log: { sink.yield($0) })
+          scheduler: clock, patience: nil, report: { _ in }, log: { sink.yield($0) })
         prepared?.commit()
         holder.session = prepared
         var result = Self.deliveredResult
@@ -932,14 +932,16 @@ import os
     #expect(holder.session?.landing == nil)
 
     telemetryState.takeID = "TAKE-43"  // the next take starts; this session keeps its own id
-    // A potential miss: decided at 300 ms, then shadowed to 1.5 s; its timers hold it weakly.
-    clock.advance(ms: 1_500)
+    // A potential miss: decided at 300 ms, then watched to the 2.5 s cap (#4426); its timers hold it weakly.
+    clock.advance(ms: 2_500)
     var iterator = lines.makeAsyncIterator()
     let line = try #require(await iterator.next())
     #expect(
       line.hasPrefix("PASTE_LANDING tier=cgevent observed=absent reason=absent"),
       "the session survived its whole shadow: \(line)")
-    #expect(line.hasSuffix("late_check=completed_no_hit focus_reannounced=0"), "\(line)")
+    #expect(
+      line.hasSuffix("late_check=completed_no_hit patience_ms=1500 focus_reannounced=0"),
+      "\(line)")
   }
 
   @Test("a clipboard-only cascade result is non-fatal and still completes delivery")
@@ -1039,7 +1041,7 @@ import os
       let keyed = PasteArrivalCapture.prepare(
         .init(tier: .cgEvent, pid: 42, takeID: nil, bundleID: nil, payload: "hello "),
         capturedTarget: nil, restoringCapturedTimeoutTo: 0, ax: ax, scheduler: clock,
-        report: { _ in }, log: { _ in })
+        patience: nil, report: { _ in }, log: { _ in })
     else {
       Issue.record("the key-tier session did not prepare")
       return

@@ -606,7 +606,7 @@ internal final class PasteCascadeExecutor {
         origin: request.origin.reportedValue),
       capturedTarget: request.targetElement,
       restoringCapturedTimeoutTo: tier1BoundTheTarget ? PasteService.axMessagingTimeoutSeconds : 0,
-      ax: landingAX, scheduler: landingScheduler)
+      ax: landingAX, scheduler: landingScheduler, patience: revealPatience)
   }
 
   /// The pasteboard every clipboard write in this cascade goes to.
@@ -689,6 +689,12 @@ internal final class PasteCascadeExecutor {
   /// take's `paste.landing_retained` row.
   private let onRetained: RetainedHandler?
 
+  /// #4426: the one per-process estimate of how long each app takes to reveal a paste, shared by
+  /// every delivery (ordinary dictation on both engines and Escape Recovery Undo). Required and
+  /// undefaulted like `policy`, so no construction site can silently drop learning; nil only where a
+  /// test does not observe it.
+  private let revealPatience: PasteRevealPatience?
+
   typealias RetainedHandler =
     @MainActor (
       _ takeID: String, _ retainedChangeCount: Int,
@@ -697,6 +703,7 @@ internal final class PasteCascadeExecutor {
 
   internal init(
     pasteboard: NSPasteboard, policy: PasteDeliveryPolicy,
+    revealPatience: PasteRevealPatience?,
     onRetained: RetainedHandler? = nil,
     landingAX: any PastedRegionAXOperations = LivePastedRegionAXOperations(),
     landingScheduler: any PastedRegionScheduling = TaskPastedRegionScheduler(),
@@ -704,6 +711,7 @@ internal final class PasteCascadeExecutor {
   ) {
     self.pasteboard = pasteboard
     self.policy = policy
+    self.revealPatience = revealPatience
     self.onRetained = onRetained
     self.landingAX = landingAX
     self.landingScheduler = landingScheduler
@@ -742,7 +750,9 @@ internal final class PasteCascadeExecutor {
     let origin = request.origin.reportedValue
     let onRetained = self.onRetained
     return ClipboardCleanup.LandingCheck(
-      decision: { await capture.landingDecision() },
+      // #4426: the retention verdict, not the 300 ms observation: a potential miss waits for its
+      // late watch up to the app's patience, and a sighting within it is never kept.
+      decision: { await capture.retentionVerdict() },
       // The class is read when the decision is in, not now: a host whose manual-accessibility
       // answer was unknown at prepare can learn it during observation, and the session's own
       // `isMiss` judges the same decision with the class as it then stands.

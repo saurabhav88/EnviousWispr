@@ -510,7 +510,7 @@ extension PasteLandingLifecycleTests {
       PasteArrivalCapture.prepare(
         .init(tier: tier, pid: 42, takeID: takeID, bundleID: bundleID, payload: payload),
         capturedTarget: captured, restoringCapturedTimeoutTo: restore, ax: ax, scheduler: clock,
-        report: { self.reports.append($0) }, log: { self.lines.append($0) })
+        patience: nil, report: { self.reports.append($0) }, log: { self.lines.append($0) })
     }
     /// The one landing registration the session made.
     var registration: PastedRegionFakeRegistration? { ax.landingRegistrations.last }
@@ -545,13 +545,14 @@ extension PasteLandingLifecycleTests {
     let rig = Rig()
     let session = try prepared(rig.prepare())
     session.commit()
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .absent)
     #expect(
       rig.lines == [
         "PASTE_LANDING tier=cgevent observed=absent reason=absent app=com.apple.TextEdit "
           + "app_class=native host_exposed_focus=true manual_ax=false target_window=unknown "
-          + "before_ms=0 resolve_ms=300 late_check=completed_no_hit focus_reannounced=0"
+          + "before_ms=0 resolve_ms=300 late_check=completed_no_hit patience_ms=1500 "
+          + "focus_reannounced=0"
       ])
     #expect(rig.reports.count == 1)
     #expect(rig.registration?.invalidated == 1, "torn down after reporting")
@@ -564,7 +565,7 @@ extension PasteLandingLifecycleTests {
     session.commit()
     rig.registration?.fire(.focusedElementChanged, element: Self.field)
     rig.registration?.fire(.focusedElementChanged, element: Self.field)
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .absent)
     #expect(rig.lines.count == 1 && rig.lines[0].hasSuffix(" focus_reannounced=2"), "\(rig.lines)")
   }
@@ -578,7 +579,8 @@ extension PasteLandingLifecycleTests {
     #expect(session.landing == .found(.sameField))
     #expect(rig.clock.now == 0, "no deadline was needed")
     #expect(
-      rig.lines.first?.hasSuffix("late_check=not_applicable focus_reannounced=0") == true,
+      rig.lines.first?.hasSuffix(
+        "late_check=not_applicable patience_ms=1500 focus_reannounced=0") == true,
       "\(rig.lines)")
   }
 
@@ -638,7 +640,7 @@ extension PasteLandingLifecycleTests {
     let session = try prepared(rig.prepare(captured: nil))
     #expect(rig.registration?.registeredNotifications == [.focusedElementChanged])
     session.commit()
-    rig.clock.advance(ms: 1_500)
+    rig.clock.advance(ms: 2_500)
     #expect(session.landing == .noTarget)
     #expect(rig.lines.first?.contains("host_exposed_focus=false") == true)
   }

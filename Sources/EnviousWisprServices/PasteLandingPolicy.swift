@@ -30,7 +30,9 @@ package enum PasteLandingPolicy {
 
   /// Apps measured to reveal pasted text to the reader later than the default deadline, with their
   /// own deadline. Only the MISS decision waits longer: a new occurrence still resolves at first
-  /// sight. The late-hit shadow (`PastedRegionTiming.arrivalShadowMs`) must stay longer than each.
+  /// sight. The late watch (#4426: to `PasteRevealPatience.capMs`, 2,500 ms) must stay longer than
+  /// each; the effective patience frozen for each paste never goes below this deadline. #996's own 1,500 ms grace
+  /// (`PastedRegionTiming.arrivalShadowMs`) is separate and also stays longer than each.
   package static let slowRevealDeadlinesMs: [String: Int] = [
     // Ghostty exposes the whole terminal as one text area and updates it after drawing: 15 real
     // dictations (plain shell and Claude Code) first seen at 385-464 ms, median 440, as late hits
