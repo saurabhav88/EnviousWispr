@@ -129,7 +129,17 @@ def _record_usage(deployment: str, usage) -> None:
     path = os.environ.get("EW_JUDGE_USAGE_LOG")
     if not path or not isinstance(usage, dict):
         return
-    line = json.dumps({"deployment": deployment, "usage": usage}, sort_keys=True) + "\n"
+    # Only integer token counts reach the ledger, never the response object itself: the ledger
+    # is a plain file, and copying fields by name keeps anything else in a response out of it.
+    def count(obj, name):
+        v = obj.get(name) if isinstance(obj, dict) else None
+        return int(v) if isinstance(v, int) and not isinstance(v, bool) else 0
+    tokens = {"prompt_tokens": count(usage, "prompt_tokens"),
+              "completion_tokens": count(usage, "completion_tokens"),
+              "total_tokens": count(usage, "total_tokens"),
+              "reasoning_tokens": count(usage.get("completion_tokens_details"), "reasoning_tokens"),
+              "cached_tokens": count(usage.get("prompt_tokens_details"), "cached_tokens")}
+    line = json.dumps({"deployment": deployment, "usage": tokens}, sort_keys=True) + "\n"
     with _usage_lock, open(path, "a", encoding="utf-8") as f:
         f.write(line)
     _enforce_spend_cap(path)
