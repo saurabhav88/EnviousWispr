@@ -776,3 +776,77 @@ test("Worker: an unknown route is 404, a non-POST method is 405", async () => {
   const wrongMethod = await worker.fetch(new Request("https://worker/count", { method: "GET" }), env);
   assert.equal(wrongMethod.status, 405);
 });
+
+function adjustRequest(body) {
+  return new Request("https://do/adjust", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+test("/adjust moves the counter once per adjustmentId and the next download counts from there", async () => {
+  const { counter, storage } = makeCounter();
+  await counter.fetch(seedRequest(800));
+  const first = await counter.fetch(adjustRequest({ adjustmentId: "issue-4456", delta: -36 }));
+  assert.equal(first.status, 200);
+  const body = await first.json();
+  assert.equal(body.before, 800);
+  assert.equal(body.after, 764);
+  assert.equal(storage.map.get("counter"), 764);
+
+  // A retried call with the same id changes nothing.
+  const retry = await counter.fetch(adjustRequest({ adjustmentId: "issue-4456", delta: -36 }));
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).reason, "already-applied");
+  assert.equal(storage.map.get("counter"), 764);
+
+  // The same id with a different delta is refused, never applied.
+  const reused = await counter.fetch(adjustRequest({ adjustmentId: "issue-4456", delta: -5 }));
+  assert.equal(reused.status, 409);
+  assert.equal(storage.map.get("counter"), 764);
+
+  const mock = mockFetch(() => new Response(null, { status: 204 }));
+  try {
+    const res = await counter.fetch(countRequest(onSiteEvent()));
+    assert.equal((await res.json()).total, 765);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("/adjust refuses an unseeded counter and a result below zero", async () => {
+  const cold = makeCounter();
+  const unseeded = await cold.counter.fetch(adjustRequest({ adjustmentId: "a", delta: -1 }));
+  assert.equal(unseeded.status, 409);
+  assert.equal(cold.storage.map.size, 0);
+
+  const { counter, storage } = makeCounter();
+  await counter.fetch(seedRequest(10));
+  const negative = await counter.fetch(adjustRequest({ adjustmentId: "b", delta: -11 }));
+  assert.equal(negative.status, 409);
+  assert.equal(storage.map.get("counter"), 10);
+  assert.equal(storage.map.get("adjustment:b"), undefined);
+});
+
+test("Worker: /adjust needs the secret and a bounded non-zero delta and a short id", async () => {
+  const { counter, storage } = makeCounter();
+  const env = { TRIGGER_SECRET: "s", DOWNLOAD_COUNTER: fakeDoNamespace(counter) };
+  const call = (secret, body) =>
+    worker.fetch(
+      new Request("https://worker/adjust", {
+        method: "POST",
+        headers: { "x-trigger-secret": secret, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
+  assert.equal((await call("wrong", { adjustmentId: "x", delta: -1 })).status, 401);
+  for (const delta of [0, 1.5, "-1", 1001, -1001, undefined]) {
+    assert.equal((await call("s", { adjustmentId: "x", delta })).status, 400, `delta=${JSON.stringify(delta)}`);
+  }
+  for (const adjustmentId of [undefined, "", "x".repeat(101)]) {
+    assert.equal((await call("s", { adjustmentId, delta: -1 })).status, 400, `id=${JSON.stringify(adjustmentId)}`);
+  }
+  assert.equal(storage.map.size, 0, "no storage write may happen for a rejected request");
+});

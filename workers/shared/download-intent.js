@@ -34,18 +34,31 @@ export const DOWNLOAD_INTENT = Object.freeze({
 
 const p = DOWNLOAD_INTENT;
 
-/** HogQL: an off-site redirect that counts. Null-safe on both properties so a
- * pre-#2953 row (no `source_bucket`) and a row with no `excluded_reason` keep
- * counting exactly as they did. */
+/** HogQL: robot rows recorded BEFORE the doorway learned to exclude them, so
+ * they carry no `excluded_reason` (#4456). A closed list of history, not a
+ * second bot filter: live rows are excluded by `isLikelyBot` in
+ * website/functions/download.js (`Click/<version>` from #4453,
+ * `msh-pdfmin/<version>` from #4455). Each is matched as the WHOLE User-Agent,
+ * like the doorway, so no browser row can match. Never add a fetcher here
+ * without first adding it to the doorway. */
+export const PRE_FILTER_BOT_UA_SQL =
+  `NOT match(coalesce(properties.$raw_user_agent, ''), '(?i)^(Click/[0-9][0-9.]*|msh-pdfmin/[0-9][0-9.]*)$')`;
+
+/** HogQL: an off-site redirect that counts. Null-safe on every property so a
+ * pre-#2953 row (no `source_bucket`), a row with no `excluded_reason` and a
+ * row with no captured User-Agent keep counting exactly as they did. */
 export const OFFSITE_REDIRECT_SQL =
   `(event = '${p.redirect}' AND ` +
   `coalesce(properties.excluded_reason, '') = '' AND ` +
-  `coalesce(properties.source_bucket, '') != '${p.onsiteBucket}')`;
+  `coalesce(properties.source_bucket, '') != '${p.onsiteBucket}' AND ` +
+  `${PRE_FILTER_BOT_UA_SQL})`;
 
 /** HogQL: every download intent, on-site or off-site, counted once. */
 export const DOWNLOAD_INTENT_SQL = `(event = '${p.click}' OR ${OFFSITE_REDIRECT_SQL})`;
 
-/** The same rule for a single relayed event (download-counter). */
+/** The same rule for a single relayed event (download-counter). It needs no
+ * User-Agent check: every event relayed since #4453/#4455 already carries the
+ * doorway's `excluded_reason`, and PRE_FILTER_BOT_UA_SQL only covers older rows. */
 export function qualifiesDownloadIntent({ event, excludedReason, sourceBucket }) {
   return (
     event === p.click ||
