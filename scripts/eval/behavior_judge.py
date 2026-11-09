@@ -322,6 +322,24 @@ def _flex_unavailable(exc: Exception) -> str | None:
 # prints once per process and not once per chunk.
 _flex_downgrade_warned = False
 
+# How many grading calls each service tier ANSWERED in this process, written to the receipt as
+# `judge_service_tiers`. Because the tier is outside the judge identity
+# (`_azure_request_tier`), this count is where a receipt says which tier graded it, including
+# a run that holds both through the fallback. Keys are `_receipt_tier` labels. It counts every
+# answered `call_azure` request, including one whose answer was then rejected and retried; the
+# identity probe is not a grading call and is not counted. Guarded by `_usage_lock`.
+_azure_tier_answers: Counter = Counter()
+
+
+def _receipt_tier(data: dict) -> str:
+    """The tier a response says answered it, as a receipt label: "flex", "standard" (Azure
+    echoes `default` for it, measured 2026-11-09) or "unreported" for any other or missing
+    echo. Unlike `_answered_tier`, which must pick a price, a receipt can say "unreported",
+    so an answer that names no tier is never recorded as a confirmed standard-tier one."""
+    echoed = data.get("service_tier")
+    return {"flex": "flex", "default": "standard"}.get(echoed, "unreported") \
+        if isinstance(echoed, str) else "unreported"
+
 
 def _answered_tier(requested: str, data: dict) -> str:
     """The tier that answered, as a price-table key: "flex" only when the response says so.
@@ -700,6 +718,8 @@ def call_azure(deployment: str, system: str, user: str) -> str:
                   file=sys.stderr)
     else:
         data = send("standard", AZURE_JUDGE_TIMEOUT_S)
+    with _usage_lock:
+        _azure_tier_answers[_receipt_tier(data)] += 1
     _record_usage(deployment, data.get("usage"), _answered_tier(requested, data))
     choices = data.get("choices") or []
     if not choices:
@@ -2673,6 +2693,15 @@ def main() -> int:
         "judge_model_version": _azure_pinned_model,
         "judge_request_settings": (
             _azure_judge_settings(args.judge[len("azure/"):])
+            if external_verdicts is None and args.judge.startswith("azure/") else None),
+        # #4467: how many of this run's grading calls each Azure service tier answered, for
+        # example {"flex": 231, "standard": 2}; "unreported" counts answers that named no
+        # known tier (`_receipt_tier`). Recorded HERE and not in the identity or the
+        # request settings above: the tier is price and queue priority for the same pinned
+        # model, so receipts from either tier share one judge identity, and this field keeps
+        # the tier visible on every receipt.
+        "judge_service_tiers": (
+            dict(sorted(_azure_tier_answers.items()))
             if external_verdicts is None and args.judge.startswith("azure/") else None),
         # The FULL identity the sweep resolved: judge id plus a digest of the endpoint host, the
         # API version and the served model. Passed in rather than recomputed so every arm records

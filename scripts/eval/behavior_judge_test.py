@@ -614,7 +614,7 @@ def test_score_old_still_drops_unreturned_ids_the_same_way():
 # the exit code                                                               #
 # --------------------------------------------------------------------------- #
 
-def _run_main(force_cacheable):
+def _run_main(force_cacheable, want_summary=False):
     """Drive the real `main()` end to end, forcing only the finalizer's answer.
 
     Behavioural, not a source grep: the point is what the PROCESS returns. A
@@ -652,8 +652,9 @@ def _run_main(force_cacheable):
     finally:
         bj.judge_chunk, bj.finalize_new_report, sys.argv = real_chunk, real_final, real_argv
         bj.preflight_judge = real_preflight
-    verdict = json.loads((t / "out" / "summary.json").read_text())["release_gate"]["verdict"]
-    return rc, verdict
+    summary = json.loads((t / "out" / "summary.json").read_text())
+    verdict = summary["release_gate"]["verdict"]
+    return (rc, verdict, summary) if want_summary else (rc, verdict)
 
 
 def test_main_does_not_require_a_judge_cli_to_be_installed():
@@ -2195,6 +2196,8 @@ def _azure_script(*replies, tier_setting="flex"):
 
     saved = (bj._key, bj._http_json, bj._azure_pinned_model, bj._resolved_judge_identity,
              bj.AZURE_JUDGE_SERVICE_TIER, bj._flex_downgrade_warned)
+    saved_answers = dict(bj._azure_tier_answers)
+    bj._azure_tier_answers.clear()
     saved_env = {k: os.environ.pop(k, None)
                  for k in ("EW_JUDGE_USAGE_LOG", "EW_SPEND_CAP_USD")}
     bj._key = lambda name: ("https://stub-test.openai.azure.com"
@@ -2212,6 +2215,8 @@ def _azure_script(*replies, tier_setting="flex"):
     finally:
         (bj._key, bj._http_json, bj._azure_pinned_model, bj._resolved_judge_identity,
          bj.AZURE_JUDGE_SERVICE_TIER, bj._flex_downgrade_warned) = saved
+        bj._azure_tier_answers.clear()
+        bj._azure_tier_answers.update(saved_answers)
         os.environ.pop("EW_JUDGE_USAGE_LOG", None)
         for k, v in saved_env.items():
             if v is not None:
@@ -2308,6 +2313,55 @@ def test_a_flex_capacity_refusal_is_answered_once_on_the_standard_tier():
         assert "flex tier unavailable" in log and "standard tier answered" in log, (name, log)
 
 
+def test_the_flex_default_keeps_the_pre_4467_judge_identity_even_through_a_fallback():
+    # A sealed exam folder pins ONE judge identity and refuses any receipt that differs. The
+    # tier is price and queue priority for the same pinned model, so the default (Flex) identity
+    # must be byte-identical to the standard-tier identity from before #4467, and a call that
+    # falls back to the standard tier in the middle of a run must not move it.
+    served = "gpt-6.1-sol-2026-09-29"
+    pre_4467 = "stub-test.openai.azure.com|" + bj.AZURE_API_VERSION + "|" + served + \
+        '|{"reasoning_effort":"low"}'
+    expected = "azure/gpt-6-1-sol@" + hashlib.sha256(pre_4467.encode()).hexdigest()[:12]
+    with _azure_script(_tier_reply("default"), _tier_reply("flex"), _http_error(429),
+                       _tier_reply("default"), _tier_reply("default")) as (sent, ledger, err):
+        flex_identity = bj.judge_identity("azure/gpt-6-1-sol")
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"      # Flex answers
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"      # falls back
+        after_fallback = bj._resolved_judge_identity
+        settings = bj._azure_judge_settings("gpt-6-1-sol")
+        answers = dict(bj._azure_tier_answers)
+        bj.AZURE_JUDGE_SERVICE_TIER = "standard"
+        standard_identity = bj.judge_identity("azure/gpt-6-1-sol")
+    assert flex_identity == expected, (flex_identity, expected)
+    assert after_fallback == expected, (after_fallback, expected)
+    assert standard_identity == expected, (standard_identity, expected)
+    assert settings == {"reasoning_effort": "low"}, settings
+    # The run held both tiers, and the count that goes into the receipt says so.
+    assert answers == {"flex": 1, "standard": 1}, answers
+    assert len(sent) == 5, sent
+
+
+def test_the_receipt_records_which_service_tiers_answered():
+    # The tier is outside the judge identity, so the receipt carries it as its own field.
+    saved = dict(bj._azure_tier_answers)
+    bj._azure_tier_answers.clear()
+    bj._azure_tier_answers.update({"standard": 2, "flex": 231})
+    saved_env = os.environ.pop("EW_JUDGE", None)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            _, _, summary = _run_main(force_cacheable=True, want_summary=True)
+    finally:
+        bj._azure_tier_answers.clear()
+        bj._azure_tier_answers.update(saved)
+        if saved_env is not None:
+            os.environ["EW_JUDGE"] = saved_env
+    meta = summary["meta"]
+    assert meta["judge"] == bj.AZURE_JUDGE_DEPLOYMENT_ID, meta["judge"]
+    assert meta["judge_service_tiers"] == {"flex": 231, "standard": 2}, meta
+    # Unchanged by #4467: the identity inputs a pinned exam folder compares.
+    assert meta["judge_request_settings"] == {"reasoning_effort": "low"}, meta
+
+
 def test_the_standard_fallback_is_tried_once_and_its_refusal_reaches_the_caller():
     with _azure_script(_http_error(429), _http_error(429)) as (sent, ledger, err):
         try:
@@ -2351,8 +2405,12 @@ def test_a_flex_request_answered_on_another_tier_is_priced_standard_and_warned_o
         bj.call_azure("gpt-6-1-sol", "rubric", "cases")
         bj.call_azure("gpt-6-1-sol", "rubric", "cases")
         rows = _ledger_rows(ledger)
+        answers = dict(bj._azure_tier_answers)
     assert [r["service_tier"] for r in rows] == ["standard", "standard"], rows
     assert err.getvalue().count("asked for the flex tier") == 1, err.getvalue()
+    # The receipt count does not have to pick a price, so an answer that names no tier is
+    # "unreported" there and never a confirmed standard-tier answer.
+    assert answers == {"standard": 1, "unreported": 1}, answers
 
 
 def test_the_spend_reader_prices_each_ledger_row_at_the_tier_that_answered():
@@ -3503,7 +3561,7 @@ def test_language_run_with_a_dropped_primary_case_is_incomplete():
     assert "C03" in report["missing_scores"]
 
 
-EXPECTED_TESTS = 160
+EXPECTED_TESTS = 162
 
 
 def _run() -> int:
