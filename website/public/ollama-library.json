@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-02",
+  "updated": "2026-11-09",
   "models": [
     {
       "name": "gemma4:e4b",
@@ -50,6 +50,13 @@
       "parameterCount": "4B",
       "sizeBytes": 3324173757,
       "reason": "Compact Qwen 3.5 size that fits an 8 GB Mac, complementing the 9B already offered."
+    },
+    {
+      "name": "gemma4:12b",
+      "displayName": "Gemma 4 (12B)",
+      "parameterCount": "12B",
+      "sizeBytes": 8021618699,
+      "reason": "Larger Gemma 4 size for 16 GB Macs, a step up from the E4B size already offered."
     }
   ]
 }
