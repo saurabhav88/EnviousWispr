@@ -6,8 +6,12 @@
 
 <p align="center">
   <strong>Talk naturally. Paste perfectly.</strong><br/>
-  Free, on-device AI dictation and speech-to-text for macOS.<br/>
-  Powered by Apple Silicon. No cloud, no account, your voice never leaves your Mac.
+  Free, on-device AI dictation and meeting notes for macOS.<br/>
+  Powered by Apple Silicon. No account, no subscription, your voice never leaves your Mac.
+</p>
+
+<p align="center">
+  <strong>New: <a href="#enviousmeet">EnviousMeet</a> (Beta).</strong> Premium meeting notes, free on your Mac. No bot joins your call.
 </p>
 
 <p align="center">
@@ -30,11 +34,61 @@ https://github.com/user-attachments/assets/2655d632-1ad8-4a00-bac8-d6c3cc2f6aad
 
 ## What is this?
 
-EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full keybind-to-paste flow typically lands in around a second and a half.
+EnviousWispr is a free Mac app with two tools: dictation for everything you write, and EnviousMeet for your meetings.
 
-No cloud. No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
+| | **Dictation** | **EnviousMeet** (Beta) |
+|---|---|---|
+| **What it does** | Press your keybind, speak, and clean text lands in the app you are using | Records your calls and in-person meetings, then gives you a transcript with who said what, your own notes and an AI summary |
+| **Where it runs** | Transcription on your Mac, polish on your Mac or with your own AI key | Recording, transcript and speaker labels on your Mac, summary on your Mac or with your own AI key |
+| **How you start it** | Your keybind, from any app | The menu bar, or the "Take notes on this Zoom call?" card when a call starts |
+| **See more** | [How it works](#how-it-works) | [EnviousMeet](#enviousmeet) |
+
+Both tools come in the same download. There is no account, no subscription and no paid plan, and both are open source under the GPLv3.
+
+**Dictation.** EnviousWispr runs dictation entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full keybind-to-paste flow typically lands in around a second and a half.
+
+No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
 
 It is open source under the GPLv3, actively maintained, and built to be a tool you can rely on every day.
+
+## EnviousMeet
+
+<p align="center">
+  <a href="https://enviouswispr.com/meetings/?utm_source=github&utm_medium=referral&utm_campaign=enviousmeet-readme">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/readme/enviousmeet-dark.jpg" />
+      <img src="assets/readme/enviousmeet.jpg" width="720" alt="A Zoom call with a card from EnviousMeet that asks: Take notes on this Zoom call? EnviousMeet offers to take notes. No bot joins the call." />
+    </picture>
+  </a>
+</p>
+
+### Premium meeting notes. Free, on your Mac.
+
+EnviousMeet is a private AI notetaker inside EnviousWispr. It records your calls and the meetings you have in a room. It writes a transcript with who said what on your Mac, keeps your own notes next to it, and gives you a summary from the AI engine you choose. No bot joins the call, and nobody sees a notetaker in the participant list.
+
+- 🤖 **No bot in your call.** EnviousMeet records your microphone and the call sound with the Mac's own audio tools, so the transcript starts from clean, first-hand audio. It works with AirPods too. Call sound needs macOS 14.2 or later.
+- 🔔 **Notices the calls you already make.** When a call starts in Zoom, Microsoft Teams, FaceTime, Slack, Webex and other call apps, or in Google Meet, Zoom, Teams and more in your browser, a small card asks "Take notes on this Zoom call?". You choose whether it asks, starts by itself, or never notices calls.
+- 🗣️ **Who said what, with real names.** Your microphone is marked **You**. The people on the call get speaker labels, or their real names from the Zoom app, the Teams app, Google Meet, and Teams and Zoom on the web when EnviousMeet has enough evidence. It never guesses a name.
+- 🔇 **Follows your mute.** Muting yourself in Zoom does not turn off your Mac's microphone. When EnviousMeet can see your mute button in the Zoom app, the Teams app or Google Meet in Chrome or Safari, your side chatter stays out of the recording, the transcript and the summary. A few seconds around a mute change may be kept.
+- 🏢 **For the meeting in the room, too.** Put your Mac on the table. EnviousMeet tells the voices apart and gives each one its own label, with no call app needed.
+- ✨ **AI summaries worth reading.** Each summary is sorted into key points, decisions and action items, with an owner when someone takes one on. Type your own notes during the meeting, and the summary uses them along with the transcript.
+- 🎧 **Play back any moment.** The audio stays on your Mac until you delete it. Every passage has a timestamp, and **Transcribe again** writes the transcript again with another engine whenever you like.
+- 📅 **Named from your calendar** (optional). Each meeting takes the title of its calendar event and saves who was invited. The calendar is only read, never changed.
+- ⌨️ **Keep dictating.** EnviousWispr dictation still works while a meeting records.
+
+**Choose where the summary is written.** The summary engine is separate from dictation's AI polish. No summary is fine too: you keep the transcript and your notes.
+
+| Summary engine | Where the transcript, notes and meeting details go |
+|---|---|
+| **EG-1** (our own model), **Apple Intelligence** (macOS 26), or an **Ollama model on your Mac** | They stay on your Mac. Works with no internet. |
+| A **hosted Ollama** model | Sent to Ollama's servers. |
+| **OpenAI**, **Gemini** or **Claude** | Sent straight to that provider under your own key. |
+
+**What stays on your Mac.** Meeting audio never leaves your Mac. Transcripts, speaker labels, notes and calendar details are stored on your Mac. Envious Labs never receives your meeting audio, words, people's names or calendar events. Only a cloud summary engine you choose receives the transcript, notes and meeting details.
+
+**Recording laws differ by place.** In some places everyone in a call or a room must agree before you record. You are responsible for telling people and getting their consent where the law requires it.
+
+To start, open EnviousWispr and click **EnviousMeet** in the sidebar. A short setup asks for the Microphone, Call sound and (optionally) Calendar permissions. See the [EnviousMeet page](https://enviouswispr.com/meetings/?utm_source=github&utm_medium=referral&utm_campaign=enviousmeet-readme) for a tour, and [Record a Meeting](https://enviouswispr.com/help/enviousmeet-record-a-meeting/) for every detail.
 
 ## Why EnviousWispr?
 
@@ -46,6 +100,16 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 | **Polish** | Optional. Fully on-device (EG-1, S1-mini by Superwhisper, Apple Intelligence, Ollama) or bring-your-own-key cloud (OpenAI, Gemini, Claude) | Cloud polish, included in subscription |
 | **Cost** | Free. No account, no subscription | Monthly subscription |
 | **Works offline** | Yes, fully functional without internet | No |
+
+| | EnviousMeet | Cloud meeting notetakers |
+|---|---|---|
+| **In your call** | Nothing joins. It records on your Mac | Often a bot joins as a participant |
+| **Audio** | Stays on your Mac | Uploaded to their servers |
+| **Transcript** | Written on your Mac, works offline | Written in their cloud |
+| **Summary** | On your Mac, or with your own AI key | Their cloud model |
+| **Muted side chatter** | Left out when it can see your mute button | Depends on the service |
+| **Cost** | Free. No account, no subscription | Usually a subscription or a monthly limit |
+| **Code** | Open source (GPLv3) | Usually closed |
 
 ## How it works
 
@@ -104,6 +168,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 ## Features
 
+- 🗓️ **EnviousMeet (Beta)**: private AI meeting notes for calls and in-person meetings, with no bot in your call. Who said what, your own notes, AI summaries, playback and mute following. See [EnviousMeet](#enviousmeet)
 - 🎙️ **Dual ASR engines** with [Parakeet Ultra](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and OpenAI Whisper on [transcribe.cpp](https://github.com/saurabhav88/transcribe.cpp)
 - 👀 **Live Preview**: watch your words appear in the recording pill while you speak, so you can see it is working without waiting for the paste. On by default, switchable off, and it never changes the text you get. A Mac that cannot run it behaves as though it were off
 - ↩️ **Escape Recovery**: hit your cancel keybind by mistake and get the dictation back. On by default: a keybind cancel keeps the text for 24 hours instead of discarding it, and you can switch that off. The Cancel button in the recording pill still discards on the spot, so you keep one way to mean it. Only the text is kept, never the audio
@@ -125,7 +190,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 🎨 **Your choice of recording pill**: pick the recording indicator design you like in Dictation Settings > Recording Pill, and try a practice dictation before setup ends
 - ⌨️ **Global keybind** with push-to-talk, toggle, and hands-free modes (double-press to lock for long-form dictation)
 - 📋 **Auto-paste** directly into the active app, or just copy to clipboard
-- 🕘 **History** for browsing, searching, and reviewing past dictations and transcripts, with an All / Dictations / Transcripts filter above the list
+- 🕘 **History** for browsing, searching, and reviewing past dictations, transcripts and meetings, with All, Dictations, Transcripts and Meetings tabs (A, D, T and M) above the list
 - 🔎 **Settings search**: type in the Settings sidebar, or press ⌘F, to jump straight to any setting
 - 🧭 **Menu bar native** with minimal footprint
 - 🔄 **Auto-updates** via Sparkle
@@ -227,12 +292,15 @@ Or download manually:
 4. Set your preferred keybind on the Keybinds page
 5. Start talking
 
+**For meetings:** click **EnviousMeet** in the sidebar and follow the short setup. Then choose **Start Meeting Recording** from the menu bar, or let EnviousMeet offer to take notes when a call starts.
+
 **Optional:** Turn on AI polish on the AI Polish page. Keep it fully on-device with EG-1 (recommended, macOS 14+), S1-mini by Superwhisper, Apple Intelligence (macOS 26+), or Ollama, or add an OpenAI, Gemini, or Claude API key.
 
 ## Requirements
 
 - macOS 14 (Sonoma) or later
 - Apple Silicon (M1 or newer)
+- For EnviousMeet to record the call sound and notice when a call starts: macOS 14.2 or later. On macOS 14.0 and 14.1, EnviousMeet records your microphone only.
 
 Core dictation works across the full supported range, and so does EG-1, our own on-device polish model. The built-in Apple Intelligence polish option requires macOS 26 or later; on earlier versions dictation works normally and you can use EG-1, Ollama, or a cloud key for polish instead.
 
@@ -263,6 +331,7 @@ Key design choices:
 - **Dual pipeline architecture** with deliberately separate Parakeet and Whisper backends (isolation is a feature, not tech debt)
 - **Heart & Limbs pattern** where the critical path (audio, ASR, paste) never fails, and features (polish, custom words, filler removal) degrade gracefully
 - **Local-first** with LLM polish as an opt-in enhancement using your own keys
+- **Dictation comes first**: EnviousMeet records alongside dictation and is designed never to slow it down
 
 ## Contributing
 
@@ -276,6 +345,7 @@ EnviousWispr is built on a simple principle: **your voice is yours.**
 
 - Audio is processed locally and is not uploaded. Local recovery can temporarily retain audio.
 - LLM polish (if enabled) can run entirely on your Mac with EG-1 (our own model), Apple Intelligence, or a local Ollama model, so the polish step makes no network call. If you pick OpenAI, Gemini, or Claude, only text is sent (your transcript plus the polish instructions) using your own API key. If you pick a hosted Ollama model, the same text is sent to Ollama using your Ollama sign-in. Audio is never sent.
+- EnviousMeet keeps meeting audio, transcripts, notes and summaries on your Mac. Meeting audio is never uploaded. A summary is written on your Mac unless you choose a cloud summary engine; then the transcript, your notes and the meeting details go straight to that provider under your own key (or to Ollama for a hosted Ollama model).
 - Anonymous product analytics (PostHog) and crash reporting (Sentry) are on by default, and each can be turned off in App Settings > Privacy. A crash-reporting change applies after the app restarts.
 - Crash reports exclude dictated text and audio. Technical context and identifiers are described in [What Data Is Collected](https://enviouswispr.com/help/what-data-is-collected/).
 
