@@ -53,7 +53,7 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 
 ## EnviousMeet
 
-https://github.com/user-attachments/assets/b93e48f3-2c36-4516-9008-41fa1b0a9b49
+https://github.com/user-attachments/assets/c7626f5f-089b-42fa-b8aa-7a391684641b
 
 ### Premium meeting notes. Free, on your Mac.
 
