@@ -2163,6 +2163,235 @@ def test_azure_refuses_a_reply_with_no_choices():
     assert "no choices" in _azure_error({"choices": []})
 
 
+# ---- #4467: the Flex service tier ------------------------------------------------------------
+
+def _tier_reply(tier="flex"):
+    reply = {"model": "gpt-6.1-sol-2026-09-29",
+             "usage": {"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100,
+                       "prompt_tokens_details": {"cached_tokens": 400}},
+             "choices": [{"message": {"content": "[]"}, "finish_reason": "stop"}]}
+    if tier is not None:
+        reply["service_tier"] = tier
+    return reply
+
+
+def _http_error(code, body=b""):
+    return urllib.error.HTTPError("u", code, "refused", {}, io.BytesIO(body))
+
+
+@contextlib.contextmanager
+def _azure_script(*replies, tier_setting="flex"):
+    """Run call_azure against a scripted list of replies, one per request sent. A reply that
+    is an exception is raised. Yields `(sent, ledger, stderr)`: every request as
+    `(body, timeout)`, the usage-ledger path and the captured stderr."""
+    script, sent = list(replies), []
+
+    def reply(opener, request, timeout):
+        sent.append((json.loads(request.data), timeout))
+        item = script.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    saved = (bj._key, bj._http_json, bj._azure_pinned_model, bj._resolved_judge_identity,
+             bj.AZURE_JUDGE_SERVICE_TIER, bj._flex_downgrade_warned)
+    saved_env = {k: os.environ.pop(k, None)
+                 for k in ("EW_JUDGE_USAGE_LOG", "EW_SPEND_CAP_USD")}
+    bj._key = lambda name: ("https://stub-test.openai.azure.com"
+                            if "endpoint" in name else "stub-key")
+    bj._http_json = reply
+    bj._azure_pinned_model = None
+    bj.AZURE_JUDGE_SERVICE_TIER = tier_setting
+    bj._flex_downgrade_warned = False
+    err = io.StringIO()
+    try:
+        with tempfile.TemporaryDirectory() as td, contextlib.redirect_stderr(err):
+            ledger = Path(td) / "usage-test.jsonl"
+            os.environ["EW_JUDGE_USAGE_LOG"] = str(ledger)
+            yield sent, ledger, err
+    finally:
+        (bj._key, bj._http_json, bj._azure_pinned_model, bj._resolved_judge_identity,
+         bj.AZURE_JUDGE_SERVICE_TIER, bj._flex_downgrade_warned) = saved
+        os.environ.pop("EW_JUDGE_USAGE_LOG", None)
+        for k, v in saved_env.items():
+            if v is not None:
+                os.environ[k] = v
+
+
+def _ledger_rows(ledger):
+    return [json.loads(line) for line in ledger.read_text().splitlines()]
+
+
+def test_sol_grading_asks_for_flex_by_default_with_the_flex_deadline():
+    with _azure_script(_tier_reply("flex")) as (sent, ledger, err):
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"
+        rows = _ledger_rows(ledger)
+    assert len(sent) == 1, sent
+    body, timeout = sent[0]
+    assert body.get("service_tier") == "flex", body
+    assert body.get("reasoning_effort") == "low", body
+    assert timeout == bj.AZURE_JUDGE_FLEX_TIMEOUT_S >= 180, timeout
+    assert [r["service_tier"] for r in rows] == ["flex"], rows
+    assert err.getvalue() == "", err.getvalue()
+
+
+def test_the_standard_opt_out_sends_the_request_without_a_tier():
+    # The opt-out must send exactly the pre-#4467 request, on the fast-fail deadline.
+    with _azure_script(_tier_reply("default"), tier_setting="standard") as (sent, ledger, err):
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"
+        rows = _ledger_rows(ledger)
+    assert len(sent) == 1, sent
+    body, timeout = sent[0]
+    assert "service_tier" not in body, body
+    assert body.get("reasoning_effort") == "low", body
+    assert timeout == bj.AZURE_JUDGE_TIMEOUT_S, timeout
+    assert [r["service_tier"] for r in rows] == ["standard"], rows
+    assert err.getvalue() == "", err.getvalue()
+
+
+def test_the_opt_out_is_read_from_the_environment_and_a_bad_value_is_refused():
+    def run(value):
+        env = {**os.environ, "EW_JUDGE_SERVICE_TIER": value}
+        return subprocess.run(
+            [sys.executable, "-c",
+             "import behavior_judge as b; print(b.AZURE_JUDGE_SERVICE_TIER)"],
+            cwd=str(Path(bj.__file__).parent), env=env, capture_output=True, text=True)
+    ok = run("standard")
+    assert ok.returncode == 0 and ok.stdout.strip() == "standard", (ok.stdout, ok.stderr)
+    bad = run("cheap")
+    assert bad.returncode != 0 and "EW_JUDGE_SERVICE_TIER" in bad.stderr, (bad.stdout, bad.stderr)
+
+
+def test_flex_is_sent_only_for_the_primary_judge_and_never_enters_its_identity():
+    # Luna was not measured on Flex, and the identity probe stays a standard request.
+    with _azure_script(_tier_reply(None), _tier_reply("default"), _tier_reply("flex"),
+                       _tier_reply("default")) as (sent, ledger, err):
+        assert bj.call_azure("gpt-5-6-luna", "rubric", "cases") == "[]"
+        flex_identity = bj.judge_identity("azure/gpt-6-1-sol")
+        bj._azure_pinned_model = None
+        assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]"
+        bj.AZURE_JUDGE_SERVICE_TIER = "standard"
+        standard_identity = bj.judge_identity("azure/gpt-6-1-sol")
+    luna, probe, grading, probe_again = sent
+    assert "service_tier" not in luna[0] and luna[1] == bj.AZURE_JUDGE_TIMEOUT_S, luna
+    assert "service_tier" not in probe[0] and "service_tier" not in probe_again[0], sent
+    assert grading[0].get("service_tier") == "flex", grading
+    # One identity for both tiers: a run may hold both through the fallback, and receipts
+    # graded on either tier come from the same pinned model.
+    assert flex_identity == standard_identity, (flex_identity, standard_identity)
+
+
+def test_a_flex_capacity_refusal_is_answered_once_on_the_standard_tier():
+    refusals = {
+        "429": _http_error(429),
+        "503": _http_error(503),
+        # The shape Azure returned for a refused tier value on 2026-11-09 (#4467).
+        "400 naming the tier": _http_error(
+            400, b'{"error": {"message": "Invalid value.", "type": "invalid_request_error", '
+                 b'"param": "service_tier", "code": "invalid_value"}}'),
+    }
+    for name, refusal in refusals.items():
+        with _azure_script(refusal, _tier_reply("default")) as (sent, ledger, err):
+            assert bj.call_azure("gpt-6-1-sol", "rubric", "cases") == "[]", name
+            rows = _ledger_rows(ledger)
+        assert len(sent) == 2, (name, sent)
+        (first, first_timeout), (second, second_timeout) = sent
+        assert first.get("service_tier") == "flex", (name, first)
+        assert "service_tier" not in second, (name, second)
+        assert first_timeout == bj.AZURE_JUDGE_FLEX_TIMEOUT_S, (name, first_timeout)
+        assert second_timeout == bj.AZURE_JUDGE_TIMEOUT_S, (name, second_timeout)
+        # Everything but the tier is the same request: the fallback re-asks, never re-words.
+        assert {k: v for k, v in first.items() if k != "service_tier"} == second, name
+        # Only the answering call is metered, at the tier that answered.
+        assert [r["service_tier"] for r in rows] == ["standard"], (name, rows)
+        log = err.getvalue()
+        assert "flex tier unavailable" in log and "standard tier answered" in log, (name, log)
+
+
+def test_the_standard_fallback_is_tried_once_and_its_refusal_reaches_the_caller():
+    with _azure_script(_http_error(429), _http_error(429)) as (sent, ledger, err):
+        try:
+            bj.call_azure("gpt-6-1-sol", "rubric", "cases")
+        except urllib.error.HTTPError as e:
+            # Still a 429, so `judge_chunk` backs off and retries exactly as before #4467.
+            assert e.code == 429 and bj._retryable_http_error(e), e
+        else:
+            raise AssertionError("a refused standard fallback was swallowed")
+        assert not ledger.exists(), ledger.read_text()
+    assert len(sent) == 2, sent
+    assert "standard tier answered" not in err.getvalue(), err.getvalue()
+
+
+def test_only_a_flex_refusal_falls_back_to_the_standard_tier():
+    # Two-way control on the fallback. Each of these keeps its pre-#4467 handling: a second,
+    # standard-price request for it would pay again for a request that may still be running
+    # (timeout) or re-send one the server rejected for its content (plain 400).
+    others = {
+        "plain 400": _http_error(400, b'{"error": {"message": "content filtered; be flexible"}}'),
+        "401": _http_error(401),
+        "500": _http_error(500),
+        "read timeout": bj.TransientTransportError(TimeoutError("The read operation timed out")),
+    }
+    for name, failure in others.items():
+        with _azure_script(failure) as (sent, ledger, err):
+            try:
+                bj.call_azure("gpt-6-1-sol", "rubric", "cases")
+            except type(failure) as e:
+                assert e is failure, (name, e)
+            else:
+                raise AssertionError(f"{name}: the failure was swallowed")
+        assert len(sent) == 1, (name, sent)
+        assert err.getvalue() == "", (name, err.getvalue())
+
+
+def test_a_flex_request_answered_on_another_tier_is_priced_standard_and_warned_once():
+    # A 200 whose echo is not "flex" was billed at some other rate. The ledger must never
+    # read cheaper than the bill, so it is recorded at the standard price.
+    with _azure_script(_tier_reply("default"), _tier_reply(None)) as (sent, ledger, err):
+        bj.call_azure("gpt-6-1-sol", "rubric", "cases")
+        bj.call_azure("gpt-6-1-sol", "rubric", "cases")
+        rows = _ledger_rows(ledger)
+    assert [r["service_tier"] for r in rows] == ["standard", "standard"], rows
+    assert err.getvalue().count("asked for the flex tier") == 1, err.getvalue()
+
+
+def test_the_spend_reader_prices_each_ledger_row_at_the_tier_that_answered():
+    def spend(*rows):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "usage-x.jsonl").write_text(
+                "".join(json.dumps(r) + "\n" for r in rows))
+            return bj.azure_spend_usd(Path(td))
+
+    def row(tier, cached=0, deployment="gpt-6-1-sol"):
+        r = {"deployment": deployment,
+             "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000,
+                       "cached_tokens": cached}}
+        if tier is not None:
+            r["service_tier"] = tier
+        return r
+
+    def close(a, b):
+        return abs(a - b) < 1e-9
+
+    assert close(spend(row("flex")), 1.0 + 5.0)
+    assert close(spend(row("standard")), 2.0 + 10.0)
+    # A row written before #4467 has no tier and was a standard-tier call.
+    assert close(spend(row(None)), 2.0 + 10.0)
+    # Cached input: 400k of the 1M prompt tokens at the cached price, the rest at full price.
+    assert close(spend(row("flex", cached=400_000)), 0.6 * 1.0 + 0.4 * 0.05 + 5.0)
+    assert close(spend(row("standard", cached=400_000)), 0.6 * 2.0 + 0.4 * 0.10 + 10.0)
+    # A cached count above the prompt count cannot push the uncached share below zero.
+    assert close(spend(row("flex", cached=9_000_000)), 0.05 + 5.0)
+    # A tier with no price is refused, never priced at zero or guessed.
+    for unpriced in (row("priority"), row("flex", deployment="gpt-5-6-luna")):
+        try:
+            spend(unpriced)
+        except RuntimeError as e:
+            assert "tier price" in str(e), str(e)
+        else:
+            raise AssertionError(f"priced a row with no tier price: {unpriced}")
+
+
 @contextlib.contextmanager
 def _endpoint(value):
     """Point the endpoint lookup at `value` without touching the real environment."""
@@ -3274,7 +3503,7 @@ def test_language_run_with_a_dropped_primary_case_is_incomplete():
     assert "C03" in report["missing_scores"]
 
 
-EXPECTED_TESTS = 151
+EXPECTED_TESTS = 160
 
 
 def _run() -> int:

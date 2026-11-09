@@ -99,6 +99,20 @@ CLAUDE_JUDGE_MODEL_ID = "claude-sonnet-5"  # founder decision 2026-07-02, supers
 AZURE_JUDGE_DEPLOYMENT_ID = "azure/gpt-6-1-sol"  # founder decision 2026-11-05
 AZURE_JUDGE_REASONING_EFFORT = "low"
 AZURE_JUDGE_TIMEOUT_S = float(os.environ.get("EW_JUDGE_TIMEOUT_S", "60"))
+# #4467: the primary judge is sent on the Azure Flex service tier (founder 2026-11-09). Flex is
+# the SAME model at half list price, served at lower priority. Measured on 400 dev-400 cases
+# already graded on the standard tier: hard-fail agreement 98.5% and pass agreement 97.5%, the
+# level two standard-tier grades of the same cases reach; 102 of 102 responses echoed `flex`.
+# EW_JUDGE_SERVICE_TIER=standard is the one opt-out and sends exactly the pre-#4467 request.
+AZURE_JUDGE_SERVICE_TIER = os.environ.get("EW_JUDGE_SERVICE_TIER", "flex").strip().lower()
+if AZURE_JUDGE_SERVICE_TIER not in ("flex", "standard"):
+    raise SystemExit(f"EW_JUDGE_SERVICE_TIER must be 'flex' or 'standard', "
+                     f"not {AZURE_JUDGE_SERVICE_TIER!r}")
+# Flex queues behind standard traffic, so it gets its own, longer deadline. 180 s is the value
+# the measured run used and the floor the grading rule in cloud-llm-credits.md sets: 102
+# answered Flex calls (91 grading, 11 probes), slowest 14.4 s, and one more call that hit the
+# 180 s read timeout. The 60 s above stays the standard tier's fast-fail.
+AZURE_JUDGE_FLEX_TIMEOUT_S = float(os.environ.get("EW_JUDGE_FLEX_TIMEOUT_S", "180"))
 # The primary judge stays on the expiring Azure startup credits. The reason is which scarce
 # resource each option burns, not accuracy: the Claude subscription is building
 # capacity (~99% used by Thursday) and the Codex plan is adversarial review, while an
@@ -122,10 +136,13 @@ _usage_lock = threading.Lock()
 _spend_cap_hit = False
 
 
-def _record_usage(deployment: str, usage) -> None:
+def _record_usage(deployment: str, usage, tier: str = "standard") -> None:
     """#4450: opt-in token metering for spend receipts. Appends the response's own `usage`
     object to EW_JUDGE_USAGE_LOG when that variable names a file; otherwise does nothing, so
-    grading behaviour and output are unchanged."""
+    grading behaviour and output are unchanged.
+
+    #4467: `tier` is the service tier that ANSWERED (`_answered_tier`), written beside the
+    counts so the spend reader prices a Flex row at the Flex price."""
     path = os.environ.get("EW_JUDGE_USAGE_LOG")
     if not path or not isinstance(usage, dict):
         return
@@ -143,16 +160,24 @@ def _record_usage(deployment: str, usage) -> None:
     # names this file defines. An unpriced name is written as "unpriced", which the spend
     # reader refuses (azure_spend_usd raises on any deployment it cannot price).
     priced = next((k for k in AZURE_PRICES if k == deployment), "unpriced")
-    line = json.dumps({"deployment": priced, "usage": tokens}, sort_keys=True) + "\n"
+    line = json.dumps({"deployment": priced, "service_tier": tier, "usage": tokens},
+                      sort_keys=True) + "\n"
     with _usage_lock, open(path, "a", encoding="utf-8") as f:
         f.write(line)
     _enforce_spend_cap(path)
 
 
-# #4450: USD per 1M tokens (input, output) for the Azure deployments the exams use, and USD per
-# 1M characters for Azure neural TTS. Sources: Azure retail prices API (gpt-6.1-sol, global
-# standard short context, East US 2, read 2026-11-07); cloud-llm-credits.md (gpt-5.6-luna).
-AZURE_PRICES = {"gpt-6-1-sol": (2.0, 10.0), "gpt-5-6-luna": (0.20, 1.20)}
+# #4450: USD per 1M tokens (input, output, cached input) for the Azure deployments the exams
+# use, per service tier, and USD per 1M characters for Azure neural TTS. Sources: Azure retail
+# prices API (gpt-6.1-sol, global standard short context, East US 2, read 2026-11-07);
+# cloud-llm-credits.md (gpt-5.6-luna; the gpt-6.1-sol Flex and cached-input list prices,
+# #4467). Luna has no recorded cached-input price, so its cached tokens cost the input price.
+# A deployment has a "flex" row only where Flex is sent, so a Flex ledger row for any other
+# deployment is unpriced and refused.
+AZURE_PRICES = {
+    "gpt-6-1-sol": {"standard": (2.0, 10.0, 0.10), "flex": (1.0, 5.0, 0.05)},
+    "gpt-5-6-luna": {"standard": (0.20, 1.20, 0.20)},
+}
 AZURE_TTS_PER_M_CHARS = 16.0
 
 
@@ -173,9 +198,18 @@ def azure_spend_usd(folder: Path) -> float:
                 continue
             if dep not in AZURE_PRICES:
                 raise RuntimeError(f"spend cap: no price for deployment {dep!r} in {log}")
-            pin, pout = AZURE_PRICES[dep]
+            # A row written before #4467 has no tier; every such call was sent without one.
+            tier = row.get("service_tier", "standard")
+            if tier not in AZURE_PRICES[dep]:
+                raise RuntimeError(
+                    f"spend cap: no {tier!r} tier price for deployment {dep!r} in {log}")
+            pin, pout, pcached = AZURE_PRICES[dep][tier]
             u = row["usage"]
-            total += (u.get("prompt_tokens", 0) / 1e6 * pin
+            prompt = u.get("prompt_tokens", 0)
+            # `prompt_tokens` includes the cached ones. Bounded to the prompt count so a
+            # malformed row can never price below zero uncached tokens.
+            cached = min(max(u.get("cached_tokens", 0), 0), prompt)
+            total += ((prompt - cached) / 1e6 * pin + cached / 1e6 * pcached
                       + u.get("completion_tokens", 0) / 1e6 * pout)
     return total
 
@@ -196,7 +230,8 @@ def precheck_spend(deployment: str, reserve_usd: float | None = None) -> None:
     """Before any paid Azure request (#4450): the deployment must be priced and the ledger's
     spend plus a reserve for requests still in flight must stay under the cap. Runs on every
     request, so a restarted process over budget refuses before sending. Reserve: one worst-case
-    judge request (16,000 output tokens at the output price) per concurrent worker (12),
+    judge request (16,000 output tokens at the highest output price of any tier, so a Flex
+    call that falls back to the standard tier is covered) per concurrent worker (12),
     overridable with EW_SPEND_RESERVE_USD."""
     ledger = _cap_ledger()
     if ledger is None:
@@ -205,7 +240,8 @@ def precheck_spend(deployment: str, reserve_usd: float | None = None) -> None:
         raise SystemExit(f"SPEND CAP: no price for deployment {deployment!r}; refusing to send")
     if reserve_usd is None:
         reserve_usd = float(os.environ.get(
-            "EW_SPEND_RESERVE_USD", 12 * 16000 / 1e6 * max(p[1] for p in AZURE_PRICES.values())))
+            "EW_SPEND_RESERVE_USD", 12 * 16000 / 1e6 * max(
+                price[1] for tiers in AZURE_PRICES.values() for price in tiers.values())))
     spent = azure_spend_usd(ledger.parent)
     cap = float(os.environ["EW_SPEND_CAP_USD"])
     if spent + reserve_usd > cap:
@@ -234,6 +270,76 @@ def _azure_judge_settings(deployment: str) -> dict[str, str]:
     """One effective setting for the primary judge's probe, requests and identity."""
     return ({"reasoning_effort": AZURE_JUDGE_REASONING_EFFORT}
             if f"azure/{deployment}" == AZURE_JUDGE_DEPLOYMENT_ID else {})
+
+
+def _azure_request_tier(deployment: str) -> str:
+    """The service tier a grading request for `deployment` asks for: "flex" or "standard".
+
+    Flex is sent only for the primary judge deployment, the one it was measured on (#4467).
+
+    Deliberately NOT part of `_azure_judge_settings`, so the tier is in neither the judge
+    identity nor the receipt's `judge_request_settings`. The tier chooses a price and a queue
+    priority for the same served model, and that model is still checked against the pin on
+    every response whichever tier answered. One run can also hold both tiers by design: a Flex
+    call refused for capacity is answered on the standard tier. An identity that named the
+    tier would be false for such a run, and would force a whole re-grade on every opt-out.
+    """
+    if (AZURE_JUDGE_SERVICE_TIER == "flex"
+            and f"azure/{deployment}" == AZURE_JUDGE_DEPLOYMENT_ID):
+        return "flex"
+    return "standard"
+
+
+def _flex_unavailable(exc: Exception) -> str | None:
+    """Why a Flex request should be answered on the standard tier instead, or None.
+
+    Three answers mean "Flex cannot take this call now", and each is the server's refusal, so
+    nothing was graded and nothing is billed twice:
+    - 429: Flex capacity ("Resource Unavailable") or the deployment's own rate limit. The two
+      are not told apart; a real rate limit refuses the standard retry as well, and that 429
+      reaches `judge_chunk`'s backoff exactly as before.
+    - 503: the service has no capacity.
+    - 400 or 404 whose body names the service tier: Flex is not offered for this deployment.
+
+    Everything else keeps its existing handling. A timeout in particular is NOT a fallback:
+    the request may still be running and billed, and `judge_chunk` already retries it.
+    """
+    if not isinstance(exc, urllib.error.HTTPError):
+        return None
+    if exc.code in (429, 503):
+        return f"HTTP {exc.code}"
+    if exc.code in (400, 404):
+        try:
+            detail = exc.read().decode("utf-8", "replace").lower()
+        except Exception:
+            return None
+        if re.search(r"service[_ ]tier|\bflex\b", detail):
+            return f"HTTP {exc.code}, the service tier was refused"
+    return None
+
+
+# Set once a Flex request was answered on another tier without any error, so the warning below
+# prints once per process and not once per chunk.
+_flex_downgrade_warned = False
+
+
+def _answered_tier(requested: str, data: dict) -> str:
+    """The tier that answered, as a price-table key: "flex" only when the response says so.
+
+    The response echoes `service_tier`. Anything other than an exact "flex" is priced as
+    "standard", the higher price, so an answer that does not name its tier can never make
+    the ledger read cheaper than the bill.
+    """
+    echoed = data.get("service_tier")
+    if echoed == "flex":
+        return "flex"
+    global _flex_downgrade_warned
+    if requested == "flex" and not _flex_downgrade_warned:
+        _flex_downgrade_warned = True
+        print(f"[judge] asked for the flex tier but the response reports "
+              f"service_tier={echoed!r}; pricing these calls at the standard rate",
+              file=sys.stderr)
+    return "standard"
 
 
 CLAUDE_JUDGE_MAX_WORKERS = 6            # subprocess per call; cap fan-out. Raised
@@ -526,6 +632,10 @@ def call_azure(deployment: str, system: str, user: str) -> str:
 
     `deployment` is an Azure DEPLOYMENT name, not a vendor model id. The two differ:
     `gpt-6-1-sol` is what our resource calls the primary judge.
+
+    The primary judge is asked for on the Flex service tier (#4467, `_azure_request_tier`).
+    A Flex request the service cannot take is answered once on the standard tier, and the
+    tier that answered is written to the usage ledger.
     """
     endpoint = _validated_azure_endpoint()
     url = (f"{endpoint}/openai/deployments/{deployment}/chat/completions"
@@ -549,22 +659,48 @@ def call_azure(deployment: str, system: str, user: str) -> str:
         "max_completion_tokens": 16000,
         **_azure_judge_settings(deployment),
     }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        headers={"api-key": _key("azure-openai-key"), "Content-Type": "application/json"},
-        method="POST",
-    )
+    api_key = _key("azure-openai-key")
+
+    def send(tier: str, timeout: float):
+        # The standard request carries no `service_tier` field at all, so the opt-out and the
+        # fallback send byte-for-byte what this function sent before #4467.
+        payload = {**body, "service_tier": "flex"} if tier == "flex" else body
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode(),
+            headers={"api-key": api_key, "Content-Type": "application/json"},
+            method="POST",
+        )
+        return _http_json(_no_redirect_opener(), req, timeout)
+
     if _spend_cap_hit:
         raise SystemExit("SPEND CAP already passed in this process; refusing a new Azure call")
     precheck_spend(deployment)
-    # 60 s, not 300 (#4450): across 629 Sol judge calls (low effort, chunk 8, overlay prompt)
-    # the slowest SUCCESSFUL call took 19.1 s (p99 18.3 s, from the response's own
-    # latency_checkpoint). A stalled call waited the full 300 s before its retry and held a
+    requested = _azure_request_tier(deployment)
+    # Standard tier: 60 s, not 300 (#4450): across 629 Sol judge calls (low effort, chunk 8,
+    # overlay prompt) the slowest SUCCESSFUL call took 19.1 s (p99 18.3 s, from the response's
+    # own latency_checkpoint). A stalled call waited the full 300 s before its retry and held a
     # whole run for minutes; 60 s is 3x the slowest observed success. A timeout is a
     # transient and retried, so this changes how long a stall costs, never what is graded.
-    data = _http_json(_no_redirect_opener(), req, AZURE_JUDGE_TIMEOUT_S)
-    _record_usage(deployment, data.get("usage"))
+    # Flex tier: AZURE_JUDGE_FLEX_TIMEOUT_S, because Flex queues (#4467; evidence at the
+    # constant).
+    if requested == "flex":
+        try:
+            data = send("flex", AZURE_JUDGE_FLEX_TIMEOUT_S)
+        except urllib.error.HTTPError as e:
+            reason = _flex_unavailable(e)
+            if reason is None:
+                raise
+            # ONE retry, on the standard tier, for this call only. If that is refused too, its
+            # error propagates and the caller's existing retry/backoff decides what happens.
+            print(f"[judge] flex tier unavailable ({reason}); retrying this call once on the "
+                  f"standard tier", file=sys.stderr)
+            data = send("standard", AZURE_JUDGE_TIMEOUT_S)
+            print("[judge] the standard tier answered this call (standard price)",
+                  file=sys.stderr)
+    else:
+        data = send("standard", AZURE_JUDGE_TIMEOUT_S)
+    _record_usage(deployment, data.get("usage"), _answered_tier(requested, data))
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError(f"azure judge: no choices in response: {str(data)[:200]}")
