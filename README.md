@@ -67,14 +67,14 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 EnviousMeet is a private AI notetaker inside EnviousWispr. It records your calls and the meetings you have in a room. It writes a transcript with who said what on your Mac, keeps your own notes next to it, and gives you a summary from the AI engine you choose. No bot joins the call, and nobody sees a notetaker in the participant list.
 
 - 🤖 **No bot in your call.** EnviousMeet records your microphone and the call sound with the Mac's own audio tools, so the transcript starts from clean, first-hand audio. It works with AirPods too. Call sound needs macOS 14.2 or later.
-- 🔔 **Notices the calls you already make.** When a call starts in Zoom, Microsoft Teams, FaceTime, Slack, Webex and other call apps, or in Google Meet, Zoom, Teams and more in your browser, a small card asks "Take notes on this Zoom call?". This needs macOS 14.2 or later and the Accessibility permission. You choose whether it asks, starts by itself, or never notices calls.
+- 🔔 **Notices the calls you already make.** When a call starts in Zoom, Microsoft Teams, FaceTime, Slack, Webex and other call apps, or in Google Meet, Zoom, Teams and more in Chrome, Safari and other browsers (on the tab you are on), a small card asks "Take notes on this Zoom call?". This needs macOS 14.2 or later and the Accessibility permission. You choose whether it asks, starts by itself, or never notices calls.
 - 🗣️ **Who said what, with real names.** When the call sound has speech in it, everything your microphone hears is marked **You**. The people on the call get speaker labels, or their real names from the Zoom app, the Teams app, Google Meet, and Teams and Zoom on the web when EnviousMeet has enough evidence. It never guesses a name.
-- 🔇 **Follows your mute.** Muting yourself in Zoom does not turn off your Mac's microphone. With **Leave my voice out when I'm muted** on (it is on at first), EnviousMeet follows your mute button in the Zoom app, the Teams app and Google Meet in Chrome or Safari. When it can read your mute button and you are muted, your side chatter stays out of the recording, the transcript and the summary. A few seconds around a mute change may be kept.
+- 🔇 **Follows your mute.** Muting yourself in Zoom does not turn off your Mac's microphone. With **Leave my voice out when I'm muted** on (it is on at first) and the Accessibility permission allowed, EnviousMeet follows your mute button in the Zoom app, the Teams app and Google Meet in Chrome or Safari. When it can read your mute button and you are muted, your side chatter stays out of the recording, the transcript and the summary. A few seconds around a mute change may be kept.
 - 🏢 **For the meeting in the room, too.** Put your Mac on the table. Voices that EnviousMeet can tell apart get their own numbered labels, with no call app needed.
-- ✨ **AI summaries worth reading.** EnviousMeet asks the summary engine for key points, decisions and action items, with an owner when someone said they would do it. Type your own notes during the meeting, and the summary uses them along with the transcript.
+- ✨ **AI summaries worth reading.** Pick a summary engine, and EnviousMeet can write a summary when each meeting ends or when you click **Write summary**. It asks the summary engine for key points, decisions and action items, with an owner when someone said they would do it. Type your own notes during the meeting, and the summary uses them along with the transcript.
 - 🎧 **Play back any moment.** The audio stays on your Mac until you delete it. Every passage has a timestamp, and **Transcribe again** writes the transcript again from the kept audio with any transcript engine you have ready.
 - 📅 **Named from your calendar** (optional). When EnviousMeet can match the meeting to a calendar event, it uses the event's title and saves who was invited. The calendar is only read, never changed.
-- ⌨️ **Keep dictating.** EnviousWispr dictation keeps working while a meeting records, unless you switch on **Turn off dictation during meetings**.
+- ⌨️ **Keep dictating.** EnviousWispr dictation keeps working while a meeting records, unless you switch on **Turn off dictation during meetings**. While a summary runs on the same on-device model as your AI polish, a dictation may skip polish and paste the cleaned text instead.
 
 **Choose where the summary is written.** The summary engine is separate from dictation's AI polish. No summary is fine too: you keep the transcript and your notes.
 
@@ -83,6 +83,8 @@ EnviousMeet is a private AI notetaker inside EnviousWispr. It records your calls
 | **EG-1** (our own model), **Apple Intelligence** (macOS 26), or an **Ollama model on your Mac** | They stay on your Mac. Works with no internet. |
 | A **hosted Ollama** model | Sent to Ollama's servers. |
 | **OpenAI**, **Gemini** or **Claude** | Sent straight to that provider under your own key. |
+
+Summaries with Ollama need Ollama 0.12.6 or later.
 
 **What stays on your Mac.** Meeting audio never leaves your Mac. Transcripts, speaker labels, notes and calendar details are stored on your Mac. Envious Labs never receives your meeting audio, words, people's names or calendar events. Only a cloud summary engine you choose receives the transcript, notes and meeting details.
 
