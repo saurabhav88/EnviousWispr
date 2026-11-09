@@ -45,7 +45,7 @@ EnviousWispr is a free Mac app with two tools: dictation for everything you writ
 
 Both tools come in the same download. There is no account, no subscription and no paid plan, and both are open source under the GPLv3.
 
-**Dictation.** EnviousWispr runs dictation entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full keybind-to-paste flow typically lands in around a second and a half.
+**Dictation.** EnviousWispr transcribes your dictation entirely on your Mac. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. Transcription is sub-second; with optional AI polish, the full keybind-to-paste flow typically lands in around a second and a half.
 
 No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
 
@@ -68,13 +68,13 @@ EnviousMeet is a private AI notetaker inside EnviousWispr. It records your calls
 
 - 🤖 **No bot in your call.** EnviousMeet records your microphone and the call sound with the Mac's own audio tools, so the transcript starts from clean, first-hand audio. It works with AirPods too. Call sound needs macOS 14.2 or later.
 - 🔔 **Notices the calls you already make.** When a call starts in Zoom, Microsoft Teams, FaceTime, Slack, Webex and other call apps, or in Google Meet, Zoom, Teams and more in your browser, a small card asks "Take notes on this Zoom call?". You choose whether it asks, starts by itself, or never notices calls.
-- 🗣️ **Who said what, with real names.** Your microphone is marked **You**. The people on the call get speaker labels, or their real names from the Zoom app, the Teams app, Google Meet, and Teams and Zoom on the web when EnviousMeet has enough evidence. It never guesses a name.
-- 🔇 **Follows your mute.** Muting yourself in Zoom does not turn off your Mac's microphone. When EnviousMeet can see your mute button in the Zoom app, the Teams app or Google Meet in Chrome or Safari, your side chatter stays out of the recording, the transcript and the summary. A few seconds around a mute change may be kept.
-- 🏢 **For the meeting in the room, too.** Put your Mac on the table. EnviousMeet tells the voices apart and gives each one its own label, with no call app needed.
+- 🗣️ **Who said what, with real names.** On a call, your microphone is marked **You**. The people on the call get speaker labels, or their real names from the Zoom app, the Teams app, Google Meet, and Teams and Zoom on the web when EnviousMeet has enough evidence. It never guesses a name.
+- 🔇 **Follows your mute.** Muting yourself in Zoom does not turn off your Mac's microphone. With **Leave my voice out when I'm muted** on (it is on at first), EnviousMeet follows your mute button in the Zoom app, the Teams app and Google Meet in Chrome or Safari. While you are muted, your side chatter stays out of the recording, the transcript and the summary. A few seconds around a mute change may be kept.
+- 🏢 **For the meeting in the room, too.** Put your Mac on the table. Voices that EnviousMeet can tell apart get their own numbered labels, with no call app needed.
 - ✨ **AI summaries worth reading.** Each summary is sorted into key points, decisions and action items, with an owner when someone takes one on. Type your own notes during the meeting, and the summary uses them along with the transcript.
-- 🎧 **Play back any moment.** The audio stays on your Mac until you delete it. Every passage has a timestamp, and **Transcribe again** writes the transcript again with another engine whenever you like.
-- 📅 **Named from your calendar** (optional). Each meeting takes the title of its calendar event and saves who was invited. The calendar is only read, never changed.
-- ⌨️ **Keep dictating.** EnviousWispr dictation still works while a meeting records.
+- 🎧 **Play back any moment.** The audio stays on your Mac until you delete it. Every passage has a timestamp, and **Transcribe again** writes the transcript again from the kept audio with any transcript engine you have ready.
+- 📅 **Named from your calendar** (optional). When EnviousMeet can match the meeting to a calendar event, it uses the event's title and saves who was invited. The calendar is only read, never changed.
+- ⌨️ **Keep dictating.** EnviousWispr dictation keeps working while a meeting records, unless you switch on **Turn off dictation during meetings**.
 
 **Choose where the summary is written.** The summary engine is separate from dictation's AI polish. No summary is fine too: you keep the transcript and your notes.
 
@@ -104,10 +104,10 @@ To start, open EnviousWispr and click **EnviousMeet** in the sidebar. A short se
 | | EnviousMeet | Cloud meeting notetakers |
 |---|---|---|
 | **In your call** | Nothing joins. It records on your Mac | Often a bot joins as a participant |
-| **Audio** | Stays on your Mac | Uploaded to their servers |
-| **Transcript** | Written on your Mac, works offline | Written in their cloud |
-| **Summary** | On your Mac, or with your own AI key | Their cloud model |
-| **Muted side chatter** | Left out when it can see your mute button | Depends on the service |
+| **Audio** | Stays on your Mac | Usually uploaded to their servers |
+| **Transcript** | Written on your Mac, works offline | Usually written in their cloud |
+| **Summary** | On your Mac, or with your own AI key | Usually their own cloud model |
+| **Muted side chatter** | Left out in Zoom, Teams and Google Meet when it can see your mute button | Depends on the service |
 | **Cost** | Free. No account, no subscription | Usually a subscription or a monthly limit |
 | **Code** | Open source (GPLv3) | Usually closed |
 
