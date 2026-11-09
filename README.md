@@ -74,7 +74,7 @@ EnviousMeet is a private AI notetaker inside EnviousWispr. It records your calls
 - ✨ **AI summaries worth reading.** Pick a summary engine, and EnviousMeet can write a summary when each meeting ends or when you click **Write summary**. It asks the summary engine for key points, decisions and action items, with an owner when someone said they would do it. Type your own notes during the meeting, and the summary uses them along with the transcript.
 - 🎧 **Play back any moment.** The audio stays on your Mac until you delete it. Every passage has a timestamp, and **Transcribe again** writes the transcript again from the kept audio with any transcript engine you have ready.
 - 📅 **Named from your calendar** (optional). When EnviousMeet can match the meeting to a calendar event, it uses the event's title and saves who was invited. The calendar is only read, never changed.
-- ⌨️ **Keep dictating.** EnviousWispr dictation keeps working while a meeting records, unless you switch on **Turn off dictation during meetings**. While a summary runs on the same on-device model as your AI polish, a dictation may skip polish and paste the cleaned text instead.
+- ⌨️ **Keep dictating.** EnviousWispr dictation keeps working while a meeting records, unless you switch on **Turn off dictation during meetings**. While a summary runs on the same on-device model as your AI polish, a dictation may skip polish and paste the cleaned text instead. An EG-1 summary can also make S1-mini dictation skip polish.
 
 **Choose where the summary is written.** The summary engine is separate from dictation's AI polish. No summary is fine too: you keep the transcript and your notes.
 
