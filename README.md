@@ -53,14 +53,7 @@ It is open source under the GPLv3, actively maintained, and built to be a tool y
 
 ## EnviousMeet
 
-<p align="center">
-  <a href="https://enviouswispr.com/meetings/?utm_source=github&utm_medium=referral&utm_campaign=enviousmeet-readme">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/readme/enviousmeet-dark.jpg" />
-      <img src="assets/readme/enviousmeet.jpg" width="720" alt="A Zoom call with a card from EnviousMeet that asks: Take notes on this Zoom call? EnviousMeet offers to take notes. No bot joins the call." />
-    </picture>
-  </a>
-</p>
+https://github.com/user-attachments/assets/b93e48f3-2c36-4516-9008-41fa1b0a9b49
 
 ### Premium meeting notes. Free, on your Mac.
 
