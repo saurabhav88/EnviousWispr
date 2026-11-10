@@ -20,8 +20,12 @@ struct LocalPolishModuleBoundaryTests {
   /// The only first-party modules the neutral module may import.
   static let permittedFirstParty: Set<String> = ["EnviousWisprCore", "EnviousWisprModelDelivery"]
   /// Platform modules the files in the module need today. Add one only with the file that
-  /// needs it.
-  static let permittedPlatform: Set<String> = ["Foundation"]
+  /// needs it. `os` and `Observation`: the runtime. `os` and (DEBUG) `Darwin`: the process
+  /// manager. `os`: the coordinator and the child-process observation. `CryptoKit`: the
+  /// upgrade coordinator's artifact fingerprint.
+  static let permittedPlatform: Set<String> = [
+    "Foundation", "os", "Observation", "CryptoKit", "Darwin",
+  ]
 
   private final class ImportCollector: SyntaxVisitor {
     var modules: [String] = []
@@ -56,7 +60,7 @@ struct LocalPolishModuleBoundaryTests {
   func moduleImportsOnlyPermittedModules() throws {
     let files = try Self.moduleFiles()
     // Control: an empty file list would pass the loop below without reading anything.
-    try #require(files.count >= 4, "expected the module's source files, found \(files.count)")
+    try #require(files.count >= 14, "expected the module's source files, found \(files.count)")
     for file in files {
       let offenders = Self.forbiddenImports(in: try CachedSwiftParser.snapshot(at: file).tree)
       #expect(offenders.isEmpty, "\(file.lastPathComponent) imports \(offenders)")

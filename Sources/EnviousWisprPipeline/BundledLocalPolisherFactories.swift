@@ -1,4 +1,5 @@
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 
 /// The connectors of the two bundled local polish models, handed to the pipeline (#4473).
 ///

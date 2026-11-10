@@ -1,6 +1,7 @@
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing

@@ -1,5 +1,4 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import Foundation
 
 /// The localhost wire path shared by every model the bundled server runs

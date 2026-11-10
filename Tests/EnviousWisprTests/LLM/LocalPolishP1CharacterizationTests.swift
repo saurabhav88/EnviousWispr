@@ -4,6 +4,7 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4473 phase P1: the contracts the engine-boundary extraction must not change, pinned against
 /// today's code BEFORE anything moves. When one of these fails after a move, the extraction

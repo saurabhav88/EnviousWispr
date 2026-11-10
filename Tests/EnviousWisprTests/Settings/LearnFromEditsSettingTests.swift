@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprContacts
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
 import Foundation

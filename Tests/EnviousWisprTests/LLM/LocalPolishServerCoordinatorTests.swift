@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #2649 contract delta C6: at most one local polish server, and it must be the
 /// one the selected model asked for.

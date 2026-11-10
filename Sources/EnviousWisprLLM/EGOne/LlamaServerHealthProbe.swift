@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// The health probe of a model served by the bundled `llama-server` (#4473).

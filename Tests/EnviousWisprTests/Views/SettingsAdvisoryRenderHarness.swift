@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices
 import Observation

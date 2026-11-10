@@ -6,6 +6,7 @@ import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprServices
 import EnviousWisprAppKitTestSupport
 

@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprPostProcessing
 

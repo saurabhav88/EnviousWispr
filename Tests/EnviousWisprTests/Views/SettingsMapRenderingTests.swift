@@ -11,6 +11,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLivePreview
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage

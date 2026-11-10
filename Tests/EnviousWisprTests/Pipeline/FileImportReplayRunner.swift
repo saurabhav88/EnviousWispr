@@ -1,6 +1,7 @@
 import CryptoKit
 import EnviousWisprCore
 import EnviousWisprAppKitTestSupport
+import EnviousWisprLocalPolish
 import Foundation
 import Testing
 

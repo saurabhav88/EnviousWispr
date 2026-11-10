@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 
 // MARK: - Recovery text-processing seam (#1063 PR0)

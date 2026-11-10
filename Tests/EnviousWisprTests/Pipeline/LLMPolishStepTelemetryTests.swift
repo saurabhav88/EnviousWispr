@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 @testable import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation

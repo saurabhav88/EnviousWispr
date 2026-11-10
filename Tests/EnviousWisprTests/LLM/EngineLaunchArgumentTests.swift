@@ -1,10 +1,10 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// S1-mini answers with NOTHING unless the server is told to turn thinking off.
 ///

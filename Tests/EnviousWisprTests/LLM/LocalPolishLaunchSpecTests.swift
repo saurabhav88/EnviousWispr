@@ -124,6 +124,9 @@ struct LocalPolishLaunchSpecTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 
+  /// About 1.06 seconds per case, measured: each case starts the fake server as a real child
+  /// process twice (the base spec, then the changed one), the lifecycle fixture's half-second
+  /// floor per launch. Only a real second launch shows that the old process was replaced.
   @Test(
     "one changed field stops the old process and starts the new one", arguments: Difference.allCases
   )
@@ -145,6 +148,8 @@ struct LocalPolishLaunchSpecTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 
+  /// About 1.59 seconds, measured: three real launches of the fake server (the adapter launch
+  /// that fails, its bare-base fallback, then the changed request), each a real child process.
   @Test("after a fallback the coordinator still remembers the request WITH the checker")
   func requestedSpecSurvivesFallback() async throws {
     let fixture = try Fixture()

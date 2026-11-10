@@ -1,10 +1,10 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprModelDelivery
 import EnviousWisprAppKitTestSupport
 

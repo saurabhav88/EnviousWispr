@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #2966: `eg1.health_changed` is a colour change or an unsuppressed
 /// same-colour reason change. Measured 30d to 2026-09-15, 12,900 of 20,192

@@ -1,10 +1,10 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4473: the local polish transport carries prepared bytes and reports one neutral failure.
 ///

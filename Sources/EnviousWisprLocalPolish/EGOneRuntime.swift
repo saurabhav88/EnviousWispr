@@ -1,5 +1,4 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import Foundation
 import Observation

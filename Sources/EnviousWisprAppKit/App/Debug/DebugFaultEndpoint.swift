@@ -4,6 +4,7 @@
   import EnviousWisprAudio
   import EnviousWisprCore
   import EnviousWisprLLM
+  import EnviousWisprLocalPolish
   import EnviousWisprPipeline
   import EnviousWisprPostProcessing
   import EnviousWisprServices

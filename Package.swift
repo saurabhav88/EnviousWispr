@@ -318,6 +318,8 @@ let package = Package(
         "EnviousWisprASR",
         "EnviousWisprAudio",
         "EnviousWisprLLM",
+        // #4473: the engine-neutral local polish lifecycle (endpoint, runtime handles).
+        "EnviousWisprLocalPolish",
         "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprServices",

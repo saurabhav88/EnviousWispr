@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, dictation polishes on EG-1 while a summary is using it (or between
 /// its calls), a provider switch unloads EG-1 mid-summary, a health probe publishes a verdict

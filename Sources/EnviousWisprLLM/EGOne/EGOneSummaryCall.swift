@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// One EnviousMeet summary call on the bundled EG-1 server (#4319).

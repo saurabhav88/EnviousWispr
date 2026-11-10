@@ -456,6 +456,8 @@ let project = Project(
         .target(name: "EnviousWisprASR"),
         .target(name: "EnviousWisprAudio"),
         .target(name: "EnviousWisprLLM"),
+        // #4473: the engine-neutral local polish lifecycle (endpoint, runtime handles).
+        .target(name: "EnviousWisprLocalPolish"),
         .target(name: "EnviousWisprModelDelivery"),
         .target(name: "EnviousWisprPostProcessing"),
         .target(name: "EnviousWisprServices"),

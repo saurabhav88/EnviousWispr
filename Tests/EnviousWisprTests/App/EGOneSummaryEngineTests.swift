@@ -4,6 +4,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, EG-1 loads before a summary needs it (or stays loaded after), a
 /// summary runs on a server it does not hold, an import loses its server to a summary, one

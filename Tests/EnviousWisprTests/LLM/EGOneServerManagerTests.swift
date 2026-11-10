@@ -4,6 +4,7 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 import EnviousWisprAppKitTestSupport
 
 /// EG-1 server lifecycle with a FAKE binary (#1271) — spawn, crash,

@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 
 /// #2648 — what one part of an imported transcript goes through.

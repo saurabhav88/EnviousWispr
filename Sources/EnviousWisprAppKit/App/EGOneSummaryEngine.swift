@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Lends the bundled EG-1 server to one EnviousMeet summary attempt and gives it back (#4319).

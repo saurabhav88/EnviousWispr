@@ -3,6 +3,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
