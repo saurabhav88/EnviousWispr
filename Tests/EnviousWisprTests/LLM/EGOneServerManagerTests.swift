@@ -31,6 +31,7 @@ struct EGOneServerManagerTests {
       serverBinaryURL: URL(fileURLWithPath: "/bin/sleep"),
       modelURL: model,
       contextTokens: 4096,
+      makeArguments: LlamaServerLaunchBuilder.arguments,
       readinessBudgetSeconds: 3
     )
   }

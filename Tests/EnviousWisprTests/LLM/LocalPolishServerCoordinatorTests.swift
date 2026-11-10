@@ -27,6 +27,7 @@ struct LocalPolishServerCoordinatorTests {
         serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
         modelURL: URL(fileURLWithPath: "/nonexistent/\(name).gguf"),
         contextTokens: 8192,
+        makeArguments: LlamaServerLaunchBuilder.arguments,
         readinessBudgetSeconds: 1))
   }
 

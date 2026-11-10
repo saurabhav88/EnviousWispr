@@ -49,13 +49,13 @@ struct LocalPolishP1CharacterizationTests {
       "-np", "9", "--kv-unified", "--no-cache-idle-slots",
     ]
 
-    #expect(EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == egOne)
-    #expect(EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil) == s1Mini)
+    #expect(LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == egOne)
+    #expect(LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil) == s1Mini)
     #expect(
-      EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: adapter)
+      LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: adapter)
         == egOne + adapterFlags)
     #expect(
-      EGOneRuntime.launchArguments(for: .s1Mini, learnedWordAdapterURL: adapter)
+      LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: adapter)
         == s1Mini + adapterFlags)
   }
 
@@ -166,7 +166,7 @@ struct LocalPolishP1CharacterizationTests {
       await MainActor.run {
         _ = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
       }
-      _ = EGOneRuntime.launchArguments(for: .egOne, learnedWordAdapterURL: nil)
+      _ = LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil)
     }
   }
 
@@ -175,7 +175,7 @@ struct LocalPolishP1CharacterizationTests {
     arguments: providersWithoutABundledModel)
   func launchRoutingRefuses(provider: LLMProvider) async {
     await #expect(processExitsWith: .failure) { [raw = provider.rawValue as String] in
-      _ = EGOneRuntime.launchArguments(
+      _ = LlamaServerLaunchBuilder.launchArguments(
         for: LLMProvider(rawValue: raw) ?? .none, learnedWordAdapterURL: nil)
     }
   }

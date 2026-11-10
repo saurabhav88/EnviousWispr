@@ -123,7 +123,8 @@ struct ChildProcessFailureTests {
     try #require(!FileManager.default.fileExists(atPath: missingRoot.path))
     let configuration = EGOneServerManager.Configuration(
       serverBinaryURL: missingRoot.appendingPathComponent("server"),
-      modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048)
+      modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048,
+      makeArguments: LlamaServerLaunchBuilder.arguments)
     for provider in [LLMProvider.egOne, .s1Mini] {
       await coordinator.transition(
         to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),

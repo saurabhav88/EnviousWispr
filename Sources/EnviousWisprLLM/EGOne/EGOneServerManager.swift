@@ -154,9 +154,14 @@ public actor EGOneServerManager {
     public var readinessBudgetSeconds: Int
     /// Captured by the coordinator at launch, never inferred from a later selection.
     public var owningProvider: LLMProvider?
+    /// Renders the child's argument list from the configuration being spawned, the port and the
+    /// bearer chosen for that spawn (#4473). Required, with no default: the process manager
+    /// knows no engine's command line, so each engine supplies its own.
+    public var makeArguments: @Sendable (Configuration, UInt16, String) -> [String]
 
     public init(
       serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
+      makeArguments: @escaping @Sendable (Configuration, UInt16, String) -> [String],
       extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
       learnedWordAdapterURL: URL? = nil,
       learnedWordAdapterArguments: [String] = [], owningProvider: LLMProvider? = nil
@@ -169,6 +174,7 @@ public actor EGOneServerManager {
       self.extraArguments = extraArguments
       self.readinessBudgetSeconds = readinessBudgetSeconds
       self.owningProvider = owningProvider
+      self.makeArguments = makeArguments
     }
 
     func withoutLearnedWordAdapter() -> Configuration {
@@ -486,14 +492,7 @@ public actor EGOneServerManager {
 
     let proc = Process()
     proc.executableURL = configuration.serverBinaryURL
-    proc.arguments =
-      [
-        "-m", configuration.modelURL.path,
-        "--host", "127.0.0.1",
-        "--port", String(port),
-        "-c", String(configuration.contextTokens),
-        "--api-key", token,
-      ] + configuration.extraArguments + configuration.learnedWordAdapterArguments
+    proc.arguments = configuration.makeArguments(configuration, port, token)
     // The server's stdout/stderr are noise for us; route to null so the
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice

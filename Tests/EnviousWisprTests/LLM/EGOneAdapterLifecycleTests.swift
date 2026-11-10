@@ -102,12 +102,13 @@ struct EGOneAdapterLifecycleTests {
     func configuration(adapterURL: URL? = nil) -> EGOneServerManager.Configuration {
       EGOneServerManager.Configuration(
         serverBinaryURL: binary, modelURL: model, contextTokens: 4096,
-        extraArguments: EGOneRuntime.engineArguments(for: .egOne),
+        makeArguments: LlamaServerLaunchBuilder.arguments,
+        extraArguments: LlamaServerLaunchBuilder.engineArguments(for: .egOne),
         readinessBudgetSeconds: 4,
         learnedWordAdapterURL: adapterURL,
         learnedWordAdapterArguments: adapterURL.map {
           Array(
-            EGOneRuntime.launchArguments(
+            LlamaServerLaunchBuilder.launchArguments(
               for: .egOne, learnedWordAdapterURL: $0
             ).dropFirst(6))
         } ?? [])
@@ -161,7 +162,7 @@ struct EGOneAdapterLifecycleTests {
     let s1Config = await s1.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
     #expect(s1Config.learnedWordAdapterURL == d5)
-    #expect(s1Config.extraArguments == EGOneRuntime.engineArguments(for: .s1Mini))
+    #expect(s1Config.extraArguments == LlamaServerLaunchBuilder.engineArguments(for: .s1Mini))
     // A runtime built without a provider boots bare.
     let bare = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
@@ -363,7 +364,7 @@ struct EGOneAdapterLifecycleTests {
 
   fileprivate static func s1Target(_ fixture: Fixture) -> LocalPolishTarget {
     var configuration = fixture.configuration()
-    configuration.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    configuration.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
     return LocalPolishTarget(provider: .s1Mini, configuration: configuration)
   }
 
@@ -422,7 +423,7 @@ struct EGOneAdapterLifecycleTests {
     let adapted = LocalPolishTarget(
       provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
     var s1Config = fixture.configuration()
-    s1Config.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    s1Config.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
     let s1 = LocalPolishTarget(provider: .s1Mini, configuration: s1Config)
     await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
     await coordinator.transition(to: .run(s1), intent: coordinator.claimIntent())
@@ -967,7 +968,7 @@ struct EGOneRecordingRecoveryTests {
     let coordinator = LocalPolishServerCoordinator()
     defer { fixture.cleanup() }
     var s1Config = fixture.configuration()
-    s1Config.extraArguments = EGOneRuntime.engineArguments(for: .s1Mini)
+    s1Config.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
     let eventsBox = OSAllocatedUnfairLock(initialState: [LocalPolishLifecycleEvent]())
     await coordinator.setStateObserver(for: .egOne) { event in
       eventsBox.withLock { $0.append(event) }
