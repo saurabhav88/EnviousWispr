@@ -48,7 +48,7 @@ struct EGOnePipelineRoutingTests {
   }
 
   private func makeStep(runtime: FakeRuntime?) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime
@@ -151,7 +151,7 @@ struct EGOnePipelineRoutingTests {
     // Guard against over-widening the silent set: an Ollama provider-down
     // error must still surface (adversarial pairing for the new branch).
     let spy = CaptureSpy()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .ollama
     step.llmModel = "llama3.2"
     // #1305: report ready so this stays a MID-FLIGHT surfacing test (the

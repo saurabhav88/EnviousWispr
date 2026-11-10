@@ -228,9 +228,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Test seam for `.egOne` (mirrors `makePolisher` for the other
   /// providers): production builds the localhost connector from the live
   /// endpoint; tests substitute a spy without a real server.
-  var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
-    EGOneConnector(endpoint: $0)
-  }
+  /// #4473: the production connector is supplied through `localPolishers` at construction;
+  /// this step names no engine and has no connector of its own to fall back to.
+  var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher
 
   /// #3111 test seam: the English-stretch scan EG-1 language naming runs on the text it is
   /// about to send. Production reads the real recogniser.
@@ -241,9 +241,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// than one that switches on provider: the two connectors differ in what an
   /// empty answer MEANS, and a single factory would put that decision in the
   /// pipeline instead of in the connector that owns it.
-  var makeS1MiniPolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher = {
-    S1MiniConnector(endpoint: $0)
-  }
+  /// #4473: supplied through `localPolishers` at construction, like EG-1's.
+  var makeS1MiniPolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher
 
   /// #1305 test seam (mirrors `makeEGOnePolisher`): the Ollama readiness
   /// preflight consulted by the `.ollama` entry gate in `process()`.
@@ -502,8 +501,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   private static let cloudMaxBudgetSeconds: Double =
     LLMNetworkSession.resourceTimeoutSeconds
 
-  public init(keychainManager: KeychainManager) {
+  public init(keychainManager: KeychainManager, localPolishers: BundledLocalPolisherFactories) {
     self.keychainManager = keychainManager
+    self.makeEGOnePolisher = localPolishers.egOne
+    self.makeS1MiniPolisher = localPolishers.s1Mini
     self.telemetry = .live
   }
 
@@ -511,8 +512,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// to construct with `.silent`. Not `public`: no external caller should be
   /// able to silence this step's telemetry, so the public API surface stays
   /// exactly what it was before this plan.
-  init(keychainManager: KeychainManager, telemetry: TelemetrySeams) {
+  init(
+    keychainManager: KeychainManager, localPolishers: BundledLocalPolisherFactories,
+    telemetry: TelemetrySeams
+  ) {
     self.keychainManager = keychainManager
+    self.makeEGOnePolisher = localPolishers.egOne
+    self.makeS1MiniPolisher = localPolishers.s1Mini
     self.telemetry = telemetry
   }
 

@@ -97,6 +97,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   private let transcriptStore: TranscriptStore
   private let transcriptCoordinator: TranscriptCoordinator
   private let keychainManager: KeychainManager
+  /// #4473: the bundled models' connectors, forwarded to each replay's text processor.
+  private let localPolishers: BundledLocalPolisherFactories
   private let outputClassifierHolder: OutputClassifierHolder
   /// #1271: EG-1 runtime handle — recovery polishes through the same server
   /// as live dictation (or silently skips when it is not ready).
@@ -147,6 +149,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     transcriptStore: TranscriptStore,
     transcriptCoordinator: TranscriptCoordinator,
     keychainManager: KeychainManager,
+    localPolishers: BundledLocalPolisherFactories,
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
@@ -167,6 +170,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.transcriptStore = transcriptStore
     self.transcriptCoordinator = transcriptCoordinator
     self.keychainManager = keychainManager
+    self.localPolishers = localPolishers
     self.outputClassifierHolder = outputClassifierHolder
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
@@ -457,7 +461,8 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     // Polish under the recording's record-time settings (raw-fallback floor
     // guaranteed: a failed/skipped polish lands raw text, still saved + labeled).
     let processor = RecoveryTextProcessor(
-      keychainManager: keychainManager, cloudModelList: cloudModelList,
+      keychainManager: keychainManager, localPolishers: localPolishers,
+      cloudModelList: cloudModelList,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,

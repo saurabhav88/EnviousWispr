@@ -179,7 +179,7 @@ struct EGOneLanguageNamingPipelineTests {
     scan: @escaping @Sendable (String) -> DictationLanguageResolver.EnglishStretchScan = { _ in .clear }
   ) async throws -> PromptCapture {
     let capture = PromptCapture()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = FakeRuntime()
@@ -275,7 +275,7 @@ struct EGOneLanguageNamingPipelineTests {
     }
     let spy = InputSpy()
     let capture = PromptCapture()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.promptPlanner = spy

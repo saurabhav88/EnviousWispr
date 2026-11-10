@@ -82,7 +82,7 @@ struct LLMPolishReentrancyTests {
     mutateTo mutatedProvider: LLMProvider,
     mutatedModel: String
   ) async throws -> TextProcessingContext {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = initialProvider
     step.llmModel = initialModel
 
@@ -140,7 +140,7 @@ struct LLMPolishReentrancyTests {
 
   @Test("control: with no mid-polish mutation, the actual provider/model is recorded")
   func noMutationControl() async throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
 
@@ -192,7 +192,7 @@ struct LLMPolishReentrancyTests {
   func heldOperationKeepsItsCloudModelList() async throws {
     let held = try Self.geminiList(#"{"level":"low"}"#)
     let refreshed = try Self.geminiList(#"{"budget":0}"#)
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .gemini
     step.llmModel = "gemini-x"
     step.cloudModelList = held
@@ -225,7 +225,7 @@ struct LLMPolishReentrancyTests {
 
   @Test("nil polisher factory throws providerUnavailable (so the runner keeps raw text)")
   func nilFactoryThrowsProviderUnavailable() async throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in nil }

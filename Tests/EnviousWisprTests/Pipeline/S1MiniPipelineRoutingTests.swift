@@ -66,7 +66,7 @@ struct S1MiniPipelineRoutingTests {
     s1Runtime: FakeRuntime?, egOneRuntime: FakeRuntime? = nil,
     polished: String = S1MiniPipelineRoutingTests.s1Answer
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .s1Mini
     step.llmModel = LLMProvider.s1MiniModelName
     step.s1MiniRuntime = s1Runtime

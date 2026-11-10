@@ -1159,7 +1159,7 @@ struct EGOneRecordingRecoveryTests {
   private func step(
     _ runtime: any EGOneLeaseProviding, polisher: (any TranscriptPolisher)? = nil
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime

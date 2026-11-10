@@ -130,6 +130,8 @@ public enum KernelDictationDriverFactory {
     package let vadSignalSource: CaptureVADSignalSource
     package let transcriptStore: TranscriptStore
     package let keychainManager: KeychainManager
+    /// #4473: the bundled models' connectors, supplied by the composition root.
+    package let localPolishers: BundledLocalPolisherFactories
     package let captureTelemetry: CaptureTelemetryState
     package let pasteCompletionRegistry: PasteCompletionRegistry
     /// Heart-path error sink (defaulted to the production global). See
@@ -215,6 +217,7 @@ public enum KernelDictationDriverFactory {
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
+      localPolishers: BundledLocalPolisherFactories,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       engineMutationScope: EngineMutationScope,
@@ -240,6 +243,7 @@ public enum KernelDictationDriverFactory {
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
+      self.localPolishers = localPolishers
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.engineMutationScope = engineMutationScope
@@ -269,6 +273,8 @@ public enum KernelDictationDriverFactory {
     package let vadSignalSource: CaptureVADSignalSource
     package let transcriptStore: TranscriptStore
     package let keychainManager: KeychainManager
+    /// #4473: the bundled models' connectors, supplied by the composition root.
+    package let localPolishers: BundledLocalPolisherFactories
     package let captureTelemetry: CaptureTelemetryState
     package let pasteCompletionRegistry: PasteCompletionRegistry
     /// Heart-path error sink (defaulted to the production global). See
@@ -347,6 +353,7 @@ public enum KernelDictationDriverFactory {
       vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
+      localPolishers: BundledLocalPolisherFactories,
       captureTelemetry: CaptureTelemetryState,
       pasteCompletionRegistry: PasteCompletionRegistry,
       engineMutationScope: EngineMutationScope,
@@ -374,6 +381,7 @@ public enum KernelDictationDriverFactory {
       self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
+      self.localPolishers = localPolishers
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
       self.engineMutationScope = engineMutationScope
@@ -468,6 +476,7 @@ public enum KernelDictationDriverFactory {
       vadSignalSource: inputs.vadSignalSource,
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
+      localPolishers: inputs.localPolishers,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       engineMutationScope: inputs.engineMutationScope,
@@ -521,6 +530,7 @@ public enum KernelDictationDriverFactory {
       vadSignalSource: inputs.vadSignalSource,
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
+      localPolishers: inputs.localPolishers,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry,
       engineMutationScope: inputs.engineMutationScope,
@@ -548,6 +558,7 @@ public enum KernelDictationDriverFactory {
     vadSignalSource: CaptureVADSignalSource,
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager,
+    localPolishers: BundledLocalPolisherFactories,
     captureTelemetry: CaptureTelemetryState,
     pasteCompletionRegistry: PasteCompletionRegistry,
     engineMutationScope: EngineMutationScope,
@@ -582,7 +593,7 @@ public enum KernelDictationDriverFactory {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     // #832/#913 PR8: the live-dictation LLMPolishStep receives the app-owned
     // output-safety classifier holder (read lazily at polish time).
-    let llmPolish = LLMPolishStep(keychainManager: keychainManager)
+    let llmPolish = LLMPolishStep(keychainManager: keychainManager, localPolishers: localPolishers)
     llmPolish.outputClassifierHolder = outputClassifierHolder
     // #1271: EG-1 runtime handle (nil-safe — a missing handle means `.egOne`
     // polishes silently skip, never crash or surface).

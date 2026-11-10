@@ -55,7 +55,7 @@ struct CheckerSelectionPathTests {
     for choice in choices {
       var calls: [(LLMProvider, String?)] = []
       let processor = RecoveryTextProcessor(
-        keychainManager: KeychainManager(), cloudModelList: nil,
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil,
         checkerSelectionProvider: { provider, language in
           calls.append((provider, language))
           return choice
@@ -74,7 +74,7 @@ struct CheckerSelectionPathTests {
     for choice in choices {
       var calls: [(LLMProvider, String?)] = []
       let runner = FileImportRunner(
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         checkerSelectionProvider: { provider, language in
           calls.append((provider, language))
           return choice
@@ -91,7 +91,7 @@ struct CheckerSelectionPathTests {
   func importDoesNotPromoteMidRun() async throws {
     var calls = 0
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(),
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       checkerSelectionProvider: { _, _ in
         calls += 1
         return calls == 1
@@ -110,7 +110,7 @@ struct CheckerSelectionPathTests {
   func importKeysSelectionByLanguage() async throws {
     var calls: [String?] = []
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(),
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       checkerSelectionProvider: { _, language in
         calls.append(language)
         return language == "en"
@@ -142,7 +142,8 @@ struct CheckerSelectionPathTests {
           #expect(provider == .egOne)
           return choice
         }
-        let polish = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+        let polish = LLMPolishStep(
+          keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
         polish.llmProvider = .egOne
         let result = try await TextProcessingRunner(telemetry: .silent).run(
           rawText: spoken, evidence: evidence,
@@ -212,7 +213,8 @@ struct CheckerSelectionPathTests {
 
   @Test("the runner reports the engine it was frozen with")
   func frozenProvider() {
-    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     #expect(runner.frozenLLMProvider == nil)
     runner.freeze(settings: snapshot(), vocabulary: vocabulary, cloudModelList: nil)
     #expect(runner.frozenLLMProvider == .egOne)
@@ -223,7 +225,7 @@ struct CheckerSelectionPathTests {
     weak var held: TrackedChecker?
     var calls = 0
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(),
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       checkerSelectionProvider: { _, _ in
         calls += 1
         let checker = TrackedChecker()
@@ -249,7 +251,7 @@ struct CheckerSelectionPathTests {
     let (staleGone, staleGoneSignal) = AsyncStream.makeStream(of: Void.self)
     var calls = 0
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(),
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       checkerSelectionProvider: { _, _ in
         calls += 1
         if calls == 1 {
@@ -285,7 +287,7 @@ struct CheckerSelectionPathTests {
     let gate = AnswerGate()
     let (gone, goneSignal) = AsyncStream.makeStream(of: Void.self)
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(),
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       checkerSelectionProvider: { _, _ in
         .init(
           checker: TrackedChecker(gate: gate, onDeinit: { goneSignal.yield() }),

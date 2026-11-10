@@ -49,7 +49,7 @@ struct LLMPolishStepS1ControlTests {
     let picks = S1ControlSettings(styling: .formal, structure: .prose, context: .email)
     #expect(picks != .default, "a default-valued pick could not show the forward happened")
 
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     // `.openAI` only selects that provider's budget and enables the step; the
     // injected polisher replaces the connector, so no key or network is used.
     // The forward under test is provider-independent: the step hands the

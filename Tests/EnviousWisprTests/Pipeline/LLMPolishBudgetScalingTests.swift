@@ -31,7 +31,7 @@ import Testing
 struct LLMPolishBudgetScalingTests {
 
   private func step(model: String, provider: LLMProvider = .gemini) -> LLMPolishStep {
-    let s = LLMPolishStep(keychainManager: KeychainManager())
+    let s = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     s.llmProvider = provider
     s.llmModel = model
     return s

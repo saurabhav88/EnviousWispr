@@ -104,7 +104,7 @@ struct TextProcessingRunnerCaptureTests {
     model: String,
     throwing makeError: @escaping @Sendable () -> any Error
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = provider
     step.llmModel = model
     step.makePolisher = { _, _, _, _ in ThrowingPolisher(makeError: makeError) }
@@ -801,7 +801,7 @@ struct TextProcessingRunnerCaptureTests {
     let records = RecordSpy()
     let skips = SkipSpy()
     let runner = makeRunner(spy, records, skips)
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SucceedingPolisher() }

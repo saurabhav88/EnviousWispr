@@ -59,7 +59,7 @@ import Testing
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
@@ -96,7 +96,7 @@ import Testing
         languageDetector: LanguageDetector(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
@@ -109,6 +109,49 @@ import Testing
       // factory, this assertion catches it.
       let isReady = await backend.isReady
       #expect(isReady == false)
+    }
+
+    // MARK: 3. The supplied connector factories reach the live polish step (#4473)
+
+    /// #4473: the live driver's polish step uses the connector factory the composition root
+    /// supplied for the selected bundled model, on that model's endpoint. When it is wrong, a
+    /// dictation set to one bundled model is answered through the other model's connector or
+    /// pastes unpolished text, silently. Rig: this file's real factory construction, with the
+    /// driver's own polish step run once outside a recording.
+    @Test(
+      "the live driver polishes through the supplied factory of the selected bundled model",
+      arguments: [LLMProvider.egOne, .s1Mini])
+    func liveDriverUsesTheSuppliedFactory(provider: LLMProvider) async throws {
+      let spy = LocalPolisherFactorySpy()
+      let audio = FakeAudioCapture()
+      let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
+      let inputs = KernelDictationDriverFactory.WhisperInputs(
+        audioCapture: audio,
+        whisperBackend: LiveTranscribeCppWhisperBackend(
+          driver: LiveWhisperExecutorDriver(), modelVariant: "q8_0", admittedModelPath: { nil }),
+        languageDetector: LanguageDetector(),
+        vadSignalSource: vad,
+        transcriptStore: TranscriptStore(),
+        keychainManager: KeychainManager(), localPolishers: spy.factories,
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        engineMutationScope: .alwaysAllowedForTesting,
+        vendorDecodeOccupancy: VendorDecodeOccupancy(),
+        whisperModelIdentity: nil,
+        egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime(),
+        revealPatience: PasteRevealPatience())
+      let driver = KernelDictationDriverFactory.makeForWhisper(inputs: inputs)
+      driver.llmPolish.llmProvider = provider
+      driver.llmPolish.llmModel = LLMProvider.localModel(for: provider, ollamaModel: "") ?? ""
+
+      let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
+      let runner = TextProcessingRunner(telemetry: .silent, timeoutExecutor: executor.run)
+      let result = try await runner.run(
+        rawText: LocalPolisherFactorySpy.transcript, evidence: .locked("en"),
+        targetAppName: nil, steps: [driver.llmPolish])
+      #expect(result.polishError == nil)
+      #expect(result.context.polishedText == LocalPolisherFactorySpy.answer(for: provider))
+      spy.expectOnlyFactory(of: provider)
     }
   }
 

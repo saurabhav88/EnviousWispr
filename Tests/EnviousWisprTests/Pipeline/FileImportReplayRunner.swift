@@ -645,9 +645,13 @@ final class ReplayRig {
 
     // The polisher factories are the step's own defaults, wrapped. Read off a throwaway step so
     // the wrapped closure is exactly the one production would have used.
-    let probe = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    // #4473: the EG-1 factory is no longer a step default. It is read from the explicit llama
+    // pair, the same connector the app's composition root supplies.
+    let llamaPolishers = BundledLocalPolisherFactories.llamaForTests
+    let probe = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: llamaPolishers, telemetry: .silent())
     let productionFactory = probe.makePolisher
-    let productionEGOne = probe.makeEGOnePolisher
+    let productionEGOne = llamaPolishers.egOne
     // The production planner reads the EG-1 family from `Bundle.main`, which in a test host is
     // the xctest bundle, so it would fall back to `.egOneFixed`. Built from the same committed
     // manifest the app bundles, exactly what the app's `bundledEGOneFamily` resolves.
@@ -674,10 +678,8 @@ final class ReplayRig {
     }
     let canned = cannedMap
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
-      outputClassifierHolder: classifierHolder,
-      languageIdentifier: DictationLanguageResolver.identify,
-      makeEGOnePolisher: { endpoint in
+      keychainManager: KeychainManager(),
+      localPolishers: llamaPolishers.replacingEGOne { endpoint in
         if let canned {
           return CapturingPolisher(
             inner: ReplayAnswerPolisher(answers: canned, log: rigLog), provider: "canned", log: rigLog)
@@ -686,6 +688,9 @@ final class ReplayRig {
           inner: productionEGOne(mini ?? endpoint), provider: mini == nil ? "egOne" : "mini",
           log: rigLog)
       },
+      egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      outputClassifierHolder: classifierHolder,
+      languageIdentifier: DictationLanguageResolver.identify,
       promptPlanner: RecordingPlanner(inner: productionPlanner, log: rigLog),
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         let caseID = await rigLog.currentCase

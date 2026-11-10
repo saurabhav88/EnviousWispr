@@ -93,7 +93,8 @@ struct LLMPolishStepTelemetryTests {
   private func makeStep(
     provider: LLMProvider, model: String = "gpt-4o-mini", telemetry: LLMPolishStep.TelemetrySeams
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: telemetry)
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: telemetry)
     step.llmProvider = provider
     step.llmModel = model
     return step
@@ -594,7 +595,8 @@ struct LLMPolishStepLanguageHintTests {
     ready: Bool = true, contextTokens: Int = 32768,
     polisher: any TranscriptPolisher = EchoPolisher()
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: spy.seams)
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: spy.seams)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime(ready: ready, contextTokens: contextTokens)
@@ -733,7 +735,8 @@ struct LLMPolishStepLanguageHintTests {
   func silentSilencesTheHint() async throws {
     let spy = LLMPolishStepTelemetryTests.Spy()
     let step = LLMPolishStep(
-      keychainManager: KeychainManager(), telemetry: .silent(wrapping: spy.seams))
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
+      telemetry: .silent(wrapping: spy.seams))
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime()

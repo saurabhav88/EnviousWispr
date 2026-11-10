@@ -15,7 +15,8 @@ import Testing
 @MainActor
 struct PolishSymbolGuardTests {
 
-  private let step = LLMPolishStep(keychainManager: KeychainManager())
+  private let step = LLMPolishStep(
+    keychainManager: KeychainManager(), localPolishers: .llamaForTests)
 
   private func validate(_ polished: String, original: String) -> LLMPolishStep.PolishValidation {
     step.validatePolishOutput(

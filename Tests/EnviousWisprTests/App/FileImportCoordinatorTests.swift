@@ -1346,14 +1346,17 @@ struct FileImportCoordinatorTests {
   func rePolishNamesTheLanguage() async {
     let capture = NamedPromptCapture()
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      keychainManager: KeychainManager(),
+      localPolishers: .llamaForTests.replacingEGOne { _ in
+        PromptCapturingPolisher(capture: capture)
+      },
+      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
       // Polish only for the SAVED raw text: a second pass fed the first pass's cleaned output
       // (which differs from the raw text) would read as English and name nothing.
       outputClassifierHolder: nil,
       languageIdentifier: { text in
         text == FileImportRunnerTests.polishPart ? ("pl", 0.97) : ("en", 0.97)
       },
-      makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     runner.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
     final class Parts: @unchecked Sendable { var seen: [String] = [] }

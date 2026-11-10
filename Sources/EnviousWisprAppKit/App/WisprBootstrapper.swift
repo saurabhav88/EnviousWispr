@@ -639,6 +639,12 @@ package final class WisprBootstrapper {
     s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)
     let localPolishRuntimes = LocalPolishRuntimeSet(
       egOne: egOneRuntime, s1Mini: s1MiniRuntime)
+    // #4473: the one place that names the engine behind each bundled model. Live dictation,
+    // crash recovery and file import all receive this same pair; the pipeline builds no
+    // connector of its own.
+    let localPolishers = BundledLocalPolisherFactories(
+      egOne: { EGOneConnector(endpoint: $0) },
+      s1Mini: { S1MiniConnector(endpoint: $0) })
 
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
     // would race it and kill the fresh server (Codex r10 P1).
@@ -691,6 +697,7 @@ package final class WisprBootstrapper {
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
+        localPolishers: localPolishers,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
@@ -757,6 +764,7 @@ package final class WisprBootstrapper {
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
+        localPolishers: localPolishers,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
@@ -1422,6 +1430,7 @@ package final class WisprBootstrapper {
       transcriptStore: transcriptStore,
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: keychainManager,
+      localPolishers: localPolishers,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
@@ -2060,6 +2069,7 @@ package final class WisprBootstrapper {
     // under the same key, as anything else this app produces.
     let fileImportRunner = FileImportRunner(
       keychainManager: keychainManager,
+      localPolishers: localPolishers,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       // #2648, cloud review: the SAME output-safety classifier live dictation

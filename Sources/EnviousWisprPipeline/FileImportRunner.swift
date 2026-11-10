@@ -81,8 +81,11 @@ public final class FileImportRunner {
   /// can observe which prompt an import and its "Clean it again" pass send without a real
   /// model. The planner is a seam because the default reads the EG-1 family from the APP
   /// bundle's manifest, which a test host does not carry.
+  /// #4473: the EG-1 polisher factory is no longer an optional override. Both bundled
+  /// connectors arrive as the required `localPolishers` and every step this runner builds
+  /// gets them; a test that wants a spy passes a pair that holds it.
   private let languageIdentifier: (String) -> (language: String, confidence: Double)?
-  private let makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?
+  private let localPolishers: BundledLocalPolisherFactories
   private let promptPlanner: (any PromptPlanning)?
   private let makePolisher: LLMPolishStep.PolisherFactory?
 
@@ -118,35 +121,37 @@ public final class FileImportRunner {
 
   public convenience init(
     keychainManager: KeychainManager,
+    localPolishers: BundledLocalPolisherFactories,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.init(
-      keychainManager: keychainManager, egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      keychainManager: keychainManager, localPolishers: localPolishers,
+      egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
       outputClassifierHolder: outputClassifierHolder,
-      languageIdentifier: DictationLanguageResolver.identify, makeEGOnePolisher: nil,
+      languageIdentifier: DictationLanguageResolver.identify,
       promptPlanner: nil, checkerSelectionProvider: checkerSelectionProvider)
   }
 
   init(
     keychainManager: KeychainManager,
+    localPolishers: BundledLocalPolisherFactories,
     egOneRuntime: (any EGOneEndpointProviding)?,
     s1MiniRuntime: (any EGOneEndpointProviding)?,
     outputClassifierHolder: OutputClassifierHolder?,
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
-    makeEGOnePolisher: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher)?,
     promptPlanner: (any PromptPlanning)?,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
     makePolisher: LLMPolishStep.PolisherFactory? = nil
   ) {
     self.keychainManager = keychainManager
+    self.localPolishers = localPolishers
     self.egOneRuntime = egOneRuntime
     self.s1MiniRuntime = s1MiniRuntime
     self.outputClassifierHolder = outputClassifierHolder
     self.languageIdentifier = languageIdentifier
-    self.makeEGOnePolisher = makeEGOnePolisher
     self.promptPlanner = promptPlanner
     self.makePolisher = makePolisher
     self.checkerSelectionProvider = checkerSelectionProvider
@@ -429,14 +434,14 @@ public final class FileImportRunner {
   private func makeSteps(
     settings: RecordingSettingsSnapshot, vocabulary: CorrectorVocabulary?, generation: UInt64
   ) -> LimbSteps {
-    let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
+    let llmPolish = LLMPolishStep(
+      keychainManager: keychainManager, localPolishers: localPolishers, telemetry: .silent())
     // Standalone, exactly like the recovery replay: no live kernel is attached,
     // so there is nothing to stream tokens to and no lifecycle to notify.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil
     llmPolish.outputClassifierHolder = outputClassifierHolder
     llmPolish.egOneRuntime = egOneRuntime
-    if let makeEGOnePolisher { llmPolish.makeEGOnePolisher = makeEGOnePolisher }
     if let promptPlanner { llmPolish.promptPlanner = promptPlanner }
     if let makePolisher { llmPolish.makePolisher = makePolisher }
     llmPolish.s1MiniRuntime = s1MiniRuntime

@@ -572,7 +572,7 @@ struct SpokenPunctuationRoutingTests {
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(deadlines: .unbounded),
       englishSpelling: EnglishSpellingStep(target: .text),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      llmPolish: LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
     steps.inverseTextNormalization.spokenPunctuation = Self.on

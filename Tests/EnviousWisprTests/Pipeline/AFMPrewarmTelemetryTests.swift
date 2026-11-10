@@ -132,7 +132,7 @@ struct AFMPrewarmTelemetryTests {
 
     @Test("a session prepared for this take is used, and the outcome carries the take")
     func preparedTakeHits() async throws {
-      let polish = LLMPolishStep(keychainManager: KeychainManager())
+      let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
       polish.llmProvider = .appleIntelligence
       polish.llmModel = "apple-intelligence"
       polish.beginAFMPrewarm(takeID: "take-live", expectedDetectedLanguage: nil)
@@ -145,7 +145,7 @@ struct AFMPrewarmTelemetryTests {
 
     @Test("without a prepared session the outcome is none")
     func nothingPreparedIsNone() async throws {
-      let polish = LLMPolishStep(keychainManager: KeychainManager())
+      let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
       polish.llmProvider = .appleIntelligence
       polish.llmModel = "apple-intelligence"
       let outcome = KernelFinalizationOutcome()

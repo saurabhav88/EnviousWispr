@@ -145,6 +145,7 @@ enum DictationRuntimeFixtures {
         vadSignalSource: vad,
         transcriptStore: store,
         keychainManager: keychainManager,
+        localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting, revealPatience: PasteRevealPatience(), isSharedEngineHeldByOtherWorkload: { false }
@@ -184,6 +185,7 @@ enum DictationRuntimeFixtures {
         vadSignalSource: vad,
         transcriptStore: store,
         keychainManager: keychainManager,
+        localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting,
