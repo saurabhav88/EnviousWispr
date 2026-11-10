@@ -675,6 +675,8 @@ let project = Project(
       dependencies: [
         .target(name: "EnviousDecodeKit"),
         .package(product: "MLX"),
+        // The model folder's tokenizer, through the public Argmax surface the word check uses.
+        .package(product: "ArgmaxOSS"),
       ],
       settings: decodeHelperSettings
     ),
@@ -914,6 +916,7 @@ let project = Project(
         .target(name: "EnviousDecodeKit"),
         .package(product: "MLXLMCommon"),
         .package(product: "MLXLLM"),  // DFlashDraftingTests build a tiny Qwen3.5 model directly
+        .package(product: "ArgmaxOSS"),  // EnviousDecodeRequestMapperTests load a real tokenizer
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above

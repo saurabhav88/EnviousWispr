@@ -450,6 +450,9 @@ let package = Package(
       dependencies: [
         "EnviousDecodeKit",
         .product(name: "MLX", package: "mlx-swift"),
+        // The model folder's tokenizer, through the public Argmax surface the word check uses.
+        // The kit takes it as two closures and has no tokenizer edge of its own.
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
       ],
       path: "Sources/EnviousDecodeHelper"
     ),
@@ -512,6 +515,9 @@ let package = Package(
         .product(name: "MLX", package: "mlx-swift"),
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
         .product(name: "MLXLLM", package: "mlx-swift-lm"),
+        // #4473 P2: EnviousDecodeRequestMapperTests load a model folder's real tokenizer directly
+        // (the helper's own file cannot be imported by a test).
+        .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
         // #3735: WhisperGGUFRealDeliveryTests decode the admitted model directly.
         "EnviousWisprTranscribeCpp",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
