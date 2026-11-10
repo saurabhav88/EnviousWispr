@@ -66,17 +66,25 @@ let package = Package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
       revision: "fb506037d2b1917dbb2608b8e79872ec95acf384", traits: []),
     // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
-    // MLX, through two forks each carrying the smallest change on top of upstream:
+    // MLX, through two forks each carrying the smallest change on top of upstream. #4473 P2 adds what the
+    // EnviousDecode engine needs to the same two forks:
     // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden
-    //   states are reachable without lm_head, and its mlx-swift dependency pointed at the fork below.
+    //   states are reachable without lm_head (Kev's backbone call, kept as it is), and its mlx-swift
+    //   dependency pointed at the fork below. For #4473: a gated-delta tape-recording hook and its
+    //   forwarding through Qwen 3.5 (an armed cache leaves the compiled single-token routes), a capturing
+    //   forward with public read access to the embedding and the output head, MambaCache open so a
+    //   rollback cache can subclass it from another module, and test bounds sized by measured float32
+    //   matmul precision (upstream #649).
     // - mlx-swift (upstream 0.31.6): the CUDA build-tool plugin attached to Cmlx on Linux only. On Apple
     //   platforms it generates nothing, but its presence made every xcodebuild stop at "Validate plug-in".
+    //   For #4473: the upstream #461 compiler-lock repair (CompiledFunction.lock / evalLock order), without
+    //   which two threads evaluating MLX at once can deadlock for good.
     .package(
       url: "https://github.com/saurabhav88/mlx-swift-lm.git",
-      revision: "644680cddf080bc3bfd1318798735646b184e127"),
+      revision: "57e8ebe2394edb9b9a5e93d55c7d9d849ba13246"),
     .package(
       url: "https://github.com/saurabhav88/mlx-swift",
-      revision: "8746d3d8d2f3a19c79276f6d884b8c9c02e751e2"),
+      revision: "b2de81fbb2b8d250bff2eea9659ddfc7fdb4ebec"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     // #3685: qualified macOS artifact with native crash attribution/caller fixes.

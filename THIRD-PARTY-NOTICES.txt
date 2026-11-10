@@ -917,7 +917,7 @@ swift-argument-parser
 
 --------------------------------------------------------------------------------
 mlx-swift
-  Version: 8746d3d8 (fork saurabhav88/mlx-swift of 0.31.6)
+  Version: b2de81fb (fork saurabhav88/mlx-swift of 0.31.6)
   License: MIT
   Source:  https://github.com/saurabhav88/mlx-swift
 --------------------------------------------------------------------------------
@@ -1073,7 +1073,7 @@ without including the above copyright and permission notices.
 
 --------------------------------------------------------------------------------
 mlx-swift-lm
-  Version: 644680cd (fork saurabhav88/mlx-swift-lm)
+  Version: 57e8ebe2 (fork saurabhav88/mlx-swift-lm)
   License: MIT
   Source:  https://github.com/saurabhav88/mlx-swift-lm
 --------------------------------------------------------------------------------
@@ -1081,6 +1081,41 @@ mlx-swift-lm
 MIT License
 
 Copyright (c) 2024 ml-explore
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+SwiftLM (SharpAI; portions incorporated into mlx-swift-lm)
+  Version: 8392f02b
+  License: MIT
+  Source:  https://github.com/SharpAI/SwiftLM
+--------------------------------------------------------------------------------
+
+SwiftLM (https://github.com/SharpAI/SwiftLM), commit 8392f02b34d146751993c904e56cc67996196f3c.
+Libraries/MLXLMCommon/GatedDeltaTapeCache.swift and the recording branch of gatedDeltaUpdate in
+Libraries/MLXLMCommon/GatedDelta.swift derive from its Sources/DFlash/RecurrentRollbackCache.swift
+(DFlashRollbackCache.recordTape) and are used under this licence.
+
+MIT License
+
+Copyright (c) 2026 SharpAI
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
