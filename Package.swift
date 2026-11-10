@@ -17,6 +17,9 @@ let package = Package(
     // #4473: the engine-neutral local polish contracts. Exposed beside LLM, which depends on
     // it, so a harness that links LLM resolves it as a product too.
     .library(name: "EnviousWisprLocalPolish", targets: ["EnviousWisprLocalPolish"]),
+    // #4473: the llama-server engine (S1-mini, and EG-1 until its own engine lands). Exposed
+    // like its dependencies; only the app shell and the unit tests import it.
+    .library(name: "EnviousWisprLlamaEngine", targets: ["EnviousWisprLlamaEngine"]),
     // Exposed for the alias-suggestion eval harness at
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
@@ -296,6 +299,20 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprLLM"
     ),
+    // #4473: the llama-server engine: connectors, launch arguments, health probe, slot reader,
+    // learned-word checker and summary call for models served by the bundled `llama-server`.
+    // It sits ABOVE LLM and LocalPolish and is imported only by the app shell (composition)
+    // and the unit tests; LLM, LocalPolish and Pipeline never import it. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprLlamaEngine",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLLM",
+      ],
+      path: "Sources/EnviousWisprLlamaEngine"
+    ),
     // #3242: the learned-word check for polish engines that have none of their own. A leaf over Core
     // so MLX never reaches the eval harnesses that link EnviousWisprLLM or EnviousWisprPipeline.
     .target(
@@ -337,6 +354,7 @@ let package = Package(
         "EnviousWisprStorage",
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
+        "EnviousWisprLlamaEngine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
@@ -435,6 +453,7 @@ let package = Package(
         "EnviousWisprObservabilityCore",
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
+        "EnviousWisprLlamaEngine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",

@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices

@@ -5,6 +5,7 @@ import os
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 
 @Suite("EG-1 learned-word adapter wire contract (#3105)", .tags(.driftGuard))
 struct EGOneLearnedWordCheckerTests {

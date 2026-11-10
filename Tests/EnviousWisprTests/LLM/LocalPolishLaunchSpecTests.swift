@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import Foundation

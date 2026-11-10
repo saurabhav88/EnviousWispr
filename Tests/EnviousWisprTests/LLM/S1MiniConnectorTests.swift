@@ -3,6 +3,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 
 /// #2649 contract delta C1, at the connector.
 ///

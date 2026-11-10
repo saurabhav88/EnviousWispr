@@ -8,6 +8,7 @@ import Testing
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprPostProcessing

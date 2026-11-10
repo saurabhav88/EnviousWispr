@@ -5,6 +5,7 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprLocalPolish
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline

@@ -4,6 +4,7 @@ import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 
 /// #4319: when these fail, an EG-1 meeting summary is answered by the learned-word checker's
 /// weights, a looping answer cut at the cap is saved as a summary, a slow summary is cut off at

@@ -321,6 +321,7 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprASR"),
   .target(name: "EnviousWisprTranscribeCpp"),
   .target(name: "EnviousWisprLLM"),
+  .target(name: "EnviousWisprLlamaEngine"),
   .target(name: "EnviousWisprPipeline"),
   .target(name: "EnviousWisprWordCheck"),
 ]
@@ -437,6 +438,16 @@ let project = Project(
         // #832/#913 PR8: public Argmax tokenizer surface (AutoTokenizerWrapper /
         // TokenizerWrapper) for the output-safety classifier's pair-encoder seam.
         .package(product: "ArgmaxOSS"),
+      ]),
+    // #4473: the llama-server engine. Above LLM and LocalPolish; imported only by the app
+    // shell and the unit tests (see Package.swift).
+    firstPartyLibrary(
+      "EnviousWisprLlamaEngine",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprModelDelivery"),
+        .target(name: "EnviousWisprLocalPolish"),
+        .target(name: "EnviousWisprLLM"),
       ]),
     // #3242: Kev learned-word check on MLX (leaf over Core; see Package.swift).
     firstPartyLibrary(

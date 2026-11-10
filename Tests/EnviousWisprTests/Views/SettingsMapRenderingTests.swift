@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprAudio
 import EnviousWisprContacts
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import SwiftUI

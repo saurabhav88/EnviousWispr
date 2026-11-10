@@ -1,3 +1,4 @@
+import EnviousWisprLLM
 import Foundation
 
 /// What a chat-completions answer from the bundled `llama-server` means, for the parts both

@@ -92,4 +92,95 @@ struct LocalPolishModuleBoundaryTests {
       """
     #expect(Self.forbiddenImports(in: CachedSwiftParser.parse(source: source)).isEmpty)
   }
+
+  // MARK: - The llama-server engine (#4473)
+
+  /// The engine module. Nothing below the app shell may import it: an engine that LocalPolish,
+  /// LLM or Pipeline can import is an engine they come to depend on, and then S1-mini's engine
+  /// and EG-1's engine can no longer be built, loaded or removed apart. Silent until it breaks.
+  static let engineModule = "EnviousWisprLlamaEngine"
+  /// What the engine itself may import: its four declared dependencies and Foundation.
+  static let enginePermitted: Set<String> = [
+    "EnviousWisprCore", "EnviousWisprModelDelivery", "EnviousWisprLocalPolish",
+    "EnviousWisprLLM", "Foundation",
+  ]
+
+  /// Every imported module, in source order (plain, scoped, attributed, every `#if` branch).
+  static func importedModules(in tree: SourceFileSyntax) -> [String] {
+    let collector = ImportCollector(viewMode: .sourceAccurate)
+    collector.walk(tree)
+    return collector.modules
+  }
+
+  private static func swiftFiles(under directory: String) throws -> [URL] {
+    let root = RepoRoot.url.appending(path: directory)
+    let enumerator = try #require(
+      FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil),
+      "missing source folder \(directory)")
+    return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+      .sorted { $0.path < $1.path }
+  }
+
+  @Test("LocalPolish, LLM and Pipeline never import the llama engine")
+  func lowerModulesDoNotImportTheEngine() throws {
+    for directory in [
+      "Sources/EnviousWisprLocalPolish", "Sources/EnviousWisprLLM", "Sources/EnviousWisprPipeline",
+    ] {
+      let files = try Self.swiftFiles(under: directory)
+      // Control: an empty or missing folder would pass without reading anything.
+      try #require(!files.isEmpty, "no Swift files under \(directory)")
+      for file in files {
+        // Cheap first: a file whose text never names the engine cannot import it. Only a
+        // file that does name it is parsed, to tell an import from a comment or a string.
+        let text = try String(contentsOf: file, encoding: .utf8)
+        guard text.contains(Self.engineModule) else { continue }
+        let imports = Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree)
+        #expect(
+          !imports.contains(Self.engineModule),
+          "\(directory)/\(file.lastPathComponent) imports \(Self.engineModule)")
+      }
+    }
+  }
+
+  @Test("the llama engine imports only its four declared dependencies and Foundation")
+  func engineImportsOnlyItsDeclaredDependencies() throws {
+    let files = try Self.swiftFiles(under: "Sources/\(Self.engineModule)")
+    try #require(files.count >= 8, "expected the engine's source files, found \(files.count)")
+    for file in files {
+      let offenders = Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree)
+        .filter { !Self.enginePermitted.contains($0) }
+      #expect(offenders.isEmpty, "\(file.lastPathComponent) imports \(offenders)")
+    }
+  }
+
+  @Test(
+    "the engine checks read every import shape and nothing else",
+    arguments: [
+      ("import EnviousWisprLlamaEngine", ["EnviousWisprLlamaEngine"]),
+      ("import enum EnviousWisprLlamaEngine.LlamaServerHealthProbe", ["EnviousWisprLlamaEngine"]),
+      ("@testable import EnviousWisprLlamaEngine", ["EnviousWisprLlamaEngine"]),
+      (
+        "#if DEBUG\nimport EnviousWisprLlamaEngine\n#else\nimport MLX\n#endif",
+        ["EnviousWisprLlamaEngine", "MLX"]
+      ),
+      (
+        "import EnviousWisprEG1Engine\nimport EnviousDecodeKit",
+        ["EnviousWisprEG1Engine", "EnviousDecodeKit"]
+      ),
+      (
+        "import EnviousWisprCore\nimport EnviousWisprLLM\nimport Foundation",
+        ["EnviousWisprCore", "EnviousWisprLLM", "Foundation"]
+      ),
+      ("// import EnviousWisprLlamaEngine\nlet note = \"import EnviousWisprLlamaEngine\"", []),
+    ] as [(String, [String])])
+  func engineChecksReadEveryImportShape(source: String, imported: [String]) {
+    let modules = Self.importedModules(in: CachedSwiftParser.parse(source: source))
+    #expect(modules == imported)
+    // The two rules, applied to the same fixture: rule 1 flags the engine import, rule 2
+    // flags anything outside the engine's allowlist (MLX, another engine).
+    #expect(modules.contains(Self.engineModule) == imported.contains(Self.engineModule))
+    #expect(
+      modules.filter { !Self.enginePermitted.contains($0) }
+        == imported.filter { !Self.enginePermitted.contains($0) })
+  }
 }

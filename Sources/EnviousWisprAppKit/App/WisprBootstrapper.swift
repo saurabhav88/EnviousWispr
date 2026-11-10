@@ -3,6 +3,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprLivePreview
+import EnviousWisprLlamaEngine
 import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline

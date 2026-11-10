@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import Foundation
 

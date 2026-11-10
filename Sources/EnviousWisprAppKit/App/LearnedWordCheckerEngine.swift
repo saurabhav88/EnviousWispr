@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLlamaEngine
 import EnviousWisprModelDelivery
 import Foundation
 import os

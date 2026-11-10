@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 import os

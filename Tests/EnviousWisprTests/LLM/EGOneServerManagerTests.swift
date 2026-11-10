@@ -4,6 +4,7 @@ import Testing
 import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprLocalPolish
 import EnviousWisprAppKitTestSupport
 

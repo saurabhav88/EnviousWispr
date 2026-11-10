@@ -1,3 +1,4 @@
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 

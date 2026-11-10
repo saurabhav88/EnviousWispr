@@ -14,7 +14,7 @@ release binary, for full control over flags and supply chain.
 | Size | ~15 MB, single static binary |
 | Dynamic deps | macOS system frameworks ONLY (verified `otool -L`: no Homebrew/OpenSSL — `LLAMA_OPENSSL=OFF` exists precisely because the first build linked `/opt/homebrew` dylibs that do not exist on user Macs) |
 
-Runtime flags are owned by `LlamaServerLaunchBuilder` (LLM module), NOT baked in:
+Runtime flags are owned by `LlamaServerLaunchBuilder` (`EnviousWisprLlamaEngine` module), NOT baked in:
 `-fa on --cache-type-k q8_0 --cache-type-v q8_0` + `-c` from the manifest;
 EG-1 also gets `--spec-type ngram-simple` (word-copying, #3363). Exact lists:
 `LlamaServerLaunchBuilder.engineArguments(for:)` and `launchArguments(for:learnedWordAdapterURL:)`.

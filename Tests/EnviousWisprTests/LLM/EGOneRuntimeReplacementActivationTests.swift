@@ -1,5 +1,6 @@
 import CryptoKit
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
