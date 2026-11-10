@@ -43,11 +43,13 @@ struct LocalPolishModelIDTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
       coordinator: coordinator, provider: .egOne)
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 

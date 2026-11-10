@@ -70,11 +70,13 @@ struct LocalPolishP1CharacterizationTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
       coordinator: coordinator, provider: .egOne)
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
@@ -113,7 +115,9 @@ struct LocalPolishP1CharacterizationTests {
     // Update: a pause is written under the model's own key only.
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .egOne)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      defaults: store, provider: .egOne)
     egOne.applyInstallStateForTesting(.paused)
     #expect(store.string(forKey: egKey) == "paused")
     #expect(store.string(forKey: s1Key) == nil)
@@ -123,7 +127,9 @@ struct LocalPolishP1CharacterizationTests {
     let s1Events = EventBox()
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .s1Mini)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      defaults: store, provider: .s1Mini)
     s1Mini.onEvent = { s1Events.record($0) }
     s1Mini.applyInstallStateForTesting(.paused)
     #expect(s1Events.paused == [.paused])
@@ -135,7 +141,9 @@ struct LocalPolishP1CharacterizationTests {
     let restoredEvents = EventBox()
     let restored = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .egOne)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      defaults: store, provider: .egOne)
     restored.onEvent = { restoredEvents.record($0) }
     restored.applyInstallStateForTesting(.paused)
     #expect(restoredEvents.paused.isEmpty)
@@ -159,6 +167,7 @@ struct LocalPolishP1CharacterizationTests {
         _ = EGOneRuntime(
           manifest: nil, serverBinaryURL: nil, delivery: nil,
           makeHealthProbe: LlamaServerHealthProbe.make,
+          makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
           provider: LLMProvider(rawValue: raw) ?? .none)
       }
     }
@@ -172,7 +181,8 @@ struct LocalPolishP1CharacterizationTests {
       await MainActor.run {
         _ = EGOneRuntime(
           manifest: nil, serverBinaryURL: nil, delivery: nil,
-          makeHealthProbe: LlamaServerHealthProbe.make, provider: .s1Mini)
+          makeHealthProbe: LlamaServerHealthProbe.make,
+          makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini)
       }
       _ = LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil)
     }

@@ -154,6 +154,7 @@ struct EGOneAdapterLifecycleTests {
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       learnedWordAdapterProvider: {
         calls += 1
         return available
@@ -175,7 +176,8 @@ struct EGOneAdapterLifecycleTests {
     let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
     let s1 = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, provider: .s1Mini,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini,
       learnedWordAdapterProvider: { d5 })
     let s1Config = await s1.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
@@ -184,7 +186,8 @@ struct EGOneAdapterLifecycleTests {
     // A runtime built without a provider boots bare.
     let bare = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, provider: .s1Mini)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini)
     let bareConfig = await bare.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
     #expect(bareConfig.spec.learnedWordAdapterURL == nil)
@@ -193,12 +196,78 @@ struct EGOneAdapterLifecycleTests {
     // does not claim an adapter the requests would name.
     let unsplittable = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, provider: .s1Mini,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini,
       learnedWordAdapterProvider: { URL(fileURLWithPath: "/fake/a,b/s1-d5.gguf") })
     let refused = await unsplittable.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
     #expect(refused.spec.learnedWordAdapterURL == nil)
     #expect(refused.spec.learnedWordAdapterArguments.isEmpty)
+  }
+
+  /// #4473: the runtime builds its launch configuration through the factory it was handed.
+  /// When this is wrong the injection is ignored (the runtime launches some other engine's
+  /// command line), or the factory is asked with a stale checker or another model's identity,
+  /// and the model that starts is not the one the app admitted. Silent until polish fails.
+  @MainActor
+  @Test("the runtime asks its launch factory once, with its own identity, and uses the answer")
+  func runtimeUsesItsLaunchFactory() async {
+    struct Call: Sendable, Equatable {
+      let modelID: LocalPolishModelID
+      let artifactIdentity: ModelIdentity
+      let serverBinaryURL: URL
+      let modelURL: URL
+      let contextTokens: Int
+      let adapterURL: URL?
+    }
+    let binary = URL(fileURLWithPath: "/fake/server")
+    let model = URL(fileURLWithPath: "/fake/base.gguf")
+    let adapter = URL(fileURLWithPath: "/fake/s1-d5.gguf")
+    let identity = ModelIdentity(
+      family: .s1Mini, name: "fixture", revision: "fixture-a", variant: "fixture",
+      runtimeABI: "fixture")
+    // What the factory answers: deliberately NOT what the llama builder would build, so a
+    // runtime that ignored the factory cannot return an equal configuration by accident.
+    let answer = EGOneServerManager.Configuration(
+      spec: .fixture(
+        modelID: .singleModel(for: .s1Mini), identityRevision: "from-the-factory",
+        serverBinaryURL: URL(fileURLWithPath: "/factory/server"),
+        modelURL: URL(fileURLWithPath: "/factory/model"), contextTokens: 7777,
+        learnedWordAdapterURL: adapter, extraArguments: ["--from-the-factory"]),
+      makeArguments: { _, _, _ in ["rendered-by-the-factory"] }, readinessBudgetSeconds: 7)
+    let calls = OSAllocatedUnfairLock(initialState: [Call]())
+    var adapterReads = 0
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: { modelID, artifact, server, modelFile, context, adapterURL in
+        calls.withLock {
+          $0.append(
+            Call(
+              modelID: modelID, artifactIdentity: artifact, serverBinaryURL: server,
+              modelURL: modelFile, contextTokens: context, adapterURL: adapterURL))
+        }
+        return answer
+      },
+      provider: .s1Mini,
+      learnedWordAdapterProvider: {
+        adapterReads += 1
+        return adapter
+      })
+
+    let configuration = await runtime.makeServerConfiguration(
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
+
+    #expect(
+      calls.withLock { $0 } == [
+        Call(
+          modelID: .singleModel(for: .s1Mini), artifactIdentity: identity,
+          serverBinaryURL: binary, modelURL: model, contextTokens: 4096, adapterURL: adapter)
+      ])
+    #expect(adapterReads == 1)
+    #expect(configuration.spec == answer.spec)
+    #expect(configuration.readinessBudgetSeconds == 7)
+    #expect(configuration.makeArguments(configuration.spec, 1, "t") == ["rendered-by-the-factory"])
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")
@@ -280,6 +349,7 @@ struct EGOneAdapterLifecycleTests {
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       defaults: store, coordinator: coordinator,
       learnedWordAdapterProvider: { fixture.adapter })
     let activation = try #require(runtime.activateAndProbe())
@@ -868,6 +938,7 @@ struct EGOneRecordingRecoveryTests {
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       defaults: store, coordinator: coordinator)
     let recorder = AppliedRecorder()
     runtime.onLifecycleAppliedForTesting = { recorder.record($0) }
@@ -945,7 +1016,9 @@ struct EGOneRecordingRecoveryTests {
     // The other engine's runtime is not resident and is not touched.
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: rig.coordinator,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      coordinator: rig.coordinator,
       provider: .s1Mini)
     s1Mini.isActiveProvider = { true }
     await s1Mini.recordingStarted()?.value
@@ -1018,7 +1091,8 @@ struct EGOneRecordingRecoveryTests {
     let runtime = EGOneRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
     runtime.applyInstallStateForTesting(.installed(version: nil))
     let first = EGOneEndpoint(port: 1, authToken: "a", contextTokens: 1)
@@ -1041,7 +1115,8 @@ struct EGOneRecordingRecoveryTests {
   func lateEventsAndOneSamplePerStop(provider: LLMProvider) {
     let runtime = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, provider: provider)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: provider)
     var samples = 0
     var pressure: OutsideStopContext.MemoryPressure? = .normal
     runtime.memoryPressureLevel = {
@@ -1087,7 +1162,8 @@ struct EGOneRecordingRecoveryTests {
   func pressureLevels(level: OutsideStopContext.MemoryPressure) {
     let runtime = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
     runtime.memoryPressureLevel = { level }
     runtime.receive(
       LocalPolishLifecycleEvent(
@@ -1216,7 +1292,9 @@ struct EGOneRecordingRecoveryTests {
     #expect(importRead.recoveryOutsideStop == nil)
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: rig.coordinator,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      coordinator: rig.coordinator,
       provider: .s1Mini)
     let other = await s1Mini.beginPolishAttempt(takeID: "s1-take")
     if case .granted(let lease) = other.admission { await s1Mini.releaseLocalServerLease(lease) }
@@ -1332,7 +1410,8 @@ struct EGOneRecordingRecoveryTests {
   func unacceptedStopHasUnknownPressure() {
     let runtime = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
     var samples = 0
     runtime.memoryPressureLevel = {
       samples += 1
@@ -1491,6 +1570,7 @@ extension EGOneAdapterLifecycleTests {
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       defaults: store, coordinator: coordinator)
 
     guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
@@ -1519,6 +1599,9 @@ extension EGOneAdapterLifecycleTests {
   struct EGOneSlotObservationTests {
     fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
 
+    /// #4473: the engine's real reader, which the manager no longer builds for itself.
+    static let reader = LlamaServerSlotReader.operation()
+
     static let processingSlots = Data(
       """
       [{"id":0,"is_processing":false,"n_ctx":4096,"speculative":false},
@@ -1536,7 +1619,9 @@ extension EGOneAdapterLifecycleTests {
       await coordinator.transition(
         to: .run(LocalPolishTarget(configuration: fixture.configuration())),
         intent: coordinator.claimIntent())
-      guard case .observed(let snapshot) = await coordinator.observeSlotsForDebug(for: .egOne)
+      guard
+        case .observed(let snapshot) = await coordinator.observeSlotsForDebug(
+          for: .egOne, operation: Self.reader)
       else {
         Issue.record("the owned server's slots were not observed")
         return
@@ -1546,22 +1631,31 @@ extension EGOneAdapterLifecycleTests {
       #expect(snapshot.slots[1] == .init(id: 1, isProcessing: true, taskID: 7, decodedTokens: 399, remainingTokens: 1101))
       #expect(String(describing: snapshot).contains("SECRET") == false, "no request content")
       // Another model's slots are not this model's.
-      #expect(await coordinator.observeSlotsForDebug(for: .s1Mini) == .unavailable)
+      #expect(
+        await coordinator.observeSlotsForDebug(for: .s1Mini, operation: Self.reader)
+          == .unavailable)
       // A control request: still answered while a summary holds the server, and admits nothing.
       guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
         Issue.record("reservation refused")
         return
       }
-      guard case .observed = await coordinator.observeSlotsForDebug(for: .egOne) else {
+      guard
+        case .observed = await coordinator.observeSlotsForDebug(
+          for: .egOne, operation: Self.reader)
+      else {
         Issue.record("the slot reader was held back by the summary")
         return
       }
       #expect(await coordinator.hasLease(for: .egOne) == false)
       await coordinator.releaseSummaryReservation(reservation)
       try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("slots.json"))
-      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unsupported)
+      #expect(
+        await coordinator.observeSlotsForDebug(for: .egOne, operation: Self.reader)
+          == .unsupported)
       await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
-      #expect(await coordinator.observeSlotsForDebug(for: .egOne) == .unavailable)
+      #expect(
+        await coordinator.observeSlotsForDebug(for: .egOne, operation: Self.reader)
+          == .unavailable)
     }
 
     @Test("a slot answer from a replaced server is never reported, and errors stay errors (#4319)")
@@ -1569,28 +1663,99 @@ extension EGOneAdapterLifecycleTests {
       let fixture = try Fixture()
       defer { fixture.cleanup() }
       let manager = EGOneServerManager()
-      #expect(await manager.observeSlotsForDebug() == .unavailable, "no server is not idle")
+      #expect(
+        await manager.observeSlotsForDebug(operation: Self.reader) == .unavailable,
+        "no server is not idle")
       await manager.start(configuration: fixture.configuration())
-      let replaced = await manager.observeSlotsForDebug { request in
-        #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
-        #expect(request.url?.path == "/slots")
-        await manager.stop()
-        let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-        return (Self.processingSlots, ok)
-      }
+      let replaced = await manager.observeSlotsForDebug(
+        operation: LlamaServerSlotReader.operation { request in
+          #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
+          #expect(request.url?.path == "/slots")
+          await manager.stop()
+          let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+          return (Self.processingSlots, ok)
+        })
       #expect(replaced == .replaced)
       await manager.start(configuration: fixture.configuration())
       #expect(
-        await manager.observeSlotsForDebug { _ in throw URLError(.timedOut) } == .transportFailed)
+        await manager.observeSlotsForDebug(
+          operation: LlamaServerSlotReader.operation { _ in throw URLError(.timedOut) })
+          == .transportFailed)
       #expect(
-        await manager.observeSlotsForDebug { request in
-          (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        } == .malformed)
+        await manager.observeSlotsForDebug(
+          operation: LlamaServerSlotReader.operation { request in
+            (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+          }) == .malformed)
       #expect(
-        await manager.observeSlotsForDebug { request in
-          (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
-        } == .httpStatus(500))
+        await manager.observeSlotsForDebug(
+          operation: LlamaServerSlotReader.operation { request in
+            (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+          }) == .httpStatus(500))
       await manager.stop()
+    }
+
+    /// #4473: the manager decides WHICH process is asked and whether its answer still counts;
+    /// the injected operation only asks. When this is wrong, the Live UAT slot reader reports
+    /// another launch's slots, or asks a server that is not ready, and the evidence a tester
+    /// reads is about the wrong process.
+    ///
+    /// About one second, measured: it starts the fake server as a real child process TWICE,
+    /// because only a second launch can show that the generation and the endpoint follow the
+    /// process. Each launch is the lifecycle fixture's half-second floor.
+    @Test(
+      "the injected slot read runs only on a ready server, with its own endpoint and launch (#4473)"
+    )
+    func injectedSlotReadGetsTheOwnedServer() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      let manager = EGOneServerManager()
+      let calls = OSAllocatedUnfairLock(
+        initialState: [(endpoint: EGOneEndpoint, generation: Int)]())
+      let operation: LocalPolishSlotInspection = { endpoint, generation in
+        calls.withLock { $0.append((endpoint, generation)) }
+        return .observed(EGOneSlotSnapshot(launchGeneration: generation, slots: []))
+      }
+      #expect(await manager.observeSlotsForDebug(operation: operation) == .unavailable)
+      #expect(calls.withLock { $0.count } == 0, "a server that is not ready is not asked")
+
+      await manager.start(configuration: fixture.configuration())
+      let first = try #require(await manager.activeEndpoint(), "fake server never became ready")
+      let firstAnswer = await manager.observeSlotsForDebug(operation: operation)
+      await manager.stop()
+      await manager.start(configuration: fixture.configuration())
+      let second = try #require(await manager.activeEndpoint(), "fake server never came back")
+      let secondAnswer = await manager.observeSlotsForDebug(operation: operation)
+      await manager.stop()
+
+      let seen = calls.withLock { $0 }
+      try #require(seen.count == 2)
+      #expect(seen[0].endpoint == first)
+      #expect(seen[1].endpoint == second)
+      #expect(seen[1].generation > seen[0].generation, "a new launch is a new generation")
+      #expect(
+        firstAnswer
+          == .observed(EGOneSlotSnapshot(launchGeneration: seen[0].generation, slots: [])))
+      #expect(
+        secondAnswer
+          == .observed(EGOneSlotSnapshot(launchGeneration: seen[1].generation, slots: [])))
+    }
+
+    /// #4473: a read that fails in transport is `transportFailed` even when the server was
+    /// also stopped while the request was out. When the order is wrong, a network failure is
+    /// reported as a replaced server and the tester chases a lifecycle fault that did not happen.
+    @Test("a slot read that throws is a transport failure even if the server also stopped (#4473)")
+    func throwingSlotReadStaysATransportFailure() async throws {
+      let fixture = try Fixture()
+      defer { fixture.cleanup() }
+      let manager = EGOneServerManager()
+      await manager.start(configuration: fixture.configuration())
+      try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
+      let answer = await manager.observeSlotsForDebug(operation: { _, _ in
+        await manager.stop()
+        throw URLError(.timedOut)
+      })
+      #expect(answer == .transportFailed)
+      #expect(await manager.activeEndpoint() == nil, "the control: the server did stop")
     }
   }
 #endif
@@ -1678,6 +1843,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
       manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       defaults: store, coordinator: LocalPolishServerCoordinator(), provider: provider)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
     runtime.isActiveProvider = { true }

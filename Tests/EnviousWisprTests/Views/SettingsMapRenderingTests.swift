@@ -390,10 +390,13 @@ struct SettingsMapRenderingTests {
         ollamaSetup: ollama)
       egOne = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults)
+        makeHealthProbe: LlamaServerHealthProbe.make,
+        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
       s1 = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults, provider: .s1Mini)
+        makeHealthProbe: LlamaServerHealthProbe.make,
+        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+        defaults: defaults, provider: .s1Mini)
     }
 
     /// Everything the AI Polish and Transcribe a File pages read.

@@ -39,11 +39,13 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,
       provider: .egOne)
     let s1Mini = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,
       provider: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,

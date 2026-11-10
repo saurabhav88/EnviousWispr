@@ -39,7 +39,8 @@ import Testing
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -141,7 +142,8 @@ import Testing
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
     let runtime = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }

@@ -587,6 +587,7 @@ final class ReplayRig {
       manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: serverBinary, delivery: egOneAdapter,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       learnedWordAdapterProvider: {
         return await home.admittedCompatibleCheckerURL(
           engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
@@ -595,6 +596,7 @@ final class ReplayRig {
     let s1MiniRuntime = EGOneRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
     let localPolish = LocalPolishRuntimeSet(egOne: egOneRuntime, s1Mini: s1MiniRuntime)
     let checkerEligibility = LearnedWordCheckerEligibility(

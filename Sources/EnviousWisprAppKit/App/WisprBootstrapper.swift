@@ -566,6 +566,7 @@ package final class WisprBootstrapper {
         expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
       serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
@@ -628,6 +629,7 @@ package final class WisprBootstrapper {
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
       serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
       makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }
@@ -2533,7 +2535,8 @@ package final class WisprBootstrapper {
               startFlow: { [meetingBox] in meetingBox.startFlow },
               transcripts: { [transcriptCoordinator] in transcriptCoordinator },
               egOneSlots: { [localPolishRuntimes] in
-                await localPolishRuntimes.egOne.observeServerSlotsForDebug()
+                await localPolishRuntimes.egOne.observeServerSlotsForDebug(
+                  operation: LlamaServerSlotReader.operation())
               })),
           calls: DevControlCalls(
             sources: DevControlCalls.Sources(

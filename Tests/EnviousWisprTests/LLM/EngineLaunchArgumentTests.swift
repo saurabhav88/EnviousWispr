@@ -1,4 +1,6 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
+import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
@@ -114,5 +116,55 @@ struct EngineLaunchArgumentTests {
     // The bare-base fallback copy renders without the adapter's flags.
     let fallback = configuration.withoutLearnedWordAdapter()
     #expect(fallback.makeArguments(fallback.spec, 51234, "bearer-1") == base)
+  }
+
+  /// #4473: the configuration the composition root's factory builds for each bundled model,
+  /// with and without a word-check adapter, against values written out here. When this is
+  /// wrong the model starts with another model's flags, a wrong context size or a checker
+  /// the app did not ask for, and polish silently degrades or returns nothing.
+  @Test(
+    "the launch factory builds each model's complete configuration",
+    arguments: [
+      (LLMProvider.egOne, false), (.egOne, true), (.s1Mini, false), (.s1Mini, true),
+    ])
+  func launchFactoryBuildsTheCompleteConfiguration(provider: LLMProvider, withAdapter: Bool) {
+    let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+    let flags =
+      provider == .egOne
+      ? footprint + ["--spec-type", "ngram-simple"]
+      : footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+    let adapter = withAdapter ? URL(fileURLWithPath: "/tmp/ew-factory/checker.gguf") : nil
+    let adapterFlags =
+      withAdapter
+      ? [
+        "--lora-scaled", "/tmp/ew-factory/checker.gguf:0",
+        "-np", "9", "--kv-unified", "--no-cache-idle-slots",
+      ] : []
+    let identity = ModelIdentity(
+      family: .egOne, name: "fixture", revision: "fixture-a", variant: "fixture",
+      runtimeABI: "fixture")
+    let server = URL(fileURLWithPath: "/tmp/ew-factory/server")
+    let model = URL(fileURLWithPath: "/tmp/ew-factory/model.gguf")
+
+    let factory: LocalPolishLaunchConfigurationFactory = LlamaServerLaunchBuilder.makeConfiguration
+    let configuration = factory(
+      .singleModel(for: provider), identity, server, model, 16384, adapter)
+
+    #expect(
+      configuration.spec
+        == LocalPolishLaunchSpec(
+          engineKind: .llamaServer, modelID: .singleModel(for: provider),
+          artifactIdentity: identity, serverBinaryURL: server, modelURL: model,
+          contextTokens: 16384, learnedWordAdapterURL: adapter, extraArguments: flags,
+          learnedWordAdapterArguments: adapterFlags))
+    #expect(
+      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
+        == [
+          "-m", "/tmp/ew-factory/model.gguf", "--host", "127.0.0.1", "--port", "51234",
+          "-c", "16384", "--api-key", "bearer-1",
+        ] + flags + adapterFlags)
+    // Execution controls the factory does not set keep their defaults.
+    #expect(configuration.readinessBudgetSeconds == 60)
+    #expect(configuration.owningProvider == nil)
   }
 }

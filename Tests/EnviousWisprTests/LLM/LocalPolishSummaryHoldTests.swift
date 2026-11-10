@@ -18,11 +18,15 @@ struct LocalPolishSummaryHoldTests {
     init() {
       let egOne = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
+        makeHealthProbe: LlamaServerHealthProbe.make,
+        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+        coordinator: coordinator,
         provider: .egOne)
       let s1 = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
+        makeHealthProbe: LlamaServerHealthProbe.make,
+        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+        coordinator: coordinator,
         provider: .s1Mini)
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
     }

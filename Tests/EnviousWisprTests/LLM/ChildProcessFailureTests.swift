@@ -193,7 +193,8 @@ struct OutsideStopChildTelemetryTests {
   ) -> (EGOneRuntime, Box) {
     let runtime = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, provider: provider)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: provider)
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {

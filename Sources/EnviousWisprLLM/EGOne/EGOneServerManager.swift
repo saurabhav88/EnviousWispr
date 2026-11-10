@@ -731,86 +731,33 @@ public actor EGOneServerManager {
 #if DEBUG
   // MARK: - #4319: DEBUG slot observation (Live UAT evidence only)
 
-  /// What the bundled server's slots were doing, content-free: only slot numbers, whether each
-  /// is generating, and how far, so a test can see a cancelled summary stop and free its slot.
-  public struct EGOneSlotSnapshot: Sendable, Equatable {
-    public struct Slot: Sendable, Equatable {
-      public let id: Int
-      public let isProcessing: Bool
-      public let taskID: Int?
-      public let decodedTokens: Int?
-      public let remainingTokens: Int?
-    }
-    /// Which launch of the server this describes (not a secret; the bearer never leaves).
-    public let launchGeneration: Int
-    public let slots: [Slot]
-  }
-
-  public enum EGOneSlotObservation: Sendable, Equatable {
-    case observed(EGOneSlotSnapshot)
-    /// No ready server of the asked model.
-    case unavailable
-    /// The server answered that it has no slots endpoint.
-    case unsupported
-    case httpStatus(Int)
-    case transportFailed
-    case malformed
-    /// The server was replaced while the request was out: the answer is not about it.
-    case replaced
-  }
-
   extension EGOneServerManager {
-    /// A read-only control request: authenticated `GET /slots` on this manager's own ready
-    /// server. Takes no lease, no reservation and no admission epoch; starts, probes and stops
-    /// nothing. Bounded like the readiness check (`awaitServerUp`, 2 s per request).
+    /// A read-only control request on this manager's own ready server. Takes no lease, no
+    /// reservation and no admission epoch; starts, probes and stops nothing.
+    ///
+    /// #4473: the request and the answer's shape belong to the engine that supplies
+    /// `operation`; the values it reports are in `LocalPolishSlotInspection.swift`. This
+    /// method keeps what is the process's own: only a ready server is asked, on its endpoint
+    /// and launch generation, and an answer about a server that was replaced meanwhile is
+    /// never reported. `operation` is REQUIRED and has no default.
+    ///
+    /// Failure order, unchanged: a transport failure is `transportFailed` even when the
+    /// server was also replaced while the request was out, so the throw is handled BEFORE
+    /// the replacement check.
     public func observeSlotsForDebug(
-      send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-        try await URLSession.shared.data(for: $0)
-      }
+      operation: LocalPolishSlotInspection
     ) async -> EGOneSlotObservation {
-      guard case .ready(let endpoint) = state,
-        let url = URL(string: "http://127.0.0.1:\(endpoint.port)/slots")
-      else { return .unavailable }
+      guard case .ready(let endpoint) = state else { return .unavailable }
       let generation = launchGeneration
-      var request = URLRequest(url: url)
-      request.timeoutInterval = 2
-      request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-      let data: Data
-      let response: URLResponse
+      let observation: EGOneSlotObservation
       do {
-        (data, response) = try await send(request)
+        observation = try await operation(endpoint, generation)
       } catch {
         return .transportFailed
       }
       guard generation == launchGeneration, case .ready(let current) = state, current == endpoint
       else { return .replaced }
-      let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-      switch status {
-      case 200: break
-      case 404, 501: return .unsupported
-      default: return .httpStatus(status)
-      }
-      return Self.parseSlots(data, launchGeneration: generation).map(EGOneSlotObservation.observed)
-        ?? .malformed
-    }
-
-    /// Whitelisted fields only: never the request's params, prompt or generated text.
-    static func parseSlots(_ data: Data, launchGeneration: Int) -> EGOneSlotSnapshot? {
-      guard let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
-        return nil
-      }
-      var slots: [EGOneSlotSnapshot.Slot] = []
-      for row in rows {
-        guard let id = row["id"] as? Int, let processing = row["is_processing"] as? Bool else {
-          return nil
-        }
-        let next = (row["next_token"] as? [[String: Any]])?.first
-        slots.append(
-          .init(
-            id: id, isProcessing: processing, taskID: row["id_task"] as? Int,
-            decodedTokens: next?["n_decoded"] as? Int, remainingTokens: next?["n_remain"] as? Int))
-      }
-      return EGOneSlotSnapshot(launchGeneration: launchGeneration, slots: slots)
+      return observation
     }
   }
 #endif

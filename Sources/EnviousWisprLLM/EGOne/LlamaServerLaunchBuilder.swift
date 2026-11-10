@@ -109,6 +109,21 @@ public struct LlamaServerLaunchBuilder: Sendable {
       extraArguments: baseArguments, learnedWordAdapterArguments: Array(adapterArguments))
   }
 
+  /// The launch configuration for a bundled model on llama-server (#4473): the spec above with
+  /// this builder's renderer. This is what the composition root hands to the runtime as its
+  /// `LocalPolishLaunchConfigurationFactory`; it adds no rule of its own.
+  public static func makeConfiguration(
+    modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
+  ) -> EGOneServerManager.Configuration {
+    EGOneServerManager.Configuration(
+      spec: makeSpec(
+        modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
+        modelURL: modelURL, contextTokens: contextTokens,
+        learnedWordAdapterURL: learnedWordAdapterURL),
+      makeArguments: arguments)
+  }
+
   /// The complete argument list for one spawn (#4473): model, loopback host, port, context
   /// capacity and bearer, then the engine's flags and the adapter's flags in that order. The
   /// port and bearer are chosen by the process manager for each spawn; they are not part of

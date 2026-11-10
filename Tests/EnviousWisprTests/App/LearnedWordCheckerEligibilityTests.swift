@@ -27,7 +27,8 @@ struct LearnedWordCheckerEligibilityTests {
         manifestBundle: try #require(Bundle(url: resources)), appSupportOverride: temp)
       let runtime = EGOneRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make)
+        makeHealthProbe: LlamaServerHealthProbe.make,
+        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
       let checker = try #require(
         LearnedWordCheckUATDoor.configuration(environment: [
           LearnedWordCheckUATDoor.environmentKey: "Tuist",

@@ -116,10 +116,13 @@ struct SettingsAdvisoryRenderHarness {
       preloadAction: {}, ollamaStatusProbe: { _ in })
     let egOne = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
     let s1 = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults, provider: .s1Mini)
+      makeHealthProbe: LlamaServerHealthProbe.make,
+      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      defaults: defaults, provider: .s1Mini)
     return AnyView(TranscribeFileView()
       .environment(coordinator).environment(settings).environment(setup)
       .environment(AIAvailabilityCoordinator())

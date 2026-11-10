@@ -292,6 +292,10 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// with another model's probe.
   private let makeHealthProbe:
     @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe
+  /// Builds this runtime's launch configuration from its own model identity and the admitted
+  /// values of its delivery (#4473). The engine supplies it; the runtime names no engine's
+  /// command line.
+  private let makeLaunchConfiguration: LocalPolishLaunchConfigurationFactory
   private let serverBinaryURL: URL?
   /// Called for each EG-1 boot, after base admission, not cached at launch.
   private let learnedWordAdapterProvider: @MainActor () async -> URL?
@@ -311,6 +315,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     manifest: LocalPolishManifestFacts?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
     makeHealthProbe:
       @escaping @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe,
+    makeLaunchConfiguration: @escaping LocalPolishLaunchConfigurationFactory,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
     provider: LLMProvider = .egOne,
@@ -341,6 +346,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.modelID = .singleModel(for: provider)
     self.makeHealthProbe = makeHealthProbe
+    self.makeLaunchConfiguration = makeLaunchConfiguration
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.learnedWordAdapterProvider = learnedWordAdapterProvider
@@ -1008,18 +1014,18 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     // Each bundled engine's runtime owns its own adapter provider (#3105: EG-1's
     // eg1c, S1-mini's D5); a runtime built without one boots without an adapter.
     let adapterURL = await learnedWordAdapterProvider()
-    let spec = LlamaServerLaunchBuilder.makeSpec(
-      modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
-      modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL)
+    // #4473: the engine builds the configuration; this runtime supplies its own identity and
+    // the admitted values, once.
+    let configuration = makeLaunchConfiguration(
+      modelID, artifactIdentity, serverBinaryURL, modelURL, contextTokens, adapterURL)
     // A path the server cannot take boots the engine without its checker, and
     // the endpoint must then not claim an adapter the requests would name.
-    if adapterURL != nil, spec.learnedWordAdapterURL == nil {
+    if adapterURL != nil, configuration.spec.learnedWordAdapterURL == nil {
       await AppLogger.shared.log(
         "Learned-word checker adapter not loaded: its path holds ',' or ':'",
         level: .info, category: "LLM")
     }
-    return EGOneServerManager.Configuration(
-      spec: spec, makeArguments: LlamaServerLaunchBuilder.arguments)
+    return configuration
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
@@ -1059,8 +1065,10 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   #if DEBUG
     /// #4319 DEBUG: this engine's server slots (Live UAT evidence only).
-    public func observeServerSlotsForDebug() async -> EGOneSlotObservation {
-      await server.observeSlotsForDebug(for: provider)
+    public func observeServerSlotsForDebug(
+      operation: LocalPolishSlotInspection
+    ) async -> EGOneSlotObservation {
+      await server.observeSlotsForDebug(for: provider, operation: operation)
     }
   #endif
 
