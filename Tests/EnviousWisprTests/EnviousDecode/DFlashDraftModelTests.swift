@@ -341,9 +341,6 @@ struct DFlashDraftModelTests {
       capturedDict: [1: filled(10), 2: filled(20), 5: filled(50)], targetLayerIDs: [4, 0])
     #expect(fromTable.shape == [1, 2, 6])
     #expect(stored(fromTable[0, 0]) == [50, 50, 50, 10, 10, 10])
-    let fromList = extractContextFeature(
-      hiddenStates: [filled(0), filled(10), filled(20), filled(30)], layerIDs: [2, 0])
-    #expect(stored(fromList[0, 0]) == [30, 30, 30, 10, 10, 10])
   }
 
   // MARK: - 4. The real helpers

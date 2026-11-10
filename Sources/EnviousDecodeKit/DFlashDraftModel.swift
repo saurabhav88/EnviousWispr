@@ -16,7 +16,9 @@
 //    Text: Sources/EnviousWispr/Resources/DFlash-LICENSE.txt.
 //
 // Modified by Envious Labs LLC, 2026-11-10 (this port). EnviousWispr is distributed under the
-// GNU GPL, version 3. Removed the six `DFlashDumper` debug-dump calls and their `if` blocks;
+// GNU GPL, version 3. Removed the six `DFlashDumper` debug-dump calls and their `if` blocks,
+// and the array-based `extractContextFeature`, which nothing here calls (the engine reads the
+// captured states through `extractContextFeatureFromDict`);
 // `public` became internal; reformatted to the project's 2-space style. No default, layer
 // equation, parameter name or cache rule changed. One configuration rule changed: the block
 // size is also read from `dflash_config.block_size`, and a file whose flat and nested block
@@ -477,17 +479,6 @@ final class DFlashDraftModel: Module {
 }
 
 // MARK: - Extract context feature from hidden states
-
-/// Extract and concatenate hidden states at the specified layer IDs.
-/// The layer IDs are 0-indexed into the model's layers, and we take
-/// `hiddenStates[layerID + 1]` because index 0 is the embedding output.
-func extractContextFeature(
-  hiddenStates: [MLXArray],
-  layerIDs: [Int]
-) -> MLXArray {
-  let selected = layerIDs.map { hiddenStates[$0 + 1] }
-  return concatenated(selected, axis: -1)
-}
 
 /// Extract context feature from a dictionary of captured hidden states.
 func extractContextFeatureFromDict(
