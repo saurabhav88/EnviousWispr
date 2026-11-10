@@ -381,7 +381,7 @@ public struct OllamaConnector: TranscriptPolisher {
   /// ("the input length exceeds the context length", 0.12.6 and later), its llama-server path
   /// ("the prompt is longer than the context length currently available to the model") and
   /// llama.cpp's server ("exceeds the available context size").
-  static func isContextOverflow(_ body: String) -> Bool {
+  package static func isContextOverflow(_ body: String) -> Bool {
     let lower = body.lowercased()
     return lower.contains("exceeds the context length")
       || lower.contains("longer than the context length")
@@ -649,7 +649,7 @@ public struct OllamaConnector: TranscriptPolisher {
     }
     let userMessage = envelope.messages.last { $0.role == .user }?.content ?? ""
     switch LocalPolishEmptyDisposition.classify(
-      input: S1MiniConnector.transcript(fromUserMessage: userMessage))
+      input: S1ControlLineTranscript.transcript(fromUserMessage: userMessage))
     {
     case .validEmpty: return ""
     case .unexpectedEmpty: throw LLMError.emptyResponse

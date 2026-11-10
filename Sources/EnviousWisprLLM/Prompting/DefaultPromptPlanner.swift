@@ -63,7 +63,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
   }
 
   /// Select builder for an already-computed family (single family computation in `plan`).
-  static func builder(for family: PromptFamily) -> any PromptBuilder {
+  package static func builder(for family: PromptFamily) -> any PromptBuilder {
     switch family {
     case .cloudFixed: return CloudFixedPromptBuilder()
     case .localFixed: return LocalFixedPromptBuilder()

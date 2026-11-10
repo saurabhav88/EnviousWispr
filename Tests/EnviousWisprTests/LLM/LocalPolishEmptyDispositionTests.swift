@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import EnviousWisprCore
 @testable import EnviousWisprLLM
 
 /// #2649 contract delta C1. The rule this pins is asymmetric on purpose, and

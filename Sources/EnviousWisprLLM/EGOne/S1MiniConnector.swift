@@ -73,25 +73,6 @@ public struct S1MiniConnector: TranscriptPolisher {
     return try Self.parseSuccess(data: data, userMessage: user)
   }
 
-  /// The transcript this request carried, recovered from the user message.
-  ///
-  /// The empty-answer rule needs the INPUT, and the user message is
-  /// `controlLine + "\n" + transcript` by construction
-  /// (`S1ControlLinePromptBuilder`). Dropping the first line recovers it without
-  /// threading a second parameter through the transport, which would have made
-  /// the shared path know about one model's prompt shape.
-  ///
-  /// If the shape is ever not what this expects, the WHOLE user message is used
-  /// instead. That fails toward `unexpectedEmpty`, which is the safe direction:
-  /// the control line contains ordinary words, so a malformed message can only
-  /// ever make an empty answer look like a failure, never like a valid empty.
-  static func transcript(fromUserMessage message: String) -> String {
-    guard let newline = message.firstIndex(of: "\n"),
-      message[message.startIndex..<newline].hasPrefix("[Styling:")
-    else { return message }
-    return String(message[message.index(after: newline)...])
-  }
-
   /// `internal` so tests drive it with a canned wire payload, the same seam
   /// `EGOneConnector.parseSuccess` offers.
   static func parseSuccess(data: Data, userMessage: String) throws -> LLMResult {
@@ -117,7 +98,7 @@ public struct S1MiniConnector: TranscriptPolisher {
       // failure otherwise. Deciding on the OUTPUT alone would have blinded the
       // `empty_response` signal that diagnosed #2634.
       switch LocalPolishEmptyDisposition.classify(
-        input: Self.transcript(fromUserMessage: userMessage))
+        input: S1ControlLineTranscript.transcript(fromUserMessage: userMessage))
       {
       case .validEmpty:
         // A correct empty result. The product's existing empty-output floor

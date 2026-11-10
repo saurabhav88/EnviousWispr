@@ -83,9 +83,9 @@ struct S1MiniConnectorTests {
   @Test("the control line is dropped so the empty rule sees the transcript")
   func transcriptRecovery() {
     #expect(
-      S1MiniConnector.transcript(fromUserMessage: Self.userMessage("um uh")) == "um uh")
+      S1ControlLineTranscript.transcript(fromUserMessage: Self.userMessage("um uh")) == "um uh")
     #expect(
-      S1MiniConnector.transcript(fromUserMessage: Self.userMessage("line one\nline two"))
+      S1ControlLineTranscript.transcript(fromUserMessage: Self.userMessage("line one\nline two"))
         == "line one\nline two")
   }
 
@@ -96,7 +96,7 @@ struct S1MiniConnectorTests {
   @Test("an unexpected message shape fails toward reporting a failure")
   func unexpectedShapeIsSafe() {
     let odd = "no control line here"
-    #expect(S1MiniConnector.transcript(fromUserMessage: odd) == odd)
+    #expect(S1ControlLineTranscript.transcript(fromUserMessage: odd) == odd)
     // And the whole control line, if it ever reached the classifier, must not
     // read as filler. Every trained combination, not only the default: the
     // pickers (#2649) can put any of them on the wire.
@@ -109,7 +109,7 @@ struct S1MiniConnectorTests {
             LocalPolishEmptyDisposition.classify(input: line) == .unexpectedEmpty,
             Comment(rawValue: line))
           // And the transcript recovery must still find the transcript behind it.
-          #expect(S1MiniConnector.transcript(fromUserMessage: "\(line)\nhello there") == "hello there")
+          #expect(S1ControlLineTranscript.transcript(fromUserMessage: "\(line)\nhello there") == "hello there")
         }
       }
     }
