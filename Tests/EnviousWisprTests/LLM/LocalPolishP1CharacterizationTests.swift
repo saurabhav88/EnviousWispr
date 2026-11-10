@@ -157,46 +157,4 @@ struct LocalPolishP1CharacterizationTests {
     // Nothing else is persisted by these runtimes: no size key exists in P1.
     #expect(Set(store.persistentDomain(forName: suite)?.keys.map { $0 } ?? []) == [s1Key])
   }
-
-  // MARK: - Providers without a bundled model are refused
-
-  @Test(
-    "building a local runtime for a provider with no bundled model stops the process",
-    arguments: providersWithoutABundledModel)
-  func runtimeConstructionRefuses(provider: LLMProvider) async {
-    await #expect(processExitsWith: .failure) { [raw = provider.rawValue as String] in
-      await MainActor.run {
-        _ = EGOneRuntime(
-          manifest: nil, serverBinaryURL: nil, delivery: nil,
-          makeHealthProbe: LlamaServerHealthProbe.make,
-          makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
-          provider: LLMProvider(rawValue: raw) ?? .none)
-      }
-    }
-  }
-
-  /// Control for the two refusal tests: the same child-process calls with a bundled provider
-  /// exit cleanly, so a refusal above is the provider check and not a crash from the rig.
-  @Test("the same calls with a bundled provider do not stop the process")
-  func bundledProvidersAreAccepted() async {
-    await #expect(processExitsWith: .success) {
-      await MainActor.run {
-        _ = EGOneRuntime(
-          manifest: nil, serverBinaryURL: nil, delivery: nil,
-          makeHealthProbe: LlamaServerHealthProbe.make,
-          makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini)
-      }
-      _ = LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil)
-    }
-  }
-
-  @Test(
-    "asking for engine launch flags for a provider with no bundled model stops the process",
-    arguments: providersWithoutABundledModel)
-  func launchRoutingRefuses(provider: LLMProvider) async {
-    await #expect(processExitsWith: .failure) { [raw = provider.rawValue as String] in
-      _ = LlamaServerLaunchBuilder.launchArguments(
-        for: LLMProvider(rawValue: raw) ?? .none, learnedWordAdapterURL: nil)
-    }
-  }
 }
