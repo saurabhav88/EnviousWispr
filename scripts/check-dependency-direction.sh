@@ -6,8 +6,11 @@
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
-#   EnviousDecodeHelper    -> (no app deps; the EnviousDecode helper executable on MLX, embedded at
-#                             Contents/MacOS/envious-decode; #4473 P2)
+#   EnviousDecodeHelper    -> EnviousDecodeKit (the EnviousDecode helper executable, embedded at
+#                             Contents/MacOS/envious-decode; no app module; #4473 P2)
+#   EnviousDecodeKit       -> (no first-party deps; the EnviousDecode engine code on MLX; #4473 P2).
+#                             No EnviousWispr* module may import an EnviousDecode* module: none of
+#                             their lines below lists one, and this script reads both prefixes.
 #   EnviousWisprAppLive    -> AppKit, DesktopEffects (production composition root; #2455 C1/C2).
 #   EnviousWisprDesktopEffects -> AppKit, Services (#2455 C2). The ONLY module holding Carbon and
 #                             NSEvent calls. The UNIT and ASR targets do not declare it; the
@@ -86,9 +89,11 @@ permitted_imports_for() {
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
     EnviousWispr)                  echo "EnviousWisprAppLive" ;;
-    # #4473 P2: the EnviousDecode helper executable. A separate process on MLX: it imports no
-    # first-party module, so no app policy or app state can reach it by import. Keep it empty.
-    EnviousDecodeHelper)           echo "" ;;
+    # #4473 P2: the EnviousDecode helper executable. A separate process: it imports the kit and
+    # no app module, so no app policy or app state can reach it by import. Keep it at the kit.
+    EnviousDecodeHelper)           echo "EnviousDecodeKit" ;;
+    # #4473 P2: the engine's own code on MLX. No first-party import. Keep it empty.
+    EnviousDecodeKit)              echo "" ;;
     *)                             return 1 ;;
   esac
 }
@@ -96,7 +101,7 @@ permitted_imports_for() {
 violations=0
 modules_scanned=0
 
-# Match `import EnviousWispr...` with:
+# Match `import EnviousWispr...` and `import EnviousDecode...` (#4473 P2: both are first-party) with:
 #   - Optional Swift attributes (e.g. `@preconcurrency`, `@_implementationOnly`,
 #     `@_spi(Internal)` — parenthesized argument allowed)
 #   - Optional access-level on the import statement (Swift 6:
@@ -111,7 +116,7 @@ modules_scanned=0
 import_kinds='(typealias|struct|class|enum|protocol|let|var|func)'
 import_access='(public|package|internal|fileprivate|private)'
 import_attr='(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*'
-import_grep_pattern="^[[:space:]]*${import_attr}(${import_access}[[:space:]]+)?import[[:space:]]+(${import_kinds}[[:space:]]+)?EnviousWispr"
+import_grep_pattern="^[[:space:]]*${import_attr}(${import_access}[[:space:]]+)?import[[:space:]]+(${import_kinds}[[:space:]]+)?Envious(Wispr|Decode)"
 
 # Per-line helpers, all bash builtins: the loops below handle every import line
 # in Sources/ and Tests/ (1,631 on 2026-10-07), and the earlier `echo | cut |
@@ -130,9 +135,10 @@ strip_comment() {
 # imported_module: `sed -E "s/^.*import[[:space:]]+(KINDS[[:space:]]+)?(EnviousWispr[A-Za-z_]*).*/\3/"`.
 # POSIX ERE takes the leftmost-longest `(.*)`, so the LAST `import` on the line
 # wins, as sed's greedy `^.*` does; no match returns the input unchanged, as sed
-# does. Group 4 because KINDS carries its own parentheses.
+# does. Group 4 because KINDS carries its own parentheses. #4473 P2 widened the name to the
+# EnviousDecode prefix; its alternation is group 5, after the module's group.
 imported_module() {
-  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(EnviousWispr[A-Za-z_]*)"
+  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(Envious(Wispr|Decode)[A-Za-z_]*)"
   if [[ $1 =~ $re ]]; then REPLY=${BASH_REMATCH[4]}; else REPLY=$1; fi
 }
 # is_permitted: `echo " $permitted " | grep -q " $imp "`.
@@ -162,7 +168,7 @@ for module_dir in Sources/*/; do
     # `imported_module` (above) owns the capture-group arithmetic.
     imported_module "$code"; imp=$REPLY
     case "$imp" in
-      EnviousWispr*)
+      EnviousWispr*|EnviousDecode*)
         if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: '$module' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))
@@ -243,7 +249,7 @@ test_targets_and_permitted() {
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
-    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
+    EnviousWisprTests) echo "EnviousDecodeKit EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices EnviousWisprTranscribeCpp" ;;
     # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
     # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);
@@ -278,7 +284,7 @@ for test_dir in Tests/*/; do
     strip_comment "$line"; code=$REPLY
     imported_module "$code"; imp=$REPLY
     case "$imp" in
-      EnviousWispr*)
+      EnviousWispr*|EnviousDecode*)
         if ! is_permitted "$permitted" "$imp"; then
           echo "DEP-DIRECTION: $file: test target '$target' imports '$imp' (not in allowed: $permitted)"
           violations=$((violations + 1))

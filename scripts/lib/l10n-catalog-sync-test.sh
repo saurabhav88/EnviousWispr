@@ -20,7 +20,8 @@ TARGETS = [
     "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
     "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
-    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousDecodeHelper", "EnviousWispr",
+    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousDecodeKit", "EnviousDecodeHelper",
+    "EnviousWispr",
 ]
 MANUAL = {
     "settings.aiPolish.enable.title": "Enable AI Polish",

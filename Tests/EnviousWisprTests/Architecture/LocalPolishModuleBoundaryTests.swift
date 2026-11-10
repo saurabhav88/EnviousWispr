@@ -183,4 +183,80 @@ struct LocalPolishModuleBoundaryTests {
       modules.filter { !Self.enginePermitted.contains($0) }
         == imported.filter { !Self.enginePermitted.contains($0) })
   }
+
+  // MARK: - The EnviousDecode engine (#4473 P2)
+
+  /// What `EnviousDecodeKit` may import: Foundation and MLX's array, layer and language-model
+  /// libraries. No app module. The kit runs inside the helper process, so an app module there
+  /// would bring app state and app policy into a process built to hold only the model.
+  static let decodeKitPermitted: Set<String> = ["Foundation", "MLX", "MLXLMCommon", "MLXNN"]
+  /// The engine's modules share this prefix: the kit and the helper executable.
+  static let decodeModulePrefix = "EnviousDecode"
+
+  /// One test, with its controls inside it. What breaks without it: an app module that imports
+  /// the kit loads the EG-1 model code inside the app, so the model's memory and any engine
+  /// crash land in the process that records and pastes; the helper process exists to keep them
+  /// out. Silent until a crash or a memory spike, so it is checked here.
+  @Test(
+    "the EnviousDecode kit imports only MLX and Foundation, and no app module imports the engine")
+  func decodeEngineStaysApartFromTheApp() throws {
+    func kitOffenders(_ tree: SourceFileSyntax) -> [String] {
+      Self.importedModules(in: tree).filter { !Self.decodeKitPermitted.contains($0) }
+    }
+    func engineImports(_ tree: SourceFileSyntax) -> [String] {
+      Self.importedModules(in: tree).filter { $0.hasPrefix(Self.decodeModulePrefix) }
+    }
+
+    // Controls: both readers report each import shape, and neither reads comments or strings.
+    let kitFixtures: [(String, [String])] = [
+      ("import Foundation\nimport MLX\nimport MLXLMCommon\nimport MLXNN", []),
+      ("import EnviousWisprCore", ["EnviousWisprCore"]),
+      (
+        "@preconcurrency import EnviousWisprLocalPolish\nimport MLXLLM",
+        ["EnviousWisprLocalPolish", "MLXLLM"]
+      ),
+      (
+        "#if DEBUG\nimport struct EnviousWisprLLM.LLMError\n#else\nimport MLX\n#endif",
+        ["EnviousWisprLLM"]
+      ),
+      ("// import EnviousWisprCore\nlet note = \"import EnviousWisprCore\"", []),
+    ]
+    for (source, expected) in kitFixtures {
+      #expect(
+        kitOffenders(CachedSwiftParser.parse(source: source)) == expected, "fixture: \(source)")
+    }
+    let appFixtures: [(String, [String])] = [
+      ("import EnviousDecodeKit", ["EnviousDecodeKit"]),
+      ("@testable import EnviousDecodeHelper\nimport Foundation", ["EnviousDecodeHelper"]),
+      ("#if DEBUG\nimport enum EnviousDecodeKit.DFlashKernels\n#endif", ["EnviousDecodeKit"]),
+      ("import EnviousWisprCore\n// import EnviousDecodeKit\nlet note = \"EnviousDecodeKit\"", []),
+    ]
+    for (source, expected) in appFixtures {
+      #expect(
+        engineImports(CachedSwiftParser.parse(source: source)) == expected, "fixture: \(source)")
+    }
+
+    let kitFiles = try Self.swiftFiles(under: "Sources/\(Self.decodeModulePrefix)Kit")
+    // Control: an empty or missing folder would pass without reading anything.
+    try #require(kitFiles.count >= 2, "expected the kit's source files, found \(kitFiles.count)")
+    for file in kitFiles {
+      let offenders = kitOffenders(try CachedSwiftParser.snapshot(at: file).tree)
+      #expect(offenders.isEmpty, "\(file.lastPathComponent) imports \(offenders)")
+    }
+
+    // Every app module: each folder under Sources/ named EnviousWispr*.
+    let appModules = try FileManager.default.contentsOfDirectory(
+      atPath: RepoRoot.url.appending(path: "Sources").path
+    ).filter { $0.hasPrefix("EnviousWispr") }.sorted()
+    try #require(appModules.count >= 20, "expected the app's modules, found \(appModules.count)")
+    for module in appModules {
+      for file in try Self.swiftFiles(under: "Sources/\(module)") {
+        // Cheap first, as above: only a file that names the engine is parsed.
+        let text = try String(contentsOf: file, encoding: .utf8)
+        guard text.contains(Self.decodeModulePrefix) else { continue }
+        let imports = engineImports(try CachedSwiftParser.snapshot(at: file).tree)
+        #expect(imports.isEmpty, "\(module)/\(file.lastPathComponent) imports \(imports)")
+      }
+    }
+  }
 }

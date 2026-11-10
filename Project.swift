@@ -648,6 +648,17 @@ let project = Project(
         .package(product: "Sparkle"),
       ]),
 
+    // ---- EnviousDecode kit (#4473 P2) ----
+    // The engine's own code on MLX. Deliberately NOT in `firstPartyTargetDeps`: no app library
+    // may link it. Only the helper below and the unit tests depend on it.
+    firstPartyLibrary(
+      "EnviousDecodeKit",
+      dependencies: [
+        .package(product: "MLX"),
+        .package(product: "MLXNN"),
+        .package(product: "MLXLMCommon"),
+      ]),
+
     // ---- EnviousDecode helper (#4473 P2) ----
     // A command-line tool, not a first-party library: nothing links it. The app depends on it for
     // build order only and embeds the built product (see the app's copyFiles).
@@ -661,7 +672,8 @@ let project = Project(
       infoPlist: nil,
       sources: ["Sources/EnviousDecodeHelper/**"],
       dependencies: [
-        .package(product: "MLX")
+        .target(name: "EnviousDecodeKit"),
+        .package(product: "MLX"),
       ],
       settings: decodeHelperSettings
     ),
@@ -896,6 +908,10 @@ let project = Project(
         // #1525 PR I-B (Codex cloud review): ParakeetTranscriptionSentryErrorTests /
         // ParakeetModelLoadSentryErrorTests import this directly.
         .target(name: "EnviousWisprFluidAudioBridge"),
+        // #4473 P2: DFlashTapeRollbackTests import the kit and MLXLMCommon directly. The kit is
+        // added here, not to `firstPartyTargetDeps` and not to the critical bundle.
+        .target(name: "EnviousDecodeKit"),
+        .package(product: "MLXLMCommon"),
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above

@@ -53,10 +53,17 @@ COMPONENTS=(
   "nlohmann/json (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/json/LICENSE.MIT|https://github.com/nlohmann/json|"
   "fmt (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/fmt/LICENSE|https://github.com/fmtlib/fmt|"
   "mlx-swift-lm|57e8ebe2 (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
-  # #4473: the mlx-swift-lm fork's gated-delta tape recording derives from SharpAI's SwiftLM (MIT),
-  # at the provenance commit below. Empty identity: it is code incorporated into the fork, not its
-  # own SwiftPM pin. The fork ships the license text with its provenance note.
-  "SwiftLM (SharpAI; portions incorporated into mlx-swift-lm)|8392f02b|MIT|mlx-swift-lm/ThirdPartyLicenses/SwiftLM-LICENSE.txt|https://github.com/SharpAI/SwiftLM|"
+  # #4473: SharpAI's SwiftLM (MIT), at the provenance commit below, is the source of the
+  # mlx-swift-lm fork's gated-delta tape recording and of EnviousDecodeKit's DFlash tape kernels and
+  # rollback cache. Empty identity: incorporated code, not a SwiftPM pin. The text is SwiftLM's own
+  # LICENSE file, vendored unchanged.
+  "SwiftLM (SharpAI; portions incorporated into mlx-swift-lm and EnviousDecodeKit)|8392f02b|MIT|repo:Sources/EnviousWispr/Resources/SwiftLM-LICENSE.txt|https://github.com/SharpAI/SwiftLM|"
+  # #4473: SwiftLM's DFlash kernels are a port of bstnxbt's dflash-mlx, which SwiftLM does not
+  # credit. The kernels came from its MIT period (commits 19303f67 and 3217e15b); the recurrent
+  # state type handling follows c65a2c9e, published under Apache-2.0. Both texts are in the file.
+  "dflash-mlx (bstnxbt; DFlash kernel code incorporated through SwiftLM)|19303f67 and 3217e15b (MIT); c65a2c9e (Apache-2.0)|MIT and Apache-2.0|repo:Sources/EnviousWispr/Resources/dflash-mlx-LICENSES.txt|https://github.com/bstnxbt/dflash-mlx|"
+  # #4473: the DFlash method and its reference code (Z Lab, arXiv:2602.06036), which dflash-mlx ports.
+  "DFlash (Z Lab; reference code of the method that dflash-mlx ports)|07ebd93d|MIT|repo:Sources/EnviousWispr/Resources/DFlash-LICENSE.txt|https://github.com/z-lab/dflash|"
   "swift-numerics|1.1.1|Apache-2.0|swift-numerics/LICENSE.txt|https://github.com/apple/swift-numerics|swift-numerics"
   # #1741: test-only — the freeze test's Swift parser. Never linked into the
   # shipped app (Package.swift depends on it solely from the EnviousWisprTests

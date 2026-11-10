@@ -426,12 +426,28 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprAppLive"
     ),
+    // #4473 P2: the EnviousDecode engine's own code: the DFlash tape kernels and the recurrent
+    // rollback cache today, the draft model and generation loop in later chunks. MLX only: it
+    // depends on no first-party module, and only the helper and the unit tests depend on it. Not a
+    // library product: nothing outside this package consumes it.
+    .target(
+      name: "EnviousDecodeKit",
+      dependencies: [
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXNN", package: "mlx-swift"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+      ],
+      path: "Sources/EnviousDecodeKit"
+    ),
     // #4473 P2: mirrors Project.swift's EnviousDecodeHelper, the second executable that ships inside
-    // the app at Contents/MacOS/envious-decode. A leaf on MLX: it imports no first-party module, and
-    // no library or test target depends on it.
+    // the app at Contents/MacOS/envious-decode. It imports the kit and MLX, no app module, and no
+    // library or test target depends on it.
     .executableTarget(
       name: "EnviousDecodeHelper",
-      dependencies: [.product(name: "MLX", package: "mlx-swift")],
+      dependencies: [
+        "EnviousDecodeKit",
+        .product(name: "MLX", package: "mlx-swift"),
+      ],
       path: "Sources/EnviousDecodeHelper"
     ),
     // #919: thin launchable shell. Owns @main + the AppDelegate adaptor +
@@ -487,6 +503,11 @@ let package = Package(
         "EnviousWisprContacts",
         // #3242: KevEncodingTests exercise the word check's encoder directly.
         "EnviousWisprWordCheck",
+        // #4473 P2: DFlashTapeRollbackTests check the kit's tape kernels and rollback cache
+        // against the library's ordinary gated-delta computation.
+        "EnviousDecodeKit",
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
         // #3735: WhisperGGUFRealDeliveryTests decode the admitted model directly.
         "EnviousWisprTranscribeCpp",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
