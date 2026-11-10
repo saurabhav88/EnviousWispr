@@ -25,7 +25,9 @@ struct LearnedWordCheckerEligibilityTests {
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)), appSupportOverride: temp)
-      let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil)
+      let runtime = EGOneRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        makeHealthProbe: LlamaServerHealthProbe.make)
       let checker = try #require(
         LearnedWordCheckUATDoor.configuration(environment: [
           LearnedWordCheckUATDoor.environmentKey: "Tuist",

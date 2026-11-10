@@ -388,9 +388,12 @@ struct SettingsMapRenderingTests {
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
         setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
         ollamaSetup: ollama)
-      egOne = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
+      egOne = EGOneRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults)
       s1 = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults, provider: .s1Mini)
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults, provider: .s1Mini)
     }
 
     /// Everything the AI Polish and Transcribe a File pages read.

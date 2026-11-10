@@ -191,7 +191,9 @@ struct OutsideStopChildTelemetryTests {
   private static func runtime(
     _ provider: LLMProvider = .egOne, pressure: OutsideStopContext.MemoryPressure? = .warning
   ) -> (EGOneRuntime, Box) {
-    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, provider: provider)
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, provider: provider)
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {

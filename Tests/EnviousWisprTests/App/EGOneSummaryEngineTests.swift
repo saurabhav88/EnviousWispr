@@ -46,10 +46,12 @@ struct EGOneSummaryEngineTests {
 
     init(installed: Bool = true, manifest: Bool = true) {
       let egOne = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
         provider: .egOne)
       let s1 = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
         provider: .s1Mini)
       if installed { egOne.applyInstallStateForTesting(.installed(version: "1.2")) }
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)

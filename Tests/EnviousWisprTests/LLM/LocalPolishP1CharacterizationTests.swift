@@ -24,12 +24,12 @@ struct LocalPolishP1CharacterizationTests {
   func probeSpecsNameTheirOwnModel() {
     let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1)
 
-    let egOne = EGOneServerManager.ProbeSpec.egOne
+    let egOne = LlamaServerHealthProbe.ProbeSpec.egOne
     #expect(egOne.provider == .egOne)
     #expect(egOne.modelID == "eg-1")
     #expect(egOne.makeConnector(endpoint) is EGOneConnector)
 
-    let s1Mini = EGOneServerManager.ProbeSpec.s1Mini
+    let s1Mini = LlamaServerHealthProbe.ProbeSpec.s1Mini
     #expect(s1Mini.provider == .s1Mini)
     #expect(s1Mini.modelID == "s1-mini")
     #expect(s1Mini.makeConnector(endpoint) is S1MiniConnector)
@@ -69,10 +69,12 @@ struct LocalPolishP1CharacterizationTests {
     defer { store.removePersistentDomain(forName: suite) }
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
       coordinator: coordinator, provider: .egOne)
     let s1Mini = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
@@ -110,7 +112,8 @@ struct LocalPolishP1CharacterizationTests {
 
     // Update: a pause is written under the model's own key only.
     let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store, provider: .egOne)
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .egOne)
     egOne.applyInstallStateForTesting(.paused)
     #expect(store.string(forKey: egKey) == "paused")
     #expect(store.string(forKey: s1Key) == nil)
@@ -119,7 +122,8 @@ struct LocalPolishP1CharacterizationTests {
     // first pause is reported as a new entry.
     let s1Events = EventBox()
     let s1Mini = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store, provider: .s1Mini)
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .s1Mini)
     s1Mini.onEvent = { s1Events.record($0) }
     s1Mini.applyInstallStateForTesting(.paused)
     #expect(s1Events.paused == [.paused])
@@ -130,7 +134,8 @@ struct LocalPolishP1CharacterizationTests {
     // reported a second time, and leaving the pause clears the key.
     let restoredEvents = EventBox()
     let restored = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store, provider: .egOne)
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store, provider: .egOne)
     restored.onEvent = { restoredEvents.record($0) }
     restored.applyInstallStateForTesting(.paused)
     #expect(restoredEvents.paused.isEmpty)
@@ -153,6 +158,7 @@ struct LocalPolishP1CharacterizationTests {
       await MainActor.run {
         _ = EGOneRuntime(
           manifest: nil, serverBinaryURL: nil, delivery: nil,
+          makeHealthProbe: LlamaServerHealthProbe.make,
           provider: LLMProvider(rawValue: raw) ?? .none)
       }
     }
@@ -164,7 +170,9 @@ struct LocalPolishP1CharacterizationTests {
   func bundledProvidersAreAccepted() async {
     await #expect(processExitsWith: .success) {
       await MainActor.run {
-        _ = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
+        _ = EGOneRuntime(
+          manifest: nil, serverBinaryURL: nil, delivery: nil,
+          makeHealthProbe: LlamaServerHealthProbe.make, provider: .s1Mini)
       }
       _ = LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil)
     }

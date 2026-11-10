@@ -70,7 +70,8 @@ struct LocalPolishServerCoordinatorTests {
 
     #expect(await coordinator.endpoint(for: .s1Mini) == nil)
     let health = await coordinator.probeHealth(
-      .s1Mini, promptFamily: .s1ControlLine, spec: .s1Mini)
+      .s1Mini,
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "not_running"))
   }
 

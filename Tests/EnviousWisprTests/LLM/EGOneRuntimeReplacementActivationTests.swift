@@ -113,6 +113,7 @@ import EnviousWisprAppKitTestSupport
     let runtime = EGOneRuntime(
       manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: missingBinary, delivery: adapter,
+      makeHealthProbe: LlamaServerHealthProbe.make,
       defaults: store)
     runtime.isActiveProvider = { [provider] in provider.isEGOneActive }
     runtime.onEvent = { event in

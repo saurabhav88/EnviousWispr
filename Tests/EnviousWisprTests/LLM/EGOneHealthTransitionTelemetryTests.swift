@@ -38,7 +38,8 @@ import Testing
         promptTemplateID: "eg1-v1", minAppVersion: "0",
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
-      serverBinaryURL: nil, delivery: nil, defaults: store)
+      serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -138,7 +139,9 @@ import Testing
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
-    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    let runtime = EGOneRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }

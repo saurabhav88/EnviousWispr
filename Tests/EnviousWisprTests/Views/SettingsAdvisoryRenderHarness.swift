@@ -115,9 +115,11 @@ struct SettingsAdvisoryRenderHarness {
       whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       preloadAction: {}, ollamaStatusProbe: { _ in })
     let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults)
     let s1 = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults, provider: .s1Mini)
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: defaults, provider: .s1Mini)
     return AnyView(TranscribeFileView()
       .environment(coordinator).environment(settings).environment(setup)
       .environment(AIAvailabilityCoordinator())

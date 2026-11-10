@@ -285,9 +285,12 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Which local model this runtime serves (#4473). Derived from the provider while each
   /// provider has one local model; the lookup in `LocalPolishRuntimeSet` matches on it.
   public let modelID: LocalPolishModelID
-  /// Which model the health probe should present itself as. See
-  /// `EGOneServerManager.ProbeSpec`.
-  private let probeSpec: EGOneServerManager.ProbeSpec
+  /// Builds this runtime's health probe from its own model identity and the manifest's prompt
+  /// family (#4473). The engine supplies it; the runtime never names a prompt or a connector,
+  /// and the identity it passes is its own `modelID`, so a caller cannot pair this runtime
+  /// with another model's probe.
+  private let makeHealthProbe:
+    @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe
   private let serverBinaryURL: URL?
   /// Called for each EG-1 boot, after base admission, not cached at launch.
   private let learnedWordAdapterProvider: @MainActor () async -> URL?
@@ -305,6 +308,8 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// why `WisprBootstrapper` builds one coordinator and injects it.
   public init(
     manifest: LocalPolishManifestFacts?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
+    makeHealthProbe:
+      @escaping @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
     provider: LLMProvider = .egOne,
@@ -320,19 +325,21 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     // same fail-open default this file exists to remove — a third bundled model
     // would have been health-checked as S1-mini with nothing failing. The switch
     // makes a new case a compile error here.
+    //
+    // #4473: the probe's identity is now selected the same way by the injected factory, from
+    // this runtime's `modelID`; this switch still owns the persisted key and the refusal.
     let keyPrefix: String
     switch provider {
     case .egOne:
       keyPrefix = "eg1."
-      self.probeSpec = .egOne
     case .s1Mini:
       keyPrefix = "s1."
-      self.probeSpec = .s1Mini
     case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
     }
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.modelID = .singleModel(for: provider)
+    self.makeHealthProbe = makeHealthProbe
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.learnedWordAdapterProvider = learnedWordAdapterProvider
@@ -805,7 +812,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
       guard
         let result = await self.server.probeHealth(
-          self.provider, promptFamily: family, spec: self.probeSpec)
+          self.provider, operation: self.makeHealthProbe(self.modelID, family))
       else { return }
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }

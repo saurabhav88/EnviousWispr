@@ -47,10 +47,12 @@ struct FileImportLocalPolishRuntimeTests {
       defaults: TestDefaults.suite("SM-2772-runtime-\(UUID().uuidString)")!)
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
       provider: .egOne)
     let s1Mini = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, coordinator: coordinator,
       provider: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,

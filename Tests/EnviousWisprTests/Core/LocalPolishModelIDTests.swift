@@ -42,10 +42,12 @@ struct LocalPolishModelIDTests {
     defer { store.removePersistentDomain(forName: suite) }
     let coordinator = LocalPolishServerCoordinator()
     let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
       coordinator: coordinator, provider: .egOne)
     let s1Mini = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store,
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      makeHealthProbe: LlamaServerHealthProbe.make, defaults: store,
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 

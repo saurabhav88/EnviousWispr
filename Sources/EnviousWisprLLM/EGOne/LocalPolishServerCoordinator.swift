@@ -552,13 +552,12 @@ public actor LocalPolishServerCoordinator {
   /// inference, so a summary's drain waits for it. The startup readiness check (`GET /health`
   /// inside the manager's start) is not a probe and is never held back.
   public func probeHealth(
-    _ provider: LLMProvider, promptFamily: PromptFamily,
-    spec: EGOneServerManager.ProbeSpec
+    _ provider: LLMProvider, operation: LocalPolishHealthProbe
   ) async -> EGOneHealth? {
     guard summaryReservation == nil else { return nil }
     guard resident == provider else { return .red(reason: "not_running") }
     probesInFlight += 1
-    let result = await manager.probeHealth(promptFamily: promptFamily, spec: spec)
+    let result = await manager.probeHealth(operation: operation)
     probesInFlight -= 1
     wakeDrainWaitersIfIdle()
     // A probe takes real time. If the user switched during it, this verdict

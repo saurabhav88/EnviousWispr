@@ -49,7 +49,10 @@ struct LocalPolishSummaryReservationTests {
       return
     }
     #expect(
-      await coordinator.probeHealth(.egOne, promptFamily: .egOneEnvelope, spec: .egOne) == nil,
+      await coordinator.probeHealth(
+        .egOne,
+        operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneEnvelope))
+        == nil,
       "a health probe does not run during a summary")
 
     await coordinator.releaseSummaryReservation(reservation)

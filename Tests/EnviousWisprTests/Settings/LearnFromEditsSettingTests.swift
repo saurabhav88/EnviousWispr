@@ -188,7 +188,9 @@ struct LearnFromEditsRowTests {
       engines: [
         .egOne: .init(
           base: nil, promptTemplateID: nil,
-          runtime: EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil),
+          runtime: EGOneRuntime(
+            manifest: nil, serverBinaryURL: nil, delivery: nil,
+            makeHealthProbe: LlamaServerHealthProbe.make),
           debugThreshold: nil)
       ])
     let enabled = host(

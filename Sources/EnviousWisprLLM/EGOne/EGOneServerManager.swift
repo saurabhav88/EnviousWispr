@@ -646,56 +646,15 @@ public actor EGOneServerManager {
 
   // MARK: - Health probe
 
-  /// Real activation test: a FIXED filler-and-self-correction transcript
-  /// through the real prompt path; GREEN requires the expected
-  /// TRANSFORMATION (contains "Friday", drops "um"), not merely HTTP 200 —
-  /// a model that echoes raw text must read yellow, never green.
-  /// #2649: WHICH model is being probed is now an argument, not three
-  /// constants in the body. The launch configuration was always generic; the
-  /// probe was EG-1 by construction — it built an `EGOneConnector`, stamped
-  /// `provider: .egOne` and sent `LLMProvider.egOneModelName`. A second model
-  /// served by the same manager would have been health-checked as EG-1, which
-  /// reads green or yellow about the wrong thing.
+  /// Health of the process. Every state but `ready` answers from the state alone and never
+  /// runs `operation`; a ready process is asked the question it was handed, on its own
+  /// endpoint (#4473). The process manager knows no prompt and no connector: WHAT a healthy
+  /// answer looks like belongs to the engine that supplied the operation.
   ///
-  /// The TRANSFORMATION the probe demands stays shared and is not part of the
-  /// spec, deliberately: both engines exist to do the same job to a dictation,
-  /// so a model that cannot do it must read yellow whichever one it is. Making
-  /// the success condition per-model would let a weaker model be graded on an
-  /// easier exam.
-  public struct ProbeSpec: Sendable {
-    public var provider: LLMProvider
-    public var modelID: String
-    public var makeConnector: @Sendable (EGOneEndpoint) -> any TranscriptPolisher
-
-    public init(
-      provider: LLMProvider, modelID: String,
-      makeConnector: @escaping @Sendable (EGOneEndpoint) -> any TranscriptPolisher
-    ) {
-      self.provider = provider
-      self.modelID = modelID
-      self.makeConnector = makeConnector
-    }
-
-    /// EG-1's exact current values, so its probe is unchanged by this move.
-    public static let egOne = ProbeSpec(
-      provider: .egOne, modelID: LLMProvider.egOneModelName,
-      makeConnector: { EGOneConnector(endpoint: $0) })
-
-    /// #2649. Without this the second model was health-checked AS EG-1 — right
-    /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
-    /// verdict would have been about EG-1's contract, and the connector's
-    /// empty-answer rule is exactly where the two disagree.
-    public static let s1Mini = ProbeSpec(
-      provider: .s1Mini, modelID: LLMProvider.s1MiniModelName,
-      makeConnector: { S1MiniConnector(endpoint: $0) })
-  }
-
-  /// `spec` is REQUIRED and has no default. A defaulted argument leaves no
-  /// token at the call site, so no sweep could find the callers still probing
-  /// as EG-1, and the wrong-model probe would be invisible rather than merely
-  /// wrong. `.egOne` below is a named VALUE a caller passes, not a fallback the
-  /// language supplies.
-  public func probeHealth(promptFamily: PromptFamily, spec: ProbeSpec) async -> EGOneHealth {
+  /// `operation` is REQUIRED and has no default, for the reason the probe's spec never had
+  /// one: a defaulted argument leaves no token at the call site, so no sweep could find a
+  /// caller probing as the wrong model.
+  public func probeHealth(operation: LocalPolishHealthProbe) async -> EGOneHealth {
     switch state {
     case .stopped:
       return .red(reason: "not_running")
@@ -708,51 +667,7 @@ public actor EGOneServerManager {
     case .failed(let reason):
       return .red(reason: reason)
     case .ready(let endpoint):
-      let probeTranscript = "so um move the meeting to thursday no wait friday"
-      let connector = spec.makeConnector(endpoint)
-      let builder = DefaultPromptPlanner.builder(for: promptFamily)
-      let input = PromptBuildInput(
-        transcript: probeTranscript,
-        provider: spec.provider,
-        modelID: spec.modelID,
-        appName: nil,
-        language: nil,
-        polishVocabulary: PolishVocabulary(terms: [], generation: 0)
-      )
-      let envelope = builder.build(input: input, mode: .message)
-      let config = LLMProviderConfig(
-        model: spec.modelID,
-        apiKeyKeychainId: nil,
-        outputTokens: .capped(128),
-        temperature: 0,
-        thinking: nil,
-        detectedLanguage: nil
-      )
-      let start = ContinuousClock.now
-      do {
-        let response = try await connector.polish(envelope: envelope, config: config, onToken: nil)
-        let result = try response.removingModelChatter(
-          dictation: probeTranscript, provider: spec.provider)
-        let elapsed = ContinuousClock.now - start
-        let output = (result.polishedText ?? "").lowercased()
-        // GREEN requires the FULL transformation: filler dropped AND the
-        // self-correction applied (rejected day + correction phrase gone).
-        // "Move the meeting to Thursday, no wait, Friday." must read
-        // yellow, not Live (#1271 Codex r13).
-        let transformed =
-          output.contains("friday")
-          && output.range(of: "\\bum\\b", options: .regularExpression) == nil
-          && !output.contains("thursday") && !output.contains("no wait")
-        if !transformed {
-          return .yellow(reason: "probe_output_unexpected")
-        }
-        if elapsed > .seconds(5) {
-          return .yellow(reason: "probe_slow")
-        }
-        return .green
-      } catch {
-        return .red(reason: "probe_failed")
-      }
+      return await operation(endpoint)
     }
   }
 
