@@ -6,6 +6,8 @@
 # Edit `permitted_imports_for` below when Package.swift changes (and update the
 # Bible if the new edge represents an architectural decision):
 #   EnviousWispr           -> AppLive (thin launchable shell; #919/#2455 C1). Imports ONLY AppLive.
+#   EnviousDecodeHelper    -> (no app deps; the EnviousDecode helper executable on MLX, embedded at
+#                             Contents/MacOS/envious-decode; #4473 P2)
 #   EnviousWisprAppLive    -> AppKit, DesktopEffects (production composition root; #2455 C1/C2).
 #   EnviousWisprDesktopEffects -> AppKit, Services (#2455 C2). The ONLY module holding Carbon and
 #                             NSEvent calls. The UNIT and ASR targets do not declare it; the
@@ -84,6 +86,9 @@ permitted_imports_for() {
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
     EnviousWispr)                  echo "EnviousWisprAppLive" ;;
+    # #4473 P2: the EnviousDecode helper executable. A separate process on MLX: it imports no
+    # first-party module, so no app policy or app state can reach it by import. Keep it empty.
+    EnviousDecodeHelper)           echo "" ;;
     *)                             return 1 ;;
   esac
 }

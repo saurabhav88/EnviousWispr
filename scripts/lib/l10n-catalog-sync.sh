@@ -79,7 +79,7 @@ PRODUCTION_TARGETS = [
     "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
     "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
-    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
+    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousDecodeHelper", "EnviousWispr",
 ]
 NON_PRODUCTION = {
     "EnviousWisprAppKitTestSupport", "EnviousWisprTests", "EnviousWisprASRTests",

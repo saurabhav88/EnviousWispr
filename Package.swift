@@ -426,6 +426,14 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprAppLive"
     ),
+    // #4473 P2: mirrors Project.swift's EnviousDecodeHelper, the second executable that ships inside
+    // the app at Contents/MacOS/envious-decode. A leaf on MLX: it imports no first-party module, and
+    // no library or test target depends on it.
+    .executableTarget(
+      name: "EnviousDecodeHelper",
+      dependencies: [.product(name: "MLX", package: "mlx-swift")],
+      path: "Sources/EnviousDecodeHelper"
+    ),
     // #919: thin launchable shell. Owns @main + the AppDelegate adaptor +
     // app identity/Resources; delegates ALL construction + lifecycle downward.
     // #2455 C1: depends ONLY on EnviousWisprAppLive.

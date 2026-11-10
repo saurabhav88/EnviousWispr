@@ -281,6 +281,23 @@ let appSettings = targetSettings(
   ]
 )
 
+// #4473 P2: the EnviousDecode helper, a second executable that ships inside the app at
+// Contents/MacOS/envious-decode. It links its own static copy of MLX. From that folder MLX finds
+// the app's mlx-swift_Cmlx.bundle through the main bundle, so no second Metal library is copied
+// (measured with a probe executable: Contents/Helpers fails that lookup, Contents/MacOS does not).
+// Its code ships, so its strings are extracted like every shipped target's. Dev signs it with the
+// app's self-signed identity when the app's copy phase embeds it; Debug and Release stay unsigned
+// like every other target, and the release script signs inside-out. It carries no entitlements.
+// ENABLE_DEBUG_DYLIB=NO keeps it one Mach-O file: a stub plus a debug dylib is not one product
+// the copy phase can embed, and MLX resolves its Metal library relative to its own image.
+let decodeHelperSettings = targetSettings(
+  baseExtra: stringExtractionSettings.merging([
+    "ENABLE_DEBUG_DYLIB": "NO",
+    "SKIP_INSTALL": "YES",
+  ]) { _, new in new },
+  devExtra: devSigningSettings
+)
+
 // First-party modules are NATIVE Tuist targets, statically linked. The app
 // gets its own copy of the code it needs (no runtime @rpath dependency on
 // internal frameworks) — matching the current SwiftPM behavior. #1908: the
@@ -631,6 +648,24 @@ let project = Project(
         .package(product: "Sparkle"),
       ]),
 
+    // ---- EnviousDecode helper (#4473 P2) ----
+    // A command-line tool, not a first-party library: nothing links it. The app depends on it for
+    // build order only and embeds the built product (see the app's copyFiles).
+    .target(
+      name: "EnviousDecodeHelper",
+      destinations: .macOS,
+      product: .commandLineTool,
+      productName: "envious-decode",
+      bundleId: "com.enviouswispr.envious-decode",
+      deploymentTargets: deploymentTargets,
+      infoPlist: nil,
+      sources: ["Sources/EnviousDecodeHelper/**"],
+      dependencies: [
+        .package(product: "MLX")
+      ],
+      settings: decodeHelperSettings
+    ),
+
     // ---- App ----
     .target(
       name: "EnviousWispr",
@@ -769,7 +804,12 @@ let project = Project(
             .folderReference(
               path: "Vendor/MediaRemoteAdapter.framework",
               codeSignOnCopy: true)
-          ])
+          ]),
+        // #4473 P2: the built EnviousDecode helper into Contents/MacOS (Xcode's Executables
+        // destination), signed on copy with the build's identity like the framework above.
+        .executables(
+          name: "Embed envious-decode",
+          files: [.buildProduct(name: "EnviousDecodeHelper", codeSignOnCopy: true)]),
       ],
       entitlements: .file(path: "Sources/EnviousWispr/Resources/EnviousWispr.entitlements"),
       // #919: the thin shell links ONLY the kit (the kit static-links the
@@ -781,6 +821,9 @@ let project = Project(
         // #2455 C1: AppLive, not AppKit. The shell reaches the kit only THROUGH
         // the module that chooses live implementations.
         .target(name: "EnviousWisprAppLive"),
+        // #4473 P2: build order only, so the copy phase above has a product to embed. The app
+        // does not link the helper.
+        .target(name: "EnviousDecodeHelper"),
         .package(product: "Sparkle"),
         // #3735: dynamic framework, a direct app dep so Tuist embeds
         // CTranscribe.framework into the .app (same reason as Sparkle).
