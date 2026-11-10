@@ -131,6 +131,16 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
     return blockers
   }
 
+  /// The facts the local polish runtime consumes (#4473). This is the one conversion from the
+  /// manifest to the runtime; `expectedModelName` is the model the SELECTED provider serves,
+  /// never this manifest's own name, or a mismatched manifest would validate itself.
+  public func runtimeFacts(expectedModelName: String) -> LocalPolishManifestFacts {
+    LocalPolishManifestFacts(
+      modelName: modelName, revision: version, contextTokens: contextTokens,
+      promptFamily: promptFamily,
+      activationBlockers: activationBlockers(expectedModelName: expectedModelName))
+  }
+
   /// Decode from a bundled resource. Non-strict (unknown fields ignored).
   public static func loadBundled(
     from bundle: Bundle = .main, resourceName: String = "eg1-manifest"

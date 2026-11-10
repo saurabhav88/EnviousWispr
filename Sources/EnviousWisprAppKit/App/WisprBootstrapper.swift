@@ -562,7 +562,9 @@ package final class WisprBootstrapper {
         engine: .egOne, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
     let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
+      manifest: egOneManifest?.runtimeFacts(
+        expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
+      serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
       learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
@@ -621,7 +623,9 @@ package final class WisprBootstrapper {
         engine: .s1Mini, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
     let s1MiniRuntime = EGOneRuntime(
-      manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
+      manifest: s1Manifest?.runtimeFacts(
+        expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
+      serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }

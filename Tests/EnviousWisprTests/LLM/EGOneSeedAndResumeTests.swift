@@ -160,7 +160,8 @@ import EnviousWisprAppKitTestSupport
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!,
-        displayVersion: "1.1"),
+        displayVersion: "1.1"
+      ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter, defaults: store)
     defer { store.removePersistentDomain(forName: suite) }
 
@@ -210,7 +211,8 @@ import EnviousWisprAppKitTestSupport
       controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
     let runtime = EGOneRuntime(
-      manifest: runtimeManifest(), serverBinaryURL: nil, delivery: adapter, defaults: store)
+      manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: nil, delivery: adapter, defaults: store)
 
     let expected = EGOneInstallState.updatePaused(resumable: resumable, targetVersion: "1.1")
     let reached = await withDeadline(seconds: 5) {

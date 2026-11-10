@@ -256,7 +256,8 @@ struct EGOneAdapterLifecycleTests {
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
     let runtime = EGOneRuntime(
-      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: fixture.binary, delivery: delivery,
       defaults: store, coordinator: coordinator,
       learnedWordAdapterProvider: { fixture.adapter })
     let activation = try #require(runtime.activateAndProbe())
@@ -844,7 +845,8 @@ struct EGOneRecordingRecoveryTests {
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
     let runtime = EGOneRuntime(
-      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: fixture.binary, delivery: delivery,
       defaults: store, coordinator: coordinator)
     let recorder = AppliedRecorder()
     runtime.onLifecycleAppliedForTesting = { recorder.record($0) }
@@ -992,7 +994,9 @@ struct EGOneRecordingRecoveryTests {
       modelName: LLMProvider.egOneModelName, version: "v2-sharded",
       contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
-    let runtime = EGOneRuntime(manifest: manifest, serverBinaryURL: nil, delivery: nil)
+    let runtime = EGOneRuntime(
+      manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: nil, delivery: nil)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
     runtime.applyInstallStateForTesting(.installed(version: nil))
     let first = EGOneEndpoint(port: 1, authToken: "a", contextTokens: 1)
@@ -1454,7 +1458,8 @@ extension EGOneAdapterLifecycleTests {
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
     let runtime = EGOneRuntime(
-      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: fixture.binary, delivery: delivery,
       defaults: store, coordinator: coordinator)
 
     guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
@@ -1606,7 +1611,8 @@ struct LocalPolishProbeIdentityCharacterizationTests {
       contextTokens: 4096, promptTemplateID: promptTemplateID, minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/model.gguf")!)
     let runtime = EGOneRuntime(
-      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
+      serverBinaryURL: fixture.binary, delivery: delivery,
       defaults: store, coordinator: LocalPolishServerCoordinator(), provider: provider)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
     runtime.isActiveProvider = { true }

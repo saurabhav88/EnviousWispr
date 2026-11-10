@@ -36,7 +36,8 @@ import Testing
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
-        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!),
+        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
+      ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil, defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in

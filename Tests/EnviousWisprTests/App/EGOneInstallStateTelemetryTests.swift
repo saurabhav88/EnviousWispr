@@ -105,7 +105,8 @@ import EnviousWisprAppKitTestSupport
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
-        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!, displayVersion: "1.1"),
+        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!, displayVersion: "1.1"
+      ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter, defaults: store)
     runtime.onEvent = { event in
       if case .pausedInstallStateChanged(let projection) = event {

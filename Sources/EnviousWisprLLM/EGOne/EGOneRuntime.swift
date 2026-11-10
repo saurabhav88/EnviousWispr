@@ -264,7 +264,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   private var lastSampledOutsideStop: OutsideStopContext?
   private var removalPending = false
 
-  public let manifest: EGOneManifest?
+  public let manifest: LocalPolishManifestFacts?
   private let delivery: EGOneDeliveryAdapter?
   /// The SHARED process owner (#2649). Previously each runtime constructed its
   /// own `EGOneServerManager`, so a second model meant a second manager, a
@@ -304,7 +304,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Two runtimes constructed with nil would each own a process again, which is
   /// why `WisprBootstrapper` builds one coordinator and injects it.
   public init(
-    manifest: EGOneManifest?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
+    manifest: LocalPolishManifestFacts?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
     provider: LLMProvider = .egOne,
@@ -347,8 +347,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       .flatMap(EGOnePausedInstallState.init(rawValue:))
     self.server = coordinator ?? LocalPolishServerCoordinator()
     if let manifest {
-      self.activationBlockers = manifest.activationBlockers(
-        expectedModelName: LLMProvider.localModel(for: provider, ollamaModel: "") ?? "")
+      self.activationBlockers = manifest.activationBlockers
     } else {
       self.activationBlockers = ["manifest_missing"]
     }
@@ -1056,7 +1055,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   }
 
   private func bootServer(
-    manifest: EGOneManifest, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
+    manifest: LocalPolishManifestFacts, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
     retriesAdapterFallback: Bool
   ) async {
     guard let serverBinaryURL else { return }

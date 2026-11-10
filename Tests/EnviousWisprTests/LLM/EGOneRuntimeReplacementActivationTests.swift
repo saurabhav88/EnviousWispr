@@ -111,7 +111,8 @@ import EnviousWisprAppKitTestSupport
     // signal instead of spawning anything.
     let missingBinary = root.appendingPathComponent("missing-llama-server")
     let runtime = EGOneRuntime(
-      manifest: runtimeManifest(), serverBinaryURL: missingBinary, delivery: adapter,
+      manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: missingBinary, delivery: adapter,
       defaults: store)
     runtime.isActiveProvider = { [provider] in provider.isEGOneActive }
     runtime.onEvent = { event in

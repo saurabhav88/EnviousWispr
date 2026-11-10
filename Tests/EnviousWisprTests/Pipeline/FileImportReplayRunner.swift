@@ -584,7 +584,8 @@ final class ReplayRig {
 
     let promptTemplateID = egOneManifest.promptTemplateID
     let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: serverBinary, delivery: egOneAdapter,
+      manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: serverBinary, delivery: egOneAdapter,
       learnedWordAdapterProvider: {
         return await home.admittedCompatibleCheckerURL(
           engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
