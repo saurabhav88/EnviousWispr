@@ -84,8 +84,18 @@ struct EGOneAdapterLifecycleTests {
                 body = self.rfile.read(length).decode('utf-8', 'replace')
                 with open(os.path.join(root, 'posts.jsonl'), 'a') as posts:
                     posts.write(json.dumps({'path': self.path, 'body': body}) + '\n')
+                # #4473 chunk 2c.2: a test may script the answer. post_status holds a failing
+                # HTTP status (no body); post_content holds the assistant text of a 200 reply.
+                status_path = os.path.join(root, 'post_status')
+                if os.path.exists(status_path):
+                    self.send_response(int(open(status_path).read()))
+                    self.end_headers()
+                    return
+                content_path = os.path.join(root, 'post_content')
+                content = (open(content_path).read() if os.path.exists(content_path)
+                           else 'Move the meeting to Friday.')
                 reply = json.dumps({'choices': [{'index': 0, 'finish_reason': 'stop',
-                    'message': {'role': 'assistant', 'content': 'Move the meeting to Friday.'}}]})
+                    'message': {'role': 'assistant', 'content': content}}]})
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()

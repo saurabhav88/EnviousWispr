@@ -14,6 +14,9 @@ import Foundation
 /// covers the restart-once window after a crash — comes from
 /// `LocalPolishTransport`, so neither connector can drift from the other on the
 /// parts where they agree.
+/// (#4473: the transport now carries bytes only. The request body is still EG-1's one
+/// builder, called from `send` below, and the shared response rules are
+/// `LlamaServerChatResponse`.)
 ///
 /// **No `<TRANSCRIPT>` tag stripping, deliberately.** `EGOneConnector` strips
 /// those tags because `EGOnePromptBuilder` wraps the transcript in them and the
@@ -50,12 +53,23 @@ public struct S1MiniConnector: TranscriptPolisher {
     return try await send(system: pair.system ?? "", user: pair.user, config: config)
   }
 
+  /// #4473: the same request body as EG-1 (its one builder, not a second shape), serialized
+  /// here and sent as bytes. The transport's one neutral failure maps to the silent bypass;
+  /// the parse runs OUTSIDE that mapping so its own verdicts are never rewritten.
   private func send(
     system: String, user: String, config: LLMProviderConfig
   ) async throws -> LLMResult {
-    try await LocalPolishTransport.send(
-      endpoint: endpoint, system: system, user: user, config: config,
-      parse: { try Self.parseSuccess(data: $0, userMessage: user) })
+    let body = try EGOneConnector.makeRequestBody(
+      system: system, user: user, config: config,
+      hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter)
+    let bytes = try JSONSerialization.data(withJSONObject: body)
+    let data: Data
+    do {
+      data = try await LocalPolishTransport.send(endpoint: endpoint, body: bytes)
+    } catch LocalPolishTransportError.unavailable {
+      throw LLMError.egOneSkipped(.crashed)
+    }
+    return try Self.parseSuccess(data: data, userMessage: user)
   }
 
   /// The transcript this request carried, recovered from the user message.
@@ -86,9 +100,10 @@ public struct S1MiniConnector: TranscriptPolisher {
     // content is a partial rewrite. This is the guard a freshly authored
     // sibling connector drops without noticing, which is why it lives in the
     // transport rather than in each parser.
-    try LocalPolishTransport.truncationGuard(json)
+    // (#4473: it now lives in `LlamaServerChatResponse`, still shared by both.)
+    try LlamaServerChatResponse.truncationGuard(json)
 
-    guard let content = LocalPolishTransport.content(from: json) else {
+    guard let content = LlamaServerChatResponse.content(from: json) else {
       // A 200 with a malformed body is a local-server hiccup and rides the
       // silent family, exactly as EG-1's does.
       throw LLMError.egOneSkipped(.crashed)

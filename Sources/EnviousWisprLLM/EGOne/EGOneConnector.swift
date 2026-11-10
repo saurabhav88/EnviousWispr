@@ -82,12 +82,25 @@ public struct EGOneConnector: TranscriptPolisher {
   /// using the same server (#2649). EG-1's behaviour is unchanged: the request,
   /// the timeout and the single restart-window retry are the same code, and
   /// this connector still owns what a response MEANS.
+  ///
+  /// #4473: this connector builds and serializes its own request and reads the answer
+  /// bytes itself; the transport reports one neutral failure, which is mapped here to the
+  /// silent bypass. The parse runs OUTSIDE that mapping, so a parser's own verdict
+  /// (truncated, malformed, empty) is never rewritten into a transport failure.
   private func send(
     system: String, user: String, config: LLMProviderConfig
   ) async throws -> LLMResult {
-    try await LocalPolishTransport.send(
-      endpoint: endpoint, system: system, user: user, config: config,
-      parse: Self.parseSuccess(data:))
+    let body = try Self.makeRequestBody(
+      system: system, user: user, config: config,
+      hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter)
+    let bytes = try JSONSerialization.data(withJSONObject: body)
+    let data: Data
+    do {
+      data = try await LocalPolishTransport.send(endpoint: endpoint, body: bytes)
+    } catch LocalPolishTransportError.unavailable {
+      throw LLMError.egOneSkipped(.crashed)
+    }
+    return try Self.parseSuccess(data: data)
   }
 
   /// `internal` (not private) so the tag-echo regression test drives it
@@ -101,7 +114,8 @@ public struct EGOneConnector: TranscriptPolisher {
     // (#1271 cloud review P2). Moved to `LocalPolishTransport` in #2649 so a
     // second model's connector cannot be written without it — an inherited
     // guard is exactly what a freshly authored sibling drops.
-    try LocalPolishTransport.truncationGuard(json)
+    // (#4473: it now lives in `LlamaServerChatResponse`, still shared by both.)
+    try LlamaServerChatResponse.truncationGuard(json)
     guard let choices = json?["choices"] as? [[String: Any]],
       let message = choices.first?["message"] as? [String: Any],
       let content = message["content"] as? String,
