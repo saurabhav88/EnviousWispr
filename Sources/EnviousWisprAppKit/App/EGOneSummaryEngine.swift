@@ -27,15 +27,15 @@ final class EGOneSummaryEngine {
   private(set) var isTerminating = false
   /// The load, the endpoint read and the transport: the runtime's and `URLSession` in the app;
   /// tests answer without a real server.
-  private let activate: @MainActor (LocalPolishSummaryReservation) async -> EGOneEndpoint?
-  private let currentEndpoint: @MainActor () async -> EGOneEndpoint?
+  private let activate: @MainActor (LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
+  private let currentEndpoint: @MainActor () async -> LocalPolishEndpoint?
   private let send: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
   init(
     runtimes: LocalPolishRuntimeSet, manifest: @escaping () -> EGOneManifest?,
     restoreSelection: @escaping @MainActor () -> Void,
-    activate: (@MainActor (LocalPolishSummaryReservation) async -> EGOneEndpoint?)? = nil,
-    currentEndpoint: (@MainActor () async -> EGOneEndpoint?)? = nil,
+    activate: (@MainActor (LocalPolishSummaryReservation) async -> LocalPolishEndpoint?)? = nil,
+    currentEndpoint: (@MainActor () async -> LocalPolishEndpoint?)? = nil,
     send: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
       try await URLSession.shared.data(for: $0)
     }

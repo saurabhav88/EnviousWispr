@@ -15,4 +15,4 @@ import Foundation
 public typealias LocalPolishLaunchConfigurationFactory =
   @Sendable (
     LocalPolishModelID, ModelIdentity, URL, URL, Int, URL?
-  ) -> EGOneServerManager.Configuration
+  ) -> LocalPolishProcessManager.Configuration

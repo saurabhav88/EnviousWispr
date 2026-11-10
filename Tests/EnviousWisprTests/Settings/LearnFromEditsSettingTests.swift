@@ -190,7 +190,7 @@ struct LearnFromEditsRowTests {
       engines: [
         .egOne: .init(
           base: nil, promptTemplateID: nil,
-          runtime: EGOneRuntime(
+          runtime: LocalPolishRuntime(
             manifest: nil, serverBinaryURL: nil, delivery: nil,
             makeHealthProbe: LlamaServerHealthProbe.make,
             makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration),

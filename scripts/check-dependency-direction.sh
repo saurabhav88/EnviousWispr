@@ -194,7 +194,7 @@ done
 # `NSRunningApplication.activate()` is NOT in this pattern, and the reason matters
 # because the obvious fix does not work. A bare `[.]activate[(][)]` was tried and
 # reverted: it matches `DispatchSource.activate()` in
-# `EGOneServerManager.swift:328`, which is not a desktop effect at all. Receiver
+# `LocalPolishProcessManager.swift:328`, which is not a desktop effect at all. Receiver
 # TYPE is what distinguishes them, and a grep cannot see types.
 #
 # What replaced it for the case C3 owns: `EscapeRecoveryPasteAction`'s

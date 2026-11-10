@@ -213,7 +213,7 @@ struct FileImportReplayRunner {
     let description: String
   }
 
-  static func miniEndpoint(arm: Arm, env: [String: String]) throws -> EGOneEndpoint? {
+  static func miniEndpoint(arm: Arm, env: [String: String]) throws -> LocalPolishEndpoint? {
     func need(_ key: String) throws -> String {
       guard let value = env[key], !value.isEmpty else {
         throw ReplayConfigurationError(description: "the Mini arm needs \(key)")
@@ -231,7 +231,7 @@ struct FileImportReplayRunner {
     else { throw ReplayConfigurationError(description: "Mini port or context is not a number") }
     let token = try need("EW_REPLAY_MINI_TOKEN")
     _ = try need("EW_REPLAY_MINI_SHA256")
-    return EGOneEndpoint(
+    return LocalPolishEndpoint(
       port: port, authToken: token, contextTokens: context, hasLearnedWordAdapter: false)
   }
 
@@ -513,7 +513,7 @@ final class ReplayRig {
 
   static func make(
     arm: FileImportReplayRunner.Arm, appBundle: URL, modelsDir: URL, settingsPlist: String?,
-    wordsFile: String?, mini: EGOneEndpoint?, miniSHA256: String?
+    wordsFile: String?, mini: LocalPolishEndpoint?, miniSHA256: String?
   ) async throws -> ReplayRig {
     let fm = FileManager.default
     let root = TestTemporaryDirectory.url.appendingPathComponent(
@@ -585,7 +585,7 @@ final class ReplayRig {
     }
 
     let promptTemplateID = egOneManifest.promptTemplateID
-    let egOneRuntime = EGOneRuntime(
+    let egOneRuntime = LocalPolishRuntime(
       manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: serverBinary, delivery: egOneAdapter,
       makeHealthProbe: LlamaServerHealthProbe.make,
@@ -595,7 +595,7 @@ final class ReplayRig {
           engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
       })
     egOneRuntime.isActiveProvider = { settingsBox.settings.effectiveFileImportLLMProvider == .egOne }
-    let s1MiniRuntime = EGOneRuntime(
+    let s1MiniRuntime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,

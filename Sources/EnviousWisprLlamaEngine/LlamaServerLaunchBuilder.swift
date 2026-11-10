@@ -115,8 +115,8 @@ public struct LlamaServerLaunchBuilder: Sendable {
   public static func makeConfiguration(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
     modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
-  ) -> EGOneServerManager.Configuration {
-    EGOneServerManager.Configuration(
+  ) -> LocalPolishProcessManager.Configuration {
+    LocalPolishProcessManager.Configuration(
       spec: makeSpec(
         modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
         modelURL: modelURL, contextTokens: contextTokens,

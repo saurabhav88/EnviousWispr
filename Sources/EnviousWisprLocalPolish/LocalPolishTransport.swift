@@ -32,7 +32,7 @@ public enum LocalPolishTransport {
   ///
   /// Every transport failure is the one neutral `LocalPolishTransportError.unavailable`; a
   /// cancelled request is `CancellationError`.
-  public static func send(endpoint: EGOneEndpoint, body: Data) async throws -> Data {
+  public static func send(endpoint: LocalPolishEndpoint, body: Data) async throws -> Data {
     try await send(
       endpoint: endpoint, body: body,
       perform: { try await URLSession.shared.data(for: $0) },
@@ -43,7 +43,7 @@ public enum LocalPolishTransport {
   /// second attempt), so a test counts attempts and pauses without a network or a real wait.
   /// The app always enters through the two-argument form above.
   static func send(
-    endpoint: EGOneEndpoint, body: Data,
+    endpoint: LocalPolishEndpoint, body: Data,
     perform: @Sendable (URLRequest) async throws -> (Data, URLResponse),
     retryPause: @Sendable () async throws -> Void
   ) async throws -> Data {

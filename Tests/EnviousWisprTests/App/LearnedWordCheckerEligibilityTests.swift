@@ -27,7 +27,7 @@ struct LearnedWordCheckerEligibilityTests {
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)), appSupportOverride: temp)
-      let runtime = EGOneRuntime(
+      let runtime = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         makeHealthProbe: LlamaServerHealthProbe.make,
         makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
@@ -124,14 +124,14 @@ struct LearnedWordCheckerEligibilityTests {
     arguments: LearnedWordCheckerEngine.allCases)
   func decisionMatrix(engine: LearnedWordCheckerEngine) throws {
     let (contract, base) = try pins(engine)
-    let ready = EGOneEndpoint(
+    let ready = LocalPolishEndpoint(
       port: 12345, authToken: "test", contextTokens: 1024,
       hasLearnedWordAdapter: true)
     func select(
       baseAdmitted: Bool = true, adapterAdmitted: Bool = true, state: DeliveryState = .admitted,
       hostConfigured: Bool = true, deliveryEnabled: Bool = true,
       admittedBase: AdmittedCheckerBase? = nil,
-      endpoint: EGOneEndpoint? = nil, missingEndpoint: Bool = false,
+      endpoint: LocalPolishEndpoint? = nil, missingEndpoint: Bool = false,
       serverReason: String? = nil
     ) -> LearnedWordCheckerSelection {
       LearnedWordCheckerEligibility.evaluate(

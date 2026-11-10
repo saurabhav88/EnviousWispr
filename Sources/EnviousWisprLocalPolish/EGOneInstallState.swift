@@ -50,7 +50,7 @@ public enum EGOneInstallState: Sendable, Equatable {
   /// this change originally covered.
   ///
   /// The adapter cannot populate this: it maps each progress tick statelessly
-  /// and has no memory of the state it came from. `EGOneRuntime`, the single
+  /// and has no memory of the state it came from. `LocalPolishRuntime`, the single
   /// UI-state owner, fills it in from the PREVIOUS state. Deriving it from disk
   /// here instead would read a marker and stat up to eight files on every
   /// progress tick, on the UI path.
@@ -87,7 +87,7 @@ public enum EGOneInstallState: Sendable, Equatable {
 
   /// Whether pressing the row's primary button should START a fetch.
   ///
-  /// Named as a property rather than left inline in `EGOneRuntime.startDownload`
+  /// Named as a property rather than left inline in `LocalPolishRuntime.startDownload`
   /// because of the failure it prevents (#2109): a state missing from that
   /// guard renders its button and then silently does nothing when pressed.
   /// That is invisible in review, invisible at compile time, and reads to a

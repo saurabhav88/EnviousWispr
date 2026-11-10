@@ -19,7 +19,7 @@ import os
 /// request and pause, scripted per attempt; no network and no real wait.
 @Suite("Local polish transport: bytes in, bytes out (#4473)", .tags(.productOutcome))
 struct LocalPolishTransportTests {
-  static let endpoint = EGOneEndpoint(port: 4242, authToken: "tok-1", contextTokens: 4096)
+  static let endpoint = LocalPolishEndpoint(port: 4242, authToken: "tok-1", contextTokens: 4096)
   /// Not JSON, on purpose: the transport must send and return bytes it cannot read.
   static let body = Data([0x00, 0xFF, 0x7B, 0x22, 0x0A])
   static let answer = Data([0xFE, 0x00, 0x5D])
@@ -201,7 +201,7 @@ struct LocalPolishConnectorWireTests {
   )
   func connectorsOverTheWire() async throws {
     let fixture = try EGOneAdapterLifecycleTests.Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     defer { fixture.cleanup() }
     await manager.start(configuration: fixture.configuration())
     let endpoint = try #require(await manager.activeEndpoint(), "fake server never became ready")

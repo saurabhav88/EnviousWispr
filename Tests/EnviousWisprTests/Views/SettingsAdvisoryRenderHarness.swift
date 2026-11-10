@@ -116,11 +116,11 @@ struct SettingsAdvisoryRenderHarness {
       asrManager: RouterTestASRManager(),
       whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       preloadAction: {}, ollamaStatusProbe: { _ in })
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
-    let s1 = EGOneRuntime(
+    let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,

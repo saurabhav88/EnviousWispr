@@ -65,7 +65,7 @@ import EnviousWisprAppKitTestSupport
     let store: UserDefaults
     let suite: String
     let adapter: EGOneDeliveryAdapter
-    let runtime: EGOneRuntime
+    let runtime: LocalPolishRuntime
     let registration: DeliveryRegistration
     let provider: ProviderBox
     let signal: HealthSignal
@@ -112,7 +112,7 @@ import EnviousWisprAppKitTestSupport
     // server manager and fails with the precise `server_binary_missing`
     // signal instead of spawning anything.
     let missingBinary = root.appendingPathComponent("missing-llama-server")
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: missingBinary, delivery: adapter,
       makeHealthProbe: LlamaServerHealthProbe.make,
@@ -213,7 +213,7 @@ import EnviousWisprAppKitTestSupport
         // the deadline and keep scheduling main-actor work (Codex r1).
         if Task.isCancelled { return false }
         if await MainActor.run(body: {
-          EGOneRuntime.healthReason(runtime.health) == "not_started"
+          LocalPolishRuntime.healthReason(runtime.health) == "not_started"
         }) {
           return true
         }
@@ -250,7 +250,7 @@ import EnviousWisprAppKitTestSupport
         // the deadline and keep scheduling main-actor work (Codex r1).
         if Task.isCancelled { return false }
         if await MainActor.run(body: {
-          EGOneRuntime.healthReason(runtime.health) == "not_started"
+          LocalPolishRuntime.healthReason(runtime.health) == "not_started"
         }) {
           return true
         }

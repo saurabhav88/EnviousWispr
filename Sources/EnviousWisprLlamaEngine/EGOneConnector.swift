@@ -11,11 +11,11 @@ import Foundation
 /// this time", never as an "AI polish failed" pill.
 ///
 /// Stateless by contract: reads the endpoint per call, never owns the
-/// process (that is `EGOneServerManager`).
+/// process (that is `LocalPolishProcessManager`).
 public struct EGOneConnector: TranscriptPolisher {
-  private let endpoint: EGOneEndpoint
+  private let endpoint: LocalPolishEndpoint
 
-  public init(endpoint: EGOneEndpoint) {
+  public init(endpoint: LocalPolishEndpoint) {
     self.endpoint = endpoint
   }
 

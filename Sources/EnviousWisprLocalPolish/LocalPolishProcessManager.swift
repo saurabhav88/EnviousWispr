@@ -8,7 +8,7 @@ import os
 
 /// Endpoint of a ready local inference server: where to send requests and
 /// the per-launch bearer token that authenticates the app to it.
-public struct EGOneEndpoint: Sendable, Equatable {
+public struct LocalPolishEndpoint: Sendable, Equatable {
   public let port: UInt16
   public let authToken: String
   /// Context window the server was launched with — the polish step's
@@ -55,7 +55,7 @@ public enum EGOneHealth: Sendable, Equatable {
 /// critical memory pressure (it may never starve heart-path ASR — the
 /// #286/#295 Ollama dual-residency incident is the precedent), and every
 /// failure surfaces to dictation as a silent raw-text fallback.
-public actor EGOneServerManager {
+public actor LocalPolishProcessManager {
   /// Closed startup diagnosis for the checker. Polish can continue after this.
   public enum CheckerFailureReason: String, Sendable, Equatable {
     case adapterMissing = "adapter_missing"
@@ -66,7 +66,7 @@ public actor EGOneServerManager {
   public enum ServerState: Sendable, Equatable {
     case stopped
     case starting
-    case ready(EGOneEndpoint)
+    case ready(LocalPolishEndpoint)
     /// Terminated by the memory-pressure source; reactivation is a user
     /// action (settings) or next launch.
     case pausedForMemoryPressure
@@ -100,7 +100,7 @@ public actor EGOneServerManager {
   /// What a polish attempt meets, read in ONE manager turn (#3988), so the
   /// endpoint and the stop evidence cannot describe two different moments.
   public struct Availability: Sendable, Equatable {
-    public let endpoint: EGOneEndpoint?
+    public let endpoint: LocalPolishEndpoint?
     /// The outside stop that leaves no endpoint, when that is why.
     public let outstandingOutsideStop: Int?
     /// The outside stop whose recovery take is the asking take: the first live
@@ -283,7 +283,7 @@ public actor EGOneServerManager {
 
   /// Current endpoint iff ready. Fast, never boots the server — dictation
   /// during boot silently falls back (never blocks paste).
-  public func activeEndpoint() -> EGOneEndpoint? {
+  public func activeEndpoint() -> LocalPolishEndpoint? {
     if case .ready(let endpoint) = state { return endpoint }
     return nil
   }
@@ -513,7 +513,7 @@ public actor EGOneServerManager {
     process = proc
     installMemoryPressureSource()
 
-    let endpoint = EGOneEndpoint(
+    let endpoint = LocalPolishEndpoint(
       port: port, authToken: token, contextTokens: configuration.spec.contextTokens,
       hasLearnedWordAdapter: configuration.spec.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
@@ -702,7 +702,7 @@ public actor EGOneServerManager {
   }
 
   static func awaitServerUp(
-    endpoint: EGOneEndpoint, budgetSeconds: Int,
+    endpoint: LocalPolishEndpoint, budgetSeconds: Int,
     processIsAlive: @escaping @Sendable () -> Bool = { true }
   ) async -> Bool {
     let deadline = ContinuousClock.now + .seconds(budgetSeconds)
@@ -730,7 +730,7 @@ public actor EGOneServerManager {
 #if DEBUG
   // MARK: - #4319: DEBUG slot observation (Live UAT evidence only)
 
-  extension EGOneServerManager {
+  extension LocalPolishProcessManager {
     /// A read-only control request on this manager's own ready server. Takes no lease, no
     /// reservation and no admission epoch; starts, probes and stops nothing.
     ///

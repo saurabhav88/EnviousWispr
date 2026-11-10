@@ -747,7 +747,7 @@ struct ProviderSetupSection: View {
   /// unlisted. Each projection below reads `snapshot` once.
   @Environment(CloudModelListHolder.self) private var cloudModelListHolder: CloudModelListHolder?
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
-  @Environment(EGOneRuntime.self) private var egOne
+  @Environment(LocalPolishRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
   /// #4353 D4: carries "open this screen's model menu" from the card's button. Optional: the
@@ -980,7 +980,7 @@ private var providerRows: some View {
       //
       // BOTH surfaces (#2772). The engine is shared; removing it from the import page
       // while dictation still selected it left dictation pointing at nothing, and
-      // `EGOneRuntime.removeModel` then refused the file removal because its
+      // `LocalPolishRuntime.removeModel` then refused the file removal because its
       // `isActiveProvider` still reported dictation's selection. Found by Codex.
       // EVERY surface that selects the removed engine moves, whichever page the removal
       // ran from; a following import follows dictation's move. The first version moved
@@ -3062,7 +3062,7 @@ struct ProviderSetupLifecycle: ViewModifier {
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
-  @Environment(EGOneRuntime.self) private var egOne
+  @Environment(LocalPolishRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
 

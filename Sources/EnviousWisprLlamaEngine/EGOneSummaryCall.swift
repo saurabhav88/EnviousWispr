@@ -23,7 +23,7 @@ public enum EGOneSummaryCall {
   ///     seconds, so the summary's own timeout fires first and reports `timedOut`.
   ///   - send: the transport; the app uses `URLSession.shared`, tests a canned answer.
   public static func complete(
-    endpoint: EGOneEndpoint, instructions: String, prompt: String, timeoutSeconds: Double,
+    endpoint: LocalPolishEndpoint, instructions: String, prompt: String, timeoutSeconds: Double,
     send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
       try await URLSession.shared.data(for: $0)
     }

@@ -563,7 +563,7 @@ package final class WisprBootstrapper {
       return await modelDelivery.admittedCompatibleCheckerURL(
         engine: .egOne, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
-    let egOneRuntime = EGOneRuntime(
+    let egOneRuntime = LocalPolishRuntime(
       manifest: egOneManifest?.runtimeFacts(
         expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
       serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
@@ -626,7 +626,7 @@ package final class WisprBootstrapper {
       return await modelDelivery.admittedCompatibleCheckerURL(
         engine: .s1Mini, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
-    let s1MiniRuntime = EGOneRuntime(
+    let s1MiniRuntime = LocalPolishRuntime(
       manifest: s1Manifest?.runtimeFacts(
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
       serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
@@ -885,7 +885,7 @@ package final class WisprBootstrapper {
     // admission, which is what a first-time download of either engine reaches.
     // Selection and import activation never fetch.
     Task { await checkerEligibility.requestAdapterDownload(for: .s1Mini) }
-    let runtimes: [LearnedWordCheckerEngine: EGOneRuntime] = [
+    let runtimes: [LearnedWordCheckerEngine: LocalPolishRuntime] = [
       .egOne: egOneRuntime, .s1Mini: s1MiniRuntime,
     ]
     for engine in LearnedWordCheckerEngine.allCases {
@@ -3383,7 +3383,7 @@ package final class WisprBootstrapper {
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
-    // the stale-sweep in EGOneServerManager.start on next launch.
+    // the stale-sweep in LocalPolishProcessManager.start on next launch.
     localPolishRuntimes.egOne.terminateServerForAppQuit()
     // #3853: children first, then native runtimes. Drop the word check's MLX model without
     // waiting (its cleanup runs off this thread), before the lifecycle flush and the
@@ -3514,7 +3514,7 @@ private struct MainWindowRoot: View {
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
       .environment(b.localPolishRuntimes.egOne)
-      // #2649: both engines are `EGOneRuntime`, and `@Environment` keys by TYPE,
+      // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
       // so injecting the second directly would silently replace the first. The
       // set names them instead.
       .environment(b.localPolishRuntimes)

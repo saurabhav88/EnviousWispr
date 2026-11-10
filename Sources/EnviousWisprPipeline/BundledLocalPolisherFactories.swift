@@ -14,7 +14,7 @@ import EnviousWisprLocalPolish
 /// than one that switches on the provider, for the reason the step records: the connectors
 /// differ in what an empty answer MEANS, and that decision belongs to the connector.
 public struct BundledLocalPolisherFactories {
-  public typealias Factory = @MainActor (EGOneEndpoint) -> any TranscriptPolisher
+  public typealias Factory = @MainActor (LocalPolishEndpoint) -> any TranscriptPolisher
 
   public let egOne: Factory
   public let s1Mini: Factory

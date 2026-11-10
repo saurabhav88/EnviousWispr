@@ -69,7 +69,7 @@ struct LocalEngineDescriptor: Equatable {
 /// code it explains, and the only edits turn a hard-coded engine into
 /// `LocalEngineDescriptor`.
 struct LocalEngineStatusCard<Middle: View>: View {
-  let runtime: EGOneRuntime
+  let runtime: LocalPolishRuntime
   let engine: LocalEngineDescriptor
   /// Whether this card may START the engine's server.
   ///

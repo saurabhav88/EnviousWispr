@@ -113,8 +113,8 @@ struct EGOneAdapterLifecycleTests {
 
     func configuration(
       provider: LLMProvider = .egOne, adapterURL: URL? = nil, readinessBudgetSeconds: Int = 4
-    ) -> EGOneServerManager.Configuration {
-      EGOneServerManager.Configuration(
+    ) -> LocalPolishProcessManager.Configuration {
+      LocalPolishProcessManager.Configuration(
         spec: .fixture(
           modelID: .singleModel(for: provider), serverBinaryURL: binary, modelURL: model,
           contextTokens: 4096, learnedWordAdapterURL: adapterURL,
@@ -153,7 +153,7 @@ struct EGOneAdapterLifecycleTests {
   func providerPerBoot() async {
     var calls = 0
     var available: URL? = nil
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
@@ -176,7 +176,7 @@ struct EGOneAdapterLifecycleTests {
     #expect(second.spec.learnedWordAdapterURL == available)
     // #3105: S1-mini boots with its own D5 adapter from its own provider.
     let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
-    let s1 = EGOneRuntime(
+    let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini,
@@ -186,7 +186,7 @@ struct EGOneAdapterLifecycleTests {
     #expect(s1Config.spec.learnedWordAdapterURL == d5)
     #expect(s1Config.spec.extraArguments == LlamaServerLaunchBuilder.engineArguments(for: .s1Mini))
     // A runtime built without a provider boots bare.
-    let bare = EGOneRuntime(
+    let bare = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini)
@@ -196,7 +196,7 @@ struct EGOneAdapterLifecycleTests {
     #expect(bareConfig.spec.learnedWordAdapterArguments.isEmpty)
     // A path the server cannot split boots without the checker, and the endpoint
     // does not claim an adapter the requests would name.
-    let unsplittable = EGOneRuntime(
+    let unsplittable = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: .s1Mini,
@@ -230,7 +230,7 @@ struct EGOneAdapterLifecycleTests {
       runtimeABI: "fixture")
     // What the factory answers: deliberately NOT what the llama builder would build, so a
     // runtime that ignored the factory cannot return an equal configuration by accident.
-    let answer = EGOneServerManager.Configuration(
+    let answer = LocalPolishProcessManager.Configuration(
       spec: .fixture(
         modelID: .singleModel(for: .s1Mini), identityRevision: "from-the-factory",
         serverBinaryURL: URL(fileURLWithPath: "/factory/server"),
@@ -239,7 +239,7 @@ struct EGOneAdapterLifecycleTests {
       makeArguments: { _, _, _ in ["rendered-by-the-factory"] }, readinessBudgetSeconds: 7)
     let calls = OSAllocatedUnfairLock(initialState: [Call]())
     var adapterReads = 0
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: { modelID, artifact, server, modelFile, context, adapterURL in
@@ -302,7 +302,7 @@ struct EGOneAdapterLifecycleTests {
   @Test("adapter startup fault retries the admitted base with no adapter")
   func failedAdapterFallsBack() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     defer { fixture.cleanup() }
     try Data().write(to: fixture.root.appendingPathComponent("fail_adapter"))
     await manager.start(configuration: fixture.configuration(adapterURL: fixture.adapter))
@@ -347,7 +347,7 @@ struct EGOneAdapterLifecycleTests {
       contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
@@ -366,7 +366,7 @@ struct EGOneAdapterLifecycleTests {
   @Test("adapter that never becomes ready falls back with a closed reason")
   func unreadyAdapterFallsBack() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     defer { fixture.cleanup() }
     try Data().write(to: fixture.root.appendingPathComponent("hang_adapter"))
     let configuration = fixture.configuration(
@@ -410,12 +410,12 @@ struct EGOneAdapterLifecycleTests {
     await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
   }
 
-  /// The lease seam `EGOneRuntime` provides, over a bare coordinator.
+  /// The lease seam `LocalPolishRuntime` provides, over a bare coordinator.
   @MainActor
   private final class CoordinatorServer: EGOneLeaseProviding {
     let coordinator: LocalPolishServerCoordinator
     init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
-    func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
+    func activeEndpoint() async -> LocalPolishEndpoint? { await coordinator.endpoint(for: .egOne) }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
       await coordinator.acquireLease(for: .egOne, purpose: .inference)
     }
@@ -534,7 +534,7 @@ struct EGOneAdapterLifecycleTests {
 @Suite("Local polish server stopped from outside (#3988)", .serialized, .tags(.productOutcome, .localParallel))
 struct EGOneOutsideStopRecoveryTests {
   fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
-  typealias State = EGOneServerManager.Lifecycle
+  typealias State = LocalPolishProcessManager.Lifecycle
 
   /// Every state the manager emits, in emission order. The manager calls its
   /// observer synchronously on its actor, so recording under a lock keeps
@@ -644,7 +644,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("an outside stop waits idle, keeps no endpoint, and the next start brings it back", arguments: outsideStops)
   func outsideStopIsStartableIdle(ending: Ending) async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -677,7 +677,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("recovery keeps the stop's identity until ready; a deliberate stop clears it")
   func identityOutlivesRecoveryStartUntilReady() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -708,7 +708,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("a recovery that fails keeps the stop for diagnosis and says it failed")
   func failedRecoveryKeepsDiagnosis() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -739,7 +739,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("a crash still restarts once, then gives up; an explicit start resets that budget", arguments: crashEndings)
   func crashPolicyUnchanged(ending: Ending) async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -763,7 +763,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("an outside stop after a crash restart is still an outside stop, not a give-up")
   func outsideStopAfterCrashRestart() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -787,7 +787,7 @@ struct EGOneOutsideStopRecoveryTests {
   @Test("a clean exit during startup is a startup failure, not an outside stop")
   func startupCleanExitStaysStartupFailure() async throws {
     let fixture = try Fixture()
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let recorder = StateRecorder()
     defer { fixture.cleanup() }
     await manager.setStateObserver { recorder.record($0.lifecycle) }
@@ -847,19 +847,19 @@ struct EGOneOutsideStopRecoveryTests {
         launchErrorCode: termination == nil ? 2 : nil)
     }
     for status in [SIGHUP, SIGINT, SIGKILL, SIGTERM] {
-      #expect(EGOneServerManager.classify(record(.ready, .signal, status)) == .outsideStop)
+      #expect(LocalPolishProcessManager.classify(record(.ready, .signal, status)) == .outsideStop)
     }
-    #expect(EGOneServerManager.classify(record(.ready, .exit, 0)) == .outsideStop)
+    #expect(LocalPolishProcessManager.classify(record(.ready, .exit, 0)) == .outsideStop)
     for status in [SIGQUIT, SIGTRAP, SIGABRT, SIGBUS, SIGSEGV, SIGUSR1, Int32(64)] {
-      #expect(EGOneServerManager.classify(record(.ready, .signal, status)) == .crashPolicy)
+      #expect(LocalPolishProcessManager.classify(record(.ready, .signal, status)) == .crashPolicy)
     }
     for status: Int32 in [1, 2, 9, 15, 137] {
-      #expect(EGOneServerManager.classify(record(.ready, .exit, status)) == .crashPolicy)
+      #expect(LocalPolishProcessManager.classify(record(.ready, .exit, status)) == .crashPolicy)
     }
-    #expect(EGOneServerManager.classify(record(.starting, .exit, 0)) == .crashPolicy)
-    #expect(EGOneServerManager.classify(record(.starting, .signal, SIGTERM)) == .crashPolicy)
-    #expect(EGOneServerManager.classify(record(.ready, .exit, 0, role: .sweep)) == .crashPolicy)
-    #expect(EGOneServerManager.classify(record(.ready, nil, nil)) == .crashPolicy)
+    #expect(LocalPolishProcessManager.classify(record(.starting, .exit, 0)) == .crashPolicy)
+    #expect(LocalPolishProcessManager.classify(record(.starting, .signal, SIGTERM)) == .crashPolicy)
+    #expect(LocalPolishProcessManager.classify(record(.ready, .exit, 0, role: .sweep)) == .crashPolicy)
+    #expect(LocalPolishProcessManager.classify(record(.ready, nil, nil)) == .crashPolicy)
   }
 }
 
@@ -870,7 +870,7 @@ struct EGOneOutsideStopRecoveryTests {
 @Suite("Local polish restarts when a recording starts (#3988)", .serialized, .tags(.productOutcome))
 struct EGOneRecordingRecoveryTests {
   fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
-  typealias Lifecycle = EGOneServerManager.Lifecycle
+  typealias Lifecycle = LocalPolishProcessManager.Lifecycle
 
   /// Lifecycles the runtime has APPLIED, in order, from its own completion
   /// signal. A waiter parks until a matching one lands, or gives up.
@@ -909,7 +909,7 @@ struct EGOneRecordingRecoveryTests {
   /// rig as `EGOneAdapterLifecycleTests.adapterFaultSkipsBaseRepair`.
   private struct Rig {
     let fixture: Fixture
-    let runtime: EGOneRuntime
+    let runtime: LocalPolishRuntime
     let coordinator: LocalPolishServerCoordinator
     let recorder: AppliedRecorder
     let cleanup: () -> Void
@@ -936,7 +936,7 @@ struct EGOneRecordingRecoveryTests {
       contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
@@ -1016,7 +1016,7 @@ struct EGOneRecordingRecoveryTests {
     #expect(try rig.fixture.launches().count == 2)
 
     // The other engine's runtime is not resident and is not touched.
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
@@ -1090,15 +1090,15 @@ struct EGOneRecordingRecoveryTests {
       modelName: LLMProvider.egOneModelName, version: "v2-sharded",
       contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
     runtime.applyInstallStateForTesting(.installed(version: nil))
-    let first = EGOneEndpoint(port: 1, authToken: "a", contextTokens: 1)
-    let replacement = EGOneEndpoint(port: 2, authToken: "b", contextTokens: 1)
+    let first = LocalPolishEndpoint(port: 1, authToken: "a", contextTokens: 1)
+    let replacement = LocalPolishEndpoint(port: 2, authToken: "b", contextTokens: 1)
     runtime.receive(LocalPolishLifecycleEvent(lifecycle: Lifecycle(state: .ready(first)), order: 1))
     runtime.acceptProbeResult(.green, for: first)
     #expect(runtime.health == .green)
@@ -1115,7 +1115,7 @@ struct EGOneRecordingRecoveryTests {
   /// a late event can be staged. Both engines, one representative branch each.
   @Test("late events never bring back a resolved stop, and each stop is sampled once", arguments: [LLMProvider.egOne, .s1Mini])
   func lateEventsAndOneSamplePerStop(provider: LLMProvider) {
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, provider: provider)
@@ -1126,7 +1126,7 @@ struct EGOneRecordingRecoveryTests {
       return pressure
     }
     let stop1 = Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1)
-    let ready = Lifecycle(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1)))
+    let ready = Lifecycle(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1)))
     runtime.receive(LocalPolishLifecycleEvent(lifecycle: stop1, order: 1))
     runtime.receive(
       LocalPolishLifecycleEvent(
@@ -1162,7 +1162,7 @@ struct EGOneRecordingRecoveryTests {
     OutsideStopContext.MemoryPressure.normal, .warning, .critical,
   ])
   func pressureLevels(level: OutsideStopContext.MemoryPressure) {
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
@@ -1201,11 +1201,11 @@ struct EGOneRecordingRecoveryTests {
   /// can wait for the step's deferred release instead of guessing.
   @MainActor
   final class ReleaseSignal: EGOneLeaseProviding {
-    let runtime: EGOneRuntime
+    let runtime: LocalPolishRuntime
     private(set) var releases = 0
     private var waiter: CheckedContinuation<Void, Never>?
-    init(_ runtime: EGOneRuntime) { self.runtime = runtime }
-    func activeEndpoint() async -> EGOneEndpoint? { await runtime.activeEndpoint() }
+    init(_ runtime: LocalPolishRuntime) { self.runtime = runtime }
+    func activeEndpoint() async -> LocalPolishEndpoint? { await runtime.activeEndpoint() }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
       await runtime.acquireLocalServerLease()
     }
@@ -1292,7 +1292,7 @@ struct EGOneRecordingRecoveryTests {
     }
     #expect(importRead.missedOutsideStop == stop)
     #expect(importRead.recoveryOutsideStop == nil)
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
@@ -1410,7 +1410,7 @@ struct EGOneRecordingRecoveryTests {
 
   @Test("a stop the main actor has not accepted yet is frozen with unknown pressure, never resampled")
   func unacceptedStopHasUnknownPressure() {
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration)
@@ -1427,7 +1427,7 @@ struct EGOneRecordingRecoveryTests {
     // Accepted once: later reads reuse that sample, also after the stop resolves.
     runtime.receive(
       LocalPolishLifecycleEvent(
-        lifecycle: Lifecycle(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        lifecycle: Lifecycle(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1))),
         order: 2))
     #expect(runtime.outsideStopContext(generation: 7).memoryPressure == .critical)
     #expect(samples == 1)
@@ -1568,7 +1568,7 @@ extension EGOneAdapterLifecycleTests {
       contextTokens: 4096, promptTemplateID: "eg1-v1", minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
     let coordinator = LocalPolishServerCoordinator()
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,
@@ -1664,7 +1664,7 @@ extension EGOneAdapterLifecycleTests {
     func slotObservationFailuresStayHonest() async throws {
       let fixture = try Fixture()
       defer { fixture.cleanup() }
-      let manager = EGOneServerManager()
+      let manager = LocalPolishProcessManager()
       #expect(
         await manager.observeSlotsForDebug(operation: Self.reader) == .unavailable,
         "no server is not idle")
@@ -1710,9 +1710,9 @@ extension EGOneAdapterLifecycleTests {
     func injectedSlotReadGetsTheOwnedServer() async throws {
       let fixture = try Fixture()
       defer { fixture.cleanup() }
-      let manager = EGOneServerManager()
+      let manager = LocalPolishProcessManager()
       let calls = OSAllocatedUnfairLock(
-        initialState: [(endpoint: EGOneEndpoint, generation: Int)]())
+        initialState: [(endpoint: LocalPolishEndpoint, generation: Int)]())
       let operation: LocalPolishSlotInspection = { endpoint, generation in
         calls.withLock { $0.append((endpoint, generation)) }
         return .observed(EGOneSlotSnapshot(launchGeneration: generation, slots: []))
@@ -1749,7 +1749,7 @@ extension EGOneAdapterLifecycleTests {
     func throwingSlotReadStaysATransportFailure() async throws {
       let fixture = try Fixture()
       defer { fixture.cleanup() }
-      let manager = EGOneServerManager()
+      let manager = LocalPolishProcessManager()
       await manager.start(configuration: fixture.configuration())
       try #require(await manager.activeEndpoint() != nil, "fake server never became ready")
       let answer = await manager.observeSlotsForDebug(operation: { _, _ in
@@ -1841,7 +1841,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
       modelName: expectedModel, version: "v2-sharded",
       contextTokens: 4096, promptTemplateID: promptTemplateID, minAppVersion: "0",
       downloadURL: URL(string: "https://example.invalid/model.gguf")!)
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
       serverBinaryURL: fixture.binary, delivery: delivery,
       makeHealthProbe: LlamaServerHealthProbe.make,

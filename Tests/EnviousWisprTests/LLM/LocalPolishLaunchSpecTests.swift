@@ -93,7 +93,7 @@ struct LocalPolishLaunchSpecTests {
 
   private static func target(_ spec: LocalPolishLaunchSpec) -> LocalPolishTarget {
     LocalPolishTarget(
-      configuration: EGOneServerManager.Configuration(
+      configuration: LocalPolishProcessManager.Configuration(
         spec: spec, makeArguments: LlamaServerLaunchBuilder.arguments, readinessBudgetSeconds: 4))
   }
 

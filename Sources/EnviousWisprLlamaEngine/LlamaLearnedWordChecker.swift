@@ -16,10 +16,10 @@ enum EGOneSlots {
 /// checker keeps it through every question wave, so an adapter change or Remove
 /// Model waits for the check instead of stopping the server mid-question.
 public struct EGOneCheckerHold: Sendable {
-  public let endpoint: EGOneEndpoint
+  public let endpoint: LocalPolishEndpoint
   public let release: @Sendable () async -> Void
 
-  public init(endpoint: EGOneEndpoint, release: @escaping @Sendable () async -> Void) {
+  public init(endpoint: LocalPolishEndpoint, release: @escaping @Sendable () async -> Void) {
     self.endpoint = endpoint
     self.release = release
   }
@@ -131,7 +131,7 @@ public struct LlamaLearnedWordChecker: LearnedWordChecking {
     }
   }
 
-  private func decide(_ questions: [LearnedWordCheckQuestion], endpoint: EGOneEndpoint)
+  private func decide(_ questions: [LearnedWordCheckQuestion], endpoint: LocalPolishEndpoint)
     async throws -> [LearnedWordCheckDecision]
   {
     try Task.checkCancellation()

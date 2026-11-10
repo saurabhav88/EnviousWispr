@@ -29,8 +29,8 @@ struct EGOneSummaryCallTests {
     }
   }
 
-  static func endpoint(adapter: Bool) -> EGOneEndpoint {
-    EGOneEndpoint(
+  static func endpoint(adapter: Bool) -> LocalPolishEndpoint {
+    LocalPolishEndpoint(
       port: 51234, authToken: "test-token", contextTokens: 16_384, hasLearnedWordAdapter: adapter)
   }
 

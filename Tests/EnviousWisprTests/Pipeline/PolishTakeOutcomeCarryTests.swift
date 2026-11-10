@@ -213,7 +213,7 @@ struct PolishTakeOutcomeCarryTests {
       self.missed = missed
       self.recovery = recovery
     }
-    func activeEndpoint() async -> EGOneEndpoint? { nil }
+    func activeEndpoint() async -> LocalPolishEndpoint? { nil }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission { .changing }
     func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {}
     func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {

@@ -12,7 +12,7 @@ import Testing
 /// Every row here needs TWO models to mean anything. A single-model test cannot
 /// distinguish a coordinator that swaps correctly from one that no-ops, because
 /// with one model those are the same behaviour — which is exactly how the
-/// underlying defect survived: `EGOneServerManager.start` compares STATE, not
+/// underlying defect survived: `LocalPolishProcessManager.start` compares STATE, not
 /// which model produced it, so a second model's activation silently returns
 /// while the first model keeps answering.
 @Suite("One local polish server, and it is the right one (#2649 C6)", .tags(.driftGuard))
@@ -24,7 +24,7 @@ struct LocalPolishServerCoordinatorTests {
   /// reason the manager takes an injectable configuration.
   static func target(_ provider: LLMProvider, _ name: String) -> LocalPolishTarget {
     LocalPolishTarget(
-      configuration: EGOneServerManager.Configuration(
+      configuration: LocalPolishProcessManager.Configuration(
         spec: .fixture(
           modelID: .singleModel(for: provider),
           serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),

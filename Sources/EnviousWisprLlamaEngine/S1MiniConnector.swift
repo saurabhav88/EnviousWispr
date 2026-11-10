@@ -26,9 +26,9 @@ import Foundation
 /// line, so there are no tags to echo, and stripping them would only be able to
 /// damage a user who dictated the literal word.
 public struct S1MiniConnector: TranscriptPolisher {
-  private let endpoint: EGOneEndpoint
+  private let endpoint: LocalPolishEndpoint
 
-  public init(endpoint: EGOneEndpoint) {
+  public init(endpoint: LocalPolishEndpoint) {
     self.endpoint = endpoint
   }
 

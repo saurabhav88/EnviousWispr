@@ -103,7 +103,7 @@ import EnviousWisprAppKitTestSupport
     let adapter = EGOneDeliveryAdapter(
       controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
@@ -199,7 +199,7 @@ import EnviousWisprAppKitTestSupport
 
     // First launch: enters the paused state and records one entry.
     let first = Recorded()
-    let runtimeA = EGOneRuntime(
+    let runtimeA = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -212,7 +212,7 @@ import EnviousWisprAppKitTestSupport
     // SECOND LAUNCH: a brand-new runtime over the same storage, seeing the same
     // paused state. It must stay silent — the user never left the pause.
     let second = Recorded()
-    let runtimeB = EGOneRuntime(
+    let runtimeB = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -236,7 +236,7 @@ import EnviousWisprAppKitTestSupport
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
-    let first = EGOneRuntime(
+    let first = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -244,7 +244,7 @@ import EnviousWisprAppKitTestSupport
 
     // Relaunch into `.notInstalled`, which equals the runtime's initial value.
     let recorded = Recorded()
-    let second = EGOneRuntime(
+    let second = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -267,7 +267,7 @@ import EnviousWisprAppKitTestSupport
   /// when a user is already having a bad time, and a network blip mid-upgrade
   /// is the ordinary case, not an exotic one.
   ///
-  /// Drives a real `EGOneRuntime` through the whole sequence rather than
+  /// Drives a real `LocalPolishRuntime` through the whole sequence rather than
   /// asserting on the enum, because the bug lives in the runtime's transition
   /// bookkeeping and an enum-level test cannot see it.
   @MainActor
@@ -276,7 +276,7 @@ import EnviousWisprAppKitTestSupport
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -299,7 +299,7 @@ import EnviousWisprAppKitTestSupport
 
     // CONTROL, the other direction: a genuine first install must NEVER acquire
     // an upgrade label, or the fix trades one wrong sentence for another.
-    let fresh = EGOneRuntime(
+    let fresh = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
@@ -331,7 +331,7 @@ import EnviousWisprAppKitTestSupport
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
 
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)

@@ -271,12 +271,12 @@ struct LocalPolishSummaryReservationTests {
     #expect(await coordinator.residentModelForTesting == .egOne, "the deferred start runs at release")
   }
 
-  /// The lease seam `EGOneRuntime` provides, over a bare coordinator.
+  /// The lease seam `LocalPolishRuntime` provides, over a bare coordinator.
   @MainActor
   final class Server: EGOneLeaseProviding, Sendable {
     let coordinator: LocalPolishServerCoordinator
     init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
-    func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
+    func activeEndpoint() async -> LocalPolishEndpoint? { await coordinator.endpoint(for: .egOne) }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
       await coordinator.acquireLease(for: .egOne, purpose: .inference)
     }

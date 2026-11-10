@@ -98,7 +98,7 @@ struct EngineLaunchArgumentTests {
   /// polish request fails.
   @Test("the complete argument list for a spawn: model, host, port, context, bearer, then flags")
   func completeSpawnArguments() {
-    let configuration = EGOneServerManager.Configuration(
+    let configuration = LocalPolishProcessManager.Configuration(
       spec: .fixture(
         serverBinaryURL: URL(fileURLWithPath: "/tmp/ew-args/server"),
         modelURL: URL(fileURLWithPath: "/tmp/ew-args/model.gguf"), contextTokens: 16384,

@@ -129,7 +129,7 @@ import EnviousWisprAppKitTestSupport
 
   // MARK: - The download guard, through the real runtime (#2109)
 
-  /// The dead-button case, driven through a REAL `EGOneRuntime` rather than
+  /// The dead-button case, driven through a REAL `LocalPolishRuntime` rather than
   /// the enum property, because the property proves the RULE while this proves
   /// the runtime actually consults it. A state missing from `startDownload`'s
   /// guard renders its button and silently ignores the press: no crash, no
@@ -157,7 +157,7 @@ import EnviousWisprAppKitTestSupport
     let adapter = EGOneDeliveryAdapter(
       controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
@@ -214,7 +214,7 @@ import EnviousWisprAppKitTestSupport
     let adapter = EGOneDeliveryAdapter(
       controller: ModelDeliveryController(defaults: TestDefaults.suite(suite)!),
       registration: registration, version: "1.1", defaults: store)
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter,
       makeHealthProbe: LlamaServerHealthProbe.make,

@@ -19,7 +19,7 @@ final class LearnedWordCheckerEligibility {
   struct EngineInputs {
     let base: DeliveryRegistration?
     let promptTemplateID: String?
-    let runtime: EGOneRuntime
+    let runtime: LocalPolishRuntime
     let debugThreshold: Double?
   }
 
@@ -153,7 +153,7 @@ final class LearnedWordCheckerEligibility {
     baseAdmitted: Bool, adapterAdmitted: Bool,
     deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: LearnedWordCheckerContract?,
-    admittedBase: AdmittedCheckerBase?, endpoint: EGOneEndpoint?,
+    admittedBase: AdmittedCheckerBase?, endpoint: LocalPolishEndpoint?,
     serverReason: String?, debugThreshold: Double? = nil,
     hold: @escaping @Sendable () async -> EGOneCheckerHold?
   ) -> LearnedWordCheckerSelection {
@@ -185,7 +185,7 @@ final class LearnedWordCheckerEligibility {
     guard endpoint.hasLearnedWordAdapter else {
       return absent(
         .serverWithoutAdapter(
-          serverReason ?? EGOneServerManager.CheckerFailureReason.adapterMissing.rawValue))
+          serverReason ?? LocalPolishProcessManager.CheckerFailureReason.adapterMissing.rawValue))
     }
     guard let threshold = Double(contract.qualifiedThreshold), threshold.isFinite,
       (0...1).contains(threshold)

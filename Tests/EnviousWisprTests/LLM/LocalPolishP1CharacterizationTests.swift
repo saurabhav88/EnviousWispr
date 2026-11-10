@@ -24,7 +24,7 @@ struct LocalPolishP1CharacterizationTests {
 
   @Test("each bundled model is health-checked as itself, with its own connector")
   func probeSpecsNameTheirOwnModel() {
-    let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1)
+    let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1)
 
     let egOne = LlamaServerHealthProbe.ProbeSpec.egOne
     #expect(egOne.provider == .egOne)
@@ -70,12 +70,12 @@ struct LocalPolishP1CharacterizationTests {
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
     let coordinator = LocalPolishServerCoordinator()
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
       coordinator: coordinator, provider: .egOne)
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
@@ -115,7 +115,7 @@ struct LocalPolishP1CharacterizationTests {
     let s1Key = "s1.pausedInstallProjection"
 
     // Update: a pause is written under the model's own key only.
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
@@ -127,7 +127,7 @@ struct LocalPolishP1CharacterizationTests {
     // Isolation: S1-mini starts with no pause of its own although EG-1's is stored, so its
     // first pause is reported as a new entry.
     let s1Events = EventBox()
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
@@ -141,7 +141,7 @@ struct LocalPolishP1CharacterizationTests {
     // Restoration: a new EG-1 runtime reads the stored pause, so the same state is not
     // reported a second time, and leaving the pause clears the key.
     let restoredEvents = EventBox()
-    let restored = EGOneRuntime(
+    let restored = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,

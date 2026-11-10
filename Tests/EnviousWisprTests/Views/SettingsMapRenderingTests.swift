@@ -366,8 +366,8 @@ struct SettingsMapRenderingTests {
     let settings: SettingsManager
     let keys: KeychainManager
     let setup: SetupCoordinator
-    let egOne: EGOneRuntime
-    let s1: EGOneRuntime
+    let egOne: LocalPolishRuntime
+    let s1: LocalPolishRuntime
     let directory: URL
 
     @MainActor init(
@@ -390,11 +390,11 @@ struct SettingsMapRenderingTests {
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
         setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
         ollamaSetup: ollama)
-      egOne = EGOneRuntime(
+      egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         makeHealthProbe: LlamaServerHealthProbe.make,
         makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
-      s1 = EGOneRuntime(
+      s1 = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         makeHealthProbe: LlamaServerHealthProbe.make,
         makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,

@@ -48,12 +48,12 @@ struct FileImportLocalPolishRuntimeTests {
     let settings = SettingsManager(
       defaults: TestDefaults.suite("SM-2772-runtime-\(UUID().uuidString)")!)
     let coordinator = LocalPolishServerCoordinator()
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,
       provider: .egOne)
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,

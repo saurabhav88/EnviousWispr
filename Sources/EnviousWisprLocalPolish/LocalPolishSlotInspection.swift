@@ -57,5 +57,5 @@ import Foundation
   /// (the manager reports `transportFailed`) and returns an observation for everything the
   /// server did answer. It is called only for a ready server.
   public typealias LocalPolishSlotInspection =
-    @Sendable (EGOneEndpoint, Int) async throws -> EGOneSlotObservation
+    @Sendable (LocalPolishEndpoint, Int) async throws -> EGOneSlotObservation
 #endif

@@ -9,7 +9,7 @@ import os
 /// endpoint right now" (fast, never boots or blocks).
 @MainActor
 public protocol EGOneEndpointProviding: AnyObject {
-  func activeEndpoint() async -> EGOneEndpoint?
+  func activeEndpoint() async -> LocalPolishEndpoint?
 }
 
 /// Only a process-owning runtime offers admission. Endpoint-only test doubles
@@ -28,7 +28,7 @@ public protocol EGOneLeaseProviding: EGOneEndpointProviding {
 /// What a polish attempt met on a bundled engine (#3988). Content-free.
 public struct LocalPolishAttempt: Sendable {
   public let admission: LocalPolishLeaseAdmission
-  public let endpoint: EGOneEndpoint?
+  public let endpoint: LocalPolishEndpoint?
   /// Set only when there is no endpoint BECAUSE something outside the app
   /// stopped the server: the take's miss evidence.
   public let missedOutsideStop: OutsideStopContext?
@@ -36,7 +36,7 @@ public struct LocalPolishAttempt: Sendable {
   public let recoveryOutsideStop: OutsideStopContext?
 
   public init(
-    admission: LocalPolishLeaseAdmission, endpoint: EGOneEndpoint?,
+    admission: LocalPolishLeaseAdmission, endpoint: LocalPolishEndpoint?,
     missedOutsideStop: OutsideStopContext?, recoveryOutsideStop: OutsideStopContext?
   ) {
     self.admission = admission
@@ -128,7 +128,7 @@ public enum EGOnePausedInstallState: String, Sendable, Equatable {
 /// state, health, and server activation; only the byte-moving relocated.
 @Observable
 @MainActor
-public final class EGOneRuntime: EGOneLeaseProviding {
+public final class LocalPolishRuntime: EGOneLeaseProviding {
 
   // MARK: - Published state (settings UI reads these)
 
@@ -267,7 +267,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   public let manifest: LocalPolishManifestFacts?
   private let delivery: EGOneDeliveryAdapter?
   /// The SHARED process owner (#2649). Previously each runtime constructed its
-  /// own `EGOneServerManager`, so a second model meant a second manager, a
+  /// own `LocalPolishProcessManager`, so a second model meant a second manager, a
   /// second llama-server and 3.4 GB resident. One-at-a-time is a property of
   /// the SET of local models, and a property of a set cannot be enforced by
   /// members that cannot see each other.
@@ -413,7 +413,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// live recovery state.
   func reportChildProcessFailure(_ failure: ChildProcessFailure) {
     var outsideStop: OutsideStopContext?
-    if EGOneServerManager.classify(failure) == .outsideStop, let generation = failure.generation,
+    if LocalPolishProcessManager.classify(failure) == .outsideStop, let generation = failure.generation,
       failure.provider == provider
     {
       outsideStop = acceptOutsideStop(generation: generation)
@@ -450,14 +450,14 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   /// Fires after each applied lifecycle event: the subject's own completion
   /// signal for tests that must wait for the main-actor projection.
-  var onLifecycleAppliedForTesting: (@MainActor (EGOneServerManager.Lifecycle) -> Void)?
+  var onLifecycleAppliedForTesting: (@MainActor (LocalPolishProcessManager.Lifecycle) -> Void)?
 
-  func applyServerStateForTesting(_ state: EGOneServerManager.ServerState) {
-    applyLifecycle(EGOneServerManager.Lifecycle(state: state))
+  func applyServerStateForTesting(_ state: LocalPolishProcessManager.ServerState) {
+    applyLifecycle(LocalPolishProcessManager.Lifecycle(state: state))
   }
 
   /// #3988: a whole lifecycle, as the coordinator delivers it.
-  func applyLifecycleForTesting(_ lifecycle: EGOneServerManager.Lifecycle) {
+  func applyLifecycleForTesting(_ lifecycle: LocalPolishProcessManager.Lifecycle) {
     applyLifecycle(lifecycle)
   }
 
@@ -597,12 +597,12 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   private let pausedProjectionKey: String
   private let defaults: UserDefaults
 
-  private var serverState: EGOneServerManager.ServerState = .stopped
+  private var serverState: LocalPolishProcessManager.ServerState = .stopped
   /// The probe verdict and the endpoint it was measured on (#3988). Ordered
   /// delivery may skip a replacement's intermediate events, so the verdict is
   /// bound to the server it tested, never to "ready" in general.
-  private var readyProbeVerdict: (endpoint: EGOneEndpoint, health: EGOneHealth)?
-  private func applyLifecycle(_ lifecycle: EGOneServerManager.Lifecycle) {
+  private var readyProbeVerdict: (endpoint: LocalPolishEndpoint, health: EGOneHealth)?
+  private func applyLifecycle(_ lifecycle: LocalPolishProcessManager.Lifecycle) {
     serverState = lifecycle.state
     var sameServer = false
     if case .ready(let endpoint) = lifecycle.state { sameServer = readyProbeVerdict?.endpoint == endpoint }
@@ -835,7 +835,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   }
 
   /// A probe verdict lands only on the server it measured (#3988).
-  func acceptProbeResult(_ result: EGOneHealth, for endpoint: EGOneEndpoint) {
+  func acceptProbeResult(_ result: EGOneHealth, for endpoint: LocalPolishEndpoint) {
     guard case .ready(let current) = serverState, current == endpoint else { return }
     readyProbeVerdict = (endpoint, result)
     health = result
@@ -928,7 +928,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     Task { await server.retryDeferredReconfiguration() }
   }
 
-  public func checkerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {
+  public func checkerFailureReason() async -> LocalPolishProcessManager.CheckerFailureReason? {
     await server.checkerFailureReason(for: provider)
   }
 
@@ -1009,7 +1009,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// Internal seam tests can use without staging a multi-shard base model.
   func makeServerConfiguration(
     serverBinaryURL: URL, modelURL: URL, contextTokens: Int, artifactIdentity: ModelIdentity
-  ) async -> EGOneServerManager.Configuration {
+  ) async -> LocalPolishProcessManager.Configuration {
     // Each bundled engine's runtime owns its own adapter provider (#3105: EG-1's
     // eg1c, S1-mini's D5); a runtime built without one boots without an adapter.
     let adapterURL = await learnedWordAdapterProvider()
@@ -1029,7 +1029,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
 
-  public func activeEndpoint() async -> EGOneEndpoint? {
+  public func activeEndpoint() async -> LocalPolishEndpoint? {
     await server.endpoint(for: provider)
   }
 
@@ -1091,7 +1091,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// repair pass: a failed start fails this summary, which the user can write again.
   public func activateForSummary(
     _ reservation: LocalPolishSummaryReservation
-  ) async -> EGOneEndpoint? {
+  ) async -> LocalPolishEndpoint? {
     guard reservation.provider == provider, let manifest, let delivery,
       let serverBinaryURL, activationBlockers.isEmpty
     else { return nil }

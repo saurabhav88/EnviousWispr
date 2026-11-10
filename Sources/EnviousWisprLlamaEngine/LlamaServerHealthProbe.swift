@@ -29,11 +29,11 @@ public enum LlamaServerHealthProbe {
   public struct ProbeSpec: Sendable {
     public var provider: LLMProvider
     public var modelID: String
-    public var makeConnector: @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+    public var makeConnector: @Sendable (LocalPolishEndpoint) -> any TranscriptPolisher
 
     public init(
       provider: LLMProvider, modelID: String,
-      makeConnector: @escaping @Sendable (EGOneEndpoint) -> any TranscriptPolisher
+      makeConnector: @escaping @Sendable (LocalPolishEndpoint) -> any TranscriptPolisher
     ) {
       self.provider = provider
       self.modelID = modelID

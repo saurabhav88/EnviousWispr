@@ -42,7 +42,7 @@ final class LocalPolisherFactorySpy {
   static let egOneAnswer = "I was thinking we could ship the new thing sometime next week."
   static let s1MiniAnswer = "I was thinking we could ship the new thing next week."
   /// The endpoint `ReadyEGOneRuntime` reports.
-  static let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  static let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
 
   private struct FixedAnswerPolisher: TranscriptPolisher {
     let answer: String
@@ -54,8 +54,8 @@ final class LocalPolisherFactorySpy {
     }
   }
 
-  private(set) var egOneEndpoints: [EGOneEndpoint] = []
-  private(set) var s1MiniEndpoints: [EGOneEndpoint] = []
+  private(set) var egOneEndpoints: [LocalPolishEndpoint] = []
+  private(set) var s1MiniEndpoints: [LocalPolishEndpoint] = []
 
   var factories: BundledLocalPolisherFactories {
     BundledLocalPolisherFactories(
@@ -100,8 +100,8 @@ final class LocalPolisherFactorySpy {
 /// An EG-1 server that is always ready. No server runs: the polisher below answers.
 @MainActor
 final class ReadyEGOneRuntime: EGOneEndpointProviding {
-  func activeEndpoint() async -> EGOneEndpoint? {
-    EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  func activeEndpoint() async -> LocalPolishEndpoint? {
+    LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
   }
 }
 

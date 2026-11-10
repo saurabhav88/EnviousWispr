@@ -263,7 +263,7 @@ public final class EGOneDeliveryAdapter {
       // fetch in flight has no entry, so the observer never fires for them —
       // and the old seed was gated on `isAdmitted`, which is false for exactly
       // that user because the pinned revision is the thing they lack. Neither
-      // path published anything, so the row kept `EGOneRuntime`'s initial
+      // path published anything, so the row kept `LocalPolishRuntime`'s initial
       // `.notInstalled` and the paused-update state could never appear on a
       // cold launch, which is the only moment it matters.
       //
@@ -356,7 +356,7 @@ public final class EGOneDeliveryAdapter {
     case .downloading(let fraction, _, _):
       // `upgrade` is nil HERE BY DESIGN, not by omission. This mapping is
       // stateless and per-tick; whether the download replaces a working older
-      // revision is a fact about the state we came FROM. `EGOneRuntime` owns
+      // revision is a fact about the state we came FROM. `LocalPolishRuntime` owns
       // that and enriches this value.
       return .downloading(fractionCompleted: fraction, upgrade: nil)
     case .verifying:

@@ -39,12 +39,12 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     // No manifest and no binary: `activateAndProbe` returns before claiming a
     // stamp, so every stamp counted below is a STOP.
     let coordinator = LocalPolishServerCoordinator()
-    let egOne = EGOneRuntime(
+    let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,
       provider: .egOne)
-    let s1Mini = EGOneRuntime(
+    let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       makeHealthProbe: LlamaServerHealthProbe.make,
       makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, coordinator: coordinator,

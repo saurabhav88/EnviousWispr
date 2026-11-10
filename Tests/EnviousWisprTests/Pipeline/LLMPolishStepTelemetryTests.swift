@@ -566,11 +566,11 @@ struct LLMPolishStepLanguageHintTests {
 
   @MainActor
   final class Runtime: EGOneEndpointProviding {
-    let endpoint: EGOneEndpoint?
+    let endpoint: LocalPolishEndpoint?
     init(ready: Bool = true, contextTokens: Int = 32768) {
-      endpoint = ready ? EGOneEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
+      endpoint = ready ? LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
     }
-    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+    func activeEndpoint() async -> LocalPolishEndpoint? { endpoint }
   }
 
   struct EchoPolisher: TranscriptPolisher {

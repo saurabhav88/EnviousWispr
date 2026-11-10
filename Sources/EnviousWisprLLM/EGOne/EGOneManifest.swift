@@ -18,7 +18,7 @@ import Foundation
 /// closed on `promptTemplateID` rather than on decode.
 public struct EGOneManifest: Codable, Sendable, Equatable {
   /// Canonical model name. MUST equal `LLMProvider.egOneModelName` for
-  /// Phase 1 — `EGOneRuntime` refuses activation on mismatch (Core and
+  /// Phase 1 — `LocalPolishRuntime` refuses activation on mismatch (Core and
   /// Services identify the provider's model by that fixed literal and
   /// cannot read this manifest; agreement is enforced here, the one layer
   /// that sees both).

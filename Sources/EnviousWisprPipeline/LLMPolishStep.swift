@@ -231,7 +231,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// endpoint; tests substitute a spy without a real server.
   /// #4473: the production connector is supplied through `localPolishers` at construction;
   /// this step names no engine and has no connector of its own to fall back to.
-  var makeEGOnePolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher
+  var makeEGOnePolisher: @MainActor (LocalPolishEndpoint) -> any TranscriptPolisher
 
   /// #3111 test seam: the English-stretch scan EG-1 language naming runs on the text it is
   /// about to send. Production reads the real recogniser.
@@ -243,7 +243,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// empty answer MEANS, and a single factory would put that decision in the
   /// pipeline instead of in the connector that owns it.
   /// #4473: supplied through `localPolishers` at construction, like EG-1's.
-  var makeS1MiniPolisher: @MainActor (EGOneEndpoint) -> any TranscriptPolisher
+  var makeS1MiniPolisher: @MainActor (LocalPolishEndpoint) -> any TranscriptPolisher
 
   /// #1305 test seam (mirrors `makeEGOnePolisher`): the Ollama readiness
   /// preflight consulted by the `.ollama` entry gate in `process()`.
@@ -1008,7 +1008,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // the same reason — the endpoint is live state, not a keychain lookup. What
     // differs is only WHICH runtime answers and WHICH connector reads the reply.
     let localServerHandles: (runtime: (any EGOneEndpointProviding)?,
-      make: (@MainActor (EGOneEndpoint) -> any TranscriptPolisher))? =
+      make: (@MainActor (LocalPolishEndpoint) -> any TranscriptPolisher))? =
       switch provider {
       case .egOne: (egOneRuntime, makeEGOnePolisher)
       case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
@@ -1023,7 +1023,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       guard let runtime = handles.runtime else {
         throw LLMError.localEngineSkipped(.notReady, provider)
       }
-      let endpoint: EGOneEndpoint?
+      let endpoint: LocalPolishEndpoint?
       if let owner = runtime as? any EGOneLeaseProviding {
         // #3988: admission, endpoint and the outside-stop evidence behind a miss
         // come from ONE decision, frozen here for this take before the skip is

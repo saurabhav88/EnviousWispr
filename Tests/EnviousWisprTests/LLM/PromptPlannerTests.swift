@@ -571,7 +571,7 @@ struct EGOneNamedLanguagePromptTests {
 
   @Test("The health probe's input renders exactly the 1.2 probe prompt under the new family")
   func healthProbeInputIsUnchanged() {
-    // `EGOneServerManager.probeHealth` builds with `DefaultPromptPlanner.builder(for:)` and an
+    // `LocalPolishProcessManager.probeHealth` builds with `DefaultPromptPlanner.builder(for:)` and an
     // input that never names a language, so switching the shipped family must not change
     // what the probe sends. The ready-state probe needs a live server; this pins the exact
     // builder call it makes instead.
