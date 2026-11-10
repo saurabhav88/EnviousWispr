@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprModelDelivery
 import Foundation
 
 /// Builds the launch arguments of the bundled `llama-server` (#4473).
@@ -89,20 +90,38 @@ public struct LlamaServerLaunchBuilder: Sendable {
     ]
   }
 
+  /// The launch spec for a bundled model on llama-server (#4473). `learnedWordAdapterURL` is the
+  /// adapter the caller wants loaded; a path the server cannot take (it holds `,` or `:`) yields
+  /// a spec WITHOUT the adapter, so the endpoint never claims a checker the launch did not load.
+  public static func makeSpec(
+    modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
+  ) -> LocalPolishLaunchSpec {
+    let baseArguments = engineArguments(for: modelID.provider)
+    let adapterArguments = launchArguments(
+      for: modelID.provider, learnedWordAdapterURL: learnedWordAdapterURL
+    ).dropFirst(baseArguments.count)
+    return LocalPolishLaunchSpec(
+      engineKind: .llamaServer, modelID: modelID, artifactIdentity: artifactIdentity,
+      serverBinaryURL: serverBinaryURL, modelURL: modelURL, contextTokens: contextTokens,
+      learnedWordAdapterURL: adapterArguments.isEmpty ? nil : learnedWordAdapterURL,
+      extraArguments: baseArguments, learnedWordAdapterArguments: Array(adapterArguments))
+  }
+
   /// The complete argument list for one spawn (#4473): model, loopback host, port, context
   /// capacity and bearer, then the engine's flags and the adapter's flags in that order. The
   /// port and bearer are chosen by the process manager for each spawn; they are not part of
-  /// the configuration. Renders the configuration it is GIVEN, so a bare-base fallback copy
-  /// (adapter arguments cleared) renders without the adapter.
+  /// the spec. Renders the spec it is GIVEN, so a bare-base fallback copy (adapter arguments
+  /// cleared) renders without the adapter.
   public static func arguments(
-    configuration: EGOneServerManager.Configuration, port: UInt16, authToken: String
+    spec: LocalPolishLaunchSpec, port: UInt16, authToken: String
   ) -> [String] {
     [
-      "-m", configuration.modelURL.path,
+      "-m", spec.modelURL.path,
       "--host", "127.0.0.1",
       "--port", String(port),
-      "-c", String(configuration.contextTokens),
+      "-c", String(spec.contextTokens),
       "--api-key", authToken,
-    ] + configuration.extraArguments + configuration.learnedWordAdapterArguments
+    ] + spec.extraArguments + spec.learnedWordAdapterArguments
   }
 }

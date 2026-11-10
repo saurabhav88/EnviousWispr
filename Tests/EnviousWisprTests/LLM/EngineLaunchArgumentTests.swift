@@ -96,22 +96,23 @@ struct EngineLaunchArgumentTests {
   @Test("the complete argument list for a spawn: model, host, port, context, bearer, then flags")
   func completeSpawnArguments() {
     let configuration = EGOneServerManager.Configuration(
-      serverBinaryURL: URL(fileURLWithPath: "/tmp/ew-args/server"),
-      modelURL: URL(fileURLWithPath: "/tmp/ew-args/model.gguf"), contextTokens: 16384,
-      makeArguments: LlamaServerLaunchBuilder.arguments,
-      extraArguments: ["-fa", "on", "--spec-type", "ngram-simple"],
-      learnedWordAdapterURL: URL(fileURLWithPath: "/tmp/ew-args/checker.gguf"),
-      learnedWordAdapterArguments: ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"])
+      spec: .fixture(
+        serverBinaryURL: URL(fileURLWithPath: "/tmp/ew-args/server"),
+        modelURL: URL(fileURLWithPath: "/tmp/ew-args/model.gguf"), contextTokens: 16384,
+        learnedWordAdapterURL: URL(fileURLWithPath: "/tmp/ew-args/checker.gguf"),
+        extraArguments: ["-fa", "on", "--spec-type", "ngram-simple"],
+        learnedWordAdapterArguments: ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"]),
+      makeArguments: LlamaServerLaunchBuilder.arguments)
     let base = [
       "-m", "/tmp/ew-args/model.gguf", "--host", "127.0.0.1", "--port", "51234",
       "-c", "16384", "--api-key", "bearer-1", "-fa", "on", "--spec-type", "ngram-simple",
     ]
 
     #expect(
-      configuration.makeArguments(configuration, 51234, "bearer-1")
+      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
         == base + ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"])
     // The bare-base fallback copy renders without the adapter's flags.
     let fallback = configuration.withoutLearnedWordAdapter()
-    #expect(fallback.makeArguments(fallback, 51234, "bearer-1") == base)
+    #expect(fallback.makeArguments(fallback.spec, 51234, "bearer-1") == base)
   }
 }

@@ -28,7 +28,9 @@ import os
 /// Nil-as-absence is the whole point — "stop" and "start" become one value, so
 /// a caller states an intent rather than issuing two commands that can cross.
 public struct LocalPolishTarget: Sendable {
-  public let provider: LLMProvider
+  /// The provider of the model this target launches (#4473): read from the launch spec, so a
+  /// target cannot name one provider and launch another's model.
+  public var provider: LLMProvider { configuration.spec.modelID.provider }
   public let configuration: EGOneServerManager.Configuration
   /// Set only by delivery's adapter-availability signal. A resident server that
   /// fell back to the bare base keeps the requested adapter URL, so an ordinary
@@ -37,10 +39,8 @@ public struct LocalPolishTarget: Sendable {
   public let retriesAdapterFallback: Bool
 
   public init(
-    provider: LLMProvider, configuration: EGOneServerManager.Configuration,
-    retriesAdapterFallback: Bool = false
+    configuration: EGOneServerManager.Configuration, retriesAdapterFallback: Bool = false
   ) {
-    self.provider = provider
     self.configuration = configuration
     self.retriesAdapterFallback = retriesAdapterFallback
   }
@@ -439,13 +439,15 @@ public actor LocalPolishServerCoordinator {
     // A ready start cannot change argv. Adapter arrival/removal is an explicit
     // stop and boot, and neither that nor a model switch may evict a pinned
     // take or import. The release callback retries the latest deferred intent.
+    // #4473: the REQUESTED launch specs are compared, so any difference in what would run
+    // (model, bytes, context, flags, checker) is a different process. The adapter-fallback
+    // retry stays a separate, explicit condition: a resident that fell back keeps its requested
+    // spec, so equal specs alone would never retry and an ordinary restatement must not.
     let changesProcess =
       resident != nil
-      && (resident != target?.provider
-        || residentTarget?.configuration.learnedWordAdapterURL
-          != target?.configuration.learnedWordAdapterURL
+      && (residentTarget?.configuration.spec != target?.configuration.spec
         || (residentAdapterFellBack && target?.retriesAdapterFallback == true
-          && target?.configuration.learnedWordAdapterURL != nil))
+          && target?.configuration.spec.learnedWordAdapterURL != nil))
     let heldByAnotherSummary = summaryReservation != nil && !ownsReservation
     // Anyone but the holder starting any process during the summary, even the same model
     // from nothing, would race the holder's load.
@@ -512,16 +514,16 @@ public actor LocalPolishServerCoordinator {
     if resident == provider {
       let reason = await manager.checkerFailureReason
       guard resident == provider,
-        residentTarget?.configuration.learnedWordAdapterURL
-          == target.configuration.learnedWordAdapterURL
+        residentTarget?.configuration.spec == target.configuration.spec
       else { return }
       if let reason {
         recordedCheckerFailures[provider] = reason
-      } else if target.configuration.learnedWordAdapterURL != nil {
+      } else if target.configuration.spec.learnedWordAdapterURL != nil {
         recordedCheckerFailures[provider] = nil
       }
       // Every manager failure reason is a bare-base fallback of an adapter boot.
-      residentAdapterFellBack = reason != nil && target.configuration.learnedWordAdapterURL != nil
+      residentAdapterFellBack =
+        reason != nil && target.configuration.spec.learnedWordAdapterURL != nil
     }
   }
 

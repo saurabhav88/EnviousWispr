@@ -22,11 +22,12 @@ struct LocalPolishServerCoordinatorTests {
   /// reason the manager takes an injectable configuration.
   static func target(_ provider: LLMProvider, _ name: String) -> LocalPolishTarget {
     LocalPolishTarget(
-      provider: provider,
       configuration: EGOneServerManager.Configuration(
-        serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
-        modelURL: URL(fileURLWithPath: "/nonexistent/\(name).gguf"),
-        contextTokens: 8192,
+        spec: .fixture(
+          modelID: .singleModel(for: provider),
+          serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
+          modelURL: URL(fileURLWithPath: "/nonexistent/\(name).gguf"),
+          contextTokens: 8192),
         makeArguments: LlamaServerLaunchBuilder.arguments,
         readinessBudgetSeconds: 1))
   }

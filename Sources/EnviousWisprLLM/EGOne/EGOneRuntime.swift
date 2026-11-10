@@ -984,44 +984,34 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       serverBinaryURL: serverBinaryURL,
       // Delivery exposes the verified admitted entrypoint, not a discovered file.
       modelURL: delivery.installedArtifactURL,
-      contextTokens: manifest.contextTokens)
+      contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     guard generation == activationGeneration else { return }
     await server.transition(
       to: .run(
         LocalPolishTarget(
-          provider: provider, configuration: configuration,
-          retriesAdapterFallback: retriesAdapterFallback)),
+          configuration: configuration, retriesAdapterFallback: retriesAdapterFallback)),
       intent: intent)
   }
 
   /// Internal seam tests can use without staging a multi-shard base model.
   func makeServerConfiguration(
-    serverBinaryURL: URL, modelURL: URL, contextTokens: Int
+    serverBinaryURL: URL, modelURL: URL, contextTokens: Int, artifactIdentity: ModelIdentity
   ) async -> EGOneServerManager.Configuration {
     // Each bundled engine's runtime owns its own adapter provider (#3105: EG-1's
     // eg1c, S1-mini's D5); a runtime built without one boots without an adapter.
     let adapterURL = await learnedWordAdapterProvider()
-    let baseArguments = LlamaServerLaunchBuilder.engineArguments(for: provider)
-    let adapterArguments = LlamaServerLaunchBuilder.launchArguments(
-      for: provider, learnedWordAdapterURL: adapterURL
-    ).dropFirst(baseArguments.count)
+    let spec = LlamaServerLaunchBuilder.makeSpec(
+      modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
+      modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL)
     // A path the server cannot take boots the engine without its checker, and
     // the endpoint must then not claim an adapter the requests would name.
-    let loadedAdapterURL = adapterArguments.isEmpty ? nil : adapterURL
-    if adapterURL != nil, loadedAdapterURL == nil {
+    if adapterURL != nil, spec.learnedWordAdapterURL == nil {
       await AppLogger.shared.log(
         "Learned-word checker adapter not loaded: its path holds ',' or ':'",
         level: .info, category: "LLM")
     }
     return EGOneServerManager.Configuration(
-      serverBinaryURL: serverBinaryURL,
-      modelURL: modelURL,
-      contextTokens: contextTokens,
-      makeArguments: LlamaServerLaunchBuilder.arguments,
-      extraArguments: baseArguments,
-      learnedWordAdapterURL: loadedAdapterURL,
-      learnedWordAdapterArguments: Array(adapterArguments)
-    )
+      spec: spec, makeArguments: LlamaServerLaunchBuilder.arguments)
   }
 
   // MARK: - EGOneEndpointProviding (pipeline seam)
@@ -1095,9 +1085,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
     await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
       serverBinaryURL: serverBinaryURL, modelURL: delivery.installedArtifactURL,
-      contextTokens: manifest.contextTokens)
+      contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     await server.transition(
-      to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+      to: .run(LocalPolishTarget(configuration: configuration)),
       intent: intent, reservation: reservation)
     return await server.endpoint(for: provider)
   }

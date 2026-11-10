@@ -17,9 +17,9 @@ struct EGOneServerManagerTests {
   /// that dies during startup. The readiness budget is shrunk to seconds so
   /// never-healthy cases fail fast (the manager also bails as soon as the
   /// child dies, so these tests do not burn the budget at all).
-  static func fakeServerConfiguration(modelExists: Bool = true) throws
-    -> EGOneServerManager.Configuration
-  {
+  static func fakeServerConfiguration(
+    modelExists: Bool = true, serverBinaryURL: URL = URL(fileURLWithPath: "/bin/sleep")
+  ) throws -> EGOneServerManager.Configuration {
     let dir = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -28,9 +28,7 @@ struct EGOneServerManagerTests {
       try Data("fake".utf8).write(to: model)
     }
     return EGOneServerManager.Configuration(
-      serverBinaryURL: URL(fileURLWithPath: "/bin/sleep"),
-      modelURL: model,
-      contextTokens: 4096,
+      spec: .fixture(serverBinaryURL: serverBinaryURL, modelURL: model, contextTokens: 4096),
       makeArguments: LlamaServerLaunchBuilder.arguments,
       readinessBudgetSeconds: 3
     )
@@ -38,8 +36,8 @@ struct EGOneServerManagerTests {
 
   @Test func missingBinaryFailsClosed() async throws {
     let manager = EGOneServerManager()
-    var config = try Self.fakeServerConfiguration()
-    config.serverBinaryURL = URL(fileURLWithPath: "/nonexistent/llama-server")
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
     let state = await manager.state
     #expect(state == .failed(reason: "server_binary_missing"))
@@ -72,8 +70,8 @@ struct EGOneServerManagerTests {
   @Test func healthProjectionsForNonReadyStates() async throws {
     let manager = EGOneServerManager()
     // failed state → red with the failure reason
-    var config = try Self.fakeServerConfiguration()
-    config.serverBinaryURL = URL(fileURLWithPath: "/nonexistent/llama-server")
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
     let health = await manager.probeHealth(promptFamily: .egOneFixed, spec: .egOne)
     #expect(health == .red(reason: "server_binary_missing"))
@@ -85,10 +83,9 @@ struct EGOneServerManagerTests {
   /// the manager observes the death during `starting` and fails closed.
   @Test func serverThatDiesDuringStartFailsClosed() async throws {
     let manager = EGOneServerManager()
-    var config = try Self.fakeServerConfiguration()
     // /bin/true exits immediately — a spawn that dies during startup.
-    config.serverBinaryURL = URL(fileURLWithPath: "/usr/bin/true")
-    config.extraArguments = []
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/usr/bin/true"))
     await manager.start(configuration: config)
     // Process death is observed asynchronously via `terminationHandler`, so
     // `start()` can return before the terminal `.failed` state lands. Poll the

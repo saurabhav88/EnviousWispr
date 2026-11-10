@@ -140,47 +140,36 @@ public actor EGOneServerManager {
   /// fake server binary (plan §11: spawn/crash/restart-once/port-conflict/
   /// memory-pressure tests without a 2.7 GB model).
   public struct Configuration: Sendable {
-    public var serverBinaryURL: URL
-    public var modelURL: URL
-    public var contextTokens: Int
-    public var learnedWordAdapterURL: URL?
-    /// Arguments that belong only to the adapter, removed for fallback.
-    public var learnedWordAdapterArguments: [String]
-    /// Extra launch arguments appended after the standard set.
-    public var extraArguments: [String]
+    /// What to launch (#4473). The stable launch inputs live here once; this wrapper adds only
+    /// how to execute them.
+    public var spec: LocalPolishLaunchSpec
     /// Seconds to wait for the HTTP surface after spawn (model load takes
     /// seconds on a real machine). Tests shrink this so a fake server that
     /// never binds fails fast instead of stalling the suite.
     public var readinessBudgetSeconds: Int
     /// Captured by the coordinator at launch, never inferred from a later selection.
     public var owningProvider: LLMProvider?
-    /// Renders the child's argument list from the configuration being spawned, the port and the
-    /// bearer chosen for that spawn (#4473). Required, with no default: the process manager
-    /// knows no engine's command line, so each engine supplies its own.
-    public var makeArguments: @Sendable (Configuration, UInt16, String) -> [String]
+    /// Renders the child's argument list from the spec being spawned, the port and the bearer
+    /// chosen for that spawn (#4473). Required, with no default: the process manager knows no
+    /// engine's command line, so each engine supplies its own.
+    public var makeArguments: @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String]
 
     public init(
-      serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
-      makeArguments: @escaping @Sendable (Configuration, UInt16, String) -> [String],
-      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
-      learnedWordAdapterURL: URL? = nil,
-      learnedWordAdapterArguments: [String] = [], owningProvider: LLMProvider? = nil
+      spec: LocalPolishLaunchSpec,
+      makeArguments: @escaping @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String],
+      readinessBudgetSeconds: Int = 60, owningProvider: LLMProvider? = nil
     ) {
-      self.serverBinaryURL = serverBinaryURL
-      self.modelURL = modelURL
-      self.contextTokens = contextTokens
-      self.learnedWordAdapterURL = learnedWordAdapterURL
-      self.learnedWordAdapterArguments = learnedWordAdapterArguments
-      self.extraArguments = extraArguments
+      self.spec = spec
       self.readinessBudgetSeconds = readinessBudgetSeconds
       self.owningProvider = owningProvider
       self.makeArguments = makeArguments
     }
 
+    /// The execution copy for a bare-base fallback: the same controls, the spec without its
+    /// adapter. The caller's requested configuration is not changed.
     func withoutLearnedWordAdapter() -> Configuration {
       var fallback = self
-      fallback.learnedWordAdapterURL = nil
-      fallback.learnedWordAdapterArguments = []
+      fallback.spec = spec.withoutLearnedWordAdapter()
       return fallback
     }
   }
@@ -461,20 +450,20 @@ public actor EGOneServerManager {
     owner = configuration.owningProvider
     transition(to: .starting)
 
-    guard FileManager.default.fileExists(atPath: configuration.serverBinaryURL.path) else {
+    guard FileManager.default.fileExists(atPath: configuration.spec.serverBinaryURL.path) else {
       transition(to: .failed(reason: "server_binary_missing"))
       return
     }
     // A previous app instance that CRASHED (bypassing applicationWillTerminate)
     // may have orphaned its server; reap it before spawning ours.
     Self.killStaleServers(
-      binaryPath: configuration.serverBinaryURL.path, initiator: configuration.owningProvider,
+      binaryPath: configuration.spec.serverBinaryURL.path, initiator: configuration.owningProvider,
       generation: generation, report: onProcessFailure)
-    guard FileManager.default.fileExists(atPath: configuration.modelURL.path) else {
+    guard FileManager.default.fileExists(atPath: configuration.spec.modelURL.path) else {
       transition(to: .failed(reason: "model_missing"))
       return
     }
-    if let adapter = configuration.learnedWordAdapterURL,
+    if let adapter = configuration.spec.learnedWordAdapterURL,
       !FileManager.default.fileExists(atPath: adapter.path)
     {
       checkerFailureReason = .adapterMissing
@@ -491,8 +480,8 @@ public actor EGOneServerManager {
     let token = UUID().uuidString + UUID().uuidString
 
     let proc = Process()
-    proc.executableURL = configuration.serverBinaryURL
-    proc.arguments = configuration.makeArguments(configuration, port, token)
+    proc.executableURL = configuration.spec.serverBinaryURL
+    proc.arguments = configuration.makeArguments(configuration.spec, port, token)
     // The server's stdout/stderr are noise for us; route to null so the
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice
@@ -525,8 +514,8 @@ public actor EGOneServerManager {
     installMemoryPressureSource()
 
     let endpoint = EGOneEndpoint(
-      port: port, authToken: token, contextTokens: configuration.contextTokens,
-      hasLearnedWordAdapter: configuration.learnedWordAdapterURL != nil)
+      port: port, authToken: token, contextTokens: configuration.spec.contextTokens,
+      hasLearnedWordAdapter: configuration.spec.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
     // poll /health until 200, the process dying, or budget exhausted).
     let healthy = await Self.awaitServerUp(
@@ -540,7 +529,7 @@ public actor EGOneServerManager {
     // down the successor's process (#1271 matrix gap 1).
     guard generation == launchGeneration else { return }
     guard healthy else {
-      if configuration.learnedWordAdapterURL != nil {
+      if configuration.spec.learnedWordAdapterURL != nil {
         checkerFailureReason = proc.isRunning ? .adapterServerNeverReady : .adapterServerExited
         tearDownProcess()
         await spawn(configuration: configuration.withoutLearnedWordAdapter())
@@ -557,7 +546,7 @@ public actor EGOneServerManager {
     // A child can answer /health and exit before promotion. It never became
     // a ready process, so an adapter launch still needs the bare-base retry.
     guard case .starting = state, proc.isRunning else {
-      if configuration.learnedWordAdapterURL != nil {
+      if configuration.spec.learnedWordAdapterURL != nil {
         checkerFailureReason = .adapterServerExited
         tearDownProcess()
         await spawn(configuration: configuration.withoutLearnedWordAdapter())

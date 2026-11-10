@@ -121,13 +121,15 @@ struct ChildProcessFailureTests {
     let missingRoot = TestTemporaryDirectory.url
       .appendingPathComponent("ew3685-\(UUID().uuidString)", isDirectory: true)
     try #require(!FileManager.default.fileExists(atPath: missingRoot.path))
-    let configuration = EGOneServerManager.Configuration(
-      serverBinaryURL: missingRoot.appendingPathComponent("server"),
-      modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048,
-      makeArguments: LlamaServerLaunchBuilder.arguments)
     for provider in [LLMProvider.egOne, .s1Mini] {
+      let configuration = EGOneServerManager.Configuration(
+        spec: .fixture(
+          modelID: .singleModel(for: provider),
+          serverBinaryURL: missingRoot.appendingPathComponent("server"),
+          modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048),
+        makeArguments: LlamaServerLaunchBuilder.arguments)
       await coordinator.transition(
-        to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+        to: .run(LocalPolishTarget(configuration: configuration)),
         intent: coordinator.claimIntent())
       let resident = await coordinator.residentModelForTesting
       #expect(resident == provider)

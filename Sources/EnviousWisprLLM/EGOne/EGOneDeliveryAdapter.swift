@@ -76,6 +76,11 @@ public final class EGOneDeliveryAdapter {
     return registration.installDirectory.appendingPathComponent(installName)
   }
 
+  /// The identity of the registration this adapter delivers (#4473). It names WHICH artifact a
+  /// launch serves; that its bytes are admitted is established by `adoptIfPresent()` and
+  /// `ensureAvailable`, not by reading this.
+  var modelIdentity: ModelIdentity { registration.manifest.identity }
+
   /// The D5 kill-switch, read fresh per call (relaunch-free). Disabled ⇒ no
   /// delivery mutation (#1363 §16.6). Internal: EG-1's flag gates only the
   /// adapter's own ensure/repair/remove (unlike Parakeet, whose engine adapter

@@ -15,7 +15,7 @@ struct EGOneAdapterLifecycleTests {
   /// adapter-failure marker makes only --lora-scaled launches exit before readiness.
   /// Shared with `EGOneOutsideStopRecoveryTests` below, which needs the same
   /// fake server to be stopped from outside once it is ready (#3988).
-  fileprivate struct Fixture {
+  struct Fixture {
     let root: URL
     let binary: URL
     let model: URL
@@ -99,19 +99,22 @@ struct EGOneAdapterLifecycleTests {
         [.posixPermissions: 0o755], ofItemAtPath: binary.path)
     }
 
-    func configuration(adapterURL: URL? = nil) -> EGOneServerManager.Configuration {
+    func configuration(
+      provider: LLMProvider = .egOne, adapterURL: URL? = nil, readinessBudgetSeconds: Int = 4
+    ) -> EGOneServerManager.Configuration {
       EGOneServerManager.Configuration(
-        serverBinaryURL: binary, modelURL: model, contextTokens: 4096,
+        spec: .fixture(
+          modelID: .singleModel(for: provider), serverBinaryURL: binary, modelURL: model,
+          contextTokens: 4096, learnedWordAdapterURL: adapterURL,
+          extraArguments: LlamaServerLaunchBuilder.engineArguments(for: provider),
+          learnedWordAdapterArguments: adapterURL.map {
+            Array(
+              LlamaServerLaunchBuilder.launchArguments(
+                for: .egOne, learnedWordAdapterURL: $0
+              ).dropFirst(6))
+          } ?? []),
         makeArguments: LlamaServerLaunchBuilder.arguments,
-        extraArguments: LlamaServerLaunchBuilder.engineArguments(for: .egOne),
-        readinessBudgetSeconds: 4,
-        learnedWordAdapterURL: adapterURL,
-        learnedWordAdapterArguments: adapterURL.map {
-          Array(
-            LlamaServerLaunchBuilder.launchArguments(
-              for: .egOne, learnedWordAdapterURL: $0
-            ).dropFirst(6))
-        } ?? [])
+        readinessBudgetSeconds: readinessBudgetSeconds)
     }
 
     func launches() throws -> [[String]] {
@@ -146,39 +149,42 @@ struct EGOneAdapterLifecycleTests {
       })
     let binary = URL(fileURLWithPath: "/fake/server")
     let model = URL(fileURLWithPath: "/fake/base.gguf")
+    let identity = ModelIdentity(
+      family: .egOne, name: "fixture", revision: "fixture-a", variant: "fixture",
+      runtimeABI: "fixture")
     let first = await egOne.makeServerConfiguration(
-      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
     available = URL(fileURLWithPath: "/fake/checker.gguf")
     let second = await egOne.makeServerConfiguration(
-      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
     #expect(calls == 2)
-    #expect(first.learnedWordAdapterURL == nil)
-    #expect(second.learnedWordAdapterURL == available)
+    #expect(first.spec.learnedWordAdapterURL == nil)
+    #expect(second.spec.learnedWordAdapterURL == available)
     // #3105: S1-mini boots with its own D5 adapter from its own provider.
     let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
     let s1 = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
       learnedWordAdapterProvider: { d5 })
     let s1Config = await s1.makeServerConfiguration(
-      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
-    #expect(s1Config.learnedWordAdapterURL == d5)
-    #expect(s1Config.extraArguments == LlamaServerLaunchBuilder.engineArguments(for: .s1Mini))
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
+    #expect(s1Config.spec.learnedWordAdapterURL == d5)
+    #expect(s1Config.spec.extraArguments == LlamaServerLaunchBuilder.engineArguments(for: .s1Mini))
     // A runtime built without a provider boots bare.
     let bare = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini)
     let bareConfig = await bare.makeServerConfiguration(
-      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
-    #expect(bareConfig.learnedWordAdapterURL == nil)
-    #expect(bareConfig.learnedWordAdapterArguments.isEmpty)
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
+    #expect(bareConfig.spec.learnedWordAdapterURL == nil)
+    #expect(bareConfig.spec.learnedWordAdapterArguments.isEmpty)
     // A path the server cannot split boots without the checker, and the endpoint
     // does not claim an adapter the requests would name.
     let unsplittable = EGOneRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil, provider: .s1Mini,
       learnedWordAdapterProvider: { URL(fileURLWithPath: "/fake/a,b/s1-d5.gguf") })
     let refused = await unsplittable.makeServerConfiguration(
-      serverBinaryURL: binary, modelURL: model, contextTokens: 4096)
-    #expect(refused.learnedWordAdapterURL == nil)
-    #expect(refused.learnedWordAdapterArguments.isEmpty)
+      serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
+    #expect(refused.spec.learnedWordAdapterURL == nil)
+    #expect(refused.spec.learnedWordAdapterArguments.isEmpty)
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")
@@ -276,8 +282,8 @@ struct EGOneAdapterLifecycleTests {
     let manager = EGOneServerManager()
     defer { fixture.cleanup() }
     try Data().write(to: fixture.root.appendingPathComponent("hang_adapter"))
-    var configuration = fixture.configuration(adapterURL: fixture.adapter)
-    configuration.readinessBudgetSeconds = 3
+    let configuration = fixture.configuration(
+      adapterURL: fixture.adapter, readinessBudgetSeconds: 3)
     await manager.start(configuration: configuration)
     #expect(await manager.activeEndpoint()?.hasLearnedWordAdapter == false)
     #expect(await manager.checkerFailureReason == .adapterServerNeverReady)
@@ -293,7 +299,7 @@ struct EGOneAdapterLifecycleTests {
     let marker = fixture.root.appendingPathComponent("fail_adapter")
     try Data().write(to: marker)
     let adapted = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
+      configuration: fixture.configuration(adapterURL: fixture.adapter))
     await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == false)
     #expect(try fixture.launches().count == 2)
@@ -304,7 +310,7 @@ struct EGOneAdapterLifecycleTests {
     #expect(try fixture.launches().count == 2)
 
     let signalled = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter),
+      configuration: fixture.configuration(adapterURL: fixture.adapter),
       retriesAdapterFallback: true)
     await coordinator.transition(to: .run(signalled), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne)?.hasLearnedWordAdapter == true)
@@ -343,9 +349,9 @@ struct EGOneAdapterLifecycleTests {
     let fixture = try Fixture()
     let coordinator = LocalPolishServerCoordinator()
     defer { fixture.cleanup() }
-    let bare = LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())
+    let bare = LocalPolishTarget(configuration: fixture.configuration())
     let adapted = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
+      configuration: fixture.configuration(adapterURL: fixture.adapter))
     await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
     let hold = try #require(
       await EGOneLearnedWordChecker.hold(on: CoordinatorServer(coordinator)))
@@ -363,9 +369,7 @@ struct EGOneAdapterLifecycleTests {
   }
 
   fileprivate static func s1Target(_ fixture: Fixture) -> LocalPolishTarget {
-    var configuration = fixture.configuration()
-    configuration.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
-    return LocalPolishTarget(provider: .s1Mini, configuration: configuration)
+    LocalPolishTarget(configuration: fixture.configuration(provider: .s1Mini))
   }
 
   /// An EG-1 summary holding a running EG-1, with dictation's S1-mini deferred behind it.
@@ -373,7 +377,7 @@ struct EGOneAdapterLifecycleTests {
     _ fixture: Fixture, _ coordinator: LocalPolishServerCoordinator
   ) async throws -> LocalPolishSummaryReservation {
     await coordinator.transition(
-      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      to: .run(LocalPolishTarget(configuration: fixture.configuration())),
       intent: coordinator.claimIntent())
     guard case .granted(let reservation) = await coordinator.reserveForSummary(.egOne) else {
       throw CancellationError()
@@ -419,12 +423,11 @@ struct EGOneAdapterLifecycleTests {
     let fixture = try Fixture()
     let coordinator = LocalPolishServerCoordinator()
     defer { fixture.cleanup() }
-    let bare = LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())
+    let bare = LocalPolishTarget(configuration: fixture.configuration())
     let adapted = LocalPolishTarget(
-      provider: .egOne, configuration: fixture.configuration(adapterURL: fixture.adapter))
-    var s1Config = fixture.configuration()
-    s1Config.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
-    let s1 = LocalPolishTarget(provider: .s1Mini, configuration: s1Config)
+      configuration: fixture.configuration(adapterURL: fixture.adapter))
+    let s1Config = fixture.configuration(provider: .s1Mini)
+    let s1 = LocalPolishTarget(configuration: s1Config)
     await coordinator.transition(to: .run(bare), intent: coordinator.claimIntent())
     await coordinator.transition(to: .run(s1), intent: coordinator.claimIntent())
     #expect(await coordinator.endpoint(for: .egOne) == nil)
@@ -723,7 +726,7 @@ struct EGOneOutsideStopRecoveryTests {
     defer { fixture.cleanup() }
     await coordinator.setStateObserver(for: .egOne) { egOne.record($0.lifecycle) }
     await coordinator.setStateObserver(for: .s1Mini) { s1Mini.record($0.lifecycle) }
-    let target = LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())
+    let target = LocalPolishTarget(configuration: fixture.configuration())
 
     await coordinator.transition(to: .run(target), intent: coordinator.claimIntent())
     try #require(await coordinator.endpoint(for: .egOne) != nil, "fake server never became ready")
@@ -967,17 +970,16 @@ struct EGOneRecordingRecoveryTests {
     let fixture = try Fixture()
     let coordinator = LocalPolishServerCoordinator()
     defer { fixture.cleanup() }
-    var s1Config = fixture.configuration()
-    s1Config.extraArguments = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
+    let s1Config = fixture.configuration(provider: .s1Mini)
     let eventsBox = OSAllocatedUnfairLock(initialState: [LocalPolishLifecycleEvent]())
     await coordinator.setStateObserver(for: .egOne) { event in
       eventsBox.withLock { $0.append(event) }
     }
     await coordinator.transition(
-      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      to: .run(LocalPolishTarget(configuration: fixture.configuration())),
       intent: coordinator.claimIntent())
     await coordinator.transition(
-      to: .run(LocalPolishTarget(provider: .s1Mini, configuration: s1Config)),
+      to: .run(LocalPolishTarget(configuration: s1Config)),
       intent: coordinator.claimIntent())
     let events = eventsBox.withLock { $0 }
     let lastStop = try #require(events.last { $0.lifecycle == .stopped })
@@ -1401,7 +1403,7 @@ extension EGOneAdapterLifecycleTests {
     defer { fixture.cleanup() }
     let coordinator = LocalPolishServerCoordinator()
     await coordinator.transition(
-      to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+      to: .run(LocalPolishTarget(configuration: fixture.configuration())),
       intent: coordinator.claimIntent())
     let gate = ParkedProbe()
     let spec = EGOneServerManager.ProbeSpec(
@@ -1504,7 +1506,7 @@ extension EGOneAdapterLifecycleTests {
       try Self.processingSlots.write(to: fixture.root.appendingPathComponent("slots.json"))
       let coordinator = LocalPolishServerCoordinator()
       await coordinator.transition(
-        to: .run(LocalPolishTarget(provider: .egOne, configuration: fixture.configuration())),
+        to: .run(LocalPolishTarget(configuration: fixture.configuration())),
         intent: coordinator.claimIntent())
       guard case .observed(let snapshot) = await coordinator.observeSlotsForDebug(for: .egOne)
       else {
