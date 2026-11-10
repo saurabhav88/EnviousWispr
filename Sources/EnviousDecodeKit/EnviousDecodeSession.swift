@@ -67,7 +67,8 @@ package final class EnviousDecodeSession {
   /// also applies the folder's quantization settings); the draft model is loaded by
   /// `DFlashDraftLoader`. Any failure is thrown.
   ///
-  /// Async only because the library's registry is an actor. It starts no task of its own.
+  /// Async because it awaits the library's registry (an actor) and its weight loader. It
+  /// starts no task of its own.
   package static func load(
     targetDirectory: URL, draftDirectory: URL
   ) async throws -> EnviousDecodeSession {
@@ -76,8 +77,16 @@ package final class EnviousDecodeSession {
     let base = try JSONDecoder().decode(BaseConfiguration.self, from: configuration)
     let model = try await LLMTypeRegistry.shared.createModel(
       configuration: configuration, modelType: base.modelType)
-    guard let target = model as? any DFlashTargetModel else {
-      throw EnviousDecodeSessionError.targetUnsupported(modelType: base.modelType)
+    // The polish models this engine pairs with a draft, named one by one. A cast to the
+    // protocol alone (`as? any DFlashTargetModel`) is a run-time lookup that names nothing at
+    // link time: in the helper, where the kit is linked statically, the file that makes these
+    // models conform was then left out of the binary and every model was refused (found by
+    // starting the built helper). Naming the types here keeps that file in.
+    let target: any DFlashTargetModel
+    switch model {
+    case let model as Qwen35Model: target = model
+    case let model as Qwen35TextModel: target = model
+    default: throw EnviousDecodeSessionError.targetUnsupported(modelType: base.modelType)
     }
     try await loadWeights(
       modelDirectory: targetDirectory, model: model, quantization: base.quantization,

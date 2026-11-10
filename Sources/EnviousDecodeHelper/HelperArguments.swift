@@ -1,0 +1,98 @@
+import Foundation
+
+/// What the app tells the helper when it starts it. Every value is required and checked before
+/// any model file is read. The bearer token is never printed, in an error or anywhere else.
+struct HelperArguments: Equatable {
+  /// The polish model's folder.
+  let modelFolder: URL
+  /// The draft model's folder.
+  let draftFolder: URL
+  /// The model name a request must ask for.
+  let modelName: String
+  /// The loopback port to listen on.
+  let port: UInt16
+  /// The bearer token every request must carry.
+  let token: String
+  /// The most tokens a prompt and its answer may have together.
+  let contextTokens: Int
+  /// MLX's buffer cache limit, in bytes, set before a model is loaded.
+  let cacheLimitBytes: Int
+
+  enum ParseError: Error, Equatable, CustomStringConvertible {
+    case unknownArgument(String)
+    case missingValue(String)
+    case repeated(String)
+    case missing(String)
+    case invalid(name: String, reason: String)
+
+    var description: String {
+      switch self {
+      case .unknownArgument(let name): "unknown argument \(name)"
+      case .missingValue(let name): "\(name) needs a value"
+      case .repeated(let name): "\(name) is given twice"
+      case .missing(let name): "\(name) is required"
+      case .invalid(let name, let reason): "\(name): \(reason)"
+      }
+    }
+  }
+
+  static let usage =
+    "usage: envious-decode --model <folder> --draft-model <folder> --model-name <name> "
+    + "--port <1-65535> --token <bearer> --ctx-size <tokens> --cache-limit-bytes <bytes>"
+
+  static let names: Set<String> = [
+    "--model", "--draft-model", "--model-name", "--port", "--token", "--ctx-size",
+    "--cache-limit-bytes",
+  ]
+
+  static func parse(_ arguments: [String]) throws -> HelperArguments {
+    var values: [String: String] = [:]
+    var index = 0
+    while index < arguments.count {
+      let name = arguments[index]
+      guard names.contains(name) else {
+        // A stray value could be the token in the wrong place, so only an option-like word is
+        // named; anything else is reported by its position.
+        let optionLike =
+          name.hasPrefix("--") && name.dropFirst(2).allSatisfy { $0.isLetter || $0 == "-" }
+        throw ParseError.unknownArgument(optionLike ? name : "at position \(index + 1)")
+      }
+      guard index + 1 < arguments.count else { throw ParseError.missingValue(name) }
+      guard values[name] == nil else { throw ParseError.repeated(name) }
+      values[name] = arguments[index + 1]
+      index += 2
+    }
+    func value(_ name: String) throws -> String {
+      guard let value = values[name] else { throw ParseError.missing(name) }
+      return value
+    }
+    func folder(_ name: String) throws -> URL {
+      let path = try value(name)
+      var isDirectory: ObjCBool = false
+      guard path.hasPrefix("/"),
+        FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+        isDirectory.boolValue
+      else { throw ParseError.invalid(name: name, reason: "not an existing folder path") }
+      return URL(fileURLWithPath: path, isDirectory: true)
+    }
+    func number(_ name: String, in range: ClosedRange<Int>) throws -> Int {
+      guard let number = Int(try value(name)), range.contains(number) else {
+        throw ParseError.invalid(
+          name: name,
+          reason: "must be a whole number from \(range.lowerBound) to \(range.upperBound)")
+      }
+      return number
+    }
+    let modelName = try value("--model-name")
+    guard !modelName.isEmpty else {
+      throw ParseError.invalid(name: "--model-name", reason: "is empty")
+    }
+    let token = try value("--token")
+    guard !token.isEmpty else { throw ParseError.invalid(name: "--token", reason: "is empty") }
+    return HelperArguments(
+      modelFolder: try folder("--model"), draftFolder: try folder("--draft-model"),
+      modelName: modelName, port: UInt16(try number("--port", in: 1...65_535)), token: token,
+      contextTokens: try number("--ctx-size", in: 1...1_048_576),
+      cacheLimitBytes: try number("--cache-limit-bytes", in: 0...Int.max))
+  }
+}
