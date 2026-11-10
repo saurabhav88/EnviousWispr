@@ -189,7 +189,9 @@ struct LocalPolishModuleBoundaryTests {
   /// What `EnviousDecodeKit` may import: Foundation and MLX's array, layer and language-model
   /// libraries. No app module. The kit runs inside the helper process, so an app module there
   /// would bring app state and app policy into a process built to hold only the model.
-  static let decodeKitPermitted: Set<String> = ["Foundation", "MLX", "MLXLMCommon", "MLXNN"]
+  static let decodeKitPermitted: Set<String> = [
+    "Foundation", "MLX", "MLXLLM", "MLXLMCommon", "MLXNN",
+  ]
   /// The engine's modules share this prefix: the kit and the helper executable.
   static let decodeModulePrefix = "EnviousDecode"
 
@@ -209,11 +211,11 @@ struct LocalPolishModuleBoundaryTests {
 
     // Controls: both readers report each import shape, and neither reads comments or strings.
     let kitFixtures: [(String, [String])] = [
-      ("import Foundation\nimport MLX\nimport MLXLMCommon\nimport MLXNN", []),
+      ("import Foundation\nimport MLX\nimport MLXLLM\nimport MLXLMCommon\nimport MLXNN", []),
       ("import EnviousWisprCore", ["EnviousWisprCore"]),
       (
-        "@preconcurrency import EnviousWisprLocalPolish\nimport MLXLLM",
-        ["EnviousWisprLocalPolish", "MLXLLM"]
+        "@preconcurrency import EnviousWisprLocalPolish\nimport MLXEmbedders",
+        ["EnviousWisprLocalPolish", "MLXEmbedders"]
       ),
       (
         "#if DEBUG\nimport struct EnviousWisprLLM.LLMError\n#else\nimport MLX\n#endif",

@@ -103,10 +103,8 @@ struct DFlashDraftModelTests {
     #expect(full.ropeTheta == 10_000_000 && full.rmsNormEps == 1e-6)
     #expect(full.dflashConfig?.targetLayerIds == [1, 5, 9, 13, 17, 21, 25, 29])
     #expect(full.dflashConfig?.maskTokenId == 248077)
-    // This file states the block size only inside `dflash_config`, which the decoder does not
-    // read. 16 here is the decoder's default. It equals the file's 16; a helper trained with
-    // another nested block size would be read as 16.
-    #expect(full.blockSize == 16)
+    // This file states the block size only inside `dflash_config`; it is read from there.
+    #expect(full.blockSize == 16 && full.dflashConfig?.blockSize == 16)
 
     let mini = try Self.configuration(Self.miniHelperConfiguration)
     #expect(mini.hiddenSize == 2048 && mini.numHiddenLayers == 5 && mini.intermediateSize == 6144)
@@ -144,6 +142,40 @@ struct DFlashDraftModelTests {
         #"{"hidden_size":16,"num_hidden_layers":2,"intermediate_size":32,"num_attention_heads":2,"num_key_value_heads":1,"head_dim":8,"num_target_layers":6}"#
       ))
     #expect(spread.targetLayerIDs == [1, 3] && spread.maskTokenID == 0)
+  }
+
+  @Test(
+    "the block size is read from the flat key or from dflash_config, and a file whose two values differ is refused"
+  )
+  func blockSizeIsReadFromEitherPlaceAndAConflictIsRefused() throws {
+    // The block size is how many tokens one draft pass proposes. A helper run at another size
+    // than it was trained for drafts poorly, and nothing reports it.
+    let nested = try Self.configuration(#"{"dflash_config":{"block_size":8}}"#)
+    #expect(nested.blockSize == 8)
+    let flat = try Self.configuration(#"{"block_size":12}"#)
+    #expect(flat.blockSize == 12)
+    let flatWithOtherNestedKeys = try Self.configuration(
+      #"{"block_size":12,"dflash_config":{"mask_token_id":7}}"#)
+    #expect(flatWithOtherNestedKeys.blockSize == 12)
+    let agreeing = try Self.configuration(#"{"block_size":8,"dflash_config":{"block_size":8}}"#)
+    #expect(agreeing.blockSize == 8)
+    let absent = try Self.configuration(#"{"dflash_config":{"mask_token_id":7}}"#)
+    #expect(absent.blockSize == 16)
+    #expect(try Self.configuration("{}").blockSize == 16)
+
+    // A conflict is a decoding error that names both values, never a silent pick of one.
+    do {
+      _ = try Self.configuration(#"{"block_size":8,"dflash_config":{"block_size":16}}"#)
+      Issue.record("a file with block sizes 8 and 16 decoded")
+    } catch let DecodingError.dataCorrupted(context) {
+      #expect(context.debugDescription.contains("8") && context.debugDescription.contains("16"))
+    }
+    // The model takes the resolved value.
+    let model = DFlashDraftModel(
+      try Self.configuration(
+        #"{"hidden_size":16,"num_hidden_layers":1,"intermediate_size":32,"num_attention_heads":2,"num_key_value_heads":1,"head_dim":8,"num_target_layers":6,"dflash_config":{"block_size":8,"target_layer_ids":[2]}}"#
+      ))
+    #expect(model.blockSize == 8)
   }
 
   // MARK: - 2. Strict loading

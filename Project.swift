@@ -657,6 +657,7 @@ let project = Project(
         .package(product: "MLX"),
         .package(product: "MLXNN"),
         .package(product: "MLXLMCommon"),
+        .package(product: "MLXLLM"),  // the Qwen3.5 polish model the draft pairs with
       ]),
 
     // ---- EnviousDecode helper (#4473 P2) ----
@@ -912,6 +913,7 @@ let project = Project(
         // added here, not to `firstPartyTargetDeps` and not to the critical bundle.
         .target(name: "EnviousDecodeKit"),
         .package(product: "MLXLMCommon"),
+        .package(product: "MLXLLM"),  // DFlashDraftingTests build a tiny Qwen3.5 model directly
         .package(product: "FluidAudio"),
         .package(product: "PostHog"),
         .package(product: "MLX"),  // #3242: Cmlx/_NumericsShims via EnviousWisprWordCheck, as FluidAudio above

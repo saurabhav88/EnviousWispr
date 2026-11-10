@@ -17,8 +17,10 @@
 //
 // Modified by Envious Labs LLC, 2026-11-10 (this port). EnviousWispr is distributed under the
 // GNU GPL, version 3. Removed the six `DFlashDumper` debug-dump calls and their `if` blocks;
-// `public` became internal; reformatted to the project's 2-space style. No configuration key,
-// default, layer equation, parameter name or cache rule changed.
+// `public` became internal; reformatted to the project's 2-space style. No default, layer
+// equation, parameter name or cache rule changed. One configuration rule changed: the block
+// size is also read from `dflash_config.block_size`, and a file whose flat and nested block
+// sizes differ is refused (the research decoder read the flat key only).
 
 import Foundation
 import MLX
@@ -95,10 +97,12 @@ struct DFlashDraftConfiguration: Codable, Sendable {
   struct DFlashConfig: Codable, Sendable {
     var targetLayerIds: [Int]?
     var maskTokenId: Int?
+    var blockSize: Int?
 
     enum CodingKeys: String, CodingKey {
       case targetLayerIds = "target_layer_ids"
       case maskTokenId = "mask_token_id"
+      case blockSize = "block_size"
     }
   }
 
@@ -135,13 +139,29 @@ struct DFlashDraftConfiguration: Codable, Sendable {
     tieWordEmbeddings =
       try c.decodeIfPresent(Bool.self, forKey: .tieWordEmbeddings) ?? tieWordEmbeddings
     numTargetLayers = try c.decodeIfPresent(Int.self, forKey: .numTargetLayers) ?? numTargetLayers
-    blockSize = try c.decodeIfPresent(Int.self, forKey: .blockSize) ?? blockSize
     attentionBias = try c.decodeIfPresent(Bool.self, forKey: .attentionBias) ?? attentionBias
     attentionDropout =
       try c.decodeIfPresent(Float.self, forKey: .attentionDropout) ?? attentionDropout
     ropeScaling = try c.decodeIfPresent([String: StringOrNumber].self, forKey: .ropeScaling)
     layerTypes = try c.decodeIfPresent([String].self, forKey: .layerTypes) ?? layerTypes
     dflashConfig = try c.decodeIfPresent(DFlashConfig.self, forKey: .dflashConfig)
+
+    // block_size: the flat key, or `dflash_config.block_size` (the matched full-size helper
+    // states it only there). Both may be present when they agree. A file whose two values
+    // differ is refused: the block size fixes how many tokens one draft pass proposes, and a
+    // choice between two answers could run the helper at a size it was not trained for. The
+    // default applies only when the file states neither.
+    let flatBlockSize = try c.decodeIfPresent(Int.self, forKey: .blockSize)
+    let nestedBlockSize = dflashConfig?.blockSize
+    if let flatBlockSize, let nestedBlockSize, flatBlockSize != nestedBlockSize {
+      throw DecodingError.dataCorrupted(
+        DecodingError.Context(
+          codingPath: c.codingPath + [CodingKeys.blockSize],
+          debugDescription:
+            "block_size \(flatBlockSize) disagrees with dflash_config.block_size \(nestedBlockSize)"
+        ))
+    }
+    blockSize = flatBlockSize ?? nestedBlockSize ?? blockSize
 
     // rope_theta: flat key first (older checkpoints), then rope_parameters.rope_theta.
     if let flat = try c.decodeIfPresent(Float.self, forKey: .ropeTheta) {

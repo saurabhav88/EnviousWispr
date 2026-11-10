@@ -436,6 +436,9 @@ let package = Package(
         .product(name: "MLX", package: "mlx-swift"),
         .product(name: "MLXNN", package: "mlx-swift"),
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        // The Qwen3.5 polish model the draft pairs with (its embedding, output head and
+        // captured forward pass).
+        .product(name: "MLXLLM", package: "mlx-swift-lm"),
       ],
       path: "Sources/EnviousDecodeKit"
     ),
@@ -508,6 +511,7 @@ let package = Package(
         "EnviousDecodeKit",
         .product(name: "MLX", package: "mlx-swift"),
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        .product(name: "MLXLLM", package: "mlx-swift-lm"),
         // #3735: WhisperGGUFRealDeliveryTests decode the admitted model directly.
         "EnviousWisprTranscribeCpp",
         // #1741 Chunk 10: EngineMutationInventoryFreezeTests's real Swift
