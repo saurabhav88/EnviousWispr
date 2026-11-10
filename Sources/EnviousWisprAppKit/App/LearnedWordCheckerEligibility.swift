@@ -136,7 +136,7 @@ final class LearnedWordCheckerEligibility {
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       endpoint: endpoint, serverReason: serverReason,
       debugThreshold: inputs.debugThreshold,
-      hold: { [runtime = inputs.runtime] in await EGOneLearnedWordChecker.hold(on: runtime) })
+      hold: { [runtime = inputs.runtime] in await LlamaLearnedWordChecker.hold(on: runtime) })
     if let checker = answer.checker {
       #if DEBUG
         let identity = doorAdapter ? engine.debugDoorIdentity : adapter.manifest.identity.revision
@@ -200,7 +200,7 @@ final class LearnedWordCheckerEligibility {
     }
     // `endpoint` above is the selection-time read; each check takes its own
     // lease and reads the endpoint again under it.
-    let checker = EGOneLearnedWordChecker(
+    let checker = LlamaLearnedWordChecker(
       threshold: qualifiedThreshold, style: engine.promptStyle(language: language), hold: hold)
     return LearnedWordCheckerSelection(checker: checker, identity: checker.armName)
   }

@@ -28,7 +28,7 @@ public struct EGOneCheckerHold: Sendable {
 /// The learned-word LoRA of a bundled engine (EG-1's eg1c, S1-mini's D5) runs on
 /// the resident polish server. The lease refuses while the server is changing,
 /// and the endpoint lookup refuses after another local model takes that server.
-public struct EGOneLearnedWordChecker: LearnedWordChecking {
+public struct LlamaLearnedWordChecker: LearnedWordChecking {
   /// The question form each adapter was trained on (#3105). Both share the system
   /// text and the user turn; S1-mini's D5 went through the HF chat template with
   /// `enable_thinking=False`, so its answer opens after an empty think block, and

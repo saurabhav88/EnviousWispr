@@ -441,7 +441,7 @@ struct EGOneAdapterLifecycleTests {
       configuration: fixture.configuration(adapterURL: fixture.adapter))
     await coordinator.transition(to: .run(adapted), intent: coordinator.claimIntent())
     let hold = try #require(
-      await EGOneLearnedWordChecker.hold(on: CoordinatorServer(coordinator)))
+      await LlamaLearnedWordChecker.hold(on: CoordinatorServer(coordinator)))
     #expect(hold.endpoint.hasLearnedWordAdapter)
     #expect(try fixture.launches().count == 1)
 

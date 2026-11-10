@@ -297,8 +297,8 @@ struct LocalPolishSummaryReservationTests {
     let coordinator = await Self.resident(.egOne)
     let reservation = try #require(Self.granted(await coordinator.reserveForSummary(.egOne)))
     let server = Server(coordinator)
-    let checker = EGOneLearnedWordChecker(threshold: 0.5) {
-      await EGOneLearnedWordChecker.hold(on: server)
+    let checker = LlamaLearnedWordChecker(threshold: 0.5) {
+      await LlamaLearnedWordChecker.hold(on: server)
     }
     let step = LearnedWordCheckStep()
     step.correctorVocabulary = CorrectorVocabulary(

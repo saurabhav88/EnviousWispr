@@ -142,7 +142,7 @@ struct LearnedWordCheckerEligibilityTests {
         endpoint: missingEndpoint ? nil : (endpoint ?? ready),
         serverReason: serverReason, hold: { nil })
     }
-    let checker = try #require(select().checker as? EGOneLearnedWordChecker)
+    let checker = try #require(select().checker as? LlamaLearnedWordChecker)
     #expect(checker.armName == (engine == .egOne ? "eg1_lora" : "s1_lora"))
     #expect(select(baseAdmitted: false).absence == .baseNotAdmitted)
     #expect(
