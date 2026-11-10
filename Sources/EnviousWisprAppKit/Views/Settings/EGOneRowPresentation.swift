@@ -1,3 +1,4 @@
+import EnviousWisprLocalPolish
 import Foundation
 import EnviousWisprLLM
 

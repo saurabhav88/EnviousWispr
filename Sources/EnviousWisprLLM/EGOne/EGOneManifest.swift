@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Manifest describing one first-party polish model artifact (#1271).

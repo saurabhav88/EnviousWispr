@@ -1,3 +1,4 @@
+import EnviousWisprLocalPolish
 import Testing
 
 @testable import EnviousWisprLLM

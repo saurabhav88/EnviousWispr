@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import SwiftUI
 
 // MARK: - Provider status (one authority for the card and the dropdown)

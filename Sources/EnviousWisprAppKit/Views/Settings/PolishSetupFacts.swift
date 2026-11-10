@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Security
 
 // MARK: - The setup facts every polish policy reads (#3438)

@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 @testable import EnviousWisprLLM
 import EnviousWisprServices
 import Testing

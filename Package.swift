@@ -14,6 +14,9 @@ let package = Package(
     // dependency. Purely additive — no production code imports these.
     .library(name: "EnviousWisprCore", targets: ["EnviousWisprCore"]),
     .library(name: "EnviousWisprLLM", targets: ["EnviousWisprLLM"]),
+    // #4473: the engine-neutral local polish contracts. Exposed beside LLM, which depends on
+    // it, so a harness that links LLM resolves it as a product too.
+    .library(name: "EnviousWisprLocalPolish", targets: ["EnviousWisprLocalPolish"]),
     // Exposed for the alias-suggestion eval harness at
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
@@ -121,6 +124,15 @@ let package = Package(
       name: "EnviousWisprModelDelivery",
       dependencies: ["EnviousWisprCore"],
       path: "Sources/EnviousWisprModelDelivery"
+    ),
+    // #4473: engine-neutral local polish: what a local model IS to the app (identity, launch
+    // spec, install state, manifest facts, transport failure), with no engine in it. Core and
+    // ModelDelivery only: never LLM, never an engine module, never MLX. The engines and LLM
+    // depend on it, never the reverse. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprLocalPolish",
+      dependencies: ["EnviousWisprCore", "EnviousWisprModelDelivery"],
+      path: "Sources/EnviousWisprLocalPolish"
     ),
     .target(
       name: "EnviousWisprPostProcessing",
@@ -276,6 +288,8 @@ let package = Package(
         // #1348 Phase 3: EG-1 polish delivery converges onto the shared engine
         // (downward edge, both above Core). Mirrors Project.swift.
         "EnviousWisprModelDelivery",
+        // #4473: the engine-neutral local polish contracts (downward edge).
+        "EnviousWisprLocalPolish",
         // #832/#913 PR8: public Argmax tokenizer surface for the output-safety
         // classifier pair-encoder seam (AutoTokenizerWrapper / TokenizerWrapper).
         .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
@@ -320,6 +334,7 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprStorage",
         "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
@@ -417,6 +432,7 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprObservabilityCore",
         "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",

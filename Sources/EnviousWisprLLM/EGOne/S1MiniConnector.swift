@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Localhost connector for S1-mini on the bundled server (#2649).

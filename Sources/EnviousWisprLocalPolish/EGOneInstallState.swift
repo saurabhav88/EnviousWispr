@@ -97,7 +97,7 @@ public enum EGOneInstallState: Sendable, Equatable {
   /// The in-flight states return false because the shared controller
   /// single-flights per identity: a second press would join the same attempt,
   /// so refusing early is equivalent and cheaper.
-  var acceptsDownloadStart: Bool {
+  package var acceptsDownloadStart: Bool {
     switch self {
     case .notInstalled, .failed, .paused, .updatePaused: return true
     case .downloading, .verifying, .installed: return false

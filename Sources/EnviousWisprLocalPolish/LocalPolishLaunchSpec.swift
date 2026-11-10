@@ -47,7 +47,7 @@ public struct LocalPolishLaunchSpec: Sendable, Equatable {
 
   /// The same launch without its checker adapter: what the process manager executes when the
   /// adapter fails. It is an execution copy only; the requested spec is never replaced by it.
-  func withoutLearnedWordAdapter() -> LocalPolishLaunchSpec {
+  package func withoutLearnedWordAdapter() -> LocalPolishLaunchSpec {
     LocalPolishLaunchSpec(
       engineKind: engineKind, modelID: modelID, artifactIdentity: artifactIdentity,
       serverBinaryURL: serverBinaryURL, modelURL: modelURL, contextTokens: contextTokens,

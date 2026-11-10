@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Localhost OpenAI-wire connector for the bundled EG-1 inference server
