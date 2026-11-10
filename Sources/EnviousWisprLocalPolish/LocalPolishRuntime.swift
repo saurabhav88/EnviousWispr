@@ -285,16 +285,17 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// Which local model this runtime serves (#4473). Derived from the provider while each
   /// provider has one local model; the lookup in `LocalPolishRuntimeSet` matches on it.
   public let modelID: LocalPolishModelID
+  /// The engine this runtime's model runs on (#4473). Two operations come from it.
+  ///
   /// Builds this runtime's health probe from its own model identity and the manifest's prompt
   /// family (#4473). The engine supplies it; the runtime never names a prompt or a connector,
   /// and the identity it passes is its own `modelID`, so a caller cannot pair this runtime
   /// with another model's probe.
-  private let makeHealthProbe:
-    @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe
+  ///
   /// Builds this runtime's launch configuration from its own model identity and the admitted
   /// values of its delivery (#4473). The engine supplies it; the runtime names no engine's
   /// command line.
-  private let makeLaunchConfiguration: LocalPolishLaunchConfigurationFactory
+  private let engine: any LocalPolishEngine
   private let serverBinaryURL: URL?
   /// Called for each EG-1 boot, after base admission, not cached at launch.
   private let learnedWordAdapterProvider: @MainActor () async -> URL?
@@ -312,9 +313,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// why `WisprBootstrapper` builds one coordinator and injects it.
   public init(
     manifest: LocalPolishManifestFacts?, serverBinaryURL: URL?, delivery: EGOneDeliveryAdapter?,
-    makeHealthProbe:
-      @escaping @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe,
-    makeLaunchConfiguration: @escaping LocalPolishLaunchConfigurationFactory,
+    engine: any LocalPolishEngine,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
     provider: LLMProvider = .egOne,
@@ -344,8 +343,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     }
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
     self.modelID = .singleModel(for: provider)
-    self.makeHealthProbe = makeHealthProbe
-    self.makeLaunchConfiguration = makeLaunchConfiguration
+    self.engine = engine
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.learnedWordAdapterProvider = learnedWordAdapterProvider
@@ -818,7 +816,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
       guard
         let result = await self.server.probeHealth(
-          self.provider, operation: self.makeHealthProbe(self.modelID, family))
+          self.provider, operation: self.engine.makeHealthProbe(self.modelID, family))
       else { return }
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
@@ -1015,7 +1013,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     let adapterURL = await learnedWordAdapterProvider()
     // #4473: the engine builds the configuration; this runtime supplies its own identity and
     // the admitted values, once.
-    let configuration = makeLaunchConfiguration(
+    let configuration = engine.makeLaunchConfiguration(
       modelID, artifactIdentity, serverBinaryURL, modelURL, contextTokens, adapterURL)
     // A path the server cannot take boots the engine without its checker, and
     // the endpoint must then not claim an adapter the requests would name.
@@ -1064,10 +1062,9 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
 
   #if DEBUG
     /// #4319 DEBUG: this engine's server slots (Live UAT evidence only).
-    public func observeServerSlotsForDebug(
-      operation: LocalPolishSlotInspection
-    ) async -> EGOneSlotObservation {
-      await server.observeSlotsForDebug(for: provider, operation: operation)
+    public func observeServerSlotsForDebug() async -> EGOneSlotObservation {
+      await server.observeSlotsForDebug(
+        for: provider, operation: engine.inspectSlots)
     }
   #endif
 

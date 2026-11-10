@@ -29,6 +29,20 @@ extension BundledLocalPolisherFactories {
   }
 }
 
+/// #4473: an engine for tests that need to replace one of an engine's operations. Each
+/// operation defaults to the llama engine's own, so a test overrides only what it observes:
+/// `TestLocalPolishEngine(makeLaunchConfiguration: { … })`. Test-only: the app's runtimes get
+/// `LlamaServerEngine()` from the composition root and no production type takes closures.
+struct TestLocalPolishEngine: LocalPolishEngine {
+  var makeLaunchConfiguration: LocalPolishLaunchConfigurationFactory =
+    LlamaServerLaunchBuilder.makeConfiguration
+  var makeHealthProbe: @Sendable (LocalPolishModelID, PromptFamily) -> LocalPolishHealthProbe =
+    LlamaServerHealthProbe.make
+  #if DEBUG
+    var inspectSlots: LocalPolishSlotInspection = LlamaServerSlotReader.operation()
+  #endif
+}
+
 /// #4473: two DIFFERENT spy connector factories, for tests that prove a constructed path uses
 /// the pair it was given. Each records the endpoint it was asked to serve and answers with its
 /// own text, so a path that reaches the other model's factory, or builds a connector of its

@@ -147,7 +147,7 @@ struct EngineLaunchArgumentTests {
     let server = URL(fileURLWithPath: "/tmp/ew-factory/server")
     let model = URL(fileURLWithPath: "/tmp/ew-factory/model.gguf")
 
-    let factory: LocalPolishLaunchConfigurationFactory = LlamaServerLaunchBuilder.makeConfiguration
+    let factory: LocalPolishLaunchConfigurationFactory = LlamaServerEngine().makeLaunchConfiguration
     let configuration = factory(
       .singleModel(for: provider), identity, server, model, 16384, adapter)
 

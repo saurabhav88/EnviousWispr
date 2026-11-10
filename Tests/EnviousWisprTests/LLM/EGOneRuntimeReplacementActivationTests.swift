@@ -115,8 +115,7 @@ import EnviousWisprAppKitTestSupport
     let runtime = LocalPolishRuntime(
       manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: missingBinary, delivery: adapter,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       defaults: store)
     runtime.isActiveProvider = { [provider] in provider.isEGOneActive }
     runtime.onEvent = { event in

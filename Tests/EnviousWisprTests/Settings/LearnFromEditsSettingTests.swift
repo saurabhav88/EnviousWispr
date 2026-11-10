@@ -192,8 +192,7 @@ struct LearnFromEditsRowTests {
           base: nil, promptTemplateID: nil,
           runtime: LocalPolishRuntime(
             manifest: nil, serverBinaryURL: nil, delivery: nil,
-            makeHealthProbe: LlamaServerHealthProbe.make,
-            makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration),
+            engine: LlamaServerEngine()),
           debugThreshold: nil)
       ])
     let enabled = host(

@@ -588,8 +588,7 @@ final class ReplayRig {
     let egOneRuntime = LocalPolishRuntime(
       manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: serverBinary, delivery: egOneAdapter,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       learnedWordAdapterProvider: {
         return await home.admittedCompatibleCheckerURL(
           engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
@@ -597,8 +596,7 @@ final class ReplayRig {
     egOneRuntime.isActiveProvider = { settingsBox.settings.effectiveFileImportLLMProvider == .egOne }
     let s1MiniRuntime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
     let localPolish = LocalPolishRuntimeSet(egOne: egOneRuntime, s1Mini: s1MiniRuntime)
     let checkerEligibility = LearnedWordCheckerEligibility(

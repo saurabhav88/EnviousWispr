@@ -118,12 +118,10 @@ struct SettingsAdvisoryRenderHarness {
       preloadAction: {}, ollamaStatusProbe: { _ in })
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
+      engine: LlamaServerEngine(), defaults: defaults)
     let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       defaults: defaults, provider: .s1Mini)
     return AnyView(TranscribeFileView()
       .environment(coordinator).environment(settings).environment(setup)

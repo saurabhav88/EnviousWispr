@@ -392,12 +392,10 @@ struct SettingsMapRenderingTests {
         ollamaSetup: ollama)
       egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make,
-        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: defaults)
+        engine: LlamaServerEngine(), defaults: defaults)
       s1 = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        makeHealthProbe: LlamaServerHealthProbe.make,
-        makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+        engine: LlamaServerEngine(),
         defaults: defaults, provider: .s1Mini)
     }
 

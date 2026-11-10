@@ -165,8 +165,7 @@ import EnviousWisprAppKitTestSupport
         displayVersion: "1.1"
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
+      engine: LlamaServerEngine(), defaults: store)
     defer { store.removePersistentDomain(forName: suite) }
 
     let reachedPaused = await withDeadline(seconds: 5) {
@@ -217,8 +216,7 @@ import EnviousWisprAppKitTestSupport
     let runtime = LocalPolishRuntime(
       manifest: runtimeManifest().runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store)
+      engine: LlamaServerEngine(), defaults: store)
 
     let expected = EGOneInstallState.updatePaused(resumable: resumable, targetVersion: "1.1")
     let reached = await withDeadline(seconds: 5) {

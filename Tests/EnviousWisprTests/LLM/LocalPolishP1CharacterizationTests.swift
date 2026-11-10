@@ -72,13 +72,11 @@ struct LocalPolishP1CharacterizationTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
+      engine: LlamaServerEngine(), defaults: store,
       coordinator: coordinator, provider: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration, defaults: store,
+      engine: LlamaServerEngine(), defaults: store,
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
@@ -117,8 +115,7 @@ struct LocalPolishP1CharacterizationTests {
     // Update: a pause is written under the model's own key only.
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       defaults: store, provider: .egOne)
     egOne.applyInstallStateForTesting(.paused)
     #expect(store.string(forKey: egKey) == "paused")
@@ -129,8 +126,7 @@ struct LocalPolishP1CharacterizationTests {
     let s1Events = EventBox()
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       defaults: store, provider: .s1Mini)
     s1Mini.onEvent = { s1Events.record($0) }
     s1Mini.applyInstallStateForTesting(.paused)
@@ -143,8 +139,7 @@ struct LocalPolishP1CharacterizationTests {
     let restoredEvents = EventBox()
     let restored = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      makeHealthProbe: LlamaServerHealthProbe.make,
-      makeLaunchConfiguration: LlamaServerLaunchBuilder.makeConfiguration,
+      engine: LlamaServerEngine(),
       defaults: store, provider: .egOne)
     restored.onEvent = { restoredEvents.record($0) }
     restored.applyInstallStateForTesting(.paused)
