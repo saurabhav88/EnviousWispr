@@ -93,13 +93,23 @@ struct LocalPolishModuleBoundaryTests {
     #expect(Self.forbiddenImports(in: CachedSwiftParser.parse(source: source)).isEmpty)
   }
 
-  // MARK: - The llama-server engine (#4473)
+  // MARK: - The engine modules (#4473)
 
-  /// The engine module. Nothing below the app shell may import it: an engine that LocalPolish,
-  /// LLM or Pipeline can import is an engine they come to depend on, and then S1-mini's engine
-  /// and EG-1's engine can no longer be built, loaded or removed apart. Silent until it breaks.
+  /// The llama engine module. Nothing below the app shell may import it: an engine that
+  /// LocalPolish, LLM or Pipeline can import is an engine they come to depend on, and then
+  /// S1-mini's engine and EG-1's engine can no longer be built, loaded or removed apart.
+  /// Silent until it breaks.
   static let engineModule = "EnviousWisprLlamaEngine"
-  /// What the engine itself may import: its four declared dependencies and Foundation.
+  /// The EnviousDecode engine adapter for EG-1 (#4473 P2). The same rule holds for it. It only
+  /// names the helper's command line, so it also brings no model code: no MLX, no kit.
+  static let eg1EngineModule = "EnviousWisprEG1Engine"
+  /// Both engine modules, each with the fewest source files it must have for a check of it to
+  /// have read something.
+  static let engineModules: [(name: String, minimumFiles: Int)] = [
+    (engineModule, 8), (eg1EngineModule, 2),
+  ]
+  /// What an engine module itself may import: its four declared dependencies and Foundation.
+  /// The other engine, MLX and the EnviousDecode kit are not among them.
   static let enginePermitted: Set<String> = [
     "EnviousWisprCore", "EnviousWisprModelDelivery", "EnviousWisprLocalPolish",
     "EnviousWisprLLM", "Foundation",
@@ -121,8 +131,29 @@ struct LocalPolishModuleBoundaryTests {
       .sorted { $0.path < $1.path }
   }
 
-  @Test("LocalPolish, LLM and Pipeline never import the llama engine")
+  /// What a module below the app shell must not import: either engine module, and the model
+  /// code an engine process runs (MLX's libraries, the EnviousDecode kit and helper). The
+  /// EG-1 engine adapter depends on LLM, and Pipeline is what every dictation runs through, so
+  /// model code imported by one of them would reach the app through the adapter or the
+  /// pipeline although no engine module imports it.
+  static func forbiddenBelowTheAppShell(_ imports: [String]) -> [String] {
+    imports.filter {
+      $0 == engineModule || $0 == eg1EngineModule || $0.hasPrefix("MLX")
+        || $0.hasPrefix(decodeModulePrefix)
+    }
+  }
+
+  @Test("LocalPolish, LLM and Pipeline never import an engine module or an engine's model code")
   func lowerModulesDoNotImportTheEngine() throws {
+    // Control: the filter reports each forbidden module and lets the permitted ones through.
+    #expect(
+      Self.forbiddenBelowTheAppShell([
+        "Foundation", "EnviousWisprLlamaEngine", "EnviousWisprCore", "EnviousWisprEG1Engine", "MLX",
+        "MLXLLM", "EnviousDecodeKit", "EnviousDecodeHelper", "EnviousWisprLLM",
+      ]) == [
+        "EnviousWisprLlamaEngine", "EnviousWisprEG1Engine", "MLX", "MLXLLM", "EnviousDecodeKit",
+        "EnviousDecodeHelper",
+      ])
     for directory in [
       "Sources/EnviousWisprLocalPolish", "Sources/EnviousWisprLLM", "Sources/EnviousWisprPipeline",
     ] {
@@ -130,26 +161,35 @@ struct LocalPolishModuleBoundaryTests {
       // Control: an empty or missing folder would pass without reading anything.
       try #require(!files.isEmpty, "no Swift files under \(directory)")
       for file in files {
-        // Cheap first: a file whose text never names the engine cannot import it. Only a
-        // file that does name it is parsed, to tell an import from a comment or a string.
+        // Cheap first: a file whose text names none of them cannot import one. Only a file
+        // that does is parsed, to tell an import from a comment or a string.
         let text = try String(contentsOf: file, encoding: .utf8)
-        guard text.contains(Self.engineModule) else { continue }
-        let imports = Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree)
-        #expect(
-          !imports.contains(Self.engineModule),
-          "\(directory)/\(file.lastPathComponent) imports \(Self.engineModule)")
+        guard
+          text.contains(Self.engineModule) || text.contains(Self.eg1EngineModule)
+            || text.contains("MLX") || text.contains(Self.decodeModulePrefix)
+        else { continue }
+        let offenders = Self.forbiddenBelowTheAppShell(
+          Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree))
+        #expect(offenders.isEmpty, "\(directory)/\(file.lastPathComponent) imports \(offenders)")
       }
     }
   }
 
-  @Test("the llama engine imports only its four declared dependencies and Foundation")
+  @Test("each engine module imports only its four declared dependencies and Foundation")
   func engineImportsOnlyItsDeclaredDependencies() throws {
-    let files = try Self.swiftFiles(under: "Sources/\(Self.engineModule)")
-    try #require(files.count >= 8, "expected the engine's source files, found \(files.count)")
-    for file in files {
-      let offenders = Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree)
-        .filter { !Self.enginePermitted.contains($0) }
-      #expect(offenders.isEmpty, "\(file.lastPathComponent) imports \(offenders)")
+    for engine in Self.engineModules {
+      let files = try Self.swiftFiles(under: "Sources/\(engine.name)")
+      try #require(
+        files.count >= engine.minimumFiles,
+        "expected the source files of \(engine.name), found \(files.count)")
+      for file in files {
+        // The allowlist holds neither engine module, so this is also the rule that the two
+        // engines never import each other.
+        let offenders = Self.importedModules(in: try CachedSwiftParser.snapshot(at: file).tree)
+          .filter { !Self.enginePermitted.contains($0) }
+        #expect(
+          offenders.isEmpty, "\(engine.name)/\(file.lastPathComponent) imports \(offenders)")
+      }
     }
   }
 

@@ -61,6 +61,10 @@ permitted_imports_for() {
     # contracts; nothing below the app shell may use IT. Keep it out of the LLM, LocalPolish
     # and Pipeline lines: an engine those modules can import is an engine they can depend on.
     EnviousWisprLlamaEngine)       echo "EnviousWisprCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLLM" ;;
+    # #4473 P2: the EnviousDecode engine adapter for EG-1. Same edges as the llama engine. The
+    # two engines never import each other, and neither line lists an EnviousDecode* module: the
+    # helper is a separate process and this module only names its command line.
+    EnviousWisprEG1Engine)         echo "EnviousWisprCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLLM" ;;
     EnviousWisprWordCheck)         echo "EnviousWisprCore" ;;
     EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
@@ -84,7 +88,7 @@ permitted_imports_for() {
     # transcribe.cpp preview engine calls; it imports no first-party module.
     EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR EnviousWisprTranscribeCpp" ;;
     EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprLocalPolish EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprWordCheck" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLlamaEngine EnviousWisprEG1Engine EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprWordCheck" ;;
     EnviousWisprAppKitTestSupport) echo "EnviousWisprAppKit EnviousWisprCore" ;;
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
@@ -136,9 +140,11 @@ strip_comment() {
 # POSIX ERE takes the leftmost-longest `(.*)`, so the LAST `import` on the line
 # wins, as sed's greedy `^.*` does; no match returns the input unchanged, as sed
 # does. Group 4 because KINDS carries its own parentheses. #4473 P2 widened the name to the
-# EnviousDecode prefix; its alternation is group 5, after the module's group.
+# EnviousDecode prefix; its alternation is group 5, after the module's group. The name may hold
+# digits (EnviousWisprEG1Engine): without them the capture stopped at the digit and the module
+# was read as another, shorter name.
 imported_module() {
-  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(Envious(Wispr|Decode)[A-Za-z_]*)"
+  local re="^(.*)import[[:space:]]+(${import_kinds}[[:space:]]+)?(Envious(Wispr|Decode)[A-Za-z0-9_]*)"
   if [[ $1 =~ $re ]]; then REPLY=${BASH_REMATCH[4]}; else REPLY=$1; fi
 }
 # is_permitted: `echo " $permitted " | grep -q " $imp "`.
@@ -249,7 +255,7 @@ test_targets_and_permitted() {
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
-    EnviousWisprTests) echo "EnviousDecodeKit EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
+    EnviousWisprTests) echo "EnviousDecodeKit EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprLlamaEngine EnviousWisprEG1Engine EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices EnviousWisprTranscribeCpp" ;;
     # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
     # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);

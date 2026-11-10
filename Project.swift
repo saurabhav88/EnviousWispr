@@ -466,6 +466,18 @@ let project = Project(
         .target(name: "EnviousWisprLocalPolish"),
         .target(name: "EnviousWisprLLM"),
       ]),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1 (helper launch spec, health probe,
+    // connector). Same edges as the llama engine and no MLX or EnviousDecodeKit edge; imported
+    // only by the app shell and the unit tests (see Package.swift). Not in the shared
+    // `firstPartyTargetDeps`: the app library and the full unit bundle name it themselves.
+    firstPartyLibrary(
+      "EnviousWisprEG1Engine",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprModelDelivery"),
+        .target(name: "EnviousWisprLocalPolish"),
+        .target(name: "EnviousWisprLLM"),
+      ]),
     // #3242: Kev learned-word check on MLX (leaf over Core; see Package.swift).
     firstPartyLibrary(
       "EnviousWisprWordCheck",
@@ -564,6 +576,7 @@ let project = Project(
     firstPartyLibrary(
       "EnviousWisprAppKit",
       dependencies: firstPartyTargetDeps + [
+        .target(name: "EnviousWisprEG1Engine"),  // #4473 P2: the app shell composes both engines
         .target(name: "EnviousWisprContacts"),
         .target(name: "EnviousWisprLivePreview"),
         .target(name: "EnviousWisprWhisperPreviewAdapter"),
@@ -914,6 +927,8 @@ let project = Project(
         // #4473 P2: DFlashTapeRollbackTests import the kit and MLXLMCommon directly. The kit is
         // added here, not to `firstPartyTargetDeps` and not to the critical bundle.
         .target(name: "EnviousDecodeKit"),
+        // #4473 P2: EnviousDecodeEngineTests import the EG-1 engine adapter directly.
+        .target(name: "EnviousWisprEG1Engine"),
         .package(product: "MLXLMCommon"),
         .package(product: "MLXLLM"),  // DFlashDraftingTests build a tiny Qwen3.5 model directly
         .package(product: "ArgmaxOSS"),  // EnviousDecodeRequestMapperTests load a real tokenizer

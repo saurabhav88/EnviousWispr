@@ -20,6 +20,9 @@ let package = Package(
     // #4473: the llama-server engine (S1-mini, and EG-1 until its own engine lands). Exposed
     // like its dependencies; only the app shell and the unit tests import it.
     .library(name: "EnviousWisprLlamaEngine", targets: ["EnviousWisprLlamaEngine"]),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1. Exposed like the llama engine; only
+    // the app shell and the unit tests import it.
+    .library(name: "EnviousWisprEG1Engine", targets: ["EnviousWisprEG1Engine"]),
     // Exposed for the alias-suggestion eval harness at
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
@@ -321,6 +324,21 @@ let package = Package(
       ],
       path: "Sources/EnviousWisprLlamaEngine"
     ),
+    // #4473 P2: the EnviousDecode engine adapter for EG-1: the helper's launch spec and command
+    // line, the health probe and EG-1's connector for the helper. It names the helper's command
+    // line only: it depends on no MLX product, not on EnviousDecodeKit and not on the llama
+    // engine. Same place in the graph as the llama engine: above LLM and LocalPolish, imported
+    // only by the app shell and the unit tests. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprEG1Engine",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLLM",
+      ],
+      path: "Sources/EnviousWisprEG1Engine"
+    ),
     // #3242: the learned-word check for polish engines that have none of their own. A leaf over Core
     // so MLX never reaches the eval harnesses that link EnviousWisprLLM or EnviousWisprPipeline.
     .target(
@@ -363,6 +381,7 @@ let package = Package(
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
         "EnviousWisprLlamaEngine",
+        "EnviousWisprEG1Engine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
@@ -492,6 +511,7 @@ let package = Package(
         "EnviousWisprModelDelivery",
         "EnviousWisprLocalPolish",
         "EnviousWisprLlamaEngine",
+        "EnviousWisprEG1Engine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
