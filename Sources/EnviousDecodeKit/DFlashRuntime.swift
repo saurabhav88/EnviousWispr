@@ -22,7 +22,7 @@
 // - 2026-11-10 (this port), each one deliberate:
 //   a. Not ported: the protocol and the greedy pick (they have their own files), the async
 //      `generate` and the buffering `generateSync` wrappers, the round profiler, the debug
-//      dumps, the per-cycle print, the verification observer, the prefix snapshot argument,
+//      dumps, the per-cycle print, the verification observer,
 //      the engine classes (two thin delegates), the snapshot-only cache, and the plain
 //      `MambaCache` checkpoint and target-replay branches. Every recurrent cache here is a
 //      `RecurrentRollbackCache`, so a rejected draft is always undone with the tape.
@@ -38,6 +38,10 @@
 //      included; tokens that a verification accepted after a stop are not emitted.
 //   e. The pairing is checked before anything runs, cancellation throws, and an empty prompt
 //      or a cap below one is an error where the research loop returned without an event.
+//   f. The prefix snapshot argument is ported (research lines 384, 402-408, 427-428 and
+//      451-453): restored caches replace new ones, only the request's own tokens are
+//      prefilled, and the saved prefix features come first in the draft's context. The
+//      conv-kernel check moved into `checkConvKernel`, which the snapshot also runs.
 //   `public` and `package` became internal; reformatted to the project's 2-space style.
 
 import Foundation
@@ -70,6 +74,9 @@ enum DFlashFinishReason: Sendable, Equatable {
 struct DFlashSummary: Sendable {
   let elapsedUs: Double
   let promptTokenCount: Int
+  /// Prompt tokens that came from a prefix snapshot and were not prefilled again. 0 for a
+  /// request with no snapshot.
+  let restoredPrefixTokens: Int
   /// Every generated token in order. RAW: when the run ended on a stop token, that token is the
   /// last entry. The same convention holds for the `token` events. A caller that shows text
   /// removes the stop marker itself.
@@ -107,6 +114,7 @@ struct DFlashSummary: Sendable {
 
 /// A request that cannot run. Thrown before any model pass, except `unsupportedConvKernel`,
 /// which needs the recurrent state the prefill writes and is thrown before the first draft.
+/// A prefix snapshot that does not fit the request throws `DFlashPrefixSnapshotError`.
 enum DFlashRuntimeError: Error, Equatable {
   case emptyPrompt
   case invalidOutputCap(Int)
@@ -221,6 +229,21 @@ enum DFlashRuntime {
     return replayNs
   }
 
+  /// The rollback cache rebuilds a layer's conv inputs for one kernel size. A prefill writes
+  /// each layer's conv state, whose length is the model's kernel size minus one. A model with
+  /// another kernel size would get a wrong conv state after a rejection, with no error, so it
+  /// is refused. Call it after the caches hold a prefill and before the first draft.
+  static func checkConvKernel(_ targetCache: [KVCache]) throws {
+    for (layer, cache) in targetCache.enumerated() {
+      guard let rollbackCache = cache as? RecurrentRollbackCache, let conv = rollbackCache[0]
+      else { continue }
+      guard conv.dim(1) == supportedConvKernelSize - 1 else {
+        throw DFlashRuntimeError.unsupportedConvKernel(
+          layer: layer, convStateLength: conv.dim(1), supported: supportedConvKernelSize)
+      }
+    }
+  }
+
   /// What the draft and the polish model must agree on before a request may run. This checks
   /// structure only. It does not show that the draft was trained for this polish model.
   ///
@@ -282,6 +305,11 @@ enum DFlashRuntime {
   ///     engine's speed and identity were measured with. They are the engine's own policy:
   ///     a helper's `sliding_window` and `layer_types` metadata describe its training and are
   ///     not read.
+  ///   - prefixSnapshot: The saved state of the prompt's first tokens, for this exact pair of
+  ///     models. With it only the rest of the prompt is prefilled. It is read, never changed:
+  ///     the request works on its own copies. A snapshot of another pair, or one the prompt
+  ///     does not start with, is refused with `DFlashPrefixSnapshotError`; it is never
+  ///     replaced by a cold prefill without the caller knowing.
   ///   - proposeDraft: Replaces the draft model as the source of proposals (tests).
   ///   - passObserver: Told about each pass of the polish model after the prefill (tests).
   ///   - yield: Receives the events, in order, on the caller's thread.
@@ -298,6 +326,7 @@ enum DFlashRuntime {
     suppressTokenIDs: [Int]? = nil,
     draftSinkSize: Int = 64,
     draftWindowSize: Int = 1024,
+    prefixSnapshot: DFlashPrefixSnapshot? = nil,
     proposeDraft: DFlashDraftProposer? = nil,
     passObserver: ((DFlashTargetPass) -> Void)? = nil,
     yield: (DFlashEvent) -> Void
@@ -307,8 +336,17 @@ enum DFlashRuntime {
     guard maxNewTokens > 0 else { throw DFlashRuntimeError.invalidOutputCap(maxNewTokens) }
 
     // Caches are built first because their count is the polish model's layer count. Nothing
-    // has been written to them when the pairing is checked.
-    let targetCache = try makeTargetCache(targetModel: targetModel)
+    // of this request has been written to them when the pairing is checked. With a snapshot
+    // they are new copies that already hold the prefix; the snapshot refuses another pair of
+    // models or a prompt that does not start with its tokens.
+    let targetCache: [KVCache]
+    if let prefixSnapshot {
+      targetCache = try prefixSnapshot.restore(
+        target: targetModel, draft: draftModel, prompt: promptTokens)
+    } else {
+      targetCache = try makeTargetCache(targetModel: targetModel)
+    }
+    let restoredPrefixLen = prefixSnapshot?.tokenIDs.count ?? 0
     _ = try validatePairing(
       targetModel: targetModel, draftModel: draftModel, targetLayerCount: targetCache.count,
       promptTokens: promptTokens)
@@ -334,7 +372,8 @@ enum DFlashRuntime {
     var targetHidden: MLXArray?
     var prefillLogits: MLXArray!
 
-    for chunkStart in stride(from: 0, to: promptLen, by: prefillStepSize) {
+    // A restored prefix is shorter than the prompt, so at least one chunk always runs.
+    for chunkStart in stride(from: restoredPrefixLen, to: promptLen, by: prefillStepSize) {
       try Task.checkCancellation()
       let chunkEnd = min(chunkStart + prefillStepSize, promptLen)
       let chunkIDs = promptArray[0..., chunkStart..<chunkEnd]
@@ -358,6 +397,9 @@ enum DFlashRuntime {
           [feat.dim(0), promptLen, feat.dim(-1)],
           dtype: feat.dtype
         )
+        if let prefixSnapshot {
+          targetHidden![0..., ..<restoredPrefixLen, 0...] = prefixSnapshot.hiddenPrefix()
+        }
       }
       targetHidden![0..., chunkStart..<chunkEnd, 0...] = feat
       eval(targetHidden!)
@@ -373,18 +415,9 @@ enum DFlashRuntime {
 
     MLX.Memory.clearCache()
 
-    // The rollback cache rebuilds a layer's conv inputs for one kernel size. The prefill has
-    // just written each layer's conv state, whose length is the model's kernel size minus one.
-    // A model with another kernel size would get a wrong conv state after a rejection, with no
-    // error, so it is refused here, before the first draft.
-    for (layer, cache) in targetCache.enumerated() {
-      guard let rollbackCache = cache as? RecurrentRollbackCache, let conv = rollbackCache[0]
-      else { continue }
-      guard conv.dim(1) == supportedConvKernelSize - 1 else {
-        throw DFlashRuntimeError.unsupportedConvKernel(
-          layer: layer, convStateLength: conv.dim(1), supported: supportedConvKernelSize)
-      }
-    }
+    // The prefill has just written each layer's conv state: refuse another kernel size here,
+    // before the first draft.
+    try checkConvKernel(targetCache)
 
     let prefillNanos = Int(DispatchTime.now().uptimeNanoseconds) - Int(startNanos)
 
@@ -613,6 +646,7 @@ enum DFlashRuntime {
         DFlashSummary(
           elapsedUs: Double(elapsedNanos) / 1000.0,
           promptTokenCount: promptLen,
+          restoredPrefixTokens: restoredPrefixLen,
           generatedTokenIDs: generatedTokenIDs,
           finishReason: finishReason ?? .length,
           acceptedFromDraft: acceptedFromDraft,
