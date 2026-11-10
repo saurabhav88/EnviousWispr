@@ -137,8 +137,7 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   /// never this manifest's own name, or a mismatched manifest would validate itself.
   public func runtimeFacts(expectedModelName: String) -> LocalPolishManifestFacts {
     LocalPolishManifestFacts(
-      modelName: modelName, revision: version, contextTokens: contextTokens,
-      promptFamily: promptFamily,
+      contextTokens: contextTokens, promptFamily: promptFamily,
       activationBlockers: activationBlockers(expectedModelName: expectedModelName))
   }
 

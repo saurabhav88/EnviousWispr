@@ -9,7 +9,7 @@ import Foundation
 /// process also knew how to write a polish prompt and which connector to call. It is the same
 /// request with the same verdict rules; only its owner changed. The manager now runs the
 /// operation it is handed on its ready endpoint, and this type is what the llama engine supplies.
-public enum LlamaServerHealthProbe {
+package enum LlamaServerHealthProbe {
   /// Real activation test: a FIXED filler-and-self-correction transcript
   /// through the real prompt path; GREEN requires the expected
   /// TRANSFORMATION (contains "Friday", drops "um"), not merely HTTP 200 —
@@ -26,12 +26,12 @@ public enum LlamaServerHealthProbe {
   /// so a model that cannot do it must read yellow whichever one it is. Making
   /// the success condition per-model would let a weaker model be graded on an
   /// easier exam.
-  public struct ProbeSpec: Sendable {
-    public var provider: LLMProvider
-    public var modelID: String
-    public var makeConnector: @Sendable (LocalPolishEndpoint) -> any TranscriptPolisher
+  package struct ProbeSpec: Sendable {
+    package var provider: LLMProvider
+    package var modelID: String
+    package var makeConnector: @Sendable (LocalPolishEndpoint) -> any TranscriptPolisher
 
-    public init(
+    package init(
       provider: LLMProvider, modelID: String,
       makeConnector: @escaping @Sendable (LocalPolishEndpoint) -> any TranscriptPolisher
     ) {
@@ -41,7 +41,7 @@ public enum LlamaServerHealthProbe {
     }
 
     /// EG-1's exact current values, so its probe is unchanged by this move.
-    public static let egOne = ProbeSpec(
+    package static let egOne = ProbeSpec(
       provider: .egOne, modelID: LLMProvider.egOneModelName,
       makeConnector: { EGOneConnector(endpoint: $0) })
 
@@ -49,7 +49,7 @@ public enum LlamaServerHealthProbe {
     /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
     /// verdict would have been about EG-1's contract, and the connector's
     /// empty-answer rule is exactly where the two disagree.
-    public static let s1Mini = ProbeSpec(
+    package static let s1Mini = ProbeSpec(
       provider: .s1Mini, modelID: LLMProvider.s1MiniModelName,
       makeConnector: { S1MiniConnector(endpoint: $0) })
   }
@@ -62,7 +62,7 @@ public enum LlamaServerHealthProbe {
   /// default gave every OTHER provider S1-mini's identity silently, so a third bundled model
   /// would have been health-checked as S1-mini with nothing failing. The switch makes a new
   /// case a compile error here.
-  public static func make(
+  package static func make(
     modelID: LocalPolishModelID, promptFamily: PromptFamily
   ) -> LocalPolishHealthProbe {
     let spec: ProbeSpec
@@ -83,7 +83,7 @@ public enum LlamaServerHealthProbe {
   /// as EG-1, and the wrong-model probe would be invisible rather than merely
   /// wrong. `.egOne` below is a named VALUE a caller passes, not a fallback the
   /// language supplies.
-  public static func operation(
+  package static func operation(
     spec: ProbeSpec, promptFamily: PromptFamily
   ) -> LocalPolishHealthProbe {
     { endpoint in

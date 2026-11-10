@@ -26,8 +26,8 @@ struct LocalPolishManifestFactsTests {
     #expect(
       facts
         == LocalPolishManifestFacts(
-          modelName: "eg-1", revision: "rev-a", contextTokens: 16384,
-          promptFamily: .egOneEnvelopeNamedLanguage, activationBlockers: []))
+          contextTokens: 16384, promptFamily: .egOneEnvelopeNamedLanguage,
+          activationBlockers: []))
   }
 
   @Test("a valid S1-mini manifest projects its values and has no blocker")
@@ -37,8 +37,7 @@ struct LocalPolishManifestFactsTests {
     #expect(
       facts
         == LocalPolishManifestFacts(
-          modelName: "s1-mini", revision: "rev-a", contextTokens: 16384,
-          promptFamily: .s1ControlLine, activationBlockers: []))
+          contextTokens: 16384, promptFamily: .s1ControlLine, activationBlockers: []))
   }
 
   @Test("the expected name is the selected provider's model, so a manifest cannot validate itself")
@@ -46,7 +45,6 @@ struct LocalPolishManifestFactsTests {
     let facts = manifest(modelName: "s1-mini", promptTemplateID: "s1-control-line-v1")
       .runtimeFacts(expectedModelName: "eg-1")
     #expect(facts.activationBlockers == ["model_name_mismatch"])
-    #expect(facts.modelName == "s1-mini")
   }
 
   @Test("an unknown prompt contract has no prompt family and is blocked")

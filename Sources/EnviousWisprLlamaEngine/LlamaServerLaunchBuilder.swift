@@ -9,7 +9,7 @@ import Foundation
 /// starts, stops and watches an engine also knew one engine's command line. They are the same
 /// flags in the same order; only their owner changed. The process manager now asks the launch
 /// configuration to render its arguments, and this type is what the llama engine supplies.
-public struct LlamaServerLaunchBuilder: Sendable {
+package struct LlamaServerLaunchBuilder: Sendable {
   /// llama-server flags, per model.
   ///
   /// The shared pair is a FOOTPRINT choice, measured 2026-07-02 (M4 Pro, real
@@ -50,7 +50,7 @@ public struct LlamaServerLaunchBuilder: Sendable {
   /// and multilingual 480/480 byte-identical; ~1.2x faster on M5 Max and ~1.1-1.7x on M1
   /// for long takes, neutral on one-sentence takes. Not byte-identical by design, so it
   /// stays EG-1-only until S1-mini is measured the same way.
-  public static func engineArguments(for provider: LLMProvider) -> [String] {
+  package static func engineArguments(for provider: LLMProvider) -> [String] {
     let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     switch provider {
     case .egOne:
@@ -74,7 +74,7 @@ public struct LlamaServerLaunchBuilder: Sendable {
   /// The server splits that argument on `,` and `:`, so a path holding either
   /// cannot be passed: the engine then boots without its checker (nil), never
   /// with a mangled path.
-  public static func launchArguments(
+  package static func launchArguments(
     for provider: LLMProvider, learnedWordAdapterURL: URL?
   ) -> [String] {
     let engine = engineArguments(for: provider)
@@ -94,7 +94,7 @@ public struct LlamaServerLaunchBuilder: Sendable {
   /// The launch spec for a bundled model on llama-server (#4473). `learnedWordAdapterURL` is the
   /// adapter the caller wants loaded; a path the server cannot take (it holds `,` or `:`) yields
   /// a spec WITHOUT the adapter, so the endpoint never claims a checker the launch did not load.
-  public static func makeSpec(
+  package static func makeSpec(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
     modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
   ) -> LocalPolishLaunchSpec {
@@ -112,7 +112,7 @@ public struct LlamaServerLaunchBuilder: Sendable {
   /// The launch configuration for a bundled model on llama-server (#4473): the spec above with
   /// this builder's renderer. This is what the composition root hands to the runtime as its
   /// `LocalPolishLaunchConfigurationFactory`; it adds no rule of its own.
-  public static func makeConfiguration(
+  package static func makeConfiguration(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
     modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
   ) -> LocalPolishProcessManager.Configuration {
@@ -129,7 +129,7 @@ public struct LlamaServerLaunchBuilder: Sendable {
   /// port and bearer are chosen by the process manager for each spawn; they are not part of
   /// the spec. Renders the spec it is GIVEN, so a bare-base fallback copy (adapter arguments
   /// cleared) renders without the adapter.
-  public static func arguments(
+  package static func arguments(
     spec: LocalPolishLaunchSpec, port: UInt16, authToken: String
   ) -> [String] {
     [
