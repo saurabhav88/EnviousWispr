@@ -1,8 +1,10 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #2966: `eg1.health_changed` is a colour change or an unsuppressed
 /// same-colour reason change. Measured 30d to 2026-09-15, 12,900 of 20,192
@@ -29,15 +31,17 @@ import Testing
     }
   }
 
-  private func makeRuntime() throws -> (EGOneRuntime, Recorded, () -> Void) {
+  private func makeRuntime() throws -> (LocalPolishRuntime, Recorded, () -> Void) {
     let suite = "eg1-health-\(UUID().uuidString)"
     let store = try #require(TestDefaults.suite(suite))
-    let runtime = EGOneRuntime(
+    let runtime = LocalPolishRuntime(
       manifest: EGOneManifest(
         modelName: LLMProvider.egOneModelName, version: "v2-sharded", contextTokens: 4096,
         promptTemplateID: "eg1-v1", minAppVersion: "0",
-        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!),
-      serverBinaryURL: nil, delivery: nil, defaults: store)
+        downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
+      ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -49,7 +53,7 @@ import Testing
   func launchSeedDoesNotEmit() throws {
     let (runtime, recorded, cleanup) = try makeRuntime()
     defer { cleanup() }
-    #expect(EGOneRuntime.healthLabel(runtime.health) == "red")  // placeholder
+    #expect(LocalPolishRuntime.healthLabel(runtime.health) == "red")  // placeholder
 
     // A launch whose first resolved state is a download in flight: red
     // placeholder -> yellow. A colour change, but the seed, so no row.
@@ -59,12 +63,12 @@ import Testing
     // the live shape it produced, `red -> red download_required` once per
     // launch, is the second test's last step.)
     runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0, upgrade: nil))
-    #expect(EGOneRuntime.healthLabel(runtime.health) == "yellow")
+    #expect(LocalPolishRuntime.healthLabel(runtime.health) == "yellow")
     #expect(recorded.events.isEmpty)
 
     // The next colour change is a real transition.
     runtime.applyInstallStateForTesting(.notInstalled)
-    #expect(EGOneRuntime.healthReason(runtime.health) == "download_required")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "download_required")
     #expect(
       recorded.events == [.healthChanged(from: "yellow", to: "red", reason: "download_required")])
   }
@@ -85,7 +89,7 @@ import Testing
 
     // Installed with the server stopped: `not_started` is a launch shape, silent.
     runtime.applyInstallStateForTesting(.installed(version: nil))
-    #expect(EGOneRuntime.healthReason(runtime.health) == "not_started")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "not_started")
     #expect(recorded.events.count == 1)
 
     // A failure is a colour change and names its reason.
@@ -95,7 +99,7 @@ import Testing
 
     // Red to red into `download_required`: the launch-noise shape, silent.
     runtime.applyInstallStateForTesting(.notInstalled)
-    #expect(EGOneRuntime.healthReason(runtime.health) == "download_required")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "download_required")
     #expect(recorded.events.count == 2)
 
     // Back to a download: red -> yellow, a row with the new reason.
@@ -116,11 +120,11 @@ import Testing
     defer { cleanup() }
 
     runtime.applyServerStateForTesting(.stopped)  // red(download_required) against the default
-    #expect(EGOneRuntime.healthReason(runtime.health) == "download_required")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "download_required")
     #expect(recorded.events.isEmpty)
 
     runtime.applyInstallStateForTesting(.installed(version: "v2-sharded"))  // the real seed
-    #expect(EGOneRuntime.healthReason(runtime.health) == "not_started")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "not_started")
     #expect(recorded.events.isEmpty)
 
     // Only now is a change a transition.
@@ -137,19 +141,21 @@ import Testing
     let store = try #require(TestDefaults.suite(suite))
     defer { store.removePersistentDomain(forName: suite) }
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
-    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: store)
+    let runtime = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
     }
-    #expect(EGOneRuntime.healthReason(runtime.health) == "not_running")  // placeholder
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "not_running")  // placeholder
 
     runtime.applyInstallStateForTesting(.notInstalled)  // equals the default
-    #expect(EGOneRuntime.healthReason(runtime.health) == "manifest_missing")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "manifest_missing")
     #expect(recorded.events.isEmpty)
 
     runtime.applyServerStateForTesting(.stopped)  // the server seed, after the gate opened
-    #expect(EGOneRuntime.healthReason(runtime.health) == "manifest_missing")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "manifest_missing")
     #expect(recorded.events.isEmpty)
   }
 
@@ -163,7 +169,7 @@ import Testing
 
     runtime.applyInstallStateForTesting(.installed(version: nil))  // seed: yellow(not_started)
     runtime.applyServerStateForTesting(.starting)  // yellow(starting): lifecycle, silent
-    #expect(EGOneRuntime.healthReason(runtime.health) == "starting")
+    #expect(LocalPolishRuntime.healthReason(runtime.health) == "starting")
     #expect(recorded.events.isEmpty)
 
     runtime.applyServerStateForTesting(.pausedForMemoryPressure)
@@ -177,7 +183,7 @@ import Testing
     // it takes over the stretch between ready and the probe that `starting`
     // covered, so every activation still emits exactly the rows it did before.
     #expect(
-      EGOneRuntime.reasonsCountedElsewhere
+      LocalPolishRuntime.reasonsCountedElsewhere
         == Set(["download_required", "not_started", "starting", "ready_unchecked"]))
   }
 }
@@ -193,15 +199,15 @@ extension EGOneHealthTransitionTelemetryTests {
   /// crash path named `starting`, the same row in the same place.
   @Test("ready_unchecked adds and removes no rows on activation, a skipped probe, recovery or a probe verdict")
   func readyUncheckedRowEquivalence() throws {
-    let endpoint = EGOneEndpoint(port: 9, authToken: "t", contextTokens: 1)
-    func run(_ steps: (EGOneRuntime) -> Void) throws -> [EGOneRuntimeEvent] {
+    let endpoint = LocalPolishEndpoint(port: 9, authToken: "t", contextTokens: 1)
+    func run(_ steps: (LocalPolishRuntime) -> Void) throws -> [EGOneRuntimeEvent] {
       let (runtime, recorded, cleanup) = try makeRuntime()
       defer { cleanup() }
       runtime.applyInstallStateForTesting(.installed(version: nil))  // seed: not_started
       steps(runtime)
       return recorded.events
     }
-    func activate(_ runtime: EGOneRuntime) {
+    func activate(_ runtime: LocalPolishRuntime) {
       runtime.applyServerStateForTesting(.starting)
       runtime.applyServerStateForTesting(.ready(endpoint))
     }
@@ -235,10 +241,10 @@ extension EGOneHealthTransitionTelemetryTests {
         activate(runtime)
         runtime.acceptProbeResult(.green, for: endpoint)
         runtime.applyLifecycleForTesting(
-          EGOneServerManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1))
+          LocalPolishProcessManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1))
         runtime.applyLifecycleForTesting(
-          EGOneServerManager.Lifecycle(state: .starting, outsideStopGeneration: 1))
-        let replacement = EGOneEndpoint(port: 10, authToken: "u", contextTokens: 1)
+          LocalPolishProcessManager.Lifecycle(state: .starting, outsideStopGeneration: 1))
+        let replacement = LocalPolishEndpoint(port: 10, authToken: "u", contextTokens: 1)
         runtime.applyServerStateForTesting(.ready(replacement))
         runtime.acceptProbeResult(.green, for: replacement)
       } == [

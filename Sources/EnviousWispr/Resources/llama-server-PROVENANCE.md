@@ -14,10 +14,10 @@ release binary, for full control over flags and supply chain.
 | Size | ~15 MB, single static binary |
 | Dynamic deps | macOS system frameworks ONLY (verified `otool -L`: no Homebrew/OpenSSL — `LLAMA_OPENSSL=OFF` exists precisely because the first build linked `/opt/homebrew` dylibs that do not exist on user Macs) |
 
-Runtime flags are owned by `EGOneRuntime` (LLM module), NOT baked in:
+Runtime flags are owned by `LlamaServerLaunchBuilder` (`EnviousWisprLlamaEngine` module), NOT baked in:
 `-fa on --cache-type-k q8_0 --cache-type-v q8_0` + `-c` from the manifest;
 EG-1 also gets `--spec-type ngram-simple` (word-copying, #3363). Exact lists:
-`EGOneRuntime.engineArguments(for:)` and `launchArguments(for:learnedWordAdapterURL:)`.
+`LlamaServerLaunchBuilder.engineArguments(for:)` and `launchArguments(for:learnedWordAdapterURL:)`.
 Measured 2026-07-02 on the real EG-1 v1 GGUF (M4 Pro): 4.1 GB RSS at
 16384 context (vs 7.4 GB naive 32768/fp16), ~9 s cold start, ~0.2 s warm
 inference on the probe sentence, correct probe transformation.

@@ -1,4 +1,6 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
@@ -46,11 +48,13 @@ struct FileImportLocalPolishRuntimeTests {
     let settings = SettingsManager(
       defaults: TestDefaults.suite("SM-2772-runtime-\(UUID().uuidString)")!)
     let coordinator = LocalPolishServerCoordinator()
-    let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+    let egOne = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), coordinator: coordinator,
       provider: .egOne)
-    let s1Mini = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+    let s1Mini = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), coordinator: coordinator,
       provider: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,

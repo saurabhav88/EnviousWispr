@@ -1,9 +1,11 @@
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, EG-1 loads before a summary needs it (or stays loaded after), a
 /// summary runs on a server it does not hold, an import loses its server to a summary, one
@@ -45,16 +47,20 @@ struct EGOneSummaryEngineTests {
     let engine: EGOneSummaryEngine
 
     init(installed: Bool = true, manifest: Bool = true) {
-      let egOne = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      let egOne = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(),
+        coordinator: coordinator,
         provider: .egOne)
-      let s1 = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      let s1 = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(),
+        coordinator: coordinator,
         provider: .s1Mini)
       if installed { egOne.applyInstallStateForTesting(.installed(version: "1.2")) }
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
       let probe = probe
-      let endpoint = EGOneEndpoint(port: 51234, authToken: "t", contextTokens: 16_384)
+      let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 16_384)
       let value = EGOneManifest(
         modelName: "eg-1", version: "eg1-1.2-c003", contextTokens: 16_384,
         promptTemplateID: "eg1-v1", minAppVersion: "2.3.0",

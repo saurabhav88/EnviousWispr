@@ -53,7 +53,7 @@ import Testing
         parakeetUpgrade: .legacyForTesting(),
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting, revealPatience: PasteRevealPatience(), isSharedEngineHeldByOtherWorkload: { false })

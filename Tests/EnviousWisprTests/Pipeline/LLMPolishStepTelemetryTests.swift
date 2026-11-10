@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 @testable import EnviousWisprLLM
 import EnviousWisprServices
 import Foundation
@@ -93,7 +94,8 @@ struct LLMPolishStepTelemetryTests {
   private func makeStep(
     provider: LLMProvider, model: String = "gpt-4o-mini", telemetry: LLMPolishStep.TelemetrySeams
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: telemetry)
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: telemetry)
     step.llmProvider = provider
     step.llmModel = model
     return step
@@ -564,11 +566,11 @@ struct LLMPolishStepLanguageHintTests {
 
   @MainActor
   final class Runtime: EGOneEndpointProviding {
-    let endpoint: EGOneEndpoint?
+    let endpoint: LocalPolishEndpoint?
     init(ready: Bool = true, contextTokens: Int = 32768) {
-      endpoint = ready ? EGOneEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
+      endpoint = ready ? LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
     }
-    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+    func activeEndpoint() async -> LocalPolishEndpoint? { endpoint }
   }
 
   struct EchoPolisher: TranscriptPolisher {
@@ -594,7 +596,8 @@ struct LLMPolishStepLanguageHintTests {
     ready: Bool = true, contextTokens: Int = 32768,
     polisher: any TranscriptPolisher = EchoPolisher()
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: spy.seams)
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: spy.seams)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime(ready: ready, contextTokens: contextTokens)
@@ -733,7 +736,8 @@ struct LLMPolishStepLanguageHintTests {
   func silentSilencesTheHint() async throws {
     let spy = LLMPolishStepTelemetryTests.Spy()
     let step = LLMPolishStep(
-      keychainManager: KeychainManager(), telemetry: .silent(wrapping: spy.seams))
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
+      telemetry: .silent(wrapping: spy.seams))
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime()

@@ -1,5 +1,7 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices
 import Observation
@@ -114,10 +116,13 @@ struct SettingsAdvisoryRenderHarness {
       asrManager: RouterTestASRManager(),
       whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
       preloadAction: {}, ollamaStatusProbe: { _ in })
-    let egOne = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
-    let s1 = EGOneRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults, provider: .s1Mini)
+    let egOne = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), defaults: defaults)
+    let s1 = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(),
+      defaults: defaults, provider: .s1Mini)
     return AnyView(TranscribeFileView()
       .environment(coordinator).environment(settings).environment(setup)
       .environment(AIAvailabilityCoordinator())

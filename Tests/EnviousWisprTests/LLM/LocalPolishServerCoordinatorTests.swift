@@ -1,8 +1,10 @@
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #2649 contract delta C6: at most one local polish server, and it must be the
 /// one the selected model asked for.
@@ -10,7 +12,7 @@ import Testing
 /// Every row here needs TWO models to mean anything. A single-model test cannot
 /// distinguish a coordinator that swaps correctly from one that no-ops, because
 /// with one model those are the same behaviour — which is exactly how the
-/// underlying defect survived: `EGOneServerManager.start` compares STATE, not
+/// underlying defect survived: `LocalPolishProcessManager.start` compares STATE, not
 /// which model produced it, so a second model's activation silently returns
 /// while the first model keeps answering.
 @Suite("One local polish server, and it is the right one (#2649 C6)", .tags(.driftGuard))
@@ -22,11 +24,13 @@ struct LocalPolishServerCoordinatorTests {
   /// reason the manager takes an injectable configuration.
   static func target(_ provider: LLMProvider, _ name: String) -> LocalPolishTarget {
     LocalPolishTarget(
-      provider: provider,
-      configuration: EGOneServerManager.Configuration(
-        serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
-        modelURL: URL(fileURLWithPath: "/nonexistent/\(name).gguf"),
-        contextTokens: 8192,
+      configuration: LocalPolishProcessManager.Configuration(
+        spec: .fixture(
+          modelID: .singleModel(for: provider),
+          serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
+          modelURL: URL(fileURLWithPath: "/nonexistent/\(name).gguf"),
+          contextTokens: 8192),
+        makeArguments: LlamaServerLaunchBuilder.arguments,
         readinessBudgetSeconds: 1))
   }
 
@@ -68,7 +72,8 @@ struct LocalPolishServerCoordinatorTests {
 
     #expect(await coordinator.endpoint(for: .s1Mini) == nil)
     let health = await coordinator.probeHealth(
-      .s1Mini, promptFamily: .s1ControlLine, spec: .s1Mini)
+      .s1Mini,
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "not_running"))
   }
 

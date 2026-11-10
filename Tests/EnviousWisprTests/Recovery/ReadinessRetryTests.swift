@@ -260,7 +260,7 @@ struct ReadinessRetryTelemetryContractTests {
         },
         transcriptStore: transcriptStore,
         transcriptCoordinator: transcriptCoordinator,
-        keychainManager: KeychainManager(),
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         outputClassifierHolder: OutputClassifierHolder(),
         now: { Date() },
         currentCloudModelList: { nil },

@@ -346,7 +346,9 @@ struct DualModePolishTelemetryTests {
               filterFellBackToRaw: filterFellBack)
           )
 
-          let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+          let step = LLMPolishStep(
+            keychainManager: KeychainManager(), localPolishers: .llamaForTests,
+            telemetry: .silent())
           step.llmProvider = provider
           step.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
           step.makePolisher = { _, _, _, _ in CannedResultPolisher(result: result) }

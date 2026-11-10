@@ -96,7 +96,8 @@ struct TextProcessingContinuationTests {
     var sequence: [String] = []
     let wordCorrection = WordCorrectionStep()
     let learned = LearnedWordCheckStep()
-    let polish = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let polish = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     let spelling = EnglishSpellingStep(target: .polishedText)
 
     lazy var runner = TextProcessingRunner(

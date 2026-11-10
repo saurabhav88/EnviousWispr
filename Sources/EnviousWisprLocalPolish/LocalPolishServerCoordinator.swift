@@ -6,7 +6,7 @@ import os
 /// (#2649, contract delta C6).
 ///
 /// **The defect this closes is quiet and would not have shown up in any
-/// single-model test.** `EGOneServerManager.start(configuration:)` returns
+/// single-model test.** `LocalPolishProcessManager.start(configuration:)` returns
 /// early when the server is already `.ready` — deliberately, because
 /// activation is called from launch, provider switch and settings-open and must
 /// be idempotent. It compares STATE, not which model's configuration produced
@@ -15,7 +15,7 @@ import os
 /// endpoint, with a 200 and plausible text. Nothing would look broken.
 ///
 /// **And two runtimes could not have enforced this between them.** Each
-/// constructed its own `EGOneServerManager`, so two managers meant two
+/// constructed its own `LocalPolishProcessManager`, so two managers meant two
 /// processes and 3.4 GB resident. One-at-a-time is a property of the SET, and a
 /// property of a set needs an owner that can see the whole set.
 ///
@@ -28,8 +28,10 @@ import os
 /// Nil-as-absence is the whole point — "stop" and "start" become one value, so
 /// a caller states an intent rather than issuing two commands that can cross.
 public struct LocalPolishTarget: Sendable {
-  public let provider: LLMProvider
-  public let configuration: EGOneServerManager.Configuration
+  /// The provider of the model this target launches (#4473): read from the launch spec, so a
+  /// target cannot name one provider and launch another's model.
+  public var provider: LLMProvider { configuration.spec.modelID.provider }
+  public let configuration: LocalPolishProcessManager.Configuration
   /// Set only by delivery's adapter-availability signal. A resident server that
   /// fell back to the bare base keeps the requested adapter URL, so an ordinary
   /// restatement (launch, provider switch, settings open) must not reboot it on
@@ -37,10 +39,8 @@ public struct LocalPolishTarget: Sendable {
   public let retriesAdapterFallback: Bool
 
   public init(
-    provider: LLMProvider, configuration: EGOneServerManager.Configuration,
-    retriesAdapterFallback: Bool = false
+    configuration: LocalPolishProcessManager.Configuration, retriesAdapterFallback: Bool = false
   ) {
-    self.provider = provider
     self.configuration = configuration
     self.retriesAdapterFallback = retriesAdapterFallback
   }
@@ -128,14 +128,14 @@ public enum LocalPolishIntent: Sendable {
 /// the revision that produced it, in the same actor turn, so a receiver can
 /// refuse a stale one that lands late after the unstructured hops.
 public struct LocalPolishLifecycleEvent: Sendable, Equatable {
-  public let lifecycle: EGOneServerManager.Lifecycle
+  public let lifecycle: LocalPolishProcessManager.Lifecycle
   public let order: Int
 }
 
 public actor LocalPolishServerCoordinator {
   /// The one manager. Deliberately not exposed: handing it out would restore
   /// exactly the two-owners situation this type exists to remove.
-  private let manager = EGOneServerManager()
+  private let manager = LocalPolishProcessManager()
 
   /// Which model the manager is currently running, or nil when nothing is.
   /// This is the identity half of the rule; the manager's own state is the
@@ -159,7 +159,7 @@ public actor LocalPolishServerCoordinator {
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   /// #3105: per engine, because each local engine boots its own checker adapter
   /// and one engine's fallback must not describe the other's.
-  private var recordedCheckerFailures: [LLMProvider: EGOneServerManager.CheckerFailureReason] = [:]
+  private var recordedCheckerFailures: [LLMProvider: LocalPolishProcessManager.CheckerFailureReason] = [:]
   /// The resident process was asked for an adapter and runs the bare base.
   private var residentAdapterFellBack = false
 
@@ -214,7 +214,7 @@ public actor LocalPolishServerCoordinator {
 
   #if DEBUG
     public func qualificationTrapOwnedReadyChild() async
-      -> EGOneServerManager.QualificationChildSignal?
+      -> LocalPolishProcessManager.QualificationChildSignal?
     {
       await manager.qualificationTrapOwnedReadyChild()
     }
@@ -439,13 +439,15 @@ public actor LocalPolishServerCoordinator {
     // A ready start cannot change argv. Adapter arrival/removal is an explicit
     // stop and boot, and neither that nor a model switch may evict a pinned
     // take or import. The release callback retries the latest deferred intent.
+    // #4473: the REQUESTED launch specs are compared, so any difference in what would run
+    // (model, bytes, context, flags, checker) is a different process. The adapter-fallback
+    // retry stays a separate, explicit condition: a resident that fell back keeps its requested
+    // spec, so equal specs alone would never retry and an ordinary restatement must not.
     let changesProcess =
       resident != nil
-      && (resident != target?.provider
-        || residentTarget?.configuration.learnedWordAdapterURL
-          != target?.configuration.learnedWordAdapterURL
+      && (residentTarget?.configuration.spec != target?.configuration.spec
         || (residentAdapterFellBack && target?.retriesAdapterFallback == true
-          && target?.configuration.learnedWordAdapterURL != nil))
+          && target?.configuration.spec.learnedWordAdapterURL != nil))
     let heldByAnotherSummary = summaryReservation != nil && !ownsReservation
     // Anyone but the holder starting any process during the summary, even the same model
     // from nothing, would race the holder's load.
@@ -512,16 +514,16 @@ public actor LocalPolishServerCoordinator {
     if resident == provider {
       let reason = await manager.checkerFailureReason
       guard resident == provider,
-        residentTarget?.configuration.learnedWordAdapterURL
-          == target.configuration.learnedWordAdapterURL
+        residentTarget?.configuration.spec == target.configuration.spec
       else { return }
       if let reason {
         recordedCheckerFailures[provider] = reason
-      } else if target.configuration.learnedWordAdapterURL != nil {
+      } else if target.configuration.spec.learnedWordAdapterURL != nil {
         recordedCheckerFailures[provider] = nil
       }
       // Every manager failure reason is a bare-base fallback of an adapter boot.
-      residentAdapterFellBack = reason != nil && target.configuration.learnedWordAdapterURL != nil
+      residentAdapterFellBack =
+        reason != nil && target.configuration.spec.learnedWordAdapterURL != nil
     }
   }
 
@@ -532,13 +534,13 @@ public actor LocalPolishServerCoordinator {
     await transition(to: deferredRequest.request, intent: deferredRequest.intent)
   }
 
-  public func checkerFailureReason(for provider: LLMProvider) -> EGOneServerManager
+  public func checkerFailureReason(for provider: LLMProvider) -> LocalPolishProcessManager
     .CheckerFailureReason?
   {
     recordedCheckerFailures[provider]
   }
 
-  public func currentBootCheckerFailureReason() async -> EGOneServerManager.CheckerFailureReason? {
+  public func currentBootCheckerFailureReason() async -> LocalPolishProcessManager.CheckerFailureReason? {
     await manager.checkerFailureReason
   }
 
@@ -550,13 +552,12 @@ public actor LocalPolishServerCoordinator {
   /// inference, so a summary's drain waits for it. The startup readiness check (`GET /health`
   /// inside the manager's start) is not a probe and is never held back.
   public func probeHealth(
-    _ provider: LLMProvider, promptFamily: PromptFamily,
-    spec: EGOneServerManager.ProbeSpec
+    _ provider: LLMProvider, operation: LocalPolishHealthProbe
   ) async -> EGOneHealth? {
     guard summaryReservation == nil else { return nil }
     guard resident == provider else { return .red(reason: "not_running") }
     probesInFlight += 1
-    let result = await manager.probeHealth(promptFamily: promptFamily, spec: spec)
+    let result = await manager.probeHealth(operation: operation)
     probesInFlight -= 1
     wakeDrainWaitersIfIdle()
     // A probe takes real time. If the user switched during it, this verdict
@@ -570,7 +571,7 @@ public actor LocalPolishServerCoordinator {
   /// process. A polish request must never be answered by different weights.
   /// #3988: `provider`'s lifecycle, including an outstanding outside stop, read
   /// in one manager turn. Another model's stop is never this model's news.
-  public func lifecycle(for provider: LLMProvider) async -> EGOneServerManager.Lifecycle {
+  public func lifecycle(for provider: LLMProvider) async -> LocalPolishProcessManager.Lifecycle {
     guard resident == provider else { return .stopped }
     let lifecycle = await manager.currentLifecycle()
     guard resident == provider else { return .stopped }
@@ -590,7 +591,7 @@ public actor LocalPolishServerCoordinator {
   /// snapshot. A stop after that second read fails the request like any other.
   public func admitPolish(
     for provider: LLMProvider, takeID: String?
-  ) async -> (admission: LocalPolishLeaseAdmission, availability: EGOneServerManager.Availability) {
+  ) async -> (admission: LocalPolishLeaseAdmission, availability: LocalPolishProcessManager.Availability) {
     let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
     let admission = acquireLease(for: provider, purpose: .inference)
     guard case .granted = admission else { return (admission, availability) }
@@ -600,7 +601,7 @@ public actor LocalPolishServerCoordinator {
     return (admission, await manager.observeAvailability(for: provider, claimingFor: takeID))
   }
 
-  public func endpoint(for provider: LLMProvider) async -> EGOneEndpoint? {
+  public func endpoint(for provider: LLMProvider) async -> LocalPolishEndpoint? {
     guard resident == provider else { return nil }
     let endpoint = await manager.activeEndpoint()
     // The most consequential of the five: handing back an endpoint the asking
@@ -633,7 +634,7 @@ public actor LocalPolishServerCoordinator {
 
   /// Server-state observation, KEYED BY MODEL.
   ///
-  /// `EGOneServerManager.setStateObserver` holds ONE closure, so two runtimes
+  /// `LocalPolishProcessManager.setStateObserver` holds ONE closure, so two runtimes
   /// registering against it meant the second silently replaced the first. That
   /// is an EG-1 REGRESSION, not just a gap in the new model: depending on which
   /// unstructured registration task won, EG-1 could stop receiving state
@@ -702,9 +703,11 @@ public actor LocalPolishServerCoordinator {
   #if DEBUG
     /// #4319 DEBUG: `provider`'s server slots, through the manager's own endpoint. A control
     /// request: no lease, no reservation check, available while a summary holds the server.
-    public func observeSlotsForDebug(for provider: LLMProvider) async -> EGOneSlotObservation {
+    public func observeSlotsForDebug(
+      for provider: LLMProvider, operation: LocalPolishSlotInspection
+    ) async -> EGOneSlotObservation {
       guard resident == provider else { return .unavailable }
-      let observation = await manager.observeSlotsForDebug()
+      let observation = await manager.observeSlotsForDebug(operation: operation)
       guard resident == provider else { return .replaced }
       return observation
     }
@@ -742,7 +745,7 @@ public actor LocalPolishServerCoordinator {
 /// The set of local polish engines the app constructed, so a view can reach the
 /// SECOND one (#2649).
 ///
-/// SwiftUI keys `@Environment` by TYPE, and both engines are `EGOneRuntime`, so
+/// SwiftUI keys `@Environment` by TYPE, and both engines are `LocalPolishRuntime`, so
 /// injecting two of them would have the second silently replace the first. This
 /// holder gives the settings screen an unambiguous way to ask for a specific
 /// engine rather than "the" engine — which is the same mistake the server
@@ -750,10 +753,10 @@ public actor LocalPolishServerCoordinator {
 @MainActor
 @Observable
 public final class LocalPolishRuntimeSet {
-  public let egOne: EGOneRuntime
-  public let s1Mini: EGOneRuntime
+  public let egOne: LocalPolishRuntime
+  public let s1Mini: LocalPolishRuntime
 
-  public init(egOne: EGOneRuntime, s1Mini: EGOneRuntime) {
+  public init(egOne: LocalPolishRuntime, s1Mini: LocalPolishRuntime) {
     self.egOne = egOne
     self.s1Mini = s1Mini
   }
@@ -765,11 +768,14 @@ public final class LocalPolishRuntimeSet {
   /// configuration — can reach its runtime without restating which providers are bundled.
   /// Exhaustive on purpose: a third bundled engine must fail to compile here rather than
   /// fall into a `default:` and silently never start, which is the shape #2649 fixed twice.
+  ///
+  /// #4473: keyed by model identity, not provider. A size of EG-1 that no runtime here serves
+  /// gets `nil`, never another size's runtime.
   @MainActor
-  public func runtime(for provider: LLMProvider) -> EGOneRuntime? {
-    switch provider {
-    case .egOne: return egOne
-    case .s1Mini: return s1Mini
+  public func runtime(for modelID: LocalPolishModelID) -> LocalPolishRuntime? {
+    switch modelID.provider {
+    case .egOne: return egOne.modelID == modelID ? egOne : nil
+    case .s1Mini: return s1Mini.modelID == modelID ? s1Mini : nil
     case .appleIntelligence, .ollama, .openAI, .gemini, .claude, .none: return nil
     }
   }
@@ -793,20 +799,22 @@ public final class LocalPolishRuntimeSet {
   }
 
   private var summaryHold:
-    (id: UUID, runtime: EGOneRuntime, reservation: LocalPolishSummaryReservation?)?
+    (id: UUID, runtime: LocalPolishRuntime, reservation: LocalPolishSummaryReservation?)?
 
   /// The bundled model a summary attempt holds (or is draining the server for), or nil. The
   /// settings pin, the dictation clash and the health-probe busy check read this; the
   /// coordinator's reservation is what actually excludes other requests.
   public private(set) var summaryHeldProvider: LLMProvider?
   /// Moves when an attempt starts holding the server, so a health probe measured across that
-  /// moment is discarded (`EGOneRuntime.activateAndProbe` compares it before and after).
+  /// moment is discarded (`LocalPolishRuntime.activateAndProbe` compares it before and after).
   public private(set) var summaryAdmissionEpoch = 0
 
   /// Starts this attempt's hold: the projection is published at once, so dictation sees the
   /// engine busy while earlier requests drain; it is withdrawn if nothing is held.
   public func beginSummaryHold(_ provider: LLMProvider) async -> SummaryHoldOutcome {
-    guard summaryHold == nil, let runtime = runtime(for: provider) else { return .retryLater }
+    guard summaryHold == nil, let runtime = runtime(for: .singleModel(for: provider)) else {
+      return .retryLater
+    }
     let id = UUID()
     summaryHold = (id, runtime, nil)
     summaryHeldProvider = provider
@@ -856,14 +864,14 @@ public final class LocalPolishRuntimeSet {
   /// also holds one through its own inference; this one covers the gaps
   /// between parts, so a provider switch or adapter change made mid-import
   /// waits for the run's end instead of landing between two parts.
-  private var importHold: (runtime: EGOneRuntime, lease: LocalPolishServerLease)?
+  private var importHold: (runtime: LocalPolishRuntime, lease: LocalPolishServerLease)?
 
   /// Takes the import's hold once its server is ready. False when the server
   /// is changing; the caller refuses the local cleanup as for a missing
   /// endpoint.
   public func holdForImport(_ provider: LLMProvider) async -> Bool {
     await releaseImportHold()?.value
-    guard let runtime = runtime(for: provider) else { return false }
+    guard let runtime = runtime(for: .singleModel(for: provider)) else { return false }
     switch await runtime.acquireLocalServerResidency() {
     case .granted(let lease):
       importHold = (runtime, lease)

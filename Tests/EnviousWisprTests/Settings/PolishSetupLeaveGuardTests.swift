@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 import Observation
 import Testing

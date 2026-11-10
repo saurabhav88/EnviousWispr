@@ -1,12 +1,14 @@
 import CryptoKit
 import EnviousWisprCore
 import EnviousWisprAppKitTestSupport
+import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprASR
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprPostProcessing
@@ -211,7 +213,7 @@ struct FileImportReplayRunner {
     let description: String
   }
 
-  static func miniEndpoint(arm: Arm, env: [String: String]) throws -> EGOneEndpoint? {
+  static func miniEndpoint(arm: Arm, env: [String: String]) throws -> LocalPolishEndpoint? {
     func need(_ key: String) throws -> String {
       guard let value = env[key], !value.isEmpty else {
         throw ReplayConfigurationError(description: "the Mini arm needs \(key)")
@@ -229,7 +231,7 @@ struct FileImportReplayRunner {
     else { throw ReplayConfigurationError(description: "Mini port or context is not a number") }
     let token = try need("EW_REPLAY_MINI_TOKEN")
     _ = try need("EW_REPLAY_MINI_SHA256")
-    return EGOneEndpoint(
+    return LocalPolishEndpoint(
       port: port, authToken: token, contextTokens: context, hasLearnedWordAdapter: false)
   }
 
@@ -511,7 +513,7 @@ final class ReplayRig {
 
   static func make(
     arm: FileImportReplayRunner.Arm, appBundle: URL, modelsDir: URL, settingsPlist: String?,
-    wordsFile: String?, mini: EGOneEndpoint?, miniSHA256: String?
+    wordsFile: String?, mini: LocalPolishEndpoint?, miniSHA256: String?
   ) async throws -> ReplayRig {
     let fm = FileManager.default
     let root = TestTemporaryDirectory.url.appendingPathComponent(
@@ -583,15 +585,18 @@ final class ReplayRig {
     }
 
     let promptTemplateID = egOneManifest.promptTemplateID
-    let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: serverBinary, delivery: egOneAdapter,
+    let egOneRuntime = LocalPolishRuntime(
+      manifest: egOneManifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
+      serverBinaryURL: serverBinary, delivery: egOneAdapter,
+      engine: LlamaServerEngine(),
       learnedWordAdapterProvider: {
         return await home.admittedCompatibleCheckerURL(
           engine: .egOne, baseRegistration: egOneRegistration, promptTemplateID: promptTemplateID)
       })
     egOneRuntime.isActiveProvider = { settingsBox.settings.effectiveFileImportLLMProvider == .egOne }
-    let s1MiniRuntime = EGOneRuntime(
+    let s1MiniRuntime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
+      engine: LlamaServerEngine(),
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
     let localPolish = LocalPolishRuntimeSet(egOne: egOneRuntime, s1Mini: s1MiniRuntime)
     let checkerEligibility = LearnedWordCheckerEligibility(
@@ -642,9 +647,13 @@ final class ReplayRig {
 
     // The polisher factories are the step's own defaults, wrapped. Read off a throwaway step so
     // the wrapped closure is exactly the one production would have used.
-    let probe = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    // #4473: the EG-1 factory is no longer a step default. It is read from the explicit llama
+    // pair, the same connector the app's composition root supplies.
+    let llamaPolishers = BundledLocalPolisherFactories.llamaForTests
+    let probe = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: llamaPolishers, telemetry: .silent())
     let productionFactory = probe.makePolisher
-    let productionEGOne = probe.makeEGOnePolisher
+    let productionEGOne = llamaPolishers.egOne
     // The production planner reads the EG-1 family from `Bundle.main`, which in a test host is
     // the xctest bundle, so it would fall back to `.egOneFixed`. Built from the same committed
     // manifest the app bundles, exactly what the app's `bundledEGOneFamily` resolves.
@@ -671,10 +680,8 @@ final class ReplayRig {
     }
     let canned = cannedMap
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
-      outputClassifierHolder: classifierHolder,
-      languageIdentifier: DictationLanguageResolver.identify,
-      makeEGOnePolisher: { endpoint in
+      keychainManager: KeychainManager(),
+      localPolishers: llamaPolishers.replacingEGOne { endpoint in
         if let canned {
           return CapturingPolisher(
             inner: ReplayAnswerPolisher(answers: canned, log: rigLog), provider: "canned", log: rigLog)
@@ -683,6 +690,9 @@ final class ReplayRig {
           inner: productionEGOne(mini ?? endpoint), provider: mini == nil ? "egOne" : "mini",
           log: rigLog)
       },
+      egOneRuntime: egOneRuntime, s1MiniRuntime: s1MiniRuntime,
+      outputClassifierHolder: classifierHolder,
+      languageIdentifier: DictationLanguageResolver.identify,
       promptPlanner: RecordingPlanner(inner: productionPlanner, log: rigLog),
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         let caseID = await rigLog.currentCase
@@ -828,7 +838,7 @@ final class ReplayRig {
   /// `prepareLocalPolish` from `WisprBootstrapper`: activation awaited, the endpoint checked,
   /// then the import hold. A refusal invalidates the case rather than letting the step skip.
   private func prepareLocalPolish(_ provider: LLMProvider) async throws {
-    let runtime = try #require(localPolish.runtime(for: provider))
+    let runtime = try #require(localPolish.runtime(for: .singleModel(for: provider)))
     if let activation = runtime.activateAndProbe() { await activation.value }
     let endpoint = await runtime.activeEndpoint()
     try #require(endpoint != nil, "\(provider) endpoint unavailable after activation")
@@ -850,7 +860,7 @@ final class ReplayRig {
 
   func tearDown() {
     localPolish.releaseImportHold()
-    localPolish.runtime(for: .egOne)?.terminateServerForAppQuit()
+    localPolish.runtime(for: .singleModel(for: .egOne))?.terminateServerForAppQuit()
     try? FileManager.default.removeItem(at: root)
   }
 

@@ -2940,7 +2940,7 @@ public final class TelemetryService {
   /// are a closed string set, and no transcript or prompt content exists on
   /// this path. `eg1.health_changed` emits colour changes and unsuppressed
   /// same-colour reason changes, never the first resolved value at launch.
-  /// `EGOneRuntime.health.didSet` owns suppression (#2966); `reason` names the
+  /// `LocalPolishRuntime.health.didSet` owns suppression (#2966); `reason` names the
   /// new cause.
   public func egOneDownloadEvent(name: String, properties: [String: String]) {
     let event = "eg1.\(name)"

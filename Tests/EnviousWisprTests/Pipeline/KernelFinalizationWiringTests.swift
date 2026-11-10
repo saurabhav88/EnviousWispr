@@ -664,7 +664,7 @@ import os
     // the heart path still delivers the raw words.
     let outcome = KernelFinalizationOutcome()
     let saves = SaveCountBox()
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .openAI
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
@@ -701,7 +701,7 @@ import os
     facts: OllamaModelFacts,
     outcome: KernelFinalizationOutcome
   ) async throws {
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .ollama
     polish.llmModel = "some-unknown-model:7b"
     polish.ollamaReadinessProbe = { _ in .ready(facts: facts) }
@@ -735,7 +735,7 @@ import os
   @Test("a completed cloud polish leaves remoteness nil in outcome and metrics")
   func cloudPolishLeavesRemotenessNil() async throws {
     let outcome = KernelFinalizationOutcome()
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .openAI
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in CannedPolisher() }
@@ -764,7 +764,7 @@ import os
   @Test("a FAILED remote polish leaves remoteness nil in outcome and metrics")
   func failedPolishLeavesRemotenessNil() async throws {
     let outcome = KernelFinalizationOutcome()
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .ollama
     polish.llmModel = "gpt-oss:20b-cloud"
     polish.ollamaReadinessProbe = { _ in
@@ -792,7 +792,7 @@ import os
   @Test("an empty remote polish becomes a skip and drops remoteness")
   func emptyRemotePolishDropsRemoteness() async throws {
     let outcome = KernelFinalizationOutcome()
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .ollama
     polish.llmModel = "deepseek-v4-flash:latest"
     polish.ollamaReadinessProbe = { _ in
@@ -971,7 +971,7 @@ import os
     let context = KernelSessionContext()
     context.config = .testDefault(autoPasteToActiveApp: true)
 
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .openAI
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
@@ -2275,7 +2275,8 @@ import os
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(deadlines: .unbounded),
       englishSpelling: EnglishSpellingStep(target: .text),
-      llmPolish: polish ?? LLMPolishStep(keychainManager: KeychainManager()),
+      llmPolish: polish ?? LLMPolishStep(
+        keychainManager: KeychainManager(), localPolishers: .llamaForTests),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }

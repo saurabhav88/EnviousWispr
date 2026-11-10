@@ -32,7 +32,7 @@ struct LLMPolishStepAppleTextTests {
     arguments: [PolishInstructions.default, PolishInstructions(systemPrompt: "Fix this: ${transcript}")])
   func transcriptAlwaysSentAsText(instructions: PolishInstructions) async throws {
     let box = TextBox()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .appleIntelligence
     step.llmModel = "apple-intelligence"
     step.polishInstructions = instructions

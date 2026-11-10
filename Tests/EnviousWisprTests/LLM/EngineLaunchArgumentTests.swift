@@ -1,8 +1,11 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
+import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// S1-mini answers with NOTHING unless the server is told to turn thinking off.
 ///
@@ -30,7 +33,7 @@ struct EngineLaunchArgumentTests {
 
   @Test("S1-mini is launched with thinking disabled")
   func s1MiniDisablesThinking() {
-    let args = EGOneRuntime.engineArguments(for: .s1Mini)
+    let args = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
     #expect(args.contains("--jinja"), "the template's own logic must be applied")
     let index = args.firstIndex(of: "--chat-template-kwargs")
     let position = try? #require(index)
@@ -48,8 +51,8 @@ struct EngineLaunchArgumentTests {
   /// simplification makes.
   @Test("the degrading alternative is not used")
   func doesNotUseReasoningBudget() {
-    #expect(!EGOneRuntime.engineArguments(for: .s1Mini).contains("--reasoning-budget"))
-    #expect(!EGOneRuntime.engineArguments(for: .egOne).contains("--reasoning-budget"))
+    #expect(!LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).contains("--reasoning-budget"))
+    #expect(!LlamaServerLaunchBuilder.engineArguments(for: .egOne).contains("--reasoning-budget"))
   }
 
   /// EG-1 must NOT inherit them. Its template has no thinking mode, and passing
@@ -58,11 +61,11 @@ struct EngineLaunchArgumentTests {
   /// argument and returned one list, the row above would still pass.
   @Test("EG-1 does not get S1-mini's template flags")
   func egOneKeepsItsOwnFlags() {
-    let egOne = EGOneRuntime.engineArguments(for: .egOne)
+    let egOne = LlamaServerLaunchBuilder.engineArguments(for: .egOne)
     #expect(!egOne.contains("--jinja"))
     #expect(!egOne.contains("--chat-template-kwargs"))
     #expect(
-      egOne != EGOneRuntime.engineArguments(for: .s1Mini),
+      egOne != LlamaServerLaunchBuilder.engineArguments(for: .s1Mini),
       "both engines are being launched identically, so the derivation does nothing")
   }
 
@@ -71,9 +74,9 @@ struct EngineLaunchArgumentTests {
   /// design, so S1-mini must not inherit it until it is measured the same way.
   @Test("EG-1 gets word-copying and S1-mini does not")
   func wordCopyingIsEGOneOnly() {
-    let egOne = EGOneRuntime.engineArguments(for: .egOne)
+    let egOne = LlamaServerLaunchBuilder.engineArguments(for: .egOne)
     #expect(egOne.suffix(2) == ["--spec-type", "ngram-simple"])
-    #expect(!EGOneRuntime.engineArguments(for: .s1Mini).contains("--spec-type"))
+    #expect(!LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).contains("--spec-type"))
   }
 
   /// The footprint pair is EG-1's measured memory choice and both engines want
@@ -82,10 +85,87 @@ struct EngineLaunchArgumentTests {
   @Test("both engines keep the measured memory footprint flags")
   func bothKeepTheFootprintFlags() {
     for provider in [LLMProvider.egOne, .s1Mini] {
-      let args = EGOneRuntime.engineArguments(for: provider)
+      let args = LlamaServerLaunchBuilder.engineArguments(for: provider)
       #expect(args.contains("-fa"), "\(provider) lost flash attention")
       #expect(args.contains("--cache-type-k"), "\(provider) lost the q8 key cache")
       #expect(args.contains("--cache-type-v"), "\(provider) lost the q8 value cache")
     }
+  }
+
+  /// #4473: the process manager no longer knows the server's command line; the launch
+  /// configuration renders it. The rendered list must be exactly what the manager used to
+  /// build, or the bundled server starts with a wrong port, context size or bearer and every
+  /// polish request fails.
+  @Test("the complete argument list for a spawn: model, host, port, context, bearer, then flags")
+  func completeSpawnArguments() {
+    let configuration = LocalPolishProcessManager.Configuration(
+      spec: .fixture(
+        serverBinaryURL: URL(fileURLWithPath: "/tmp/ew-args/server"),
+        modelURL: URL(fileURLWithPath: "/tmp/ew-args/model.gguf"), contextTokens: 16384,
+        learnedWordAdapterURL: URL(fileURLWithPath: "/tmp/ew-args/checker.gguf"),
+        extraArguments: ["-fa", "on", "--spec-type", "ngram-simple"],
+        learnedWordAdapterArguments: ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"]),
+      makeArguments: LlamaServerLaunchBuilder.arguments)
+    let base = [
+      "-m", "/tmp/ew-args/model.gguf", "--host", "127.0.0.1", "--port", "51234",
+      "-c", "16384", "--api-key", "bearer-1", "-fa", "on", "--spec-type", "ngram-simple",
+    ]
+
+    #expect(
+      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
+        == base + ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"])
+    // The bare-base fallback copy renders without the adapter's flags.
+    let fallback = configuration.withoutLearnedWordAdapter()
+    #expect(fallback.makeArguments(fallback.spec, 51234, "bearer-1") == base)
+  }
+
+  /// #4473: the configuration the composition root's factory builds for each bundled model,
+  /// with and without a word-check adapter, against values written out here. When this is
+  /// wrong the model starts with another model's flags, a wrong context size or a checker
+  /// the app did not ask for, and polish silently degrades or returns nothing.
+  @Test(
+    "the launch factory builds each model's complete configuration",
+    arguments: [
+      (LLMProvider.egOne, false), (.egOne, true), (.s1Mini, false), (.s1Mini, true),
+    ])
+  func launchFactoryBuildsTheCompleteConfiguration(provider: LLMProvider, withAdapter: Bool) {
+    let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+    let flags =
+      provider == .egOne
+      ? footprint + ["--spec-type", "ngram-simple"]
+      : footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+    let adapter = withAdapter ? URL(fileURLWithPath: "/tmp/ew-factory/checker.gguf") : nil
+    let adapterFlags =
+      withAdapter
+      ? [
+        "--lora-scaled", "/tmp/ew-factory/checker.gguf:0",
+        "-np", "9", "--kv-unified", "--no-cache-idle-slots",
+      ] : []
+    let identity = ModelIdentity(
+      family: .egOne, name: "fixture", revision: "fixture-a", variant: "fixture",
+      runtimeABI: "fixture")
+    let server = URL(fileURLWithPath: "/tmp/ew-factory/server")
+    let model = URL(fileURLWithPath: "/tmp/ew-factory/model.gguf")
+
+    let factory: LocalPolishLaunchConfigurationFactory = LlamaServerEngine().makeLaunchConfiguration
+    let configuration = factory(
+      .singleModel(for: provider), identity, server, model, 16384, adapter)
+
+    #expect(
+      configuration.spec
+        == LocalPolishLaunchSpec(
+          engineKind: .llamaServer, modelID: .singleModel(for: provider),
+          artifactIdentity: identity, serverBinaryURL: server, modelURL: model,
+          contextTokens: 16384, learnedWordAdapterURL: adapter, extraArguments: flags,
+          learnedWordAdapterArguments: adapterFlags))
+    #expect(
+      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
+        == [
+          "-m", "/tmp/ew-factory/model.gguf", "--host", "127.0.0.1", "--port", "51234",
+          "-c", "16384", "--api-key", "bearer-1",
+        ] + flags + adapterFlags)
+    // Execution controls the factory does not set keep their defaults.
+    #expect(configuration.readinessBudgetSeconds == 60)
+    #expect(configuration.owningProvider == nil)
   }
 }

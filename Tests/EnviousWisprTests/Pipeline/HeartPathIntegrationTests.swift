@@ -110,6 +110,7 @@ struct HeartPathIntegrationTests {
         vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
+        localPolishers: .llamaForTests,
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry(),
         engineMutationScope: .alwaysAllowedForTesting, revealPatience: PasteRevealPatience(), isSharedEngineHeldByOtherWorkload: { false }
@@ -331,7 +332,8 @@ private final class HeartPathHarness {
     default: throw HeartPathHarnessError.unexpectedASROutcome
     }
 
-    let polishStep = LLMPolishStep(keychainManager: KeychainManager())
+    let polishStep = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     // `.openAI` only selects that provider's budget and enables the step; the injected
     // polisher replaces the connector entirely, so no key or network is used.
     polishStep.llmProvider = .openAI

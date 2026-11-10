@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLlamaEngine
 import EnviousWisprModelDelivery
 import Foundation
 import os
@@ -57,7 +58,7 @@ enum LearnedWordCheckerEngine: CaseIterable, Sendable {
     }
   }
 
-  func promptStyle(language: String?) -> EGOneLearnedWordChecker.PromptStyle {
+  func promptStyle(language: String?) -> LlamaLearnedWordChecker.PromptStyle {
     switch self {
     case .egOne: .egOne
     case .s1Mini: .s1Mini(language: language)

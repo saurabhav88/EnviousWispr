@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import Foundation
 import Sentry
 import Testing
@@ -6,6 +7,7 @@ import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprServices
 import EnviousWisprAppKitTestSupport
 
@@ -81,7 +83,7 @@ struct ChildProcessFailureTests {
   @Test func failedSweepLaunchNeverWaitsOrInventsExitFacts() {
     let process = Process()
     let received = OSAllocatedUnfairLock(initialState: [ChildProcessFailure]())
-    EGOneServerManager.runOrphanSweep(
+    LocalPolishProcessManager.runOrphanSweep(
       process, binaryPath: "/synthetic/not-a-live-server", initiator: .s1Mini, generation: 4,
       report: { failure in received.withLock { $0.append(failure) } },
       launch: { _ in throw NSError(domain: NSPOSIXErrorDomain, code: 13) })
@@ -98,14 +100,14 @@ struct ChildProcessFailureTests {
 
   @Test(arguments: [Int32(0), 1, 2])
   func sweepNormalExitAndFailureAreDistinct(status: Int32) {
-    let fact = EGOneServerManager.orphanSweepFailure(
+    let fact = LocalPolishProcessManager.orphanSweepFailure(
       reason: .exit, status: status, pid: 120, initiator: .egOne, generation: 2)
     #expect((fact != nil) == (status == 2))
     if status == 2 { #expect(fact?.status == 2) }
   }
 
   @Test func sweepSignalOneIsNotNoMatch() {
-    let fact = EGOneServerManager.orphanSweepFailure(
+    let fact = LocalPolishProcessManager.orphanSweepFailure(
       reason: .uncaughtSignal, status: 1, pid: 120, initiator: .egOne, generation: 2)
     #expect(fact?.termination == .signal)
     #expect(fact?.status == 1)
@@ -121,12 +123,15 @@ struct ChildProcessFailureTests {
     let missingRoot = TestTemporaryDirectory.url
       .appendingPathComponent("ew3685-\(UUID().uuidString)", isDirectory: true)
     try #require(!FileManager.default.fileExists(atPath: missingRoot.path))
-    let configuration = EGOneServerManager.Configuration(
-      serverBinaryURL: missingRoot.appendingPathComponent("server"),
-      modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048)
     for provider in [LLMProvider.egOne, .s1Mini] {
+      let configuration = LocalPolishProcessManager.Configuration(
+        spec: .fixture(
+          modelID: .singleModel(for: provider),
+          serverBinaryURL: missingRoot.appendingPathComponent("server"),
+          modelURL: missingRoot.appendingPathComponent("model"), contextTokens: 2048),
+        makeArguments: LlamaServerLaunchBuilder.arguments)
       await coordinator.transition(
-        to: .run(LocalPolishTarget(provider: provider, configuration: configuration)),
+        to: .run(LocalPolishTarget(configuration: configuration)),
         intent: coordinator.claimIntent())
       let resident = await coordinator.residentModelForTesting
       #expect(resident == provider)
@@ -187,8 +192,10 @@ struct OutsideStopChildTelemetryTests {
 
   private static func runtime(
     _ provider: LLMProvider = .egOne, pressure: OutsideStopContext.MemoryPressure? = .warning
-  ) -> (EGOneRuntime, Box) {
-    let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, provider: provider)
+  ) -> (LocalPolishRuntime, Box) {
+    let runtime = LocalPolishRuntime(
+      manifest: nil, serverBinaryURL: nil, delivery: nil,
+      engine: LlamaServerEngine(), provider: provider)
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {
@@ -230,7 +237,7 @@ struct OutsideStopChildTelemetryTests {
 
   @Test("the failure and the lifecycle share one pressure sample, in either order")
   func oneSampleEitherOrder() {
-    let stopped = EGOneServerManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 3)
+    let stopped = LocalPolishProcessManager.Lifecycle(state: .stoppedOutside, outsideStopGeneration: 3)
     let (failureFirst, box1) = Self.runtime()
     failureFirst.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM))
     failureFirst.receive(LocalPolishLifecycleEvent(lifecycle: stopped, order: 1))
@@ -259,7 +266,7 @@ struct OutsideStopChildTelemetryTests {
     // Reporting after the engine is back resurrects nothing.
     runtime.receive(
       LocalPolishLifecycleEvent(
-        lifecycle: .init(state: .ready(EGOneEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        lifecycle: .init(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1))),
         order: 2))
     runtime.reportChildProcessFailure(Self.record(.ready, .signal, SIGTERM, generation: 5))
     #expect(runtime.unresolvedOutsideStop == nil)

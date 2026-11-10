@@ -50,7 +50,7 @@ struct OllamaReadinessGateTests {
     probe: @escaping @MainActor (String) async -> OllamaReadiness,
     invocationCounter: InvocationCounter = InvocationCounter()
   ) -> (step: LLMPolishStep, factoryCalls: () -> Int) {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .ollama
     step.llmModel = "llama3.2"
     step.ollamaReadinessProbe = probe
@@ -102,7 +102,7 @@ struct OllamaReadinessGateTests {
     model: String = "some-unknown-model:7b"
   ) -> (step: LLMPolishStep, capture: ConfigCapture) {
     let capture = ConfigCapture()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .ollama
     step.llmModel = model
     step.ollamaReadinessProbe = { _ in .ready(facts: facts) }
@@ -268,7 +268,7 @@ struct OllamaReadinessGateTests {
   /// payload is asserted in `DictationCompletedRouteFieldsTests`.
   @Test("a remote-ready attempt whose polish throws never reaches the stamp")
   func failedRemotePolishThrowsBeforeTheStamp() async throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .ollama
     step.llmModel = "gpt-oss:20b-cloud"
     step.ollamaReadinessProbe = { _ in

@@ -54,7 +54,8 @@ struct LLMPolishResultFinisherTests {
   @Test("Ordinary completed results preserve text, guard precedence, metadata and source state",
     arguments: ["changed", "unchanged", "symbol-loss", "metadata"])
   func ordinaryCompletion(kind: String) async throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     let text = kind == "unchanged" ? Self.original
@@ -86,7 +87,8 @@ struct LLMPolishResultFinisherTests {
 
   @Test("An empty batch answer preserves its prepared text without claiming success or bypass")
   func emptyBatchPiece() throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     var input = source()
     input.polishedText = "stale result"
     input.llmProvider = "stale provider"
@@ -112,7 +114,8 @@ struct LLMPolishResultFinisherTests {
     let original = kind == "question" ? "Can you send the report to the team tomorrow?" : Self.original
     let candidate = kind == "question" ? "I will send the report to the team tomorrow."
       : "Please keep exit in the release notes for the team tomorrow."
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     let context = try step.finishResult(
       LLMResult(polishedText: candidate), context: TextProcessingContext(text: original, language: "en"),
       mode: .message, provider: .openAI, model: "gpt-4o-mini", ollamaRemote: nil,
@@ -127,7 +130,8 @@ struct LLMPolishResultFinisherTests {
   func compressedBatchPiece() throws {
     let original = "send the first draft no actually send the second draft no wait send the final draft tomorrow"
     let cleaned = "Send the final draft tomorrow."
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     let input = TextProcessingContext(text: original, language: "en")
     let result = LLMResult(polishedText: cleaned)
     let ordinary = try step.finishResult(
@@ -148,7 +152,8 @@ struct LLMPolishResultFinisherTests {
     arguments: [true, false])
   func sourceBoundCompletion(wasDictated: Bool) async throws {
     let source = wasDictated ? "sure I can do that tomorrow" : "I can do that tomorrow"
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in
@@ -162,7 +167,8 @@ struct LLMPolishResultFinisherTests {
 
   @Test("ordinary completion applies only one bounded cleanup pass")
   func ordinaryCleanupRunsOnce() async throws {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in
@@ -184,7 +190,8 @@ struct LLMPolishResultFinisherTests {
       captureProviderInitError: { _ in }, captureAFMPolishError: { _ in },
       breadcrumbCompleted: { _, _ in completions += 1 },
       recordPolishSkipped: { _, _, _ in }, recordPolishLanguageHint: { _, _ in })
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: seams)
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: seams)
     step.llmProvider = provider
     step.llmModel = try #require(LLMProvider.localModel(for: provider, ollamaModel: ""))
     step.egOneRuntime = ReadyEGOneRuntime()

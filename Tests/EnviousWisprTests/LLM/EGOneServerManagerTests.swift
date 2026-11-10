@@ -1,8 +1,11 @@
 import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
+@testable import EnviousWisprLocalPolish
 import EnviousWisprAppKitTestSupport
 
 /// EG-1 server lifecycle with a FAKE binary (#1271) — spawn, crash,
@@ -17,9 +20,9 @@ struct EGOneServerManagerTests {
   /// that dies during startup. The readiness budget is shrunk to seconds so
   /// never-healthy cases fail fast (the manager also bails as soon as the
   /// child dies, so these tests do not burn the budget at all).
-  static func fakeServerConfiguration(modelExists: Bool = true) throws
-    -> EGOneServerManager.Configuration
-  {
+  static func fakeServerConfiguration(
+    modelExists: Bool = true, serverBinaryURL: URL = URL(fileURLWithPath: "/bin/sleep")
+  ) throws -> LocalPolishProcessManager.Configuration {
     let dir = TestTemporaryDirectory.url
       .appendingPathComponent("eg1-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -27,18 +30,17 @@ struct EGOneServerManagerTests {
     if modelExists {
       try Data("fake".utf8).write(to: model)
     }
-    return EGOneServerManager.Configuration(
-      serverBinaryURL: URL(fileURLWithPath: "/bin/sleep"),
-      modelURL: model,
-      contextTokens: 4096,
+    return LocalPolishProcessManager.Configuration(
+      spec: .fixture(serverBinaryURL: serverBinaryURL, modelURL: model, contextTokens: 4096),
+      makeArguments: LlamaServerLaunchBuilder.arguments,
       readinessBudgetSeconds: 3
     )
   }
 
   @Test func missingBinaryFailsClosed() async throws {
-    let manager = EGOneServerManager()
-    var config = try Self.fakeServerConfiguration()
-    config.serverBinaryURL = URL(fileURLWithPath: "/nonexistent/llama-server")
+    let manager = LocalPolishProcessManager()
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
     let state = await manager.state
     #expect(state == .failed(reason: "server_binary_missing"))
@@ -47,7 +49,7 @@ struct EGOneServerManagerTests {
   }
 
   @Test func missingModelFailsClosed() async throws {
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let config = try Self.fakeServerConfiguration(modelExists: false)
     await manager.start(configuration: config)
     let state = await manager.state
@@ -55,26 +57,28 @@ struct EGOneServerManagerTests {
   }
 
   @Test func findFreePortReturnsUsablePort() {
-    let port = EGOneServerManager.findFreePort()
+    let port = LocalPolishProcessManager.findFreePort()
     #expect(port != nil)
     #expect(port! > 0)
   }
 
   @Test func stoppedManagerHasNoEndpoint() async {
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     let endpoint = await manager.activeEndpoint()
     #expect(endpoint == nil)
-    let health = await manager.probeHealth(promptFamily: .egOneFixed, spec: .egOne)
+    let health = await manager.probeHealth(
+      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
     #expect(health == .red(reason: "not_running"))
   }
 
   @Test func healthProjectionsForNonReadyStates() async throws {
-    let manager = EGOneServerManager()
+    let manager = LocalPolishProcessManager()
     // failed state → red with the failure reason
-    var config = try Self.fakeServerConfiguration()
-    config.serverBinaryURL = URL(fileURLWithPath: "/nonexistent/llama-server")
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
-    let health = await manager.probeHealth(promptFamily: .egOneFixed, spec: .egOne)
+    let health = await manager.probeHealth(
+      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
     #expect(health == .red(reason: "server_binary_missing"))
   }
 
@@ -83,11 +87,10 @@ struct EGOneServerManagerTests {
   /// Uses a 1-second sleep as the fake server so the process EXITS quickly;
   /// the manager observes the death during `starting` and fails closed.
   @Test func serverThatDiesDuringStartFailsClosed() async throws {
-    let manager = EGOneServerManager()
-    var config = try Self.fakeServerConfiguration()
+    let manager = LocalPolishProcessManager()
     // /bin/true exits immediately — a spawn that dies during startup.
-    config.serverBinaryURL = URL(fileURLWithPath: "/usr/bin/true")
-    config.extraArguments = []
+    let config = try Self.fakeServerConfiguration(
+      serverBinaryURL: URL(fileURLWithPath: "/usr/bin/true"))
     await manager.start(configuration: config)
     // Process death is observed asynchronously via `terminationHandler`, so
     // `start()` can return before the terminal `.failed` state lands. Poll the
@@ -238,4 +241,88 @@ struct EGOneConnectorResponseTests {
     }
   }
 
+}
+
+/// #4473: the process manager runs an injected health probe instead of building one.
+///
+/// Customer harm when it is wrong: a probe that runs while no model is ready starts unwanted
+/// inference or reports a made-up verdict; a probe aimed at another endpoint grades a process
+/// the user is not using; a moved probe with changed rules shows Live for a model that only
+/// echoes the dictation, or Unavailable for a healthy one. Each is silent: the Settings row is
+/// the only place the user sees health. Owner: plan #4473 phase P1. Rigs: the manager's own
+/// states, the lifecycle fixture for a ready process, and a canned polisher for the verdicts.
+@Suite("The process manager runs the health probe it is handed (#4473)", .tags(.productOutcome))
+struct LocalPolishHealthProbeTests {
+  private struct CannedPolisher: TranscriptPolisher {
+    /// nil throws instead of answering.
+    let answer: String?
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      guard let answer else { throw LLMError.providerUnavailable }
+      return LLMResult(polishedText: answer)
+    }
+    func polish(
+      envelope: PromptEnvelope, config: LLMProviderConfig, onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      guard let answer else { throw LLMError.providerUnavailable }
+      return LLMResult(polishedText: answer)
+    }
+  }
+
+  @Test("a process that is not ready is answered from its state and the probe never runs")
+  func nonReadyNeverRunsTheProbe() async throws {
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let probe: LocalPolishHealthProbe = { _ in
+      calls.withLock { $0 += 1 }
+      return .green
+    }
+    let stopped = LocalPolishProcessManager()
+    #expect(await stopped.probeHealth(operation: probe) == .red(reason: "not_running"))
+
+    let failed = LocalPolishProcessManager()
+    await failed.start(
+      configuration: try EGOneServerManagerTests.fakeServerConfiguration(
+        serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server")))
+    #expect(await failed.probeHealth(operation: probe) == .red(reason: "server_binary_missing"))
+    #expect(calls.withLock { $0 } == 0)
+  }
+
+  /// About half a second: it starts the lifecycle fixture's fake server as a real child process,
+  /// because only a ready process reaches the probe.
+  @Test("a ready process is probed on its own endpoint and the probe's verdict is returned")
+  func readyRunsTheProbeOnItsOwnEndpoint() async throws {
+    let fixture = try EGOneAdapterLifecycleTests.Fixture()
+    let manager = LocalPolishProcessManager()
+    defer { fixture.cleanup() }
+    await manager.start(configuration: fixture.configuration())
+    let live = try #require(await manager.activeEndpoint(), "fake server never became ready")
+    let probed = OSAllocatedUnfairLock(initialState: [LocalPolishEndpoint]())
+    let verdict = await manager.probeHealth(operation: { endpoint in
+      probed.withLock { $0.append(endpoint) }
+      return .yellow(reason: "injected_verdict")
+    })
+    #expect(verdict == .yellow(reason: "injected_verdict"))
+    #expect(probed.withLock { $0 } == [live])
+    await manager.stop()
+  }
+
+  @Test(
+    "the moved probe grades the answer as before",
+    arguments: [
+      ("Move the meeting to Friday.", EGOneHealth.green),
+      (
+        "So um move the meeting to Thursday, no wait, Friday.",
+        EGOneHealth.yellow(reason: "probe_output_unexpected")
+      ),
+      (nil, EGOneHealth.red(reason: "probe_failed")),
+    ] as [(String?, EGOneHealth)])
+  func movedProbeKeepsItsVerdicts(answer: String?, expected: EGOneHealth) async {
+    let spec = LlamaServerHealthProbe.ProbeSpec(
+      provider: .egOne, modelID: "eg-1", makeConnector: { _ in CannedPolisher(answer: answer) })
+    let probe = LlamaServerHealthProbe.operation(spec: spec, promptFamily: .egOneFixed)
+    let verdict = await probe(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 4096))
+    #expect(verdict == expected)
+  }
 }

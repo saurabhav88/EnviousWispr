@@ -1,5 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import Foundation
@@ -17,7 +19,7 @@ final class LearnedWordCheckerEligibility {
   struct EngineInputs {
     let base: DeliveryRegistration?
     let promptTemplateID: String?
-    let runtime: EGOneRuntime
+    let runtime: LocalPolishRuntime
     let debugThreshold: Double?
   }
 
@@ -134,7 +136,7 @@ final class LearnedWordCheckerEligibility {
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       endpoint: endpoint, serverReason: serverReason,
       debugThreshold: inputs.debugThreshold,
-      hold: { [runtime = inputs.runtime] in await EGOneLearnedWordChecker.hold(on: runtime) })
+      hold: { [runtime = inputs.runtime] in await LlamaLearnedWordChecker.hold(on: runtime) })
     if let checker = answer.checker {
       #if DEBUG
         let identity = doorAdapter ? engine.debugDoorIdentity : adapter.manifest.identity.revision
@@ -151,7 +153,7 @@ final class LearnedWordCheckerEligibility {
     baseAdmitted: Bool, adapterAdmitted: Bool,
     deliveryState: DeliveryState, hostConfigured: Bool = true, deliveryEnabled: Bool = true,
     contract: LearnedWordCheckerContract?,
-    admittedBase: AdmittedCheckerBase?, endpoint: EGOneEndpoint?,
+    admittedBase: AdmittedCheckerBase?, endpoint: LocalPolishEndpoint?,
     serverReason: String?, debugThreshold: Double? = nil,
     hold: @escaping @Sendable () async -> EGOneCheckerHold?
   ) -> LearnedWordCheckerSelection {
@@ -183,7 +185,7 @@ final class LearnedWordCheckerEligibility {
     guard endpoint.hasLearnedWordAdapter else {
       return absent(
         .serverWithoutAdapter(
-          serverReason ?? EGOneServerManager.CheckerFailureReason.adapterMissing.rawValue))
+          serverReason ?? LocalPolishProcessManager.CheckerFailureReason.adapterMissing.rawValue))
     }
     guard let threshold = Double(contract.qualifiedThreshold), threshold.isFinite,
       (0...1).contains(threshold)
@@ -198,7 +200,7 @@ final class LearnedWordCheckerEligibility {
     }
     // `endpoint` above is the selection-time read; each check takes its own
     // lease and reads the endpoint again under it.
-    let checker = EGOneLearnedWordChecker(
+    let checker = LlamaLearnedWordChecker(
       threshold: qualifiedThreshold, style: engine.promptStyle(language: language), hold: hold)
     return LearnedWordCheckerSelection(checker: checker, identity: checker.armName)
   }

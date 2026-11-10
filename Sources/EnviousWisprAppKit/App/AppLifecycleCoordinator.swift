@@ -3,6 +3,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
@@ -47,7 +48,7 @@ final class AppLifecycleCoordinator {
     /// `runWillTerminate`. Compiled out of release entirely.
     private var debugFaultEndpoint: DebugFaultEndpoint?
     var qualificationChildTrap:
-      (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)?
+      (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)?
   #endif
 
   // Injected dependencies — delegated to, never owned.

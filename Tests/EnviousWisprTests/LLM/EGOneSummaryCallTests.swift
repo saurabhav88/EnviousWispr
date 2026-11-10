@@ -1,8 +1,10 @@
+import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLlamaEngine
 
 /// #4319: when these fail, an EG-1 meeting summary is answered by the learned-word checker's
 /// weights, a looping answer cut at the cap is saved as a summary, a slow summary is cut off at
@@ -27,8 +29,8 @@ struct EGOneSummaryCallTests {
     }
   }
 
-  static func endpoint(adapter: Bool) -> EGOneEndpoint {
-    EGOneEndpoint(
+  static func endpoint(adapter: Bool) -> LocalPolishEndpoint {
+    LocalPolishEndpoint(
       port: 51234, authToken: "test-token", contextTokens: 16_384, hasLearnedWordAdapter: adapter)
   }
 

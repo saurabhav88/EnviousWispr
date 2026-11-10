@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprAudio
 import EnviousWisprContacts
 import EnviousWisprCore
+import EnviousWisprLlamaEngine
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import SwiftUI
@@ -11,6 +12,7 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLivePreview
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
@@ -364,8 +366,8 @@ struct SettingsMapRenderingTests {
     let settings: SettingsManager
     let keys: KeychainManager
     let setup: SetupCoordinator
-    let egOne: EGOneRuntime
-    let s1: EGOneRuntime
+    let egOne: LocalPolishRuntime
+    let s1: LocalPolishRuntime
     let directory: URL
 
     @MainActor init(
@@ -388,9 +390,13 @@ struct SettingsMapRenderingTests {
           engineMutationScope: .alwaysAllowedForTesting, readAvailability: { .notDownloaded }),
         setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in },
         ollamaSetup: ollama)
-      egOne = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults)
-      s1 = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, defaults: defaults, provider: .s1Mini)
+      egOne = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(), defaults: defaults)
+      s1 = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(),
+        defaults: defaults, provider: .s1Mini)
     }
 
     /// Everything the AI Polish and Transcribe a File pages read.

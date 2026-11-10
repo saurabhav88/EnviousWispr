@@ -314,12 +314,14 @@ let firstPartyTargetDeps: [TargetDependency] = [
   .target(name: "EnviousWisprCore"),
   .target(name: "EnviousWisprStorage"),
   .target(name: "EnviousWisprModelDelivery"),
+  .target(name: "EnviousWisprLocalPolish"),
   .target(name: "EnviousWisprPostProcessing"),
   .target(name: "EnviousWisprAudio"),
   .target(name: "EnviousWisprServices"),
   .target(name: "EnviousWisprASR"),
   .target(name: "EnviousWisprTranscribeCpp"),
   .target(name: "EnviousWisprLLM"),
+  .target(name: "EnviousWisprLlamaEngine"),
   .target(name: "EnviousWisprPipeline"),
   .target(name: "EnviousWisprWordCheck"),
 ]
@@ -358,6 +360,14 @@ let project = Project(
       "EnviousWisprModelDelivery",
       dependencies: [
         .target(name: "EnviousWisprCore")
+      ]),
+    // #4473: engine-neutral local polish contracts. Core and ModelDelivery only: never LLM,
+    // never an engine module, never MLX (see Package.swift).
+    firstPartyLibrary(
+      "EnviousWisprLocalPolish",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprModelDelivery"),
       ]),
     firstPartyLibrary(
       "EnviousWisprPostProcessing",
@@ -423,9 +433,21 @@ let project = Project(
         // #1348 Phase 3: EG-1 polish delivery converges onto the shared engine.
         // Downward edge (both sit above Core; ModelDelivery is a leaf).
         .target(name: "EnviousWisprModelDelivery"),
+        // #4473: the engine-neutral local polish contracts (downward edge).
+        .target(name: "EnviousWisprLocalPolish"),
         // #832/#913 PR8: public Argmax tokenizer surface (AutoTokenizerWrapper /
         // TokenizerWrapper) for the output-safety classifier's pair-encoder seam.
         .package(product: "ArgmaxOSS"),
+      ]),
+    // #4473: the llama-server engine. Above LLM and LocalPolish; imported only by the app
+    // shell and the unit tests (see Package.swift).
+    firstPartyLibrary(
+      "EnviousWisprLlamaEngine",
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprModelDelivery"),
+        .target(name: "EnviousWisprLocalPolish"),
+        .target(name: "EnviousWisprLLM"),
       ]),
     // #3242: Kev learned-word check on MLX (leaf over Core; see Package.swift).
     firstPartyLibrary(
@@ -445,6 +467,8 @@ let project = Project(
         .target(name: "EnviousWisprASR"),
         .target(name: "EnviousWisprAudio"),
         .target(name: "EnviousWisprLLM"),
+        // #4473: the engine-neutral local polish lifecycle (endpoint, runtime handles).
+        .target(name: "EnviousWisprLocalPolish"),
         .target(name: "EnviousWisprModelDelivery"),
         .target(name: "EnviousWisprPostProcessing"),
         .target(name: "EnviousWisprServices"),

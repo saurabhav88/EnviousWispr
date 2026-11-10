@@ -47,7 +47,15 @@ permitted_imports_for() {
     EnviousWisprPostProcessing)    echo "EnviousWisprCore" ;;
     EnviousWisprContacts)          echo "EnviousWisprCore" ;;
     EnviousWisprStorage)           echo "EnviousWisprCore" ;;
-    EnviousWisprLLM)               echo "EnviousWisprCore EnviousWisprModelDelivery" ;;
+    EnviousWisprLLM)               echo "EnviousWisprCore EnviousWisprModelDelivery EnviousWisprLocalPolish" ;;
+    # #4473: the engine-neutral local polish contracts. Core and ModelDelivery only: this
+    # line is what keeps LLM, an engine module and MLX out of the code that owns a local
+    # model's identity and lifecycle. Do not add to it.
+    EnviousWisprLocalPolish)       echo "EnviousWisprCore EnviousWisprModelDelivery" ;;
+    # #4473: the llama-server engine. It may use the neutral lifecycle and the polish
+    # contracts; nothing below the app shell may use IT. Keep it out of the LLM, LocalPolish
+    # and Pipeline lines: an engine those modules can import is an engine they can depend on.
+    EnviousWisprLlamaEngine)       echo "EnviousWisprCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLLM" ;;
     EnviousWisprWordCheck)         echo "EnviousWisprCore" ;;
     EnviousWisprModelDelivery)     echo "EnviousWisprCore" ;;
     EnviousWisprServices)          echo "EnviousWisprCore EnviousWisprObservabilityCore" ;;
@@ -70,8 +78,8 @@ permitted_imports_for() {
     # list at five. #3735 added EnviousWisprTranscribeCpp, the native leaf the
     # transcribe.cpp preview engine calls; it imports no first-party module.
     EnviousWisprWhisperPreviewAdapter) echo "EnviousWisprCore EnviousWisprPostProcessing EnviousWisprLivePreview EnviousWisprASR EnviousWisprTranscribeCpp" ;;
-    EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
-    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprWordCheck" ;;
+    EnviousWisprPipeline)          echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprLLM EnviousWisprLocalPolish EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprServices EnviousWisprStorage" ;;
+    EnviousWisprAppKit)            echo "EnviousWisprCore EnviousWisprStorage EnviousWisprPostProcessing EnviousWisprAudio EnviousWisprServices EnviousWisprASR EnviousWisprLLM EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprContacts EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprWordCheck" ;;
     EnviousWisprAppKitTestSupport) echo "EnviousWisprAppKit EnviousWisprCore" ;;
     EnviousWisprDesktopEffects)    echo "EnviousWisprAppKit EnviousWisprServices" ;;
     EnviousWisprAppLive)           echo "EnviousWisprAppKit EnviousWisprDesktopEffects" ;;
@@ -186,7 +194,7 @@ done
 # `NSRunningApplication.activate()` is NOT in this pattern, and the reason matters
 # because the obvious fix does not work. A bare `[.]activate[(][)]` was tried and
 # reverted: it matches `DispatchSource.activate()` in
-# `EGOneServerManager.swift:328`, which is not a desktop effect at all. Receiver
+# `LocalPolishProcessManager.swift:328`, which is not a desktop effect at all. Receiver
 # TYPE is what distinguishes them, and a grep cannot see types.
 #
 # What replaced it for the case C3 owns: `EscapeRecoveryPasteAction`'s
@@ -230,7 +238,7 @@ test_targets_and_permitted() {
     # Everything the unit suite legitimately links. EnviousWisprDesktopEffects and
     # EnviousWisprAppLive are ABSENT on purpose — that absence is the point.
     EnviousWisprDesktopEffectsTests) echo "EnviousWisprCore EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprDesktopEffects" ;;
-    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
+    EnviousWisprTests) echo "EnviousWisprCore EnviousWisprObservabilityCore EnviousWisprModelDelivery EnviousWisprLocalPolish EnviousWisprPostProcessing EnviousWisprLLM EnviousWisprLlamaEngine EnviousWisprPipeline EnviousWisprStorage EnviousWisprAudio EnviousWisprLivePreview EnviousWisprWhisperPreviewAdapter EnviousWisprFluidAudioBridge EnviousWisprAppKit EnviousWisprAppKitTestSupport EnviousWisprContacts EnviousWisprServices EnviousWisprASR EnviousWisprWordCheck EnviousWisprTranscribeCpp" ;;
     EnviousWisprASRTests) echo "EnviousWisprCore EnviousWisprASR EnviousWisprAudio EnviousWisprFluidAudioBridge EnviousWisprServices EnviousWisprTranscribeCpp" ;;
     # #3095: not a target. `Tests/Fixtures/` holds files a test launches at
     # runtime (`swift Tests/Fixtures/frozen-app/FrozenAppHelper.swift`, #2705);

@@ -1,4 +1,5 @@
 #if DEBUG
+  import EnviousWisprLocalPolish
   import Foundation
   import Testing
   import os

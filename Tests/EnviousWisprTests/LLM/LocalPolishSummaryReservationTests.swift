@@ -1,8 +1,10 @@
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprPostProcessing
 
@@ -49,7 +51,10 @@ struct LocalPolishSummaryReservationTests {
       return
     }
     #expect(
-      await coordinator.probeHealth(.egOne, promptFamily: .egOneEnvelope, spec: .egOne) == nil,
+      await coordinator.probeHealth(
+        .egOne,
+        operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneEnvelope))
+        == nil,
       "a health probe does not run during a summary")
 
     await coordinator.releaseSummaryReservation(reservation)
@@ -266,12 +271,12 @@ struct LocalPolishSummaryReservationTests {
     #expect(await coordinator.residentModelForTesting == .egOne, "the deferred start runs at release")
   }
 
-  /// The lease seam `EGOneRuntime` provides, over a bare coordinator.
+  /// The lease seam `LocalPolishRuntime` provides, over a bare coordinator.
   @MainActor
   final class Server: EGOneLeaseProviding, Sendable {
     let coordinator: LocalPolishServerCoordinator
     init(_ coordinator: LocalPolishServerCoordinator) { self.coordinator = coordinator }
-    func activeEndpoint() async -> EGOneEndpoint? { await coordinator.endpoint(for: .egOne) }
+    func activeEndpoint() async -> LocalPolishEndpoint? { await coordinator.endpoint(for: .egOne) }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
       await coordinator.acquireLease(for: .egOne, purpose: .inference)
     }
@@ -292,8 +297,8 @@ struct LocalPolishSummaryReservationTests {
     let coordinator = await Self.resident(.egOne)
     let reservation = try #require(Self.granted(await coordinator.reserveForSummary(.egOne)))
     let server = Server(coordinator)
-    let checker = EGOneLearnedWordChecker(threshold: 0.5) {
-      await EGOneLearnedWordChecker.hold(on: server)
+    let checker = LlamaLearnedWordChecker(threshold: 0.5) {
+      await LlamaLearnedWordChecker.hold(on: server)
     }
     let step = LearnedWordCheckStep()
     step.correctorVocabulary = CorrectorVocabulary(

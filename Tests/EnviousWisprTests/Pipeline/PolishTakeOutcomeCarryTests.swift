@@ -1,6 +1,7 @@
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -42,7 +43,8 @@ struct PolishTakeOutcomeCarryTests {
   }
 
   private static func steps(
-    polish: LLMPolishStep = LLMPolishStep(keychainManager: KeychainManager())
+    polish: LLMPolishStep = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
   )
     -> LimbSteps
   {
@@ -133,7 +135,7 @@ struct PolishTakeOutcomeCarryTests {
   private static func wiring(
     _ outcome: KernelFinalizationOutcome, context: KernelSessionContext, takeID: String
   ) -> KernelFinalizationWiring {
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .openAI
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in MissingKeyPolisher() }
@@ -211,7 +213,7 @@ struct PolishTakeOutcomeCarryTests {
       self.missed = missed
       self.recovery = recovery
     }
-    func activeEndpoint() async -> EGOneEndpoint? { nil }
+    func activeEndpoint() async -> LocalPolishEndpoint? { nil }
     func acquireLocalServerLease() async -> LocalPolishLeaseAdmission { .changing }
     func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {}
     func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
@@ -229,7 +231,7 @@ struct PolishTakeOutcomeCarryTests {
   private static func runEGOne(
     _ engine: RestartingEngine, text: String
   ) async throws -> PolishTakeOutcome? {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = engine
@@ -261,7 +263,7 @@ struct PolishTakeOutcomeCarryTests {
   @Test("the miss keeps the wall-clock time it happened, even if the clock moves before settlement")
   func missTimeIsStampedAtTheMiss() async throws {
     let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = engine
@@ -298,7 +300,7 @@ struct PolishTakeOutcomeCarryTests {
   func recoveryReachesTheTerminalSummary() async throws {
     let takeID = UUID().uuidString
     let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
-    let polish = LLMPolishStep(keychainManager: KeychainManager())
+    let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     polish.llmProvider = .egOne
     polish.llmModel = LLMProvider.egOneModelName
     polish.egOneRuntime = engine

@@ -200,7 +200,8 @@ struct EscapeRecoveryCompletionTransportTests {
         emojiFormatter: EmojiFormatterStep(),
         inverseTextNormalization: InverseTextNormalizationStep(),
         englishSpelling: EnglishSpellingStep(target: .text),
-        llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+        llmPolish: LLMPolishStep(
+          keychainManager: KeychainManager(), localPolishers: .llamaForTests),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
         emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       let driver = KernelDictationDriver(

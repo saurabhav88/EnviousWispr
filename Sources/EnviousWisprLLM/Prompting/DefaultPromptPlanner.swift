@@ -63,7 +63,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
   }
 
   /// Select builder for an already-computed family (single family computation in `plan`).
-  static func builder(for family: PromptFamily) -> any PromptBuilder {
+  package static func builder(for family: PromptFamily) -> any PromptBuilder {
     switch family {
     case .cloudFixed: return CloudFixedPromptBuilder()
     case .localFixed: return LocalFixedPromptBuilder()
@@ -124,7 +124,7 @@ public struct DefaultPromptPlanner: PromptPlanning {
       // constant. 1.1 and plain 1.2 are training prompts, and #3111's named-language
       // contract is separately measured for the 1.2 weights; serving any model a contract
       // nobody paired with it is the drift the hot-swap contract exists to prevent. Model identity
-      // is manifest-enforced by `EGOneRuntime` (activation refuses a name/template
+      // is manifest-enforced by `LocalPolishRuntime` (activation refuses a name/template
       // mismatch), so no per-model-id heuristics apply here.
       return egOneFamily
     case .s1Mini:

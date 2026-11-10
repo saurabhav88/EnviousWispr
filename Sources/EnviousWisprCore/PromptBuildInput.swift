@@ -67,7 +67,7 @@ public struct PromptBuildInput: Sendable {
   /// to pass it compiles cleanly and silently sends every user the default
   /// tone whatever they picked. The defence is not the parameter but the test
   /// on the producer, `LLMPolishStep`, which asserts the configured value
-  /// reaches the planner. Tooling and probe call sites (`EGOneServerManager`'s
+  /// reaches the planner. Tooling and probe call sites (`LocalPolishProcessManager`'s
   /// health probe) genuinely want the default.
   public let s1Control: S1ControlSettings
 

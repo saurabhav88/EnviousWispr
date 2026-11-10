@@ -76,6 +76,11 @@ public final class EGOneDeliveryAdapter {
     return registration.installDirectory.appendingPathComponent(installName)
   }
 
+  /// The identity of the registration this adapter delivers (#4473). It names WHICH artifact a
+  /// launch serves; that its bytes are admitted is established by `adoptIfPresent()` and
+  /// `ensureAvailable`, not by reading this.
+  var modelIdentity: ModelIdentity { registration.manifest.identity }
+
   /// The D5 kill-switch, read fresh per call (relaunch-free). Disabled ⇒ no
   /// delivery mutation (#1363 §16.6). Internal: EG-1's flag gates only the
   /// adapter's own ensure/repair/remove (unlike Parakeet, whose engine adapter
@@ -258,7 +263,7 @@ public final class EGOneDeliveryAdapter {
       // fetch in flight has no entry, so the observer never fires for them —
       // and the old seed was gated on `isAdmitted`, which is false for exactly
       // that user because the pinned revision is the thing they lack. Neither
-      // path published anything, so the row kept `EGOneRuntime`'s initial
+      // path published anything, so the row kept `LocalPolishRuntime`'s initial
       // `.notInstalled` and the paused-update state could never appear on a
       // cold launch, which is the only moment it matters.
       //
@@ -351,7 +356,7 @@ public final class EGOneDeliveryAdapter {
     case .downloading(let fraction, _, _):
       // `upgrade` is nil HERE BY DESIGN, not by omission. This mapping is
       // stateless and per-tick; whether the download replaces a working older
-      // revision is a fact about the state we came FROM. `EGOneRuntime` owns
+      // revision is a fact about the state we came FROM. `LocalPolishRuntime` owns
       // that and enriches this value.
       return .downloading(fractionCompleted: fraction, upgrade: nil)
     case .verifying:

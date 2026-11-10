@@ -186,7 +186,7 @@ extension String {
   /// Case-insensitive so both <transcript> and <TRANSCRIPT> are handled. Skipped on
   /// the no-sandwich cloud path so literal dictated tags survive.
   /// Remove only the echoed transcript wrapper, retaining fences and content.
-  func strippingTranscriptTags() -> String {
+  package func strippingTranscriptTags() -> String {
     replacingOccurrences(
       of: "</?transcript>",
       with: "",

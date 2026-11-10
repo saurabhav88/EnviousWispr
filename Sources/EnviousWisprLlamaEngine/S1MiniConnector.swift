@@ -1,4 +1,6 @@
 import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Localhost connector for S1-mini on the bundled server (#2649).
@@ -14,6 +16,9 @@ import Foundation
 /// covers the restart-once window after a crash — comes from
 /// `LocalPolishTransport`, so neither connector can drift from the other on the
 /// parts where they agree.
+/// (#4473: the transport now carries bytes only. The request body is still EG-1's one
+/// builder, called from `send` below, and the shared response rules are
+/// `LlamaServerChatResponse`.)
 ///
 /// **No `<TRANSCRIPT>` tag stripping, deliberately.** `EGOneConnector` strips
 /// those tags because `EGOnePromptBuilder` wraps the transcript in them and the
@@ -21,9 +26,9 @@ import Foundation
 /// line, so there are no tags to echo, and stripping them would only be able to
 /// damage a user who dictated the literal word.
 public struct S1MiniConnector: TranscriptPolisher {
-  private let endpoint: EGOneEndpoint
+  private let endpoint: LocalPolishEndpoint
 
-  public init(endpoint: EGOneEndpoint) {
+  public init(endpoint: LocalPolishEndpoint) {
     self.endpoint = endpoint
   }
 
@@ -50,31 +55,23 @@ public struct S1MiniConnector: TranscriptPolisher {
     return try await send(system: pair.system ?? "", user: pair.user, config: config)
   }
 
+  /// #4473: the same request body as EG-1 (its one builder, not a second shape), serialized
+  /// here and sent as bytes. The transport's one neutral failure maps to the silent bypass;
+  /// the parse runs OUTSIDE that mapping so its own verdicts are never rewritten.
   private func send(
     system: String, user: String, config: LLMProviderConfig
   ) async throws -> LLMResult {
-    try await LocalPolishTransport.send(
-      endpoint: endpoint, system: system, user: user, config: config,
-      parse: { try Self.parseSuccess(data: $0, userMessage: user) })
-  }
-
-  /// The transcript this request carried, recovered from the user message.
-  ///
-  /// The empty-answer rule needs the INPUT, and the user message is
-  /// `controlLine + "\n" + transcript` by construction
-  /// (`S1ControlLinePromptBuilder`). Dropping the first line recovers it without
-  /// threading a second parameter through the transport, which would have made
-  /// the shared path know about one model's prompt shape.
-  ///
-  /// If the shape is ever not what this expects, the WHOLE user message is used
-  /// instead. That fails toward `unexpectedEmpty`, which is the safe direction:
-  /// the control line contains ordinary words, so a malformed message can only
-  /// ever make an empty answer look like a failure, never like a valid empty.
-  static func transcript(fromUserMessage message: String) -> String {
-    guard let newline = message.firstIndex(of: "\n"),
-      message[message.startIndex..<newline].hasPrefix("[Styling:")
-    else { return message }
-    return String(message[message.index(after: newline)...])
+    let body = try EGOneConnector.makeRequestBody(
+      system: system, user: user, config: config,
+      hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter)
+    let bytes = try JSONSerialization.data(withJSONObject: body)
+    let data: Data
+    do {
+      data = try await LocalPolishTransport.send(endpoint: endpoint, body: bytes)
+    } catch LocalPolishTransportError.unavailable {
+      throw LLMError.egOneSkipped(.crashed)
+    }
+    return try Self.parseSuccess(data: data, userMessage: user)
   }
 
   /// `internal` so tests drive it with a canned wire payload, the same seam
@@ -86,9 +83,10 @@ public struct S1MiniConnector: TranscriptPolisher {
     // content is a partial rewrite. This is the guard a freshly authored
     // sibling connector drops without noticing, which is why it lives in the
     // transport rather than in each parser.
-    try LocalPolishTransport.truncationGuard(json)
+    // (#4473: it now lives in `LlamaServerChatResponse`, still shared by both.)
+    try LlamaServerChatResponse.truncationGuard(json)
 
-    guard let content = LocalPolishTransport.content(from: json) else {
+    guard let content = LlamaServerChatResponse.content(from: json) else {
       // A 200 with a malformed body is a local-server hiccup and rides the
       // silent family, exactly as EG-1's does.
       throw LLMError.egOneSkipped(.crashed)
@@ -101,7 +99,7 @@ public struct S1MiniConnector: TranscriptPolisher {
       // failure otherwise. Deciding on the OUTPUT alone would have blinded the
       // `empty_response` signal that diagnosed #2634.
       switch LocalPolishEmptyDisposition.classify(
-        input: Self.transcript(fromUserMessage: userMessage))
+        input: S1ControlLineTranscript.transcript(fromUserMessage: userMessage))
       {
       case .validEmpty:
         // A correct empty result. The product's existing empty-output floor

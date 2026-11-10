@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import Foundation
 
 /// Manifest describing one first-party polish model artifact (#1271).
@@ -17,7 +18,7 @@ import Foundation
 /// closed on `promptTemplateID` rather than on decode.
 public struct EGOneManifest: Codable, Sendable, Equatable {
   /// Canonical model name. MUST equal `LLMProvider.egOneModelName` for
-  /// Phase 1 — `EGOneRuntime` refuses activation on mismatch (Core and
+  /// Phase 1 — `LocalPolishRuntime` refuses activation on mismatch (Core and
   /// Services identify the provider's model by that fixed literal and
   /// cannot read this manifest; agreement is enforced here, the one layer
   /// that sees both).
@@ -129,6 +130,15 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
       blockers.append("non_https_url")
     }
     return blockers
+  }
+
+  /// The facts the local polish runtime consumes (#4473). This is the one conversion from the
+  /// manifest to the runtime; `expectedModelName` is the model the SELECTED provider serves,
+  /// never this manifest's own name, or a mismatched manifest would validate itself.
+  public func runtimeFacts(expectedModelName: String) -> LocalPolishManifestFacts {
+    LocalPolishManifestFacts(
+      contextTokens: contextTokens, promptFamily: promptFamily,
+      activationBlockers: activationBlockers(expectedModelName: expectedModelName))
   }
 
   /// Decode from a bundled resource. Non-strict (unknown fields ignored).

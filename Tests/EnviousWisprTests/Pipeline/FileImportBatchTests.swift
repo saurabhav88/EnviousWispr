@@ -85,8 +85,9 @@ struct FileImportBatchTests {
     selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) -> FileImportRunner {
     FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
-      outputClassifierHolder: nil, languageIdentifier: identify, makeEGOnePolisher: nil,
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
+      egOneRuntime: nil, s1MiniRuntime: nil,
+      outputClassifierHolder: nil, languageIdentifier: identify,
       promptPlanner: nil, checkerSelectionProvider: selection,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })
   }
@@ -407,9 +408,12 @@ struct FileImportBatchTests {
   func localSerial() async throws {
     let capture = NamedPromptCapture()
     let subject = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      keychainManager: KeychainManager(),
+      localPolishers: .llamaForTests.replacingEGOne { _ in
+        PromptCapturingPolisher(capture: capture)
+      },
+      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.99) },
-      makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     subject.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
     var emitted: [Int] = []

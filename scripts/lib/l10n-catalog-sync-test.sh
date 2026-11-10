@@ -14,9 +14,11 @@ import atexit, copy, json, os, pathlib, plistlib, re, shutil, subprocess, sys, t
 SYNC = sys.argv[1]
 TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
-    "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
+    "EnviousWisprModelDelivery", "EnviousWisprLocalPolish", "EnviousWisprPostProcessing",
+    "EnviousWisprAudio",
     "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
-    "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
+    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
+    "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
 ]

@@ -48,11 +48,13 @@ struct RecoveryTextProcessorTests {
     let picks = S1ControlSettings(styling: .formal, structure: .prose, context: .email)
     #expect(picks != .default, "a default-valued pick could not show the write happened")
 
-    let recorded = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let recorded = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     recorded.applySettings(snapshot(fillerRemoval: false, s1Control: picks))
     #expect(recorded.llmPolishStep.s1Control == picks)
 
-    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let legacy = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     // Poison first, so the nil branch is shown to WRITE the default rather than
     // merely leave a fresh step's default in place.
     legacy.llmPolishStep.s1Control = picks
@@ -67,7 +69,8 @@ struct RecoveryTextProcessorTests {
     // removal's 50ms budget — `tests-no-real-time-scheduling-precision`). A
     // non-LID engine with auto language runs ITN. Proves the seam executes the
     // chain and keeps polish off under provider .none.
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(snapshot(fillerRemoval: true))
     let outcome = await processor.process(rawText: "the code is two zero three")
     #expect(outcome.text == "the code is 203")
@@ -79,14 +82,16 @@ struct RecoveryTextProcessorTests {
   /// from before English (UK) replays American.
   @Test("a British recording recovers British; a legacy spool recovers American")
   func englishSpellingReplays() async {
-    let british = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let british = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     british.applySettings(
       snapshot(fillerRemoval: false, languageMode: .locked("en"), englishSpelling: .british))
     let britishOutcome = await british.process(rawText: "the color of the center")
     #expect(britishOutcome.text == "the colour of the centre")
     #expect(britishOutcome.polishedText == nil)  // provider .none: polish bypassed
 
-    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let legacy = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     legacy.applySettings(
       snapshot(fillerRemoval: false, languageMode: .locked("en"), englishSpelling: nil))
     let legacyOutcome = await legacy.process(rawText: "the color of the center")
@@ -97,13 +102,15 @@ struct RecoveryTextProcessorTests {
   /// from before Casual mode replays with it OFF.
   @Test("Casual mode replays from the snapshot; a legacy spool keeps the full stop")
   func casualModeReplays() async {
-    let casual = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let casual = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     casual.applySettings(
       snapshot(fillerRemoval: false, languageMode: .locked("en"), casualMode: true))
     let casualOutcome = await casual.process(rawText: "see you soon.")
     #expect(casualOutcome.text.hasSuffix("soon"))
 
-    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let legacy = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     legacy.applySettings(
       snapshot(fillerRemoval: false, languageMode: .locked("en"), casualMode: nil))
     let legacyOutcome = await legacy.process(rawText: "see you soon.")
@@ -115,7 +122,8 @@ struct RecoveryTextProcessorTests {
   @Test("a recording made with the period switch OFF recovers with the word kept; a legacy spool converts it")
   func periodSwitchReplays() async {
     let spoken = "We met over a period of weeks full stop"
-    let off = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let off = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     off.applySettings(
       snapshot(
         fillerRemoval: false, languageMode: .locked("en"), spokenPunctuation: true,
@@ -123,7 +131,8 @@ struct RecoveryTextProcessorTests {
     let offOutcome = await off.process(rawText: spoken)
     #expect(offOutcome.text == "We met over a period of weeks.")
 
-    let legacy = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let legacy = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     legacy.applySettings(
       snapshot(
         fillerRemoval: false, languageMode: .locked("en"), spokenPunctuation: true, periodWord: nil))
@@ -135,7 +144,8 @@ struct RecoveryTextProcessorTests {
   @Test("disabling filler removal in the snapshot leaves the text untouched")
   func snapshotTogglesThreadThrough() async {
     let input = "um hello uh there world"
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(snapshot(fillerRemoval: false))
     let outcome = await processor.process(rawText: input)
     #expect(outcome.text == input)
@@ -154,7 +164,8 @@ struct RecoveryTextProcessorTests {
     let spoken = "call me at two zero three"
 
     // Non-LID engine (Parakeet-class): English text runs ITN → digits.
-    let parakeet = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let parakeet = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     parakeet.applySettings(
       snapshot(fillerRemoval: false, backendType: .parakeet, lidCapable: false))
     let parakeetOut = await parakeet.process(rawText: spoken)
@@ -162,7 +173,8 @@ struct RecoveryTextProcessorTests {
 
     // LID engine (Whisper): the text resolves to English, so ITN runs here too
     // (#2614 closed the Automatic dead path on this engine).
-    let whisperProcessor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let whisperProcessor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     whisperProcessor.applySettings(
       snapshot(fillerRemoval: false, backendType: .whisper, lidCapable: true))
     let whisperOut = await whisperProcessor.process(rawText: spoken)
@@ -178,7 +190,8 @@ struct RecoveryTextProcessorTests {
     // Control: the English rules alone would have damaged this exact sentence.
     #expect(FillerRemovalStep.removingFillers(from: spoken, language: nil) != spoken)
 
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(
       snapshot(fillerRemoval: true, backendType: .parakeet, lidCapable: false))
     let outcome = await processor.process(rawText: spoken)
@@ -192,7 +205,8 @@ struct RecoveryTextProcessorTests {
   @Test("a locked non-English snapshot replays under its own language")
   func lockedLanguageReplaysUnderSnapshot() async {
     let spoken = "llamame al dos cero tres two zero three"
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     // Non-LID engine: were the locked language NOT applied, language would be
     // nil and ITN would run (non-LID + nil) and rewrite "two zero three" → 203.
     processor.applySettings(
@@ -201,6 +215,24 @@ struct RecoveryTextProcessorTests {
         languageMode: .locked("es")))
     let outcome = await processor.process(rawText: spoken)
     #expect(outcome.text == spoken)  // Spanish locked ⇒ English ITN skipped
+  }
+
+  /// #4473: a recovered take polishes through the connector factory the replay was GIVEN for
+  /// the model it was recorded under, on that model's endpoint. When it is wrong, a recovered
+  /// S1-mini take is read by EG-1's connector (or the reverse) or gets no polish, silently.
+  @Test(
+    "#4473 a recovered take polishes through the supplied factory of its recorded bundled model",
+    arguments: [LLMProvider.egOne, .s1Mini])
+  func recoveryUsesTheSuppliedFactory(provider: LLMProvider) async {
+    let spy = LocalPolisherFactorySpy()
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: spy.factories, cloudModelList: nil,
+      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime())
+    processor.applySettings(LocalPolisherFactorySpy.snapshot(for: provider))
+    let outcome = await processor.process(rawText: LocalPolisherFactorySpy.transcript)
+    #expect(outcome.polishError == nil)
+    #expect(outcome.polishedText == LocalPolisherFactorySpy.answer(for: provider))
+    spy.expectOnlyFactory(of: provider)
   }
 
   // MARK: - Telemetry silence (#945, extended by #1446)
@@ -219,6 +251,7 @@ struct RecoveryTextProcessorTests {
   func recoveryPolishFailureFallsBackToRawWithNotice() async {
     let processor = RecoveryTextProcessor(
       keychainManager: KeychainManager(backend: .legacyFiles, legacyStore: UnreadableKeyStore()),
+      localPolishers: .llamaForTests,
       cloudModelList: nil)
     processor.applySettings(snapshot(fillerRemoval: false, provider: "openAI"))
 
@@ -295,8 +328,10 @@ struct RecoveryTextProcessorTests {
       .filter { !$0.hasPrefix("//") }
       .joined(separator: " ")
 
+    // #4473: the call now spans two source lines; `code` joins lines with one space.
     let buildsStepFromSilent = code.contains(
-      "LLMPolishStep(keychainManager: keychainManager, telemetry: .silent()")
+      "LLMPolishStep( keychainManager: keychainManager, localPolishers: localPolishers, "
+        + "telemetry: .silent()")
     let handRolledSeams = [
       "limbFailureObserved:", "breadcrumbStarted:", "captureProviderInitError:",
       "captureAFMPolishError:", "breadcrumbCompleted:", "recordPolishSkipped:",

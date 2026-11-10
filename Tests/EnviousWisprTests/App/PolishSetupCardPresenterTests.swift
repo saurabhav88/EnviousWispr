@@ -1,6 +1,7 @@
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import Foundation
 import Observation

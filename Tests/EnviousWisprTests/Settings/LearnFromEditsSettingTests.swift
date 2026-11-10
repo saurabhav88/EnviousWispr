@@ -2,6 +2,8 @@ import AppKit
 import EnviousWisprContacts
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPostProcessing
 import Foundation
@@ -188,7 +190,9 @@ struct LearnFromEditsRowTests {
       engines: [
         .egOne: .init(
           base: nil, promptTemplateID: nil,
-          runtime: EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil),
+          runtime: LocalPolishRuntime(
+            manifest: nil, serverBinaryURL: nil, delivery: nil,
+            engine: LlamaServerEngine()),
           debugThreshold: nil)
       ])
     let enabled = host(

@@ -46,7 +46,7 @@ struct LLMPolishStepShortCircuitTests {
     counter: InvocationCounter,
     result: String = "unused"
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SpyPolisher(counter: counter, result: result) }

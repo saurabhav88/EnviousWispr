@@ -21,7 +21,7 @@ struct FileImportRunnerTests {
       emojiFormatter: EmojiFormatterStep(),
       inverseTextNormalization: InverseTextNormalizationStep(),
       englishSpelling: EnglishSpellingStep(target: .text),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+      llmPolish: LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests),
       englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
       emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
   }
@@ -92,13 +92,15 @@ struct FileImportRunnerTests {
         llmProvider: "none",
         llmModel: "none", s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
     }
-    let british = FileImportRunner(keychainManager: KeychainManager())
+    let british = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     british.freeze(settings: snapshot(.british), vocabulary: nil, cloudModelList: nil)
     let britishPart = try await british.process(part: "the color of the center")
     #expect(britishPart.displayText == "the colour of the centre")
     #expect(britishPart.polishedText == nil)  // provider none: polish bypassed
 
-    let american = FileImportRunner(keychainManager: KeychainManager())
+    let american = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     american.freeze(settings: snapshot(.american), vocabulary: nil, cloudModelList: nil)
     #expect(
       try await american.process(part: "the color of the center").displayText
@@ -118,11 +120,12 @@ struct FileImportRunnerTests {
         casualModeEnabled: nil)
     }
     let spoken = "We met over a period of weeks full stop"
-    let off = FileImportRunner(keychainManager: KeychainManager())
+    let off = FileImportRunner(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     off.freeze(settings: snapshot(false), vocabulary: nil, cloudModelList: nil)
     #expect(try await off.process(part: spoken).displayText == "We met over a period of weeks.")
 
-    let legacy = FileImportRunner(keychainManager: KeychainManager())
+    let legacy = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     legacy.freeze(settings: snapshot(nil), vocabulary: nil, cloudModelList: nil)
     let converted = try await legacy.process(part: spoken).displayText
     #expect(converted.contains("period") == false, "\(converted)")
@@ -137,14 +140,39 @@ struct FileImportRunnerTests {
   func egOneImportNamesTheLanguage() async throws {
     let capture = NamedPromptCapture()
     let runner = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      keychainManager: KeychainManager(),
+      localPolishers: .llamaForTests.replacingEGOne { _ in
+        PromptCapturingPolisher(capture: capture)
+      },
+      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
-      makeEGOnePolisher: { _ in PromptCapturingPolisher(capture: capture) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     runner.freeze(settings: Self.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
     _ = try await runner.process(part: Self.polishPart)
     _ = try await runner.process(part: Self.polishPart)
     #expect(capture.systemPrompts == [Self.namedPolishPrompt, Self.namedPolishPrompt])
+  }
+
+  /// #4473: a file import polishes through the connector factory it was GIVEN for its frozen
+  /// model, on that model's endpoint. When it is wrong, an import frozen on one bundled model
+  /// is answered through the other model's connector (whose empty-answer rule is the opposite
+  /// one) or gets no polish, and nothing on screen says so. Rig: the existing ready runtime.
+  @Test(
+    "#4473 an import polishes through the supplied factory of its frozen bundled model",
+    arguments: [LLMProvider.egOne, .s1Mini])
+  func importUsesTheSuppliedFactory(provider: LLMProvider) async throws {
+    let spy = LocalPolisherFactorySpy()
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: spy.factories,
+      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime(),
+      outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
+      promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
+    runner.freeze(
+      settings: LocalPolisherFactorySpy.snapshot(for: provider), vocabulary: nil,
+      cloudModelList: nil)
+    let outcome = try await runner.process(part: LocalPolisherFactorySpy.transcript)
+    #expect(outcome.polishedText == LocalPolisherFactorySpy.answer(for: provider))
+    spy.expectOnlyFactory(of: provider)
   }
 
   nonisolated static let polishPart =
@@ -165,7 +193,8 @@ struct FileImportRunnerTests {
   /// to be — which would silently polish with the wrong provider.
   @Test("a part refuses to run before the import is configured")
   func partRefusesBeforeFreeze() async {
-    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
 
     await #expect(throws: FileImportRunnerError.notConfigured) {
       _ = try await runner.process(part: "some words")

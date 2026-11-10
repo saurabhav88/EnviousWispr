@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import Foundation
 
 // MARK: - Recovery text-processing seam (#1063 PR0)
@@ -61,13 +62,15 @@ public final class RecoveryTextProcessor {
   /// `cloudModelList` is the list the replay captured when it began (#4353 D6). It is never
   /// read from the spool: recovery polishes under the list current at replay time.
   public init(
-    keychainManager: KeychainManager, cloudModelList: CloudModelList?,
+    keychainManager: KeychainManager, localPolishers: BundledLocalPolisherFactories,
+    cloudModelList: CloudModelList?,
     outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
-    let llmPolish = LLMPolishStep(keychainManager: keychainManager, telemetry: .silent())
+    let llmPolish = LLMPolishStep(
+      keychainManager: keychainManager, localPolishers: localPolishers, telemetry: .silent())
     // Standalone (no live kernel attached): no streaming/lifecycle callbacks.
     llmPolish.onWillProcess = nil
     llmPolish.onToken = nil

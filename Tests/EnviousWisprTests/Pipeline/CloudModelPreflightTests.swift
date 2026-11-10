@@ -35,7 +35,7 @@ struct CloudModelPreflightTests {
   }
 
   private func makeStep(_ provider: LLMProvider, model: String, _ spies: Spies) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = provider
     step.llmModel = model
     step.makePolisher = { _, _, _, _ in

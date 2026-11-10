@@ -2,6 +2,7 @@
   import EnviousWisprCore
   import EnviousWisprLLM
   import EnviousWisprLivePreview
+  import EnviousWisprLocalPolish
   import EnviousWisprPipeline
   import Foundation
 

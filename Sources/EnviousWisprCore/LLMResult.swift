@@ -22,7 +22,7 @@ extension LLMProvider {
   /// Canonical model-identity literal for the first-party EG-1 provider.
   /// Core and Services cannot import EnviousWisprLLM (where the model
   /// manifest lives), so identity at this layer is a fixed literal — the
-  /// same pattern as `apple-intelligence`. `EGOneRuntime` refuses to
+  /// same pattern as `apple-intelligence`. `LocalPolishRuntime` refuses to
   /// activate a manifest whose model name disagrees with this value.
   public static let egOneModelName = "eg-1"
 

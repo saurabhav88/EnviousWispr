@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 @testable import EnviousWisprModelDelivery
 import EnviousWisprAppKitTestSupport
 
@@ -353,7 +354,7 @@ import EnviousWisprAppKitTestSupport
     #expect(probe.ensureCount == 1, "a superseded revision with surviving bytes owes a fetch")
   }
 
-  /// The negative control for the case above, and the invariant `EGOneRuntime`'s never-fetch
+  /// The negative control for the case above, and the invariant `LocalPolishRuntime`'s never-fetch
   /// comment protects: a user who never had EG-1 has no prior marker, so nothing starts behind
   /// their back. Same code, same launch, only the marker removed.
   @MainActor

@@ -51,7 +51,7 @@ struct LLMPolishStepAFMPrewarmTests {
   private let transcript = "so i was thinking we could maybe ship the new thing some time next week"
 
   private func appleStep(preparer: @escaping LLMPolishStep.AFMSessionPreparer) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .appleIntelligence
     step.llmModel = "apple-intelligence"
     step.prepareAFMSession = preparer
@@ -117,7 +117,7 @@ struct LLMPolishStepAFMPrewarmTests {
 
     var long = TextProcessingContext(text: transcript, language: "en")
     long.afmPrewarmOutcome = .hit
-    let cloud = LLMPolishStep(keychainManager: KeychainManager())
+    let cloud = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     cloud.llmProvider = .openAI
     cloud.llmModel = "gpt-4o-mini"  // #4353 D2: no implicit model
     let box = TextBox()
@@ -139,7 +139,7 @@ struct LLMPolishStepAFMPrewarmTests {
   @Test("no preparation starts unless Apple Intelligence is the provider")
   func nonAppleProviderPreparesNothing() async {
     let calls = Counter()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .openAI
     step.prepareAFMSession = { _ in
       calls.increment()

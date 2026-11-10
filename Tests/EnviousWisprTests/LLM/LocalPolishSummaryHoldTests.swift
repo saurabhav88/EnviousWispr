@@ -1,8 +1,10 @@
+import EnviousWisprLlamaEngine
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, dictation polishes on EG-1 while a summary is using it (or between
 /// its calls), a provider switch unloads EG-1 mid-summary, a health probe publishes a verdict
@@ -16,11 +18,15 @@ struct LocalPolishSummaryHoldTests {
     let set: LocalPolishRuntimeSet
 
     init() {
-      let egOne = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      let egOne = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(),
+        coordinator: coordinator,
         provider: .egOne)
-      let s1 = EGOneRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, coordinator: coordinator,
+      let s1 = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine(),
+        coordinator: coordinator,
         provider: .s1Mini)
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
     }

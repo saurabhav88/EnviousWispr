@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -16,7 +17,7 @@ import Testing
   struct CrashQualificationEndpointTests {
     private func makeEndpoint(
       action: @escaping (DebugFaultEndpoint.QualificationAction) -> Void = { _ in },
-      child: (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)? = nil
+      child: (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil
     ) -> DebugFaultEndpoint {
       let clock = FakeClock()
       let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: clock)
@@ -28,7 +29,8 @@ import Testing
         emojiFormatter: EmojiFormatterStep(),
         inverseTextNormalization: InverseTextNormalizationStep(),
         englishSpelling: EnglishSpellingStep(target: .text),
-        llmPolish: LLMPolishStep(keychainManager: KeychainManager()),
+        llmPolish: LLMPolishStep(
+          keychainManager: KeychainManager(), localPolishers: .llamaForTests),
         englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
         emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
       func makeDriver() -> KernelDictationDriver {
@@ -141,7 +143,7 @@ import Testing
       var calls = 0
       let endpoint = makeEndpoint(child: {
         calls += 1
-        return EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+        return LocalPolishProcessManager.QualificationChildSignal(pid: 4242, generation: 7)
       })
       let request = await endpoint.qualificationRequestForTesting(
         command: "qualification_child_trap")
@@ -171,7 +173,7 @@ import Testing
       var calls = 0
       let endpoint = makeEndpoint(child: {
         calls += 1
-        return EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+        return LocalPolishProcessManager.QualificationChildSignal(pid: 4242, generation: 7)
       })
       let unauthorized = await endpoint.qualificationRequestForTesting(
         command: "qualification_child_trap", authenticated: false)
@@ -192,7 +194,7 @@ import Testing
       var release: CheckedContinuation<Void, Never>?
       var finished = false
       var childResult: (reply: String, armID: UUID?)?
-      var currentFact = EGOneServerManager.QualificationChildSignal(pid: 4242, generation: 7)
+      var currentFact = LocalPolishProcessManager.QualificationChildSignal(pid: 4242, generation: 7)
       let endpoint = makeEndpoint(
         action: { actions.append($0) },
         child: {
@@ -226,7 +228,7 @@ import Testing
       let host = await endpoint.qualificationRequestForTesting(command: "qualification_trap")
       #expect(host.reply == "OK qualification_armed")
       #expect(host.armID != nil)
-      currentFact = EGOneServerManager.QualificationChildSignal(pid: 4343, generation: 8)
+      currentFact = LocalPolishProcessManager.QualificationChildSignal(pid: 4343, generation: 8)
       release = nil
       continuation.resume()
       _ = try await signals.waitForEntry(matching: { $0.message == "child completed" })

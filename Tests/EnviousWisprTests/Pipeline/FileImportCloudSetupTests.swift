@@ -56,9 +56,10 @@ struct FileImportCloudSetupTests {
   private func runner(_ capture: Capture, provider: LLMProvider, model: String) -> FileImportRunner
   {
     let subject = FileImportRunner(
-      keychainManager: KeychainManager(), egOneRuntime: nil, s1MiniRuntime: nil,
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests,
+      egOneRuntime: nil, s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
-      makeEGOnePolisher: nil, promptPlanner: nil, checkerSelectionProvider: nil,
+      promptPlanner: nil, checkerSelectionProvider: nil,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })
     subject.freeze(
       settings: RecordingSettingsSnapshot(

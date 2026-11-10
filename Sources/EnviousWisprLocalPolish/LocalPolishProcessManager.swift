@@ -8,7 +8,7 @@ import os
 
 /// Endpoint of a ready local inference server: where to send requests and
 /// the per-launch bearer token that authenticates the app to it.
-public struct EGOneEndpoint: Sendable, Equatable {
+public struct LocalPolishEndpoint: Sendable, Equatable {
   public let port: UInt16
   public let authToken: String
   /// Context window the server was launched with — the polish step's
@@ -55,7 +55,7 @@ public enum EGOneHealth: Sendable, Equatable {
 /// critical memory pressure (it may never starve heart-path ASR — the
 /// #286/#295 Ollama dual-residency incident is the precedent), and every
 /// failure surfaces to dictation as a silent raw-text fallback.
-public actor EGOneServerManager {
+public actor LocalPolishProcessManager {
   /// Closed startup diagnosis for the checker. Polish can continue after this.
   public enum CheckerFailureReason: String, Sendable, Equatable {
     case adapterMissing = "adapter_missing"
@@ -66,7 +66,7 @@ public actor EGOneServerManager {
   public enum ServerState: Sendable, Equatable {
     case stopped
     case starting
-    case ready(EGOneEndpoint)
+    case ready(LocalPolishEndpoint)
     /// Terminated by the memory-pressure source; reactivation is a user
     /// action (settings) or next launch.
     case pausedForMemoryPressure
@@ -100,7 +100,7 @@ public actor EGOneServerManager {
   /// What a polish attempt meets, read in ONE manager turn (#3988), so the
   /// endpoint and the stop evidence cannot describe two different moments.
   public struct Availability: Sendable, Equatable {
-    public let endpoint: EGOneEndpoint?
+    public let endpoint: LocalPolishEndpoint?
     /// The outside stop that leaves no endpoint, when that is why.
     public let outstandingOutsideStop: Int?
     /// The outside stop whose recovery take is the asking take: the first live
@@ -140,41 +140,36 @@ public actor EGOneServerManager {
   /// fake server binary (plan §11: spawn/crash/restart-once/port-conflict/
   /// memory-pressure tests without a 2.7 GB model).
   public struct Configuration: Sendable {
-    public var serverBinaryURL: URL
-    public var modelURL: URL
-    public var contextTokens: Int
-    public var learnedWordAdapterURL: URL?
-    /// Arguments that belong only to the adapter, removed for fallback.
-    public var learnedWordAdapterArguments: [String]
-    /// Extra launch arguments appended after the standard set.
-    public var extraArguments: [String]
+    /// What to launch (#4473). The stable launch inputs live here once; this wrapper adds only
+    /// how to execute them.
+    public var spec: LocalPolishLaunchSpec
     /// Seconds to wait for the HTTP surface after spawn (model load takes
     /// seconds on a real machine). Tests shrink this so a fake server that
     /// never binds fails fast instead of stalling the suite.
     public var readinessBudgetSeconds: Int
     /// Captured by the coordinator at launch, never inferred from a later selection.
     public var owningProvider: LLMProvider?
+    /// Renders the child's argument list from the spec being spawned, the port and the bearer
+    /// chosen for that spawn (#4473). Required, with no default: the process manager knows no
+    /// engine's command line, so each engine supplies its own.
+    public var makeArguments: @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String]
 
     public init(
-      serverBinaryURL: URL, modelURL: URL, contextTokens: Int,
-      extraArguments: [String] = [], readinessBudgetSeconds: Int = 60,
-      learnedWordAdapterURL: URL? = nil,
-      learnedWordAdapterArguments: [String] = [], owningProvider: LLMProvider? = nil
+      spec: LocalPolishLaunchSpec,
+      makeArguments: @escaping @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String],
+      readinessBudgetSeconds: Int = 60, owningProvider: LLMProvider? = nil
     ) {
-      self.serverBinaryURL = serverBinaryURL
-      self.modelURL = modelURL
-      self.contextTokens = contextTokens
-      self.learnedWordAdapterURL = learnedWordAdapterURL
-      self.learnedWordAdapterArguments = learnedWordAdapterArguments
-      self.extraArguments = extraArguments
+      self.spec = spec
       self.readinessBudgetSeconds = readinessBudgetSeconds
       self.owningProvider = owningProvider
+      self.makeArguments = makeArguments
     }
 
+    /// The execution copy for a bare-base fallback: the same controls, the spec without its
+    /// adapter. The caller's requested configuration is not changed.
     func withoutLearnedWordAdapter() -> Configuration {
       var fallback = self
-      fallback.learnedWordAdapterURL = nil
-      fallback.learnedWordAdapterArguments = []
+      fallback.spec = spec.withoutLearnedWordAdapter()
       return fallback
     }
   }
@@ -288,7 +283,7 @@ public actor EGOneServerManager {
 
   /// Current endpoint iff ready. Fast, never boots the server — dictation
   /// during boot silently falls back (never blocks paste).
-  public func activeEndpoint() -> EGOneEndpoint? {
+  public func activeEndpoint() -> LocalPolishEndpoint? {
     if case .ready(let endpoint) = state { return endpoint }
     return nil
   }
@@ -455,20 +450,20 @@ public actor EGOneServerManager {
     owner = configuration.owningProvider
     transition(to: .starting)
 
-    guard FileManager.default.fileExists(atPath: configuration.serverBinaryURL.path) else {
+    guard FileManager.default.fileExists(atPath: configuration.spec.serverBinaryURL.path) else {
       transition(to: .failed(reason: "server_binary_missing"))
       return
     }
     // A previous app instance that CRASHED (bypassing applicationWillTerminate)
     // may have orphaned its server; reap it before spawning ours.
     Self.killStaleServers(
-      binaryPath: configuration.serverBinaryURL.path, initiator: configuration.owningProvider,
+      binaryPath: configuration.spec.serverBinaryURL.path, initiator: configuration.owningProvider,
       generation: generation, report: onProcessFailure)
-    guard FileManager.default.fileExists(atPath: configuration.modelURL.path) else {
+    guard FileManager.default.fileExists(atPath: configuration.spec.modelURL.path) else {
       transition(to: .failed(reason: "model_missing"))
       return
     }
-    if let adapter = configuration.learnedWordAdapterURL,
+    if let adapter = configuration.spec.learnedWordAdapterURL,
       !FileManager.default.fileExists(atPath: adapter.path)
     {
       checkerFailureReason = .adapterMissing
@@ -485,15 +480,8 @@ public actor EGOneServerManager {
     let token = UUID().uuidString + UUID().uuidString
 
     let proc = Process()
-    proc.executableURL = configuration.serverBinaryURL
-    proc.arguments =
-      [
-        "-m", configuration.modelURL.path,
-        "--host", "127.0.0.1",
-        "--port", String(port),
-        "-c", String(configuration.contextTokens),
-        "--api-key", token,
-      ] + configuration.extraArguments + configuration.learnedWordAdapterArguments
+    proc.executableURL = configuration.spec.serverBinaryURL
+    proc.arguments = configuration.makeArguments(configuration.spec, port, token)
     // The server's stdout/stderr are noise for us; route to null so the
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice
@@ -525,9 +513,9 @@ public actor EGOneServerManager {
     process = proc
     installMemoryPressureSource()
 
-    let endpoint = EGOneEndpoint(
-      port: port, authToken: token, contextTokens: configuration.contextTokens,
-      hasLearnedWordAdapter: configuration.learnedWordAdapterURL != nil)
+    let endpoint = LocalPolishEndpoint(
+      port: port, authToken: token, contextTokens: configuration.spec.contextTokens,
+      hasLearnedWordAdapter: configuration.spec.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
     // poll /health until 200, the process dying, or budget exhausted).
     let healthy = await Self.awaitServerUp(
@@ -541,7 +529,7 @@ public actor EGOneServerManager {
     // down the successor's process (#1271 matrix gap 1).
     guard generation == launchGeneration else { return }
     guard healthy else {
-      if configuration.learnedWordAdapterURL != nil {
+      if configuration.spec.learnedWordAdapterURL != nil {
         checkerFailureReason = proc.isRunning ? .adapterServerNeverReady : .adapterServerExited
         tearDownProcess()
         await spawn(configuration: configuration.withoutLearnedWordAdapter())
@@ -558,7 +546,7 @@ public actor EGOneServerManager {
     // A child can answer /health and exit before promotion. It never became
     // a ready process, so an adapter launch still needs the bare-base retry.
     guard case .starting = state, proc.isRunning else {
-      if configuration.learnedWordAdapterURL != nil {
+      if configuration.spec.learnedWordAdapterURL != nil {
         checkerFailureReason = .adapterServerExited
         tearDownProcess()
         await spawn(configuration: configuration.withoutLearnedWordAdapter())
@@ -658,56 +646,15 @@ public actor EGOneServerManager {
 
   // MARK: - Health probe
 
-  /// Real activation test: a FIXED filler-and-self-correction transcript
-  /// through the real prompt path; GREEN requires the expected
-  /// TRANSFORMATION (contains "Friday", drops "um"), not merely HTTP 200 —
-  /// a model that echoes raw text must read yellow, never green.
-  /// #2649: WHICH model is being probed is now an argument, not three
-  /// constants in the body. The launch configuration was always generic; the
-  /// probe was EG-1 by construction — it built an `EGOneConnector`, stamped
-  /// `provider: .egOne` and sent `LLMProvider.egOneModelName`. A second model
-  /// served by the same manager would have been health-checked as EG-1, which
-  /// reads green or yellow about the wrong thing.
+  /// Health of the process. Every state but `ready` answers from the state alone and never
+  /// runs `operation`; a ready process is asked the question it was handed, on its own
+  /// endpoint (#4473). The process manager knows no prompt and no connector: WHAT a healthy
+  /// answer looks like belongs to the engine that supplied the operation.
   ///
-  /// The TRANSFORMATION the probe demands stays shared and is not part of the
-  /// spec, deliberately: both engines exist to do the same job to a dictation,
-  /// so a model that cannot do it must read yellow whichever one it is. Making
-  /// the success condition per-model would let a weaker model be graded on an
-  /// easier exam.
-  public struct ProbeSpec: Sendable {
-    public var provider: LLMProvider
-    public var modelID: String
-    public var makeConnector: @Sendable (EGOneEndpoint) -> any TranscriptPolisher
-
-    public init(
-      provider: LLMProvider, modelID: String,
-      makeConnector: @escaping @Sendable (EGOneEndpoint) -> any TranscriptPolisher
-    ) {
-      self.provider = provider
-      self.modelID = modelID
-      self.makeConnector = makeConnector
-    }
-
-    /// EG-1's exact current values, so its probe is unchanged by this move.
-    public static let egOne = ProbeSpec(
-      provider: .egOne, modelID: LLMProvider.egOneModelName,
-      makeConnector: { EGOneConnector(endpoint: $0) })
-
-    /// #2649. Without this the second model was health-checked AS EG-1 — right
-    /// endpoint, wrong connector, wrong provider stamp, wrong model id. The
-    /// verdict would have been about EG-1's contract, and the connector's
-    /// empty-answer rule is exactly where the two disagree.
-    public static let s1Mini = ProbeSpec(
-      provider: .s1Mini, modelID: LLMProvider.s1MiniModelName,
-      makeConnector: { S1MiniConnector(endpoint: $0) })
-  }
-
-  /// `spec` is REQUIRED and has no default. A defaulted argument leaves no
-  /// token at the call site, so no sweep could find the callers still probing
-  /// as EG-1, and the wrong-model probe would be invisible rather than merely
-  /// wrong. `.egOne` below is a named VALUE a caller passes, not a fallback the
-  /// language supplies.
-  public func probeHealth(promptFamily: PromptFamily, spec: ProbeSpec) async -> EGOneHealth {
+  /// `operation` is REQUIRED and has no default, for the reason the probe's spec never had
+  /// one: a defaulted argument leaves no token at the call site, so no sweep could find a
+  /// caller probing as the wrong model.
+  public func probeHealth(operation: LocalPolishHealthProbe) async -> EGOneHealth {
     switch state {
     case .stopped:
       return .red(reason: "not_running")
@@ -720,51 +667,7 @@ public actor EGOneServerManager {
     case .failed(let reason):
       return .red(reason: reason)
     case .ready(let endpoint):
-      let probeTranscript = "so um move the meeting to thursday no wait friday"
-      let connector = spec.makeConnector(endpoint)
-      let builder = DefaultPromptPlanner.builder(for: promptFamily)
-      let input = PromptBuildInput(
-        transcript: probeTranscript,
-        provider: spec.provider,
-        modelID: spec.modelID,
-        appName: nil,
-        language: nil,
-        polishVocabulary: PolishVocabulary(terms: [], generation: 0)
-      )
-      let envelope = builder.build(input: input, mode: .message)
-      let config = LLMProviderConfig(
-        model: spec.modelID,
-        apiKeyKeychainId: nil,
-        outputTokens: .capped(128),
-        temperature: 0,
-        thinking: nil,
-        detectedLanguage: nil
-      )
-      let start = ContinuousClock.now
-      do {
-        let response = try await connector.polish(envelope: envelope, config: config, onToken: nil)
-        let result = try response.removingModelChatter(
-          dictation: probeTranscript, provider: spec.provider)
-        let elapsed = ContinuousClock.now - start
-        let output = (result.polishedText ?? "").lowercased()
-        // GREEN requires the FULL transformation: filler dropped AND the
-        // self-correction applied (rejected day + correction phrase gone).
-        // "Move the meeting to Thursday, no wait, Friday." must read
-        // yellow, not Live (#1271 Codex r13).
-        let transformed =
-          output.contains("friday")
-          && output.range(of: "\\bum\\b", options: .regularExpression) == nil
-          && !output.contains("thursday") && !output.contains("no wait")
-        if !transformed {
-          return .yellow(reason: "probe_output_unexpected")
-        }
-        if elapsed > .seconds(5) {
-          return .yellow(reason: "probe_slow")
-        }
-        return .green
-      } catch {
-        return .red(reason: "probe_failed")
-      }
+      return await operation(endpoint)
     }
   }
 
@@ -799,7 +702,7 @@ public actor EGOneServerManager {
   }
 
   static func awaitServerUp(
-    endpoint: EGOneEndpoint, budgetSeconds: Int,
+    endpoint: LocalPolishEndpoint, budgetSeconds: Int,
     processIsAlive: @escaping @Sendable () -> Bool = { true }
   ) async -> Bool {
     let deadline = ContinuousClock.now + .seconds(budgetSeconds)
@@ -827,86 +730,33 @@ public actor EGOneServerManager {
 #if DEBUG
   // MARK: - #4319: DEBUG slot observation (Live UAT evidence only)
 
-  /// What the bundled server's slots were doing, content-free: only slot numbers, whether each
-  /// is generating, and how far, so a test can see a cancelled summary stop and free its slot.
-  public struct EGOneSlotSnapshot: Sendable, Equatable {
-    public struct Slot: Sendable, Equatable {
-      public let id: Int
-      public let isProcessing: Bool
-      public let taskID: Int?
-      public let decodedTokens: Int?
-      public let remainingTokens: Int?
-    }
-    /// Which launch of the server this describes (not a secret; the bearer never leaves).
-    public let launchGeneration: Int
-    public let slots: [Slot]
-  }
-
-  public enum EGOneSlotObservation: Sendable, Equatable {
-    case observed(EGOneSlotSnapshot)
-    /// No ready server of the asked model.
-    case unavailable
-    /// The server answered that it has no slots endpoint.
-    case unsupported
-    case httpStatus(Int)
-    case transportFailed
-    case malformed
-    /// The server was replaced while the request was out: the answer is not about it.
-    case replaced
-  }
-
-  extension EGOneServerManager {
-    /// A read-only control request: authenticated `GET /slots` on this manager's own ready
-    /// server. Takes no lease, no reservation and no admission epoch; starts, probes and stops
-    /// nothing. Bounded like the readiness check (`awaitServerUp`, 2 s per request).
+  extension LocalPolishProcessManager {
+    /// A read-only control request on this manager's own ready server. Takes no lease, no
+    /// reservation and no admission epoch; starts, probes and stops nothing.
+    ///
+    /// #4473: the request and the answer's shape belong to the engine that supplies
+    /// `operation`; the values it reports are in `LocalPolishSlotInspection.swift`. This
+    /// method keeps what is the process's own: only a ready server is asked, on its endpoint
+    /// and launch generation, and an answer about a server that was replaced meanwhile is
+    /// never reported. `operation` is REQUIRED and has no default.
+    ///
+    /// Failure order, unchanged: a transport failure is `transportFailed` even when the
+    /// server was also replaced while the request was out, so the throw is handled BEFORE
+    /// the replacement check.
     public func observeSlotsForDebug(
-      send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-        try await URLSession.shared.data(for: $0)
-      }
+      operation: LocalPolishSlotInspection
     ) async -> EGOneSlotObservation {
-      guard case .ready(let endpoint) = state,
-        let url = URL(string: "http://127.0.0.1:\(endpoint.port)/slots")
-      else { return .unavailable }
+      guard case .ready(let endpoint) = state else { return .unavailable }
       let generation = launchGeneration
-      var request = URLRequest(url: url)
-      request.timeoutInterval = 2
-      request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-      let data: Data
-      let response: URLResponse
+      let observation: EGOneSlotObservation
       do {
-        (data, response) = try await send(request)
+        observation = try await operation(endpoint, generation)
       } catch {
         return .transportFailed
       }
       guard generation == launchGeneration, case .ready(let current) = state, current == endpoint
       else { return .replaced }
-      let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-      switch status {
-      case 200: break
-      case 404, 501: return .unsupported
-      default: return .httpStatus(status)
-      }
-      return Self.parseSlots(data, launchGeneration: generation).map(EGOneSlotObservation.observed)
-        ?? .malformed
-    }
-
-    /// Whitelisted fields only: never the request's params, prompt or generated text.
-    static func parseSlots(_ data: Data, launchGeneration: Int) -> EGOneSlotSnapshot? {
-      guard let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
-        return nil
-      }
-      var slots: [EGOneSlotSnapshot.Slot] = []
-      for row in rows {
-        guard let id = row["id"] as? Int, let processing = row["is_processing"] as? Bool else {
-          return nil
-        }
-        let next = (row["next_token"] as? [[String: Any]])?.first
-        slots.append(
-          .init(
-            id: id, isProcessing: processing, taskID: row["id_task"] as? Int,
-            decodedTokens: next?["n_decoded"] as? Int, remainingTokens: next?["n_remain"] as? Int))
-      }
-      return EGOneSlotSnapshot(launchGeneration: launchGeneration, slots: slots)
+      return observation
     }
   }
 #endif

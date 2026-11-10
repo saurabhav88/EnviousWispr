@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -22,9 +23,9 @@ struct EGOnePipelineRoutingTests {
 
   @MainActor
   final class FakeRuntime: EGOneEndpointProviding {
-    var endpoint: EGOneEndpoint?
-    init(endpoint: EGOneEndpoint? = nil) { self.endpoint = endpoint }
-    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+    var endpoint: LocalPolishEndpoint?
+    init(endpoint: LocalPolishEndpoint? = nil) { self.endpoint = endpoint }
+    func activeEndpoint() async -> LocalPolishEndpoint? { endpoint }
   }
 
   private struct CannedPolisher: TranscriptPolisher {
@@ -48,7 +49,7 @@ struct EGOnePipelineRoutingTests {
   }
 
   private func makeStep(runtime: FakeRuntime?) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .egOne
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime
@@ -99,7 +100,7 @@ struct EGOnePipelineRoutingTests {
     let spy = CaptureSpy()
     // Tiny context window: the 16-word transcript over-budgets it.
     let runtime = FakeRuntime(
-      endpoint: EGOneEndpoint(port: 1, authToken: "t", contextTokens: 16))
+      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 16))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { _ in CannedPolisher(output: "MUST NOT BE USED") }
     let result = try await run(step, spy: spy)
@@ -114,7 +115,7 @@ struct EGOnePipelineRoutingTests {
   func healthyEndpointPolishes() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { endpoint in
       #expect(endpoint.authToken == "t")
@@ -132,7 +133,7 @@ struct EGOnePipelineRoutingTests {
   func keychainFactoryNotUsed() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     var legacyFactoryCalled = false
     step.makePolisher = { _, _, _, _ in
@@ -151,7 +152,7 @@ struct EGOnePipelineRoutingTests {
     // Guard against over-widening the silent set: an Ollama provider-down
     // error must still surface (adversarial pairing for the new branch).
     let spy = CaptureSpy()
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .ollama
     step.llmModel = "llama3.2"
     // #1305: report ready so this stays a MID-FLIGHT surfacing test (the

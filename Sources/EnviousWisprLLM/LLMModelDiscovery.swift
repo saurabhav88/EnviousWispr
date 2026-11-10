@@ -262,7 +262,7 @@ public struct LLMModelDiscovery: Sendable {
       return Self.appleIntelligenceModelInfo()
     case .egOne:
       // #1271: fixed first-party model — nothing to discover; the settings
-      // row renders manifest identity from `EGOneRuntime`, not from here.
+      // row renders manifest identity from `LocalPolishRuntime`, not from here.
       return []
     case .s1Mini:
       // #2649: fixed third-party model, same answer. Routing it into the

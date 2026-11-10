@@ -536,7 +536,7 @@ struct TextProcessingRunnerTests {
 
   @Test("LLMPolishStep declares .surface error policy")
   func llmPolishStepDeclaresSurfacePolicy() async throws {
-    let llmStep = LLMPolishStep(keychainManager: KeychainManager())
+    let llmStep = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     #expect(llmStep.errorSurfacePolicy == .surface)
   }
 

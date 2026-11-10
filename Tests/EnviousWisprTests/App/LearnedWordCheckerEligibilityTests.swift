@@ -1,5 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import Foundation
@@ -25,7 +27,9 @@ struct LearnedWordCheckerEligibilityTests {
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
         manifestBundle: try #require(Bundle(url: resources)), appSupportOverride: temp)
-      let runtime = EGOneRuntime(manifest: nil, serverBinaryURL: nil, delivery: nil)
+      let runtime = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil,
+        engine: LlamaServerEngine())
       let checker = try #require(
         LearnedWordCheckUATDoor.configuration(environment: [
           LearnedWordCheckUATDoor.environmentKey: "Tuist",
@@ -119,14 +123,14 @@ struct LearnedWordCheckerEligibilityTests {
     arguments: LearnedWordCheckerEngine.allCases)
   func decisionMatrix(engine: LearnedWordCheckerEngine) throws {
     let (contract, base) = try pins(engine)
-    let ready = EGOneEndpoint(
+    let ready = LocalPolishEndpoint(
       port: 12345, authToken: "test", contextTokens: 1024,
       hasLearnedWordAdapter: true)
     func select(
       baseAdmitted: Bool = true, adapterAdmitted: Bool = true, state: DeliveryState = .admitted,
       hostConfigured: Bool = true, deliveryEnabled: Bool = true,
       admittedBase: AdmittedCheckerBase? = nil,
-      endpoint: EGOneEndpoint? = nil, missingEndpoint: Bool = false,
+      endpoint: LocalPolishEndpoint? = nil, missingEndpoint: Bool = false,
       serverReason: String? = nil
     ) -> LearnedWordCheckerSelection {
       LearnedWordCheckerEligibility.evaluate(
@@ -137,7 +141,7 @@ struct LearnedWordCheckerEligibilityTests {
         endpoint: missingEndpoint ? nil : (endpoint ?? ready),
         serverReason: serverReason, hold: { nil })
     }
-    let checker = try #require(select().checker as? EGOneLearnedWordChecker)
+    let checker = try #require(select().checker as? LlamaLearnedWordChecker)
     #expect(checker.armName == (engine == .egOne ? "eg1_lora" : "s1_lora"))
     #expect(select(baseAdmitted: false).absence == .baseNotAdmitted)
     #expect(

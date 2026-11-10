@@ -14,6 +14,12 @@ let package = Package(
     // dependency. Purely additive — no production code imports these.
     .library(name: "EnviousWisprCore", targets: ["EnviousWisprCore"]),
     .library(name: "EnviousWisprLLM", targets: ["EnviousWisprLLM"]),
+    // #4473: the engine-neutral local polish contracts. Exposed beside LLM, which depends on
+    // it, so a harness that links LLM resolves it as a product too.
+    .library(name: "EnviousWisprLocalPolish", targets: ["EnviousWisprLocalPolish"]),
+    // #4473: the llama-server engine (S1-mini, and EG-1 until its own engine lands). Exposed
+    // like its dependencies; only the app shell and the unit tests import it.
+    .library(name: "EnviousWisprLlamaEngine", targets: ["EnviousWisprLlamaEngine"]),
     // Exposed for the alias-suggestion eval harness at
     // scripts/eval/alias_runner. Purely additive — no production code
     // imports change. (#637)
@@ -121,6 +127,15 @@ let package = Package(
       name: "EnviousWisprModelDelivery",
       dependencies: ["EnviousWisprCore"],
       path: "Sources/EnviousWisprModelDelivery"
+    ),
+    // #4473: engine-neutral local polish: what a local model IS to the app (identity, launch
+    // spec, install state, manifest facts, transport failure), with no engine in it. Core and
+    // ModelDelivery only: never LLM, never an engine module, never MLX. The engines and LLM
+    // depend on it, never the reverse. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprLocalPolish",
+      dependencies: ["EnviousWisprCore", "EnviousWisprModelDelivery"],
+      path: "Sources/EnviousWisprLocalPolish"
     ),
     .target(
       name: "EnviousWisprPostProcessing",
@@ -276,11 +291,27 @@ let package = Package(
         // #1348 Phase 3: EG-1 polish delivery converges onto the shared engine
         // (downward edge, both above Core). Mirrors Project.swift.
         "EnviousWisprModelDelivery",
+        // #4473: the engine-neutral local polish contracts (downward edge).
+        "EnviousWisprLocalPolish",
         // #832/#913 PR8: public Argmax tokenizer surface for the output-safety
         // classifier pair-encoder seam (AutoTokenizerWrapper / TokenizerWrapper).
         .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
       ],
       path: "Sources/EnviousWisprLLM"
+    ),
+    // #4473: the llama-server engine: connectors, launch arguments, health probe, slot reader,
+    // learned-word checker and summary call for models served by the bundled `llama-server`.
+    // It sits ABOVE LLM and LocalPolish and is imported only by the app shell (composition)
+    // and the unit tests; LLM, LocalPolish and Pipeline never import it. Mirrors Project.swift.
+    .target(
+      name: "EnviousWisprLlamaEngine",
+      dependencies: [
+        "EnviousWisprCore",
+        "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLLM",
+      ],
+      path: "Sources/EnviousWisprLlamaEngine"
     ),
     // #3242: the learned-word check for polish engines that have none of their own. A leaf over Core
     // so MLX never reaches the eval harnesses that link EnviousWisprLLM or EnviousWisprPipeline.
@@ -304,6 +335,8 @@ let package = Package(
         "EnviousWisprASR",
         "EnviousWisprAudio",
         "EnviousWisprLLM",
+        // #4473: the engine-neutral local polish lifecycle (endpoint, runtime handles).
+        "EnviousWisprLocalPolish",
         "EnviousWisprModelDelivery",
         "EnviousWisprPostProcessing",
         "EnviousWisprServices",
@@ -320,6 +353,8 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprStorage",
         "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLlamaEngine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLivePreview",
         // #2108: composition only — `WhisperPreviewDeliveryWiring` constructs the
@@ -417,6 +452,8 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprObservabilityCore",
         "EnviousWisprModelDelivery",
+        "EnviousWisprLocalPolish",
+        "EnviousWisprLlamaEngine",
         "EnviousWisprPostProcessing",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",

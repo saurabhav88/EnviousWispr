@@ -176,7 +176,8 @@ struct SpokenPunctuationSettingsPlumbingTests {
   @Test("A recovered take replays under the start words recorded with it")
   func recoveryAppliesTheRecordedValue() {
     let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: recorded, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation
@@ -185,7 +186,8 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A recorded word that equals today's default is still carried")
   func recoveryKeepsADefaultEqualWord() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: Self.allDefaults, periodWord: true))
     #expect(
       processor.inverseTextNormalizationStep.spokenPunctuation.startWordOverrides
@@ -194,7 +196,8 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A spool from before start words replays off with the shipped defaults")
   func legacySpoolReplaysOff() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     // Poison first, so the nil branch is shown to WRITE the default rather than leave a fresh one.
     processor.inverseTextNormalizationStep.spokenPunctuation = SpokenPunctuationSettings(
       enabled: true, startWordOverrides: ["de": "Sprich"], englishPeriodWord: true)
@@ -243,7 +246,8 @@ struct SpokenPunctuationSettingsPlumbingTests {
   @Test("The import runner applies the frozen value to the steps it builds")
   func importRunnerAppliesTheFrozenValue() {
     let recorded = ["de": "Sprich", "fr": "Place", "es": "Añade", "it": "Metti"]
-    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     let steps = runner.makeSteps(settings: snapshot(enabled: true, words: recorded, periodWord: true))
     #expect(
       steps.inverseTextNormalization.spokenPunctuation
@@ -272,11 +276,13 @@ struct SpokenPunctuationSettingsPlumbingTests {
 
   @Test("A recovered take and an import replay the recorded period switch OFF")
   func recordedPeriodSwitchOffIsReplayed() {
-    let processor = RecoveryTextProcessor(keychainManager: KeychainManager(), cloudModelList: nil)
+    let processor = RecoveryTextProcessor(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil)
     processor.applySettings(snapshot(enabled: true, words: [:], periodWord: false))
     #expect(processor.inverseTextNormalizationStep.spokenPunctuation.englishPeriodWord == false)
 
-    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     let steps = runner.makeSteps(settings: snapshot(enabled: true, words: [:], periodWord: false))
     #expect(steps.inverseTextNormalization.spokenPunctuation.englishPeriodWord == false)
   }

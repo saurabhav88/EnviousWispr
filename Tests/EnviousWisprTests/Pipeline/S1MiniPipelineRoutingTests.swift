@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -27,9 +28,9 @@ struct S1MiniPipelineRoutingTests {
 
   @MainActor
   final class FakeRuntime: EGOneEndpointProviding {
-    var endpoint: EGOneEndpoint?
-    init(endpoint: EGOneEndpoint? = nil) { self.endpoint = endpoint }
-    func activeEndpoint() async -> EGOneEndpoint? { endpoint }
+    var endpoint: LocalPolishEndpoint?
+    init(endpoint: LocalPolishEndpoint? = nil) { self.endpoint = endpoint }
+    func activeEndpoint() async -> LocalPolishEndpoint? { endpoint }
   }
 
   private struct CannedPolisher: TranscriptPolisher {
@@ -58,15 +59,15 @@ struct S1MiniPipelineRoutingTests {
     ) { count += 1 }
   }
 
-  private static func endpoint() -> EGOneEndpoint {
-    EGOneEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  private static func endpoint() -> LocalPolishEndpoint {
+    LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
   }
 
   private func makeStep(
     s1Runtime: FakeRuntime?, egOneRuntime: FakeRuntime? = nil,
     polished: String = S1MiniPipelineRoutingTests.s1Answer
   ) -> LLMPolishStep {
-    let step = LLMPolishStep(keychainManager: KeychainManager())
+    let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     step.llmProvider = .s1Mini
     step.llmModel = LLMProvider.s1MiniModelName
     step.s1MiniRuntime = s1Runtime
@@ -183,7 +184,7 @@ struct S1MiniPipelineRoutingTests {
     let window = 8192
     let ceiling = LLMPolishStep.localPolishTranscriptCeiling(contextTokens: window)
     #expect(ceiling == 3328)
-    let endpoint = EGOneEndpoint(port: 1, authToken: "t", contextTokens: window)
+    let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: window)
     // Words, not one long token: the runner's other steps treat the text as
     // prose, and the guard counts bytes either way.
     func transcript(_ count: Int) -> String {

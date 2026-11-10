@@ -3,6 +3,8 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprLivePreview
+import EnviousWisprLlamaEngine
+import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import EnviousWisprPipeline
 import EnviousWisprServices
@@ -561,8 +563,11 @@ package final class WisprBootstrapper {
       return await modelDelivery.admittedCompatibleCheckerURL(
         engine: .egOne, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
-    let egOneRuntime = EGOneRuntime(
-      manifest: egOneManifest, serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
+    let egOneRuntime = LocalPolishRuntime(
+      manifest: egOneManifest?.runtimeFacts(
+        expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
+      serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
+      engine: LlamaServerEngine(),
       learnedWordAdapterProvider: learnedWordAdapterProvider)
     egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
     egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
@@ -620,8 +625,11 @@ package final class WisprBootstrapper {
       return await modelDelivery.admittedCompatibleCheckerURL(
         engine: .s1Mini, baseRegistration: base, promptTemplateID: promptTemplateID)
     }
-    let s1MiniRuntime = EGOneRuntime(
-      manifest: s1Manifest, serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
+    let s1MiniRuntime = LocalPolishRuntime(
+      manifest: s1Manifest?.runtimeFacts(
+        expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
+      serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
+      engine: LlamaServerEngine(),
       coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }
@@ -633,6 +641,12 @@ package final class WisprBootstrapper {
     s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)
     let localPolishRuntimes = LocalPolishRuntimeSet(
       egOne: egOneRuntime, s1Mini: s1MiniRuntime)
+    // #4473: the one place that names the engine behind each bundled model. Live dictation,
+    // crash recovery and file import all receive this same pair; the pipeline builds no
+    // connector of its own.
+    let localPolishers = BundledLocalPolisherFactories(
+      egOne: { EGOneConnector(endpoint: $0) },
+      s1Mini: { S1MiniConnector(endpoint: $0) })
 
     // Exactly one path sweeps orphans — a detached sweep alongside a spawn
     // would race it and kill the fresh server (Codex r10 P1).
@@ -685,6 +699,7 @@ package final class WisprBootstrapper {
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
+        localPolishers: localPolishers,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
@@ -751,6 +766,7 @@ package final class WisprBootstrapper {
         vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
+        localPolishers: localPolishers,
         captureTelemetry: captureTelemetry,
         pasteCompletionRegistry: pasteCompletionRegistry,
         engineMutationScope: engineMutationScope,
@@ -867,7 +883,7 @@ package final class WisprBootstrapper {
     // admission, which is what a first-time download of either engine reaches.
     // Selection and import activation never fetch.
     Task { await checkerEligibility.requestAdapterDownload(for: .s1Mini) }
-    let runtimes: [LearnedWordCheckerEngine: EGOneRuntime] = [
+    let runtimes: [LearnedWordCheckerEngine: LocalPolishRuntime] = [
       .egOne: egOneRuntime, .s1Mini: s1MiniRuntime,
     ]
     for engine in LearnedWordCheckerEngine.allCases {
@@ -1416,6 +1432,7 @@ package final class WisprBootstrapper {
       transcriptStore: transcriptStore,
       transcriptCoordinator: transcriptCoordinator,
       keychainManager: keychainManager,
+      localPolishers: localPolishers,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
@@ -2016,7 +2033,7 @@ package final class WisprBootstrapper {
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
           needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
-        localPolishRuntimes.runtime(for: provider)?.recordingStarted()
+        localPolishRuntimes.runtime(for: .singleModel(for: provider))?.recordingStarted()
       }
     )
 
@@ -2054,6 +2071,7 @@ package final class WisprBootstrapper {
     // under the same key, as anything else this app produces.
     let fileImportRunner = FileImportRunner(
       keychainManager: keychainManager,
+      localPolishers: localPolishers,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
       // #2648, cloud review: the SAME output-safety classifier live dictation
@@ -2336,7 +2354,7 @@ package final class WisprBootstrapper {
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a
         // missing endpoint, which the polish step would read as a silent skip.
-        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+        guard let runtime = localPolishRuntimes.runtime(for: .singleModel(for: localPolish)),
           let activation = runtime.activateAndProbe()
         else { return false }
         await activation.value
@@ -3362,7 +3380,7 @@ package final class WisprBootstrapper {
     Task { await FeedbackReporter.stopDelivery() }
     // #1271: kill the EG-1 child SYNCHRONOUSLY — `Process` children survive
     // parent exit (Codex r1 proved empirically); crash orphans are reaped by
-    // the stale-sweep in EGOneServerManager.start on next launch.
+    // the stale-sweep in LocalPolishProcessManager.start on next launch.
     localPolishRuntimes.egOne.terminateServerForAppQuit()
     // #3853: children first, then native runtimes. Drop the word check's MLX model without
     // waiting (its cleanup runs off this thread), before the lifecycle flush and the
@@ -3493,7 +3511,7 @@ private struct MainWindowRoot: View {
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
       .environment(b.localPolishRuntimes.egOne)
-      // #2649: both engines are `EGOneRuntime`, and `@Environment` keys by TYPE,
+      // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
       // so injecting the second directly would silently replace the first. The
       // set names them instead.
       .environment(b.localPolishRuntimes)

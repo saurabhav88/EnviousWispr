@@ -73,9 +73,11 @@ PINNED_XCODE_BUILD = "27A9275"  # Xcode 27.1; keep equal to .github/actions/xcod
 # first-party module must be added here (or to NON_PRODUCTION) or the run stops.
 PRODUCTION_TARGETS = [
     "EnviousWisprCore", "EnviousWisprObservabilityCore", "EnviousWisprStorage",
-    "EnviousWisprModelDelivery", "EnviousWisprPostProcessing", "EnviousWisprAudio",
+    "EnviousWisprModelDelivery", "EnviousWisprLocalPolish", "EnviousWisprPostProcessing",
+    "EnviousWisprAudio",
     "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
-    "EnviousWisprLLM", "EnviousWisprWordCheck", "EnviousWisprPipeline", "EnviousWisprContacts",
+    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
+    "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
     "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
 ]

@@ -2,6 +2,7 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
@@ -105,8 +106,8 @@ final class PipelineSettingsSync {
     asrManager: any ASRManagerInterface,
     hotkeyService: HotkeyService,
     cloudModelList: @escaping @MainActor () -> CloudModelList?,
-    egOneRuntime: EGOneRuntime? = nil,
-    s1MiniRuntime: EGOneRuntime? = nil,
+    egOneRuntime: LocalPolishRuntime? = nil,
+    s1MiniRuntime: LocalPolishRuntime? = nil,
     checkerSelectionProvider: (
       @MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection
     )? = nil,
@@ -196,10 +197,10 @@ final class PipelineSettingsSync {
   /// (same home as the Ollama eviction below). Switch to EG-1 → server up +
   /// probe; switch away → server down (a multi-GB child never lingers past
   /// its selection, the #295 RAM lesson).
-  private let egOneRuntime: EGOneRuntime?
+  private let egOneRuntime: LocalPolishRuntime?
   /// #2649: the second local engine. Switching TO it must start it, and
   /// switching AWAY must stop it, exactly as EG-1 does.
-  private let s1MiniRuntime: EGOneRuntime?
+  private let s1MiniRuntime: LocalPolishRuntime?
   private let checkerSelectionProvider:
     (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
 
@@ -549,7 +550,7 @@ final class PipelineSettingsSync {
   /// One pass over one engine. `deselectFirst` runs only the STOP half, so the
   /// caller can stop every unselected engine before starting the selected one.
   private func reconcile(
-    runtime: EGOneRuntime?, isSelected: Bool, deselectFirst: Bool = false
+    runtime: LocalPolishRuntime?, isSelected: Bool, deselectFirst: Bool = false
   ) {
     guard let runtime else { return }
     if isSelected {

@@ -4,6 +4,7 @@
   import EnviousWisprAudio
   import EnviousWisprCore
   import EnviousWisprLLM
+  import EnviousWisprLocalPolish
   import EnviousWisprPipeline
   import EnviousWisprPostProcessing
   import EnviousWisprServices
@@ -90,7 +91,7 @@
     private var qualificationTriggered = false
     private let qualificationAction: ((QualificationAction) -> Void)?
     private let qualificationChildTrap:
-      (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)?
+      (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)?
 
     private var listener: NWListener?
     private let port: UInt16
@@ -112,7 +113,7 @@
       whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
       qualificationAction: ((QualificationAction) -> Void)? = nil,
       qualificationChildTrap:
-        (@MainActor () async -> EGOneServerManager.QualificationChildSignal?)? = nil
+        (@MainActor () async -> LocalPolishProcessManager.QualificationChildSignal?)? = nil
     ) {
       self.qualificationChildTrap = qualificationChildTrap
       self.qualificationAction = qualificationAction

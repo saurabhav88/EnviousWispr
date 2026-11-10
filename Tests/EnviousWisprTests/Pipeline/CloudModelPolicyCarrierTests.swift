@@ -45,7 +45,8 @@ struct CloudModelPolicyCarrierTests {
 
   @Test("every part of an import polishes under the list frozen with its settings")
   func importPartsCarryTheFrozenList() {
-    let runner = FileImportRunner(keychainManager: KeychainManager())
+    let runner = FileImportRunner(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests)
     runner.freeze(settings: Self.settings, vocabulary: nil, cloudModelList: Self.list)
     let first = runner.makeSteps(settings: Self.settings).llmPolish
     let second = runner.makeSteps(settings: Self.settings).llmPolish
@@ -58,7 +59,8 @@ struct CloudModelPolicyCarrierTests {
 
   @Test("file batching follows the captured list's row, and the fallback without one")
   func batchingFollowsTheCapturedList() {
-    let step = LLMPolishStep(keychainManager: KeychainManager(), telemetry: .silent())
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
     step.llmProvider = .openAI
     step.llmModel = "gpt-4o-mini-2024-07-18"
     // No list: the compiled #2905 fallback keeps GPT-4o mini (and its dated copies) ordinary.
@@ -74,7 +76,7 @@ struct CloudModelPolicyCarrierTests {
   @Test("a recovered take polishes under the list its replay captured, whatever the spool says")
   func recoveryUsesTheReplayList() {
     let processor = RecoveryTextProcessor(
-      keychainManager: KeychainManager(), cloudModelList: Self.list)
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: Self.list)
     processor.applySettings(Self.settings)
     #expect(processor.llmPolishStep.cloudModelList?.revision == Self.list.revision)
     #expect(processor.llmPolishStep.llmModel == "gpt-4o-mini")
