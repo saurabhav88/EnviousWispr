@@ -78,6 +78,18 @@ struct EGOneAdapterLifecycleTests {
                     return
                 self.send_response(200 if self.path == '/health' else 404)
                 self.end_headers()
+            def do_POST(self):
+                # #4473 P1: record what a health probe sends, then answer like a chat reply.
+                length = int(self.headers.get('Content-Length') or 0)
+                body = self.rfile.read(length).decode('utf-8', 'replace')
+                with open(os.path.join(root, 'posts.jsonl'), 'a') as posts:
+                    posts.write(json.dumps({'path': self.path, 'body': body}) + '\n')
+                reply = json.dumps({'choices': [{'index': 0, 'finish_reason': 'stop',
+                    'message': {'role': 'assistant', 'content': 'Move the meeting to Friday.'}}]})
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(reply.encode('utf-8'))
             def log_message(self, *args):
                 pass
         http.server.HTTPServer(('127.0.0.1', port), Handler).serve_forever()
@@ -1546,3 +1558,73 @@ extension EGOneAdapterLifecycleTests {
     }
   }
 #endif
+
+/// #4473 phase P1: which model a runtime's own health probe asks for, read from the request the
+/// probe really sends. Pinned before the engine split because the probe becomes an injected
+/// operation there; a runtime health-checked as the other model reads green or yellow about the
+/// wrong thing (#2649).
+@Suite("A runtime health-checks its own model (#4473 P1)", .serialized, .tags(.driftGuard))
+struct LocalPolishProbeIdentityCharacterizationTests {
+  fileprivate typealias Fixture = EGOneAdapterLifecycleTests.Fixture
+
+  private struct ProbePost: Decodable {
+    let path: String
+    let body: String
+  }
+
+  /// About half a second per case: it starts the fake server as a real child process and waits
+  /// for the runtime's own activation task, the same measured floor as the lifecycle tests above.
+  @MainActor
+  @Test(
+    "the probe request names the runtime's own model",
+    arguments: [
+      (LLMProvider.egOne, "eg-1", "eg1-v1"),
+      (LLMProvider.s1Mini, "s1-mini", "s1-control-line-v1"),
+    ])
+  func probeRequestNamesOwnModel(
+    provider: LLMProvider, expectedModel: String, promptTemplateID: String
+  ) async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let suite = "ew-p1-probe-\(UUID().uuidString)"
+    let store = try #require(TestDefaults.suite(suite))
+    defer { store.removePersistentDomain(forName: suite) }
+    let install = fixture.root.appendingPathComponent("base-install", isDirectory: true)
+    let metadata = fixture.root.appendingPathComponent("metadata", isDirectory: true)
+    try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+    let registration = try EGOneDeliveryAdapterMappingTests.shardedFixtureRegistration(
+      install: install, metadata: metadata)
+    try Data(count: 1000).write(to: install.appendingPathComponent("eg-1-00001-of-00002.gguf"))
+    try Data(count: 2000).write(to: install.appendingPathComponent("eg-1-00002-of-00002.gguf"))
+    let controller = ModelDeliveryController(defaults: TestDefaults.suite(suite)!)
+    let delivery = EGOneDeliveryAdapter(
+      controller: controller, registration: registration, version: nil, defaults: store)
+    try #require(await delivery.adoptIfPresent(), "fixture model was not admitted")
+    let manifest = EGOneManifest(
+      modelName: expectedModel, version: "v2-sharded",
+      contextTokens: 4096, promptTemplateID: promptTemplateID, minAppVersion: "0",
+      downloadURL: URL(string: "https://example.invalid/model.gguf")!)
+    let runtime = EGOneRuntime(
+      manifest: manifest, serverBinaryURL: fixture.binary, delivery: delivery,
+      defaults: store, coordinator: LocalPolishServerCoordinator(), provider: provider)
+    #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
+    runtime.isActiveProvider = { true }
+    // Nothing else holds the engine, so activation runs the inference probe.
+    runtime.isSharedEngineBusy = { false }
+
+    // The activation task returns only after its probe request was answered.
+    let activation = try #require(runtime.activateAndProbe())
+    await activation.value
+    runtime.terminateServerForAppQuit()
+
+    let log = fixture.root.appendingPathComponent("posts.jsonl")
+    let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
+    let posts = try lines.map { try JSONDecoder().decode(ProbePost.self, from: Data($0.utf8)) }
+    try #require(posts.count == 1, "expected exactly one probe request, got \(posts.count)")
+    #expect(posts[0].path == "/v1/chat/completions")
+    let body = try #require(
+      JSONSerialization.jsonObject(with: Data(posts[0].body.utf8)) as? [String: Any])
+    #expect(body["model"] as? String == expectedModel)
+  }
+}
