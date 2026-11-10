@@ -76,10 +76,12 @@ struct LocalPolishP1CharacterizationTests {
       coordinator: coordinator, provider: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
-    #expect(set.runtime(for: .egOne) === egOne)
-    #expect(set.runtime(for: .s1Mini) === s1Mini)
+    #expect(set.runtime(for: .singleModel(for: .egOne)) === egOne)
+    #expect(set.runtime(for: .singleModel(for: .s1Mini)) === s1Mini)
     for provider in Self.providersWithoutABundledModel {
-      #expect(set.runtime(for: provider) == nil, "\(provider) must have no local runtime")
+      #expect(
+        set.runtime(for: .singleModel(for: provider)) == nil,
+        "\(provider) must have no local runtime")
     }
   }
 

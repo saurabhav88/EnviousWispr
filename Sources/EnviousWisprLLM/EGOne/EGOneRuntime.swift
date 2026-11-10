@@ -282,6 +282,9 @@ public final class EGOneRuntime: EGOneLeaseProviding {
   /// endpoint or a health verdict to a model that is not the resident one, so
   /// this value is what stops a polish being answered by other weights.
   private let provider: LLMProvider
+  /// Which local model this runtime serves (#4473). Derived from the provider while each
+  /// provider has one local model; the lookup in `LocalPolishRuntimeSet` matches on it.
+  public let modelID: LocalPolishModelID
   /// Which model the health probe should present itself as. See
   /// `EGOneServerManager.ProbeSpec`.
   private let probeSpec: EGOneServerManager.ProbeSpec
@@ -329,6 +332,7 @@ public final class EGOneRuntime: EGOneLeaseProviding {
       preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
     }
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
+    self.modelID = .singleModel(for: provider)
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
     self.learnedWordAdapterProvider = learnedWordAdapterProvider

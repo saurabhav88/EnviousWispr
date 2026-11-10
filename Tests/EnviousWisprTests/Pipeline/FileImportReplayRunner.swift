@@ -828,7 +828,7 @@ final class ReplayRig {
   /// `prepareLocalPolish` from `WisprBootstrapper`: activation awaited, the endpoint checked,
   /// then the import hold. A refusal invalidates the case rather than letting the step skip.
   private func prepareLocalPolish(_ provider: LLMProvider) async throws {
-    let runtime = try #require(localPolish.runtime(for: provider))
+    let runtime = try #require(localPolish.runtime(for: .singleModel(for: provider)))
     if let activation = runtime.activateAndProbe() { await activation.value }
     let endpoint = await runtime.activeEndpoint()
     try #require(endpoint != nil, "\(provider) endpoint unavailable after activation")
@@ -850,7 +850,7 @@ final class ReplayRig {
 
   func tearDown() {
     localPolish.releaseImportHold()
-    localPolish.runtime(for: .egOne)?.terminateServerForAppQuit()
+    localPolish.runtime(for: .singleModel(for: .egOne))?.terminateServerForAppQuit()
     try? FileManager.default.removeItem(at: root)
   }
 

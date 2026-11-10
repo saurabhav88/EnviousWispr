@@ -765,11 +765,14 @@ public final class LocalPolishRuntimeSet {
   /// configuration — can reach its runtime without restating which providers are bundled.
   /// Exhaustive on purpose: a third bundled engine must fail to compile here rather than
   /// fall into a `default:` and silently never start, which is the shape #2649 fixed twice.
+  ///
+  /// #4473: keyed by model identity, not provider. A size of EG-1 that no runtime here serves
+  /// gets `nil`, never another size's runtime.
   @MainActor
-  public func runtime(for provider: LLMProvider) -> EGOneRuntime? {
-    switch provider {
-    case .egOne: return egOne
-    case .s1Mini: return s1Mini
+  public func runtime(for modelID: LocalPolishModelID) -> EGOneRuntime? {
+    switch modelID.provider {
+    case .egOne: return egOne.modelID == modelID ? egOne : nil
+    case .s1Mini: return s1Mini.modelID == modelID ? s1Mini : nil
     case .appleIntelligence, .ollama, .openAI, .gemini, .claude, .none: return nil
     }
   }
@@ -806,7 +809,9 @@ public final class LocalPolishRuntimeSet {
   /// Starts this attempt's hold: the projection is published at once, so dictation sees the
   /// engine busy while earlier requests drain; it is withdrawn if nothing is held.
   public func beginSummaryHold(_ provider: LLMProvider) async -> SummaryHoldOutcome {
-    guard summaryHold == nil, let runtime = runtime(for: provider) else { return .retryLater }
+    guard summaryHold == nil, let runtime = runtime(for: .singleModel(for: provider)) else {
+      return .retryLater
+    }
     let id = UUID()
     summaryHold = (id, runtime, nil)
     summaryHeldProvider = provider
@@ -863,7 +868,7 @@ public final class LocalPolishRuntimeSet {
   /// endpoint.
   public func holdForImport(_ provider: LLMProvider) async -> Bool {
     await releaseImportHold()?.value
-    guard let runtime = runtime(for: provider) else { return false }
+    guard let runtime = runtime(for: .singleModel(for: provider)) else { return false }
     switch await runtime.acquireLocalServerResidency() {
     case .granted(let lease):
       importHold = (runtime, lease)

@@ -2016,7 +2016,7 @@ package final class WisprBootstrapper {
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
           needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
-        localPolishRuntimes.runtime(for: provider)?.recordingStarted()
+        localPolishRuntimes.runtime(for: .singleModel(for: provider))?.recordingStarted()
       }
     )
 
@@ -2336,7 +2336,7 @@ package final class WisprBootstrapper {
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a
         // missing endpoint, which the polish step would read as a silent skip.
-        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+        guard let runtime = localPolishRuntimes.runtime(for: .singleModel(for: localPolish)),
           let activation = runtime.activateAndProbe()
         else { return false }
         await activation.value
