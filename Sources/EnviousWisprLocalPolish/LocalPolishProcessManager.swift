@@ -179,6 +179,7 @@ public actor LocalPolishProcessManager {
 
     /// The same configuration with its launch folders in `home` (tests; the app keeps
     /// `.userCache`).
+    // periphery:ignore - test seam: tests put their launches in the test folder
     func inLaunchHome(_ home: LocalPolishLaunchHome) -> Configuration {
       var copy = self
       copy.launchHome = home
@@ -650,7 +651,7 @@ public actor LocalPolishProcessManager {
     do {
       let onChange: @Sendable () -> Void = { [weak self] in
         Task { [weak self] in
-          await self?.launchFolderChanged(generation: generation, configuration: configuration)
+          await self?.launchFolderChanged(generation: generation)
         }
       }
       if let queue = configuration.watchQueue {
@@ -679,7 +680,7 @@ public actor LocalPolishProcessManager {
     // The helper read its key at start-up; the file is not needed while it runs.
     connection.removeKeyFile()
     if !connection.socketFilePresent {
-      await launchFolderChanged(generation: generation, configuration: configuration)
+      await launchFolderChanged(generation: generation)
       return
     }
     await AppLogger.shared.log(
@@ -701,6 +702,7 @@ public actor LocalPolishProcessManager {
 
   /// Real-boundary tests: closes only the current launch's pipe writer, as an app death would,
   /// and leaves the child, its watch and its folder to the manager. False without a launch.
+  // periphery:ignore - test seam: R1/R2 real-boundary cases (EnviousDecodeEngineTests, LlamaServerRealBoundaryTests)
   func closeLaunchWriterForTesting() -> Bool {
     guard let launch else { return false }
     launch.connection.closeWriteEnd()
@@ -709,6 +711,7 @@ public actor LocalPolishProcessManager {
 
   /// Real-boundary tests: the current launch's child, read only, so a test can observe how a
   /// deliberate stop ends it (that stop's own reporting stays suppressed).
+  // periphery:ignore - test seam: LlamaServerRealBoundaryTests reads how a deliberate stop ends the child
   func launchProcessForTesting() -> Process? { launch?.process }
 
   /// Releases the stored launch only when it is this generation's.
@@ -721,13 +724,15 @@ public actor LocalPolishProcessManager {
   /// current ready one and its socket file is gone: then no request can reach the helper,
   /// although it runs. The helper is stopped and started again once, through the restart a
   /// crashed ready helper takes; a second removal leaves local polish off.
-  func launchFolderChanged(generation: Int, configuration: Configuration) async {
+  func launchFolderChanged(generation: Int) async {
     guard generation == launchGeneration, case .ready = state,
       let launch, launch.generation == generation, !launch.connection.socketFilePresent
     else { return }
     // A termination the observation already accepted wins: its own callback handles it,
     // including an outside stop and its notice.
     if launch.observation.claimIntentionalStop() != nil { return }
+    // The launch's own configuration, read before the teardown below forgets the launch.
+    let configuration = launch.configuration
     if restartedOnceThisGeneration {
       tearDownProcess()
       transition(to: .failed(reason: "socket_removed_twice"))

@@ -8,7 +8,7 @@ import Foundation
 /// server alone; any difference (another engine, another model, other bytes, another draft
 /// model, another context size, other flags, another checker) is a different process and the
 /// old one stops first. Equality covers every
-/// field and nothing else: the port and bearer chosen for one spawn, the readiness budget, the
+/// field and nothing else: the private socket and bearer of one spawn, the readiness budget, the
 /// renderer and the retry intent are execution details and live outside this type.
 public struct LocalPolishLaunchSpec: Sendable, Equatable {
   /// Which engine binary serves the model.

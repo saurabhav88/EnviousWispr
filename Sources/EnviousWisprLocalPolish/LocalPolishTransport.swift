@@ -1,8 +1,8 @@
 import EnviousWisprCore
 import Foundation
 
-/// The localhost wire path shared by every model the bundled server runs
-/// (#2649).
+/// The chat request path shared by every model the bundled server runs (#2649), over the
+/// launch's private socket (#4493).
 ///
 /// EG-1 and S1-mini disagree about exactly ONE thing: what an empty answer
 /// means. Everything between the request body and the HTTP response is

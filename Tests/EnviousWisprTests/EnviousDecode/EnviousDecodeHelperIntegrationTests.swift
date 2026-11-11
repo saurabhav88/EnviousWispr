@@ -2,7 +2,6 @@ import ArgmaxOSS
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprLLM
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 import os
@@ -10,10 +9,11 @@ import os
 @testable import EnviousDecodeKit
 @testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLlamaEngine
+@testable import EnviousWisprLocalPolish
 
 /// #4473 P2: the helper process itself. These tests start the helper binary the build puts in
-/// the Dev app, with real model folders, and talk to it the way the app does: over loopback
-/// HTTP, with the app's own request builders, transport and answer parsers.
+/// the Dev app, with real model folders, and talk to it the way the app does: HTTP over its
+/// private socket (#4493), with the app's own request builders, transport and answer parsers.
 ///
 /// When this fails, the user loses local polish or gets someone else's text: the helper does
 /// not start for a model that the tests in the same process load without trouble, it answers
@@ -21,7 +21,7 @@ import os
 /// keeps the GPU busy, or the helper stays alive after the app told it to stop. None of these
 /// can be seen from inside the app's own process, so each check here starts the real helper.
 @Suite(
-  "EnviousDecode helper serves the app's requests over loopback and stops when told (#4473)",
+  "EnviousDecode helper serves the app's requests over its private socket and stops when told (#4473)",
   .serialized, .tags(.productOutcome))
 struct EnviousDecodeHelperIntegrationTests {
   typealias Fixtures = DFlashRuntimeTests

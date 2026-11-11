@@ -77,7 +77,7 @@ struct EnviousDecodeWordCheckerTests {
 
   /// #4493: the scripted helper answers in the helper exchange's terms: a status and bytes,
   /// or one of its failures. Each request is recorded with the endpoint it names.
-  static func loopback(
+  static func scripted(
     _ answer: @escaping @Sendable (LocalPolishHelperRequest) async throws -> (Data, Int)
   ) -> LocalPolishHelperExchange.Perform {
     { request, endpoint in
@@ -131,7 +131,7 @@ struct EnviousDecodeWordCheckerTests {
     // p = (id - 100) / 20: half the total probability, so the ratio must be taken.
     let checker = Checker(
       threshold: 0.5, hold: Self.hold(record),
-      perform: Self.loopback { request in
+      perform: Self.scripted { request in
         record.add(request)
         let entries = try Self.ids(in: request).map { id -> [String: Any] in
           let p = Double(id - 100) / 20
@@ -238,7 +238,7 @@ struct EnviousDecodeWordCheckerTests {
       let record = Record()
       let checker = Checker(
         threshold: 0.5, hold: Self.hold(record, endpoint: endpoint),
-        perform: Self.loopback { request in
+        perform: Self.scripted { request in
           record.add(request)
           return try answer(request, record.requests.count)
         })
@@ -357,7 +357,7 @@ struct EnviousDecodeWordCheckerTests {
     let record = Record()
     let checker = Checker(
       threshold: 0.5, hold: Self.hold(record),
-      perform: Self.loopback { request in
+      perform: Self.scripted { request in
         record.add(request)
         return (Data(), Self.response())
       })
@@ -379,7 +379,7 @@ struct EnviousDecodeWordCheckerTests {
           withUnsafeCurrentTask { $0?.cancel() }
         }
       },
-      perform: Self.loopback { request in
+      perform: Self.scripted { request in
         lateRecord.add(request)
         return (try Self.scores(try good(request)), Self.response())
       })

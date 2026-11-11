@@ -71,14 +71,14 @@ public enum LocalPolishHelperClientError: Error, Equatable, Sendable {
 ///
 /// It holds no policy. Which route, which timeout, whether to retry and what an answer means
 /// stay with each caller.
-public enum LocalPolishHelperClient {
+enum LocalPolishHelperClient {
 
   /// Sends `request` to the helper at `address`.
   ///
   /// Throws `LocalPolishHelperClientError`, or `CancellationError` when the calling task is
   /// cancelled. Cancelling closes the connection, which is the disconnect the helper treats as
   /// "stop working on this request".
-  public static func perform(
+  static func perform(
     _ request: LocalPolishHelperRequest, at address: LocalPolishHelperAddress
   ) async throws -> LocalPolishHelperResponse {
     try await perform(request, at: address, ioQueue: sharedIOQueue, observer: nil)

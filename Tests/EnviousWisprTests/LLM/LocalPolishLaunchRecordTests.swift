@@ -262,7 +262,7 @@ struct LocalPolishLaunchRecordTests {
     try Data("x".utf8).write(to: URL(fileURLWithPath: leaf + "/other"))
     // The event was delivered and judged: the manager's own check runs on the actor, so a
     // later actor turn sees its outcome.
-    await manager.launchFolderChanged(generation: 1, configuration: fixture.configuration())
+    await manager.launchFolderChanged(generation: 1)
     #expect(recorder.count == mark)
     #expect(await manager.activeEndpoint() == endpoint)
     try FileManager.default.removeItem(atPath: leaf + "/other")
@@ -296,7 +296,7 @@ struct LocalPolishLaunchRecordTests {
     let before = await manager.currentLifecycle()
     let launches = try fixture.launches().count
     let mark = recorder.count
-    await manager.launchFolderChanged(generation: 1, configuration: fixture.configuration())
+    await manager.launchFolderChanged(generation: 1)
     #expect(await manager.currentLifecycle() == before)
     #expect(recorder.count == mark)
     #expect(try fixture.launches().count == launches)
@@ -416,7 +416,7 @@ struct LocalPolishLaunchRecordTests {
     kill(try fixture.lastPID(), SIGTERM)
     try await BoundedWait.until(accepted)
     try #require(unlink(endpoint.socketPath) == 0)
-    await manager.launchFolderChanged(generation: 1, configuration: fixture.configuration())
+    await manager.launchFolderChanged(generation: 1)
     // The recovery found the accepted termination and did nothing.
     #expect(await manager.activeEndpoint() == endpoint)
     #expect(try fixture.launches().count == 1)

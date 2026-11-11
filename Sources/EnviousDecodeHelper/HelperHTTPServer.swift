@@ -23,7 +23,8 @@ struct HelperResponse: Sendable {
   }
 }
 
-/// A small HTTP/1.1 server for the app's own two requests, on the loopback address only.
+/// A small HTTP/1.1 server for the app's own requests, on the launch's private Unix socket only
+/// (#4493).
 ///
 /// It is not a general server, on purpose. One request per connection: the request is read
 /// whole (headers up to `maxHeaderBytes`, then exactly `Content-Length` bytes up to

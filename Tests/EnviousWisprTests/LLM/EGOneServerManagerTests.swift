@@ -108,7 +108,7 @@ struct EGOneServerManagerTests {
   }
 }
 
-/// Response cleanup on the localhost wire (#1271 Codex r4): the EG-1 prompt
+/// Response cleanup on the helper wire (#1271 Codex r4): the EG-1 prompt
 /// is a sandwich path (user message wrapped in `<TRANSCRIPT>` tags), so an
 /// echoed wrapper must be stripped before the text can reach the paste path.
 @Suite("EGOneConnector response cleanup (#1271)")

@@ -46,6 +46,7 @@ public struct LocalPolishLaunchHome: Sendable {
 
   /// A test home. `observer` receives the launch connection's resource events (for example,
   /// that the folder watch's descriptor exists and registration is pending).
+  // periphery:ignore - test seam: TestLaunchHome and the lifecycle fixture keep test launches in the test folder
   init(
     parent: String, identity: LocalPolishLaunchConnection.ProcessIdentity,
     observer: LocalPolishLaunchConnection.ResourceObserver? = nil

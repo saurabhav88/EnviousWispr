@@ -226,6 +226,7 @@ public final class LocalPolishLaunchConnection: @unchecked Sendable {
   /// Closes only the app's writing end of the "app is alive" pipe, once: the helper then sees
   /// end-of-file as it would if the app died. Nothing else is released. Real-boundary tests
   /// use it; the app releases the whole launch instead.
+  // periphery:ignore - test seam: LocalPolishProcessManager.closeLaunchWriterForTesting (real-boundary cases)
   func closeWriteEnd() {
     let first = guarded.withLockUnchecked { state -> Bool in
       guard !state.writeEndClosed else { return false }
