@@ -214,6 +214,9 @@ private struct EGOneSizeCardView: View {
     )
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text(verbatim: EGOneSizeCardCopy.title(card.size)))
+    // The outline is the only visible mark of the chosen size while it is not downloaded;
+    // VoiceOver gets the same fact as a trait.
+    .accessibilityAddTraits(card.isSelected ? .isSelected : [])
   }
 
   private var header: some View {
