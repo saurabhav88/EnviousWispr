@@ -77,17 +77,24 @@ let package = Package(
     //   forwarding through Qwen 3.5 (an armed cache leaves the compiled single-token routes), a capturing
     //   forward with public read access to the embedding and the output head, MambaCache open so a
     //   rollback cache can subclass it from another module, and test bounds sized by measured float32
-    //   matmul precision (upstream #649).
-    // - mlx-swift (upstream 0.31.6): the CUDA build-tool plugin attached to Cmlx on Linux only. On Apple
-    //   platforms it generates nothing, but its presence made every xcodebuild stop at "Validate plug-in".
-    //   For #4473: the upstream #461 compiler-lock repair (CompiledFunction.lock / evalLock order), without
-    //   which two threads evaluating MLX at once can deadlock for good.
+    //   matmul precision (upstream #649). For #4480: upstream #720 (3d066d3), the adaptation to the
+    //   compile API of mlx-swift 0.33.0.
+    // - mlx-swift (upstream 0.33.0, MLX core v0.32.4; #4480): the core with the M5 quantized-matmul
+    //   kernels the full-size EG-1 verify pass needs. Two carried repairs of JIT kernel sources:
+    //   the head-dim-split attention kernel (ml-explore/mlx issue 4832), without which the process
+    //   aborts when upstream dispatch selects this split kernel on a NAX GPU; and the steel
+    //   integral-constant operators (ml-explore/mlx-swift issue 497), without which every request
+    //   aborts on macOS 14, whose Metal compiler lacks a trait the newer core names. The two changes the
+    //   fork carried on 0.31.6 are in 0.33.0 itself: the CUDA build-tool plugin is declared on Linux
+    //   only (on Apple platforms its presence made every xcodebuild stop at "Validate plug-in"), and
+    //   the #461 compiler-lock repair (CompiledFunction.lock / evalLock order), without which two
+    //   threads evaluating MLX at once can deadlock for good.
     .package(
       url: "https://github.com/saurabhav88/mlx-swift-lm.git",
-      revision: "57e8ebe2394edb9b9a5e93d55c7d9d849ba13246"),
+      revision: "eb7c70071641b20854ce07e2a2ae15b21410d64f"),
     .package(
       url: "https://github.com/saurabhav88/mlx-swift",
-      revision: "b2de81fbb2b8d250bff2eea9659ddfc7fdb4ebec"),
+      revision: "bedcf0103dd0ca7a1b73b4d8bd272195d3f8c810"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     // #3685: qualified macOS artifact with native crash attribution/caller fixes.

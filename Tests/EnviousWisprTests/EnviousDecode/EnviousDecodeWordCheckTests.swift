@@ -102,6 +102,22 @@ struct EnviousDecodeWordCheckTests {
     log(score.pB) - log(score.pA)
   }
 
+  /// The app's decision for one score: approved when `pB / (pA + pB)` reaches the checker's
+  /// qualified threshold (`EnviousDecodeWordChecker.decisions`).
+  static func approved(pA: Double, pB: Double, threshold: Double) -> Bool {
+    pB / (pA + pB) >= threshold
+  }
+
+  /// The qualified threshold of a size's bundled checker manifest.
+  static func qualifiedThreshold(size: String) throws -> Double {
+    let file = try #require(["mini": "eg1-mini", "micro": "eg1-micro", "full": "eg1-mlx"][size])
+    let url = DeliveryManifestFiles.url("\(file)-checker-delivery-manifest")
+    let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    let contract = try #require(object?["checkerContract"] as? [String: Any])
+    let text = try #require(contract["qualifiedThreshold"] as? String)
+    return try #require(Double(text))
+  }
+
   /// The address of an array's storage, with no copy made.
   static func storage(_ array: MLXArray) -> UnsafeRawPointer? {
     array.asData(access: .noCopy).data.withUnsafeBytes { $0.baseAddress }
@@ -430,7 +446,7 @@ struct EnviousDecodeWordCheckTests {
     let established = try JSONDecoder().decode(
       [SessionTests.EstablishedOutput].self,
       from: Data(contentsOf: try #require(SessionTests.establishedURL)))
-    let realQuestions = Array(recordedPrompts.prefix(16))
+    #expect(recordedPrompts.count == 300)
 
     for size in Self.realSizes {
       let real = try await EnviousDecodeSession.load(
@@ -468,14 +484,19 @@ struct EnviousDecodeWordCheckTests {
       }
       try polishIsRecorded("with the check loaded")
 
-      // Scores: together and one by one, and for Mini against the recorded scores.
+      // Scores of all 300 recorded questions, in batches of 8 as the helper scores one request
+      // (the last batch has 4), and one by one. Decisions use the app's rule and this size's
+      // bundled threshold; for Mini they are compared with the recorded Python run.
+      let threshold = try Self.qualifiedThreshold(size: size.name)
       var largestBatchDifference = 0.0
       var largestRecordedDifference = 0.0
       var decisions: [Bool] = []
-      for start in stride(from: 0, to: realQuestions.count, by: 8) {
-        let batch = Array(realQuestions[start..<start + 8])
+      var recordedDisagreements: [String] = []
+      for start in stride(from: 0, to: recordedPrompts.count, by: 8) {
+        let batch = Array(recordedPrompts[start..<min(start + 8, recordedPrompts.count)])
         let together = try real.wordCheckScores(
           promptTokenIDs: batch.map(\.tokens), answerTokenIDs: Self.realAnswers)
+        #expect(together.count == batch.count, "\(size.name)")
         for (question, score) in zip(batch, together) {
           let single = try #require(
             try real.wordCheckScores(
@@ -483,26 +504,40 @@ struct EnviousDecodeWordCheckTests {
             ).first)
           largestBatchDifference = max(
             largestBatchDifference, abs(Self.margin(score) - Self.margin(single)))
-          decisions.append(single.pB > single.pA)
+          let decision = Self.approved(pA: score.pA, pB: score.pB, threshold: threshold)
+          decisions.append(decision)
           if size.name == "mini" {
             let record = try #require(recorded.scores.first { $0.id == question.id })
             largestRecordedDifference = max(
               largestRecordedDifference,
               abs(Self.margin(single) - (record.logitB - record.logitA)))
+            // Probabilities from the recorded logits of the two answers.
+            let recordedDecision = Self.approved(
+              pA: 1, pB: exp(record.logitB - record.logitA), threshold: threshold)
+            if decision != recordedDecision { recordedDisagreements.append(question.id) }
           }
         }
       }
-      // The preparation run measured at most 0.25 between a batch of 8 and single questions
-      // (16-bit rounding of padded rows).
-      #expect(largestBatchDifference < 0.5, "\(size.name): \(largestBatchDifference)")
+      #expect(decisions.count == recordedPrompts.count, "\(size.name)")
+      // Observed tolerance: the preparation run and the #4480 newer-core probe both measured at
+      // most 0.25 between a batch of 8 and single questions (16-bit rounding of padded rows),
+      // 0.250000212 after the probabilities are turned back into a margin.
+      let marginTolerance = 0.25 + 1e-5
+      #expect(
+        largestBatchDifference <= marginTolerance, "\(size.name): \(largestBatchDifference)")
       if size.name == "mini" {
-        #expect(largestRecordedDifference < 0.05, "mini: \(largestRecordedDifference)")
+        // The customer's decision on each batched question is the recorded Python run's
+        // decision. The margin bound is supporting evidence (it replaces an unexplained
+        // historical 0.05, which the newer MLX core exceeds with no decision change).
+        #expect(recordedDisagreements.isEmpty, "mini: \(recordedDisagreements)")
+        #expect(
+          largestRecordedDifference <= marginTolerance, "mini: \(largestRecordedDifference)")
       }
       // Both answers occur: the adapter separates the questions.
       #expect(decisions.contains(true) && decisions.contains(false), "\(size.name)")
-      try polishIsRecorded("after 24 checks")
+      try polishIsRecorded("after 600 checks")
       print(
-        "WORDCHECK_REAL size=\(size.name) wrapped=\(size.wrappedLayers) shared=\(sharedCount)/\(polishParameters.count) batchMarginDifference=\(largestBatchDifference) recordedMarginDifference=\(size.name == "mini" ? String(largestRecordedDifference) : "NA") answersB=\(decisions.filter { $0 }.count)/\(decisions.count)"
+        "WORDCHECK_REAL size=\(size.name) wrapped=\(size.wrappedLayers) shared=\(sharedCount)/\(polishParameters.count) threshold=\(threshold) batchMarginDifference=\(largestBatchDifference) recordedMarginDifference=\(size.name == "mini" ? String(largestRecordedDifference) : "NA") recordedDecisionChanges=\(size.name == "mini" ? String(recordedDisagreements.count) : "NA") approved=\(decisions.filter { $0 }.count)/\(decisions.count)"
       )
     }
   }
