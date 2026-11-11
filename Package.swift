@@ -49,22 +49,27 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
-    // #3546: branch `ew/3546-ultra-v0.17.7-signal` = `ew/3546-ultra-v0.17.7` (upstream
-    // v0.17.7 503b4bd plus the two carries: terminal-token protection with dormant
-    // vocabulary policy, and the outer-window fresh-state invariant) plus one observation
-    // carry: `SlidingWindowAsrManager(onWindowInferenceEntered:)`, called immediately
-    // before each window's model call (live-mode inference attribution). Keep both
-    // branches permanently: SPM fetches this exact commit, which must remain reachable,
-    // and the evaluation pinned the parent 6efc52ec.
+    // #4483: branch `ew/4483-upstream-v0.18.3` = upstream v0.18.3 c8b41f98 plus the three
+    // carries first qualified in #3546: terminal-token protection with dormant vocabulary
+    // policy, the outer-window fresh-state invariant, and one observation carry,
+    // `SlidingWindowAsrManager(onWindowInferenceEntered:)`, called immediately before each
+    // window's model call (live-mode inference attribution). Keep that branch permanently:
+    // SPM fetches this exact commit, which must remain reachable. The #3546 branches
+    // (`ew/3546-ultra-v0.17.7-signal`, `ew/3546-ultra-v0.17.7`) stay too: earlier app
+    // revisions and the #3546 evaluation pin them.
     //
-    // `traits: []` opts out of FluidAudio's default `NemoTextProcessing` trait.
+    // The explicit trait list leaves out FluidAudio's default `NemoTextProcessing` trait.
     // The app does not use that text-normalization engine. Its v0.3.1 module-map
     // layout breaks our Xcode explicit-module build.
     // Tools 6.2 selects FluidAudio's trait-aware manifest; its older manifest
     // always links the engine.
+    // From v0.18.0 the diarizer is a package trait too (upstream #1001), and an explicit
+    // list replaces the defaults. `Diarizer` keeps `OfflineDiarizerManager` and
+    // `Nemotron3Diarizer` (file-import and meeting speakers); `TTS` stays off because
+    // the app does not use it.
     .package(
       url: "https://github.com/saurabhav88/FluidAudio.git",
-      revision: "fb506037d2b1917dbb2608b8e79872ec95acf384", traits: []),
+      revision: "8e64f574c772632c4ebfd037585e5d14c3910c68", traits: ["Diarizer"]),
     // #3242: the learned-word check for engines without their own (Kev, a Qwen3.5 decision model) runs on
     // MLX, through two forks each carrying the smallest change on top of upstream:
     // - mlx-swift-lm (upstream ee673d6): two access changes in Qwen35.swift so the final-norm hidden

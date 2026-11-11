@@ -11,7 +11,18 @@ import Foundation
 package struct OfflineSpeakerAnalyzer {
   private let manager: OfflineDiarizerManager
 
-  package init(config: OfflineDiarizerConfig = .default) {
+  /// #4483: upstream #1081 (FluidAudio v0.18.2) flipped the vendor default to keep overlapping
+  /// speech (`exclusiveSegments: false`). Turn assembly downstream was built and measured on one
+  /// speaker at a time, so the value is set here rather than inherited. Measured on 25 saved
+  /// meeting tracks with speech (1 to 3 speakers): segments are identical to the previous pin
+  /// with this value. Taking the overlap-keeping default is a product change, not a pin bump.
+  package static let defaultConfig: OfflineDiarizerConfig = {
+    var config = OfflineDiarizerConfig.default
+    config.exclusiveSegments = true
+    return config
+  }()
+
+  package init(config: OfflineDiarizerConfig = OfflineSpeakerAnalyzer.defaultConfig) {
     manager = OfflineDiarizerManager(config: config)
   }
 
