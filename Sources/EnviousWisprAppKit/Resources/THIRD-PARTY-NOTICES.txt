@@ -917,7 +917,7 @@ swift-argument-parser
 
 --------------------------------------------------------------------------------
 mlx-swift
-  Version: b2de81fb (fork saurabhav88/mlx-swift of 0.31.6)
+  Version: 5efce04e (fork saurabhav88/mlx-swift of 0.33.0)
   License: MIT
   Source:  https://github.com/saurabhav88/mlx-swift
 --------------------------------------------------------------------------------
@@ -1073,7 +1073,7 @@ without including the above copyright and permission notices.
 
 --------------------------------------------------------------------------------
 mlx-swift-lm
-  Version: 57e8ebe2 (fork saurabhav88/mlx-swift-lm)
+  Version: 94ec0a40 (fork saurabhav88/mlx-swift-lm)
   License: MIT
   Source:  https://github.com/saurabhav88/mlx-swift-lm
 --------------------------------------------------------------------------------

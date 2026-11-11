@@ -47,12 +47,12 @@ COMPONENTS=(
   # #3242: the word check runs on MLX. Both pins are Envious Labs forks carrying small changes on top
   # of upstream (see Package.swift); the license texts are upstream's, unchanged. MLX core, mlx-c,
   # nlohmann/json and fmt are compiled into Cmlx; swift-numerics is MLX's own dependency.
-  "mlx-swift|b2de81fb (fork saurabhav88/mlx-swift of 0.31.6)|MIT|mlx-swift/LICENSE|https://github.com/saurabhav88/mlx-swift|mlx-swift"
+  "mlx-swift|5efce04e (fork saurabhav88/mlx-swift of 0.33.0)|MIT|mlx-swift/LICENSE|https://github.com/saurabhav88/mlx-swift|mlx-swift"
   "MLX core (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx/LICENSE|https://github.com/ml-explore/mlx|"
   "mlx-c (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx-c/LICENSE|https://github.com/ml-explore/mlx-c|"
   "nlohmann/json (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/json/LICENSE.MIT|https://github.com/nlohmann/json|"
   "fmt (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/fmt/LICENSE|https://github.com/fmtlib/fmt|"
-  "mlx-swift-lm|57e8ebe2 (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
+  "mlx-swift-lm|94ec0a40 (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
   # #4473: SharpAI's SwiftLM (MIT), at the provenance commit below, is the source of the
   # mlx-swift-lm fork's gated-delta tape recording and of EnviousDecodeKit's DFlash tape kernels and
   # rollback cache. Empty identity: incorporated code, not a SwiftPM pin. The text is SwiftLM's own
