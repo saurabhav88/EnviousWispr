@@ -736,6 +736,10 @@ let project = Project(
         // binary is a nested Mach-O: build-dev-app.sh and
         // build-release-dmg.sh sign it in the inside-out order.
         "Sources/EnviousWispr/Resources/eg1-manifest.json",
+        // #4473: one runtime manifest per published EG-1 size (the full size is the file above).
+        "Sources/EnviousWispr/Resources/eg1-micro-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-size-facts.json",
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",
@@ -749,11 +753,10 @@ let project = Project(
         // #1348 Phase 3: EG-1 delivery manifest — the DELIVERY trust root for
         // EG-1's convergence onto the shared engine (the runtime trust root
         // stays eg1-manifest.json). Same Bundle.main route.
-        "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json",
-        "Sources/EnviousWispr/Resources/eg1-checker-delivery-manifest.json",
         // #4473 P4: the published EG-1 sizes on the EnviousDecode engine (MLX folders with
-        // the draft model under `helper`, and each size's checker adapter). Bundled, not yet
-        // registered at launch (P5). Mini joins when it is published.
+        // the draft model under `helper`, and each size's checker adapter), registered at
+        // launch. Mini joins when it is published. The llama (GGUF) EG-1 manifests left with
+        // the llama EG-1 path; copies live under the tests' Fixtures as the old revision.
         "Sources/EnviousWispr/Resources/eg1-mlx-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/eg1-mlx-checker-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/eg1-micro-delivery-manifest.json",

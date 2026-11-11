@@ -110,6 +110,15 @@ public struct TextProcessingContext: Sendable {
   /// of local execution.
   public var polishRanRemote: Bool?
 
+  /// #4473: the EG-1 size that polished this text (`full`, `mini`, `micro`), stamped with
+  /// `llmProvider` after a completed EG-1 polish. nil for every other provider and for a
+  /// bypass. It is the invocation's FROZEN size, never the size preferred now.
+  public var polishModelSize: String?
+
+  /// #4473: the bundled local engine's own report on the answer (which engine, and the
+  /// measured draft counts of that request). nil unless a local engine answered.
+  public var polishLocalDecode: LocalDecodeStats?
+
   /// True when `LLMPolishStep` DECLINED to send this text — a bypass, not a
   /// failure (#2648).
   ///

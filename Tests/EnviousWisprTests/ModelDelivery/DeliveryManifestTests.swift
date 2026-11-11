@@ -818,24 +818,6 @@ struct S1MiniShippedManifestTests {
     #expect(runtime.modelName == manifest.identity.name)
   }
 
-  /// S1-mini and EG-1 are served by the SAME bundled `llama-server`, so they
-  /// share one code pin. `runtimeABI` participates in the canonical JSON, which
-  /// is what makes bumping it invalidate existing admission markers and force
-  /// one revalidation pass. Two different strings for one binary would let a
-  /// bump revalidate whichever family somebody remembered and leave the other's
-  /// bytes admitted against a runtime they were never checked with.
-  @Test func bothLlamaServerFamiliesShareOneRuntimePin() throws {
-    let root = ParakeetShippedManifestTests.repoRoot
-    let s1 = try DeliveryManifest.load(from: Data(contentsOf: Self.shippedManifestURL))
-    let eg1 = try DeliveryManifest.load(
-      from: Data(
-        contentsOf: root.appendingPathComponent(
-          "Sources/EnviousWispr/Resources/eg1-delivery-manifest.json")))
-    #expect(
-      s1.identity.runtimeABI == eg1.identity.runtimeABI,
-      "one binary, one pin: bump both manifests together or neither is revalidated")
-  }
-
   /// The licence's ADDITIONAL TERM requires the exact string "S1-mini" by
   /// "Superwhisper" wherever the model is identified, so the text must ship
   /// with the app rather than only be linked. A link is not a copy, and a

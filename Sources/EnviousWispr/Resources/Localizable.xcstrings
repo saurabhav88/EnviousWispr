@@ -74,6 +74,17 @@
         }
       }
     },
+    "%@ GB" : {
+      "comment" : "A file size in gigabytes. %@ is a number such as 4.7.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ GB"
+          }
+        }
+      }
+    },
     "%@ MB of %@ MB" : {
       "comment" : "Speech engine settings, speech model download: progress. The first number is megabytes done, the second the total.",
       "localizations" : {
@@ -371,7 +382,7 @@
       }
     },
     "%@ is being checked" : {
-      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -393,7 +404,7 @@
       }
     },
     "%@ is not downloaded yet" : {
-      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -443,7 +454,7 @@
       }
     },
     "%@ is still downloading" : {
-      "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -660,6 +671,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ von %2$@ Min."
+          }
+        }
+      }
+    },
+    "%@ of %lld GB" : {
+      "comment" : "AI Polish, EG-1 size card: memory the size uses, of the Mac's memory. First %@ is a number such as 4.9, then %lld the Mac's GB.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$lld GB"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ von %2$lld GB"
           }
         }
       }
@@ -1047,7 +1075,7 @@
       }
     },
     "%lld MB" : {
-      "comment" : "Speech engine settings, engine card: a model's download size in megabytes.",
+      "comment" : "A file size in megabytes. %lld is a whole number.\nSpeech engine settings, engine card: a model's download size in megabytes.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1085,6 +1113,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld Min."
+          }
+        }
+      }
+    },
+    "%lld ms" : {
+      "comment" : "AI Polish, EG-1 size card: a time in milliseconds.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld ms"
           }
         }
       }
@@ -4420,6 +4459,28 @@
         }
       }
     },
+    "Best for this Mac" : {
+      "comment" : "AI Polish, EG-1 size card: the pill on the size recommended for this Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beste Wahl für diesen Mac"
+          }
+        }
+      }
+    },
+    "Best quality" : {
+      "comment" : "AI Polish, EG-1 size card: the largest size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beste Qualität"
+          }
+        }
+      }
+    },
     "Beta" : {
       "comment" : "EnviousMeet: VoiceOver word for the BETA tag, read after the name.\nYour Words, Learn from: the self-learning dictionary row: a small badge after the feature's name saying the feature is still improving.",
       "localizations" : {
@@ -5367,6 +5428,17 @@
         }
       }
     },
+    "Checking the download" : {
+      "comment" : "AI Polish, EG-1 size card: status line after the bytes arrived.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download wird geprüft"
+          }
+        }
+      }
+    },
     "Checking the downloaded %@" : {
       "comment" : "AI Polish, notice when leaving the page while a download is checked. %@ is a model name.",
       "localizations" : {
@@ -6207,6 +6279,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hinweis zur KI-Nachbearbeitung schließen"
+          }
+        }
+      }
+    },
+    "Close to EG-1 on short dictation, at about half the memory. Weaker on long dictations." : {
+      "comment" : "AI Polish, EG-1 size card: what the middle size is for.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei kurzen Diktaten fast so gut wie EG-1, braucht aber nur etwa halb so viel Arbeitsspeicher. Schwächer bei langen Diktaten."
           }
         }
       }
@@ -7805,7 +7888,7 @@
       }
     },
     "Download did not finish" : {
-      "comment" : "Live Preview settings: status download failed label.",
+      "comment" : "AI Polish, EG-1 size card: status line after a failed download.\nLive Preview settings: status download failed label.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7860,7 +7943,7 @@
       }
     },
     "Download paused" : {
-      "comment" : "AI Polish provider status chip.",
+      "comment" : "AI Polish provider status chip.\nAI Polish, EG-1 size card: status line.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8146,6 +8229,17 @@
         }
       }
     },
+    "Downloading · %lld%%" : {
+      "comment" : "AI Polish, EG-1 size card: status line. %lld is the percent done.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download läuft · %lld %%"
+          }
+        }
+      }
+    },
     "Downloading..." : {
       "comment" : "AI Polish, Ollama setup: step label while a model downloads.\nSpeech engine settings, Whisper model: the current setup step.",
       "localizations" : {
@@ -8366,7 +8460,7 @@
       }
     },
     "English" : {
-      "comment" : "A language name (dictation language picker).",
+      "comment" : "A language name (dictation language picker).\nAI Polish, EG-1 size card: exam score row.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9145,6 +9239,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schnell"
+          }
+        }
+      }
+    },
+    "Fast all-rounder" : {
+      "comment" : "AI Polish, EG-1 size card: the middle size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schneller Allrounder"
           }
         }
       }
@@ -10185,17 +10290,6 @@
         }
       }
     },
-    "Handles dictations up to about %lld minutes." : {
-      "comment" : "AI Polish, Why use EG-1: the longest dictation it polishes whole. %lld is a number of minutes.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verarbeitet Diktate bis etwa %lld Minuten."
-          }
-        }
-      }
-    },
     "Hands-free" : {
       "comment" : "Preview panel header badge: hands-free dictation is active (it continues until pressed again).",
       "localizations" : {
@@ -10486,17 +10580,6 @@
         }
       }
     },
-    "How long?" : {
-      "comment" : "AI Polish, Why use: bold lead-in of a paragraph.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wie lang?"
-          }
-        }
-      }
-    },
     "Hungarian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -10746,7 +10829,7 @@
       }
     },
     "In use" : {
-      "comment" : "Microphone settings: capture is active on the displayed microphone, not merely selected or kept warm.",
+      "comment" : "AI Polish, EG-1 size card: this size polishes now.\nMicrophone settings: capture is active on the displayed microphone, not merely selected or kept warm.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10878,7 +10961,7 @@
       }
     },
     "Installed" : {
-      "comment" : "AI Polish provider status chip.\nAI Polish, Ollama model list: the model is on this Mac.",
+      "comment" : "AI Polish provider status chip.\nAI Polish, EG-1 size card: downloaded, not in use.\nAI Polish, Ollama model list: the model is on this Mac.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10939,6 +11022,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr wird in deinem Ordner „Programme“ installiert und öffnet sich danach automatisch neu."
+          }
+        }
+      }
+    },
+    "International" : {
+      "comment" : "AI Polish, EG-1 size card: exam score in languages other than English.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "International"
           }
         }
       }
@@ -12951,6 +13045,17 @@
         }
       }
     },
+    "Memory" : {
+      "comment" : "AI Polish, EG-1 size card: memory the size uses.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeitsspeicher"
+          }
+        }
+      }
+    },
     "Menu bar" : {
       "comment" : "Dictionary settings, Quick Add teaching card: label of the menu bar callout.",
       "localizations" : {
@@ -14411,6 +14516,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht geprüft"
+          }
+        }
+      }
+    },
+    "Not downloaded" : {
+      "comment" : "AI Polish, EG-1 size card: status line.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht heruntergeladen"
           }
         }
       }
@@ -16341,6 +16457,28 @@
         }
       }
     },
+    "Polish time" : {
+      "comment" : "AI Polish, EG-1 size card: how long the polish of a short dictation takes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachbearbeitungszeit"
+          }
+        }
+      }
+    },
+    "Polish time is for a short dictation, measured on an %@." : {
+      "comment" : "AI Polish, footnote under the EG-1 size cards. %@ is a Mac model, such as Apple M5 Max.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Nachbearbeitungszeit gilt für ein kurzes Diktat, gemessen auf einem %@."
+          }
+        }
+      }
+    },
     "Polished" : {
       "comment" : "History detail section title: the AI-polished text.",
       "localizations" : {
@@ -17577,7 +17715,7 @@
       }
     },
     "Remove" : {
-      "comment" : "AI Polish, Ollama model list: removes a downloaded model from this Mac.\nLive Preview settings, Universal engine card: button. It deletes the downloaded engine.",
+      "comment" : "AI Polish, EG-1 size card: deletes this size's download.\nAI Polish, Ollama model list: removes a downloaded model from this Mac.\nLive Preview settings, Universal engine card: button. It deletes the downloaded engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19440,6 +19578,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kleines Modell von Superwhisper, auf diesem Mac und am stärksten auf Englisch."
+          }
+        }
+      }
+    },
+    "Smallest and fastest" : {
+      "comment" : "AI Polish, EG-1 size card: the smallest size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am kleinsten und schnellsten"
           }
         }
       }
@@ -21702,6 +21851,17 @@
         }
       }
     },
+    "The lightest. Good for short English dictation on Macs with little memory to spare. Weaker in other languages." : {
+      "comment" : "AI Polish, EG-1 size card: what the smallest size is for.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am sparsamsten. Gut für kurze englische Diktate auf Macs mit wenig freiem Arbeitsspeicher. Schwächer in anderen Sprachen."
+          }
+        }
+      }
+    },
     "The meeting changed after this summary was written. It may be out of date." : {
       "comment" : "History, a meeting: the summary was written from an older transcript, names or notes.",
       "localizations" : {
@@ -21785,6 +21945,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das gewählte Modell läuft auf Ollamas Servern. Der Text wird dorthin gesendet."
+          }
+        }
+      }
+    },
+    "The most accurate. Pick it for long dictations, email and languages other than English." : {
+      "comment" : "AI Polish, EG-1 size card: what the largest size is for.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am genauesten. Ideal für lange Diktate, E-Mails und Diktate in anderen Sprachen als Englisch."
           }
         }
       }
@@ -22219,6 +22390,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac · Neural Engine"
+          }
+        }
+      }
+    },
+    "This Mac: %lld GB memory" : {
+      "comment" : "AI Polish, above the EG-1 size cards. %lld is the Mac's installed memory in GB.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac: %lld GB Arbeitsspeicher"
           }
         }
       }
@@ -22725,6 +22907,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tibetisch"
+          }
+        }
+      }
+    },
+    "Tight on this Mac" : {
+      "comment" : "AI Polish, EG-1 size card: the size needs more than half of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Knapp für diesen Mac"
           }
         }
       }
@@ -26343,6 +26536,17 @@
         }
       }
     },
+    "fastest" : {
+      "comment" : "AI Polish, EG-1 size card: marks the fastest size.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "am schnellsten"
+          }
+        }
+      }
+    },
     "feedback.category.typingOrShortcut" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -27824,6 +28028,17 @@
         }
       }
     },
+    "lightest" : {
+      "comment" : "AI Polish, EG-1 size card: marks the size that uses the least memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "am sparsamsten"
+          }
+        }
+      }
+    },
     "livePreview.languagePackNotDownloaded" : {
       "comment" : "Recording pill and Live Preview: a language pack is missing. %@ is the language's name.",
       "extractionState" : "extracted_with_value",
@@ -28410,7 +28625,7 @@
       }
     },
     "the %@ download did not finish" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28421,7 +28636,7 @@
       }
     },
     "the %@ download is paused" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28432,7 +28647,7 @@
       }
     },
     "the %@ update is paused" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28617,6 +28832,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "· %@"
+          }
+        }
+      }
+    },
+    "· choose a size" : {
+      "comment" : "AI Polish: after the name EG-1 above its three size cards, as in \"EG-1 · choose a size\".",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· Größe wählen"
           }
         }
       }

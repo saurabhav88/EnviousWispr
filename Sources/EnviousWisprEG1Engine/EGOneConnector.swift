@@ -113,6 +113,19 @@ public struct EGOneConnector: TranscriptPolisher {
     guard !cleaned.isEmpty else {
       throw LLMError.egOneSkipped(.crashed)
     }
-    return LLMResult(polishedText: cleaned)
+    return LLMResult(polishedText: cleaned, localDecode: decodeStats(json))
+  }
+
+  /// The helper's `x_decode` object (#4473). A helper that sends none (an older build) gives
+  /// nil: the engine is then unknown, never assumed.
+  static func decodeStats(_ json: [String: Any]?) -> LocalDecodeStats? {
+    guard let decode = json?["x_decode"] as? [String: Any],
+      let implementation = decode["implementation"] as? String, !implementation.isEmpty
+    else { return nil }
+    return LocalDecodeStats(
+      implementation: implementation,
+      draftProposedTokens: decode["draft_proposed"] as? Int,
+      draftAcceptedTokens: decode["draft_accepted"] as? Int,
+      emittedTokens: decode["emitted_tokens"] as? Int)
   }
 }

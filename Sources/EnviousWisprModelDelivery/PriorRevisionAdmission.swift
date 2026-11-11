@@ -47,6 +47,32 @@ public enum PriorRevisionAdmission {
     return [identity.variant] + predecessors.sorted()
   }
 
+  /// Whether `metadataDirectory` holds an install record of `family`/`name`, at ANY revision and
+  /// variant, that this module can read (#4473 plan §3.1.1 S4: "the user had this model").
+  ///
+  /// It is the record, not the model's files, that is asked about: a folder of weight files
+  /// with no record is not evidence, and a record whose files were since replaced still is.
+  /// A file that has the record's name but cannot be decoded as one is not counted. False when
+  /// the directory cannot be read. Reads only; changes nothing.
+  public static func hasReadableMarker(family: ModelFamily, name: String, metadataDirectory: URL)
+    -> Bool
+  {
+    let prefix = "\(family.rawValue)-\(name)-"
+    let suffix = ".admission.json"
+    guard
+      let entries = try? FileManager.default.contentsOfDirectory(
+        at: metadataDirectory, includingPropertiesForKeys: nil)
+    else { return false }
+    return entries.contains { url in
+      let file = url.lastPathComponent
+      guard file.hasPrefix(prefix), file.hasSuffix(suffix),
+        file.count > prefix.count + suffix.count,
+        let data = try? Data(contentsOf: url)
+      else { return false }
+      return (try? JSONDecoder().decode(CacheAdmission.AdmissionMarker.self, from: data)) != nil
+    }
+  }
+
   /// Markers in `metadataDirectory` for the same `family` AND `name` as `identity`, at a
   /// DIFFERENT revision. Empty when the directory cannot be read — the caller treats an
   /// unreadable metadata directory as "no prior revision", which fails closed (no download).

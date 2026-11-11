@@ -103,7 +103,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   public var checker: (any LearnedWordChecking)?
   /// Called once by the runner after language resolution.
   public var selectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
 
   /// The user's "Enable Dictionary" switch, the same value `WordCorrectionStep`
   /// follows on every path (live settings sync, recovery snapshot, file-import
@@ -191,7 +191,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// The selection for this take, or `.selectionTimedOut` once
   /// `selectionDeadline` passes. The late selection is cancelled and never
   /// awaited, as in `decide(_:_:within:)`.
-  func boundedSelection(for provider: LLMProvider, language: String?) async
+  func boundedSelection(for model: LocalPolishModelID, language: String?) async
     -> LearnedWordCheckerSelection?
   {
     guard let selectionProvider else { return nil }
@@ -200,7 +200,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
     return await withCheckedContinuation {
       (continuation: CheckedContinuation<LearnedWordCheckerSelection, Never>) in
       let work = Task { @MainActor in
-        let selection = await selectionProvider(provider, language)
+        let selection = await selectionProvider(model, language)
         if once.claim() { continuation.resume(returning: selection) }
       }
       Task {

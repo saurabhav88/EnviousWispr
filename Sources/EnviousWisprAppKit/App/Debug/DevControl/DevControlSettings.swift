@@ -63,7 +63,7 @@
       .emojiFormatterEnabled, .spokenPunctuation, .casualModeEnabled, .crashRecoveryEnabled,
       .shareUsageMetrics, .sendCrashReports, .contactsSyncOnLaunchEnabled, .isDebugModeEnabled,
       .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .languageMode,
-      .englishSpelling, .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
+      .englishSpelling, .egOneSize, .selectedInputDeviceUID, .preferredInputDeviceIDOverride,
       .inputChannelByDeviceUID, .useStreamingASR, .livePreviewEnabled, .livePreviewEngine,
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
@@ -98,7 +98,8 @@
         .isDebugModeEnabled, .isDictationAudioArchiveEnabled, .debugLogLevel, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
-        .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits:
+        .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .egOneSize:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
         .hasCompletedOnboarding, .recordingPillDesignWithoutWords, .recordingPillDesignWithWords,
@@ -195,6 +196,7 @@
       case .meetingLiveWordsEngine: return settings.meetingLiveWordsEngine?.rawValue ?? NSNull()
       case .meetingLiveWordsLanguage: return settings.meetingLiveWordsLanguage ?? NSNull()
       case .englishSpelling: return settings.englishSpelling.rawValue
+      case .egOneSize: return settings.egOneSize?.rawValue ?? NSNull()
       case .selectedInputDeviceUID: return settings.selectedInputDeviceUID
       case .preferredInputDeviceIDOverride: return settings.preferredInputDeviceIDOverride
       case .inputChannelByDeviceUID: return settings.inputChannelByDeviceUID
@@ -425,6 +427,8 @@
         }
       case .englishSpelling:
         return set(Codec.raw(value, EnglishSpelling.self)) { settings.englishSpelling = $0 }
+      case .egOneSize:
+        return set(Codec.raw(value, EGOneSize.self)) { settings.selectEGOneSize($0) }
       case .selectedInputDeviceUID:
         return set(Codec.string(value)) { settings.selectedInputDeviceUID = $0 }
       case .preferredInputDeviceIDOverride:
@@ -612,7 +616,8 @@
         .isDictationAudioArchiveEnabled, .debugLogLevel, .whisperKitLanguage, .useStreamingASR,
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
-        .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits:
+        .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .egOneSize:
         return .typed
       }
     }

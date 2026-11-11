@@ -517,6 +517,13 @@ struct PolishSetupCardPresenterTests {
     #expect(
       PolishSetupCardModel(problem: .cloudKeyMissing(.openAI)).line
         == "OpenAI needs an API key. Pasted without AI polish.")
+    // #4473: the card names the EG-1 size.
+    #expect(
+      PolishSetupCardModel(problem: .localEngineNotDownloaded(.egOne), egOneSize: .micro).line
+        .contains("EG-1 Micro"))
+    #expect(
+      PolishSetupCardModel(problem: .localEngineNotDownloaded(.egOne)).line
+        .contains("Micro") == false)
     // A fragment that starts lower case after a colon elsewhere starts the card's sentence.
     #expect(
       PolishSetupCardModel(problem: .localEngineDownloadPaused(.s1Mini)).line

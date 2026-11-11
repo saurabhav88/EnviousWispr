@@ -349,7 +349,7 @@ struct DualModePolishTelemetryTests {
           let step = LLMPolishStep(
             keychainManager: KeychainManager(), localPolishers: .llamaForTests,
             telemetry: .silent())
-          step.llmProvider = provider
+          step.setPolish(provider: provider)
           step.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
           step.makePolisher = { _, _, _, _ in CannedResultPolisher(result: result) }
 
@@ -518,6 +518,94 @@ struct DualModePolishTelemetryTests {
 
       let event = try await waiter.waitForEvent(named: "llm.polish_completed")
       #expect(event.stringProps["fallback_reason"] == nil)
+    }
+
+    /// One emission, one fresh waiter (a waiter hands back an earlier match of the same name).
+    private func polishCompleted(
+      modelSize: String?, localDecode: LocalDecodeStats?
+    ) async throws -> CapturedTelemetryEvent {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.llmPolishCompleted(
+        provider: "egOne", model: "eg-1", result: "success", latencySeconds: 0.4,
+        modelSize: modelSize, localDecode: localDecode)
+      return try await waiter.waitForEvent(named: "llm.polish_completed")
+    }
+
+    // #4473: loses the size and speculative-decoding counters of every EG-1 polish row.
+    @Test("llm.polish_completed carries model_size, the engine and the three measured counts")
+    func polishCompletedCarriesSizeAndDecodeCounts() async throws {
+      let event = try await polishCompleted(
+        modelSize: "mini",
+        localDecode: LocalDecodeStats(
+          implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 9,
+          emittedTokens: 20))
+      #expect(event.stringProps["model_size"] == "mini")
+      #expect(event.stringProps["implementation_actual"] == "envious_decode")
+      #expect(event.intProps["draft_proposed_tokens"] == 12)
+      #expect(event.intProps["draft_accepted_tokens"] == 9)
+      #expect(event.intProps["emitted_tokens"] == 20)
+    }
+
+    // A zero acceptance is the most informative reading; dropping it would hide a useless draft.
+    @Test("a measured zero acceptance is emitted, and an absent report adds none of the four keys")
+    func polishCompletedZeroAndAbsentDecode() async throws {
+      let zero = try await polishCompleted(
+        modelSize: "micro",
+        localDecode: LocalDecodeStats(
+          implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 0,
+          emittedTokens: 20))
+      #expect(zero.intProps["draft_accepted_tokens"] == 0)
+      #expect(zero.intProps["draft_proposed_tokens"] == 12)
+
+      let none = try await polishCompleted(modelSize: "micro", localDecode: nil)
+      #expect(none.stringProps["model_size"] == "micro", "the size still rides without a report")
+      #expect(none.stringProps["implementation_actual"] == nil)
+      #expect(none.intProps["draft_proposed_tokens"] == nil)
+      #expect(none.intProps["draft_accepted_tokens"] == nil)
+      #expect(none.intProps["emitted_tokens"] == nil)
+
+      // An engine with no draft model reports its name and no counts.
+      let s1 = try await polishCompleted(
+        modelSize: nil, localDecode: LocalDecodeStats(implementation: "llama_server"))
+      #expect(s1.stringProps["implementation_actual"] == "llama_server")
+      #expect(s1.intProps["draft_proposed_tokens"] == nil)
+    }
+
+    @Test("llm.polish_completed has no model_size when the take has none")
+    func polishCompletedWithoutSize() async throws {
+      let event = try await polishCompleted(modelSize: nil, localDecode: nil)
+      #expect(event.stringProps["model_size"] == nil)
+    }
+
+    // #4473: the skip and failure rows carry the size under the same key.
+    @Test("llm.polish_skipped and llm.polish_failed carry model_size only when given")
+    func skipAndFailureCarryTheSize() async throws {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      TelemetryService.shared.polishSkipped(
+        provider: "egOne", reason: "local_polish_not_ready", modelSize: "mini")
+      TelemetryService.shared.polishFailed(
+        provider: "egOne", model: "eg-1", reason: "x", isTimeout: false, modelSize: "micro")
+      let skipped = try await waiter.waitForEvent(named: "llm.polish_skipped")
+      let failed = try await waiter.waitForEvent(named: "llm.polish_failed")
+      #expect(skipped.stringProps["model_size"] == "mini")
+      #expect(failed.stringProps["model_size"] == "micro")
+
+      let bare = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { bare.record(event) }
+      }
+      TelemetryService.shared.polishSkipped(provider: "openAI", reason: "too_short")
+      let plain = try await bare.waitForEvent(named: "llm.polish_skipped")
+      #expect(plain.stringProps["model_size"] == nil)
     }
 
   #endif  // DEBUG

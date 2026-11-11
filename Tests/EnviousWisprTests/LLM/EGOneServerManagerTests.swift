@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import os
 
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprLocalPolish
@@ -67,7 +68,7 @@ struct EGOneServerManagerTests {
     let endpoint = await manager.activeEndpoint()
     #expect(endpoint == nil)
     let health = await manager.probeHealth(
-      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "not_running"))
   }
 
@@ -78,7 +79,7 @@ struct EGOneServerManagerTests {
       serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
     let health = await manager.probeHealth(
-      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "server_binary_missing"))
   }
 
@@ -181,6 +182,75 @@ struct EGOneConnectorResponseTests {
     #expect(throws: LLMError.localEngineSkipped(.crashed, .egOne)) {
       _ = try wrapper.removingModelChatter(dictation: "move the meeting to friday", provider: .egOne)
     }
+  }
+
+  // MARK: - Decode report (#4473)
+
+  private static func wireData(content: String, decode: [String: Any]?) throws -> Data {
+    var body: [String: Any] = [
+      "choices": [
+        ["message": ["role": "assistant", "content": content], "finish_reason": "stop"]
+      ]
+    ]
+    if let decode { body["x_decode"] = decode }
+    return try JSONSerialization.data(withJSONObject: body)
+  }
+
+  // Loses the engine and draft counters on every EG-1 take if the helper's report is not read.
+  @Test("an x_decode report becomes the result's local decode stats")
+  func decodeReportIsRead() throws {
+    let result = try EGOneConnector.parseSuccess(
+      data: Self.wireData(
+        content: "Move the meeting to Friday.",
+        decode: [
+          "implementation": "envious_decode", "draft_proposed": 12, "draft_accepted": 9,
+          "emitted_tokens": 20,
+        ]))
+    #expect(
+      result.localDecode
+        == LocalDecodeStats(
+          implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 9,
+          emittedTokens: 20))
+  }
+
+  // An older helper sends nothing: the engine must read as unknown, never assumed.
+  @Test("a payload with no x_decode, or one without an implementation, has no local decode stats")
+  func missingDecodeReportIsNil() throws {
+    let none = try EGOneConnector.parseSuccess(
+      data: Self.wireData(content: "Move the meeting to Friday.", decode: nil))
+    #expect(none.localDecode == nil)
+    let noImplementation = try EGOneConnector.parseSuccess(
+      data: Self.wireData(
+        content: "Move the meeting to Friday.",
+        decode: ["draft_proposed": 12, "draft_accepted": 9, "emitted_tokens": 20]))
+    #expect(noImplementation.localDecode == nil)
+    let emptyImplementation = try EGOneConnector.parseSuccess(
+      data: Self.wireData(
+        content: "Move the meeting to Friday.",
+        decode: ["implementation": "", "draft_proposed": 1]))
+    #expect(emptyImplementation.localDecode == nil)
+  }
+
+  // A measured zero is data; reading it as missing would hide a draft model that never helped.
+  @Test("a measured zero stays zero, and an absent count stays nil")
+  func measuredZeroIsKept() throws {
+    let zero = try EGOneConnector.parseSuccess(
+      data: Self.wireData(
+        content: "Move the meeting to Friday.",
+        decode: [
+          "implementation": "envious_decode", "draft_proposed": 0, "draft_accepted": 0,
+          "emitted_tokens": 0,
+        ]))
+    #expect(zero.localDecode?.draftProposedTokens == 0)
+    #expect(zero.localDecode?.draftAcceptedTokens == 0)
+    #expect(zero.localDecode?.emittedTokens == 0)
+    let partial = try EGOneConnector.parseSuccess(
+      data: Self.wireData(
+        content: "Move the meeting to Friday.", decode: ["implementation": "envious_decode"]))
+    #expect(partial.localDecode?.implementation == "envious_decode")
+    #expect(partial.localDecode?.draftProposedTokens == nil)
+    #expect(partial.localDecode?.draftAcceptedTokens == nil)
+    #expect(partial.localDecode?.emittedTokens == nil)
   }
 
   @Test func plainPolishedTextPassesThroughUnchanged() throws {

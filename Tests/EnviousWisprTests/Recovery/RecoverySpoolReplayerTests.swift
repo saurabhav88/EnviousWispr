@@ -142,6 +142,7 @@ struct RecoverySpoolReplayerTests {
       customWordsVersion: nil,
       llmProvider: "none",
       llmModel: "",
+      egOneSize: nil,
       polishPromptVersion: nil,
       s1Control: nil, englishSpelling: nil, casualModeEnabled: nil)
   }

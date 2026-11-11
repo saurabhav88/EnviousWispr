@@ -199,6 +199,7 @@ struct DFlashRuntimeTests {
     var cycles = 0
     var plain = 0
     var accepted = 0
+    var proposed = 0
     var rejections = 0
     for pass in run.passes {
       switch pass {
@@ -208,6 +209,7 @@ struct DFlashRuntimeTests {
       case .speculative(let verifyTokens, let acceptedDrafts, let armed):
         cycles += 1
         accepted += acceptedDrafts
+        proposed += verifyTokens - 1
         if acceptedDrafts < verifyTokens - 1 { rejections += 1 }
         #expect(armed == recurrentLayers, "\(label): a verification ran with \(armed) armed caches")
       }
@@ -215,6 +217,19 @@ struct DFlashRuntimeTests {
     #expect(summary.generatedTokenIDs == run.tokens, "\(label): summary and events disagree")
     #expect(summary.cyclesCompleted == cycles && summary.plainSteps == plain, "\(label)")
     #expect(summary.acceptedFromDraft == accepted, "\(label)")
+    // #4473: the draft counters behind `draft_proposed_tokens` / `draft_accepted_tokens`. If the
+    // proposed count drifts from the observed verification blocks, or the emitted count can
+    // exceed what was proposed or generated, the shipped acceptance rate is wrong.
+    #expect(summary.proposedFromDraft == proposed, "\(label): proposed \(summary.proposedFromDraft)")
+    #expect(summary.emittedFromDraft <= summary.acceptedFromDraft, "\(label)")
+    #expect(summary.emittedFromDraft <= summary.proposedFromDraft, "\(label)")
+    // The stop token is generated but is not an answer token, so a run that ended on one has at
+    // most `generated - 1` answer tokens to credit to the draft.
+    var endedOnStop = false
+    if case .stop = summary.finishReason { endedOnStop = true }
+    #expect(
+      summary.emittedFromDraft <= summary.generatedTokenIDs.count - (endedOnStop ? 1 : 0),
+      "\(label)")
     #expect(summary.recurrentLayers == recurrentLayers, "\(label)")
     // One tape per recurrent layer per verification, none for a plain step; one replay per
     // recurrent layer per verification that rejected a draft.
@@ -318,6 +333,10 @@ struct DFlashRuntimeTests {
         ], "stops \(stops): \(run.passes)")
       #expect(run.summary?.finishReason == .stop(tokenID: reference[2]))
       #expect(run.summary?.acceptedFromDraft == 3 && run.summary?.generatedTokenIDs.count == 3)
+      // #4473: three drafts were verified and accepted. The answer keeps one of them: the
+      // second accepted draft IS the stop token (not in the answer) and the third follows it.
+      #expect(run.summary?.proposedFromDraft == 3)
+      #expect(run.summary?.emittedFromDraft == 1)
       #expect(proposer.rounds == 1, "a draft was asked for after the stop")
     }
 

@@ -282,9 +282,16 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// endpoint or a health verdict to a model that is not the resident one, so
   /// this value is what stops a polish being answered by other weights.
   private let provider: LLMProvider
-  /// Which local model this runtime serves (#4473). Derived from the provider while each
-  /// provider has one local model; the lookup in `LocalPolishRuntimeSet` matches on it.
+  /// Which local model this runtime serves (#4473): for EG-1, one exact size. The coordinator
+  /// holds residency, leases and reservations for this identity, and the lookup in
+  /// `LocalPolishRuntimeSet` matches on it, so one size never answers for another.
   public let modelID: LocalPolishModelID
+  /// #4473: where the engine is told the admitted model is, when that is not delivery's
+  /// entrypoint file (an engine that loads a FOLDER). Supplied by the composition root, which
+  /// knows the artifact's layout; this type knows no engine and guesses no path. Not supplied:
+  /// the admitted entrypoint file, as before. Supplied and answering nil: the model is not
+  /// started (it is never started from the file as a fallback).
+  private let launchLocation: (@MainActor () -> URL?)?
   /// The engine this runtime's model runs on (#4473). Two operations come from it.
   ///
   /// Builds this runtime's health probe from its own model identity and the manifest's prompt
@@ -316,9 +323,12 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     engine: any LocalPolishEngine,
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
-    provider: LLMProvider = .egOne,
+    modelID: LocalPolishModelID = .egOne(.full),
+    launchLocation: (@MainActor () -> URL?)? = nil,
     learnedWordAdapterProvider: @escaping @MainActor () async -> URL? = { nil }
   ) {
+    self.launchLocation = launchLocation
+    let provider = modelID.provider
     self.provider = provider
     // Derived from the provider rather than taken as a parameter: the two must
     // agree, and a caller free to pair `.s1Mini` with EG-1's probe would
@@ -335,14 +345,20 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     let keyPrefix: String
     switch provider {
     case .egOne:
-      keyPrefix = "eg1."
+      // The full size keeps the key EG-1 always had, so a paused download recorded before sizes
+      // existed is still read. Each other size has its own key: two sizes never share state.
+      switch modelID.size {
+      case .mini: keyPrefix = "eg1.mini."
+      case .micro: keyPrefix = "eg1.micro."
+      case .full, .none: keyPrefix = "eg1."
+      }
     case .s1Mini:
       keyPrefix = "s1."
     case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
       preconditionFailure("EGOneRuntime serves a bundled local model; \(provider) is not one")
     }
     self.pausedProjectionKey = "\(keyPrefix)pausedInstallProjection"
-    self.modelID = .singleModel(for: provider)
+    self.modelID = modelID
     self.engine = engine
     self.manifest = manifest
     self.serverBinaryURL = serverBinaryURL
@@ -383,14 +399,14 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     Task { [weak self] in
       guard let self else { return }
       await self.registerProcessFailureObserver()
-      await self.server.setStateObserver(for: self.provider) { [weak self] event in
+      await self.server.setStateObserver(for: self.modelID) { [weak self] event in
         Task { @MainActor [weak self] in self?.receive(event) }
       }
     }
   }
 
   private func registerProcessFailureObserver() async {
-    await server.setProcessFailureObserver(for: provider) { [weak self] failure in
+    await server.setProcessFailureObserver(for: modelID) { [weak self] failure in
       Task { @MainActor [weak self] in self?.reportChildProcessFailure(failure) }
     }
   }
@@ -717,7 +733,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       // #3105: the coordinator now owns the entire stop-to-delete exclusion.
       // A lease that appears after the old MainActor refusal waits here; a
       // take that arrives later sees changing before it freezes.
-      let claimed = await self.server.beginRemoval(for: self.provider, intent: intent) {
+      let claimed = await self.server.beginRemoval(for: self.modelID, intent: intent) {
         @MainActor [weak self] in self?.isActiveProvider?() != true
       }
       // Re-selected while the removal waited: the newer activation owns the
@@ -812,11 +828,11 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       let epochBefore = self.sharedEngineAdmissionEpoch?()
       // #3988: the server this probe will measure, so its verdict can never
       // be pinned on a replacement that came up while it ran.
-      guard let probed = await self.server.endpoint(for: self.provider) else { return }
+      guard let probed = await self.server.endpoint(for: self.modelID) else { return }
       // #4319: nil means an EnviousMeet summary holds the server; there is no verdict.
       guard
         let result = await self.server.probeHealth(
-          self.provider, operation: self.engine.makeHealthProbe(self.modelID, family))
+          self.modelID, operation: self.engine.makeHealthProbe(self.modelID, family))
       else { return }
       // Probe verdict wins over the cheap projection while server is ready.
       guard generation == self.activationGeneration else { return }
@@ -855,7 +871,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     guard isActiveProvider?() == true || isPinnedInFlight?() == true else { return nil }
     let generation = activationGeneration
     return Task {
-      guard case .stoppedOutside = await self.server.lifecycle(for: self.provider).state else {
+      guard case .stoppedOutside = await self.server.lifecycle(for: self.modelID).state else {
         return
       }
       // A switch away while the lifecycle was read cancels the recovery.
@@ -909,7 +925,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     // does not order them. Claiming both stamps here, on the main actor, is
     // what makes the later request win regardless of which task runs first.
     let intent = server.claimIntent()
-    Task { await self.server.transition(to: .idle(self.provider), intent: intent) }
+    Task { await self.server.transition(to: .idle(self.modelID), intent: intent) }
   }
 
   /// Delivery calls this when admission changes. The coordinator compares the
@@ -927,7 +943,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   }
 
   public func checkerFailureReason() async -> LocalPolishProcessManager.CheckerFailureReason? {
-    await server.checkerFailureReason(for: provider)
+    await server.checkerFailureReason(for: modelID)
   }
 
   /// App-quit path (#1271 Codex r1 P1): `applicationWillTerminate` cannot
@@ -973,7 +989,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     // usable endpoint (file missing/unreadable/rejected after admission — a
     // stale marker or post-admission mutation). Run ONE repair pass + ONE
     // retry; a second failure is terminal (limb-red + raw fallback).
-    if await server.endpoint(for: provider) == nil {
+    if await server.endpoint(for: modelID) == nil {
       guard generation == self.activationGeneration else { return }
       guard case .admitted = await delivery.repair() else { return }
       guard generation == self.activationGeneration else { return }
@@ -989,12 +1005,12 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     manifest: LocalPolishManifestFacts, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
     retriesAdapterFallback: Bool
   ) async {
-    guard let serverBinaryURL else { return }
+    guard let serverBinaryURL, let modelURL = admittedLaunchLocation(delivery) else { return }
     await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
       serverBinaryURL: serverBinaryURL,
       // Delivery exposes the verified admitted entrypoint, not a discovered file.
-      modelURL: delivery.installedArtifactURL,
+      modelURL: modelURL,
       contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     guard generation == activationGeneration else { return }
     await server.transition(
@@ -1002,6 +1018,13 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
         LocalPolishTarget(
           configuration: configuration, retriesAdapterFallback: retriesAdapterFallback)),
       intent: intent)
+  }
+
+  /// The location the engine launches the admitted model from: the composition root's answer
+  /// when it gave one, else delivery's entrypoint file.
+  private func admittedLaunchLocation(_ delivery: EGOneDeliveryAdapter) -> URL? {
+    guard let launchLocation else { return delivery.installedArtifactURL }
+    return launchLocation()
   }
 
   /// Internal seam tests can use without staging a multi-shard base model.
@@ -1028,11 +1051,11 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   // MARK: - EGOneEndpointProviding (pipeline seam)
 
   public func activeEndpoint() async -> LocalPolishEndpoint? {
-    await server.endpoint(for: provider)
+    await server.endpoint(for: modelID)
   }
 
   public func beginPolishAttempt(takeID: String?) async -> LocalPolishAttempt {
-    let (admission, availability) = await server.admitPolish(for: provider, takeID: takeID)
+    let (admission, availability) = await server.admitPolish(for: modelID, takeID: takeID)
     return LocalPolishAttempt(
       admission: admission, endpoint: availability.endpoint,
       missedOutsideStop: availability.outstandingOutsideStop.map(outsideStopContext(generation:)),
@@ -1051,20 +1074,20 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// A hold for requests: a learned-word check (#3105). Polish takes its own through
   /// `beginPolishAttempt`.
   public func acquireLocalServerLease() async -> LocalPolishLeaseAdmission {
-    await server.acquireLease(for: provider, purpose: .inference)
+    await server.acquireLease(for: modelID, purpose: .inference)
   }
 
   /// #4319: a file import's whole-run hold. It sends nothing itself, so a summary never drains
   /// it; it waits for the import to end instead.
   public func acquireLocalServerResidency() async -> LocalPolishLeaseAdmission {
-    await server.acquireLease(for: provider, purpose: .residency)
+    await server.acquireLease(for: modelID, purpose: .residency)
   }
 
   #if DEBUG
     /// #4319 DEBUG: this engine's server slots (Live UAT evidence only).
     public func observeServerSlotsForDebug() async -> EGOneSlotObservation {
       await server.observeSlotsForDebug(
-        for: provider, operation: engine.inspectSlots)
+        for: modelID, operation: engine.inspectSlots)
     }
   #endif
 
@@ -1072,7 +1095,7 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
 
   /// Closes the shared server to every other request and waits for admitted ones to finish.
   public func reserveServerForSummary() async -> LocalPolishReservationOutcome {
-    await server.reserveForSummary(provider)
+    await server.reserveForSummary(modelID)
   }
 
   public func releaseServerReservation(_ reservation: LocalPolishSummaryReservation) async {
@@ -1089,19 +1112,21 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   public func activateForSummary(
     _ reservation: LocalPolishSummaryReservation
   ) async -> LocalPolishEndpoint? {
-    guard reservation.provider == provider, let manifest, let delivery,
+    guard reservation.model == modelID, let manifest, let delivery,
       let serverBinaryURL, activationBlockers.isEmpty
     else { return nil }
     let intent = server.claimIntent()
-    guard await delivery.adoptIfPresent() else { return nil }
+    guard await delivery.adoptIfPresent(), let modelURL = admittedLaunchLocation(delivery) else {
+      return nil
+    }
     await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
-      serverBinaryURL: serverBinaryURL, modelURL: delivery.installedArtifactURL,
+      serverBinaryURL: serverBinaryURL, modelURL: modelURL,
       contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     await server.transition(
       to: .run(LocalPolishTarget(configuration: configuration)),
       intent: intent, reservation: reservation)
-    return await server.endpoint(for: provider)
+    return await server.endpoint(for: modelID)
   }
 
   public func releaseLocalServerLease(_ lease: LocalPolishServerLease) async {

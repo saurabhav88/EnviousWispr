@@ -1761,6 +1761,25 @@ def leave_valued_cases():
     rows.append(("#3438 an unrelated 'Leave anyway' alert is never taken or pressed",
                  (sn.leave_dialog(f.ax(), f.root()), _nav(f, "History").page,
                   "unrelated:leave" in f.presses), (None, "History", False)))
+    # #4473: the question is the app's own card, a plain group (not an AXSheet) carrying the
+    # identifier `polishSetup.leaveCard`. Only that identifier makes the group the question.
+    def card_tree(identifier):
+        card = el("AXGroup", children=[
+            el("AXStaticText", value="Finish AI polish setup"),
+            el("AXButton", desc="Finish setup"), el("AXButton", desc="Leave anyway")])
+        if identifier is not None:
+            card["AXIdentifier"] = identifier
+        return el("AXApplication", children=[el("AXWindow", children=[card])]), card
+    root, card = card_tree("polishSetup.leaveCard")
+    found = sn.leave_dialog(_ax_plain(), root)
+    rows.append(("#4473 the identified card group is found as the actionable question",
+                 (found[0], found[1] is card) if found else None, ("actionable", True)))
+    root, _ = card_tree(None)
+    rows.append(("#4473 the same group without the identifier is not the question",
+                 sn.leave_dialog(_ax_plain(), root), None))
+    root, _ = card_tree("something.else")
+    rows.append(("#4473 a group with another identifier is not the question",
+                 sn.leave_dialog(_ax_plain(), root), None))
     # A History list longer than the bound is not searched for the sidebar: navigation works
     # from History with thousands of dictations (the founder's Mac on 2026-10-04).
     f = FakeSettings()

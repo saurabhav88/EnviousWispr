@@ -54,7 +54,7 @@ struct LLMPolishStepS1ControlTests {
     // injected polisher replaces the connector, so no key or network is used.
     // The forward under test is provider-independent: the step hands the
     // planner ONE input whatever the engine.
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.s1Control = picks
     let capture = PlannerCapture()

@@ -23,6 +23,8 @@ extension DictationSessionConfig {
     useStreamingASR: Bool = true,
     modelUnloadPolicy: ModelUnloadPolicy = .never,
     llmProvider: LLMProvider = .none,
+    // #4473: nil means the provider's one model (EG-1: the full size), like the app before sizes.
+    polishModelID: LocalPolishModelID? = nil,
     llmModel: String = "",
     polishInstructions: PolishInstructions = .default,
     selectedInputDeviceUID: String = "",
@@ -51,6 +53,7 @@ extension DictationSessionConfig {
       useStreamingASR: useStreamingASR,
       modelUnloadPolicy: modelUnloadPolicy,
       llmProvider: llmProvider,
+      polishModelID: polishModelID ?? .singleModel(for: llmProvider),
       llmModel: llmModel,
       polishInstructions: polishInstructions,
       selectedInputDeviceUID: selectedInputDeviceUID,

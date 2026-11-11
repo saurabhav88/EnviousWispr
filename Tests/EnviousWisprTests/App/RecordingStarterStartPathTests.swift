@@ -136,6 +136,7 @@ import Testing
     micPrompt: MicPromptStub? = nil,
     duringRecoveryArm: (@MainActor () -> Void)? = nil,
     onRecoveryArm: (@MainActor (ASRBackendType) -> Void)? = nil,
+    onRecoveryModel: (@MainActor (LocalPolishModelID, String) -> Void)? = nil,
     withLifecycle: Bool = false
   ) -> Fixture {
     // The overlay used to post an `NSAccessibility` notification against
@@ -212,9 +213,10 @@ import Testing
     // and returns a directive (so `config.recoverySessionID` is set), simulating
     // launch recovery starting mid-`start()`.
     let makeRecoveryDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
         recoverySessionID: String, payload: Data
-      )? = { _, backend, _ in
+      )? = { _, backend, _, polishModel, polishWireModel in
+        onRecoveryModel?(polishModel, polishWireModel)
         onRecoveryArm?(backend)
         duringRecoveryArm?()
         if releaseDuringRecoveryArm { await finalizer.userStop() }
@@ -560,6 +562,65 @@ import Testing
       )
       return
     }
+  }
+
+  // A model switched in Settings mid-start must not give the take one size and its saved recording another.
+  @Test("the polish size is read once at start: recovery and the session both get that size")
+  func theStartCapturesThePolishSizeOnce() async {
+    var recoveryModels: [LocalPolishModelID] = []
+    var fxBox: Fixture?
+    func run(_ stored: EGOneSize, during: EGOneSize?) async -> (
+      recovery: [LocalPolishModelID], session: LocalPolishModelID?
+    ) {
+      recoveryModels = []
+      let fx = Self.makeFixture(
+        duringRecoveryArm: { if let during { fxBox?.settings.selectEGOneSize(during) } },
+        onRecoveryModel: { model, _ in recoveryModels.append(model) })
+      fxBox = fx
+      fx.settings.llmProvider = .egOne
+      fx.settings.selectEGOneSize(stored)
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      _ = await fx.starter.start()
+      return (recoveryModels, fx.kernelDriver.llmPolish.polishModelID)
+    }
+
+    let midStart = await run(.full, during: .micro)
+    #expect(midStart.recovery == [.egOne(.full)])
+    #expect(midStart.session == .egOne(.full))
+
+    // Control: a size chosen before the press is the one both get.
+    let before = await run(.micro, during: nil)
+    #expect(before.recovery == [.egOne(.micro)])
+    #expect(before.session == .egOne(.micro))
+  }
+
+  // A provider switched in Settings mid-start must not send one engine another engine's model name.
+  @Test(
+    "the provider, the exact model and the request model name are read once at start and agree in recovery and the session"
+  )
+  func theStartCapturesProviderModelAndRequestNameTogether() async {
+    var recovery: [(model: LocalPolishModelID, wire: String)] = []
+    var fxBox: Fixture?
+    let fx = Self.makeFixture(
+      duringRecoveryArm: { fxBox?.settings.llmProvider = .s1Mini },
+      onRecoveryModel: { recovery.append(($0, $1)) })
+    fxBox = fx
+    fx.settings.llmProvider = .egOne
+    fx.settings.selectEGOneSize(.micro)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    _ = await fx.starter.start()
+
+    // The provider did change during the start, so the values below are the captured ones.
+    #expect(fx.settings.llmProvider == .s1Mini)
+    #expect(fx.settings.effectiveLLMModel == LLMProvider.s1MiniModelName)
+    #expect(recovery.map(\.model) == [.egOne(.micro)])
+    #expect(recovery.map(\.wire) == [LLMProvider.egOneModelName])
+    let step = fx.kernelDriver.llmPolish
+    #expect(step.llmProvider == .egOne)
+    #expect(step.polishModelID == .egOne(.micro))
+    #expect(step.llmModel == LLMProvider.egOneModelName)
   }
 
   @Test func lastUserStopAccessIsThreadedFromFinalizer() async {

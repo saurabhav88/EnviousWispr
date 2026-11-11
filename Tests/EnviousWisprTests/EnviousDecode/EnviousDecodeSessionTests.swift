@@ -73,20 +73,44 @@ struct EnviousDecodeSessionTests {
     return Pair(targetFolder: targetFolder, draftFolder: draftFolder, target: target, draft: draft)
   }
 
+  /// The `x_decode` object the response mapper writes for `result`.
+  static func wireReport(for result: EnviousDecodeResult, stopTokenID: Int) throws -> [String: Any]
+  {
+    // The configuration's stop ids are the ones the mapper drops from the answer: make the
+    // run's stop token one of them.
+    let configuration = try EnviousDecodeRequestConfiguration(
+      modelName: "eg-1",
+      templateSHA256: EnviousDecodeChatTemplate.plainAssistantSHA256, contextTokens: 4096,
+      tokenID: { $0 == "<|im_end|>" ? stopTokenID : stopTokenID + 1_000_000 })
+    let data = try EnviousDecodeRequestMapper.response(
+      for: result, configuration: configuration,
+      // Real token ids from the tiny test models: any id decodes to text; only counts matter here.
+      tokenizer: EnviousDecodeTokenizer(
+        encode: { _ in [] }, decode: { $0.map(String.init).joined(separator: " ") }))
+    let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    return try #require(json["x_decode"] as? [String: Any])
+  }
+
   /// The engine's loop, run directly on the in-memory models: the existing runtime result.
   static func runtimeTokens(
     _ pair: Pair, prompt: [Int], cap: Int, stops: [Int] = [], suppress: [Int]? = nil
-  ) throws -> (tokens: [Int], rollbacks: Int) {
+  ) throws -> (tokens: [Int], rollbacks: Int, proposed: Int, emitted: Int) {
     var tokens: [Int] = []
     var rollbacks = 0
+    var proposed = 0
+    var emitted = 0
     try DFlashRuntime.generateStreaming(
       targetModel: pair.target, draftModel: pair.draft, promptTokens: prompt, maxNewTokens: cap,
       stopTokenIDs: stops, suppressTokenIDs: suppress,
       yield: { event in
         if case .token(let tokenID, _, _, _) = event { tokens.append(tokenID) }
-        if case .summary(let summary) = event { rollbacks = summary.tapeRollbacks }
+        if case .summary(let summary) = event {
+          rollbacks = summary.tapeRollbacks
+          proposed = summary.proposedFromDraft
+          emitted = summary.emittedFromDraft
+        }
       })
-    return (tokens, rollbacks)
+    return (tokens, rollbacks, proposed, emitted)
   }
 
   // MARK: - 1. Loading and one request
@@ -111,6 +135,12 @@ struct EnviousDecodeSessionTests {
     let result = try session.generate(promptTokenIDs: prompt, maxNewTokens: cap, stopTokenIDs: [])
     #expect(result.tokenIDs == direct.tokens, "session: \(result.tokenIDs)")
     #expect(!result.endedOnStopToken && result.restoredPrefixTokens == 0)
+    // #4473: the result carries the loop's own draft counters (the proposed count is what the
+    // loop verified, the accepted count is what it emitted), and speculation really ran.
+    #expect(result.draftProposedTokens == direct.proposed && direct.proposed > 0)
+    #expect(result.draftAcceptedTokens == direct.emitted)
+    #expect(result.draftAcceptedTokens <= result.draftProposedTokens)
+    #expect(result.draftAcceptedTokens <= result.tokenIDs.count)
 
     // A stop token and suppressed tokens reach the loop unchanged.
     let stops = [reference[5]]
@@ -120,6 +150,17 @@ struct EnviousDecodeSessionTests {
       stopped.tokenIDs
         == (try Self.runtimeTokens(pair, prompt: prompt, cap: cap, stops: stops)).tokens)
     #expect(stopped.endedOnStopToken && stopped.tokenIDs.last == reference[5])
+    let stoppedDirect = try Self.runtimeTokens(pair, prompt: prompt, cap: cap, stops: stops)
+    #expect(stopped.draftProposedTokens == stoppedDirect.proposed)
+    #expect(stopped.draftAcceptedTokens == stoppedDirect.emitted)
+    // #4473: through the response mapping the accepted count never exceeds the answer: the
+    // wire `draft_accepted` is the loop's answer-only count and `emitted_tokens` drops the stop.
+    let wire = try Self.wireReport(for: stopped, stopTokenID: reference[5])
+    #expect(wire["draft_accepted"] as? Int == stoppedDirect.emitted)
+    #expect(wire["emitted_tokens"] as? Int == stopped.tokenIDs.count - 1)
+    let wireAccepted = try #require(wire["draft_accepted"] as? Int)
+    let wireEmitted = try #require(wire["emitted_tokens"] as? Int)
+    #expect(wireAccepted <= wireEmitted, "accepted \(wireAccepted) > answer \(wireEmitted)")
     let suppressed = [reference[0], reference[3]]
     let withSuppression = try session.generate(
       promptTokenIDs: prompt, maxNewTokens: 20, stopTokenIDs: [], suppressTokenIDs: suppressed)

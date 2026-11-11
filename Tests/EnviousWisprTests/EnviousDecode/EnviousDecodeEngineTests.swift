@@ -188,31 +188,6 @@ struct EnviousDecodeEngineTests {
     #expect(Set(body.keys).isSubset(of: EnviousDecodeRequestMapper.knownFields))
     #expect(body["model"] as? String == "eg-1" && body["max_tokens"] as? Int == 64)
 
-    // The llama engine, built with the constructor call it always had: same spec, same
-    // command line, and no draft model.
-    let llamaBinary = URL(fileURLWithPath: "/Applications/EW.app/Contents/Resources/llama-server")
-    let gguf = URL(fileURLWithPath: "/models/eg1.gguf")
-    let llamaIdentity = Self.identity("eg1", "g1")
-    let llama = LlamaServerEngine().makeLaunchConfiguration(
-      .singleModel(for: .egOne), llamaIdentity, llamaBinary, gguf, 16384, nil)
-    let llamaFlags = [
-      "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--spec-type",
-      "ngram-simple",
-    ]
-    #expect(
-      llama.spec
-        == LocalPolishLaunchSpec(
-          engineKind: .llamaServer, modelID: .singleModel(for: .egOne),
-          artifactIdentity: llamaIdentity, serverBinaryURL: llamaBinary, modelURL: gguf,
-          contextTokens: 16384, learnedWordAdapterURL: nil, extraArguments: llamaFlags,
-          learnedWordAdapterArguments: []))
-    #expect(llama.spec.draftModelURL == nil && llama.spec.draftArtifactIdentity == nil)
-    #expect(
-      llama.makeArguments(llama.spec, 49152, "bearer-1")
-        == [
-          "-m", "/models/eg1.gguf", "--host", "127.0.0.1", "--port", "49152", "-c", "16384",
-          "--api-key", "bearer-1",
-        ] + llamaFlags)
     // The engine kind alone makes two launches different.
     let sameButLlama = LocalPolishLaunchSpec(
       engineKind: .llamaServer, modelID: expected.modelID,

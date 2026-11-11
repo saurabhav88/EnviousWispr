@@ -15,7 +15,7 @@ struct LearnedWordCheckerDeliveryTests {
   }
 
   private static func resource(_ name: String) -> URL {
-    root.appendingPathComponent("Sources/EnviousWispr/Resources/\(name).json")
+    DeliveryManifestFiles.url(name)
   }
 
   private static func manifest(_ name: String) throws -> DeliveryManifest {
@@ -53,13 +53,10 @@ struct LearnedWordCheckerDeliveryTests {
     var testDescription: String { checker }
   }
 
+  /// #4473: the single-file (`gguf-lora`) checkers the app SHIPS: S1-mini's. EG-1's checkers
+  /// are MLX adapters now and are pinned by `EGOneMLXBundledManifestTests`; the llama EG-1
+  /// checker is read below only as the old revision (a test fixture).
   static let shipped = [
-    Shipped(
-      checker: "eg1-checker-delivery-manifest", base: "eg1-delivery-manifest",
-      runtime: "eg1-manifest", family: .egOneChecker,
-      digest: "d911630224094b506c1bf3552487a711b280f9716ed5124b76b35870f6fcd034",
-      sha256: "c36e831adb4d35ccbde46fb15567de2fe42d343859a20a78402bd1ffa6a24e83",
-      size: 66_094_912, threshold: "0.481"),
     Shipped(
       checker: "s1-checker-delivery-manifest", base: "s1-delivery-manifest",
       runtime: "s1-manifest", family: .s1MiniChecker,

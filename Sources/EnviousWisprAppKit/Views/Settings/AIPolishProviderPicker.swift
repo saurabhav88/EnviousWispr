@@ -28,7 +28,9 @@ struct AIPolishProviderPicker: View {
   /// and the mapping keeps a verdict about another provider from counting.
   private var facts: PolishSetupFacts {
     .live(
-      localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+      localPolishRuntimes: localPolishRuntimes,
+      egOneSize: settings.preferredEGOneSize,
+      aiAvailability: aiAvailability, setup: setup,
       validationProvider: llmDiscovery.stateProvider,
       cloudValidation: llmDiscovery.keyValidationState,
       openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,

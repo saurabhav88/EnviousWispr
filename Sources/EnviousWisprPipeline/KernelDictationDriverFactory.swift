@@ -156,6 +156,8 @@ public enum KernelDictationDriverFactory {
     /// composition-root threading as `keychainManager`. Nil (tests,
     /// pre-wiring) means every `.egOne` polish silently skips.
     package let egOneRuntime: (any EGOneEndpointProviding)?
+    /// #4473: the runtime handles of further local models (the other EG-1 sizes), by exact model.
+    package let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding]
     /// #2649: S1-mini's runtime handle, SEPARATE from EG-1's. Both resolve
     /// through the one server coordinator, which refuses an endpoint to a model
     /// that is not the resident one — sharing a handle would throw that answer
@@ -227,6 +229,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
       microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
+      additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
@@ -253,6 +256,7 @@ public enum KernelDictationDriverFactory {
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
+      self.additionalLocalRuntimes = additionalLocalRuntimes
       self.s1MiniRuntime = s1MiniRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
@@ -292,6 +296,8 @@ public enum KernelDictationDriverFactory {
     package let microphonePermissionIsDenied: @MainActor () -> Bool
     /// #1271: EG-1 runtime handle. See `ParakeetInputs.egOneRuntime`.
     package let egOneRuntime: (any EGOneEndpointProviding)?
+    /// #4473: the runtime handles of further local models (the other EG-1 sizes), by exact model.
+    package let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding]
     /// #2649: S1-mini's runtime handle, SEPARATE from EG-1's. Both resolve
     /// through the one server coordinator, which refuses an endpoint to a model
     /// that is not the resident one — sharing a handle would throw that answer
@@ -365,6 +371,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
       microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
       egOneRuntime: (any EGOneEndpointProviding)? = nil,
+      additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
       s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
       batchDecodeFaultController: BatchDecodeFaultController? = nil,
       escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
@@ -391,6 +398,7 @@ public enum KernelDictationDriverFactory {
       self.dictationAudioArchiveOptInProvider = dictationAudioArchiveOptInProvider
       self.microphonePermissionIsDenied = microphonePermissionIsDenied
       self.egOneRuntime = egOneRuntime
+      self.additionalLocalRuntimes = additionalLocalRuntimes
       self.s1MiniRuntime = s1MiniRuntime
       self.batchDecodeFaultController = batchDecodeFaultController
       self.escapeRecovery = escapeRecovery
@@ -486,6 +494,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
       microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
+      additionalLocalRuntimes: inputs.additionalLocalRuntimes,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery,
@@ -540,6 +549,7 @@ public enum KernelDictationDriverFactory {
       dictationAudioArchiveOptInProvider: inputs.dictationAudioArchiveOptInProvider,
       microphonePermissionIsDenied: inputs.microphonePermissionIsDenied,
       egOneRuntime: inputs.egOneRuntime,
+      additionalLocalRuntimes: inputs.additionalLocalRuntimes,
       s1MiniRuntime: inputs.s1MiniRuntime,
       batchDecodeFaultController: inputs.batchDecodeFaultController,
       escapeRecovery: inputs.escapeRecovery,
@@ -568,6 +578,7 @@ public enum KernelDictationDriverFactory {
     dictationAudioArchiveOptInProvider: @escaping @MainActor () -> Bool = { false },
     microphonePermissionIsDenied: @escaping @MainActor () -> Bool = { false },
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
+    additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     escapeRecovery: @escaping PrepareEscapeRecovery = { _, _, _ in false },
@@ -599,6 +610,7 @@ public enum KernelDictationDriverFactory {
     // #1271: EG-1 runtime handle (nil-safe — a missing handle means `.egOne`
     // polishes silently skip, never crash or surface).
     llmPolish.egOneRuntime = egOneRuntime
+    for (model, runtime) in additionalLocalRuntimes { llmPolish.localRuntimes[model] = runtime }
     // #2649: same nil-safe contract — a missing handle means `.s1Mini` polishes
     // silently skip, exactly as EG-1's does.
     llmPolish.s1MiniRuntime = s1MiniRuntime

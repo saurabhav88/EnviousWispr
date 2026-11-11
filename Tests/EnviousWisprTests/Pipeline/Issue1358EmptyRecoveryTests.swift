@@ -139,7 +139,7 @@ struct Issue1358EmptyRecoveryTests {
     let saved = SavedBox()
     let steps = makeSteps()
     // Polish ON with an empty-returning polisher; >3 words so it is not bypassed.
-    steps.llmPolish.llmProvider = .openAI
+    steps.llmPolish.setPolish(provider: .openAI)
     steps.llmPolish.llmModel = "gpt-4o-mini"
     steps.llmPolish.makePolisher = { _, _, _, _ in EmptyPolisher() }
     let wiring = makeWiring(
@@ -187,7 +187,7 @@ struct Issue1358EmptyRecoveryTests {
     for provider in [LLMProvider.appleIntelligence, .openAI] {
       let outcome = KernelFinalizationOutcome()
       let steps = makeSteps()
-      steps.llmPolish.llmProvider = provider
+      steps.llmPolish.setPolish(provider: provider)
       steps.llmPolish.llmModel = provider == .appleIntelligence ? "apple-intelligence" : "gpt-4o-mini"
       steps.llmPolish.makePolisher = { _, _, _, _ in EmptyPolisher() }
       let wiring = makeWiring(outcome: outcome, steps: steps)

@@ -30,7 +30,7 @@
  },
  "aiPolish.egOne": {
   "exempt": {
-   "statusLine": 1
+   "egOneOtherSizeCard": 2
   },
   "mapped": [
    "aiPolish.providerSection",
@@ -43,7 +43,7 @@
  },
  "aiPolish.egOne.downloading": {
   "exempt": {
-   "statusLine": 1
+   "egOneOtherSizeCard": 2
   },
   "mapped": [
    "aiPolish.providerSection",
@@ -56,7 +56,7 @@
  },
  "aiPolish.egOne.failed": {
   "exempt": {
-   "statusLine": 1
+   "egOneOtherSizeCard": 2
   },
   "mapped": [
    "aiPolish.providerSection",
@@ -70,7 +70,7 @@
  "aiPolish.egOne.installed": {
   "exempt": {
    "bundledModelRemove": 1,
-   "statusLine": 1
+   "egOneOtherSizeCard": 2
   },
   "mapped": [
    "aiPolish.providerSection",
@@ -83,7 +83,7 @@
  },
  "aiPolish.egOne.paused": {
   "exempt": {
-   "statusLine": 1
+   "egOneOtherSizeCard": 2
   },
   "mapped": [
    "aiPolish.providerSection",
@@ -1028,7 +1028,7 @@
  },
  "meetings.summaries.egOne": {
   "exempt": {
-   "meetingSummarySetup": 3
+   "meetingSummarySetup": 4
   },
   "mapped": [
    "meetingSummaryEngine",
@@ -1043,7 +1043,7 @@
  },
  "meetings.summaries.egOne.installed": {
   "exempt": {
-   "meetingSummarySetup": 3
+   "meetingSummarySetup": 4
   },
   "mapped": [
    "meetingSummaryEngine",

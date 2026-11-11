@@ -90,7 +90,7 @@ struct TextProcessingContinuationTests {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: 0)
     var identified = 0
     var selected = 0
-    var selectedProvider: LLMProvider?
+    var selectedProvider: LocalPolishModelID?
     var seeded: TextProcessingContext?
     var suffixInput: TextProcessingContext?
     var sequence: [String] = []
@@ -177,7 +177,7 @@ struct TextProcessingContinuationTests {
         return LearnedWordCheckerSelection(
           checker: Self.checker, identity: "frozen-checker", judge: LearnedWordJudge(displayName: "Fixture"))
       }
-      polish.llmProvider = .claude
+      polish.setPolish(provider: .claude)
       polish.llmModel = "claude-haiku-4-5"
       polish.makePolisher = { _, _, _, _ in EchoPolisher() }
     }
@@ -193,7 +193,8 @@ struct TextProcessingContinuationTests {
     ) {
       #expect(identified == 1, sourceLocation: sourceLocation)
       #expect(selected == 1, sourceLocation: sourceLocation)
-      #expect(selectedProvider == .claude, sourceLocation: sourceLocation)
+      #expect(
+        selectedProvider == .singleModel(for: .claude), sourceLocation: sourceLocation)
       #expect(sequence == ["prefix", "receipt", "suffix"], sourceLocation: sourceLocation)
       #expect(seeded?.frozenCorrectorVocabulary == Self.vocabulary, sourceLocation: sourceLocation)
       #expect(seeded?.spellingProtectedWords.contains("color") == true, sourceLocation: sourceLocation)

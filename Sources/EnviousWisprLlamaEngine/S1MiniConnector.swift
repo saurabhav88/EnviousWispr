@@ -55,13 +55,13 @@ public struct S1MiniConnector: TranscriptPolisher {
     return try await send(system: pair.system ?? "", user: pair.user, config: config)
   }
 
-  /// #4473: the same request body as EG-1 (its one builder, not a second shape), serialized
-  /// here and sent as bytes. The transport's one neutral failure maps to the silent bypass;
+  /// #4473: the llama chat request (`LlamaChatRequest`, the one builder for this server),
+  /// serialized here and sent as bytes. The transport's one neutral failure maps to the silent bypass;
   /// the parse runs OUTSIDE that mapping so its own verdicts are never rewritten.
   private func send(
     system: String, user: String, config: LLMProviderConfig
   ) async throws -> LLMResult {
-    let body = try EGOneConnector.makeRequestBody(
+    let body = try LlamaChatRequest.makeBody(
       system: system, user: user, config: config,
       hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter)
     let bytes = try JSONSerialization.data(withJSONObject: body)
@@ -111,6 +111,8 @@ public struct S1MiniConnector: TranscriptPolisher {
       }
     }
 
-    return LLMResult(polishedText: cleaned)
+    // #4473: llama-server answered. It has no draft model, so it reports no counts.
+    return LLMResult(
+      polishedText: cleaned, localDecode: LocalDecodeStats(implementation: LocalDecodeStats.llamaServer))
   }
 }

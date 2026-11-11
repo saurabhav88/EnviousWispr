@@ -363,9 +363,16 @@ class LeaveDeclined(NavigationError):
         self.answer = answer
 
 
+# #4473: the leave question is the app's own card over the Settings window, found by its
+# identifier (`PolishSetupLeaveCard.accessibilityID`). Sheets and dialogs still count, so an
+# older build's alert is answered the same way.
+LEAVE_CARD_ID = "polishSetup.leaveCard"
+
+
 def _sheet_roots(ax, root):
     return [e for e in ax.walk(root)
             if ax.role(e) == "AXSheet"
+            or ax.text(e, "AXIdentifier") == LEAVE_CARD_ID
             or (ax.role(e) == "AXWindow" and ax.text(e, "AXSubrole") in ("AXDialog", "AXSystemDialog"))]
 
 
@@ -474,18 +481,31 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
         root = root_of()
         return root, sidebar(ax, root)
 
-    try:
-        root, side = side_row()
-    except NavigationError:
-        if open_settings is None:
-            raise
-        open_settings()
-        wait_until(ax, lambda: side_row() is not None, timeout, "the Settings sidebar")
-        root, side = side_row()
-
     def page_selected(name):
         _, side2 = side_row()
         return selection_state(ax, ax.get_attr(unique_control(ax, side2, name), "AXValue")) is True
+
+    try:
+        root, side = side_row()
+    except NavigationError:
+        # #4473: the leave question is a card that is modal to accessibility, so the sidebar is
+        # not in the tree while it is up. A question already on screen is answered as the caller
+        # says (never opened over, never chosen here); its destination is the app's pending one,
+        # and landing on `page` is still observed below.
+        pending = leave_dialog(ax, root_of())
+        if pending is not None:
+            try:
+                _answer_leave_dialog(ax, root_of, page, pending[0], pending[1], leave_answer,
+                                     timeout, page_selected)
+            except LeaveDeclined:
+                if page != "AI Polish":
+                    raise
+        elif open_settings is None:
+            raise
+        else:
+            open_settings()
+            wait_until(ax, lambda: side_row() is not None, timeout, "the Settings sidebar")
+        root, side = side_row()
 
     row = unique_control(ax, side, page)
     if selection_state(ax, ax.get_attr(row, "AXValue")) is not True:
@@ -495,8 +515,13 @@ def navigate(ax, root_of, page, tab=None, open_settings=None, timeout=3.0, debug
         asked = {}
 
         def page_landed():
-            if page_selected(page):
-                return True
+            try:
+                if page_selected(page):
+                    return True
+            except NavigationError:
+                # The sidebar is hidden while the leave card is up (#4473); look for the card.
+                if not leaving_ai_polish:
+                    raise
             if leaving_ai_polish:
                 found = leave_dialog(ax, root_of())
                 if found is not None:

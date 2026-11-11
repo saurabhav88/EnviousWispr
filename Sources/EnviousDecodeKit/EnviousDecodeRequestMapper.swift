@@ -266,6 +266,14 @@ package enum EnviousDecodeRequestMapper {
   /// The app's answer: `choices[0].message.content` and `finish_reason`. The text is the
   /// generated tokens without the stop token that ended them, and nothing else is removed or
   /// trimmed: an empty or padded answer is the client's to judge.
+  ///
+  /// `x_decode` (#4473) says which engine answered and what this request's speculative decoding
+  /// did, as counts only: `draft_proposed` (draft tokens that entered a verification),
+  /// `draft_accepted` (accepted drafts that are in the answer) and `emitted_tokens` (tokens in
+  /// the answer, the stop token not counted). Measured for this request; never an estimate.
+  /// The engine's name in `x_decode.implementation`, a closed value.
+  package static let implementationName = "envious_decode"
+
   package static func response(
     for result: EnviousDecodeResult, configuration: EnviousDecodeRequestConfiguration,
     tokenizer: EnviousDecodeTokenizer
@@ -286,6 +294,12 @@ package enum EnviousDecodeRequestMapper {
           "finish_reason": result.endedOnStopToken ? "stop" : "length",
         ] as [String: Any]
       ],
+      "x_decode": [
+        "implementation": EnviousDecodeRequestMapper.implementationName,
+        "draft_proposed": result.draftProposedTokens,
+        "draft_accepted": result.draftAcceptedTokens,
+        "emitted_tokens": tokenIDs.count,
+      ] as [String: Any],
     ]
     return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
   }

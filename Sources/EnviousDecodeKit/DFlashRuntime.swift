@@ -85,6 +85,14 @@ struct DFlashSummary: Sendable {
   /// Drafted tokens that a verification accepted (some may follow a stop token and so were not
   /// emitted).
   let acceptedFromDraft: Int
+  /// Drafted tokens that entered a verification: the sum of `blockLen - 1` over the
+  /// draft-and-verify rounds that ran. A draft prefetched for a round that never ran (the run
+  /// stopped first) is not counted.
+  let proposedFromDraft: Int
+  /// Accepted drafts that are in the ANSWER: `acceptedFromDraft` without the stop token itself
+  /// (when a draft was the stop token) and without the drafts that followed it inside their
+  /// round. Always at most `proposedFromDraft` and at most the answer's token count.
+  let emittedFromDraft: Int
   let acceptanceRatio: Double
   let blockTokens: Int
   /// Draft-and-verify rounds.
@@ -447,6 +455,8 @@ enum DFlashRuntime {
     var generatedTokenIDs: [Int] = []
     var finishReason: DFlashFinishReason?
     var acceptedFromDraft = 0
+    var proposedFromDraft = 0
+    var emittedFromDraft = 0
     var cyclesCompleted = 0
     var plainSteps = 0
     var start = promptLen
@@ -627,6 +637,10 @@ enum DFlashRuntime {
       )
       cyclesCompleted += 1
       acceptedFromDraft += acceptanceLen
+      proposedFromDraft += draftedTokens
+      // Count accepted draft tokens in the answer, excluding the terminal stop token.
+      emittedFromDraft += min(
+        acceptedDraftIDs.count, firstStop ?? roundTokenIDs.count)
       stagedFirst = stagedFirstNext
       passObserver?(
         .speculative(
@@ -650,6 +664,8 @@ enum DFlashRuntime {
           generatedTokenIDs: generatedTokenIDs,
           finishReason: finishReason ?? .length,
           acceptedFromDraft: acceptedFromDraft,
+          proposedFromDraft: proposedFromDraft,
+          emittedFromDraft: emittedFromDraft,
           acceptanceRatio: Double(acceptedFromDraft) / Double(generatedTokenIDs.count),
           blockTokens: effectiveBlockTokens,
           cyclesCompleted: cyclesCompleted,

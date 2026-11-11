@@ -103,7 +103,7 @@ internal final class TextProcessingRunner {
   /// before the session terminal, so the frozen `lastTakeID` would still be nil here
   /// (or hold the PREVIOUS take). Same key, different read point from the completion
   /// events, and swapping them would mislabel one family or the other.
-  typealias RecordPolishFailed = @MainActor (String, String, String, Bool, String?) -> Void
+  typealias RecordPolishFailed = @MainActor (String, String, String, Bool, String?, String?) -> Void
 
   /// Durable record that AI polish produced no accepted output under an
   /// explicit skip contract (#1055, #1271, #1305, #1448) — the AFM
@@ -112,7 +112,9 @@ internal final class TextProcessingRunner {
   /// pre-attempt bypasses and post-generation rejection (`outputLanguageDrift`);
   /// distinct from `llm.polish_failed` (attempted and threw). Parameters:
   /// provider, skip reason — both sourced from `PolishSkipReason`.
-  typealias RecordPolishSkipped = @MainActor (String, String, String?) -> Void
+  /// The last parameter (#4473) is the invocation's frozen EG-1 size, nil for every other
+  /// provider and for an EG-1 take whose size this build does not know.
+  typealias RecordPolishSkipped = @MainActor (String, String, String?, String?) -> Void
 
   /// Every POLISH telemetry seam the runner owns, as ONE value (#1446).
   ///
@@ -148,7 +150,7 @@ internal final class TextProcessingRunner {
           category: category, stage: stage, extra: extra, tags: tags,
           fingerprintDetail: fingerprintDetail)
       },
-      recordPolishFailed: { provider, model, reason, isTimeout, takeID in
+      recordPolishFailed: { provider, model, reason, isTimeout, takeID, modelSize in
         // Sibling of LLMPolishStep's "LLM polish started" / "LLM polish completed"
         // crumbs; the distinct wording keeps this trail entry legible next to
         // theirs (they also carry `model`).
@@ -159,10 +161,11 @@ internal final class TextProcessingRunner {
         )
         TelemetryService.shared.polishFailed(
           provider: provider, model: model, reason: reason, isTimeout: isTimeout,
-          takeID: takeID)
+          takeID: takeID, modelSize: modelSize)
       },
-      recordPolishSkipped: { provider, reason, takeID in
-        TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
+      recordPolishSkipped: { provider, reason, takeID, modelSize in
+        TelemetryService.shared.polishSkipped(
+          provider: provider, reason: reason, takeID: takeID, modelSize: modelSize)
       })
 
     /// Crash recovery (#945, #1446): a recovered take still returns its
@@ -176,8 +179,8 @@ internal final class TextProcessingRunner {
     /// already has.
     static let silent = TelemetrySeams(
       captureError: { _, _, _, _, _, _ in },
-      recordPolishFailed: { _, _, _, _, _ in },
-      recordPolishSkipped: { _, _, _ in })
+      recordPolishFailed: { _, _, _, _, _, _ in },
+      recordPolishSkipped: { _, _, _, _ in })
   }
 
   private let logger: any PipelineLogging
@@ -282,11 +285,17 @@ internal final class TextProcessingRunner {
     if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
       learnedStep.isEnabled(for: context)
     {
-      let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
-        ?? .none
-      // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
-      context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
-        for: selectedProvider, language: resolution.language)
+      // #4473: the polish step's frozen model. No polish step is "no polish"; a step that
+      // names no runnable model (an EG-1 size this build does not know) gets no checker.
+      let polishStep = steps.first { $0 is LLMPolishStep } as? LLMPolishStep
+      if let selectedModel = polishStep.map(\.polishModelID) ?? .singleModel(for: .none) {
+        // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
+        context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
+          for: selectedModel, language: resolution.language)
+      } else {
+        context.frozenLearnedWordChecker = LearnedWordCheckerSelection(
+          absence: .engineHasNoChecker)
+      }
     }
     let logger = self.logger
     Task {
@@ -377,6 +386,12 @@ internal final class TextProcessingRunner {
       // LLMPolishStep.swift), so the step snapshot is the only reliable source of
       // the model the failed attempt actually used.
       let polishModelAtStart = (step as? LLMPolishStep)?.llmModel
+      // #4473: the frozen EG-1 size, snapshotted with the provider. A skip or failure of an
+      // EG-1 take reports it; nil for another provider or a size this build does not know.
+      let polishSizeAtStart = (step as? LLMPolishStep)?.polishModelID?.size?.rawValue
+      func sizeForTelemetry(_ provider: LLMProvider) -> String? {
+        provider == .egOne ? polishSizeAtStart : nil
+      }
       // #3438: stamped before the await, so it precedes everything the step observes.
       let polishObservedAt = step is LLMPolishStep ? polishSetup?.now() : nil
       var stepElapsedMs = 0.0
@@ -607,7 +622,8 @@ internal final class TextProcessingRunner {
             // record, whatever its channel. Sentry alerting is the interrupting
             // SUBSET below, not the record itself.
             recordPolishFailed(
-              provider.rawValue, model, reason.telemetryTag, isTimeout, context.takeID)
+              provider.rawValue, model, reason.telemetryTag, isTimeout, context.takeID,
+              sizeForTelemetry(provider))
             // #1446: alert only where a spike could plausibly mean WE regressed.
             // A user out of credits, over quota, with no key, or with Ollama shut
             // down is not a defect: those reasons are counted, never paged. The
@@ -650,7 +666,7 @@ internal final class TextProcessingRunner {
             // `isAppleIntelligencePolishTimeout` above.
             recordPolishFailed(
               LLMProvider.appleIntelligence.rawValue, model,
-              PolishFailureReason.from(error).telemetryTag, isTimeout, context.takeID)
+              PolishFailureReason.from(error).telemetryTag, isTimeout, context.takeID, nil)
           } else {
             // No polish-provider snapshot: a non-LLMPolishStep surfacing step
             // (only reachable in tests; production's sole `.surface` step is
@@ -691,17 +707,23 @@ internal final class TextProcessingRunner {
         if let cw = contextWindowSkip {
           let reason: PolishSkipReason =
             cw.stage == .predicted ? .contextWindowPredicted : .contextWindowCaught
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         } else if isAppleIntelligencePolishTimeout {
           let reason = PolishSkipReason.contextWindowTimeout
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         } else if isLocalEnginePolishTimeout {
           // #1271: one `local_polish_` prefix family for every local-engine skip
           // mode. The provider is the step's entry snapshot, and the branch
           // above is only reachable when that snapshot is one of the two
           // bundled engines, so the fallback is unreachable by construction.
           let reason = PolishSkipReason.localPolishTimeout(polishProviderAtStart ?? .egOne)
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         } else if let silentPolishSkipReason {
           // #1448: covers all 3 AFM cases (frameworkUnavailable,
           // unsupportedInputLanguage, outputLanguageDrift) AND .egOneSkipped in
@@ -709,7 +731,7 @@ internal final class TextProcessingRunner {
           // never a separately-snapshotted value.
           recordPolishSkipped(
             silentPolishSkipReason.provider.rawValue, silentPolishSkipReason.telemetryTag,
-            context.takeID)
+            context.takeID, sizeForTelemetry(silentPolishSkipReason.provider))
         } else if let localPolishSkipReason,
           let reason = PolishSkipReason(ollamaPreflight: localPolishSkipReason)
         {
@@ -717,13 +739,19 @@ internal final class TextProcessingRunner {
           // reason family as EG-1 — the observability split between "preflight
           // said not ready" (here) and "mid-flight failure on a running
           // server" (the capture path above) falls out of the reason strings.
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         } else if let summaryBusy {
           let reason = PolishSkipReason.summaryUsesEngine(summaryBusy.provider)
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         } else if let cloudNoModelProvider {
           let reason = PolishSkipReason.cloudNoModelSelected(cloudNoModelProvider)
-          recordPolishSkipped(reason.provider.rawValue, reason.telemetryTag, context.takeID)
+          recordPolishSkipped(
+            reason.provider.rawValue, reason.telemetryTag, context.takeID,
+            sizeForTelemetry(reason.provider))
         }
         // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
         // exceeds its 3s `maxDuration`. The step's result was discarded; raw

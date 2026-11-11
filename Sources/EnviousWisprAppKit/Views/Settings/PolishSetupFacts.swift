@@ -233,6 +233,7 @@ extension PolishSetupFacts {
   @MainActor
   static func live(
     localPolishRuntimes: LocalPolishRuntimeSet,
+    egOneSize: EGOneSize,
     aiAvailability: AIAvailabilityCoordinator,
     setup: SetupCoordinator,
     validationProvider: LLMProvider?,
@@ -244,12 +245,15 @@ extension PolishSetupFacts {
     selectedCloudModel: String?,
     cloudModelEvidence: [LLMProvider: [String: CloudModelObservation]]
   ) -> PolishSetupFacts {
-    PolishSetupFacts(
-      egOneInstall: localPolishRuntimes.egOne.installState,
-      egOneHealth: localPolishRuntimes.egOne.health,
+    // #4473: EG-1's facts are the PREFERRED size's (plan §3.1.1 S3). Another size being
+    // installed never answers for it, and a size with no runtime reads as not installed.
+    let egOne = localPolishRuntimes.runtime(for: .egOne(egOneSize))
+    return PolishSetupFacts(
+      egOneInstall: egOne?.installState ?? .notInstalled,
+      egOneHealth: egOne?.health ?? .red(reason: "not_running"),
       s1MiniInstall: localPolishRuntimes.s1Mini.installState,
       s1MiniHealth: localPolishRuntimes.s1Mini.health,
-      egOneOutsideStop: localPolishRuntimes.egOne.unresolvedOutsideStop,
+      egOneOutsideStop: egOne?.unresolvedOutsideStop,
       s1MiniOutsideStop: localPolishRuntimes.s1Mini.unresolvedOutsideStop,
       appleStatus: aiAvailability.latestReport?.overallStatus,
       appleFailureReasons: aiAvailability.latestReport?.failureReasons ?? [],

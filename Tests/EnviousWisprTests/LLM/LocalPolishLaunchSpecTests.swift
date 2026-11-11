@@ -143,10 +143,13 @@ struct LocalPolishLaunchSpecTests {
     let firstPID = try fixture.lastPID()
 
     await coordinator.transition(to: .run(Self.target(changed)), intent: coordinator.claimIntent())
-    #expect(await coordinator.endpoint(for: .egOne) != nil)
+    // #4473: the endpoint belongs to the model that was started. When the changed field is the
+    // model itself, the old model has no endpoint any more.
+    #expect(await coordinator.endpoint(for: changed.modelID) != nil)
+    #expect((await coordinator.endpoint(for: base.modelID) != nil) == (changed.modelID == base.modelID))
     #expect(try fixture.launches().count == 2, "\(difference.rawValue) did not start a new process")
     #expect(try fixture.lastPID() != firstPID)
-    await coordinator.transition(to: .idle(.egOne), intent: coordinator.claimIntent())
+    await coordinator.transition(to: .idle(changed.modelID), intent: coordinator.claimIntent())
   }
 
   /// About 1.59 seconds, measured: three real launches of the fake server (the adapter launch

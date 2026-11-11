@@ -34,9 +34,10 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
   /// `promptFamily` below; an unknown value refuses activation (RED,
   /// "app update required") rather than mis-prompting a future model.
   public let promptTemplateID: String
-  /// Minimum app version that can run this artifact (informational in
-  /// Phase 1; enforced when remote manifests arrive).
-  public let minAppVersion: String
+  /// Minimum app version that can run this artifact (informational; nothing enforces it).
+  /// Optional (#4473): a manifest states it only once the release that first runs the
+  /// artifact has a version. An absent value claims nothing; it is never filled with a guess.
+  public let minAppVersion: String?
   /// HTTPS URL for the GGUF artifact (#1417: repointed to shard 1's URL for a
   /// sharded EG-1 revision — an https-scheme sanity check only via
   /// `activationBlockers()`, never used to fetch or verify bytes; the
@@ -62,7 +63,7 @@ public struct EGOneManifest: Codable, Sendable, Equatable {
 
   public init(
     modelName: String, version: String,
-    contextTokens: Int, promptTemplateID: String, minAppVersion: String,
+    contextTokens: Int, promptTemplateID: String, minAppVersion: String?,
     downloadURL: URL, licenseURL: URL? = nil, displayVersion: String? = nil
   ) {
     self.modelName = modelName

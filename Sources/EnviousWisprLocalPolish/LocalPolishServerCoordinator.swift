@@ -31,6 +31,9 @@ public struct LocalPolishTarget: Sendable {
   /// The provider of the model this target launches (#4473): read from the launch spec, so a
   /// target cannot name one provider and launch another's model.
   public var provider: LLMProvider { configuration.spec.modelID.provider }
+  /// The exact model this target launches. Residency, leases and reservations are held for
+  /// this, so one size of EG-1 never answers for another.
+  public var modelID: LocalPolishModelID { configuration.spec.modelID }
   public let configuration: LocalPolishProcessManager.Configuration
   /// Set only by delivery's adapter-availability signal. A resident server that
   /// fell back to the bare base keeps the requested adapter URL, so an ordinary
@@ -51,12 +54,12 @@ public struct LocalPolishTarget: Sendable {
 /// configuration read on another actor.
 public struct LocalPolishServerLease: Sendable {
   fileprivate let id: UUID
-  fileprivate let provider: LLMProvider
+  fileprivate let model: LocalPolishModelID
   fileprivate let purpose: LocalPolishLeasePurpose
 
-  fileprivate init(provider: LLMProvider, purpose: LocalPolishLeasePurpose) {
+  fileprivate init(model: LocalPolishModelID, purpose: LocalPolishLeasePurpose) {
     id = UUID()
-    self.provider = provider
+    self.model = model
     self.purpose = purpose
   }
 }
@@ -78,7 +81,9 @@ public enum LocalPolishLeasePurpose: Sendable, Equatable {
 /// inference, probe, import hold or process change from anyone else is admitted.
 public struct LocalPolishSummaryReservation: Sendable, Equatable {
   fileprivate let id: UUID
-  public let provider: LLMProvider
+  /// The exact model the summary holds the server for (#4473).
+  public let model: LocalPolishModelID
+  public var provider: LLMProvider { model.provider }
 }
 
 /// The answer to a summary's reservation request (#4319).
@@ -121,7 +126,7 @@ public enum LocalPolishIntent: Sendable {
   /// Run this model, evicting any other. Speaks for the whole resource.
   case run(LocalPolishTarget)
   /// This model should not be running. A no-op unless it is the resident.
-  case idle(LLMProvider)
+  case idle(LocalPolishModelID)
 }
 
 /// A lifecycle as delivered to one engine (#3988), stamped by the manager with
@@ -140,10 +145,10 @@ public actor LocalPolishServerCoordinator {
   /// Which model the manager is currently running, or nil when nothing is.
   /// This is the identity half of the rule; the manager's own state is the
   /// process half, and neither alone is sufficient.
-  private var resident: LLMProvider?
+  private var resident: LocalPolishModelID?
   private var residentTarget: LocalPolishTarget?
   private var deferredRequest: (request: LocalPolishIntent, intent: Int)?
-  private var leases: [UUID: (provider: LLMProvider, purpose: LocalPolishLeasePurpose)] = [:]
+  private var leases: [UUID: (model: LocalPolishModelID, purpose: LocalPolishLeasePurpose)] = [:]
   /// #4319: the summary holding the server, if any, and the waits for its drain.
   private var summaryReservation: LocalPolishSummaryReservation?
   /// #4319: the process change deferred behind a summary, run after its release returns, so
@@ -159,21 +164,21 @@ public actor LocalPolishServerCoordinator {
   private var removalWaiters: [CheckedContinuation<Void, Never>] = []
   /// #3105: per engine, because each local engine boots its own checker adapter
   /// and one engine's fallback must not describe the other's.
-  private var recordedCheckerFailures: [LLMProvider: LocalPolishProcessManager.CheckerFailureReason] = [:]
+  private var recordedCheckerFailures: [LocalPolishModelID: LocalPolishProcessManager.CheckerFailureReason] = [:]
   /// The resident process was asked for an adapter and runs the bare base.
   private var residentAdapterFellBack = false
 
   /// One observer per model. See `setStateObserver(for:_:)` for why a single
   /// slot was a regression rather than merely a limitation.
-  private var observers: [LLMProvider: @Sendable (LocalPolishLifecycleEvent) -> Void] = [:]
-  private var failureObservers: [LLMProvider: @Sendable (ChildProcessFailure) -> Void] = [:]
+  private var observers: [LocalPolishModelID: @Sendable (LocalPolishLifecycleEvent) -> Void] = [:]
+  private var failureObservers: [LocalPolishModelID: @Sendable (ChildProcessFailure) -> Void] = [:]
   private var managerObserverInstalled = false
 
   /// A non-isolated mirror of `resident`, read from inside the manager's own
   /// callback so an event carries the identity it was emitted UNDER. The
   /// actor-isolated field cannot be read there without a hop, and the hop is
   /// exactly the window this closes.
-  private let observedResident = OSAllocatedUnfairLock<LLMProvider?>(initialState: nil)
+  private let observedResident = OSAllocatedUnfairLock<LocalPolishModelID?>(initialState: nil)
 
   /// Monotonic intent stamp, CLAIMED BY THE CALLER before it spawns its task.
   ///
@@ -205,9 +210,9 @@ public actor LocalPolishServerCoordinator {
   }
 
   /// One writer for both, so the mirror cannot drift from the field it mirrors.
-  private func setResident(_ provider: LLMProvider?) {
-    resident = provider
-    observedResident.withLock { $0 = provider }
+  private func setResident(_ model: LocalPolishModelID?) {
+    resident = model
+    observedResident.withLock { $0 = model }
   }
 
   public init() {}
@@ -228,22 +233,22 @@ public actor LocalPolishServerCoordinator {
   /// each caller takes its existing changing fallback (polish unchanged, word check skipped,
   /// import cleanup refused).
   public func acquireLease(
-    for provider: LLMProvider, purpose: LocalPolishLeasePurpose
+    for model: LocalPolishModelID, purpose: LocalPolishLeasePurpose
   ) -> LocalPolishLeaseAdmission {
-    guard !changing, resident == provider, summaryReservation == nil else { return .changing }
-    let lease = LocalPolishServerLease(provider: provider, purpose: purpose)
-    leases[lease.id] = (provider, purpose)
+    guard !changing, resident == model, summaryReservation == nil else { return .changing }
+    let lease = LocalPolishServerLease(model: model, purpose: purpose)
+    leases[lease.id] = (model, purpose)
     return .granted(lease)
   }
 
   public func releaseLease(_ lease: LocalPolishServerLease) async {
-    guard leases.removeValue(forKey: lease.id)?.provider == lease.provider else { return }
+    guard leases.removeValue(forKey: lease.id)?.model == lease.model else { return }
     wakeRemovalWaiters()
     if leases.isEmpty { await retryDeferredReconfiguration() }
   }
 
-  public func hasLease(for provider: LLMProvider) -> Bool {
-    leases.values.contains { $0.provider == provider }
+  public func hasLease(for model: LocalPolishModelID) -> Bool {
+    leases.values.contains { $0.model == model }
   }
 
   // MARK: - #4319: an EnviousMeet summary's exclusive hold
@@ -258,12 +263,12 @@ public actor LocalPolishServerCoordinator {
   /// caller waits for a local turn (the import's own pin, read by the caller, covers its
   /// preparation before this hold exists). Cancelled while waiting: the reservation is
   /// removed and admission reopens.
-  public func reserveForSummary(_ provider: LLMProvider) async -> LocalPolishReservationOutcome {
+  public func reserveForSummary(_ model: LocalPolishModelID) async -> LocalPolishReservationOutcome {
     guard Task.isCancelled == false, !closedForQuit.withLock({ $0 }) else { return .cancelled }
     guard summaryReservation == nil,
       !leases.values.contains(where: { $0.purpose == .residency })
     else { return .retryLater }
-    let reservation = LocalPolishSummaryReservation(id: UUID(), provider: provider)
+    let reservation = LocalPolishSummaryReservation(id: UUID(), model: model)
     summaryReservation = reservation
     while changing || inferenceInFlight > 0 {
       let wait = UUID()
@@ -340,30 +345,30 @@ public actor LocalPolishServerCoordinator {
   /// (Codex branch review r2) keeps the running server. False means nothing
   /// was claimed and `endRemoval` must not be called.
   public func beginRemoval(
-    for provider: LLMProvider, intent: Int,
+    for model: LocalPolishModelID, intent: Int,
     stillWanted: @escaping @Sendable () async -> Bool
   ) async -> Bool {
     honouredIntent = max(honouredIntent, intent)
     while true {
-      while changing || leases.values.contains(where: { $0.provider == provider })
+      while changing || leases.values.contains(where: { $0.model == model })
         || summaryReservation != nil
       {
         await withCheckedContinuation { removalWaiters.append($0) }
       }
       guard await stillWanted() else { return false }
       // Asking suspended this actor; claim only if nothing moved meanwhile.
-      if !changing && !leases.values.contains(where: { $0.provider == provider })
+      if !changing && !leases.values.contains(where: { $0.model == model })
         && summaryReservation == nil
       {
         break
       }
     }
     changing = true
-    if resident == provider {
+    if resident == model {
       // The manager's own stop event, revision included (#3988). `changing`
       // is held, so no other transition can run while this awaits.
       let stopped = await manager.stop()
-      observers[provider]?(stopped)
+      observers[model]?(stopped)
       setResident(nil)
       residentTarget = nil
       residentAdapterFellBack = false
@@ -393,7 +398,7 @@ public actor LocalPolishServerCoordinator {
   /// answer depends on which task the runtime happens to schedule first.
   ///
   /// Re-stating the resident model stays idempotent, which is required:
-  /// launch, provider switch and settings-open all arrive here and must not
+  /// launch, model switch and settings-open all arrive here and must not
   /// restart a working server.
   /// #4319: `reservation` is passed only by the summary that holds the server, to load its
   /// model after the drain. Anyone else's request that would change the process, or start a
@@ -429,11 +434,11 @@ public actor LocalPolishServerCoordinator {
     switch request {
     case .run(let wanted):
       target = wanted
-    case .idle(let provider):
+    case .idle(let model):
       // The caller speaks for itself only. A deactivate from a model that does
       // not hold the process is not news about the process, and obeying it
       // stops a server somebody else is waiting on.
-      guard resident == provider else { return }
+      guard resident == model else { return }
       target = nil
     }
     // A ready start cannot change argv. Adapter arrival/removal is an explicit
@@ -453,7 +458,7 @@ public actor LocalPolishServerCoordinator {
     // from nothing, would race the holder's load.
     let startsUnownedProcess =
       heldByAnotherSummary && target != nil
-      && (resident == nil || target?.provider != summaryReservation?.provider)
+      && (resident == nil || target?.modelID != summaryReservation?.model)
     if (changesProcess && (!leases.isEmpty || heldByAnotherSummary)) || startsUnownedProcess {
       honouredIntent = intent
       deferredRequest = (request, intent)
@@ -475,7 +480,7 @@ public actor LocalPolishServerCoordinator {
       // that is not running.
       let stopped = await manager.stop()
       // Whoever actually lost the process is told so, rather than whichever
-      // provider the caller named: its row must not keep showing a live server
+      // model the caller named: its row must not keep showing a live server
       // it no longer owns. The manager's own stop event, revision included
       // (#3988); `changing` is held, so no other transition ran meanwhile.
       observers[resident]?(stopped)
@@ -502,24 +507,25 @@ public actor LocalPolishServerCoordinator {
       wakeRemovalWaiters()
       return
     }
-    setResident(target.provider)
+    setResident(target.modelID)
     residentTarget = target
     var configuration = target.configuration
     configuration.owningProvider = target.provider
+    configuration.owningModel = target.modelID
     await manager.start(configuration: configuration)
     changing = false
     wakeRemovalWaiters()
     await retryDeferredReconfiguration()
-    let provider = target.provider
-    if resident == provider {
+    let model = target.modelID
+    if resident == model {
       let reason = await manager.checkerFailureReason
-      guard resident == provider,
+      guard resident == model,
         residentTarget?.configuration.spec == target.configuration.spec
       else { return }
       if let reason {
-        recordedCheckerFailures[provider] = reason
+        recordedCheckerFailures[model] = reason
       } else if target.configuration.spec.learnedWordAdapterURL != nil {
-        recordedCheckerFailures[provider] = nil
+        recordedCheckerFailures[model] = nil
       }
       // Every manager failure reason is a bare-base fallback of an adapter boot.
       residentAdapterFellBack =
@@ -528,23 +534,23 @@ public actor LocalPolishServerCoordinator {
   }
 
   /// Called when the last server lease is released. Rechecks actor-owned
-  /// leases; a newer provider intent supersedes an older deferred adapter change.
+  /// leases; a newer model intent supersedes an older deferred adapter change.
   public func retryDeferredReconfiguration() async {
     guard let deferredRequest else { return }
     await transition(to: deferredRequest.request, intent: deferredRequest.intent)
   }
 
-  public func checkerFailureReason(for provider: LLMProvider) -> LocalPolishProcessManager
+  public func checkerFailureReason(for model: LocalPolishModelID) -> LocalPolishProcessManager
     .CheckerFailureReason?
   {
-    recordedCheckerFailures[provider]
+    recordedCheckerFailures[model]
   }
 
   public func currentBootCheckerFailureReason() async -> LocalPolishProcessManager.CheckerFailureReason? {
     await manager.checkerFailureReason
   }
 
-  /// Health for `provider`. Returns red when a DIFFERENT model is resident,
+  /// Health for `model`. Returns red when a DIFFERENT model is resident,
   /// rather than the manager's state — which would describe the other model's
   /// process and read green about the wrong thing.
   /// #4319: nil when an EnviousMeet summary holds the server: the probe is an inference
@@ -552,10 +558,10 @@ public actor LocalPolishServerCoordinator {
   /// inference, so a summary's drain waits for it. The startup readiness check (`GET /health`
   /// inside the manager's start) is not a probe and is never held back.
   public func probeHealth(
-    _ provider: LLMProvider, operation: LocalPolishHealthProbe
+    _ model: LocalPolishModelID, operation: LocalPolishHealthProbe
   ) async -> EGOneHealth? {
     guard summaryReservation == nil else { return nil }
-    guard resident == provider else { return .red(reason: "not_running") }
+    guard resident == model else { return .red(reason: "not_running") }
     probesInFlight += 1
     let result = await manager.probeHealth(operation: operation)
     probesInFlight -= 1
@@ -563,18 +569,18 @@ public actor LocalPolishServerCoordinator {
     // A probe takes real time. If the user switched during it, this verdict
     // describes a process the asking model no longer owns, and reporting it
     // would put another model's health on this model's row.
-    guard resident == provider else { return .red(reason: "not_running") }
+    guard resident == model else { return .red(reason: "not_running") }
     return result
   }
 
-  /// The live endpoint for `provider`, or nil when another model holds the
+  /// The live endpoint for `model`, or nil when another model holds the
   /// process. A polish request must never be answered by different weights.
-  /// #3988: `provider`'s lifecycle, including an outstanding outside stop, read
+  /// #3988: `model`'s lifecycle, including an outstanding outside stop, read
   /// in one manager turn. Another model's stop is never this model's news.
-  public func lifecycle(for provider: LLMProvider) async -> LocalPolishProcessManager.Lifecycle {
-    guard resident == provider else { return .stopped }
+  public func lifecycle(for model: LocalPolishModelID) async -> LocalPolishProcessManager.Lifecycle {
+    guard resident == model else { return .stopped }
     let lifecycle = await manager.currentLifecycle()
-    guard resident == provider else { return .stopped }
+    guard resident == model else { return .stopped }
     return lifecycle
   }
 
@@ -582,7 +588,7 @@ public actor LocalPolishServerCoordinator {
   /// The manager's snapshot is read first; admission is then decided in this
   /// actor's turn with no suspension in between, so a refusal can never be
   /// paired with evidence from a later moment. The manager checks the
-  /// provider itself, so another engine's request cannot use up attribution.
+  /// model itself, so another engine's request cannot use up attribution.
   ///
   /// The snapshot can go stale while it is awaited: a process change, an
   /// outside stop or a recovery to ready. Once granted, the lease defers every
@@ -590,24 +596,24 @@ public actor LocalPolishServerCoordinator {
   /// under it and talks to the server it holds. A refusal keeps the first
   /// snapshot. A stop after that second read fails the request like any other.
   public func admitPolish(
-    for provider: LLMProvider, takeID: String?
+    for model: LocalPolishModelID, takeID: String?
   ) async -> (admission: LocalPolishLeaseAdmission, availability: LocalPolishProcessManager.Availability) {
-    let availability = await manager.observeAvailability(for: provider, claimingFor: takeID)
-    let admission = acquireLease(for: provider, purpose: .inference)
+    let availability = await manager.observeAvailability(for: model, claimingFor: takeID)
+    let admission = acquireLease(for: model, purpose: .inference)
     guard case .granted = admission else { return (admission, availability) }
     // Endpoint and stop evidence are read again together: an outside stop can
     // still end the held server, and its skip must carry that stop. The same
     // take asking twice keeps its recovery claim.
-    return (admission, await manager.observeAvailability(for: provider, claimingFor: takeID))
+    return (admission, await manager.observeAvailability(for: model, claimingFor: takeID))
   }
 
-  public func endpoint(for provider: LLMProvider) async -> LocalPolishEndpoint? {
-    guard resident == provider else { return nil }
+  public func endpoint(for model: LocalPolishModelID) async -> LocalPolishEndpoint? {
+    guard resident == model else { return nil }
     let endpoint = await manager.activeEndpoint()
     // The most consequential of the five: handing back an endpoint the asking
     // model no longer owns is the wrong-model polish this whole type exists to
     // prevent, arriving through the door that was supposed to stop it.
-    guard resident == provider else { return nil }
+    guard resident == model else { return nil }
     return endpoint
   }
 
@@ -617,15 +623,20 @@ public actor LocalPolishServerCoordinator {
   }
 
   public func setProcessFailureObserver(
-    for provider: LLMProvider, _ observer: @escaping @Sendable (ChildProcessFailure) -> Void
+    for model: LocalPolishModelID, _ observer: @escaping @Sendable (ChildProcessFailure) -> Void
   ) async {
-    failureObservers[provider] = observer
+    failureObservers[model] = observer
     await installManagerObserverIfNeeded()
   }
 
   func publishFailure(_ failure: ChildProcessFailure) {
-    if let provider = failure.provider {
-      failureObservers[provider]?(failure)
+    if let model = failure.modelID {
+      failureObservers[model]?(failure)
+    } else if let provider = failure.provider,
+      let observer = failureObservers.first(where: { $0.key.provider == provider })?.value
+    {
+      // A cleanup sweep names the provider that started it, not a size.
+      observer(failure)
     } else {
       // One observer forwards unknown attribution without inventing an owning provider.
       failureObservers.values.first?(failure)
@@ -641,14 +652,14 @@ public actor LocalPolishServerCoordinator {
   /// entirely and sit on "Starting", or receive S1-mini's state and report
   /// health about the wrong process.
   ///
-  /// Keying by provider fixes the replacement. Gating delivery on residency
+  /// Keying by model fixes the replacement. Gating delivery on residency
   /// fixes the other half: a model that does not hold the process must not be
   /// told the process changed, because the change is not about it.
   public func setStateObserver(
-    for provider: LLMProvider,
+    for model: LocalPolishModelID,
     _ observer: @escaping @Sendable (LocalPolishLifecycleEvent) -> Void
   ) async {
-    observers[provider] = observer
+    observers[model] = observer
     // Seed with the caller's OWN truth rather than the manager's state: a model
     // that is not resident is stopped as far as it is concerned, whatever the
     // other one is doing.
@@ -658,7 +669,7 @@ public actor LocalPolishServerCoordinator {
     // Re-checked after the await for the same reason as the readers above: a
     // switch during registration would seed this model with the other's state.
     observer(
-      resident == provider
+      resident == model
         ? current : LocalPolishLifecycleEvent(lifecycle: .stopped, order: current.order))
     await installManagerObserverIfNeeded()
   }
@@ -670,7 +681,7 @@ public actor LocalPolishServerCoordinator {
     guard !managerObserverInstalled else { return }
     managerObserverInstalled = true
     await manager.setProcessFailureObserver { [weak self] failure in
-      // A fact belongs to the completed lifetime even after a provider switch.
+      // A fact belongs to the completed lifetime even after a model switch.
       Task { await self?.publishFailure(failure) }
     }
     await manager.setStateObserver { [weak self, observedResident] state in
@@ -680,16 +691,16 @@ public actor LocalPolishServerCoordinator {
       // residency can flip to the incoming one before the queued task executes.
       // The outgoing model's stop would then arrive at the model that just
       // started, telling a live server it is stopped.
-      let provider = observedResident.withLock { $0 }
-      Task { await self?.publish(state, for: provider) }
+      let model = observedResident.withLock { $0 }
+      Task { await self?.publish(state, for: model) }
     }
   }
 
-  private func publish(_ state: LocalPolishLifecycleEvent, for provider: LLMProvider?) {
+  private func publish(_ state: LocalPolishLifecycleEvent, for model: LocalPolishModelID?) {
     // Both halves matter: the event must belong to a model, and that model must
     // STILL be resident when it lands. A stale event for a model that has since
     // been evicted is not news it can act on.
-    guard let provider, resident == provider, let observer = observers[provider] else { return }
+    guard let model, resident == model, let observer = observers[model] else { return }
     observer(state)
   }
 
@@ -701,14 +712,14 @@ public actor LocalPolishServerCoordinator {
   }
 
   #if DEBUG
-    /// #4319 DEBUG: `provider`'s server slots, through the manager's own endpoint. A control
+    /// #4319 DEBUG: `model`'s server slots, through the manager's own endpoint. A control
     /// request: no lease, no reservation check, available while a summary holds the server.
     public func observeSlotsForDebug(
-      for provider: LLMProvider, operation: LocalPolishSlotInspection
+      for model: LocalPolishModelID, operation: LocalPolishSlotInspection
     ) async -> EGOneSlotObservation {
-      guard resident == provider else { return .unavailable }
+      guard resident == model else { return .unavailable }
       let observation = await manager.observeSlotsForDebug(operation: operation)
-      guard resident == provider else { return .replaced }
+      guard resident == model else { return .replaced }
       return observation
     }
   #endif
@@ -739,7 +750,7 @@ public actor LocalPolishServerCoordinator {
 
   /// Test seam. Reading the resident identity is how a test proves the SWAP
   /// happened rather than proving the coordinator merely returned.
-  var residentModelForTesting: LLMProvider? { resident }
+  var residentModelForTesting: LocalPolishModelID? { resident }
 }
 
 /// The set of local polish engines the app constructed, so a view can reach the
@@ -753,12 +764,24 @@ public actor LocalPolishServerCoordinator {
 @MainActor
 @Observable
 public final class LocalPolishRuntimeSet {
+  /// EG-1 at its full size: the one EG-1 the app serves until the other sizes have runtimes.
   public let egOne: LocalPolishRuntime
   public let s1Mini: LocalPolishRuntime
+  /// Runtimes for further models (the other EG-1 sizes), each with its own identity.
+  private let additional: [LocalPolishRuntime]
 
-  public init(egOne: LocalPolishRuntime, s1Mini: LocalPolishRuntime) {
+  /// Every runtime, each exactly once.
+  public var all: [LocalPolishRuntime] { [egOne, s1Mini] + additional }
+
+  public init(
+    egOne: LocalPolishRuntime, s1Mini: LocalPolishRuntime, additional: [LocalPolishRuntime] = []
+  ) {
     self.egOne = egOne
     self.s1Mini = s1Mini
+    self.additional = additional
+    let identities = ([egOne, s1Mini] + additional).map(\.modelID)
+    precondition(
+      Set(identities).count == identities.count, "two local polish runtimes serve one model")
   }
 
   /// The runtime a BUNDLED local provider owns, or `nil` for every provider that has no
@@ -774,8 +797,7 @@ public final class LocalPolishRuntimeSet {
   @MainActor
   public func runtime(for modelID: LocalPolishModelID) -> LocalPolishRuntime? {
     switch modelID.provider {
-    case .egOne: return egOne.modelID == modelID ? egOne : nil
-    case .s1Mini: return s1Mini.modelID == modelID ? s1Mini : nil
+    case .egOne, .s1Mini: return all.first { $0.modelID == modelID }
     case .appleIntelligence, .ollama, .openAI, .gemini, .claude, .none: return nil
     }
   }
@@ -786,7 +808,9 @@ public final class LocalPolishRuntimeSet {
   /// repeated or late release never touches a later attempt.
   public struct SummaryHold: Sendable, Equatable {
     fileprivate let id: UUID
-    public let provider: LLMProvider
+    /// The exact model the attempt holds (#4473).
+    public let model: LocalPolishModelID
+    public var provider: LLMProvider { model.provider }
   }
 
   public enum SummaryHoldOutcome: Sendable, Equatable {
@@ -804,20 +828,21 @@ public final class LocalPolishRuntimeSet {
   /// The bundled model a summary attempt holds (or is draining the server for), or nil. The
   /// settings pin, the dictation clash and the health-probe busy check read this; the
   /// coordinator's reservation is what actually excludes other requests.
-  public private(set) var summaryHeldProvider: LLMProvider?
+  public private(set) var summaryHeldModel: LocalPolishModelID?
+  public var summaryHeldProvider: LLMProvider? { summaryHeldModel?.provider }
   /// Moves when an attempt starts holding the server, so a health probe measured across that
   /// moment is discarded (`LocalPolishRuntime.activateAndProbe` compares it before and after).
   public private(set) var summaryAdmissionEpoch = 0
 
   /// Starts this attempt's hold: the projection is published at once, so dictation sees the
   /// engine busy while earlier requests drain; it is withdrawn if nothing is held.
-  public func beginSummaryHold(_ provider: LLMProvider) async -> SummaryHoldOutcome {
-    guard summaryHold == nil, let runtime = runtime(for: .singleModel(for: provider)) else {
+  public func beginSummaryHold(_ model: LocalPolishModelID) async -> SummaryHoldOutcome {
+    guard summaryHold == nil, let runtime = runtime(for: model) else {
       return .retryLater
     }
     let id = UUID()
     summaryHold = (id, runtime, nil)
-    summaryHeldProvider = provider
+    summaryHeldModel = model
     summaryAdmissionEpoch &+= 1
     let outcome = await runtime.reserveServerForSummary()
     guard summaryHold?.id == id else {
@@ -830,14 +855,14 @@ public final class LocalPolishRuntimeSet {
     switch outcome {
     case .granted(let reservation):
       summaryHold = (id, runtime, reservation)
-      return .held(SummaryHold(id: id, provider: provider))
+      return .held(SummaryHold(id: id, model: model))
     case .retryLater:
       summaryHold = nil
-      summaryHeldProvider = nil
+      summaryHeldModel = nil
       return .retryLater
     case .cancelled:
       summaryHold = nil
-      summaryHeldProvider = nil
+      summaryHeldModel = nil
       return .cancelled
     }
   }
@@ -854,7 +879,7 @@ public final class LocalPolishRuntimeSet {
   public func endSummaryHold(_ hold: SummaryHold) async {
     guard let current = summaryHold, current.id == hold.id else { return }
     summaryHold = nil
-    summaryHeldProvider = nil
+    summaryHeldModel = nil
     if let reservation = current.reservation {
       await current.runtime.releaseServerReservation(reservation)
     }
@@ -869,9 +894,9 @@ public final class LocalPolishRuntimeSet {
   /// Takes the import's hold once its server is ready. False when the server
   /// is changing; the caller refuses the local cleanup as for a missing
   /// endpoint.
-  public func holdForImport(_ provider: LLMProvider) async -> Bool {
+  public func holdForImport(_ model: LocalPolishModelID) async -> Bool {
     await releaseImportHold()?.value
-    guard let runtime = runtime(for: .singleModel(for: provider)) else { return false }
+    guard let runtime = runtime(for: model) else { return false }
     switch await runtime.acquireLocalServerResidency() {
     case .granted(let lease):
       importHold = (runtime, lease)

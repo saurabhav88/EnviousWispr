@@ -95,6 +95,9 @@ public struct DictationSessionConfig: Sendable {
   // MARK: LLM polish
 
   public let llmProvider: LLMProvider
+  /// #4473: the exact polish model of this recording: for EG-1, one size. Frozen here with the
+  /// provider, so a size picked while recording applies to the next take.
+  public let polishModelID: LocalPolishModelID
   /// Resolved model ID: `"apple-intelligence"` for Apple, `ollamaModel` for Ollama,
   /// `llmModel` for cloud. Construction-time resolution avoids cascading-didSet
   /// races inside `SettingsManager`.
@@ -174,6 +177,7 @@ public struct DictationSessionConfig: Sendable {
     useStreamingASR: Bool,
     modelUnloadPolicy: ModelUnloadPolicy,
     llmProvider: LLMProvider,
+    polishModelID: LocalPolishModelID,
     llmModel: String,
     polishInstructions: PolishInstructions,
     selectedInputDeviceUID: String,
@@ -199,6 +203,7 @@ public struct DictationSessionConfig: Sendable {
     self.useStreamingASR = useStreamingASR
     self.modelUnloadPolicy = modelUnloadPolicy
     self.llmProvider = llmProvider
+    self.polishModelID = polishModelID
     self.llmModel = llmModel
     self.polishInstructions = polishInstructions
     self.selectedInputDeviceUID = selectedInputDeviceUID

@@ -115,22 +115,28 @@ struct UnifiedWindowView: View {
       navigationState.apply(request)
     }
     .onPreferenceChange(PolishSetupUnsavedKeyDraftKey.self) { hasUnsavedKeyDraft = $0 }
-    .alert(
-      leaveQuestion?.content.title ?? "",
-      isPresented: leaveIsPresented,
-      presenting: leaveQuestion
-    ) { question in
-      ForEach(Array(question.content.buttons.enumerated()), id: \.offset) { _, button in
-        Button(button.title, role: button.role == .cancel ? .cancel : nil) {
-          respond(
-            button.action,
-            reportedAs: button.action.promptAction(
-              isCancelRole: button.role == .cancel, event: NSApp.currentEvent),
-            to: question.id)
-        }
+    // #4473 (founder 2026-11-11): the leave question is the app's own card over the window,
+    // the same card a dictation without polish raises, not a macOS alert.
+    // The unanswered question blocks the window under it for the keyboard too (Tab, Space), and
+    // the toolbar with it, as the alert did. The card stays enabled: it is added after this.
+    .disabled(pendingLeave != nil)
+    .overlay {
+      if let question = leaveQuestion {
+        PolishSetupLeaveCard(
+          content: question.content,
+          onAnswer: { button, press in
+            respond(
+              button.action,
+              reportedAs: press == .escape ? .closed : button.action.promptAction,
+              to: question.id)
+          },
+          onClose: { if pendingLeaveID == question.id { pendingLeave = nil } })
       }
-    } message: { question in
-      Text(question.content.message)
+    }
+    .onChange(of: pendingLeaveID) { _, _ in
+      guard let request = pendingLeave else { return }
+      let content = PolishSetupLeaveDialogContent.make(for: request)
+      AccessibilityNotification.Announcement("\(content.title). \(content.message)").post()
     }
   }
 
@@ -143,17 +149,6 @@ struct UnifiedWindowView: View {
 
   private var leaveQuestion: LeaveQuestion? {
     pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
-  }
-
-  /// Closing the alert (Escape with no Cancel button, or the system) clears only the question
-  /// it was showing; a newer one that arrived meanwhile stays.
-  private var leaveIsPresented: Binding<Bool> {
-    let shownID = pendingLeaveID
-    return Binding(
-      get: { pendingLeave != nil },
-      set: { presented in
-        if !presented, pendingLeaveID == shownID { pendingLeave = nil }
-      })
   }
 
   /// Every way of changing page comes through here: a sidebar row, an in-page link, and a

@@ -60,16 +60,18 @@ struct TextProcessingRunnerCaptureTests {
       let isTimeout: Bool
       /// #1846: which dictation this failure belongs to.
       let takeID: String?
+      /// #4473: the frozen EG-1 size the runner reported (nil for any other provider).
+      let modelSize: String?
     }
     private(set) var calls: [Call] = []
     func sink(
       _ provider: String, _ model: String, _ reason: String, _ isTimeout: Bool,
-      _ takeID: String?
+      _ takeID: String?, _ modelSize: String?
     ) {
       calls.append(
         Call(
           provider: provider, model: model, reason: reason, isTimeout: isTimeout,
-          takeID: takeID))
+          takeID: takeID, modelSize: modelSize))
     }
   }
 
@@ -78,9 +80,10 @@ struct TextProcessingRunnerCaptureTests {
   /// crash recovery alongside the other two (#1446, cloud review of PR #1460).
   @MainActor
   final class SkipSpy {
-    private(set) var calls: [(provider: String, reason: String, takeID: String?)] = []
-    func sink(_ provider: String, _ reason: String, _ takeID: String?) {
-      calls.append((provider: provider, reason: reason, takeID: takeID))
+    private(set) var calls:
+      [(provider: String, reason: String, takeID: String?, modelSize: String?)] = []
+    func sink(_ provider: String, _ reason: String, _ takeID: String?, _ modelSize: String?) {
+      calls.append((provider: provider, reason: reason, takeID: takeID, modelSize: modelSize))
     }
   }
 
@@ -105,7 +108,7 @@ struct TextProcessingRunnerCaptureTests {
     throwing makeError: @escaping @Sendable () -> any Error
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = provider
+    step.setPolish(provider: provider)
     step.llmModel = model
     step.makePolisher = { _, _, _, _ in ThrowingPolisher(makeError: makeError) }
     // #1305: the .ollama entry gate consults a readiness probe before the
@@ -159,6 +162,7 @@ struct TextProcessingRunnerCaptureTests {
     #expect(records.calls.first?.provider == "openAI")
     #expect(records.calls.first?.model == "gpt-4o-mini")
     #expect(records.calls.first?.isTimeout == false)
+    #expect(records.calls.first?.modelSize == nil, "a cloud failure never carries an EG-1 size (#4473)")
   }
 
   /// The five reasons downgraded by founder directive 2026-07-09: each is caused by
@@ -458,7 +462,7 @@ struct TextProcessingRunnerCaptureTests {
     let runner = TextProcessingRunner(
       telemetry: .init(
         captureError: spy.sink, recordPolishFailed: records.sink,
-        recordPolishSkipped: { _, _, _ in }),
+        recordPolishSkipped: { _, _, _, _ in }),
       timeoutExecutor: executor.run)
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.requestFailed("unused")
@@ -585,8 +589,8 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.egOneSkipped(.notReady)
     }
-    step.llmProvider = .openAI
-    step.onWillProcess = { step.llmProvider = .egOne }
+    step.setPolish(provider: .openAI)
+    step.onWillProcess = { step.setPolish(provider: .egOne) }
 
     _ = try await runner.run(
       rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
@@ -675,6 +679,68 @@ struct TextProcessingRunnerCaptureTests {
       "the runner-owned llm.polish_skipped route must carry the frozen take key")
     #expect(skips.calls.first?.provider == "appleIntelligence")
     #expect(skips.calls.first?.reason == "context_window_timeout")
+  }
+
+  // MARK: - #4473: the frozen EG-1 size rides the skip and failure seams
+
+  // Loses the per-size split of `llm.polish_skipped` if the runner stops reporting the size.
+  @Test("an EG-1 take that is skipped reports its frozen size; an unknown size reports none")
+  func eg1SkipReportsTheFrozenSize() async throws {
+    let cases: [(LocalPolishModelID?, String?)] = [
+      (.egOne(.full), "full"), (.egOne(.mini), "mini"), (.egOne(.micro), "micro"), (nil, nil),
+    ]
+    for (model, expected) in cases {
+      let skips = SkipSpy()
+      let runner = makeRunner(CaptureSpy(), RecordSpy(), skips)
+      let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+        LLMError.egOneSkipped(.notReady)
+      }
+      // No runtime for any size: the step skips the take as not ready.
+      step.setPolish(provider: .egOne, model: model)
+      _ = try await runner.run(
+        rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
+      let why = Comment(rawValue: "\(String(describing: model))")
+      #expect(skips.calls.count == 1, why)
+      #expect(skips.calls.first?.provider == "egOne", why)
+      #expect(skips.calls.first?.reason == "local_polish_not_ready", why)
+      #expect(skips.calls.first?.modelSize == expected, why)
+    }
+  }
+
+  // An EG-1 size leaking onto another engine's skip row would mislabel it in every size split.
+  @Test("a skipped S1-mini, Ollama or cloud take reports no model size")
+  func otherProvidersSkipWithoutASize() async throws {
+    let s1Skips = SkipSpy()
+    let s1Step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
+      LLMError.egOneSkipped(.notReady)
+    }
+    s1Step.setPolish(provider: .s1Mini, model: .s1Mini)
+    _ = try await makeRunner(CaptureSpy(), RecordSpy(), s1Skips).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [s1Step])
+    #expect(s1Skips.calls.count == 1)
+    #expect(s1Skips.calls.first?.provider == "s1Mini")
+    #expect(s1Skips.calls.first?.modelSize == nil)
+
+    let ollamaSkips = SkipSpy()
+    let ollamaStep = makeStep(provider: .ollama, model: "llama3.2") {
+      LLMError.requestFailed("unused")
+    }
+    ollamaStep.ollamaReadinessProbe = { _ in .serverDown }
+    _ = try await makeRunner(CaptureSpy(), RecordSpy(), ollamaSkips).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [ollamaStep])
+    #expect(ollamaSkips.calls.count == 1)
+    #expect(ollamaSkips.calls.first?.provider == "ollama")
+    #expect(ollamaSkips.calls.first?.modelSize == nil)
+
+    let cloudSkips = SkipSpy()
+    let cloudStep = makeStep(provider: .openAI, model: "") { LLMError.requestFailed("unused") }
+    _ = try await makeRunner(CaptureSpy(), RecordSpy(), cloudSkips).run(
+      rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil,
+      steps: [cloudStep])
+    #expect(cloudSkips.calls.count == 1, "an openAI take with no model is skipped")
+    #expect(cloudSkips.calls.first?.provider == "openAI")
+    #expect(cloudSkips.calls.first?.modelSize == nil)
   }
 
   // MARK: - #4287 PR 3: the same local engine writing an EnviousMeet summary
@@ -802,7 +868,7 @@ struct TextProcessingRunnerCaptureTests {
     let skips = SkipSpy()
     let runner = makeRunner(spy, records, skips)
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
 

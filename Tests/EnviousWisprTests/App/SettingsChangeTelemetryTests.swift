@@ -643,6 +643,67 @@ import Testing
       #expect(d.first?.stringProps["to"] == "bottom")
     }
 
+    // #4473: loses the EG-1 size adoption signal (and the snapshot field) if routing breaks.
+    @Test("the EG-1 size key routes to exactly its one logical")
+    func egOneSizeRoutes() {
+      #expect(SettingsProjection.logicals(for: .egOneSize) == [.egOneSize])
+      #expect(SettingsProjection.Logical.egOneSize.rawValue == "eg1_size")
+    }
+
+    // #4473: loses the only record of which size people choose if the delta stops firing.
+    @Test("choosing another EG-1 size emits one eg1_size delta from full to mini")
+    func egOneSizeChangeDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.selectEGOneSize(.mini)
+      telemetry.flush()
+      let d = deltas(box, setting: "eg1_size")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "full")
+      #expect(d.first?.stringProps["to"] == "mini")
+      #expect(d.first?.stringProps["source"] == "user")
+    }
+
+    // #4473: a size flipped and flipped back would read as a choice if this stopped coalescing.
+    @Test("an EG-1 size A to B to A emits nothing")
+    func egOneSizeRoundTripIsSilent() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      settings.selectEGOneSize(.mini)
+      settings.selectEGOneSize(.full)
+      telemetry.flush()
+      #expect(deltas(box, setting: "eg1_size").isEmpty)
+    }
+
+    // #4473: every fresh install would report a fake size change at launch if this broke.
+    @Test("the first-launch size resolution, run before the observer exists, emits nothing")
+    func egOneSizeResolutionAtLaunchIsSilent() {
+      let suite = TestDefaults.suite("SCT-egsize-\(UUID().uuidString)")!
+      let settings = SettingsManager(defaults: suite)
+      settings.onboardingState = .completed
+      settings.resolveEGOneSizeIfNeeded(hasEGOneInstallRecord: false, recommendation: .micro)
+      #expect(settings.egOneSize == .micro)
+      let telemetry = SettingsChangeTelemetry(
+        settings: settings, cloudModelList: { CloudModelListSeed.current }, emitBaseline: {})
+      settings.onChange = { [weak telemetry] key in telemetry?.handle(key) }
+      let box = DeltaBox()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        if event.name == "settings.changed" { box.add(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      telemetry.flush()
+      #expect(box.all.isEmpty, "nothing emitted: \(box.all)")
+
+      // The baseline holds the RESOLVED value: a later user change reports from micro.
+      settings.selectEGOneSize(.full)
+      telemetry.flush()
+      let d = deltas(box, setting: "eg1_size")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "micro")
+      #expect(d.first?.stringProps["to"] == "full")
+    }
+
     @Test("S1-mini control picks emit one delta per axis, as the trained token (#2649)")
     func s1ControlDeltas() {
       let (settings, telemetry, box, _) = makeHarness()

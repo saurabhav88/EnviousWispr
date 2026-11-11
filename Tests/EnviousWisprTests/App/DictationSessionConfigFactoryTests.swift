@@ -38,6 +38,8 @@ struct DictationSessionConfigFactoryTests {
         kernelDriver: harness.kernelDriver,
         whisperKernelDriver: harness.whisperKernelDriver,
         settings: harness.settings,
+        polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+        polishWireModel: harness.settings.effectiveLLMModel,
         triggerSource: source
       )
       #expect(config.triggerSource == source, "triggerSource=\(source) must pass through")
@@ -57,6 +59,8 @@ struct DictationSessionConfigFactoryTests {
       kernelDriver: harness.kernelDriver,
       whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
       triggerSource: .pttHotkey
     )
 
@@ -67,6 +71,8 @@ struct DictationSessionConfigFactoryTests {
       kernelDriver: harness.kernelDriver,
       whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
       triggerSource: .pttHotkey
     )
 
@@ -88,6 +94,8 @@ struct DictationSessionConfigFactoryTests {
         kernelDriver: harness.kernelDriver,
         whisperKernelDriver: harness.whisperKernelDriver,
         settings: harness.settings,
+        polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+        polishWireModel: harness.settings.effectiveLLMModel,
         triggerSource: .pttHotkey)
     }
     let british = make()
@@ -115,6 +123,8 @@ struct DictationSessionConfigFactoryTests {
       kernelDriver: harness.kernelDriver,
       whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
       triggerSource: .pttHotkey)
     #expect(config.languageMode == .auto)
     #expect(config.lockedLanguageCode == nil)
@@ -157,6 +167,8 @@ struct DictationSessionConfigFactoryTests {
       kernelDriver: harness.kernelDriver,
       whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
       triggerSource: .pttHotkey
     )
 
@@ -167,6 +179,8 @@ struct DictationSessionConfigFactoryTests {
       kernelDriver: harness.kernelDriver,
       whisperKernelDriver: harness.whisperKernelDriver,
       settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
       triggerSource: .pttHotkey
     )
 
@@ -306,6 +320,8 @@ private struct Harness {
       kernelDriver: kernelDriver,
       whisperKernelDriver: whisperKernelDriver,
       settings: settings,
+      polishModel: settings.polishModelID(for: settings.llmProvider),
+      polishWireModel: settings.effectiveLLMModel,
       triggerSource: triggerSource
     )
   }

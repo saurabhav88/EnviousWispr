@@ -56,7 +56,7 @@ struct LLMPolishResultFinisherTests {
   func ordinaryCompletion(kind: String) async throws {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     let text = kind == "unchanged" ? Self.original
       : kind == "symbol-loss" ? "Please keep exit in the release notes for the team tomorrow."
@@ -154,7 +154,7 @@ struct LLMPolishResultFinisherTests {
     let source = wasDictated ? "sure I can do that tomorrow" : "I can do that tomorrow"
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in
       CannedPolisher(result: LLMResult(polishedText: "Sure, I can do that tomorrow."))
@@ -169,7 +169,7 @@ struct LLMPolishResultFinisherTests {
   func ordinaryCleanupRunsOnce() async throws {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in
       CannedPolisher(result: LLMResult(polishedText:
@@ -189,10 +189,10 @@ struct LLMPolishResultFinisherTests {
       limbFailureObserved: { _, _, _, _, _ in }, breadcrumbStarted: { _, _ in },
       captureProviderInitError: { _ in }, captureAFMPolishError: { _ in },
       breadcrumbCompleted: { _, _ in completions += 1 },
-      recordPolishSkipped: { _, _, _ in }, recordPolishLanguageHint: { _, _ in })
+      recordPolishSkipped: { _, _, _, _ in }, recordPolishLanguageHint: { _, _ in })
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: seams)
-    step.llmProvider = provider
+    step.setPolish(provider: provider)
     step.llmModel = try #require(LLMProvider.localModel(for: provider, ollamaModel: ""))
     step.egOneRuntime = ReadyEGOneRuntime()
     step.s1MiniRuntime = ReadyEGOneRuntime()

@@ -36,7 +36,7 @@ import Testing
 struct FileImportLocalPolishRuntimeTests {
 
   private func makeSync(
-    importPin: @escaping @MainActor () -> LLMProvider?
+    importPin: @escaping @MainActor () -> LocalPolishModelID?
   ) -> (PipelineSettingsSync, SettingsManager, LocalPolishServerCoordinator) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
@@ -50,12 +50,12 @@ struct FileImportLocalPolishRuntimeTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), coordinator: coordinator,
-      provider: .egOne)
+      engine: TestLocalPolishEngine(), coordinator: coordinator,
+      modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), coordinator: coordinator,
-      provider: .s1Mini)
+      modelID: .s1Mini)
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
       whisperKernelDriver: whisperDriver,
@@ -65,7 +65,7 @@ struct FileImportLocalPolishRuntimeTests {
       egOneRuntime: egOne,
       s1MiniRuntime: s1Mini,
       ollamaRemotenessLookup: { _ in nil },
-      importPinnedLocalProvider: importPin
+      importPinnedLocalModel: importPin
     )
     return (sync, settings, coordinator)
   }

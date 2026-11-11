@@ -26,7 +26,7 @@ struct EGOneMLXBundledManifestTests {
   }
 
   private static func resource(_ name: String) -> URL {
-    root.appendingPathComponent("Sources/EnviousWispr/Resources/\(name).json")
+    DeliveryManifestFiles.url(name)
   }
 
   private static func manifest(_ name: String) throws -> DeliveryManifest {

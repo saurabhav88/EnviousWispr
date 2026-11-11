@@ -32,7 +32,7 @@ struct LLMPolishBudgetScalingTests {
 
   private func step(model: String, provider: LLMProvider = .gemini) -> LLMPolishStep {
     let s = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    s.llmProvider = provider
+    s.setPolish(provider: provider)
     s.llmModel = model
     return s
   }

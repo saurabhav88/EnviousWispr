@@ -45,7 +45,7 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
 
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
@@ -151,7 +151,7 @@ import Testing
 
     var keys: [String] = []
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
@@ -168,7 +168,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 17, "expected seventeen bundled registrations, got \(keys.count)")
+    #expect(keys.count == 15, "expected fifteen bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -231,7 +231,7 @@ import Testing
       .deletingLastPathComponent()
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",

@@ -149,6 +149,9 @@ public actor LocalPolishProcessManager {
     public var readinessBudgetSeconds: Int
     /// Captured by the coordinator at launch, never inferred from a later selection.
     public var owningProvider: LLMProvider?
+    /// The exact model the process is launched for (#4473): the identity availability and
+    /// failures are handed out under. Set by the coordinator with `owningProvider`.
+    public var owningModel: LocalPolishModelID?
     /// Renders the child's argument list from the spec being spawned, the port and the bearer
     /// chosen for that spawn (#4473). Required, with no default: the process manager knows no
     /// engine's command line, so each engine supplies its own.
@@ -190,7 +193,7 @@ public actor LocalPolishProcessManager {
   private var recoveryTake: (generation: Int, takeID: String)?
   /// The engine the current process was launched for (#3988). Evidence and
   /// attribution are handed only to that engine, checked here at the authority.
-  private var owner: LLMProvider?
+  private var owner: LocalPolishModelID?
   public private(set) var checkerFailureReason: CheckerFailureReason?
   /// Monotonic spawn token (#1271 matrix gap 1): `stop()` / memory-pressure
   /// pause / a newer spawn bump it, so a spawn whose readiness await resumes
@@ -293,9 +296,9 @@ public actor LocalPolishProcessManager {
   /// take (`takeID`) can become a stop's recovery take; a file import, a
   /// replay or another engine reads without using it up.
   public func observeAvailability(
-    for provider: LLMProvider, claimingFor takeID: String?
+    for model: LocalPolishModelID, claimingFor takeID: String?
   ) -> Availability {
-    guard owner == provider else { return .unavailable }
+    guard owner == model else { return .unavailable }
     let endpoint = activeEndpoint()
     let met = endpoint == nil ? outsideStopGeneration : recoveredOutsideStopGeneration
     var recovery: Int?
@@ -447,7 +450,7 @@ public actor LocalPolishProcessManager {
   private func spawn(configuration: Configuration) async {
     launchGeneration += 1
     let generation = launchGeneration
-    owner = configuration.owningProvider
+    owner = configuration.owningModel
     transition(to: .starting)
 
     guard FileManager.default.fileExists(atPath: configuration.spec.serverBinaryURL.path) else {
@@ -487,7 +490,8 @@ public actor LocalPolishProcessManager {
     proc.standardOutput = FileHandle.nullDevice
     proc.standardError = FileHandle.nullDevice
     let observation = ChildProcessObservation(
-      provider: configuration.owningProvider, generation: generation, report: onProcessFailure)
+      provider: configuration.owningProvider, modelID: configuration.owningModel,
+      generation: generation, report: onProcessFailure)
     proc.terminationHandler = { [weak self] terminated in
       let record = observation.recordTermination(terminated)
       Task { [weak self] in
@@ -502,7 +506,8 @@ public actor LocalPolishProcessManager {
       onProcessFailure?(
         ChildProcessFailure(
           role: .server, provider: configuration.owningProvider, generation: generation,
-          phase: .starting, launchErrorCode: (error as NSError).code))
+          phase: .starting, launchErrorCode: (error as NSError).code,
+          modelID: configuration.owningModel))
       transition(to: .failed(reason: "spawn_failed"))
       await AppLogger.shared.log(
         "Local polish server spawn failed: \(error.localizedDescription)",

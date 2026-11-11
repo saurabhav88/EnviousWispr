@@ -214,4 +214,23 @@ struct PreambleStrippingTests {
     #expect(apple.stoppedEarly == true)
   }
 
+  // #4473: the stripped result must still say which engine answered, or a chatter-stripped
+  // take loses its decode counters from `llm.polish_completed`.
+  @Test("result adaptation keeps the local decode report when it strips chatter")
+  func removingChatterKeepsLocalDecode() throws {
+    let decode = LocalDecodeStats(
+      implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 9,
+      emittedTokens: 20)
+    let original = LLMResult(
+      polishedText: "Sure, I can do that tomorrow.", localDecode: decode)
+    let stripped = try original.removingModelChatter(
+      dictation: "I can do that tomorrow", provider: .egOne)
+    #expect(stripped.polishedText == "I can do that tomorrow.", "chatter really was stripped")
+    #expect(stripped.localDecode == decode)
+    // The unchanged path hands the same value back.
+    let unchanged = try LLMResult(polishedText: "I can do that tomorrow.", localDecode: decode)
+      .removingModelChatter(dictation: "I can do that tomorrow", provider: .egOne)
+    #expect(unchanged.localDecode == decode)
+  }
+
 }

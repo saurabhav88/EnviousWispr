@@ -3,8 +3,8 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprCore
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
-@testable import EnviousWisprLlamaEngine
 
 /// #4319: when these fail, an EG-1 meeting summary is answered by the learned-word checker's
 /// weights, a looping answer cut at the cap is saved as a summary, a slow summary is cut off at
@@ -69,37 +69,24 @@ struct EGOneSummaryCallTests {
       messages == [
         ["role": "system", "content": "Summarize."], ["role": "user", "content": "TRANSCRIPT"],
       ])
-    let lora = try #require(json["lora"] as? [[String: Any]])
-    #expect(lora.count == 1)
-    #expect(lora.first?["id"] as? Int == 0)
-    #expect(lora.first?["scale"] as? Double == 0)
-    #expect(json["id_slot"] as? Int == EGOneSlots.polish)
+    // #4473: exactly the fields the EnviousDecode helper serves. It refuses a field it does not
+    // know, so a loaded checker adapter adds nothing to a summary request.
+    #expect(Set(json.keys) == ["model", "messages", "max_tokens", "temperature", "stream"])
+    #expect(json["stream"] as? Bool == false)
   }
 
-  @Test("without a loaded checker adapter the request names no adapter and no slot")
-  func noAdapter() async throws {
-    let transport = Transport(.success((Self.body(content: "ok"), 200)))
-    _ = try await Self.call(transport, adapter: false)
-    let sent = try #require(transport.requests.first?.httpBody)
-    let json = try #require(try JSONSerialization.jsonObject(with: sent) as? [String: Any])
-    #expect(json["lora"] == nil)
-    #expect(json["id_slot"] == nil)
-  }
-
-  @Test("summary and polish switch the checker off through the same owner")
-  func sharedAdapterOwner() throws {
-    let polish = try EGOneConnector.makeRequestBody(
-      system: "s", user: "u",
-      config: LLMProviderConfig(
-        model: "eg-1", apiKeyKeychainId: nil, outputTokens: .capped(64), temperature: 0,
-        thinking: nil, maxRetries: 0),
-      hasLearnedWordAdapter: true)
-    let summary = EGOneSummaryCall.requestBody(
-      instructions: "s", prompt: "u", hasLearnedWordAdapter: true)
-    #expect(polish["id_slot"] as? Int == summary["id_slot"] as? Int)
-    #expect(
-      (polish["lora"] as? [[String: Any]])?.first?["scale"] as? Double
-        == (summary["lora"] as? [[String: Any]])?.first?["scale"] as? Double)
+  @Test("the request is the same with and without a loaded checker adapter")
+  func adapterChangesNothing() async throws {
+    var bodies: [Data] = []
+    for adapter in [true, false] {
+      let transport = Transport(.success((Self.body(content: "ok"), 200)))
+      _ = try await Self.call(transport, adapter: adapter)
+      bodies.append(try #require(transport.requests.first?.httpBody))
+    }
+    let first = try JSONSerialization.jsonObject(with: bodies[0]) as! [String: Any]
+    let second = try JSONSerialization.jsonObject(with: bodies[1]) as! [String: Any]
+    #expect(NSDictionary(dictionary: first) == NSDictionary(dictionary: second))
+    #expect(first["lora"] == nil && first["id_slot"] == nil)
   }
 
   @Test("a length stop is a cut-off summary, never saved, whatever text came with it")

@@ -1,10 +1,9 @@
 {
   "modelName": "eg-1",
-  "version": "eg1-1.2-c003",
+  "version": "eg1-1.3-intl-1c-20261109",
   "contextTokens": 16384,
   "promptTemplateID": "eg1-v2-named-language",
-  "minAppVersion": "2.3.0",
-  "downloadURL": "https://models.enviouswispr.com/eg1/eg1-1.2-c003/eg1-1.2-c003-00001-of-00008.gguf",
+  "downloadURL": "https://models.enviouswispr.com/eg1/eg1-1.3-intl-1c-20261109/",
   "licenseURL": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt",
-  "displayVersion": "1.2"
+  "displayVersion": "1.3"
 }

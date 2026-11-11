@@ -52,44 +52,24 @@ struct EngineLaunchArgumentTests {
   @Test("the degrading alternative is not used")
   func doesNotUseReasoningBudget() {
     #expect(!LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).contains("--reasoning-budget"))
-    #expect(!LlamaServerLaunchBuilder.engineArguments(for: .egOne).contains("--reasoning-budget"))
   }
 
-  /// EG-1 must NOT inherit them. Its template has no thinking mode, and passing
-  /// template flags for a template that does not use them is at best noise.
-  /// This is also the two-way control: if `engineArguments` ignored its
-  /// argument and returned one list, the row above would still pass.
-  @Test("EG-1 does not get S1-mini's template flags")
-  func egOneKeepsItsOwnFlags() {
-    let egOne = LlamaServerLaunchBuilder.engineArguments(for: .egOne)
-    #expect(!egOne.contains("--jinja"))
-    #expect(!egOne.contains("--chat-template-kwargs"))
-    #expect(
-      egOne != LlamaServerLaunchBuilder.engineArguments(for: .s1Mini),
-      "both engines are being launched identically, so the derivation does nothing")
-  }
-
-  /// Word-copying was measured on EG-1 only (#3370: graded outputs byte-identical on
-  /// 1,459/1,462 sealed and 480/480 multilingual), and it is not byte-identical by
-  /// design, so S1-mini must not inherit it until it is measured the same way.
-  @Test("EG-1 gets word-copying and S1-mini does not")
-  func wordCopyingIsEGOneOnly() {
-    let egOne = LlamaServerLaunchBuilder.engineArguments(for: .egOne)
-    #expect(egOne.suffix(2) == ["--spec-type", "ngram-simple"])
+  /// #4473: EG-1 left this server for its own engine, and its word-copying flag
+  /// (`--spec-type ngram-simple`, #3370) left with it: it was measured on EG-1 only and is not
+  /// byte-identical by design, so S1-mini must not inherit it until it is measured the same way.
+  @Test("S1-mini does not get the word-copying flag that was EG-1's")
+  func wordCopyingStaysOff() {
     #expect(!LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).contains("--spec-type"))
   }
 
-  /// The footprint pair is EG-1's measured memory choice and both engines want
-  /// it, so it must survive on both. Losing it on S1-mini would be invisible:
-  /// the model would still answer, just with a larger cache.
-  @Test("both engines keep the measured memory footprint flags")
-  func bothKeepTheFootprintFlags() {
-    for provider in [LLMProvider.egOne, .s1Mini] {
-      let args = LlamaServerLaunchBuilder.engineArguments(for: provider)
-      #expect(args.contains("-fa"), "\(provider) lost flash attention")
-      #expect(args.contains("--cache-type-k"), "\(provider) lost the q8 key cache")
-      #expect(args.contains("--cache-type-v"), "\(provider) lost the q8 value cache")
-    }
+  /// The footprint pair is a measured memory choice. Losing it would be invisible: the model
+  /// would still answer, just with a larger cache.
+  @Test("S1-mini keeps the measured memory footprint flags")
+  func keepsTheFootprintFlags() {
+    let args = LlamaServerLaunchBuilder.engineArguments(for: .s1Mini)
+    #expect(args.contains("-fa"), "lost flash attention")
+    #expect(args.contains("--cache-type-k"), "lost the q8 key cache")
+    #expect(args.contains("--cache-type-v"), "lost the q8 value cache")
   }
 
   /// #4473: the process manager no longer knows the server's command line; the launch
@@ -125,15 +105,12 @@ struct EngineLaunchArgumentTests {
   /// the app did not ask for, and polish silently degrades or returns nothing.
   @Test(
     "the launch factory builds each model's complete configuration",
-    arguments: [
-      (LLMProvider.egOne, false), (.egOne, true), (.s1Mini, false), (.s1Mini, true),
-    ])
+    // #4473: S1-mini is the model on llama-server. EG-1's factory is `EnviousDecodeEngine`,
+    // with its own suite.
+    arguments: [(LLMProvider.s1Mini, false), (.s1Mini, true)])
   func launchFactoryBuildsTheCompleteConfiguration(provider: LLMProvider, withAdapter: Bool) {
     let footprint = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
-    let flags =
-      provider == .egOne
-      ? footprint + ["--spec-type", "ngram-simple"]
-      : footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+    let flags = footprint + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
     let adapter = withAdapter ? URL(fileURLWithPath: "/tmp/ew-factory/checker.gguf") : nil
     let adapterFlags =
       withAdapter

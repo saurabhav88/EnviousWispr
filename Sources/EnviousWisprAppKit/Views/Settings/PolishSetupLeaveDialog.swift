@@ -81,9 +81,11 @@ struct PolishSetupLeaveRequest: Equatable {
   let goBackProvider: LLMProvider?
   /// The current cloud provider has no saved key and the person typed one without saving.
   let keyNotSaved: Bool
+  /// #4473: the EG-1 size that had `problem`, so the question names it; nil for other providers.
+  var egOneSize: EGOneSize? = nil
 
   var promptSubject: PolishSetupPromptSubject {
-    PolishSetupPromptSubject(problem: problem, provider: provider)
+    PolishSetupPromptSubject(problem: problem, provider: provider, egOneSize: egOneSize)
   }
 }
 
@@ -105,6 +107,75 @@ struct PolishSetupLeaveButton: Equatable {
   let action: PolishSetupLeaveAction
 }
 
+/// How the leave question's buttons sit on its card (#4473, founder 2026-11-11: the question is
+/// the app's own card, the one a dictation without polish raises, not a macOS alert). The safe
+/// answer is the filled button: the cancel-role one ("Finish setup", "Pick another model"), or
+/// the only button of a notice. Every other button is a quieter one under it, in order.
+struct PolishSetupLeaveCardLayout: Equatable {
+  let primary: PolishSetupLeaveButton
+  let secondary: [PolishSetupLeaveButton]
+  /// The button Escape presses, reported as `closed`; nil when the question has no safe answer
+  /// to fall back to (a notice), where Escape only closes it.
+  let escape: PolishSetupLeaveButton?
+
+  init?(_ content: PolishSetupLeaveDialogContent) {
+    guard !content.buttons.isEmpty else { return nil }
+    let safe = content.buttons.first { $0.role == .cancel }
+    let primary = safe ?? content.buttons[0]
+    self.primary = primary
+    self.secondary = content.buttons.filter { $0 != primary }
+    self.escape = safe
+  }
+}
+
+/// The leave question on screen: the card, centred over the dimmed Settings window. The window
+/// under it takes no clicks while it is up. Return presses the safe answer; Escape presses it
+/// too and reports a dismissal, or only closes a notice.
+struct PolishSetupLeaveCard: View {
+  /// How an answer arrived, so the caller reports Escape as a dismissal.
+  enum Press { case button, escape }
+  static let accessibilityID = "polishSetup.leaveCard"
+
+  let content: PolishSetupLeaveDialogContent
+  let onAnswer: (PolishSetupLeaveButton, Press) -> Void
+  /// Escape on a notice: close it, answer nothing.
+  let onClose: () -> Void
+
+  var body: some View {
+    ZStack {
+      Color.black.opacity(0.45)
+        .contentShape(Rectangle())
+        // Swallows clicks meant for the window under the question.
+        .onTapGesture {}
+        .accessibilityHidden(true)
+      if let layout = PolishSetupLeaveCardLayout(content) {
+        PolishSetupCardChrome(
+          title: content.title, line: content.message,
+          primary: .init(
+            id: 0, title: layout.primary.title, shortcut: .defaultAction,
+            perform: { onAnswer(layout.primary, .button) }),
+          secondary: layout.secondary.enumerated().map { index, button in
+            .init(id: index + 1, title: button.title, perform: { onAnswer(button, .button) })
+          }
+        )
+        .background(
+          // Escape, with no visible button of its own.
+          Button("") {
+            if let escape = layout.escape { onAnswer(escape, .escape) } else { onClose() }
+          }
+          .keyboardShortcut(.cancelAction)
+          .opacity(0)
+          .accessibilityHidden(true)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityIdentifier(Self.accessibilityID)
+      }
+    }
+    .transition(.opacity)
+  }
+}
+
 /// The dialog's words and buttons for one request. Pure, so every variant is tested without a
 /// window. Never more than three buttons.
 struct PolishSetupLeaveDialogContent: Equatable {
@@ -117,7 +188,8 @@ struct PolishSetupLeaveDialogContent: Equatable {
     let scope = request.scope
     if !problem.isActionable {
       return PolishSetupLeaveDialogContent(
-        title: informationalTitle(problem, scope), message: informationalMessage(problem, scope),
+        title: informationalTitle(problem, scope, request.egOneSize),
+        message: informationalMessage(problem, scope),
         buttons: [PolishSetupLeaveButton(title: Copy.ok, role: .plain, action: .ok)])
     }
     if case .appleUnavailable(let reason) = problem {
@@ -135,7 +207,8 @@ struct PolishSetupLeaveDialogContent: Equatable {
       PolishSetupLeaveButton(title: Copy.leaveAnyway, role: .plain, action: .leaveAnyway))
     return PolishSetupLeaveDialogContent(
       title: Copy.finishTitle(scope),
-      message: actionableReason(problem, scope, keyNotSaved: request.keyNotSaved) + " "
+      message: actionableReason(
+        problem, scope, keyNotSaved: request.keyNotSaved, egOneSize: request.egOneSize) + " "
         + Copy.untilThen(scope),
       buttons: buttons)
   }
@@ -169,8 +242,12 @@ struct PolishSetupLeaveDialogContent: Equatable {
   }
 
   private static func actionableReason(
-    _ problem: PolishSetupProblem, _ scope: PolishSetupScope, keyNotSaved: Bool
+    _ problem: PolishSetupProblem, _ scope: PolishSetupScope, keyNotSaved: Bool,
+    egOneSize: EGOneSize?
   ) -> String {
+    func name(_ provider: LLMProvider) -> String {
+      PolishSetupSurfaceCopy.engineName(provider, egOneSize: egOneSize)
+    }
     switch problem {
     case .cloudKeyMissing(let provider):
       return keyNotSaved
@@ -180,15 +257,15 @@ struct PolishSetupLeaveDialogContent: Equatable {
     case .ollamaNotRunning: return Copy.startOllama(scope)
     case .ollamaNoModel: return Copy.chooseOllamaModel(scope)
     case .ollamaModelNotInstalled: return Copy.ollamaModelMissing
-    case .localEngineNotDownloaded(let provider): return Copy.notDownloaded(provider.displayName)
+    case .localEngineNotDownloaded(let provider): return Copy.notDownloaded(name(provider))
     case .localEngineDownloadPaused(let provider):
-      return Copy.downloadPaused(provider.displayName)
-    case .localEngineUpdatePaused(let provider): return Copy.updatePaused(provider.displayName)
-    case .localEngineFailed(let provider): return Copy.downloadFailed(provider.displayName)
+      return Copy.downloadPaused(name(provider))
+    case .localEngineUpdatePaused(let provider): return Copy.updatePaused(name(provider))
+    case .localEngineFailed(let provider): return Copy.downloadFailed(name(provider))
     // Informational and Apple problems never reach here (handled above); spelled out so a new
     // problem must be decided.
     case .localEngineDownloading(let provider), .localEngineVerifying(let provider):
-      return Copy.notDownloaded(provider.displayName)
+      return Copy.notDownloaded(name(provider))
     case .appleUnavailable, .appleModelNotReady:
       return Copy.appleUnsupportedOSMessage(scope)
     // #3988: the monitor never raises a leave dialog for it; its words have one owner.
@@ -202,12 +279,15 @@ struct PolishSetupLeaveDialogContent: Equatable {
   }
 
   private static func informationalTitle(
-    _ problem: PolishSetupProblem, _ scope: PolishSetupScope
+    _ problem: PolishSetupProblem, _ scope: PolishSetupScope, _ egOneSize: EGOneSize?
   ) -> String {
+    func name(_ provider: LLMProvider) -> String {
+      PolishSetupSurfaceCopy.engineName(provider, egOneSize: egOneSize)
+    }
     switch problem {
-    case .localEngineVerifying(let provider): return Copy.verifyingTitle(provider.displayName)
+    case .localEngineVerifying(let provider): return Copy.verifyingTitle(name(provider))
     case .appleModelNotReady: return Copy.appleNotReadyTitle
-    case .localEngineDownloading(let provider): return Copy.downloadingTitle(provider.displayName)
+    case .localEngineDownloading(let provider): return Copy.downloadingTitle(name(provider))
     // #3988: never raised on leaving (the monitor refuses it); one copy owner if it ever is.
     case .localEngineStoppedOutside:
       return PolishSetupSurfaceCopy.outsideStopTitle
@@ -517,7 +597,8 @@ enum PolishSetupLeaveGuard {
     if case .cloudKeyMissing = problem { keyIsMissing = true } else { keyIsMissing = false }
     return PolishSetupLeaveRequest(
       intent: intent, scope: scope, episode: episode, problem: problem, provider: subject.provider,
-      goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved)
+      goBackProvider: goBack, keyNotSaved: keyIsMissing && keyNotSaved,
+      egOneSize: subject.egOneSize)
   }
 
   /// "Go back to" for `scope`: the previous engine through that scope's normal setter. The

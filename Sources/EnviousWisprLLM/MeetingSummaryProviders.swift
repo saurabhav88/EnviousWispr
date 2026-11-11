@@ -32,13 +32,19 @@ public enum MeetingSummaryProviders {
     /// #4319: runs after each local lane admission, before the call. EG-1 takes the shared
     /// server here on the first call; nil for every provider that borrows nothing.
     public let borrow: (@Sendable () async throws -> BorrowOutcome)?
+    /// #4473: the revision of the weights this attempt was prepared for (for EG-1 it names the
+    /// size too), captured with the attempt. The attempt's saved configuration identity uses
+    /// this, not a later reading of Settings. nil for a provider with no local artifact.
+    public let artifactRevision: String?
 
     public init(
       execution: MeetingSummary.Execution, window: MeetingSummary.Window,
       complete: @escaping MeetingSummary.Complete,
       finish: @escaping @Sendable () async -> Void = {},
-      borrow: (@Sendable () async throws -> BorrowOutcome)? = nil
+      borrow: (@Sendable () async throws -> BorrowOutcome)? = nil,
+      artifactRevision: String? = nil
     ) {
+      self.artifactRevision = artifactRevision
       self.execution = execution
       self.window = window
       self.complete = complete

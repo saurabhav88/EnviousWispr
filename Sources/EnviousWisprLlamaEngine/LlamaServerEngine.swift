@@ -6,7 +6,7 @@ import EnviousWisprLocalPolish
 /// It adds nothing of its own: each requirement is the value its existing owner already
 /// supplies. Launch arguments stay with `LlamaServerLaunchBuilder`, the probe with
 /// `LlamaServerHealthProbe`, the DEBUG slot read with `LlamaServerSlotReader`. S1-mini runs on
-/// this engine, and EG-1 does too until it has its own.
+/// this engine. EG-1 has its own (`EnviousDecodeEngine`).
 public struct LlamaServerEngine: LocalPolishEngine {
   public init() {}
 

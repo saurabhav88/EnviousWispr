@@ -422,8 +422,11 @@ final class FileImportCoordinator {
   /// and with it the pin, so a provider change could tear down a server the work
   /// was still inside. The pin now lives and dies with the physical hold. Found
   /// by Codex.
-  var pinnedLocalPolishProvider: LLMProvider? {
-    isEngineHeld ? heldLocalPolishProvider : nil
+  var pinnedLocalPolishProvider: LLMProvider? { pinnedLocalPolishModel?.provider }
+
+  /// #4473: the exact local model the run froze, while its engine is held.
+  var pinnedLocalPolishModel: LocalPolishModelID? {
+    isEngineHeld ? heldLocalPolishModel : nil
   }
 
   /// The Ollama model a RUNNING import has frozen, or nil.
@@ -440,7 +443,7 @@ final class FileImportCoordinator {
     isEngineHeld ? heldOllamaModel : nil
   }
 
-  private var heldLocalPolishProvider: LLMProvider?
+  private var heldLocalPolishModel: LocalPolishModelID?
   private var heldOllamaModel: String?
 
   /// The document as one piece of text, for copy and save.
@@ -526,7 +529,7 @@ final class FileImportCoordinator {
     @MainActor (
       TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
       TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-      LLMProvider?, String?
+      LLMProvider?, String?, String?
     ) -> Void
   /// Reports an ASR engine failure to Sentry (#3069), tagged `stage: "file_import"` so it is
   /// filterable separately from dictation's own ASR failures while sharing the SAME
@@ -617,7 +620,7 @@ final class FileImportCoordinator {
     let polishIsCloud: Bool
     /// The BUNDLED local polisher this run froze, if any, so the settings sync
     /// can defer tearing its server down until the run releases its claim.
-    let localPolishProvider: LLMProvider?
+    let localPolishModel: LocalPolishModelID?
     /// The polisher this run was configured with, for the line crediting the
     /// document. Reading LIVE settings there credited whatever was selected
     /// NOW: finishing with EG-1, pressing Change, picking Claude and returning
@@ -899,8 +902,8 @@ final class FileImportCoordinator {
       @escaping @MainActor (
         TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
         TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-        LLMProvider?, String?
-      ) -> Void = { _, _, _, _, _, _, _, _ in },
+        LLMProvider?, String?, String?
+      ) -> Void = { _, _, _, _, _, _, _, _, _ in },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
@@ -2126,7 +2129,7 @@ final class FileImportCoordinator {
       runInferenceReceipt = InferenceReceipt<Bool>()
       transcribingFraction = nil
       // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
-      heldLocalPolishProvider = configuration.localPolishProvider
+      heldLocalPolishModel = configuration.localPolishModel
       heldOllamaModel = configuration.ollamaModel
       phase = "Writing down what was said"
       localPolisherIsReady = await prepareLocalPolish(configuration)
@@ -2231,7 +2234,7 @@ final class FileImportCoordinator {
     let selected = beginRun()
     let configuration = RunConfiguration(
       polishIsCloud: selected.polishIsCloud,
-      localPolishProvider: selected.localPolishProvider,
+      localPolishModel: selected.localPolishModel,
       polishProvider: selected.polishProvider,
       ollamaModel: selected.ollamaModel,
       polishModel: selected.polishModel,
@@ -2240,7 +2243,7 @@ final class FileImportCoordinator {
       asrModel: transcriptionEngine != nil ? runConfiguration?.asrModel : selected.asrModel)
     runConfiguration = configuration
     // Pinned from the SAME freeze, so the pin cannot outlive or predate it.
-    heldLocalPolishProvider = configuration.localPolishProvider
+    heldLocalPolishModel = configuration.localPolishModel
     heldOllamaModel = configuration.ollamaModel
 
     advanceGeneration()
@@ -2318,7 +2321,9 @@ final class FileImportCoordinator {
     }
     emitRunTelemetry(
       outcome, configuration.backendType, model, file.seconds, asrOutcome, polishOutcome,
-      provider, provider == nil ? nil : configuration.polishModel)
+      provider, provider == nil ? nil : configuration.polishModel,
+      // #4473: the EG-1 size the run FROZE, never the size preferred when it ends.
+      provider == .egOne ? configuration.localPolishModel?.size?.rawValue : nil)
   }
 
   /// `.skipped` when nothing was ever asked (no provider, or every part was a deliberate
@@ -2943,7 +2948,7 @@ final class FileImportCoordinator {
   /// the same paths. Found by Codex.
   private func finishEngineHold() {
     isEngineHeld = false
-    heldLocalPolishProvider = nil
+    heldLocalPolishModel = nil
     heldOllamaModel = nil
     onEngineReleased()
   }
