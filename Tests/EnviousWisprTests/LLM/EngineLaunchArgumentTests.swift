@@ -103,7 +103,7 @@ struct EngineLaunchArgumentTests {
       launch
         == LocalPolishLaunchCommand(
           arguments: base + ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"],
-          environment: [:], stdinPreamble: nil, writesKeyFile: true))
+          environment: ["EW_STOP_ON_STDIN_EOF": "1"], stdinPreamble: nil, writesKeyFile: true))
     #expect(launch.arguments.contains { $0.contains("bearer-1") } == false)
     for removed in ["--port", "--api-key", "--token"] {
       #expect(launch.arguments.contains(removed) == false, "\(removed)")

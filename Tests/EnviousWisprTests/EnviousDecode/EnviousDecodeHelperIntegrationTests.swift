@@ -82,20 +82,25 @@ struct EnviousDecodeHelperIntegrationTests {
 
     let hasWordCheck: Bool
 
-    convenience init(size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil)
-      throws
-    {
+    convenience init(
+      size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil,
+      inputEndsAtStart: Bool = false
+    ) throws {
       try self.init(
         model: try #require(Fixtures.targetFolders[size] ?? nil),
         draft: try #require(Fixtures.helperFolders[size] ?? nil),
-        contextTokens: contextTokens, wordCheckAdapter: wordCheckAdapter)
+        contextTokens: contextTokens, wordCheckAdapter: wordCheckAdapter,
+        inputEndsAtStart: inputEndsAtStart)
     }
 
     /// A helper started from the folders given (a polish model, its draft model and, when
-    /// given, a word-check adapter).
-    init(model: String, draft: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil)
-      throws
-    {
+    /// given, a word-check adapter). With `inputEndsAtStart` the token and the end of input are
+    /// both in the pipe before the process starts, so the helper finds its input ended before
+    /// it can load any model (#4493).
+    init(
+      model: String, draft: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil,
+      inputEndsAtStart: Bool = false
+    ) throws {
       self.contextTokens = contextTokens
       hasWordCheck = wordCheckAdapter != nil
       socketPath = try Self.socketFolder() + "/s.sock"
@@ -119,9 +124,29 @@ struct EnviousDecodeHelperIntegrationTests {
         self.lock.withLock { self.log += String(decoding: data, as: UTF8.self) }
       }
       process.standardInput = input
+      if inputEndsAtStart {
+        try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
+        try input.fileHandleForWriting.close()
+      }
       try process.run()
       try input.fileHandleForReading.close()
-      try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
+      if !inputEndsAtStart {
+        try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
+      }
+    }
+
+    /// Ends the helper's input, as the app's death would.
+    func closeInput() throws { try input.fileHandleForWriting.close() }
+
+    /// Waits until the process has exited, at most `seconds`; true when it did.
+    func exited(within seconds: Double) -> Bool {
+      let done = DispatchSemaphore(value: 0)
+      DispatchQueue.global().async {
+        self.process.waitUntilExit()
+        done.signal()
+      }
+      // deadline-fallback: the signal is the child's own exit; the bound only fails the check
+      return done.wait(timeout: .now() + seconds) == .success
     }
 
     var lines: [String] { lock.withLock { log.split(separator: "\n").map(String.init) } }
@@ -358,6 +383,53 @@ struct EnviousDecodeHelperIntegrationTests {
   static func errorType(_ data: Data) -> String? {
     ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
       .flatMap { $0["error"] as? [String: Any] }?["type"] as? String
+  }
+
+  // MARK: - 0. #4493 the private socket at the real boundary (R1)
+
+  @Test(
+    "R1: the real helper serves only on its private socket, with the bearer, and keeps the bearer out of its process list",
+    .tags(.realBoundary), .realBoundaryRun, .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
+  func theRealHelperIsPrivate() async throws {
+    let helper = try Helper(size: "mini")
+    defer { helper.stop() }
+    try await helper.untilReady()
+    let pid = helper.process.processIdentifier
+    #expect(try HelperProcessProbe.executable(pid) == helper.process.executableURL?.path)
+    #expect(try await helper.request("/health", bearer: helper.token).status == 200)
+    #expect(try await helper.request("/health", bearer: "wrong").status == 401)
+    let english = try await Reference.load(size: "mini").named("dist-14DE212C")
+    let answer = try Self.fields(
+      try await LocalPolishTransport.send(endpoint: helper.endpoint, body: try Self.polishBody(english)))
+    #expect(!answer.content.isEmpty)
+    #expect(try HelperProcessProbe.tcpSockets(pid, socketPath: helper.socketPath).isEmpty)
+    let seen = try HelperProcessProbe.commandOrEnvironmentContains(pid, helper.token)
+    #expect(!seen.command, "the bearer is in the helper's command line")
+    #expect(!seen.environment, "the bearer is in the helper's environment")
+  }
+
+  @Test(
+    "R1: input that ends before the models load stops the helper without loading them",
+    .tags(.realBoundary), .realBoundaryRun, .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
+  func inputEndedBeforeLoadStopsTheHelper() throws {
+    let helper = try Helper(size: "mini", inputEndsAtStart: true)
+    defer { helper.stop() }
+    try #require(helper.exited(within: 30), "the helper kept running with its input ended")
+    #expect(helper.process.terminationReason == .exit && helper.process.terminationStatus == 0)
+    #expect(!helper.lines.contains { $0.contains("ready socket ") }, "\(helper.lines)")
+  }
+
+  @Test(
+    "R1: a ready helper whose input ends stops itself cleanly",
+    .tags(.realBoundary), .realBoundaryRun, .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
+  func inputEndedAfterReadyStopsTheHelper() async throws {
+    let helper = try Helper(size: "mini")
+    defer { helper.stop() }
+    try await helper.untilReady()
+    try helper.closeInput()
+    try #require(helper.exited(within: 30), "the helper kept running with its input ended")
+    #expect(helper.process.terminationReason == .exit && helper.process.terminationStatus == 0)
+    #expect(helper.lines.contains { $0.contains("stopping") })
   }
 
   // MARK: - 1. Start, token, and the app's requests
@@ -707,6 +779,8 @@ struct EnviousDecodeHelperIntegrationTests {
     let pendingResult = await pending.result
     #expect(throws: (any Error).self) { try pendingResult.get() }
     #expect(ended("200") == 1, "the request in progress at SIGTERM was answered")
-    #expect(helper.lines.contains { $0.contains("stopping") })
+    #expect(
+      helper.lines.contains { $0.contains("stopping") },
+      "status \(helper.process.terminationStatus) reason \(helper.process.terminationReason.rawValue): \(helper.lines.suffix(6))")
   }
 }

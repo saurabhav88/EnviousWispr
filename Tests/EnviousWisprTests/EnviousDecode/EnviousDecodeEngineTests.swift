@@ -4,6 +4,7 @@ import EnviousWisprLlamaEngine
 import EnviousWisprModelDelivery
 import Foundation
 import Testing
+import os
 
 @testable import EnviousDecodeKit
 @testable import EnviousWisprEG1Engine
@@ -296,6 +297,57 @@ struct EnviousDecodeEngineTests {
     try await Self.signal("the stopped helper to leave its socket", within: 6) {
       !(await Self.answersHealth(endpoint))
     }
+  }
+
+  /// #4493 R1: with the real helper launched by the process manager, a child this process
+  /// started with a plain `posix_spawn` (no close-on-exec handling of its own) does not keep the
+  /// helper alive once the launch's pipe writer closes, as an app death closes it.
+  @Test(
+    "R1: an unrelated child of the app does not keep the real helper alive after its pipe writer closes",
+    .tags(.realBoundary), .realBoundaryRun, .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
+  func anUnrelatedChildDoesNotKeepTheHelperAlive() async throws {
+    let folders = Integration.Fixtures.self
+    let engine = EnviousDecodeEngine(
+      draftModelURL: URL(
+        fileURLWithPath: try #require(folders.helperFolders["mini"] ?? nil), isDirectory: true),
+      draftArtifactIdentity: Self.identity("eg1-mini-draft", "candidate"),
+      cacheLimitBytes: Self.cacheLimit)
+    var configuration = engine.makeLaunchConfiguration(
+      .egOne(.mini), Self.identity("eg1-mini", "candidate"),
+      try #require(Integration.helperCandidates.first),
+      URL(fileURLWithPath: try #require(folders.targetFolders["mini"] ?? nil), isDirectory: true),
+      8192, nil)
+    configuration.readinessBudgetSeconds = 180
+    configuration = configuration.inLaunchHome(TestLaunchHome.make().home)
+
+    let manager = LocalPolishProcessManager()
+    defer { manager.terminateImmediately() }
+    let records = OSAllocatedUnfairLock(initialState: [ChildProcessFailure]())
+    let ended = BoundedWait.Signal()
+    await manager.setProcessFailureObserver { record in
+      records.withLock { $0.append(record) }
+      ended.fire()
+    }
+    await manager.start(configuration: configuration)
+    let state = await manager.currentLifecycle().state
+    try #require(await manager.activeEndpoint() != nil, "the helper is \(state)")
+
+    // The unrelated child, started after the pipe exists.
+    var sleeper: pid_t = 0
+    let arguments: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/sleep"), strdup("60"), nil]
+    defer { arguments.forEach { free($0) } }
+    try #require(posix_spawn(&sleeper, "/bin/sleep", nil, nil, arguments, environ) == 0)
+    defer {
+      kill(sleeper, SIGKILL)
+      var status: Int32 = 0
+      waitpid(sleeper, &status, 0)
+    }
+
+    #expect(await manager.closeLaunchWriterForTesting())
+    try await BoundedWait.until(ended, deadline: .seconds(30))
+    let record = try #require(records.withLock { $0.first })
+    #expect(record.termination == .exit && record.status == 0, "\(record)")
+    #expect(kill(sleeper, 0) == 0, "the unrelated child is still running")
   }
 
   // MARK: - 3. The process rules and the edges of the adapter

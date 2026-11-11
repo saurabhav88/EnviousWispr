@@ -223,6 +223,19 @@ public final class LocalPolishLaunchConnection: @unchecked Sendable {
     if first { observer?(.readEndClosed) }
   }
 
+  /// Closes only the app's writing end of the "app is alive" pipe, once: the helper then sees
+  /// end-of-file as it would if the app died. Nothing else is released. Real-boundary tests
+  /// use it; the app releases the whole launch instead.
+  func closeWriteEnd() {
+    let first = guarded.withLockUnchecked { state -> Bool in
+      guard !state.writeEndClosed else { return false }
+      state.writeEndClosed = true
+      try? standardInput.fileHandleForWriting.close()
+      return true
+    }
+    if first { observer?(.writeEndClosed) }
+  }
+
   // MARK: - The watch on the launch folder
 
   /// True while the helper's socket file exists.

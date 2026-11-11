@@ -699,6 +699,18 @@ public actor LocalPolishProcessManager {
     releaseOwnLaunch(generation)
   }
 
+  /// Real-boundary tests: closes only the current launch's pipe writer, as an app death would,
+  /// and leaves the child, its watch and its folder to the manager. False without a launch.
+  func closeLaunchWriterForTesting() -> Bool {
+    guard let launch else { return false }
+    launch.connection.closeWriteEnd()
+    return true
+  }
+
+  /// Real-boundary tests: the current launch's child, read only, so a test can observe how a
+  /// deliberate stop ends it (that stop's own reporting stays suppressed).
+  func launchProcessForTesting() -> Process? { launch?.process }
+
   /// Releases the stored launch only when it is this generation's.
   private func releaseOwnLaunch(_ generation: Int) {
     guard launch?.generation == generation else { return }

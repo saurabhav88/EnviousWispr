@@ -50,6 +50,18 @@ final class HelperStopRequest: @unchecked Sendable {
   private var server: HelperHTTPServer?
   private var stopping = false
 
+  /// Turns SIGTERM into this request, on a background queue, from now on. Built here, outside
+  /// the main file's top-level code: a closure written there belongs to the main actor, and
+  /// running it on a background queue traps (measured: SIGTRAP on SIGTERM, #4493 C5b). The
+  /// returned source must be kept.
+  func stopOnSIGTERM() -> any DispatchSourceSignal {
+    signal(SIGTERM, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+    source.setEventHandler { [self] in request() }
+    source.resume()
+    return source
+  }
+
   /// Called once the server exists. A stop requested before it was set has already exited.
   func attach(_ server: HelperHTTPServer) {
     lock.withLock { self.server = server }

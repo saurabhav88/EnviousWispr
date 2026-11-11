@@ -33,11 +33,8 @@ guard let token = HelperStandardInput.readSecret() else {
 
 // From here on, the end of standard input and SIGTERM are the same request.
 let stopRequest = HelperStopRequest()
-signal(SIGTERM, SIG_IGN)
-let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
-termination.setEventHandler { stopRequest.request() }
-termination.resume()
-HelperStandardInput.watchForEnd { stopRequest.request() }
+let termination = stopRequest.stopOnSIGTERM()
+HelperStandardInput.watchForEnd { [stopRequest] in stopRequest.request() }
 
 // Set before any model is loaded: MLX keeps freed buffers up to this size.
 MLX.Memory.cacheLimit = arguments.cacheLimitBytes

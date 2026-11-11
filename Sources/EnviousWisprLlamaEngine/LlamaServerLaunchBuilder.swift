@@ -122,6 +122,9 @@ package struct LlamaServerLaunchBuilder: Sendable {
   /// context capacity and the launch's key file, then the engine's flags and the adapter's
   /// flags in that order. `llama-server` listens on a Unix socket when its host ends in
   /// `.sock`, and reads the bearer from the key file, so the secret is never in its arguments.
+  /// `EW_STOP_ON_STDIN_EOF` turns on the carried `llama-server` change (#4493 C5a,
+  /// `llama-server-PROVENANCE.md`): the server stops itself when its standard input (the app's
+  /// pipe) ends, so it does not outlive an app that died.
   /// The socket path and the key file belong to the launch connection the process manager made
   /// for this spawn; they are not part of the spec. Renders the spec it is GIVEN, so a
   /// bare-base fallback copy (adapter arguments cleared) renders without the adapter.
@@ -135,6 +138,7 @@ package struct LlamaServerLaunchBuilder: Sendable {
         "-c", String(spec.contextTokens),
         "--api-key-file", inputs.keyFileURL.path,
       ] + spec.extraArguments + spec.learnedWordAdapterArguments,
+      environment: ["EW_STOP_ON_STDIN_EOF": "1"],
       writesKeyFile: true)
   }
 }
