@@ -79,14 +79,18 @@ public struct EnviousDecodeWordChecker: LearnedWordChecking {
     guard !questions.isEmpty else { return [] }
     try Task.checkCancellation()
     guard let hold = await hold() else { throw CheckerError.adapterUnavailable }
+    let decisions: [LearnedWordCheckDecision]
     do {
-      let decisions = try await decide(questions, endpoint: hold.endpoint)
-      await hold.release()
-      return decisions
+      decisions = try await decide(questions, endpoint: hold.endpoint)
     } catch {
       await hold.release()
       throw error
     }
+    // Giving the helper back can wait for a launch that was held off by this check. A check
+    // cancelled during that wait gives no decisions either.
+    await hold.release()
+    try Task.checkCancellation()
+    return decisions
   }
 
   private func decide(_ questions: [LearnedWordCheckQuestion], endpoint: LocalPolishEndpoint)
@@ -146,8 +150,15 @@ public struct EnviousDecodeWordChecker: LearnedWordChecking {
     guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
       let scores = object["scores"] as? [[String: Any]], scores.count == questions.count
     else { throw CheckerError.invalidResponse }
+    // A JSON `true` or `false` reads as the number 1 or 0 through a plain cast; it is not a
+    // number here.
+    func isNumber(_ value: Any?) -> Bool {
+      guard let number = value as? NSNumber else { return false }
+      return CFGetTypeID(number) != CFBooleanGetTypeID()
+    }
     return try zip(questions, scores).map { question, entry in
-      guard let id = entry["id"] as? Int, id == question.id,
+      guard isNumber(entry["id"]), let id = entry["id"] as? Int, id == question.id,
+        isNumber(entry["pA"]), isNumber(entry["pB"]),
         let a = entry["pA"] as? Double, let b = entry["pB"] as? Double,
         a.isFinite, b.isFinite, a >= 0, b >= 0, a <= 1, b <= 1, a + b > 0
       else { throw CheckerError.invalidResponse }

@@ -308,6 +308,18 @@ struct EnviousDecodeWordCheckerTests {
           )
         }
       ),
+      (
+        "true and false for numbers",
+        {
+          (
+            Data(
+              ("{\"scores\":["
+                + (try Self.ids(in: $0).map { "{\"id\":\($0),\"pA\":false,\"pB\":true}" })
+                .joined(separator: ",") + "]}").utf8),
+            Self.response()
+          )
+        }
+      ),
     ]
     for (name, answer) in broken {
       let result = await failure { request, number in
@@ -343,5 +355,24 @@ struct EnviousDecodeWordCheckerTests {
     }
     await #expect(throws: CancellationError.self) { try await task.value }
     #expect(record.acquired == 0 && record.requests.isEmpty)
+    // A check cancelled while it gives the helper back (the release can wait for a launch that
+    // the check held off) gives no decisions.
+    let lateRecord = Record()
+    let late = Checker(
+      threshold: 0.5,
+      hold: {
+        lateRecord.acquire()
+        return Checker.Hold(endpoint: Self.endpoint) {
+          lateRecord.release()
+          withUnsafeCurrentTask { $0?.cancel() }
+        }
+      }
+    ) { request in
+      lateRecord.add(request)
+      return (try Self.scores(try good(request)), Self.response())
+    }
+    let lateTask = Task { try await late.decide(nine) }
+    await #expect(throws: CancellationError.self) { try await lateTask.value }
+    #expect(lateRecord.requests.count == 2 && lateRecord.released == 1)
   }
 }
