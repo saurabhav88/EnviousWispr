@@ -17,7 +17,8 @@ run it with this process's heartbeat on its stdin. Raw output streams through;
 1500 s of silence on the stream closes the session (exit 5, hung); a lost session
 or any setup failure exits 4 (never a test result). Results come back to
 build/lanes/remote-<run id>/ in this checkout. Only this run's bundle and ref are
-removed afterwards. Receipt adoption is chunk 4b.
+removed afterwards. A passing full run's receipt is adopted through
+scripts/lib/validation-receipt.py adopt (same tree, same Xcode build).
 """
 
 import importlib.util
@@ -91,6 +92,27 @@ def fail(message):
     return SETUP_EXIT
 
 
+def adopt_receipt(start, remote_receipt, host_name):
+    """A passing full run: the receipt owner publishes the backup Mac's receipt here."""
+    if not remote_receipt.exists():
+        print("==> validation receipt: NOT issued (the backup Mac issued none); "
+              "a push of build inputs will be refused", flush=True)
+        return 0
+    result = subprocess.run([sys.executable, str(ROOT / "scripts/lib/validation-receipt.py"), "adopt",
+                             "--root", str(ROOT), "--start", start, "--from", str(remote_receipt),
+                             "--tested-on", host_name], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"==> validation receipt: issued from {host_name} ({result.stdout.strip()})", flush=True)
+        return 0
+    reason = (result.stderr or result.stdout).strip()
+    if result.returncode == 3:
+        print(f"==> validation receipt: NOT issued ({reason}); a push of build inputs will be refused",
+              flush=True)
+        return 0
+    print(f"ERROR: the backup Mac's receipt was not accepted: {reason}", flush=True)
+    return 1
+
+
 def run(host_name, start, args):
     hosts, _sha = hosts_mod.load()
     host = hosts_mod.resolve(hosts, host_name)
@@ -161,6 +183,8 @@ def run(host_name, start, args):
             print(f"==> remote test exit was {code}, but its results could not be fetched", flush=True)
             return fail(f"results not fetched from {run_dir}/result")
         print(f"==> remote results: {local_results}", flush=True)
+        if full and code == 0:
+            return adopt_receipt(start, local_results / "ew-validation-receipt.json", host["name"])
         return code
     except remote_ship.ShipError as error:
         return fail(str(error))

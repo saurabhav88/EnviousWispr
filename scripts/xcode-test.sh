@@ -397,7 +397,8 @@ ew_watch() { local phase="$1"; shift; python3 "$WATCHDOG" run --phase "$phase" -
 # releases the checkout lock and reports a hang) and holds that Mac's slot
 # descriptor until remote-lane.py has stopped the remote job and fetched results.
 # A full eligible run ships the captured index tree; anything else ships a
-# development snapshot, which is never push proof (receipt adoption: chunk 4b).
+# development snapshot, which is never push proof. A passing full run's receipt is
+# adopted by remote-lane.py through validation-receipt.py adopt.
 if [ "$SLOT_HOST" != "local" ]; then
   REMOTE_START=""
   [ -n "$START_IDENTITY" ] && [ -z "$NO_RECEIPT_REASON" ] && REMOTE_START="$START_IDENTITY"
