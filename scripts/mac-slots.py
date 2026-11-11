@@ -9,8 +9,10 @@ the slot file), never from a holder card: a held slot with no live card is
 "held_unknown" (an older runner). Missing slot files read as free; nothing is
 created, written or cached here. Local app testing (UAT) is read from the
 existing dev-app lock card without involving its owner; remote app testing is
-#4510 and shows as deferred. Remote job state needs the remote supervisor (a later
-chunk) and shows as unknown until then. Exit 2 when the host list is invalid.
+#4510 and shows as deferred. Each backup Mac's job state comes from its remote
+supervisor over SSH (`remote-job.py status`), even when this Mac holds no slot
+for it; a Mac that does not answer shows as unreachable. Exit 2 when the host
+list is invalid.
 """
 
 import fcntl
@@ -99,7 +101,7 @@ def orphan_hosts(queue, configured):
     return out
 
 
-def status(hosts_module, queue, lock):
+def status(hosts_module, queue, lock, remote_job_fn=None):
     hosts, sha = hosts_module.load()
     now = time.time()
     out = {"schema": 1, "config_sha256": sha, "hosts": []}
@@ -121,10 +123,25 @@ def status(hosts_module, queue, lock):
             entry["slots"]["uat"] = uat_local(lock)
         else:
             entry["slots"]["uat"] = {"state": "deferred (#4510)", "holder": None}
-            entry["remote_job"] = "unknown"
+            entry["remote_job"] = remote_job_fn(hosts_module, host) if remote_job_fn else "not queried"
         out["hosts"].append(entry)
     out["hosts"].extend(orphan_hosts(queue, {hosts_module.slot_name(h) for h in hosts}))
     return out
+
+
+def remote_job(hosts_module, host):
+    """The backup Mac's supervisor state: free, or held with run id and phase."""
+    import shlex
+    import subprocess
+    checkout = f"{host['root']}/EnviousWispr-ci"
+    command = (f"python3 {shlex.quote(checkout + '/scripts/lib/remote-job.py')} status "
+               f"--checkout {shlex.quote(checkout)}")
+    try:
+        result = subprocess.run(hosts_module.ssh_command(host, command), capture_output=True,
+                                text=True, timeout=15)
+        return json.loads(result.stdout) if result.returncode == 0 else {"state": "unreachable"}
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        return {"state": "unreachable"}
 
 
 def text(report):
@@ -140,6 +157,10 @@ def text(report):
                 parts.append(f"{kind.upper()}: {holder.get('label')} {holder.get('elapsed_s', 0) // 60}m")
             else:
                 parts.append(f"{kind.upper()}: {slot['state']}")
+        job = host.get("remote_job")
+        if isinstance(job, dict):
+            parts.append("JOB: " + (f"{job.get('phase') or 'running'} ({job.get('run_id')})"
+                                    if job.get("state") == "held" else job.get("state", "unknown")))
         lines.append(f"{host['display']}: " + " · ".join(parts))
     return "\n".join(lines)
 
@@ -222,7 +243,7 @@ def main(argv):
     queue = _module("local_ci_queue", HERE / "local-ci-queue.py")
     lock = _module("dev_app_lock", HERE / "lib/dev-app-lock.py")
     try:
-        report = status(hosts_module, queue, lock)
+        report = status(hosts_module, queue, lock, remote_job_fn=remote_job)
     except hosts_module.ConfigError as error:
         print(f"ERROR: Mac host config: {error}", file=sys.stderr)
         return 2

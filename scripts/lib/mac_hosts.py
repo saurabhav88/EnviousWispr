@@ -26,6 +26,7 @@ Usage:
   mac_hosts.py list            print the effective hosts as JSON
   mac_hosts.py check-config    exit 0 when the file is absent or valid, else 2
   mac_hosts.py sha             print the config's SHA-256 ("none" when absent); exit 2 if invalid
+  mac_hosts.py eligible-ci [--real]   remote CI hosts usable now, in order (probe cached 60 s)
   mac_hosts.py --self-test
 """
 
@@ -143,6 +144,116 @@ def slot_name(host):
     return "local" if host["ssh"] is None else host["name"]
 
 
+# --- Remote facts (#4507 §3.1). Every SSH call: batch mode, strict host keys. ---
+SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=5"]
+PROBE_TTL = 60
+
+
+def ssh_command(host, remote_command):
+    return ["ssh", *SSH_OPTIONS, host["ssh"], remote_command]
+
+
+def mount_check_script(host):
+    """Shell that exits 0 only when the work root lies on the required mount.
+
+    The mount must be a mount point (listed by /sbin/mount), on a device other than
+    the system volume, and the root must resolve beneath it. Runs before any remote
+    write, and again on the remote under the job lock. Exit 41: not mounted;
+    42: same device as /; 43: root not beneath the mount."""
+    import shlex
+    root, mount = host["root"], host.get("requires_mount")
+    if mount is None:
+        return f"case {shlex.quote(root)} in /*) exit 0;; *) exit 43;; esac"
+    m, r = shlex.quote(mount), shlex.quote(root)
+    return (f"/sbin/mount | /usr/bin/grep -qF \" on \"{m}\" (\" || exit 41; "
+            f"[ \"$(/usr/bin/stat -f %d {m})\" != \"$(/usr/bin/stat -f %d /)\" ] || exit 42; "
+            f"case {r}/ in {m}/*) ;; *) exit 43;; esac; "
+            f"[ ! -e {r} ] || [ \"$(/usr/bin/stat -f %d {r})\" = \"$(/usr/bin/stat -f %d {m})\" ] || exit 43")
+
+
+def local_xcode_build():
+    import subprocess
+    out = subprocess.run(["xcodebuild", "-version"], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        if line.startswith("Build version "):
+            return line.split(" ", 2)[2].strip()
+    return None
+
+
+def probe(host, cache_dir=None, now=None):
+    """Reachability, mount, Xcode build and free space for one remote host.
+
+    Cached for PROBE_TTL seconds in cache_dir. A cached success only orders hosts;
+    it never authorizes a remote write (the dispatcher and the remote supervisor
+    re-check before writing)."""
+    import shlex
+    import subprocess
+    import time as _time
+    now = _time.time() if now is None else now
+    cache = None if cache_dir is None else Path(cache_dir) / "probe.json"
+    if cache is not None:
+        try:
+            cached = json.loads(cache.read_text())
+            if now - cached.get("at", 0) < PROBE_TTL:
+                return cached["facts"]
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    script = (f"( {mount_check_script(host)} ); m=$?; "
+              "b=$(/usr/bin/xcodebuild -version 2>/dev/null | /usr/bin/sed -n 's/^Build version //p'); "
+              f"f=$(/bin/df -g {shlex.quote(host.get('requires_mount') or '/')} 2>/dev/null | /usr/bin/awk 'NR==2{{print $4}}'); "
+              "printf 'mount=%s\\nxcode=%s\\nfree_gb=%s\\n' \"$m\" \"$b\" \"$f\"")
+    try:
+        result = subprocess.run(ssh_command(host, script), capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        facts = {"reachable": False, "reason": "ssh timed out"}
+    else:
+        values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        if result.returncode != 0 or "mount" not in values:
+            facts = {"reachable": False, "reason": (result.stderr.strip().splitlines() or ["ssh failed"])[-1]}
+        else:
+            reasons = {"0": None, "41": "work drive not mounted", "42": "work drive is the system disk",
+                       "43": "work root is not on the work drive"}
+            facts = {"reachable": True, "mount_ok": values["mount"] == "0",
+                     "reason": reasons.get(values["mount"], f"mount check exit {values['mount']}"),
+                     "xcode_build": values.get("xcode") or None,
+                     "root_free_gb": int(values["free_gb"]) if values.get("free_gb", "").isdigit() else None}
+    if cache is not None:
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = cache.with_name(f"probe.json.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"at": now, "facts": facts}))
+            os.replace(tmp, cache)
+        except OSError:
+            pass
+    return facts
+
+
+def eligible_ci(hosts, *, need_real, local_build, probe_fn):
+    """CI hosts in order: the local host first when it takes CI work, then each
+    remote that is reachable, has its work drive, the same Xcode build as this
+    Mac, and (for real-boundary runs) real audio. Returns (eligible, skipped)."""
+    eligible, skipped = [], []
+    for host in hosts:
+        if "ci" not in host["kinds"]:
+            continue
+        if need_real and host["audio"] != "real":
+            skipped.append((host["name"], "no real audio for a real-boundary run"))
+            continue
+        if host["ssh"] is None:
+            eligible.append(host)
+            continue
+        facts = probe_fn(host)
+        if not facts.get("reachable"):
+            skipped.append((host["name"], facts.get("reason") or "unreachable"))
+        elif not facts.get("mount_ok"):
+            skipped.append((host["name"], facts.get("reason") or "work drive unavailable"))
+        elif facts.get("xcode_build") != local_build:
+            skipped.append((host["name"], f"Xcode build {facts.get('xcode_build')} differs from {local_build}"))
+        else:
+            eligible.append(host)
+    return eligible, skipped
+
+
 def self_test():
     failures = []
     ran = []
@@ -194,10 +305,31 @@ def main(argv):
         if argv == ["sha"]:
             print(load()[1])
             return 0
+        if argv in (["eligible-ci"], ["eligible-ci", "--real"]):
+            # Remote CI hosts that may take this run, in order, one name per line;
+            # the local host is always the caller's first slot and is not listed.
+            hosts, _ = load()
+            remotes = [h for h in hosts if h["ssh"] is not None]
+            if not remotes:
+                return 0
+            build = local_xcode_build()
+            def probe_fn(host):
+                folder = (Path(pwd.getpwuid(os.getuid()).pw_dir)
+                          / "Library/Caches/EnviousWispr/local-ci/hosts" / host["name"])
+                return probe(host, cache_dir=folder)
+
+            eligible, skipped = eligible_ci(hosts, need_real=argv[-1] == "--real",
+                                            local_build=build, probe_fn=probe_fn)
+            for name, reason in skipped:
+                print(f"==> {name} is not used for this run: {reason}", file=sys.stderr)
+            for host in eligible:
+                if host["ssh"] is not None:
+                    print(host["name"])
+            return 0
     except ConfigError as error:
         print(f"ERROR: Mac host config {CONFIG_PATH}: {error}", file=sys.stderr)
         return 2
-    print("usage: mac_hosts.py list|check-config|sha|--self-test", file=sys.stderr)
+    print("usage: mac_hosts.py list|check-config|sha|eligible-ci [--real]|--self-test", file=sys.stderr)
     return 2
 
 

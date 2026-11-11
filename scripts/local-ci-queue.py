@@ -311,6 +311,7 @@ def parse_options(args, allowed):
 
 
 CARD_OPTIONS = ("label", "worktree", "config-sha256")
+WON_OPTIONS = CARD_OPTIONS + ("won-file",)
 
 
 def record(host, kind, options):
@@ -340,7 +341,7 @@ def main(argv):
             acquire(int(argv[1]), argv[3])
             record("local", argv[3], options)
         elif argv and argv[0] == "acquire-any":
-            options = parse_options(argv[1:], ("kind", "slots") + CARD_OPTIONS)
+            options = parse_options(argv[1:], ("kind", "slots") + WON_OPTIONS)
             slots = []
             for item in options.get("slots", "").split(","):
                 host, sep, fd = item.partition("=")
@@ -350,6 +351,8 @@ def main(argv):
             kind = options.get("kind", "full")
             won = acquire_any(slots, kind)
             record(won, kind, options)
+            if "won-file" in options:  # how a shell parent learns which descriptor won
+                Path(options["won-file"]).write_text(won + "\n")
         else:
             raise ValueError(usage)
     except (OSError, ValueError) as error:

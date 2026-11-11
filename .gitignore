@@ -222,6 +222,10 @@ scripts/lib/*
 !scripts/lib/mac_hosts.py
 !scripts/mac-slots.py
 !scripts/lib/output-watchdog.py
+!scripts/lib/remote_ship.py
+!scripts/lib/remote-job.py
+!scripts/lib/remote-lane.py
+!scripts/lib/remote-ship-test.py
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py
