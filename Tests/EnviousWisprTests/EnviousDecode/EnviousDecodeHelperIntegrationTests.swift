@@ -1,9 +1,11 @@
 import ArgmaxOSS
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import Foundation
 import Testing
+import os
 
 @testable import EnviousDecodeKit
 @testable import EnviousWisprEG1Engine
@@ -67,7 +69,12 @@ struct EnviousDecodeHelperIntegrationTests {
   /// and its exit, so the waits below look for those, each under a deadline.
   final class Helper: @unchecked Sendable {
     let process = Process()
-    let port: UInt16
+    /// #4493: the helper's private socket, in a short folder of this test's own (a socket path
+    /// may have at most 103 bytes).
+    let socketPath: String
+    /// The helper's standard input. The token is its first line; the writer stays open for the
+    /// helper's life, because the helper stops when its input ends.
+    let input = Pipe()
     let token = "test-" + UUID().uuidString
     let contextTokens: Int
     private let lock = NSLock()
@@ -91,13 +98,13 @@ struct EnviousDecodeHelperIntegrationTests {
     {
       self.contextTokens = contextTokens
       hasWordCheck = wordCheckAdapter != nil
-      port = try Self.freePort()
+      socketPath = try Self.socketFolder() + "/s.sock"
       process.executableURL = try #require(
         EnviousDecodeHelperIntegrationTests.helperCandidates.first)
       process.arguments = [
         "--model", model,
         "--draft-model", draft,
-        "--model-name", LLMProvider.egOneModelName, "--port", String(port), "--token", token,
+        "--model-name", LLMProvider.egOneModelName, "--socket", socketPath,
         "--ctx-size", String(contextTokens), "--cache-limit-bytes", String(256 * 1024 * 1024),
       ]
       if let wordCheckAdapter {
@@ -111,35 +118,33 @@ struct EnviousDecodeHelperIntegrationTests {
         guard !data.isEmpty, let self else { return }
         self.lock.withLock { self.log += String(decoding: data, as: UTF8.self) }
       }
+      process.standardInput = input
       try process.run()
+      try input.fileHandleForReading.close()
+      try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
     }
 
     var lines: [String] { lock.withLock { log.split(separator: "\n").map(String.init) } }
 
     var endpoint: LocalPolishEndpoint {
       LocalPolishEndpoint(
-        port: port, authToken: token, contextTokens: contextTokens,
+        socketPath: socketPath, authToken: token, contextTokens: contextTokens,
         hasLearnedWordAdapter: hasWordCheck)
     }
 
-    /// A port nothing listens on now: the system picks it, and it is given back before the
-    /// helper binds it.
-    static func freePort() throws -> UInt16 {
-      let descriptor = socket(AF_INET, SOCK_STREAM, 0)
-      try #require(descriptor >= 0)
-      defer { close(descriptor) }
-      var address = sockaddr_in()
-      address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-      address.sin_family = sa_family_t(AF_INET)
-      address.sin_addr.s_addr = inet_addr("127.0.0.1")
-      var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-      let bound = withUnsafeMutablePointer(to: &address) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
-          bind(descriptor, pointer, length) == 0 && getsockname(descriptor, pointer, &length) == 0
-        }
+    private static let folderCount = OSAllocatedUnfairLock(initialState: 0)
+
+    /// A new, empty, private folder for one helper's socket, inside this test process's own
+    /// temporary folder.
+    static func socketFolder() throws -> String {
+      let number = folderCount.withLock { count -> Int in
+        count += 1
+        return count
       }
-      try #require(bound)
-      return UInt16(bigEndian: address.sin_port)
+      let path = TestTemporaryDirectory.url.appendingPathComponent("d\(number)").path
+      try FileManager.default.createDirectory(
+        atPath: path, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+      return path
     }
 
     /// Looks for a signal of the helper process (a log line, an exit) until it is there, and
@@ -158,21 +163,81 @@ struct EnviousDecodeHelperIntegrationTests {
     func untilReady() async throws {
       // deadline-fallback: the signal is the helper's own "ready" line (or its exit); 180 s bounds a model load
       try await signal("the helper to be ready or to exit", within: 180) {
-        self.lines.contains { $0.contains("ready port=") } || !self.process.isRunning
+        self.lines.contains { $0.contains("ready socket ") } || !self.process.isRunning
       }
       try #require(process.isRunning, "the helper exited while starting: \(lines)")
     }
 
+    /// One request on the helper's socket through the app's own client (#4493); without a
+    /// bearer, through `requestWithoutBearer`, because the app's client always sends one.
     func request(
       _ path: String, method: String = "GET", bearer: String?, body: Data? = nil
     ) async throws -> (status: Int, data: Data) {
-      var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)\(path)")!)
-      request.httpMethod = method
-      request.timeoutInterval = 120
-      if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
-      request.httpBody = body
-      let (data, response) = try await URLSession.shared.data(for: request)
-      return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+      guard let bearer else { return try requestWithoutBearer(path, method: method, body: body) }
+      let response = try await LocalPolishHelperClient.perform(
+        LocalPolishHelperRequest(
+          method: method == "POST" ? .post : .get, path: path, body: body,
+          timeout: .seconds(120)),
+        at: LocalPolishHelperAddress(socketPath: socketPath, authToken: bearer))
+      return (response.status, response.body)
+    }
+
+    /// The same request with no Authorization header, written and read with plain blocking
+    /// socket calls: the status code of the answer and its body. Bounded like the app's client
+    /// request it replaces (120 s for sending and for each read); a read error or time-out, an
+    /// incomplete header or a body shorter than its Content-Length fails the check.
+    func requestWithoutBearer(_ path: String, method: String, body: Data?) throws
+      -> (status: Int, data: Data)
+    {
+      let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+      try #require(descriptor >= 0)
+      defer { close(descriptor) }
+      var address = sockaddr_un()
+      address.sun_family = sa_family_t(AF_UNIX)
+      let pathBytes = Array(socketPath.utf8)
+      try #require(pathBytes.count < MemoryLayout.size(ofValue: address.sun_path))
+      withUnsafeMutableBytes(of: &address.sun_path) { raw in
+        raw.copyBytes(from: pathBytes)
+      }
+      let connected = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+          connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+        }
+      }
+      try #require(connected == 0, "connect failed: \(errno)")
+      var limit = timeval(tv_sec: 120, tv_usec: 0)
+      for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
+        try #require(
+          setsockopt(descriptor, SOL_SOCKET, option, &limit, socklen_t(MemoryLayout<timeval>.size))
+            == 0)
+      }
+      var head = "\(method) \(path) HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+      if let body { head += "Content-Length: \(body.count)\r\n" }
+      let request = Data((head + "\r\n").utf8) + (body ?? Data())
+      let sent = request.withUnsafeBytes { send(descriptor, $0.baseAddress, $0.count, 0) }
+      try #require(sent == request.count)
+      var answer = Data()
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while true {
+        let count = recv(descriptor, &buffer, buffer.count, 0)
+        if count < 0, errno == EINTR { continue }
+        // EAGAIN here is the 120 s limit passing; any error fails the check.
+        try #require(count >= 0, "reading the answer failed: errno \(errno)")
+        if count == 0 { break }
+        answer.append(contentsOf: buffer[0..<count])
+      }
+      let split = try #require(
+        answer.range(of: Data("\r\n\r\n".utf8)), "the answer has no complete header")
+      let header = String(decoding: answer[..<split.lowerBound], as: UTF8.self)
+      let status = try #require(Int(header.split(separator: " ").dropFirst().first ?? ""))
+      let body = answer[split.upperBound...]
+      if let line = header.split(separator: "\r\n").first(where: {
+        $0.lowercased().hasPrefix("content-length:")
+      }) {
+        let length = try #require(Int(line.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)))
+        try #require(body.count == length, "the body has \(body.count) of \(length) bytes")
+      }
+      return (status, Data(body))
     }
 
     /// Stops the helper if it still runs: SIGTERM, then SIGKILL of this child if it has not
@@ -401,7 +466,7 @@ struct EnviousDecodeHelperIntegrationTests {
     defer { checked.stop() }
     try await checked.untilReady()
     #expect(checked.lines.contains { $0.contains("word check loaded answer_tokens=32,33") })
-    #expect(checked.lines.contains { $0.contains("ready port=") && $0.hasSuffix("wordcheck=on") })
+    #expect(checked.lines.contains { $0.contains("ready socket ") && $0.hasSuffix("wordcheck=on") })
     // Polish with the adapter loaded is the engine's own answer.
     func polished() async throws -> String {
       try Self.fields(try await LocalPolishTransport.send(endpoint: checked.endpoint, body: body))
@@ -513,12 +578,14 @@ struct EnviousDecodeHelperIntegrationTests {
     try await checked.signal("the helper to end the dropped word check", within: 60) {
       ended("cancelled") == 1
     }
-    var impatient = URLRequest(url: URL(string: "http://127.0.0.1:\(checked.endpoint.port)/v1/wordcheck")!)
-    impatient.httpMethod = "POST"
-    impatient.timeoutInterval = 0.25  // test-fixture-timer: the client's own time limit is the thing under test
-    impatient.setValue("Bearer \(checked.token)", forHTTPHeaderField: "Authorization")
-    impatient.httpBody = longBody
-    await #expect(throws: URLError.self) { try await URLSession.shared.data(for: impatient) }
+    await #expect(throws: LocalPolishHelperClientError.timedOut) {
+      _ = try await LocalPolishHelperClient.perform(
+        LocalPolishHelperRequest(
+          method: .post, path: "/v1/wordcheck", body: longBody,
+          // test-fixture-timer: the client's own time limit is the thing under test
+          timeout: .milliseconds(250)),
+        at: checked.endpoint.address)
+    }
     // deadline-fallback: the signal is the helper's second "wordcheck end status=cancelled" line
     try await checked.signal("the helper to end the timed-out word check", within: 60) {
       ended("cancelled") == 2

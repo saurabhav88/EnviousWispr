@@ -1,7 +1,9 @@
 import Foundation
 
-/// What the app tells the helper when it starts it. Every value but the word-check adapter is
-/// required, and each is checked before any model file is read. The bearer token is never printed, in an error or anywhere else.
+/// What the app tells the helper on its command line. Every value but the word-check adapter is
+/// required, and each is checked before any model file is read. The bearer token is not here
+/// (#4493): it is the first line of the helper's standard input, read by `HelperSecret`, so it
+/// never appears in the process's arguments.
 struct HelperArguments: Equatable {
   /// The polish model's folder.
   let modelFolder: URL
@@ -9,10 +11,8 @@ struct HelperArguments: Equatable {
   let draftFolder: URL
   /// The model name a request must ask for.
   let modelName: String
-  /// The loopback port to listen on.
-  let port: UInt16
-  /// The bearer token every request must carry.
-  let token: String
+  /// The Unix socket path to listen on, inside the launch's private folder.
+  let socketPath: String
   /// The most tokens a prompt and its answer may have together.
   let contextTokens: Int
   /// MLX's buffer cache limit, in bytes, set before a model is loaded.
@@ -41,11 +41,11 @@ struct HelperArguments: Equatable {
 
   static let usage =
     "usage: envious-decode --model <folder> --draft-model <folder> --model-name <name> "
-    + "--port <1-65535> --token <bearer> --ctx-size <tokens> --cache-limit-bytes <bytes> "
-    + "[--word-check-adapter <folder>]"
+    + "--socket <path> --ctx-size <tokens> --cache-limit-bytes <bytes> "
+    + "[--word-check-adapter <folder>] (the bearer is the first line of standard input)"
 
   static let names: Set<String> = [
-    "--model", "--draft-model", "--model-name", "--port", "--token", "--ctx-size",
+    "--model", "--draft-model", "--model-name", "--socket", "--ctx-size",
     "--cache-limit-bytes", wordCheckAdapterName,
   ]
   static let wordCheckAdapterName = "--word-check-adapter"
@@ -92,11 +92,14 @@ struct HelperArguments: Equatable {
     guard !modelName.isEmpty else {
       throw ParseError.invalid(name: "--model-name", reason: "is empty")
     }
-    let token = try value("--token")
-    guard !token.isEmpty else { throw ParseError.invalid(name: "--token", reason: "is empty") }
+    let socketPath = try value("--socket")
+    // `sockaddr_un` holds 104 bytes with the terminator.
+    guard socketPath.hasPrefix("/"), socketPath.utf8.count <= 103 else {
+      throw ParseError.invalid(name: "--socket", reason: "must be an absolute path of at most 103 bytes")
+    }
     return HelperArguments(
       modelFolder: try folder("--model"), draftFolder: try folder("--draft-model"),
-      modelName: modelName, port: UInt16(try number("--port", in: 1...65_535)), token: token,
+      modelName: modelName, socketPath: socketPath,
       contextTokens: try number("--ctx-size", in: 1...1_048_576),
       cacheLimitBytes: try number("--cache-limit-bytes", in: 0...Int.max),
       wordCheckAdapterFolder: values[wordCheckAdapterName] == nil

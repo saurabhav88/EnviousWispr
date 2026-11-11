@@ -1,3 +1,4 @@
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -17,15 +18,15 @@ import os
 /// - WIRE: the lifecycle fixture's fake helper (a real child process) recorded the request.
 /// - REQUEST-OBJECT: the request the site handed to its injected executor (since C3 the helper
 ///   exchange's `LocalPolishHelperRequest` and the endpoint it names).
-/// - OWNER: what the helper exchange makes of a request for the carrier (since C3): the bearer,
-///   the content type, the time limit, and its failure mapping.
+/// - OWNER: what the helper exchange makes of a request on the carrier: since C4 the bytes a
+///   helper receives on the private socket (bearer, content type, body) and a missing socket.
 /// - SOURCE GUARD: a value no test can observe at run time (a site with no executor seam), read
 ///   from the owning function's text. It is not wire evidence.
 ///
 /// Frozen: method, path, the bearer and content-type headers, the body and each site's time
 /// limit. Not frozen: scheme, host and port (they ARE the carrier being replaced) and the
-/// headers `URLSession` adds by itself (User-Agent, Accept, Accept-Language, Accept-Encoding,
-/// Connection, Host), which the socket client will not send. A body the site passes through is
+/// headers `URLSession` added by itself (User-Agent, Accept, Accept-Language, Accept-Encoding,
+/// Connection, Host), which the socket client does not send. A body the site passes through is
 /// compared byte for byte; a body the site builds from a dictionary is compared as parsed JSON,
 /// so key order is not frozen.
 ///
@@ -36,7 +37,7 @@ import os
 struct LocalPolishCarrierCharacterizationTests {
   private static let token = "tok-1"
   private static let endpoint = LocalPolishEndpoint(
-    port: 4242, authToken: token, contextTokens: 8192, hasLearnedWordAdapter: true)
+    socketPath: "/t/4242.sock", authToken: token, contextTokens: 8192, hasLearnedWordAdapter: true)
 
   private final class Captured: Sendable {
     private let requests = OSAllocatedUnfairLock(
@@ -47,19 +48,12 @@ struct LocalPolishCarrierCharacterizationTests {
     var all: [(LocalPolishHelperRequest, LocalPolishEndpoint)] { requests.withLock { $0 } }
   }
 
-  private static func http(_ status: Int) -> HTTPURLResponse {
-    HTTPURLResponse(
-      url: URL(string: "http://127.0.0.1:4242/")!, statusCode: status, httpVersion: "HTTP/1.1",
-      headerFields: ["Content-Type": "application/json"])!
-  }
-
   /// Parsed JSON written back with sorted keys: equal for equal JSON whatever the key order.
   private static func canonical(_ json: Data) throws -> Data {
     try JSONSerialization.data(
       withJSONObject: JSONSerialization.jsonObject(with: json, options: [.fragmentsAllowed]),
       options: [.sortedKeys, .fragmentsAllowed])
   }
-
 
   private static func question() -> LearnedWordCheckQuestion {
     let sentence = "I said toast"
@@ -231,7 +225,7 @@ struct LocalPolishCarrierCharacterizationTests {
     await manager.start(configuration: fixture.configuration())
     let live = try #require(await manager.activeEndpoint(), "fake helper never became ready")
     let endpoint = LocalPolishEndpoint(
-      port: live.port, authToken: live.authToken, contextTokens: live.contextTokens,
+      socketPath: live.socketPath, authToken: live.authToken, contextTokens: live.contextTokens,
       hasLearnedWordAdapter: true)
     let checker = LlamaLearnedWordChecker(threshold: 0.5, style: .s1Mini(language: nil)) {
       EGOneCheckerHold(endpoint: endpoint) {}
@@ -322,65 +316,53 @@ struct LocalPolishCarrierCharacterizationTests {
     }
   #endif
 
-  // MARK: - 7. the helper exchange (C3)
+  // MARK: - 7. the helper exchange on the private socket (C4)
 
-  /// What every operation's request becomes on the loopback carrier: C0's headers and limits,
-  /// now made in one place.
+  /// What every operation's request becomes on the private socket: C0's bearer, content type
+  /// and body, as the bytes a helper receives.
   @Test(
-    "OWNER: the bearer always, JSON content type only with a body, the request's own limit",
+    "OWNER WIRE: each operation's request bytes on the socket, and the answer returned",
     arguments: [
-      (LocalPolishHelperRequest.Method.post, "/v1/chat/completions", true, Duration.seconds(20), 20.0),
-      (.get, "/health", false, .seconds(2), 2.0),
-      (.post, "/v1/wordcheck", true, .seconds(60), 60.0),
-      (.post, "/v1/chat/completions", true, .seconds(10.5), 10.5),
-      (.post, "/completion", true, .seconds(60), 60.0),
-      (.get, "/slots", false, .seconds(2), 2.0),
+      (LocalPolishHelperRequest.Method.post, "/v1/chat/completions", true),
+      (.get, "/health", false),
+      (.post, "/v1/wordcheck", true),
+      (.post, "/completion", true),
+      (.get, "/slots", false),
     ])
-  func ownerRequest(
-    method: LocalPolishHelperRequest.Method, path: String, hasBody: Bool, timeout: Duration,
-    seconds: Double
-  ) async throws {
+  func ownerWire(method: LocalPolishHelperRequest.Method, path: String, hasBody: Bool)
+    async throws
+  {
+    let answer = #"{"ok":true}"#
+    let fake = try LocalPolishAFUnixFakeHelper(
+      script: .reply(
+        Data(
+          ("HTTP/1.1 418 I'm a teapot\r\nContent-Type: application/json\r\n"
+            + "Content-Length: \(answer.utf8.count)\r\nConnection: close\r\n\r\n" + answer)
+            .utf8)))
+    defer { fake.stop() }
     let body = hasBody ? Data(#"{"b": 1}"#.utf8) : nil
-    let built = LocalPolishHelperExchange.urlRequest(
-      LocalPolishHelperRequest(method: method, path: path, body: body, timeout: timeout),
-      at: Self.endpoint)
-    #expect(built.httpMethod == method.rawValue)
-    #expect(built.url?.path == path)
-    var headers = ["Authorization": "Bearer \(Self.token)"]
-    if hasBody { headers["Content-Type"] = "application/json" }
-    #expect(built.allHTTPHeaderFields == headers)
-    #expect(built.httpBody == body)
-    #expect(built.timeoutInterval == seconds)
+    let endpoint = LocalPolishEndpoint(
+      socketPath: fake.socketPath, authToken: Self.token, contextTokens: 8192)
+    let response = try await LocalPolishHelperExchange.perform(
+      LocalPolishHelperRequest(method: method, path: path, body: body, timeout: .seconds(10)),
+      endpoint)
+    #expect(response == LocalPolishHelperResponse(status: 418, body: Data(answer.utf8)))
+    var expected =
+      "\(method.rawValue) \(path) HTTP/1.1\r\nHost: localhost\r\n"
+      + "Authorization: Bearer \(Self.token)\r\nConnection: close\r\n"
+    if hasBody { expected += "Content-Type: application/json\r\nContent-Length: 8\r\n" }
+    expected += "\r\n" + (hasBody ? #"{"b": 1}"# : "")
+    #expect(fake.requests == [Data(expected.utf8)])
   }
 
-  @Test("OWNER: an answer comes back as status and bytes; loopback failures map as planned")
-  func ownerOutcomes() async throws {
-    let request = LocalPolishHelperRequest(method: .get, path: "/slots", timeout: .seconds(2))
-    let answered = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
-      (Data([0x01, 0x02]), Self.http(418))
-    }
-    #expect(answered == LocalPolishHelperResponse(status: 418, body: Data([0x01, 0x02])))
-    let mapped: [(URLError.Code, LocalPolishHelperClientError)] = [
-      (.cannotConnectToHost, .notConnectable), (.networkConnectionLost, .connectionLost),
-      (.timedOut, .timedOut), (.badServerResponse, .failed),
-    ]
-    for (code, expected) in mapped {
-      await #expect(throws: expected) {
-        _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
-          throw URLError(code)
-        }
-      }
-    }
-    await #expect(throws: CancellationError.self) {
-      _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
-        throw URLError(.cancelled)
-      }
-    }
-    await #expect(throws: LocalPolishHelperClientError.failed) {
-      _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { request in
-        (Data(), URLResponse(url: request.url!, mimeType: nil, expectedContentLength: 0,
-          textEncodingName: nil))
-      }
+  @Test("OWNER: a launch whose socket is gone is not connectable")
+  func ownerMissingSocket() async {
+    let endpoint = LocalPolishEndpoint(
+      socketPath: TestTemporaryDirectory.url.appendingPathComponent("gone.sock").path,
+      authToken: Self.token, contextTokens: 8192)
+    await #expect(throws: LocalPolishHelperClientError.notConnectable) {
+      _ = try await LocalPolishHelperExchange.perform(
+        LocalPolishHelperRequest(method: .get, path: "/health", timeout: .seconds(2)), endpoint)
     }
   }
 

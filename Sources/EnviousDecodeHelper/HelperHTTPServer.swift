@@ -44,17 +44,16 @@ final class HelperHTTPServer: @unchecked Sendable {
   private var work: [ObjectIdentifier: Task<Void, Never>] = [:]
   private var stopped = false
 
-  /// Binds 127.0.0.1 and nothing else: there is no host setting.
-  init(port: UInt16, handler: @escaping Handler) throws {
+  /// Listens on the Unix socket at `socketPath` and nothing else (#4493): no network port
+  /// exists. The path is in the launch's private folder, which only this user can enter.
+  init(socketPath: String, handler: @escaping Handler) throws {
     let parameters = NWParameters.tcp
-    parameters.allowLocalEndpointReuse = true
-    parameters.requiredLocalEndpoint = .hostPort(
-      host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: port)!)
+    parameters.requiredLocalEndpoint = .unix(path: socketPath)
     listener = try NWListener(using: parameters)
     self.handler = handler
   }
 
-  /// Starts listening. Returns when the port is bound; throws when it cannot be.
+  /// Starts listening. Returns when the socket is bound; throws when it cannot be.
   func start() async throws {
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       // The state handler runs on `queue` only; the box lets it answer the continuation once.

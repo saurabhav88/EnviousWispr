@@ -33,9 +33,9 @@ struct EGOneServerManagerTests {
     }
     return LocalPolishProcessManager.Configuration(
       spec: .fixture(serverBinaryURL: serverBinaryURL, modelURL: model, contextTokens: 4096),
-      makeArguments: LlamaServerLaunchBuilder.arguments,
+      makeLaunch: LlamaServerLaunchBuilder.launch,
       readinessBudgetSeconds: 3
-    )
+    ).inLaunchHome(TestLaunchHome.make().home)
   }
 
   @Test func missingBinaryFailsClosed() async throws {
@@ -55,12 +55,6 @@ struct EGOneServerManagerTests {
     await manager.start(configuration: config)
     let state = await manager.state
     #expect(state == .failed(reason: "model_missing"))
-  }
-
-  @Test func findFreePortReturnsUsablePort() {
-    let port = LocalPolishProcessManager.findFreePort()
-    #expect(port != nil)
-    #expect(port! > 0)
   }
 
   @Test func stoppedManagerHasNoEndpoint() async {
@@ -392,7 +386,7 @@ struct LocalPolishHealthProbeTests {
     let spec = LlamaServerHealthProbe.ProbeSpec(
       provider: .egOne, modelID: "eg-1", makeConnector: { _ in CannedPolisher(answer: answer) })
     let probe = LlamaServerHealthProbe.operation(spec: spec, promptFamily: .egOneFixed)
-    let verdict = await probe(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 4096))
+    let verdict = await probe(LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 4096))
     #expect(verdict == expected)
   }
 }

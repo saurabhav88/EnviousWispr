@@ -1,13 +1,13 @@
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprLlamaEngine
-import EnviousWisprLocalPolish
 import EnviousWisprModelDelivery
 import Foundation
 import Testing
 
 @testable import EnviousDecodeKit
 @testable import EnviousWisprEG1Engine
+@testable import EnviousWisprLocalPolish
 
 /// #4473 P2: the app side of the EnviousDecode engine: what the app launches for an EG-1 size,
 /// how it asks the helper for a polish, and how it reads the answer.
@@ -81,7 +81,7 @@ struct EnviousDecodeEngineTests {
     var description: String { "timed out waiting for \(what)" }
   }
 
-  /// Looks for a signal of a child process (its exit, its port going quiet) until it is there,
+  /// Looks for a signal of a child process (its exit, its socket going quiet) until it is there,
   /// and throws `TimedOut` when `seconds` pass first.
   static func signal(
     _ what: String, within seconds: Double, _ present: @Sendable () async -> Bool
@@ -94,12 +94,16 @@ struct EnviousDecodeEngineTests {
   }
 
   static func answersHealth(_ endpoint: LocalPolishEndpoint) async -> Bool {
-    var request = URLRequest(url: URL(string: "http://127.0.0.1:\(endpoint.port)/health")!)
-    request.timeoutInterval = 2
-    request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-    let response = (try? await URLSession.shared.data(for: request))?.1 as? HTTPURLResponse
-    return response?.statusCode == 200
+    let response = try? await LocalPolishHelperClient.perform(
+      LocalPolishHelperRequest(method: .get, path: "/health", timeout: .seconds(2)),
+      at: endpoint.address)
+    return response?.status == 200
   }
+
+  /// The launch connection's inputs the command-line rows render with.
+  static let inputs = LocalPolishLaunchConnection.Inputs(
+    socketPath: "/l/ewlp/7-1-1-abcdef01/s.sock",
+    keyFileURL: URL(fileURLWithPath: "/l/ewlp/7-1-1-abcdef01/k"), secret: "bearer-1")
 
   // MARK: - 1. What is launched
 
@@ -131,19 +135,27 @@ struct EnviousDecodeEngineTests {
       draftModelURL: draft, draftArtifactIdentity: draftIdentity)
     #expect(launch.spec == expected)
     #expect(launch.spec.learnedWordAdapterURL == nil)
-    // The helper's seven arguments, with the port and bearer of one spawn.
+    // The helper's six arguments, with the socket of one spawn; the bearer is the first line
+    // of its standard input, never an argument or a variable (#4493).
+    let command = launch.makeLaunch(launch.spec, Self.inputs)
     #expect(
-      launch.makeArguments(launch.spec, 49152, "bearer-1") == [
-        "--model", "/models/eg1-mini", "--draft-model", "/models/eg1-mini-draft",
-        "--model-name", "eg-1", "--port", "49152", "--token", "bearer-1",
-        "--ctx-size", "8192", "--cache-limit-bytes", "268435456",
-      ])
+      command
+        == LocalPolishLaunchCommand(
+          arguments: [
+            "--model", "/models/eg1-mini", "--draft-model", "/models/eg1-mini-draft",
+            "--model-name", "eg-1", "--socket", "/l/ewlp/7-1-1-abcdef01/s.sock",
+            "--ctx-size", "8192", "--cache-limit-bytes", "268435456",
+          ], environment: [:], stdinPreamble: Data("bearer-1\n".utf8), writesKeyFile: false))
+    #expect(command.arguments.contains { $0.contains("bearer-1") } == false)
+    for removed in ["--port", "--token", "--api-key"] {
+      #expect(command.arguments.contains(removed) == false, "\(removed)")
+    }
     // The same values again are the same launch; the fallback copy keeps the draft model.
     #expect(configuration().spec == launch.spec)
     #expect(launch.spec.withoutLearnedWordAdapter() == launch.spec)
 
     // With the checker adapter's weights file offered (#4473 P3): the spec carries that file,
-    // the helper is told its folder after its seven arguments, and it is another launch. The
+    // the helper is told its folder after its six arguments, and it is another launch. The
     // fallback copy is the launch without the adapter, argument included.
     let adapted = configuration(adapter: adapter)
     #expect(
@@ -155,9 +167,9 @@ struct EnviousDecodeEngineTests {
           learnedWordAdapterArguments: ["--word-check-adapter", "/models/eg1-mini-checker"],
           draftModelURL: draft, draftArtifactIdentity: draftIdentity))
     #expect(
-      adapted.makeArguments(adapted.spec, 49152, "bearer-1") == [
+      adapted.makeLaunch(adapted.spec, Self.inputs).arguments == [
         "--model", "/models/eg1-mini", "--draft-model", "/models/eg1-mini-draft",
-        "--model-name", "eg-1", "--port", "49152", "--token", "bearer-1",
+        "--model-name", "eg-1", "--socket", "/l/ewlp/7-1-1-abcdef01/s.sock",
         "--ctx-size", "8192", "--cache-limit-bytes", "268435456",
         "--word-check-adapter", "/models/eg1-mini-checker",
       ])
@@ -172,7 +184,8 @@ struct EnviousDecodeEngineTests {
       draft: URL(fileURLWithPath: "/models/eg1-mini-draft-2", isDirectory: true))
     #expect(otherFolder.spec != launch.spec)
     #expect(
-      otherFolder.makeArguments(otherFolder.spec, 1, "t")[3] == "/models/eg1-mini-draft-2")
+      otherFolder.makeLaunch(otherFolder.spec, Self.inputs).arguments[3]
+        == "/models/eg1-mini-draft-2")
     #expect(configuration(cacheLimit: 134_217_728).spec != launch.spec)
     #expect(
       configuration(cacheLimit: 134_217_728).spec.extraArguments
@@ -279,8 +292,8 @@ struct EnviousDecodeEngineTests {
     // Stopped by the process manager, the helper goes away.
     await manager.stop()
     #expect(await manager.activeEndpoint() == nil)
-    // deadline-fallback: the signal is the helper's port going quiet after SIGTERM; its stated bound is 2 s
-    try await Self.signal("the stopped helper to leave its port", within: 6) {
+    // deadline-fallback: the signal is the helper's socket going quiet after SIGTERM; its stated bound is 2 s
+    try await Self.signal("the stopped helper to leave its socket", within: 6) {
       !(await Self.answersHealth(endpoint))
     }
   }
@@ -311,12 +324,12 @@ struct EnviousDecodeEngineTests {
         .singleModel(for: .egOne), Self.identity("model", "m1"), fixture.binary, fixture.model,
         4096, nil)
       configuration.readinessBudgetSeconds = 4
-      return LocalPolishTarget(configuration: configuration)
+      return LocalPolishTarget(configuration: configuration.inLaunchHome(fixture.launchHome))
     }
     func arguments(_ draft: URL, _ endpoint: LocalPolishEndpoint) -> [String] {
       [
         "--model", fixture.model.path, "--draft-model", draft.path, "--model-name", "eg-1",
-        "--port", String(endpoint.port), "--token", endpoint.authToken, "--ctx-size", "4096",
+        "--socket", endpoint.socketPath, "--ctx-size", "4096",
         "--cache-limit-bytes", "268435456",
       ]
     }

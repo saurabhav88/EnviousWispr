@@ -60,7 +60,7 @@ struct EGOneSummaryEngineTests {
       if installed { egOne.applyInstallStateForTesting(.installed(version: "1.2")) }
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
       let probe = probe
-      let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 16_384)
+      let endpoint = LocalPolishEndpoint(socketPath: "/t/51234.sock", authToken: "t", contextTokens: 16_384)
       let value = EGOneManifest(
         modelName: "eg-1", version: "eg1-1.2-c003", contextTokens: 16_384,
         promptTemplateID: "eg1-v1", minAppVersion: "2.3.0",
@@ -146,7 +146,7 @@ struct EGOneSummaryEngineTests {
         minAppVersion: "2.3.0", downloadURL: URL(string: "https://example.invalid/eg1")!)
     }
     let box = Box()
-    let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 8192)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/51234.sock", authToken: "t", contextTokens: 8192)
     let engine = EGOneSummaryEngine(
       runtimes: set, model: { box.model },
       manifest: {

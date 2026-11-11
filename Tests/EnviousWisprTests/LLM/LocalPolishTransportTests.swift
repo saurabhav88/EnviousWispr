@@ -20,7 +20,7 @@ import os
 /// request and pause, scripted per attempt; no network and no real wait.
 @Suite("Local polish transport: bytes in, bytes out (#4473)", .tags(.productOutcome))
 struct LocalPolishTransportTests {
-  static let endpoint = LocalPolishEndpoint(port: 4242, authToken: "tok-1", contextTokens: 4096)
+  static let endpoint = LocalPolishEndpoint(socketPath: "/t/4242.sock", authToken: "tok-1", contextTokens: 4096)
   /// Not JSON, on purpose: the transport must send and return bytes it cannot read.
   static let body = Data([0x00, 0xFF, 0x7B, 0x22, 0x0A])
   static let answer = Data([0xFE, 0x00, 0x5D])
@@ -28,8 +28,8 @@ struct LocalPolishTransportTests {
   /// What one attempt does.
   enum Step: Sendable {
     case http(Int)
-    case nonHTTP
-    case fail(URLError.Code)
+    case fail(LocalPolishHelperClientError)
+    case cancelled
     case unrelated
   }
 
@@ -39,7 +39,8 @@ struct LocalPolishTransportTests {
   final class Wire: Sendable {
     private struct State: Sendable {
       var steps: [Step]
-      var requests: [URLRequest] = []
+      var requests: [LocalPolishHelperRequest] = []
+      var endpoints: [LocalPolishEndpoint] = []
       var pauses = 0
     }
     private let state: OSAllocatedUnfairLock<State>
@@ -50,27 +51,25 @@ struct LocalPolishTransportTests {
       self.pauseIsCancelled = pauseIsCancelled
     }
 
-    var requests: [URLRequest] { state.withLock { $0.requests } }
+    var requests: [LocalPolishHelperRequest] { state.withLock { $0.requests } }
+    var endpoints: [LocalPolishEndpoint] { state.withLock { $0.endpoints } }
     var pauses: Int { state.withLock { $0.pauses } }
 
-    func perform(_ request: URLRequest) throws -> (Data, URLResponse) {
+    func perform(_ request: LocalPolishHelperRequest, _ endpoint: LocalPolishEndpoint) throws
+      -> LocalPolishHelperResponse
+    {
       let step = state.withLock { state -> Step? in
         state.requests.append(request)
+        state.endpoints.append(endpoint)
         return state.steps.isEmpty ? nil : state.steps.removeFirst()
       }
-      let url = try #require(request.url)
       switch try #require(step, "the transport made more attempts than the script allows") {
       case .http(let status):
-        let response = try #require(
-          HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil))
-        return (LocalPolishTransportTests.answer, response)
-      case .nonHTTP:
-        return (
-          LocalPolishTransportTests.answer,
-          URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil)
-        )
-      case .fail(let code):
-        throw URLError(code)
+        return LocalPolishHelperResponse(status: status, body: LocalPolishTransportTests.answer)
+      case .fail(let error):
+        throw error
+      case .cancelled:
+        throw CancellationError()
       case .unrelated:
         throw Unrelated()
       }
@@ -85,11 +84,8 @@ struct LocalPolishTransportTests {
   private static func send(_ wire: Wire) async throws -> Data {
     try await LocalPolishTransport.send(
       endpoint: endpoint, body: body,
-      // #4493: through the helper exchange's own loopback mapping, so the script stays in
-      // `URLSession`'s terms while the transport reads the exchange's.
-      perform: { request, endpoint in
-        try await LocalPolishHelperExchange.perform(request, at: endpoint) { try wire.perform($0) }
-      }, retryPause: { try wire.pause() })
+      perform: { request, endpoint in try wire.perform(request, endpoint) },
+      retryPause: { try wire.pause() })
   }
 
   @Test("the request goes out as prepared and the answer bytes come back untouched")
@@ -100,21 +96,16 @@ struct LocalPolishTransportTests {
     #expect(wire.pauses == 0)
     let requests = wire.requests
     try #require(requests.count == 1)
-    let request = requests[0]
-    #expect(request.url?.absoluteString == "http://127.0.0.1:4242/v1/chat/completions")
-    #expect(request.httpMethod == "POST")
     #expect(
-      request.allHTTPHeaderFields
-        == ["Authorization": "Bearer tok-1", "Content-Type": "application/json"])
-    #expect(request.timeoutInterval == 20)
-    #expect(request.httpBody == Self.body)
+      requests[0]
+        == LocalPolishHelperRequest(
+          method: .post, path: "/v1/chat/completions", body: Self.body, timeout: .seconds(20)))
+    #expect(wire.endpoints == [Self.endpoint])
   }
 
   @Test(
     "a failure that is not a dropped connection is unavailable at once, with no second try",
-    arguments: [
-      Step.nonHTTP, .http(500), .http(404), .fail(.timedOut), .fail(.badServerResponse),
-    ])
+    arguments: [Step.http(500), .http(404), .fail(.timedOut), .fail(.failed)])
   func failuresAreUnavailableWithoutRetry(_ step: Step) async {
     let wire = Wire([step])
     await #expect(throws: LocalPolishTransportError.unavailable) {
@@ -124,22 +115,22 @@ struct LocalPolishTransportTests {
     #expect(wire.pauses == 0)
   }
 
-  static let droppedConnections: [URLError.Code] = [.cannotConnectToHost, .networkConnectionLost]
+  static let droppedConnections: [LocalPolishHelperClientError] = [.notConnectable, .connectionLost]
 
   @Test(
     "a dropped connection is tried once more and the second answer is used",
     arguments: droppedConnections)
-  func droppedConnectionRecovers(_ code: URLError.Code) async throws {
-    let wire = Wire([.fail(code), .http(200)])
+  func droppedConnectionRecovers(_ error: LocalPolishHelperClientError) async throws {
+    let wire = Wire([.fail(error), .http(200)])
     #expect(try await Self.send(wire) == Self.answer)
     #expect(wire.requests.count == 2)
     #expect(wire.pauses == 1)
-    #expect(wire.requests.map(\.httpBody) == [Self.body, Self.body])
+    #expect(wire.requests.map(\.body) == [Self.body, Self.body])
   }
 
   @Test("a connection dropped twice stops after two attempts", arguments: droppedConnections)
-  func droppedConnectionGivesUpAfterTwo(_ code: URLError.Code) async {
-    let wire = Wire([.fail(code), .fail(code), .http(200)])
+  func droppedConnectionGivesUpAfterTwo(_ error: LocalPolishHelperClientError) async {
+    let wire = Wire([.fail(error), .fail(error), .http(200)])
     await #expect(throws: LocalPolishTransportError.unavailable) {
       try await Self.send(wire)
     }
@@ -149,7 +140,7 @@ struct LocalPolishTransportTests {
 
   @Test("a cancelled request stays a cancellation and is not tried again")
   func cancelledRequestStaysCancelled() async {
-    let wire = Wire([.fail(.cancelled), .http(200)])
+    let wire = Wire([.cancelled, .http(200)])
     await #expect(throws: CancellationError.self) {
       try await Self.send(wire)
     }
@@ -159,7 +150,7 @@ struct LocalPolishTransportTests {
 
   @Test("a cancellation during the wait before the second try stops there")
   func cancelledPauseStaysCancelled() async {
-    let wire = Wire([.fail(.cannotConnectToHost), .http(200)], pauseIsCancelled: true)
+    let wire = Wire([.fail(.notConnectable), .http(200)], pauseIsCancelled: true)
     await #expect(throws: CancellationError.self) {
       try await Self.send(wire)
     }

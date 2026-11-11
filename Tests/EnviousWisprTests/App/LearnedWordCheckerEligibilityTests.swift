@@ -161,7 +161,7 @@ struct LearnedWordCheckerEligibilityTests {
       modelID: engine.model)
     let (contract, base) = try pins(engine)
     let ready = LocalPolishEndpoint(
-      port: 12345, authToken: "test", contextTokens: 1024,
+      socketPath: "/t/12345.sock", authToken: "test", contextTokens: 1024,
       hasLearnedWordAdapter: true)
     func select(
       baseAdmitted: Bool = true, adapterAdmitted: Bool = true, state: DeliveryState = .admitted,
@@ -214,7 +214,7 @@ struct LearnedWordCheckerEligibilityTests {
     #expect(select(missingEndpoint: true).absence == .serverUnavailable)
     #expect(
       select(
-        endpoint: .init(port: 12345, authToken: "test", contextTokens: 1024),
+        endpoint: .init(socketPath: "/t/12345.sock", authToken: "test", contextTokens: 1024),
         serverReason: "adapter_server_exited"
       ).absence
         == .serverWithoutAdapter("adapter_server_exited"))

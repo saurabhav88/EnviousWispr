@@ -32,6 +32,17 @@ final class ChildProcessObservation: Sendable {
   func publish(_ phase: ChildProcessFailure.Phase) { state.withLock { $0.phase = phase } }
   func suppressIntentionalStop() { state.withLock { $0.suppressed = true } }
 
+  /// #4493 §3.7: decides, under the same lock that accepts a termination, who owns the stop of
+  /// this child. A termination already accepted wins and is returned (nothing is suppressed);
+  /// otherwise the caller owns the stop, and the child's later termination is suppressed.
+  func claimIntentionalStop() -> ChildProcessFailure? {
+    state.withLock { state in
+      if let accepted = state.accepted { return accepted }
+      state.suppressed = true
+      return nil
+    }
+  }
+
   /// The accepted record, accepting it now if this is the first observation.
   /// Nil only when an intentional stop was suppressed before any acceptance.
   @discardableResult

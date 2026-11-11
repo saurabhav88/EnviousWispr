@@ -100,7 +100,7 @@ struct EGOnePipelineRoutingTests {
     let spy = CaptureSpy()
     // Tiny context window: the 16-word transcript over-budgets it.
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 16))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 16))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { _ in CannedPolisher(output: "MUST NOT BE USED") }
     let result = try await run(step, spy: spy)
@@ -115,7 +115,7 @@ struct EGOnePipelineRoutingTests {
   func healthyEndpointPolishes() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     step.makeEGOnePolisher = { endpoint in
       #expect(endpoint.authToken == "t")
@@ -133,7 +133,7 @@ struct EGOnePipelineRoutingTests {
   func keychainFactoryNotUsed() async throws {
     let spy = CaptureSpy()
     let runtime = FakeRuntime(
-      endpoint: LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768))
+      endpoint: LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768))
     let step = makeStep(runtime: runtime)
     var legacyFactoryCalled = false
     step.makePolisher = { _, _, _, _ in

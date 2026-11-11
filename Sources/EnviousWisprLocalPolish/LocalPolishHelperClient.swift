@@ -1,4 +1,3 @@
-import CFNetwork
 import Foundation
 import os
 

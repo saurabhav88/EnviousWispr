@@ -115,23 +115,26 @@ package struct LlamaServerLaunchBuilder: Sendable {
         modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
         modelURL: modelURL, contextTokens: contextTokens,
         learnedWordAdapterURL: learnedWordAdapterURL),
-      makeArguments: arguments)
+      makeLaunch: launch)
   }
 
-  /// The complete argument list for one spawn (#4473): model, loopback host, port, context
-  /// capacity and bearer, then the engine's flags and the adapter's flags in that order. The
-  /// port and bearer are chosen by the process manager for each spawn; they are not part of
-  /// the spec. Renders the spec it is GIVEN, so a bare-base fallback copy (adapter arguments
-  /// cleared) renders without the adapter.
-  package static func arguments(
-    spec: LocalPolishLaunchSpec, port: UInt16, authToken: String
-  ) -> [String] {
-    [
-      "-m", spec.modelURL.path,
-      "--host", "127.0.0.1",
-      "--port", String(port),
-      "-c", String(spec.contextTokens),
-      "--api-key", authToken,
-    ] + spec.extraArguments + spec.learnedWordAdapterArguments
+  /// The launch for one spawn (#4473, #4493): model, the launch's private socket as the host,
+  /// context capacity and the launch's key file, then the engine's flags and the adapter's
+  /// flags in that order. `llama-server` listens on a Unix socket when its host ends in
+  /// `.sock`, and reads the bearer from the key file, so the secret is never in its arguments.
+  /// The socket path and the key file belong to the launch connection the process manager made
+  /// for this spawn; they are not part of the spec. Renders the spec it is GIVEN, so a
+  /// bare-base fallback copy (adapter arguments cleared) renders without the adapter.
+  package static func launch(
+    spec: LocalPolishLaunchSpec, inputs: LocalPolishLaunchConnection.Inputs
+  ) -> LocalPolishLaunchCommand {
+    LocalPolishLaunchCommand(
+      arguments: [
+        "-m", spec.modelURL.path,
+        "--host", inputs.socketPath,
+        "-c", String(spec.contextTokens),
+        "--api-key-file", inputs.keyFileURL.path,
+      ] + spec.extraArguments + spec.learnedWordAdapterArguments,
+      writesKeyFile: true)
   }
 }
