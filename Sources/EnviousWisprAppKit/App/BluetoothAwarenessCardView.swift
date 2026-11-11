@@ -70,7 +70,7 @@ enum BluetoothTipsCopy {
 
 /// #1480: the once-per-launch Bluetooth cold-start education popover, rendered in
 /// the top-middle overlay slot by `RecordingOverlayPanel`. Theme-aware — every
-/// colour is a dynamic `st*` token (`SettingsDesignTokens.swift`), so it resolves
+/// colour is a dynamic `st*` token (DESIGN.md, generated into `DesignTokens.generated.swift`), so it resolves
 /// per `NSApp.appearance` and swaps with the appearance ticker exactly like the
 /// rest of the app.
 ///
