@@ -130,6 +130,24 @@ def leader_exited(pid):
     return status is not None
 
 
+def group_has_live_member(pid):
+    """True while any member of process group `pid` is not a zombie.
+
+    The leader is deliberately left unreaped (leader_exited), and Linux still
+    answers killpg(pid, 0) for a zombie-only group, so group existence alone is
+    not unfinished work. Unknown (ps failed) counts as live."""
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pgid=,stat="], capture_output=True,
+                             text=True, timeout=10, check=True).stdout
+    except (OSError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        return True
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == str(pid) and not parts[1].startswith("Z"):
+            return True
+    return False
+
+
 def stop_group(pid):
     """TERM the child's group, wait briefly, KILL what is left."""
     for sig, wait in ((signal.SIGTERM, GRACE_SECONDS), (signal.SIGKILL, 0)):
@@ -145,6 +163,8 @@ def stop_group(pid):
                 os.killpg(pid, 0)
             except (ProcessLookupError, PermissionError):
                 return
+            if not group_has_live_member(pid):
+                return  # only the unreaped leader is left
             time.sleep(0.05)
 
 
