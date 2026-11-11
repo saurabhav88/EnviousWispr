@@ -139,9 +139,22 @@ def check_partition(source, remainder):
         raise ValueError("test identities overlap between groups")
 
 
-def balanced_groups(root, group_dir):
+def worker_budget():
+    """EW_LOCAL_TEST_WORKERS (1-4, default 4): the running Mac's process budget
+    (#4507; a remote dispatcher passes the host's ci_workers). Read once, here."""
+    raw = os.environ.get("EW_LOCAL_TEST_WORKERS", "")
+    if raw == "":
+        return 4
+    if not raw.isdigit() or not 1 <= int(raw) <= 4:
+        raise ValueError(f"EW_LOCAL_TEST_WORKERS must be 1-4, got {raw!r}")
+    return int(raw)
+
+
+def balanced_groups(root, group_dir, workers=4):
     profile_path = root / "scripts/local-test-costs.json"
     if not profile_path.exists():
+        if workers == 1:
+            return [("serial", REQUIRED, [])]
         # Compatibility with older standalone runner copies: retain the original
         # reviewed split rather than infer safety from test names or class tags.
         selectors = [f"{TARGET}/{suite}" for suite in SOURCE_SUITES]
@@ -154,9 +167,10 @@ def balanced_groups(root, group_dir):
     groups, loads = plan_groups(
         root, profile,
         single_worker=os.environ.get("TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE") == "1"
-        or os.environ.get("TEST_RUNNER_EW_REAL_BOUNDARY") == "1")
+        or os.environ.get("TEST_RUNNER_EW_REAL_BOUNDARY") == "1", workers=workers)
     (group_dir / "worker-plan.json").write_text(json.dumps(
-        {"estimated_case_seconds": loads, "groups": dict(groups)}, indent=2) + "\n")
+        {"estimated_case_seconds": loads, "groups": dict(groups),
+         "worker_budget": workers, "launched_groups": len(groups)}, indent=2) + "\n")
     print("==> Worker estimated case-seconds (not wall time): "
           + ", ".join(f"{load:.1f}" for load in loads), flush=True)
     return [(name, REQUIRED if name == "serial" else TARGET, list(names))
@@ -254,8 +268,9 @@ def run_groups(opts):
     log = Path(opts.log)
     if output.exists():
         raise ValueError(f"result already exists: {output}")
+    workers = worker_budget()  # refused before any worker starts
     group_dir = Path(tempfile.mkdtemp(prefix="test-groups-", dir=log.parent))
-    groups = balanced_groups(root, group_dir)
+    groups = balanced_groups(root, group_dir, workers)
     selected = [suite for name, _, suites in groups if name != "serial" for suite in suites]
     cancelled = []
     watch = watchdog_module(root)

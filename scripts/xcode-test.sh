@@ -184,7 +184,7 @@ while [ "$#" -gt 0 ]; do
       esac ;;
     --help|-h)
       echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH]"
-      echo "Default: one Debug run with up to four measured-cost worker groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
+      echo "Default: one Debug run with up to four measured-cost worker groups (EW_LOCAL_TEST_WORKERS=1-4 sets this Mac's budget). --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
       exit 0 ;;
     --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
     --real-boundary) REAL_BOUNDARY=1; shift ;;

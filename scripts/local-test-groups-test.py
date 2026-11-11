@@ -103,7 +103,7 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
                     "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
                     "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
-                    "TEST_RUNNER_EW_REAL_BOUNDARY"):
+                    "TEST_RUNNER_EW_REAL_BOUNDARY", "EW_LOCAL_TEST_WORKERS"):
             self.env.pop(key, None)
         self.command = [sys.executable, str(self.root / "scripts/local-test-groups.py"),
                         "--products", str(self.products), "--scheme", "EnviousWispr",
