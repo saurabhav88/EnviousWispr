@@ -83,7 +83,13 @@ struct EnviousDecodeHelperIntegrationTests {
     /// unrelated-child case's `/bin/sleep` ran in the same test process).
     static func privatePipe() -> Pipe {
       let pipe = Pipe()
-      _ = fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETFD, FD_CLOEXEC)
+      let writer = pipe.fileHandleForWriting.fileDescriptor
+      let flags = fcntl(writer, F_GETFD)
+      // A fixture that cannot make the writer private would hide the defect it guards against.
+      precondition(
+        flags >= 0 && fcntl(writer, F_SETFD, flags | FD_CLOEXEC) == 0
+          && fcntl(writer, F_GETFD) & FD_CLOEXEC != 0,
+        "the helper's input writer could not be made close-on-exec (errno \(errno))")
       return pipe
     }
     let contextTokens: Int
