@@ -9,7 +9,7 @@ produce. This rebuilds the inputs through the ASR we actually ship. NOTE: refuse
 run since #3546 (the shipped engine is Parakeet Ultra; this route still uses v3, #3696).
 
 Engine fidelity: drives `fluidaudiocli tts-asr-verify` from the PINNED FluidAudio
-checkout (`.build/checkouts/FluidAudio`, revision fb506037 per Package.resolved),
+checkout (`.build/checkouts/FluidAudio`, revision 8e64f574 per Package.resolved),
 NOT `~/Developer/EnviousLabs/FluidAudio*` — a local checkout's HEAD floats, so
 it can silently measure a different engine; the pinned checkout cannot.
 
@@ -46,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CLI = ROOT / ".build/checkouts/FluidAudio/.build/arm64-apple-macosx/release/fluidaudiocli"
-PIN = "fb506037d2b1917dbb2608b8e79872ec95acf384"
+PIN = "8e64f574c772632c4ebfd037585e5d14c3910c68"
 
 # #2788: the app pins `ASRConfig(melChunkContext: true)`; `fluidaudiocli
 # tts-asr-verify` constructs `AsrManager()` with the vendor default, which on this

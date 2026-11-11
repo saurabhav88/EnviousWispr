@@ -29,7 +29,7 @@ import Testing
     #expect(manifest.identity.name == "nemotron-3-diarization-coreml")
     #expect(manifest.identity.revision == Self.revision)
     #expect(manifest.identity.variant == "low-v2")
-    #expect(manifest.identity.runtimeABI == "fluidAudio-fb506037")
+    #expect(manifest.identity.runtimeABI == "fluidAudio-8e64f574")
     // The loader does not decode `license`; read it raw so the licence the notices name stays put.
     let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     #expect((raw?["license"] as? [String: Any])?["name"] as? String == "OpenMDW-1.1")

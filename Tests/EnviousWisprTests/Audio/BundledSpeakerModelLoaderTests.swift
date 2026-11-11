@@ -153,6 +153,14 @@ struct BundledSpeakerModelLoaderTests {
     }
   }
 
+  /// #4483: FluidAudio v0.18.2 changed the vendor default to keep overlapping speech. What
+  /// fails when this fails: a file import or a meeting gets two speakers on the same stretch
+  /// of words, which turn assembly was never built or measured for.
+  @Test("the analyzer's default config keeps one speaker at a time, whatever the vendor default")
+  func defaultConfigKeepsExclusiveSegments() {
+    #expect(OfflineSpeakerAnalyzer.defaultConfig.exclusiveSegments)
+  }
+
   @Test("never reaches ModelHub — the analyzer's only entry point is initialize(models:)")
   func neverReachesModelHub() throws {
     // Named files only, not the whole directory: a silently-empty directory listing (a
