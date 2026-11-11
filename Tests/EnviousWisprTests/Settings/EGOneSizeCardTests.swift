@@ -172,9 +172,45 @@ struct EGOneSizeCardTests {
       ])
     #expect(P.actions(.installed, isSelected: true, allowsRuntimeActivation: false) == [.remove])
     #expect(
-      P.actions(.installed, isSelected: false, allowsRuntimeActivation: true) == [.use, .remove])
+      P.actions(.installed, isSelected: false, allowsRuntimeActivation: true) == [.remove])
     #expect(
-      P.actions(.installed, isSelected: false, allowsRuntimeActivation: false) == [.use, .remove])
+      P.actions(.installed, isSelected: false, allowsRuntimeActivation: false) == [.remove])
+  }
+
+  // A user would see a separate "Use" button on a card again, instead of clicking the card to
+  // choose it (founder 2026-11-11). The full table, written out with literals.
+  @Test func noCardStateEverListsUseAndTheTableIsPinned() {
+    typealias P = EGOneSizeCardPresenter
+    let rows: [(EGOneSizeCard.State, Bool, Bool, [EGOneSizeCard.Action])] = [
+      (.notDownloaded, true, true, [.download]), (.notDownloaded, true, false, [.download]),
+      (.notDownloaded, false, true, [.download]), (.notDownloaded, false, false, [.download]),
+      (.downloading(fraction: 0.5), true, true, [.cancel]),
+      (.downloading(fraction: 0.5), true, false, [.cancel]),
+      (.downloading(fraction: 0.5), false, true, [.cancel]),
+      (.downloading(fraction: 0.5), false, false, [.cancel]),
+      (.verifying, true, true, []), (.verifying, true, false, []),
+      (.verifying, false, true, []), (.verifying, false, false, []),
+      (.paused, true, true, [.resume]), (.paused, true, false, [.resume]),
+      (.paused, false, true, [.resume]), (.paused, false, false, [.resume]),
+      (.updatePaused(resumable: true), true, true, [.resumeUpgrade]),
+      (.updatePaused(resumable: true), true, false, [.resumeUpgrade]),
+      (.updatePaused(resumable: true), false, true, [.resumeUpgrade]),
+      (.updatePaused(resumable: true), false, false, [.resumeUpgrade]),
+      (.updatePaused(resumable: false), true, true, [.finishUpgrade]),
+      (.updatePaused(resumable: false), true, false, [.finishUpgrade]),
+      (.updatePaused(resumable: false), false, true, [.finishUpgrade]),
+      (.updatePaused(resumable: false), false, false, [.finishUpgrade]),
+      (.failed(.network), true, true, [.tryAgain]), (.failed(.network), true, false, [.tryAgain]),
+      (.failed(.network), false, true, [.tryAgain]), (.failed(.network), false, false, [.tryAgain]),
+      (.installed, true, true, [.testLive, .remove]), (.installed, true, false, [.remove]),
+      (.installed, false, true, [.remove]), (.installed, false, false, [.remove]),
+    ]
+    #expect(rows.count == 7 * 4 + 4)
+    for (state, selected, allows, expected) in rows {
+      let actual = P.actions(state, isSelected: selected, allowsRuntimeActivation: allows)
+      #expect(actual == expected, "\(state) selected=\(selected) allows=\(allows)")
+      #expect(!actual.contains(.use), "\(state) selected=\(selected) allows=\(allows) lists .use")
+    }
   }
 
   // A user on a small Mac would find a card with no way forward, even though every size works there.

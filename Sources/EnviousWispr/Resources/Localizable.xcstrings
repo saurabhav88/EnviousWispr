@@ -23988,17 +23988,6 @@
         }
       }
     },
-    "Use %@" : {
-      "comment" : "AI Polish, EG-1 size card: button that makes this downloaded size the one in use. %@ is the size's name, such as EG-1 Mini.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ verwenden"
-          }
-        }
-      }
-    },
     "Use Apple instead" : {
       "comment" : "Live Preview settings, Universal engine: button after a failed download that switches Live Preview to the Apple engine.",
       "localizations" : {

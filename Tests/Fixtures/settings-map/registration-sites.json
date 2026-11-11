@@ -30,7 +30,6 @@
  "DictionarySettingsHeading.swift | SettingsSectionHeading | map .id(.sectionDictionary)",
  "DictionarySettingsHeading.swift | settingsMapRegistration | .enableDictionary",
  "EGOneSizeCards.swift | settingsMapRegistration | .exempt(.bundledModelRemove)",
- "EGOneSizeCards.swift | settingsMapRegistration | .exempt(.egOneOtherSizeCard)",
  "EGOneSizeCards.swift | settingsMapRegistration | registration(.localModelCancel)",
  "EGOneSizeCards.swift | settingsMapRegistration | registration(.localModelDownload)",
  "EGOneSizeCards.swift | settingsMapRegistration | registration(.localModelFinishUpgrade)",

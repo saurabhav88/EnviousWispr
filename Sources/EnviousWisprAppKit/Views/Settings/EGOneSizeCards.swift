@@ -76,14 +76,6 @@ enum EGOneSizeCardCopy {
     localized: "Best for this Mac",
     comment: "AI Polish, EG-1 size card: the pill on the size recommended for this Mac's memory.")
 
-  static func useTitle(_ size: EGOneSize) -> String {
-    String(
-      localized: "Use \(title(size))",
-      comment:
-        "AI Polish, EG-1 size card: button that makes this downloaded size the one in use. %@ is the size's name, such as EG-1 Mini."
-    )
-  }
-
   /// "V1.3 · 4.7 GB", or the part that exists.
   static func versionAndSize(_ card: EGOneSizeCard) -> String {
     [
@@ -149,22 +141,55 @@ enum EGOneSizeCardCopy {
 /// use is outlined. Every card is usable on every Mac: the "Best for this Mac" pill is advice.
 ///
 /// The view draws `EGOneSizeCardPresenter`'s values and forwards button presses; it decides
-/// nothing. Download and Cancel reach the size's own runtime through `EGOneSizeActions`; Use
-/// changes the preference; Remove follows plan §3.1.1 S9.
+/// nothing. A click anywhere on a card chooses that size, like the speech engine cards (founder
+/// 2026-11-11); there is no separate Use button. Download and Cancel reach the size's own
+/// runtime through `EGOneSizeActions`; Remove follows plan §3.1.1 S9.
 struct EGOneSizeCards: View {
   let cards: [EGOneSizeCard]
   let measuredOn: String
   let perform: (EGOneSizeCard.Action, EGOneSize) -> Void
 
+  static let cardSpacing: CGFloat = 12
+  /// The narrowest a card may be in the row before the cards stack.
+  static let cardMinimumWidth: CGFloat = 230
+  static func rowMinimumWidth(_ count: Int) -> CGFloat {
+    CGFloat(count) * cardMinimumWidth + CGFloat(max(0, count - 1)) * cardSpacing
+  }
+
+  /// Side by side at `width`, or one under the other.
+  static func isStacked(width: CGFloat, count: Int) -> Bool {
+    // 0 = not measured yet: draw the row, the common case, rather than flash a column.
+    width > 0 && width < rowMinimumWidth(count)
+  }
+
+  /// The width the cards have, read from the layout (see `TranscribeFileView.polishStep` for
+  /// why a background `GeometryReader` and not `onGeometryChange`, which is macOS 15).
+  @State private var availableWidth: CGFloat = 0
+
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      // One height for the row: the tallest card's.
-      HStack(alignment: .top, spacing: 12) {
+      // Side by side while each card keeps a readable width; one under the other in a narrow
+      // window, so a card is never squeezed until its pill, status and buttons break mid-word
+      // (founder 2026-11-11). One set of card views in a switched layout, never two
+      // alternatives: each card registers its buttons with the Settings Map once.
+      let layout =
+        Self.isStacked(width: availableWidth, count: cards.count)
+        ? AnyLayout(VStackLayout(alignment: .leading, spacing: Self.cardSpacing))
+        : AnyLayout(HStackLayout(alignment: .top, spacing: Self.cardSpacing))
+      layout {
         ForEach(cards) { card in
           EGOneSizeCardView(card: card) { perform($0, card.size) }
         }
       }
+      // In the row: one height for all cards, the tallest card's.
       .fixedSize(horizontal: false, vertical: true)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        GeometryReader { geo in
+          Color.clear
+            .onAppear { availableWidth = geo.size.width }
+            .onChange(of: geo.size.width) { _, width in availableWidth = width }
+        })
       if cards.contains(where: { $0.polishMilliseconds != nil || $0.memory != nil }),
         !measuredOn.isEmpty
       {
@@ -189,61 +214,119 @@ private struct EGOneSizeCardView: View {
   let perform: (EGOneSizeCard.Action) -> Void
 
   private static let radius: CGFloat = 10
+  /// Height of `actionArea` as drawn over the card's bottom edge.
+  @State private var actionAreaHeight: CGFloat = 0
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      header
-      if hasFacts {
+    // The selection area is the WHOLE card (founder 2026-11-11: a bottom strip that does not
+    // answer a click looks broken). The card's own buttons are laid over its bottom edge as
+    // siblings, never children, so a press on Download or Remove does not also choose; the
+    // label keeps their room with a hidden copy, and every other point of the card chooses.
+    Button {
+      perform(.use)
+    } label: {
+      VStack(alignment: .leading, spacing: 10) {
+        header
+        if hasFacts {
+          Divider().overlay(Color.stDivider)
+          facts
+        }
+        Spacer(minLength: 0)
         Divider().overlay(Color.stDivider)
-        facts
+        statusLine
+        if hasActionArea {
+          // The room the buttons laid over the bottom edge take. Their measured height, not a
+          // hidden copy: a copy would register its buttons with the Settings Map a second time.
+          Color.clear.frame(height: actionAreaHeight).accessibilityHidden(true)
+        }
       }
-      Spacer(minLength: 0)
-      Divider().overlay(Color.stDivider)
-      footer
+      .padding(14)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      // On the label, inside the hit region's frame, so the tint and the target are one
+      // rectangle (the same arrangement as `EngineCard`).
+      .settingsHoverRow(cornerRadius: Self.radius)
+      .contentShape(Rectangle())
     }
-    .padding(14)
+    .buttonStyle(.plain)
+    // The combined children are the label: VoiceOver reads everything the card shows, facts
+    // and warnings included, with no second copy of it to keep in step.
+    .accessibilityElement(children: .combine)
+    .accessibilityValue(card.isSelected ? SettingsCopy.selectedValue : "")
+    .accessibilityAddTraits(card.isSelected ? [.isButton, .isSelected] : .isButton)
+    .overlay(alignment: .bottom) {
+      if hasActionArea {
+        actionArea
+          .background(
+            GeometryReader { geo in
+              Color.clear
+                .onAppear { actionAreaHeight = geo.size.height }
+                .onChange(of: geo.size.height) { _, height in actionAreaHeight = height }
+            }
+          )
+          .padding(14)
+      }
+    }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .background(
       RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color.stInputBg)
     )
+    .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
     .overlay(
       RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
         .strokeBorder(
           card.isSelected ? Color.stAccentSolid : Color.stDivider,
           lineWidth: card.isSelected ? 1.5 : 1)
+        .allowsHitTesting(false)
     )
+    .animation(.easeInOut(duration: 0.15), value: card.isSelected)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(Text(verbatim: EGOneSizeCardCopy.title(card.size)))
-    // The outline is the only visible mark of the chosen size while it is not downloaded;
-    // VoiceOver gets the same fact as a trait.
-    .accessibilityAddTraits(card.isSelected ? .isSelected : [])
   }
 
   private var header: some View {
     VStack(alignment: .leading, spacing: 4) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Text(verbatim: EGOneSizeCardCopy.title(card.size))
-          .font(.stRowTitle)
-          .foregroundStyle(Color.stTextPrimary)
-        Spacer(minLength: 6)
-        if card.isRecommended {
-          Text(EGOneSizeCardCopy.bestForThisMac)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.stAccentSolid))
+      // The pill is one line always; when the title and the pill do not fit on one line (a
+      // narrow card, a longer translation) the pill goes under the title.
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          titleText
+          Spacer(minLength: 6)
+          if card.isRecommended { recommendedPill }
+        }
+        VStack(alignment: .leading, spacing: 6) {
+          titleText
+          if card.isRecommended { recommendedPill }
         }
       }
       Text(EGOneSizeCardCopy.tagline(card.size))
         .font(.stHelper)
         .fontWeight(.semibold)
         .foregroundStyle(Color.stAccent)
+        .fixedSize(horizontal: false, vertical: true)
       Text(EGOneSizeCardCopy.summary(card.size))
         .font(.stHelper)
         .foregroundStyle(Color.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  private var titleText: some View {
+    Text(verbatim: EGOneSizeCardCopy.title(card.size))
+      .font(.stRowTitle)
+      .foregroundStyle(Color.stTextPrimary)
+      .lineLimit(1)
+      .fixedSize()
+  }
+
+  private var recommendedPill: some View {
+    Text(EGOneSizeCardCopy.bestForThisMac)
+      .font(.system(size: 12, weight: .semibold))
+      .foregroundStyle(Color.white)
+      .lineLimit(1)
+      .fixedSize()
+      .padding(.horizontal, 8)
+      .padding(.vertical, 2)
+      .background(Capsule().fill(Color.stAccentSolid))
   }
 
   private var hasFacts: Bool {
@@ -290,9 +373,10 @@ private struct EGOneSizeCardView: View {
     -> some View
   {
     HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(label).font(.stHelper).foregroundStyle(Color.stTextSecondary)
+      Text(label).font(.stHelper).foregroundStyle(Color.stTextSecondary).lineLimit(1)
       Spacer(minLength: 6)
       Text(value).font(.stHelper).fontWeight(.semibold).monospacedDigit().foregroundStyle(tint)
+        .lineLimit(1).fixedSize()
       if let mark {
         Text(verbatim: "· \(mark)").font(.stHelper).foregroundStyle(Color.stSuccess)
       }
@@ -360,29 +444,58 @@ private struct EGOneSizeCardView: View {
     }
   }
 
-  private var footer: some View {
-    VStack(alignment: .leading, spacing: 10) {
+  private var statusLine: some View {
+    // One line when it fits; the version under the status when it does not. No piece breaks.
+    ViewThatFits(in: .horizontal) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
-        if card.isInUse {
-          Image(systemName: "checkmark.circle").foregroundStyle(Color.stSuccess)
-            .accessibilityHidden(true)
-        }
-        Text(EGOneSizeCardCopy.status(card))
-          .font(.stHelper)
-          .fontWeight(card.isInUse ? .semibold : .regular)
-          .foregroundStyle(card.isInUse ? Color.stSuccess : Color.stTextSecondary)
+        statusText
         Spacer(minLength: 6)
-        Text(verbatim: EGOneSizeCardCopy.versionAndSize(card))
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
+        versionText
       }
+      VStack(alignment: .leading, spacing: 4) {
+        statusText
+        versionText
+      }
+    }
+  }
+
+  private var statusText: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      if card.isInUse {
+        Image(systemName: "checkmark.circle").foregroundStyle(Color.stSuccess)
+          .accessibilityHidden(true)
+      }
+      Text(EGOneSizeCardCopy.status(card))
+        .font(.stHelper)
+        .fontWeight(card.isInUse ? .semibold : .regular)
+        .foregroundStyle(card.isInUse ? Color.stSuccess : Color.stTextSecondary)
+        .lineLimit(1)
+    }
+    .fixedSize()
+  }
+
+  private var versionText: some View {
+    Text(verbatim: EGOneSizeCardCopy.versionAndSize(card))
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextTertiary)
+      .lineLimit(1)
+      .fixedSize()
+  }
+
+  private var hasActionArea: Bool {
+    if case .downloading = card.state { return true }
+    return !card.actions.isEmpty
+  }
+
+  private var actionArea: some View {
+    VStack(alignment: .leading, spacing: 10) {
       if case .downloading(let fraction) = card.state {
         PolishProgressBar(fraction: fraction)
       }
       HStack(spacing: 10) {
         ForEach(Array(card.actions.enumerated()), id: \.offset) { _, action in
           if action == .remove { Spacer(minLength: 6) }
-          button(action)
+          button(action).fixedSize()
         }
         if !card.actions.contains(.remove) { Spacer(minLength: 0) }
       }
@@ -431,10 +544,8 @@ private struct EGOneSizeCardView: View {
       ) { perform(.cancel) }
       .settingsMapRegistration(registration(.localModelCancel))
     case .use:
-      SettingsActionButton(
-        verbatimTitle: EGOneSizeCardCopy.useTitle(card.size), isEnabled: true
-      ) { perform(.use) }
-      .settingsMapRegistration(.exempt(.egOneOtherSizeCard))
+      // Never in a card's button list: the card itself is the control that chooses a size.
+      EmptyView()
     case .testLive:
       PolishIconButton(
         systemName: "arrow.clockwise",

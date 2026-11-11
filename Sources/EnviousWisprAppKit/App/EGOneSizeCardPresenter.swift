@@ -17,7 +17,7 @@ struct EGOneSizeCard: Equatable, Identifiable, Sendable {
 
   enum Action: Equatable, Sendable {
     case download, resume, resumeUpgrade, finishUpgrade, tryAgain, cancel
-    /// Make this installed size the one the app uses.
+    /// Choose this size: a click anywhere on its card. Never one of a card's buttons.
     case use
     case testLive
     case remove
@@ -137,11 +137,8 @@ enum EGOneSizeCardPresenter {
     case .updatePaused(let resumable): [resumable ? .resumeUpgrade : .finishUpgrade]
     case .failed: [.tryAgain]
     case .installed:
-      if isSelected {
-        allowsRuntimeActivation ? [.testLive, .remove] : [.remove]
-      } else {
-        [.use, .remove]
-      }
+      // No Use button: a click on the card chooses the size (founder 2026-11-11).
+      isSelected && allowsRuntimeActivation ? [.testLive, .remove] : [.remove]
     }
   }
 }
