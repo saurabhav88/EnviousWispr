@@ -1686,8 +1686,12 @@ public final class SettingsManager {
   /// moment at launch, before anything freezes work) there is no preference, and the answer
   /// is the full size: the one EG-1 that existed before sizes.
   public func polishModelID(for provider: LLMProvider) -> LocalPolishModelID {
-    provider == .egOne ? .egOne(egOneSize ?? .full) : .singleModel(for: provider)
+    provider == .egOne ? .egOne(preferredEGOneSize) : .singleModel(for: provider)
   }
+
+  /// The EG-1 size every surface uses for new work and judges setup by. The full size until
+  /// the first resolution has run (a moment at launch).
+  public var preferredEGOneSize: EGOneSize { egOneSize ?? .full }
 
   /// The user picked a size. The only way the preference changes after first resolution,
   /// apart from removing the preferred size (plan §3.1.1 S5, S9).

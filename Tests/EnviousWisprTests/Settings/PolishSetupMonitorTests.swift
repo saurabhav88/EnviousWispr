@@ -213,6 +213,53 @@ struct PolishSetupMonitorTests {
     #expect(local.episode?.problem == .localEngineDownloadPaused(.egOne))
   }
 
+  // A user who switches EG-1 size would be shown the old size's warning state for the new size.
+  @Test("an EG-1 size is part of the configuration; other providers ignore a size")
+  func egOneSizeIsConfigurationIdentity() {
+    let mini = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil, egOneSize: .mini)
+    let micro = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil, egOneSize: .micro)
+    #expect(mini != micro)
+    #expect(mini == mini)
+    let cloud = PolishSetupConfiguration(
+      provider: .openAI, model: "gpt-test", credentialRevision: 1, egOneSize: .mini)
+    #expect(cloud.egOneSize == nil)
+    #expect(cloud == Self.openAI)
+  }
+
+  // A user who moved from Mini to Micro would keep Mini's answers and never be warned about Micro.
+  @Test("switching EG-1 size ends the episode; the problem moving on one size does not")
+  func egOneSizeChangeEndsTheEpisode() throws {
+    let mini = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil, egOneSize: .mini)
+    let micro = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil, egOneSize: .micro)
+    var e = PolishSetupEpisodes()
+    e.reconcile(
+      readiness: .problem(.localEngineNotDownloaded(.egOne)), configuration: mini, eligible: true)
+    let token = try #require(e.episode?.token)
+    e.reconcile(
+      readiness: .problem(.localEngineDownloading(.egOne)), configuration: mini, eligible: true)
+    #expect(e.episode?.token == token)
+    #expect(e.episode?.problem == .localEngineDownloading(.egOne))
+
+    // Micro is fine: the Mini episode ends and nothing shows.
+    e.reconcile(readiness: .noProblem, configuration: micro, eligible: true)
+    #expect(e.episode == nil)
+    #expect(e.shows(.banner) == false)
+
+    // Micro has its own problem: a new episode, not Mini's.
+    var again = PolishSetupEpisodes()
+    again.reconcile(
+      readiness: .problem(.localEngineNotDownloaded(.egOne)), configuration: mini, eligible: true)
+    let miniToken = try #require(again.episode?.token)
+    again.reconcile(
+      readiness: .problem(.localEngineNotDownloaded(.egOne)), configuration: micro, eligible: true)
+    #expect(again.episode?.token != miniToken)
+    #expect(again.episode?.configuration == micro)
+  }
+
   @Test("an informational problem gets the leave notice only")
   func informationalSurfaces() {
     var e = PolishSetupEpisodes()

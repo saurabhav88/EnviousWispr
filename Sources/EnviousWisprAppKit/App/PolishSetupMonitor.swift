@@ -24,6 +24,19 @@ struct PolishSetupConfiguration: Hashable {
   let provider: LLMProvider
   let model: String
   let credentialRevision: UInt64?
+  /// #4473: the EG-1 size being set up; nil for every other provider. Part of the identity, so
+  /// picking another size ends the episode: a Mini download does not answer for Micro.
+  let egOneSize: EGOneSize?
+
+  init(
+    provider: LLMProvider, model: String, credentialRevision: UInt64?,
+    egOneSize: EGOneSize? = nil
+  ) {
+    self.provider = provider
+    self.model = model
+    self.credentialRevision = credentialRevision
+    self.egOneSize = provider == .egOne ? egOneSize : nil
+  }
 }
 
 /// One stretch of time during which the chosen configuration has a setup problem. Ends on
@@ -1146,7 +1159,8 @@ final class PolishSetupMonitorHolder {
       monitor?.configurationOrEligibilityChanged()
     case .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel:
       summaryMonitor?.configurationOrEligibilityChanged()
-    case .onboardingState:
+    case .onboardingState, .egOneSize:
+      // #4473: one size preference serves both engines' EG-1 (plan §3.1.1 S3).
       monitor?.configurationOrEligibilityChanged()
       summaryMonitor?.configurationOrEligibilityChanged()
     default: break
@@ -1191,9 +1205,11 @@ extension PolishSetupInputs {
     return PolishSetupInputs(
       onboardingComplete: settings.onboardingState == .completed,
       configuration: PolishSetupConfiguration(
-        provider: provider, model: engine.model, credentialRevision: revision),
+        provider: provider, model: engine.model, credentialRevision: revision,
+        egOneSize: settings.preferredEGOneSize),
       facts: .live(
-        localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+        localPolishRuntimes: localPolishRuntimes, egOneSize: settings.preferredEGOneSize,
+        aiAvailability: aiAvailability, setup: setup,
         validationProvider: validation.provider,
         cloudValidation: validation.state,
         openAIKeySaved: savedKeyPresence.savedFlag(for: .openAI),

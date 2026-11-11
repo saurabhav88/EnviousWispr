@@ -2548,6 +2548,7 @@ package final class WisprBootstrapper {
             importOllamaModel: settings.fileImportLLMProvider == nil
               ? settings.ollamaModel : settings.fileImportOllamaModel,
             llmDiscovery: llmDiscovery, localPolishRuntimes: localPolishRuntimes,
+            egOneSize: settings.preferredEGOneSize,
             aiAvailability: aiAvailability, setup: setup, savedKeyPresence: savedKeyPresence)
         })
       // #3765: every closure reads the app's own owner at request time; none caches.

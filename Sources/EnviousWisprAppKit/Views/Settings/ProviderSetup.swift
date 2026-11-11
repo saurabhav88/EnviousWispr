@@ -883,7 +883,9 @@ struct ProviderSetupSection: View {
 /// (`stateIsAboutThisSurface`).
 private var statusFacts: PolishSetupFacts {
   .live(
-    localPolishRuntimes: localPolishRuntimes, aiAvailability: aiAvailability, setup: setup,
+    localPolishRuntimes: localPolishRuntimes,
+    egOneSize: settings.preferredEGOneSize,
+    aiAvailability: aiAvailability, setup: setup,
     validationProvider: stateIsAboutThisSurface ? llmDiscovery.stateProvider : nil,
     cloudValidation: surfaceValidation,
     openAIKeySaved: model.openAIKeySaved, geminiKeySaved: model.geminiKeySaved,
@@ -3125,7 +3127,9 @@ struct ProviderSetupLifecycle: ViewModifier {
         // #4328: the Summaries tab probes too when dictation's own engine is EG-1: the slot then
         // holds or starts dictation's engine, never evicting another.
         if ProviderSetupSurface.mayActivateEGOne(surface, dictationProvider: settings.llmProvider) {
-          egOne.activateAndProbe()
+          // #4473: the preferred size's runtime, never another size's.
+          localPolishRuntimes.runtime(for: settings.polishModelID(for: .egOne))?
+            .activateAndProbe()
         }
       } else if provider == .s1Mini {
         // #2649: same two probe moments for the second bundled engine. Found by
