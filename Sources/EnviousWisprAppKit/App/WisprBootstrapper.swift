@@ -713,6 +713,8 @@ package final class WisprBootstrapper {
     let localPolishRuntimes = LocalPolishRuntimeSet(
       egOne: egOneRuntime, s1Mini: s1MiniRuntime,
       additional: egOneOtherSizes.map(\.wiring.runtime))
+    // #4473: the per-size download controls, shared by the size cards and the DEBUG door.
+    let egOneSizeActions = EGOneSizeActions(runtimes: localPolishRuntimes)
     // #4473: the runtime handles of the EG-1 sizes other than full, by exact model, for the
     // polish step of live dictation, crash recovery and file import.
     let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [
@@ -2610,7 +2612,10 @@ package final class WisprBootstrapper {
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },
             parakeetCancel: { [modelDelivery] in modelDelivery.cancelParakeetDownload() },
             whisperDownload: { [setup] in setup.whisperSetup.downloadModel() },
-            whisperCancel: { [setup] in setup.whisperSetup.cancelDownload() }),
+            whisperCancel: { [setup] in setup.whisperSetup.cancelDownload() },
+            egOneDownload: { [egOneSizeActions] in egOneSizeActions.download($0) },
+            egOneCancel: { [egOneSizeActions] in egOneSizeActions.cancel($0) },
+            egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) }),
           dictation: devControlDictation,
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,

@@ -2,6 +2,7 @@
   import AppKit
   import EnviousWisprASR
   import EnviousWisprCore
+  import EnviousWisprLocalPolish
   import EnviousWisprModelDelivery
   import EnviousWisprPipeline
   import EnviousWisprServices
@@ -335,6 +336,62 @@
         payload(await dispatcher.handle(.modelsWhisperDownload, args: [:])))
       #expect(whisper["state"] as? [String: AnyHashable] == ["state": "ready"])
       #expect(models.pressed == ["parakeetCancel", "whisperDownload"])
+    }
+
+    // A script that downloads Mini must reach Mini's own download, or a UAT proves the wrong size.
+    @Test(
+      "an EG-1 model command presses that size's own button once and reads that size's state",
+      arguments: EGOneSize.allCases)
+    func egOneModelCommandReachesItsOwnSize(size: EGOneSize) async throws {
+      let models = DevControlFixtures.ModelFake()
+      for other in EGOneSize.allCases { models.egOneStates[other] = .notInstalled }
+      models.onPress = { action in
+        if action == "egOneDownload:\(size.rawValue)" {
+          models.egOneStates[size] = .downloading(fractionCompleted: 0.25, upgrade: nil)
+        }
+      }
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), models: models)
+      let reply = try #require(
+        payload(await dispatcher.handle(.modelsEGOneDownload, args: ["size": size.rawValue])))
+      #expect(models.pressed == ["egOneDownload:\(size.rawValue)"])
+      #expect(reply["model"] as? String == "egone")
+      #expect(reply["size"] as? String == size.rawValue)
+      #expect(reply["action"] as? String == "download")
+      let state = try #require(reply["state"] as? [String: Any])
+      #expect(state["state"] as? String == "downloading")
+      #expect(state["fractionCompleted"] as? Double == 0.25)
+      #expect(JSONSerialization.isValidJSONObject(reply))
+
+      let cancelled = try #require(
+        payload(await dispatcher.handle(.modelsEGOneCancel, args: ["size": size.rawValue])))
+      #expect(models.pressed.last == "egOneCancel:\(size.rawValue)")
+      #expect(cancelled["action"] as? String == "cancel")
+    }
+
+    // A missing or misspelt size must never fall back to the full size: 4.7 GB would download unasked.
+    @Test("an EG-1 model command without a known size is refused before any button is pressed")
+    func egOneModelCommandRequiresAKnownSize() async throws {
+      let models = DevControlFixtures.ModelFake()
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), models: models)
+      let bad: [[String: Any]] = [
+        [:], ["size": "giant"], ["size": "Full"], ["size": 1], ["size": NSNull()],
+        ["size": "mini", "backend": "x"],
+      ]
+      for command in [DevControlDispatcher.Command.modelsEGOneDownload, .modelsEGOneCancel] {
+        for args in bad {
+          #expect(code(await dispatcher.handle(command, args: args)) == "badArgs", "\(args)")
+        }
+      }
+      #expect(models.pressed.isEmpty)
+    }
+
+    @Test("an EG-1 size with no runtime in the build reports noRuntime")
+    func egOneModelCommandReportsAMissingRuntime() async throws {
+      let models = DevControlFixtures.ModelFake()
+      let (_, dispatcher) = Self.make(status: DevControlFixtures.StatusFake(), models: models)
+      let reply = try #require(
+        payload(await dispatcher.handle(.modelsEGOneCancel, args: ["size": "micro"])))
+      #expect((reply["state"] as? [String: Any])?["state"] as? String == "noRuntime")
     }
 
     @Test("a model command with any argument is refused before any button is pressed")
@@ -1063,8 +1120,14 @@
           parakeetDownload: { [self] in press("parakeetDownload") },
           parakeetCancel: { [self] in press("parakeetCancel") },
           whisperDownload: { [self] in press("whisperDownload") },
-          whisperCancel: { [self] in press("whisperCancel") })
+          whisperCancel: { [self] in press("whisperCancel") },
+          egOneDownload: { [self] in press("egOneDownload:\($0.rawValue)") },
+          egOneCancel: { [self] in press("egOneCancel:\($0.rawValue)") },
+          egOneState: { [self] in egOneStates[$0] })
       }
+
+      /// The install state each EG-1 size reports; a size with no entry has no runtime.
+      var egOneStates: [EGOneSize: EGOneInstallState] = [:]
 
       private func press(_ action: String) {
         pressed.append(action)

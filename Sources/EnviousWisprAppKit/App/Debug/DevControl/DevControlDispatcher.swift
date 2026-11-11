@@ -2,6 +2,7 @@
   import AppKit
   import EnviousWisprASR
   import EnviousWisprCore
+  import EnviousWisprLocalPolish
   import EnviousWisprModelDelivery
   import EnviousWisprPipeline
   import EnviousWisprPostProcessing
@@ -37,6 +38,8 @@
       case modelsParakeetCancel = "models.parakeet.cancel"
       case modelsWhisperDownload = "models.whisper.download"
       case modelsWhisperCancel = "models.whisper.cancel"
+      case modelsEGOneDownload = "models.egone.download"
+      case modelsEGOneCancel = "models.egone.cancel"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -149,6 +152,12 @@
       let parakeetCancel: @MainActor () -> Void
       let whisperDownload: @MainActor () -> Void
       let whisperCancel: @MainActor () -> Void
+      /// #4473: one EG-1 size's Download (or Resume) and Cancel, the same per-size actions
+      /// the size cards press (`EGOneSizeActions`), and that size's install state (nil when
+      /// the build has no runtime for the size).
+      let egOneDownload: @MainActor (EGOneSize) -> Void
+      let egOneCancel: @MainActor (EGOneSize) -> Void
+      let egOneState: @MainActor (EGOneSize) -> EGOneInstallState?
     }
 
     /// Rows `history.list` returns when the request names no limit.
@@ -240,6 +249,10 @@
         return model(.whisper, "download", args, models.whisperDownload)
       case .modelsWhisperCancel:
         return model(.whisper, "cancel", args, models.whisperCancel)
+      case .modelsEGOneDownload:
+        return egOneModel("download", args, models.egOneDownload)
+      case .modelsEGOneCancel:
+        return egOneModel("cancel", args, models.egOneCancel)
       case .dictationStart:
         return await dictation.start(args)
       case .dictationStop:
@@ -630,6 +643,46 @@
       case .whisper: state = Self.project(statusSources.whisperSetup())
       }
       return .ok(["backend": backend.rawValue, "action": action, "state": state])
+    }
+
+    /// `{size}`: press one EG-1 size's button, then read that size's install state. The size
+    /// is required and must be a known one: a missing or unknown size is refused, never read
+    /// as the full size. Like the other model commands, the reply is the instant after the
+    /// press and is never a completion receipt.
+    private func egOneModel(
+      _ action: String, _ args: [String: Any], _ press: @MainActor (EGOneSize) -> Void
+    ) -> Result {
+      guard !unexpectedKeys(args, allowed: ["size"]) else {
+        return .failure(.badArgs, "EG-1 model commands take only size")
+      }
+      guard let raw = args["size"] as? String, let size = EGOneSize(rawValue: raw) else {
+        return .failure(
+          .badArgs,
+          "size must be one of: " + EGOneSize.allCases.map(\.rawValue).joined(separator: ", "))
+      }
+      press(size)
+      return .ok([
+        "model": "egone", "size": size.rawValue, "action": action,
+        "state": Self.project(models.egOneState(size)),
+      ])
+    }
+
+    private static func project(_ state: EGOneInstallState?) -> [String: Any] {
+      switch state {
+      case nil: return ["state": "noRuntime"]
+      case .notInstalled: return ["state": "notInstalled"]
+      case .downloading(let fraction, let upgrade):
+        return [
+          "state": "downloading", "fractionCompleted": finite(fraction),
+          "upgrade": upgrade != nil,
+        ]
+      case .verifying: return ["state": "verifying"]
+      case .installed(let version): return ["state": "installed", "version": version ?? NSNull()]
+      case .paused: return ["state": "paused"]
+      case .updatePaused(let resumable, _):
+        return ["state": "updatePaused", "resumable": resumable]
+      case .failed(let failure): return ["state": "failed", "failure": failure.rawValue]
+      }
     }
 
     // MARK: - History

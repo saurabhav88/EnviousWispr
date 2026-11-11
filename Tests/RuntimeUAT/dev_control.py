@@ -303,6 +303,8 @@ language set CODE is the language picker's choice: lock and English spelling tog
 englishSpelling alone is refused toward it; --force stages one field.
 models download/cancel press the Settings row's own button and return that engine's
 state the instant after; poll status for progress. A reply is never a finished download.
+models download|cancel egone --size full|mini|micro does the same for one size of the EG-1
+polish model; the size is required and the reply carries that size's install state.
 dictation start records on the ACTIVE engine and prints a receipt; --receipt takes that
 receipt object or the whole document start printed. --front-app brings that app forward
 first (best effort: leave the field you want the text in focused); if the app loses the
@@ -333,6 +335,10 @@ Changes need the shared dev-app lock (dev-app-lock.py claim) unless run by hand.
 
 # The CLI's model names are the door's command segments (models.<backend>.<action>).
 MODEL_BACKENDS = ("parakeet", "whisper")
+# The EG-1 polish model's sizes (EGOneSize raw values). `models download|cancel egone` needs
+# --size; the door refuses a missing or unknown one and never falls back to the full size.
+EGONE_MODEL = "egone"
+EGONE_SIZES = ("full", "mini", "micro")
 # ShortcutRole raw values; the door refuses anything else.
 SHORTCUT_ROLES = ("record", "cancel", "quickAdd", "pasteLast", "copyLast")
 MODEL_ACTIONS = ("download", "cancel")
@@ -396,7 +402,10 @@ def build_parser():
     models = sub.add_parser("models", help="download or cancel a speech model").add_subparsers(
         dest="action", required=True, metavar="ACTION")
     for verb in MODEL_ACTIONS:
-        models.add_parser(verb).add_argument("backend", choices=MODEL_BACKENDS)
+        model = models.add_parser(verb)
+        model.add_argument("backend", choices=MODEL_BACKENDS + (EGONE_MODEL,))
+        model.add_argument("--size", choices=EGONE_SIZES,
+                           help="required for egone: which EG-1 size")
 
     keys = sub.add_parser("keys", help="save or clear a cloud polish API key").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -533,8 +542,14 @@ def route(args):
     if key == ("words", "remove"):
         return "words.remove", {"id": args.id}, True
     if args.group == "models" and args.action in MODEL_ACTIONS:
+        if args.backend == EGONE_MODEL:
+            if args.size is None:
+                raise CliError("usage", "models egone needs --size full|mini|micro", EXIT_USAGE)
+            return f"models.{EGONE_MODEL}.{args.action}", {"size": args.size}, True
         if args.backend not in MODEL_BACKENDS:
             raise CliError("usage", f"unknown model {args.backend!r}", EXIT_USAGE)
+        if args.size is not None:
+            raise CliError("usage", "--size applies to models egone only", EXIT_USAGE)
         return f"models.{args.backend}.{args.action}", None, True
     if key == ("keys", "set"):
         # The value is added by `run` from stdin, never from argv.

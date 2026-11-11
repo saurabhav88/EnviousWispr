@@ -388,6 +388,10 @@ def routes_and_values(r, tree):
         (["models", "cancel", "parakeet"], "models.parakeet.cancel", None),
         (["models", "download", "whisper"], "models.whisper.download", None),
         (["models", "cancel", "whisper"], "models.whisper.cancel", None),
+        (["models", "download", "egone", "--size", "mini"], "models.egone.download",
+         {"size": "mini"}),
+        (["models", "cancel", "egone", "--size", "micro"], "models.egone.cancel",
+         {"size": "micro"}),
         (["language", "set", "en-gb"], "language.set", {"code": "en-gb"}),
         (["channel", "set", "BuiltInMic", "1"], "channel.set", {"deviceUID": "BuiltInMic", "channel": 1}),
         (["shortcut", "set", "record", "54", "0"], "shortcut.set",
@@ -425,7 +429,10 @@ def routes_and_values(r, tree):
                 f"status={status} calls={b.backend_calls}")
 
         for argv in (["models", "download", "Whisper"], ["models", "resume", "parakeet"],
-                     ["models", "download", "parakeet", "extra"]):
+                     ["models", "download", "parakeet", "extra"],
+                     ["models", "download", "egone"],
+                     ["models", "download", "egone", "--size", "giant"],
+                     ["models", "download", "parakeet", "--size", "mini"]):
             door.received.clear()
             b = FakeBoundaries({"111": exe}, door=door, lock=FakeLock(session=AGENT, status=0))
             status, document, out, _ = _run(["--worktree", tree.wt] + argv, b)
