@@ -120,7 +120,8 @@ def status(hosts_module, queue, lock, remote_job_fn=None):
                           "last_output_age_s": None if last is None else int(now - last)}
             entry["slots"]["ci"] = {"state": state, "holder": holder}
         if host["ssh"] is None:
-            entry["slots"]["uat"] = uat_local(lock)
+            if "uat" in host["kinds"]:
+                entry["slots"]["uat"] = uat_local(lock)
         else:
             entry["slots"]["uat"] = {"state": "deferred (#4510)", "holder": None}
             entry["remote_job"] = remote_job_fn(hosts_module, host) if remote_job_fn else "not queried"
@@ -205,7 +206,7 @@ def self_test():
                 failures.append("a held slot without a live card is held_unknown, never free")
             # The host is removed from the list while its slot is still held.
             config.write_text(json.dumps({"schema": 1, "hosts": [
-                {"name": "main", "ssh": None, "order": 0, "kinds": ["ci"], "ci_workers": 4, "audio": "real"}]}))
+                {"name": "main", "ssh": None, "order": 0, "kinds": ["ci", "uat"], "ci_workers": 4, "audio": "real"}]}))
             checks += 1
             if [h["name"] for h in status(hosts, queue, None)["hosts"] if h.get("orphan")] != ["spare"]:
                 failures.append("a removed host that still holds its slot is shown as an orphan")

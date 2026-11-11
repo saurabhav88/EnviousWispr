@@ -389,6 +389,16 @@ fi
 # watchdog. Waiting for a lock above is not a step and is never timed.
 WATCHDOG="$PROJECT_ROOT/scripts/lib/output-watchdog.py"
 EW_HUNG_MARKER="$(mktemp "${TMPDIR:-/tmp}/ew-hung.XXXXXX")"
+# #4507: a run that stays here uses this Mac's own worker budget from the host
+# list unless EW_LOCAL_TEST_WORKERS is set (a backup Mac gets its own from the
+# dispatcher).
+if [ "$SLOT_HOST" = "local" ] && [ -z "${EW_LOCAL_TEST_WORKERS:-}" ]; then
+  if EW_LOCAL_TEST_WORKERS="$(python3 "$PROJECT_ROOT/scripts/lib/mac_hosts.py" local-workers)"; then
+    export EW_LOCAL_TEST_WORKERS
+  else
+    exit 2
+  fi
+fi
 EW_RUNNER_PID=$$
 EW_CARD_HOST="$SLOT_HOST"
 export EW_HUNG_MARKER EW_RUNNER_PID EW_CARD_HOST

@@ -27,6 +27,7 @@ Usage:
   mac_hosts.py check-config    exit 0 when the file is absent or valid, else 2
   mac_hosts.py sha             print the config's SHA-256 ("none" when absent); exit 2 if invalid
   mac_hosts.py eligible-ci [--real]   remote CI hosts usable now, in order (probe cached 60 s)
+  mac_hosts.py local-workers   this Mac's ci_workers (4 when there is no config)
   mac_hosts.py --self-test
 """
 
@@ -96,6 +97,10 @@ def _host(entry, index):
         if mount is not None and (not isinstance(mount, str) or not mount.startswith("/")):
             raise ConfigError(f"{where}.requires_mount must be an absolute path or null")
         host.update(root=entry["root"], requires_mount=mount, repo_url=entry["repo_url"])
+    elif "ci" not in kinds or entry["audio"] != "real":
+        # This Mac always runs its own test lanes first and has a real input
+        # device; a setting that says otherwise would be silently ignored, so refuse it.
+        raise ConfigError(f"{where} (this Mac, ssh: null) must list kind ci and audio real")
     return host
 
 
@@ -302,6 +307,11 @@ def main(argv):
         if argv == ["check-config"]:
             load()
             return 0
+        if argv == ["local-workers"]:
+            # This Mac's grouped-test worker budget (its host entry's ci_workers).
+            hosts, _ = load()
+            print(next(h["ci_workers"] for h in hosts if h["ssh"] is None))
+            return 0
         if argv == ["sha"]:
             print(load()[1])
             return 0
@@ -329,7 +339,7 @@ def main(argv):
     except ConfigError as error:
         print(f"ERROR: Mac host config {CONFIG_PATH}: {error}", file=sys.stderr)
         return 2
-    print("usage: mac_hosts.py list|check-config|sha|eligible-ci [--real]|--self-test", file=sys.stderr)
+    print("usage: mac_hosts.py list|check-config|sha|local-workers|eligible-ci [--real]|--self-test", file=sys.stderr)
     return 2
 
 
