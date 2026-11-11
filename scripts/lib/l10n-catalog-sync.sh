@@ -76,10 +76,12 @@ PRODUCTION_TARGETS = [
     "EnviousWisprModelDelivery", "EnviousWisprLocalPolish", "EnviousWisprPostProcessing",
     "EnviousWisprAudio",
     "EnviousWisprServices", "EnviousWisprFluidAudioBridge", "EnviousWisprTranscribeCpp", "EnviousWisprASR",
-    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprWordCheck", "EnviousWisprPipeline",
+    "EnviousWisprLLM", "EnviousWisprLlamaEngine", "EnviousWisprEG1Engine", "EnviousWisprWordCheck",
+    "EnviousWisprPipeline",
     "EnviousWisprContacts",
     "EnviousWisprLivePreview", "EnviousWisprWhisperPreviewAdapter", "EnviousWisprAppKit",
-    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousWispr",
+    "EnviousWisprDesktopEffects", "EnviousWisprAppLive", "EnviousDecodeKit", "EnviousDecodeHelper",
+    "EnviousWispr",
 ]
 NON_PRODUCTION = {
     "EnviousWisprAppKitTestSupport", "EnviousWisprTests", "EnviousWisprASRTests",

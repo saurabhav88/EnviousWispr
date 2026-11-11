@@ -44,15 +44,26 @@ COMPONENTS=(
   "Sentry Cocoa|9.30.1 + EnviousWispr patch (beaa5941)|MIT|sentry-cocoa/LICENSE.md|https://github.com/saurabhav88/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.10.0|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
   "swift-argument-parser|1.7.1|Apache-2.0|swift-argument-parser/LICENSE.txt|https://github.com/apple/swift-argument-parser|swift-argument-parser"
-  # #3242: the word check runs on MLX. Both pins are Envious Labs forks carrying one small change each
-  # (see Package.swift); the license texts are upstream's, unchanged. MLX core, mlx-c, nlohmann/json
-  # and fmt are compiled into Cmlx; swift-numerics is MLX's own dependency.
-  "mlx-swift|8746d3d8 (fork saurabhav88/mlx-swift of 0.31.6)|MIT|mlx-swift/LICENSE|https://github.com/saurabhav88/mlx-swift|mlx-swift"
+  # #3242: the word check runs on MLX. Both pins are Envious Labs forks carrying small changes on top
+  # of upstream (see Package.swift); the license texts are upstream's, unchanged. MLX core, mlx-c,
+  # nlohmann/json and fmt are compiled into Cmlx; swift-numerics is MLX's own dependency.
+  "mlx-swift|b2de81fb (fork saurabhav88/mlx-swift of 0.31.6)|MIT|mlx-swift/LICENSE|https://github.com/saurabhav88/mlx-swift|mlx-swift"
   "MLX core (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx/LICENSE|https://github.com/ml-explore/mlx|"
   "mlx-c (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/mlx-c/LICENSE|https://github.com/ml-explore/mlx-c|"
   "nlohmann/json (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/json/LICENSE.MIT|https://github.com/nlohmann/json|"
   "fmt (bundled in mlx-swift)|n/a|MIT|mlx-swift/Source/Cmlx/fmt/LICENSE|https://github.com/fmtlib/fmt|"
-  "mlx-swift-lm|644680cd (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
+  "mlx-swift-lm|57e8ebe2 (fork saurabhav88/mlx-swift-lm)|MIT|mlx-swift-lm/LICENSE|https://github.com/saurabhav88/mlx-swift-lm|mlx-swift-lm"
+  # #4473: SharpAI's SwiftLM (MIT), at the provenance commit below, is the source of the
+  # mlx-swift-lm fork's gated-delta tape recording and of EnviousDecodeKit's DFlash tape kernels and
+  # rollback cache. Empty identity: incorporated code, not a SwiftPM pin. The text is SwiftLM's own
+  # LICENSE file, vendored unchanged.
+  "SwiftLM (SharpAI; portions incorporated into mlx-swift-lm and EnviousDecodeKit)|8392f02b|MIT|repo:Sources/EnviousWispr/Resources/SwiftLM-LICENSE.txt|https://github.com/SharpAI/SwiftLM|"
+  # #4473: SwiftLM's DFlash kernels are a port of bstnxbt's dflash-mlx, which SwiftLM does not
+  # credit. The kernels came from its MIT period (commits 19303f67 and 3217e15b); the recurrent
+  # state type handling follows c65a2c9e, published under Apache-2.0. Both texts are in the file.
+  "dflash-mlx (bstnxbt; DFlash kernel code incorporated through SwiftLM)|19303f67 and 3217e15b (MIT); c65a2c9e (Apache-2.0)|MIT and Apache-2.0|repo:Sources/EnviousWispr/Resources/dflash-mlx-LICENSES.txt|https://github.com/bstnxbt/dflash-mlx|"
+  # #4473: the DFlash method and its reference code (Z Lab, arXiv:2602.06036), which dflash-mlx ports.
+  "DFlash (Z Lab; reference code of the method that dflash-mlx ports)|07ebd93d|MIT|repo:Sources/EnviousWispr/Resources/DFlash-LICENSE.txt|https://github.com/z-lab/dflash|"
   "swift-numerics|1.1.1|Apache-2.0|swift-numerics/LICENSE.txt|https://github.com/apple/swift-numerics|swift-numerics"
   # #1741: test-only — the freeze test's Swift parser. Never linked into the
   # shipped app (Package.swift depends on it solely from the EnviousWisprTests

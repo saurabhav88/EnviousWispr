@@ -295,10 +295,44 @@ fi
 # links and launches; the word check then fails at load for every user. Refuse the release instead.
 MLX_METALLIB="$BUNDLE/Contents/Resources/mlx-swift_Cmlx.bundle/Contents/Resources/default.metallib"
 if [[ ! -s "$MLX_METALLIB" ]]; then
-    echo "::error::MLX Metal library missing or empty at $MLX_METALLIB (word check would fail to load)"
+    echo "::error::MLX Metal library missing or empty at $MLX_METALLIB (word check and the EnviousDecode helper would fail to load)"
     exit 1
 fi
 echo "==> MLX Metal library present ($(stat -f %z "$MLX_METALLIB") bytes)"
+
+# #4473 P2: the EnviousDecode helper serves EG-1 polish as its own process. It ships at
+# Contents/MacOS/envious-decode and, from that folder, finds the MLX Metal library checked above
+# through the main bundle (it has no copy of its own). A helper that is missing, built for a
+# newer macOS than the app, or linked to a library outside the system starts for nobody or only
+# on some Macs, while the app still launches and polish silently does not run. Refuse the
+# release instead. These checks need no signature, so an unsigned assembly runs them too.
+DECODE_HELPER="$BUNDLE/Contents/MacOS/envious-decode"
+DECODE_HELPER_ID="com.enviouswispr.envious-decode"
+if [[ ! -f "$DECODE_HELPER" || ! -x "$DECODE_HELPER" ]]; then
+    echo "::error::EnviousDecode helper missing or not executable at $DECODE_HELPER (#4473)"
+    exit 1
+fi
+APP_MIN_OS="$(plutil -extract LSMinimumSystemVersion raw "$BUNDLE/Contents/Info.plist")"
+HELPER_BUILD="$(xcrun vtool -show-build "$DECODE_HELPER")"
+HELPER_MIN_OS="$(awk '$1 == "minos" { print $2 }' <<<"$HELPER_BUILD" | sort -u)"
+if [[ -z "$APP_MIN_OS" || "$HELPER_MIN_OS" != "$APP_MIN_OS" ]]; then
+    echo "::error::EnviousDecode helper minimum macOS '$HELPER_MIN_OS' is not the app's '$APP_MIN_OS' (#4473)"
+    exit 1
+fi
+# Dependency lines of `otool -L` start with a tab; the first field is the library's path.
+HELPER_LINKS="$(otool -L "$DECODE_HELPER")"
+HELPER_LIBS="$(awk '/^\t/ { print $1 }' <<<"$HELPER_LINKS")"
+if ! grep -qx '/usr/lib/libSystem.B.dylib' <<<"$HELPER_LIBS"; then
+    echo "::error::could not read the EnviousDecode helper's linked libraries (#4473)"
+    exit 1
+fi
+HELPER_FOREIGN_LIBS="$(grep -Ev '^(/usr/lib/|/System/Library/)' <<<"$HELPER_LIBS" || true)"
+if [[ -n "$HELPER_FOREIGN_LIBS" ]]; then
+    echo "::error::EnviousDecode helper links libraries outside the system (#4473):"
+    echo "$HELPER_FOREIGN_LIBS"
+    exit 1
+fi
+echo "==> EnviousDecode helper present (minimum macOS $HELPER_MIN_OS, system libraries only)"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> CODESIGN_IDENTITY not set — skipping signing (unsigned assembly only)"
@@ -345,6 +379,23 @@ else
         codesign "${SIGN_FLAGS[@]}" "$EG1_SERVER"
     else
         echo "::error::EG-1 llama-server missing from Contents/Resources (#1271)"
+        exit 1
+    fi
+    # 5.55. #4473 P2: the EnviousDecode helper, a bare Mach-O in Contents/MacOS (its presence
+    # was checked above). Signed like llama-server, before the main-app signature seals the
+    # bundle, with an explicit identifier: without one codesign names it after its file. It
+    # gets NO entitlements: it needs none, and the app's keychain group is the app's alone.
+    echo "    [5.55/6] envious-decode helper"
+    codesign "${SIGN_FLAGS[@]}" --identifier "$DECODE_HELPER_ID" "$DECODE_HELPER"
+    HELPER_SIGNATURE="$(codesign -dv --verbose=4 "$DECODE_HELPER" 2>&1)"
+    if [[ "$HELPER_SIGNATURE" != *$'\n'"Identifier=${DECODE_HELPER_ID}"$'\n'* ]]; then
+        echo "::error::EnviousDecode helper is not signed as $DECODE_HELPER_ID (#4473)"
+        exit 1
+    fi
+    codesign --verify --strict --verbose=2 "$DECODE_HELPER"
+    HELPER_ENTITLEMENTS="$(codesign -d --entitlements - --xml "$DECODE_HELPER" 2>/dev/null || true)"
+    if [[ -n "$HELPER_ENTITLEMENTS" ]]; then
+        echo "::error::EnviousDecode helper carries entitlements; it must carry none (#4473)"
         exit 1
     fi
     # 5.6. #1413 v1.1: the bundled mediaremote-adapter framework. Nested CODE in
