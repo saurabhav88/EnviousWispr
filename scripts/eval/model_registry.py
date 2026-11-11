@@ -32,6 +32,16 @@ from pathlib import Path
 
 REGISTRY_PATH = Path(__file__).parent / "model-registry.json"
 ID_RE = re.compile(r"^eg1-[0-9]+\.[0-9]+-c[0-9]{3}$")
+# #4473 (plan section 14 Q1): three trained candidates were tagged outside the id format
+# before they were chosen for packaging. An artifact id is never renamed, so they are kept
+# as they are. This is a CLOSED map of exactly those ids to the release each was aimed at;
+# it is not a second format. Any other id must match ID_RE and carry its release as prefix.
+KEPT_CANDIDATE_IDS = {
+    "eg1-1.3-intl-1c-20261109": "1.3",
+    "eg1-mini-1.0-g3onestage": "1.0",
+    "eg1-micro-1.0-g3d": "1.0",
+}
+EXPORT_SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 STATUSES = ("candidate", "rejected", "selected", "shipped", "superseded")
 # At most one of each per release: two winners is the ambiguity, not a tidiness rule.
 EXCLUSIVE = ("selected", "shipped")
@@ -175,10 +185,12 @@ def load(path: Path = REGISTRY_PATH) -> dict:
         raise RegistryError(f"{path.name} carries no artifacts")
 
     seen = set()
+    export_ids = set()
     winners: dict[tuple[str, str], list[str]] = {}
     for a in artifacts:
         aid = a.get("artifactId")
-        if not isinstance(aid, str) or not ID_RE.match(aid):
+        kept = isinstance(aid, str) and aid in KEPT_CANDIDATE_IDS
+        if not isinstance(aid, str) or not (kept or ID_RE.match(aid)):
             raise RegistryError(f"bad artifact id {aid!r}: expected eg1-<release>-c<NNN>")
         if aid in seen:
             raise RegistryError(f"duplicate artifact id {aid}")
@@ -187,8 +199,24 @@ def load(path: Path = REGISTRY_PATH) -> dict:
             raise RegistryError(f"{aid}: status {a.get('status')!r} not in {STATUSES}")
         if not a.get("statusReason"):
             raise RegistryError(f"{aid}: status {a['status']} with no reason")
-        if not aid.startswith(f"eg1-{a.get('release')}-"):
+        if kept:
+            if a.get("release") != KEPT_CANDIDATE_IDS[aid]:
+                raise RegistryError(
+                    f"{aid}: a kept candidate id belongs to release "
+                    f"{KEPT_CANDIDATE_IDS[aid]!r}, not {a.get('release')!r}")
+        elif not aid.startswith(f"eg1-{a.get('release')}-"):
             raise RegistryError(f"{aid}: id does not match release {a.get('release')!r}")
+        # An export is a packaged form of the artifact. Its id starts with the artifact's
+        # id (it is never an artifact id itself) and it is bound to hashes, not to a name.
+        for x in a.get("exports") or []:
+            xid = x.get("exportId") if isinstance(x, dict) else None
+            if not isinstance(xid, str) or not xid.startswith(aid + "-"):
+                raise RegistryError(f"{aid}: bad export id {xid!r}")
+            if xid in export_ids:
+                raise RegistryError(f"{aid}: duplicate export id {xid}")
+            export_ids.add(xid)
+            if not EXPORT_SHA_RE.match(str(x.get("packageSHA256") or "")):
+                raise RegistryError(f"{aid}: export {xid} has no packageSHA256")
         if a["status"] in EXCLUSIVE:
             # Keyed by RELEASE ALONE, not by (release, status). Both statuses set
             # the floor, so a release holding one `selected` and a different

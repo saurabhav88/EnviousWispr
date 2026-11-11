@@ -38,6 +38,17 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
   /// third-party weights loaded by `LiveSpeakerSession`. Its own family so its folder, marker
   /// and delivery switch are shared with no transcription or polish model.
   case speakerLive = "speaker_live"
+  /// #4473: EG-1 Mini and EG-1 Micro, the two smaller sizes of EG-1 on the EnviousDecode
+  /// engine. Each is its OWN family, not a variant of `egOne`: each has its own install
+  /// folder, admission marker and revision history, and a size must never be read as a
+  /// superseded revision of another size. (The full size stays `egOne` / `eg-1`, so an
+  /// installed EG-1 is replaced by the new full size.)
+  case egOneMini = "eg_one_mini"
+  case egOneMicro = "eg_one_micro"
+  /// #4473: the learned-word checker adapter of each smaller size, admitted on its own like
+  /// `egOneChecker`.
+  case egOneMiniChecker = "eg_one_mini_checker"
+  case egOneMicroChecker = "eg_one_micro_checker"
 
   /// The base family a checker adapter runs on; nil for a family that is not
   /// a checker. Exhaustive, so a new family must say whether it is one.
@@ -45,7 +56,11 @@ public enum ModelFamily: String, Codable, Sendable, CaseIterable {
     switch self {
     case .egOneChecker: .egOne
     case .s1MiniChecker: .s1Mini
-    case .parakeet, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck, .speakerLive: nil
+    case .egOneMiniChecker: .egOneMini
+    case .egOneMicroChecker: .egOneMicro
+    case .parakeet, .whisper, .egOne, .s1Mini, .editJudge, .wordCheck, .speakerLive, .egOneMini,
+      .egOneMicro:
+      nil
     }
   }
 }

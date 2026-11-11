@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "eg_one_micro",
+    "name": "eg-1-micro",
+    "revision": "eg1-micro-1.0-g3d",
+    "variant": "mlx-q6",
+    "runtimeABI": "enviousdecode-v1"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "sizeBytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "component": "LICENSE"
+    },
+    {
+      "path": "NOTICE",
+      "sizeBytes": 2240,
+      "sha256": "0e2f5996ea26f4ff2a0df43a2a696ef2f8e7f738e00c6509f90f2f401cbb8527",
+      "component": "NOTICE"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sizeBytes": 2630,
+      "sha256": "64f85b198065d0fba2a81f37e10ed68161ce2c19a754c7100e67e0ca2ee9c326",
+      "component": "chat_template.jinja"
+    },
+    {
+      "path": "config.json",
+      "sizeBytes": 2685,
+      "sha256": "9ea3949cc37e2dcc99cec7ca9a9f58cd6350debbc9f01684caf427db7748e95b",
+      "component": "config.json"
+    },
+    {
+      "path": "generation_config.json",
+      "sizeBytes": 173,
+      "sha256": "63953f0d51d53dcc4f972a9fa5d42e38e357c4118cec380be0cd1e5fa5235c23",
+      "component": "generation_config.json"
+    },
+    {
+      "path": "helper/config.json",
+      "sizeBytes": 1178,
+      "sha256": "b7c91578ce460a1f2a078e7797107d253fae46f395443661be871beca3f33368",
+      "component": "helper"
+    },
+    {
+      "path": "helper/model.safetensors",
+      "sizeBytes": 173050824,
+      "sha256": "4c69854f078a44fa52bb19332620cf2f4e77589019fe8bdb2e37acd933397f9a",
+      "component": "helper"
+    },
+    {
+      "path": "model-00001-of-00002.safetensors",
+      "sizeBytes": 338172904,
+      "sha256": "2d75668a4c8b83654774beede42b82b3a882152ea0adc016f7436cc440d95c60",
+      "component": "model-00001-of-00002.safetensors"
+    },
+    {
+      "path": "model-00002-of-00002.safetensors",
+      "sizeBytes": 273827720,
+      "sha256": "1f345030443be493e0f9f0ff509789de1d079793090d6839b57a4ecdb23c35f7",
+      "component": "model-00002-of-00002.safetensors"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "sizeBytes": 71195,
+      "sha256": "8ba3b05d23c82b06a535628dc17254f5a4fa1414f9e46f22925d4a20c79c8b39",
+      "component": "model.safetensors.index.json"
+    },
+    {
+      "path": "tokenizer.json",
+      "sizeBytes": 19989339,
+      "sha256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+      "component": "tokenizer.json"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sizeBytes": 1502,
+      "sha256": "4d2fc7899270dc76b57a7aa1d5ec3234e6a25934c6e2aea6166f989f1d453892",
+      "component": "tokenizer_config.json"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 805133748,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouswispr.com/eg1/eg1-micro-1.0-g3d/"
+    }
+  ],
+  "license": {
+    "name": "EG-1 Model License",
+    "url": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "polishModelsCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "config.json"
+  },
+  "manifestDigest": "c7124d669db301629fa6e9e3a795c84ac9a178f34c258e1f263892f423856a58"
+}
