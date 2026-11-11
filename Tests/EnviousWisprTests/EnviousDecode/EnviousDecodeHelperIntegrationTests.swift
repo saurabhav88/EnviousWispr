@@ -64,15 +64,28 @@ struct EnviousDecodeHelperIntegrationTests {
 
     let hasWordCheck: Bool
 
-    init(size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil) throws {
+    convenience init(size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil)
+      throws
+    {
+      try self.init(
+        model: try #require(Fixtures.targetFolders[size] ?? nil),
+        draft: try #require(Fixtures.helperFolders[size] ?? nil),
+        contextTokens: contextTokens, wordCheckAdapter: wordCheckAdapter)
+    }
+
+    /// A helper started from the folders given (a polish model, its draft model and, when
+    /// given, a word-check adapter).
+    init(model: String, draft: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil)
+      throws
+    {
       self.contextTokens = contextTokens
       hasWordCheck = wordCheckAdapter != nil
       port = try Self.freePort()
       process.executableURL = try #require(
         EnviousDecodeHelperIntegrationTests.helperCandidates.first)
       process.arguments = [
-        "--model", try #require(Fixtures.targetFolders[size] ?? nil),
-        "--draft-model", try #require(Fixtures.helperFolders[size] ?? nil),
+        "--model", model,
+        "--draft-model", draft,
         "--model-name", LLMProvider.egOneModelName, "--port", String(port), "--token", token,
         "--ctx-size", String(contextTokens), "--cache-limit-bytes", String(256 * 1024 * 1024),
       ]
