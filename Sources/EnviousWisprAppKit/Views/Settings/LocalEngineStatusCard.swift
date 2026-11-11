@@ -44,13 +44,8 @@ struct LocalEngineDescriptor: Equatable {
     return Int((Double(ceiling) / Double(Self.charactersPerDictatedMinute)).rounded())
   }
 
-  /// EG-1 at its FULL size (#4473): 4,707,411,269 bytes of model and draft model, stated
-  /// decimal like S1-mini below. The headroom is the delivery manifest's factor (2.2) on that
-  /// download, rounded up. The other sizes get their own figures with the size cards.
-  static let egOne = LocalEngineDescriptor(
-    name: LLMProvider.egOne.displayName, downloadSize: "4.7 GB", installHeadroom: "11 GB",
-    showsLowMemoryNote: true, contextTokens: 16384)
-
+  // #4473: EG-1 has no descriptor here. Its three sizes are drawn by `EGOneSizeCards`, with
+  // their figures from the delivery manifests and `eg1-size-facts.json`.
   static let s1Mini = LocalEngineDescriptor(
     // 484,219,808 bytes. Stated DECIMAL, because that is what EG-1's "2.9 GB"
     // is and what Finder shows the user when they go looking for the space.

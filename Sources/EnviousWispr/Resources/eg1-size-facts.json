@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "measuredOn": "Apple M5 Max",
+  "note": "Every number a size card shows comes from here. null means no measurement of the SHIPPED files exists yet, and the card does not show that row. Receipts are paths inside the #4473 run folder (AgentArtifacts/enviouswispr/runs/2026/11/20261109-223321-eg1-family-app-integration-9cd4). The delivered exam (plan #4473 P6) fills the scores and memory. Mini's polish time is null on purpose: the only helper receipt on file (p2-http-measure/mini) ran the think prompt template, and the shipped Mini uses the bare template.",
+  "sizes": {
+    "full": {
+      "englishPercent": null,
+      "internationalPercent": null,
+      "polishMilliseconds": {
+        "value": 107,
+        "receipt": "p2-http-measure/full/receipt.json:speed.helper.p50",
+        "measures": "p50 of 40 short English dictations through the shipped helper over HTTP, q6 files"
+      },
+      "memoryBytes": null
+    },
+    "mini": {
+      "englishPercent": null,
+      "internationalPercent": null,
+      "polishMilliseconds": null,
+      "memoryBytes": null
+    },
+    "micro": {
+      "englishPercent": null,
+      "internationalPercent": null,
+      "polishMilliseconds": {
+        "value": 46,
+        "receipt": "p4-c1/micro-smoke/smoke-report.json:helper_ms.p50",
+        "measures": "p50 of a 40-row smoke set through the shipped helper, q6 files"
+      },
+      "memoryBytes": null
+    }
+  }
+}

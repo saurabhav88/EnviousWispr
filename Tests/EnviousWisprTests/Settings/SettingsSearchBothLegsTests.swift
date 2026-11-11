@@ -145,6 +145,29 @@ struct SettingsSearchBothLegsTests {
     }
   }
 
+  /// #4473: a search naming an EG-1 size reaches an EG-1 place on the AI Polish page, in English
+  /// and German. A user typing "EG-1 Micro" would otherwise find nothing about the card they want.
+  /// Only the queries that land there today are asserted; "Mini", "Micro", "model size",
+  /// "smaller model" and the German "Modellgröße" / "kleineres Modell" do not (reported as gaps).
+  @Test("searches naming an EG-1 size reach an EG-1 place on the AI Polish page")
+  func eg1SizeSearchesReachEG1() async throws {
+    let english = try Self.model("en")
+    let german = try Self.model("de")
+    let places: Set<String> = [
+      "aiPolishProvider.egOne", "aiPolish.providerSection", "aiPolish.whyUse.egOne",
+      "aiPolishProvider", "section.aiPolishModel",
+    ]
+    let rows: [(SettingsSearchModel, String)] = [
+      (english, "EG-1 Mini"), (english, "EG-1 Micro"), (german, "EG-1 Mini"),
+      (german, "EG-1 Micro"),
+    ]
+    for (model, query) in rows {
+      let ids = Array(await Self.search(model, query).prefix(5))
+      let landed = ids.contains { places.contains($0) || $0.hasPrefix("localModel.") }
+      #expect(landed, "\(query): \(ids)")
+    }
+  }
+
   @Test("meaning_elapsed_ms counts encoding and scoring, never the model load")
   func elapsedExcludesLoad() async throws {
     let assets = SettingsSearchMeaningAssets(

@@ -715,6 +715,13 @@ package final class WisprBootstrapper {
       additional: egOneOtherSizes.map(\.wiring.runtime))
     // #4473: the per-size download controls, shared by the size cards and the DEBUG door.
     let egOneSizeActions = EGOneSizeActions(runtimes: localPolishRuntimes)
+    let egOneWirings: [EGOneSize: EGOneSizeWiring] = [
+      .full: egOneFull, .mini: egOneMini, .micro: egOneMicro,
+    ]
+    let egOneSizeCatalog = EGOneSizeCatalog(
+      facts: EGOneSizeFacts.loadBundled(),
+      downloadBytes: egOneWirings.compactMapValues { $0.registration?.manifest.totalBytes },
+      displayVersions: egOneWirings.compactMapValues { $0.facts?.resolvedDisplayVersion })
     // #4473: the runtime handles of the EG-1 sizes other than full, by exact model, for the
     // polish step of live dictation, crash recovery and file import.
     let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [
@@ -2622,6 +2629,12 @@ package final class WisprBootstrapper {
             whisperCancel: { [setup] in setup.whisperSetup.cancelDownload() },
             egOneDownload: { [egOneSizeActions] in egOneSizeActions.download($0) },
             egOneCancel: { [egOneSizeActions] in egOneSizeActions.cancel($0) },
+            egOneRemove: { [egOneSizeActions, settings] size in
+              egOneSizeActions.remove(
+                size, settings: settings,
+                recommendation: EGOneSizeRecommendation.forThisMac(
+                  language: settings.languageMode))
+            },
             egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) }),
           dictation: devControlDictation,
           credentials: CredentialWriter(
@@ -3203,7 +3216,8 @@ package final class WisprBootstrapper {
     whisperKernelDriver.captureCloudModelList = captureCloudModelList
     self.polishSetup = PolishSetupWiring(
       savedKeyPresence: savedKeyPresence, monitor: polishSetupMonitor, card: polishSetupCard,
-      summary: SummarySetupMonitorHolder(monitor: summarySetupMonitor))
+      summary: SummarySetupMonitorHolder(monitor: summarySetupMonitor),
+      egOneSizeCatalog: egOneSizeCatalog)
     self.vocabularyPackManager = vocabularyPackManager
     // #2381. Built from three collaborators this root already holds; it adds no new dependency of
     // its own and reaches nothing the root did not already have.
@@ -3613,7 +3627,7 @@ private struct MainWindowRoot: View {
       .environment(b.snippetsCoordinator)
       .environment(b.contactsImportCoordinator)
       .environment(b.setup)
-      .environment(b.localPolishRuntimes.egOne)
+      .environment(\.egOneSizeCatalog, b.polishSetup.egOneSizeCatalog)
       // #2649: both engines are `LocalPolishRuntime`, and `@Environment` keys by TYPE,
       // so injecting the second directly would silently replace the first. The
       // set names them instead.

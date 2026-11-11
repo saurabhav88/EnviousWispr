@@ -366,6 +366,11 @@
         payload(await dispatcher.handle(.modelsEGOneCancel, args: ["size": size.rawValue])))
       #expect(models.pressed.last == "egOneCancel:\(size.rawValue)")
       #expect(cancelled["action"] as? String == "cancel")
+
+      let removed = try #require(
+        payload(await dispatcher.handle(.modelsEGOneRemove, args: ["size": size.rawValue])))
+      #expect(models.pressed.last == "egOneRemove:\(size.rawValue)")
+      #expect(removed["action"] as? String == "remove")
     }
 
     // A missing or misspelt size must never fall back to the full size: 4.7 GB would download unasked.
@@ -377,7 +382,9 @@
         [:], ["size": "giant"], ["size": "Full"], ["size": 1], ["size": NSNull()],
         ["size": "mini", "backend": "x"],
       ]
-      for command in [DevControlDispatcher.Command.modelsEGOneDownload, .modelsEGOneCancel] {
+      for command in [
+        DevControlDispatcher.Command.modelsEGOneDownload, .modelsEGOneCancel, .modelsEGOneRemove,
+      ] {
         for args in bad {
           #expect(code(await dispatcher.handle(command, args: args)) == "badArgs", "\(args)")
         }
@@ -1123,6 +1130,7 @@
           whisperCancel: { [self] in press("whisperCancel") },
           egOneDownload: { [self] in press("egOneDownload:\($0.rawValue)") },
           egOneCancel: { [self] in press("egOneCancel:\($0.rawValue)") },
+          egOneRemove: { [self] in press("egOneRemove:\($0.rawValue)") },
           egOneState: { [self] in egOneStates[$0] })
       }
 

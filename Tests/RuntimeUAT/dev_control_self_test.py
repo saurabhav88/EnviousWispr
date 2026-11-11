@@ -392,6 +392,8 @@ def routes_and_values(r, tree):
          {"size": "mini"}),
         (["models", "cancel", "egone", "--size", "micro"], "models.egone.cancel",
          {"size": "micro"}),
+        (["models", "remove", "egone", "--size", "micro"], "models.egone.remove",
+         {"size": "micro"}),
         (["language", "set", "en-gb"], "language.set", {"code": "en-gb"}),
         (["channel", "set", "BuiltInMic", "1"], "channel.set", {"deviceUID": "BuiltInMic", "channel": 1}),
         (["shortcut", "set", "record", "54", "0"], "shortcut.set",

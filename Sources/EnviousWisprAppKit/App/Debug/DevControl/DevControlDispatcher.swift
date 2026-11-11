@@ -40,6 +40,7 @@
       case modelsWhisperCancel = "models.whisper.cancel"
       case modelsEGOneDownload = "models.egone.download"
       case modelsEGOneCancel = "models.egone.cancel"
+      case modelsEGOneRemove = "models.egone.remove"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -157,6 +158,8 @@
       /// the build has no runtime for the size).
       let egOneDownload: @MainActor (EGOneSize) -> Void
       let egOneCancel: @MainActor (EGOneSize) -> Void
+      /// The size card's Remove, with its preference rule (plan #4473 §3.1.1 S9).
+      let egOneRemove: @MainActor (EGOneSize) -> Void
       let egOneState: @MainActor (EGOneSize) -> EGOneInstallState?
     }
 
@@ -253,6 +256,8 @@
         return egOneModel("download", args, models.egOneDownload)
       case .modelsEGOneCancel:
         return egOneModel("cancel", args, models.egOneCancel)
+      case .modelsEGOneRemove:
+        return egOneModel("remove", args, models.egOneRemove)
       case .dictationStart:
         return await dictation.start(args)
       case .dictationStop:

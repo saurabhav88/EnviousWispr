@@ -1143,19 +1143,9 @@ struct SettingsMapRenderingTests {
     )
     let exempt = Dictionary(
       uniqueKeysWithValues: Self.exempt(rendered.list).map { ($0.key.rawValue, $0.value) })
-    var wantExempt = expected.exempt
-    // The fixture was recorded on a Mac with more than 8 GB. On an 8 GB Mac (the support floor,
-    // and the hosted CI runners) EG-1's card adds its low-memory note (LocalEngineStatusCard,
-    // `showsLowMemoryNote`): one more status line on AI Polish, and on the Summaries tab one more
-    // `meetingSummarySetup` row, because that scope claims every registration under the summary
-    // setup section (#4319).
-    if ProcessInfo.processInfo.physicalMemory <= (8 << 30) {
-      if label.hasPrefix("aiPolish.egOne") {
-        wantExempt["statusLine", default: 0] += 1
-      } else if label.hasPrefix("meetings.summaries.egOne") {
-        wantExempt["meetingSummarySetup", default: 0] += 1
-      }
-    }
+    // #4473: the EG-1 size cards show no low-memory note (the cards mark a size that is tight
+    // on this Mac themselves), so the expectation no longer depends on the test Mac's memory.
+    let wantExempt = expected.exempt
     #expect(exempt == wantExempt, "\(label): exemptions \(exempt)")
   }
 

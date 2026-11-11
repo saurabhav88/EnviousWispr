@@ -37,15 +37,30 @@ struct PolishLengthCopyTests {
     #expect(!source.isEmpty, "a check that cannot reach its subject is not a check")
 
     for sentence in [
-      // EG-1 and S1-mini: the number is interpolated from the guard, so the
+      // S1-mini: the number is interpolated from the guard, so the
       // source must carry the interpolation and never a typed digit.
-      #"Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes."#,
+      // EG-1 states no length here on purpose (#4473); see the next test.
       #"Best for dictations up to about \(LocalEngineDescriptor.s1Mini.dictationMinutes) minutes."#,
       "Handles dictations up to about 8 minutes.",             // Apple Intelligence
       "How long a dictation it handles depends on the model you choose.",  // Ollama
     ] {
       #expect(source.contains(sentence), "missing length copy: \(sentence)")
     }
+  }
+
+  /// #4473: the three EG-1 sizes hold different lengths (Micro runs half the context), so one
+  /// sentence for all of them was false for Micro. The EG-1 block must not state a length.
+  @Test("the EG-1 explainer states no single dictation length")
+  func egOneStatesNoLength() {
+    let source = Self.settingsSource
+    let whyBody = source.components(separatedBy: "private var whyBlock: some View")
+    #expect(whyBody.count == 2, "the WHY USE block was renamed or removed")
+    let arm = (whyBody.last ?? "").components(separatedBy: "case .egOne:\n").dropFirst().first?
+      .components(separatedBy: "case .s1Mini:\n").first ?? ""
+    #expect(arm.contains("EG-1 is our own model"), "the EG-1 arm was not found")
+    // A user would be told Micro handles as much as the full size if this came back.
+    #expect(!arm.contains("Handles dictations up to about"))
+    #expect(!source.contains("LocalEngineDescriptor.egOne"))
   }
 
   /// "About" is what makes these survive a 10% re-measurement. A bare number

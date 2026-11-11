@@ -144,6 +144,9 @@ enum SettingsMapExemption: String, Sendable, CaseIterable {
   case statusLine
   /// The bundled model's Remove action (plan §5).
   case bundledModelRemove
+  /// #4473: a control on an EG-1 size card that is not the size in use. It repeats the selected
+  /// card's action, whose own map identity is the search target; an identity is on screen once.
+  case egOneOtherSizeCard
   /// The saved-key retry action (plan §5).
   case savedKeyRetry
   /// The "Switching from another dictation app?" card (#3034): a discovery link with no

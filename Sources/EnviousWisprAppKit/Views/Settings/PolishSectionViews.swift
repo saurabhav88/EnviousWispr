@@ -25,6 +25,10 @@ enum PolishSectionLayout {
 /// The "<NAME> · only for this model" heading above the card.
 struct PolishSectionHeading: View {
   let provider: LLMProvider
+  /// What follows the name; nil gives "· only for this model". EG-1 says "· choose a size".
+  var detail: String? = nil
+  /// A quiet note at the trailing edge, such as this Mac's memory above the EG-1 size cards.
+  var trailing: String? = nil
 
   /// The provider's name, from its Settings Map node (#3482).
   private var providerName: String {
@@ -39,14 +43,21 @@ struct PolishSectionHeading: View {
         .foregroundStyle(Color.stAccent)
         .accessibilityAddTraits(.isHeader)
       Text(
-        String(
-          localized: "· only for this model",
-          comment:
-            "AI Polish: after the chosen model's name above its own settings, such as \"EG-1 · only for this model\"."
-        )
+        detail
+          ?? String(
+            localized: "· only for this model",
+            comment:
+              "AI Polish: after the chosen model's name above its own settings, such as \"EG-1 · only for this model\"."
+          )
       )
       .font(.stHelper)
       .foregroundStyle(Color.stTextSecondary)
+      if let trailing {
+        Spacer(minLength: 12)
+        Text(trailing)
+          .font(.stHelper)
+          .foregroundStyle(Color.stTextSecondary)
+      }
     }
     .padding(.leading, 4)
     .settingsMapRegistration(.aiPolishProviderSection)

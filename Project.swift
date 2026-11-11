@@ -739,6 +739,7 @@ let project = Project(
         // #4473: one runtime manifest per published EG-1 size (the full size is the file above).
         "Sources/EnviousWispr/Resources/eg1-micro-manifest.json",
         "Sources/EnviousWispr/Resources/eg1-mini-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-size-facts.json",
         // #1348 Phase 2: Parakeet delivery manifest — the bundled trust root
         // (contract 4a). Same Bundle.main route as eg1-manifest.json.
         "Sources/EnviousWispr/Resources/parakeet-delivery-manifest.json",

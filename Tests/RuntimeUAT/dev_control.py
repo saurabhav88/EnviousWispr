@@ -406,6 +406,10 @@ def build_parser():
         model.add_argument("backend", choices=MODEL_BACKENDS + (EGONE_MODEL,))
         model.add_argument("--size", choices=EGONE_SIZES,
                            help="required for egone: which EG-1 size")
+    # Remove exists for the EG-1 sizes only (the size card's Remove, with its preference rule).
+    remove = models.add_parser("remove")
+    remove.add_argument("backend", choices=(EGONE_MODEL,))
+    remove.add_argument("--size", choices=EGONE_SIZES, required=True)
 
     keys = sub.add_parser("keys", help="save or clear a cloud polish API key").add_subparsers(
         dest="action", required=True, metavar="ACTION")
@@ -541,6 +545,8 @@ def route(args):
         return "words.update", wire, True
     if key == ("words", "remove"):
         return "words.remove", {"id": args.id}, True
+    if key == ("models", "remove"):
+        return f"models.{EGONE_MODEL}.remove", {"size": args.size}, True
     if args.group == "models" and args.action in MODEL_ACTIONS:
         if args.backend == EGONE_MODEL:
             if args.size is None:

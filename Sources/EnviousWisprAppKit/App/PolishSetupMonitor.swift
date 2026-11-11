@@ -1110,15 +1110,19 @@ final class PolishSetupWiring {
   let monitor: PolishSetupMonitor
   let card: PolishSetupCardPresenter
   let summary: SummarySetupMonitorHolder
+  /// #4473: what the EG-1 size cards show that never changes while the app runs.
+  let egOneSizeCatalog: EGOneSizeCatalog
 
   init(
     savedKeyPresence: SavedKeyPresence, monitor: PolishSetupMonitor,
-    card: PolishSetupCardPresenter, summary: SummarySetupMonitorHolder
+    card: PolishSetupCardPresenter, summary: SummarySetupMonitorHolder,
+    egOneSizeCatalog: EGOneSizeCatalog
   ) {
     self.savedKeyPresence = savedKeyPresence
     self.monitor = monitor
     self.card = card
     self.summary = summary
+    self.egOneSizeCatalog = egOneSizeCatalog
   }
 
   /// Starts both monitors; each watches its own chosen engine from launch.

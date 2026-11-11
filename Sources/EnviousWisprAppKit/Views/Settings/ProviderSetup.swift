@@ -747,8 +747,8 @@ struct ProviderSetupSection: View {
   /// unlisted. Each projection below reads `snapshot` once.
   @Environment(CloudModelListHolder.self) private var cloudModelListHolder: CloudModelListHolder?
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
-  @Environment(LocalPolishRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
+  @Environment(\.egOneSizeCatalog) private var egOneSizeCatalog
   @Environment(\.keychainManager) private var keychainManagerEnv
   /// #4353 D4: carries "open this screen's model menu" from the card's button. Optional: the
   /// Transcribe a File wizard and previews may render this card without one.
@@ -827,7 +827,16 @@ struct ProviderSetupSection: View {
   var body: some View {
     if let entry = PolishRailCatalog.entry(for: provider) {
       VStack(alignment: .leading, spacing: SettingsPR1Layout.headingGap) {
-        PolishSectionHeading(provider: provider)
+        // #4473: above EG-1's size cards the heading reads "EG-1 · choose a size" and names
+        // this Mac's memory, which the "Best for this Mac" pill is based on.
+        if provider == .egOne {
+          PolishSectionHeading(
+            provider: provider, detail: EGOneSizeCardCopy.chooseASize,
+            trailing: EGOneSizeCardCopy.thisMac(
+              physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory))
+        } else {
+          PolishSectionHeading(provider: provider)
+        }
         if surface == .fileImport {
           Text(SettingsCopy.frozenPerImport)
             .font(.stHelper)
@@ -877,6 +886,41 @@ struct ProviderSetupSection: View {
 
 
 // MARK: - Status (#3385)
+
+/// #4473: the EG-1 size cards. The presenter decides what each card shows; this only gathers
+/// its inputs and forwards a press to the size's own owner. Download, Resume and Try Again are
+/// one action (`LocalPolishRuntime.startDownload` continues what exists); Remove follows plan
+/// §3.1.1 S9 through `EGOneSizeActions`.
+@ViewBuilder
+private var egOneSizeCards: some View {
+  let actions = EGOneSizeActions(runtimes: localPolishRuntimes)
+  let recommendation = EGOneSizeRecommendation.forThisMac(language: settings.languageMode)
+  let memory = ProcessInfo.processInfo.physicalMemory
+  EGOneSizeCards(
+    cards: EGOneSizeCardPresenter.cards(
+      .init(
+        preferred: settings.preferredEGOneSize, surfaceUsesEGOne: true,
+        allowsRuntimeActivation: ProviderSetupSurface.mayActivateEGOne(
+          surface, dictationProvider: settings.llmProvider),
+        recommendation: recommendation,
+        installStates: Dictionary(
+          uniqueKeysWithValues: EGOneSize.allCases.compactMap { size in
+            actions.installState(size).map { (size, $0) }
+          }),
+        displayVersions: egOneSizeCatalog.displayVersions,
+        downloadBytes: egOneSizeCatalog.downloadBytes,
+        facts: egOneSizeCatalog.facts, physicalMemoryBytes: memory)),
+    measuredOn: egOneSizeCatalog.facts.measuredOn
+  ) { action, size in
+    switch action {
+    case .download, .resume, .resumeUpgrade, .finishUpgrade, .tryAgain: actions.download(size)
+    case .cancel: actions.cancel(size)
+    case .use: settings.selectEGOneSize(size)
+    case .testLive: localPolishRuntimes.runtime(for: .egOne(size))?.activateAndProbe()
+    case .remove: actions.remove(size, settings: settings, recommendation: recommendation)
+    }
+  }
+}
 
 /// The setup facts for this surface (#3438: shared with the import gate and the setup
 /// warnings). The validation verdict counts only when it is about THIS surface's provider
@@ -969,31 +1013,9 @@ private var providerRows: some View {
   // must not slip: handing EG-1's runtime an S1-mini descriptor would offer a 484 MB
   // download for a 2.9 GB model, and nothing downstream would notice.
   case .egOne:
-    LocalEngineStatusCard(
-      runtime: egOne, engine: .egOne,
-      allowsRuntimeActivation: ProviderSetupSurface.mayActivateEGOne(
-        surface, dictationProvider: settings.llmProvider),
-      isMeetingSummarySurface: surface == .meetingSummary
-    ) {
-      egOne.removeModel()
-      // Removing the selected engine must move the user somewhere that
-      // works, or polish silently stops. Apple Intelligence is what a fresh
-      // install selects, so it is where a removal lands.
-      //
-      // BOTH surfaces (#2772). The engine is shared; removing it from the import page
-      // while dictation still selected it left dictation pointing at nothing, and
-      // `LocalPolishRuntime.removeModel` then refused the file removal because its
-      // `isActiveProvider` still reported dictation's selection. Found by Codex.
-      // EVERY surface that selects the removed engine moves, whichever page the removal
-      // ran from; a following import follows dictation's move. The first version moved
-      // dictation only when run from the import page, which left an import OVERRIDE on
-      // the engine when the removal ran from AI Polish. Found by the cloud review.
-      // #4328: EnviousMeet summaries are the third surface. Without this a removal from any page
-      // left summaries on a missing EG-1 and the next summary failed.
-      BundledEngineRemoval.moveSurfaces(off: .egOne, in: settings)
-    } middle: {
-      EmptyView()
-    }
+    // #4473: EG-1 is three sizes, each a card (founder's design, 2026-11). S1-mini keeps the
+    // single card below.
+    egOneSizeCards
   case .s1Mini:
     LocalEngineStatusCard(
       runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
@@ -1689,15 +1711,9 @@ private var whyBlock: some View {
             localized:
               "For the smallest download and mostly short English dictation, S1-mini is lighter. For long recordings or code, a cloud model is a step up.",
             comment: "AI Polish, Why use EG-1: when another engine fits better.")),
-        PolishWhyParagraph(
-          lead: String(
-            localized: "How long?", comment: "AI Polish, Why use: bold lead-in of a paragraph."),
-          body: String(
-            localized:
-              "Handles dictations up to about \(LocalEngineDescriptor.egOne.dictationMinutes) minutes.",
-            comment:
-              "AI Polish, Why use EG-1: the longest dictation it polishes whole. %lld is a number of minutes."
-          )),
+        // #4473: no "How long?" line here. The sizes hold different lengths (Micro runs half
+        // the context of the full size), and one number for all three was a false promise for
+        // Micro. A per-size line belongs with the size cards, from the size's own context.
       ])
   case .s1Mini:
     // The licence carries an ADDITIONAL TERM requiring the exact string "S1-mini" by
@@ -3064,7 +3080,6 @@ struct ProviderSetupLifecycle: ViewModifier {
   @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
   @Environment(LLMModelDiscoveryCoordinator.self) private var llmDiscovery
   @Environment(SavedKeyPresence.self) private var savedKeyPresence
-  @Environment(LocalPolishRuntime.self) private var egOne
   @Environment(LocalPolishRuntimeSet.self) private var localPolishRuntimes
   @Environment(\.keychainManager) private var keychainManagerEnv
 
