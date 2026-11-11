@@ -287,7 +287,14 @@ exec 9<>"$CI_QUEUE_PATH"
 # #4089/#4090: a filtered run is short and goes before a queued full run.
 CI_QUEUE_KIND="full"
 [ "${#TEST_ARGS[@]}" -gt 0 ] && CI_QUEUE_KIND="short"
-python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KIND" &
+# #4507: the local Mac host list (scripts/lib/mac_hosts.py). No file is today's
+# single-Mac behavior; an invalid file stops the run here rather than guessing.
+# The holder card it labels is informational: the flock below decides ownership.
+if ! MAC_HOSTS_SHA="$(python3 "$PROJECT_ROOT/scripts/lib/mac_hosts.py" sha)"; then
+  exit 2
+fi
+python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KIND" \
+  --label "$(basename "$PROJECT_ROOT")" --worktree "$PROJECT_ROOT" --config-sha256 "$MAC_HOSTS_SHA" &
 CI_QUEUE_PID=$!
 if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
 # #4293: this checkout's build lock (scripts/lib/build-folder-lock.py), held on

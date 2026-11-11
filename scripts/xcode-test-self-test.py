@@ -45,6 +45,12 @@ class RunnerContract(unittest.TestCase):
         self.assertEqual(queue.count(definition), 1)
         (self.root / 'scripts/local-ci-queue.py').write_text(
             queue.replace(definition, f"LOCK_PATH = Path({str(self.root / 'private-queue/runner.lock')!r})"))
+        # #4507: the real host-list owner, reading a private (absent) config.
+        hosts = (RUNNER.with_name('lib') / 'mac_hosts.py').read_text()
+        config_definition = 'CONFIG_PATH = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".config/enviouswispr/mac-hosts.json"'
+        self.assertEqual(hosts.count(config_definition), 1)
+        (lib / 'mac_hosts.py').write_text(
+            hosts.replace(config_definition, f"CONFIG_PATH = Path({str(self.root / 'private-config/mac-hosts.json')!r})"))
         ci = self.root / 'scripts/ci'
         ci.mkdir()
         for name, key, prefix in (('classify-changes.sh', 'needs_build', 'Sources/'),
@@ -231,6 +237,14 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertEqual([line for line in trace if line.startswith('drop-stale:')], ['drop-stale:2'])
         self.assertLess(trace.index('drop-stale:2'), trace.index('generate'))
         self.assertIn('verdict:Debug lane:required=', trace)
+
+    def test_no_host_list_keeps_todays_local_run_and_labels_its_slot(self):
+        # #4507 T6: with no Mac host list the run takes today's local slot, and
+        # the informational holder card names this checkout on the local host.
+        self.run_runner('--filter', 'EnviousWisprTests/A')
+        card = json.loads((self.root / 'private-queue/holder.json').read_text())
+        self.assertEqual((card['host'], card['kind'], card['config_sha256']), ('local', 'short', 'none'))
+        self.assertEqual(card['worktree'], str(self.root))
 
     def test_serial_is_full_debug_with_required_bundles(self):
         self.run_runner()
