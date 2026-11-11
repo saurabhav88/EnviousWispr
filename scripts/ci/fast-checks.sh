@@ -152,6 +152,10 @@ member_dev_app_lock_self_test() {
 # remain local. Relative paths bind both fixture and helper to --tree.
 member_seed_cleanup_contracts() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/remove-tree-test.py --portable
+  # #4485: the stale-checkout drop deletes through that boundary. Its real
+  # SwiftPM and xcodebuild cases need a Mac; they run in the default (no flag)
+  # invocation on a dev machine.
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/drop-stale-package-checkouts-test.py --portable
 }
 
 # CI step: Download-link lint (doorway tagging + on-site /#download)

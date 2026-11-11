@@ -348,6 +348,9 @@ fi
 for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
   python3 "$PROJECT_ROOT/scripts/lib/prepare-toolchain-syntax.py" "$lane_dd"
 done
+# #4485: before generation, which is the first package resolve. The lane folders
+# are named because DERIVED_DATA_PATH can put one outside this checkout.
+ew_drop_stale_package_checkouts "$PROJECT_ROOT" "${LANE_DERIVED_DATA[@]}"
 ew_ensure_generated "$PROJECT_ROOT"
 echo "==> phase generate: $((SECONDS - PHASE_START))s"
 
