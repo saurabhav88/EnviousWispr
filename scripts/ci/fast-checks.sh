@@ -605,6 +605,11 @@ with Path("selected-fixture").open("a") as stream:
 print("GROUP selected-binding: executed=1 skipped=0")
 sys.exit(23 if Path("fail-selected-control").exists() else 0)
 PYFIXTURE
+  # #4485: the member's second command; the selected tree must supply it too.
+  cat > "$selected/scripts/lib/drop-stale-package-checkouts-test.py" <<'PYFIXTURE'
+import sys
+assert sys.argv[1:] == ["--portable"]
+PYFIXTURE
   if [ "$(grep -cx 'main "$@"' "$0")" != 1 ]; then
     check "selected-tree runner copy has one checked entrypoint" "invalid" "valid"
   else
