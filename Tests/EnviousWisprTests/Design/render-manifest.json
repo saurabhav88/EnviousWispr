@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "note": "The expected captures of DesignRenderHarness (#4506). Every capture is <name>.png. German entries are text-fit evidence built from source-catalog values and labelled unreviewed drafts, not a localized app render.",
   "entries": [
     {
@@ -611,6 +611,66 @@
       "appearance": "dark",
       "locale": "de-fit-evidence",
       "state": null
+    },
+    {
+      "name": "parts-structure-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-structure",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "rest; selected switch; status tones; hover modifier at rest"
+    },
+    {
+      "name": "parts-structure-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-structure",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "rest; selected switch; status tones; hover modifier at rest"
+    },
+    {
+      "name": "parts-controls-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-controls",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "rest; selected tab and choice; switch on, off, self-disabled, parent-disabled; buttons enabled, self-disabled, parent-disabled, destructive, decorative; field with keyboard focus"
+    },
+    {
+      "name": "parts-controls-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-controls",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "rest; selected tab and choice; switch on, off, self-disabled, parent-disabled; buttons enabled, self-disabled, parent-disabled, destructive, decorative; field with keyboard focus"
+    },
+    {
+      "name": "parts-cards-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-cards",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "rest; engine card selected and not selected"
+    },
+    {
+      "name": "parts-cards-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "parts-cards",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "rest; engine card selected and not selected"
     }
   ]
 }

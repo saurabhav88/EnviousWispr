@@ -362,6 +362,11 @@ struct DesignRenderHarness {
     let view: AnyView
     if entry.fixture == "germanFit" {
       view = try germanFitSheet(pageWidth: width)
+    } else if entry.fixture.hasPrefix("parts-") {
+      let sheet = try #require(
+        DesignPartsSheets.sheet(String(entry.fixture.dropFirst("parts-".count))),
+        "\(entry.name): unknown parts sheet \(entry.fixture)")
+      view = AnyView(sheet.frame(width: width))
     } else {
       let page = try #require(
         Page(rawValue: entry.fixture), "\(entry.name): unknown fixture \(entry.fixture)")
@@ -419,6 +424,7 @@ struct DesignRenderHarness {
       size = measured
     }
     try #require(converged, "\(entry.name): layout did not settle: \(passes)")
+    if entry.fixture == "parts-controls" { try focusTheFocusedField(in: host, window: window) }
 
     let rep = try #require(
       host.bitmapImageRepForCachingDisplay(in: host.bounds),
@@ -438,6 +444,38 @@ struct DesignRenderHarness {
       NSBitmapImageRep(data: try Data(contentsOf: url)), "\(url.path) does not decode")
     #expect(decoded.pixelsWide > 0 && decoded.pixelsHigh > 0, "\(url.path) is empty")
     return Capture(url: url, pixelsWide: decoded.pixelsWide, pixelsHigh: decoded.pixelsHigh)
+  }
+
+  static func editableField(showing text: String, in view: NSView) -> NSTextField? {
+    if let field = view as? NSTextField, field.isEditable, field.stringValue == text {
+      return field
+    }
+    for child in view.subviews {
+      if let field = editableField(showing: text, in: child) { return field }
+    }
+    return nil
+  }
+
+  /// Stage keyboard focus on the parts sheet's focused field (precedent:
+  /// `SettingsTabStopCountTests`, first responder in a borderless test window), then wait for
+  /// SwiftUI to report it. The wait is on that signal, bounded by a fixed number of run-loop
+  /// turns; no clock. Focus that never arrives fails the capture instead of photographing an
+  /// unfocused field.
+  static func focusTheFocusedField(in host: NSView, window: NSWindow) throws {
+    DesignPartsSheets.focusObserved = false
+    let field = try #require(
+      editableField(showing: DesignPartsSheets.focusedFieldText, in: host),
+      "the parts sheet has no focused-field fixture")
+    try #require(window.makeFirstResponder(field), "the field refused first responder")
+    var turns = 0
+    while !DesignPartsSheets.focusObserved && turns < 50 {
+      RunLoop.main.run(mode: .default, before: Date())
+      turns += 1
+    }
+    try #require(
+      DesignPartsSheets.focusObserved, "SwiftUI never reported focus on the field (\(turns) turns)")
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
   }
 
   // MARK: - Run metadata
@@ -612,5 +650,42 @@ struct DesignRenderHarness {
     let storage = Self.pixelDiff(reference, rgbFolder, manifest: manifest)
     #expect(
       storage.status == 0, "equal pixels in another storage format must pass: \(storage.output)")
+  }
+
+  // MARK: - Parts coverage (independent of what the run emits)
+
+  /// Every name in DESIGN.md's "Approved parts" table must be shown on a parts sheet, and every
+  /// parts sheet must have a light and a dark manifest entry. Reads DESIGN.md, so it exists only
+  /// on revisions that have the design book.
+  @Test("the parts sheets show every DESIGN.md approved part, in light and dark")
+  func partsSheetsCoverTheBook() throws {
+    let book = try String(contentsOf: RepoRoot.url.appending(path: "DESIGN.md"), encoding: .utf8)
+    let section = try #require(
+      book.components(separatedBy: "## Approved parts").dropFirst().first?
+        .components(separatedBy: "\n## ").first, "DESIGN.md has no Approved parts section")
+    var listed: Set<String> = []
+    for line in section.split(separator: "\n") where line.hasPrefix("| `") {
+      let firstColumn = line.split(separator: "|", omittingEmptySubsequences: true).first ?? ""
+      for (index, piece) in firstColumn.split(separator: "`", omittingEmptySubsequences: false)
+        .enumerated() where index % 2 == 1 && !piece.hasSuffix(".swift")
+      {
+        listed.insert(String(piece))
+      }
+    }
+    #expect(listed.count >= 20, "suspiciously few approved parts parsed: \(listed.sorted())")
+    let missing = listed.subtracting(DesignPartsSheets.coverage.keys).sorted()
+    let unknown = Set(DesignPartsSheets.coverage.keys).subtracting(listed).sorted()
+    #expect(missing.isEmpty, "DESIGN.md approved parts not on a parts sheet: \(missing)")
+    #expect(unknown.isEmpty, "parts-sheet entries not in DESIGN.md: \(unknown)")
+
+    let manifest = try Self.loadManifest()
+    for sheet in Set(DesignPartsSheets.coverage.values) {
+      #expect(DesignPartsSheets.sheet(sheet) != nil, "no builder for parts sheet \(sheet)")
+      for mode in ["light", "dark"] {
+        #expect(
+          manifest.entries.contains { $0.fixture == "parts-\(sheet)" && $0.appearance == mode },
+          "manifest has no \(mode) capture of parts sheet \(sheet)")
+      }
+    }
   }
 }
