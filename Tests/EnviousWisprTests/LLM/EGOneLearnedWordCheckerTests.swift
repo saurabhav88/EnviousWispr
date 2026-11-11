@@ -110,7 +110,7 @@ struct EGOneLearnedWordCheckerTests {
   @Test("a check that fails still releases its server hold; no hold, no check")
   func failedCheckReleasesHold() async {
     let released = OSAllocatedUnfairLock<Int>(initialState: 0)
-    let bare = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 4096)
+    let bare = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 4096)
     let checker = LlamaLearnedWordChecker(threshold: 0.5, style: Self.style) {
       EGOneCheckerHold(endpoint: bare) { released.withLock { $0 += 1 } }
     }

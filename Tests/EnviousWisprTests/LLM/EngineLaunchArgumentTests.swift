@@ -72,11 +72,17 @@ struct EngineLaunchArgumentTests {
     #expect(args.contains("--cache-type-v"), "lost the q8 value cache")
   }
 
+  /// The launch connection's inputs every launch row renders with.
+  static let inputs = LocalPolishLaunchConnection.Inputs(
+    socketPath: "/l/ewlp/7-1-1-abcdef01/s.sock",
+    keyFileURL: URL(fileURLWithPath: "/l/ewlp/7-1-1-abcdef01/k"), secret: "bearer-1")
+
   /// #4473: the process manager no longer knows the server's command line; the launch
-  /// configuration renders it. The rendered list must be exactly what the manager used to
-  /// build, or the bundled server starts with a wrong port, context size or bearer and every
-  /// polish request fails.
-  @Test("the complete argument list for a spawn: model, host, port, context, bearer, then flags")
+  /// configuration renders it. #4493: the host is the launch's private socket and the bearer is
+  /// in the launch's key file, never in the arguments or the environment. When this is wrong
+  /// the bundled server starts on a wrong socket, context size or bearer and every polish
+  /// request fails, or the secret is readable in the process list.
+  @Test("the complete launch for a spawn: model, socket, context, key file, then flags")
   func completeSpawnArguments() {
     let configuration = LocalPolishProcessManager.Configuration(
       spec: .fixture(
@@ -85,18 +91,26 @@ struct EngineLaunchArgumentTests {
         learnedWordAdapterURL: URL(fileURLWithPath: "/tmp/ew-args/checker.gguf"),
         extraArguments: ["-fa", "on", "--spec-type", "ngram-simple"],
         learnedWordAdapterArguments: ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"]),
-      makeArguments: LlamaServerLaunchBuilder.arguments)
+      makeLaunch: LlamaServerLaunchBuilder.launch)
     let base = [
-      "-m", "/tmp/ew-args/model.gguf", "--host", "127.0.0.1", "--port", "51234",
-      "-c", "16384", "--api-key", "bearer-1", "-fa", "on", "--spec-type", "ngram-simple",
+      "-m", "/tmp/ew-args/model.gguf", "--host", "/l/ewlp/7-1-1-abcdef01/s.sock",
+      "-c", "16384", "--api-key-file", "/l/ewlp/7-1-1-abcdef01/k",
+      "-fa", "on", "--spec-type", "ngram-simple",
     ]
 
+    let launch = configuration.makeLaunch(configuration.spec, Self.inputs)
     #expect(
-      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
-        == base + ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"])
+      launch
+        == LocalPolishLaunchCommand(
+          arguments: base + ["--lora-scaled", "/tmp/ew-args/checker.gguf:0", "-np", "9"],
+          environment: ["EW_STOP_ON_STDIN_EOF": "1"], stdinPreamble: nil, writesKeyFile: true))
+    #expect(launch.arguments.contains { $0.contains("bearer-1") } == false)
+    for removed in ["--port", "--api-key", "--token"] {
+      #expect(launch.arguments.contains(removed) == false, "\(removed)")
+    }
     // The bare-base fallback copy renders without the adapter's flags.
     let fallback = configuration.withoutLearnedWordAdapter()
-    #expect(fallback.makeArguments(fallback.spec, 51234, "bearer-1") == base)
+    #expect(fallback.makeLaunch(fallback.spec, Self.inputs).arguments == base)
   }
 
   /// #4473: the configuration the composition root's factory builds for each bundled model,
@@ -136,10 +150,10 @@ struct EngineLaunchArgumentTests {
           contextTokens: 16384, learnedWordAdapterURL: adapter, extraArguments: flags,
           learnedWordAdapterArguments: adapterFlags))
     #expect(
-      configuration.makeArguments(configuration.spec, 51234, "bearer-1")
+      configuration.makeLaunch(configuration.spec, Self.inputs).arguments
         == [
-          "-m", "/tmp/ew-factory/model.gguf", "--host", "127.0.0.1", "--port", "51234",
-          "-c", "16384", "--api-key", "bearer-1",
+          "-m", "/tmp/ew-factory/model.gguf", "--host", "/l/ewlp/7-1-1-abcdef01/s.sock",
+          "-c", "16384", "--api-key-file", "/l/ewlp/7-1-1-abcdef01/k",
         ] + flags + adapterFlags)
     // Execution controls the factory does not set keep their defaults.
     #expect(configuration.readinessBudgetSeconds == 60)

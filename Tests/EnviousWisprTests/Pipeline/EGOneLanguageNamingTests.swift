@@ -137,7 +137,7 @@ struct EGOneLanguageNamingPipelineTests {
   @MainActor
   final class FakeRuntime: EGOneEndpointProviding {
     func activeEndpoint() async -> LocalPolishEndpoint? {
-      LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+      LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768)
     }
   }
 

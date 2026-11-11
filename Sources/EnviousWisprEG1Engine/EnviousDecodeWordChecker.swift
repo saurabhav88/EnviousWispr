@@ -45,17 +45,17 @@ public struct EnviousDecodeWordChecker: LearnedWordChecking {
 
   private let threshold: Double
   private let hold: @Sendable () async -> Hold?
-  private let perform: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  private let perform: LocalPolishHelperExchange.Perform
 
   public init(threshold: Double, hold: @escaping @Sendable () async -> Hold?) {
-    self.init(threshold: threshold, hold: hold) { try await URLSession.shared.data(for: $0) }
+    self.init(threshold: threshold, hold: hold, perform: LocalPolishHelperExchange.perform)
   }
 
   /// The same checker with its one outside effect supplied, so a test reads the requests and
   /// scripts the answers without a helper process.
   init(
     threshold: Double, hold: @escaping @Sendable () async -> Hold?,
-    perform: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    perform: @escaping LocalPolishHelperExchange.Perform
   ) {
     precondition(threshold.isFinite && (0...1).contains(threshold))
     self.threshold = threshold
@@ -101,30 +101,21 @@ public struct EnviousDecodeWordChecker: LearnedWordChecking {
     for start in stride(from: 0, to: questions.count, by: Self.questionsPerRequest) {
       try Task.checkCancellation()
       let batch = Array(questions[start..<min(start + Self.questionsPerRequest, questions.count)])
-      var request = URLRequest(url: Self.url(endpoint))
-      request.httpMethod = "POST"
-      request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-      request.httpBody = try Self.makeRequestBody(batch)
-      let data: Data
-      let response: URLResponse
-      do {
-        (data, response) = try await perform(request)
-      } catch let error as URLError where error.code == .cancelled {
-        throw CancellationError()
-      }
+      // No limit of its own: 60 s, the value this request had implicitly as a `URLRequest`.
+      // The caller's (`LearnedWordCheckStep`) limits are the real ones.
+      let request = LocalPolishHelperRequest(
+        method: .post, path: "/v1/wordcheck", body: try Self.makeRequestBody(batch),
+        timeout: .seconds(60))
+      let response = try await perform(request, endpoint)
       // A check whose asker left while the helper worked gives no decisions.
       try Task.checkCancellation()
-      guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+      guard response.status == 200 else {
         throw CheckerError.invalidResponse
       }
-      decisions += try Self.parseDecisions(data: data, questions: batch, threshold: threshold)
+      decisions += try Self.parseDecisions(
+        data: response.body, questions: batch, threshold: threshold)
     }
     return decisions
-  }
-
-  static func url(_ endpoint: LocalPolishEndpoint) -> URL {
-    URL(string: "http://127.0.0.1:\(endpoint.port)/v1/wordcheck")!
   }
 
   /// The request for up to eight questions: the model's wire name and, for each question, its

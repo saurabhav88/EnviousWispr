@@ -24,7 +24,7 @@ struct LocalPolishP1CharacterizationTests {
 
   @Test("S1-mini on llama-server is health-checked as itself, with its own connector")
   func probeSpecsNameTheirOwnModel() {
-    let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 1)
 
     let s1Mini = LlamaServerHealthProbe.ProbeSpec.s1Mini
     #expect(s1Mini.provider == .s1Mini)

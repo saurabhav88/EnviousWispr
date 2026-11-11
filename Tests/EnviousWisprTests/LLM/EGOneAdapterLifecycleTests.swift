@@ -23,6 +23,10 @@ struct EGOneAdapterLifecycleTests {
     let model: URL
     let adapter: URL
     let log: URL
+    /// #4493: the parent of this fixture's launch folders. Short on purpose: a socket path may
+    /// have at most 103 bytes (see `LocalPolishLaunchHome`), and each fixture has its own so
+    /// one test's launches never meet another's.
+    let launchParent = TestLaunchHome.parent()
 
     init() throws {
       root = TestTemporaryDirectory.url.appendingPathComponent(
@@ -36,7 +40,7 @@ struct EGOneAdapterLifecycleTests {
       try Data("checker".utf8).write(to: adapter)
       let script = #"""
         #!/usr/bin/env python3
-        import http.server, json, os, signal, sys, time
+        import http.server, json, os, signal, socketserver, sys, time
         args = sys.argv[1:]
         root = os.path.dirname(os.path.realpath(sys.argv[0]))
         with open(os.path.join(root, 'pids.txt'), 'a') as pids:
@@ -60,51 +64,87 @@ struct EGOneAdapterLifecycleTests {
             while True:
                 # test-fixture-timer: hold the child alive past the readiness deadline
                 time.sleep(0.1)
-        port = int(args[args.index('--port') + 1])
+        # #4493: llama-server's launch has a Unix socket as its host and the bearer in a key
+        # file; envious-decode's has --socket and the bearer as the first line of its input.
+        if '--host' in args:
+            socket_path = args[args.index('--host') + 1]
+            key_file = args[args.index('--api-key-file') + 1]
+            token = open(key_file).read().strip()
+        else:
+            socket_path = args[args.index('--socket') + 1]
+            key_file = None
+            token = sys.stdin.readline().strip()
         class Handler(http.server.BaseHTTPRequestHandler):
+            # The app's client takes exactly one Content-Length and one request per connection.
+            def answer(self, status, body=b'', content_type=None):
+                self.send_response(status)
+                if content_type:
+                    self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(body)))
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.wfile.write(body)
+            def address_string(self):
+                return 'local'
             def do_GET(self):
+                # #4493 C0: record what each GET sends (path and bearer), and let a test script
+                # a failing /health status in get_status.
+                with open(os.path.join(root, 'gets.jsonl'), 'a') as gets:
+                    gets.write(json.dumps({'path': self.path,
+                        'authorization': self.headers.get('Authorization')}) + '\n')
+                get_status = os.path.join(root, 'get_status')
+                if self.path == '/health' and os.path.exists(get_status):
+                    self.answer(int(open(get_status).read()))
+                    return
+                # #4493: the launch folder is gone before the answer exists.
+                if self.path == '/health' and os.path.exists(os.path.join(root, 'vanish_on_health')):
+                    os.unlink(socket_path)
+                    if key_file and os.path.exists(key_file):
+                        os.unlink(key_file)
+                    os.rmdir(os.path.dirname(socket_path))
                 # #4319: /slots answers from slots.json when the test wrote one, and only with
                 # the launch's bearer.
                 slots = os.path.join(root, 'slots.json')
                 if self.path == '/slots' and os.path.exists(slots):
-                    token = args[args.index('--api-key') + 1] if '--api-key' in args else None
-                    if token and self.headers.get('Authorization') != f'Bearer {token}':
-                        self.send_response(401)
-                        self.end_headers()
+                    if self.headers.get('Authorization') != f'Bearer {token}':
+                        self.answer(401)
                         return
-                    body = open(slots, 'rb').read()
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(body)
+                    self.answer(200, open(slots, 'rb').read(), 'application/json')
                     return
-                self.send_response(200 if self.path == '/health' else 404)
-                self.end_headers()
+                self.answer(200 if self.path == '/health' else 404)
             def do_POST(self):
                 # #4473 P1: record what a health probe sends, then answer like a chat reply.
                 length = int(self.headers.get('Content-Length') or 0)
                 body = self.rfile.read(length).decode('utf-8', 'replace')
                 with open(os.path.join(root, 'posts.jsonl'), 'a') as posts:
-                    posts.write(json.dumps({'path': self.path, 'body': body}) + '\n')
+                    posts.write(json.dumps({'path': self.path, 'body': body,
+                        'authorization': self.headers.get('Authorization'),
+                        'content_type': self.headers.get('Content-Type')}) + '\n')
                 # #4473 chunk 2c.2: a test may script the answer. post_status holds a failing
                 # HTTP status (no body); post_content holds the assistant text of a 200 reply.
                 status_path = os.path.join(root, 'post_status')
                 if os.path.exists(status_path):
-                    self.send_response(int(open(status_path).read()))
-                    self.end_headers()
+                    self.answer(int(open(status_path).read()))
+                    return
+                # #4493 C0: a test may script the exact bytes of a /completion answer.
+                completion_path = os.path.join(root, 'completion_reply')
+                if self.path == '/completion' and os.path.exists(completion_path):
+                    self.answer(200, open(completion_path, 'rb').read(), 'application/json')
                     return
                 content_path = os.path.join(root, 'post_content')
                 content = (open(content_path).read() if os.path.exists(content_path)
                            else 'Move the meeting to Friday.')
                 reply = json.dumps({'choices': [{'index': 0, 'finish_reason': 'stop',
                     'message': {'role': 'assistant', 'content': content}}]})
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(reply.encode('utf-8'))
+                self.answer(200, reply.encode('utf-8'), 'application/json')
             def log_message(self, *args):
                 pass
-        http.server.HTTPServer(('127.0.0.1', port), Handler).serve_forever()
+        class Server(socketserver.UnixStreamServer):
+            # BaseHTTPRequestHandler reads a (host, port) client address; a Unix peer has none.
+            def get_request(self):
+                request, _ = super().get_request()
+                return request, ('local', 0)
+        Server(socket_path, Handler).serve_forever()
         """#
       try Data(script.utf8).write(to: binary)
       try FileManager.default.setAttributes(
@@ -128,8 +168,30 @@ struct EGOneAdapterLifecycleTests {
                 for: .s1Mini, learnedWordAdapterURL: $0
               ).dropFirst(LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).count))
           } ?? []),
-        makeArguments: LlamaServerLaunchBuilder.arguments,
-        readinessBudgetSeconds: readinessBudgetSeconds)
+        makeLaunch: LlamaServerLaunchBuilder.launch,
+        readinessBudgetSeconds: readinessBudgetSeconds
+      ).inLaunchHome(launchHome)
+    }
+
+    /// The fixture's launch home: its own short parent and a short made-up identity.
+    var launchHome: LocalPolishLaunchHome { launchHome(observer: nil) }
+
+    /// The same home, reporting each launch connection's resource events to `observer`.
+    func launchHome(observer: LocalPolishLaunchConnection.ResourceObserver?)
+      -> LocalPolishLaunchHome
+    {
+      LocalPolishLaunchHome(
+        parent: launchParent, identity: TestLaunchHome.identity, observer: observer)
+    }
+
+    /// `engine` with its launches in this fixture's launch home.
+    func engine(_ engine: any LocalPolishEngine) -> TestLocalPolishEngine {
+      TestLaunchHome.engine(engine, in: launchHome)
+    }
+
+    /// The launch folders that exist under this fixture's parent now.
+    func launchFolders() -> [String] {
+      ((try? FileManager.default.contentsOfDirectory(atPath: launchParent)) ?? []).sorted()
     }
 
     func launches() throws -> [[String]] {
@@ -148,7 +210,10 @@ struct EGOneAdapterLifecycleTests {
       return try #require(lines.last.flatMap { Int32($0) })
     }
 
-    func cleanup() { try? FileManager.default.removeItem(at: root) }
+    func cleanup() {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(atPath: launchParent)
+    }
   }
 
   @MainActor
@@ -235,7 +300,8 @@ struct EGOneAdapterLifecycleTests {
         serverBinaryURL: URL(fileURLWithPath: "/factory/server"),
         modelURL: URL(fileURLWithPath: "/factory/model"), contextTokens: 7777,
         learnedWordAdapterURL: adapter, extraArguments: ["--from-the-factory"]),
-      makeArguments: { _, _, _ in ["rendered-by-the-factory"] }, readinessBudgetSeconds: 7)
+      makeLaunch: { _, _ in LocalPolishLaunchCommand(arguments: ["rendered-by-the-factory"]) },
+      readinessBudgetSeconds: 7)
     let calls = OSAllocatedUnfairLock(initialState: [Call]())
     var adapterReads = 0
     let runtime = LocalPolishRuntime(
@@ -268,7 +334,11 @@ struct EGOneAdapterLifecycleTests {
     #expect(adapterReads == 1)
     #expect(configuration.spec == answer.spec)
     #expect(configuration.readinessBudgetSeconds == 7)
-    #expect(configuration.makeArguments(configuration.spec, 1, "t") == ["rendered-by-the-factory"])
+    #expect(
+      configuration.makeLaunch(
+        configuration.spec,
+        .init(socketPath: "/s", keyFileURL: URL(fileURLWithPath: "/k"), secret: "t")).arguments
+        == ["rendered-by-the-factory"])
   }
 
   @Test("adapter-free polish bodies keep the original bytes across inputs")
@@ -349,7 +419,7 @@ struct EGOneAdapterLifecycleTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: TestLocalPolishEngine(),
+      engine: fixture.engine(TestLocalPolishEngine()),
       defaults: store, coordinator: coordinator,
       learnedWordAdapterProvider: { fixture.adapter })
     let activation = try #require(runtime.activateAndProbe())
@@ -958,7 +1028,7 @@ struct EGOneRecordingRecoveryTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: TestLocalPolishEngine(),
+      engine: fixture.engine(TestLocalPolishEngine()),
       defaults: store, coordinator: coordinator)
     let recorder = AppliedRecorder()
     runtime.onLifecycleAppliedForTesting = { recorder.record($0) }
@@ -1113,8 +1183,8 @@ struct EGOneRecordingRecoveryTests {
       engine: TestLocalPolishEngine())
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
     runtime.applyInstallStateForTesting(.installed(version: nil))
-    let first = LocalPolishEndpoint(port: 1, authToken: "a", contextTokens: 1)
-    let replacement = LocalPolishEndpoint(port: 2, authToken: "b", contextTokens: 1)
+    let first = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "a", contextTokens: 1)
+    let replacement = LocalPolishEndpoint(socketPath: "/t/2.sock", authToken: "b", contextTokens: 1)
     runtime.receive(LocalPolishLifecycleEvent(lifecycle: Lifecycle(state: .ready(first)), order: 1))
     runtime.acceptProbeResult(.green, for: first)
     #expect(runtime.health == .green)
@@ -1141,7 +1211,7 @@ struct EGOneRecordingRecoveryTests {
       return pressure
     }
     let stop1 = Lifecycle(state: .stoppedOutside, outsideStopGeneration: 1)
-    let ready = Lifecycle(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1)))
+    let ready = Lifecycle(state: .ready(LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 1)))
     runtime.receive(LocalPolishLifecycleEvent(lifecycle: stop1, order: 1))
     runtime.receive(
       LocalPolishLifecycleEvent(
@@ -1439,7 +1509,7 @@ struct EGOneRecordingRecoveryTests {
     // Accepted once: later reads reuse that sample, also after the stop resolves.
     runtime.receive(
       LocalPolishLifecycleEvent(
-        lifecycle: Lifecycle(state: .ready(LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 1))),
+        lifecycle: Lifecycle(state: .ready(LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 1))),
         order: 2))
     #expect(runtime.outsideStopContext(generation: 7).memoryPressure == .critical)
     #expect(samples == 1)
@@ -1583,7 +1653,7 @@ extension EGOneAdapterLifecycleTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: TestLocalPolishEngine(),
+      engine: fixture.engine(TestLocalPolishEngine()),
       defaults: store, coordinator: coordinator)
 
     guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
@@ -1681,28 +1751,30 @@ extension EGOneAdapterLifecycleTests {
         "no server is not idle")
       await manager.start(configuration: fixture.configuration())
       let replaced = await manager.observeSlotsForDebug(
-        operation: LlamaServerSlotReader.operation { request in
-          #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
-          #expect(request.url?.path == "/slots")
+        operation: LlamaServerSlotReader.operation { request, endpoint in
+          // #4493: the bearer is added by the helper exchange, on this endpoint's token.
+          #expect(!endpoint.authToken.isEmpty)
+          #expect(request.path == "/slots")
           await manager.stop()
-          let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-          return (Self.processingSlots, ok)
+          return LocalPolishHelperResponse(status: 200, body: Self.processingSlots)
         })
       #expect(replaced == .replaced)
       await manager.start(configuration: fixture.configuration())
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { _ in throw URLError(.timedOut) })
+          operation: LlamaServerSlotReader.operation { _, _ in
+            throw LocalPolishHelperClientError.timedOut
+          })
           == .transportFailed)
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { request in
-            (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+          operation: LlamaServerSlotReader.operation { _, _ in
+            LocalPolishHelperResponse(status: 200, body: Data("not json".utf8))
           }) == .malformed)
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { request in
-            (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+          operation: LlamaServerSlotReader.operation { _, _ in
+            LocalPolishHelperResponse(status: 500, body: Data())
           }) == .httpStatus(500))
       await manager.stop()
     }
@@ -1855,7 +1927,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: TestLocalPolishEngine.forModel(.singleModel(for: provider)),
+      engine: fixture.engine(TestLocalPolishEngine.forModel(.singleModel(for: provider))),
       defaults: store, coordinator: LocalPolishServerCoordinator(),
       modelID: .singleModel(for: provider))
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
@@ -1957,7 +2029,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
     let coordinator = LocalPolishServerCoordinator()
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: "s1-mini"),
-      serverBinaryURL: fixture.binary, delivery: delivery, engine: engine,
+      serverBinaryURL: fixture.binary, delivery: delivery, engine: fixture.engine(engine),
       defaults: store, coordinator: coordinator, modelID: .s1Mini)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
     runtime.isActiveProvider = { true }

@@ -8,26 +8,27 @@ import os
 
 /// Endpoint of a ready local inference server: where to send requests and
 /// the per-launch bearer token that authenticates the app to it.
+///
+/// #4493: `socketPath` is the private socket of that one launch (in its own mode-0700 folder);
+/// no network port exists.
 public struct LocalPolishEndpoint: Sendable, Equatable {
-  public let port: UInt16
+  public let socketPath: String
   public let authToken: String
   /// Context window the server was launched with — the polish step's
   /// input-size preflight reads this so an over-budget dictation skips
   /// whole (silent raw fallback), never truncates silently.
   public let contextTokens: Int
   public let hasLearnedWordAdapter: Bool
-  public var chatCompletionsURL: URL {
-    URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
-  }
-  public var completionURL: URL {
-    URL(string: "http://127.0.0.1:\(port)/completion")!
+  /// Where the helper exchange connects, with the bearer it sends.
+  public var address: LocalPolishHelperAddress {
+    LocalPolishHelperAddress(socketPath: socketPath, authToken: authToken)
   }
 
   public init(
-    port: UInt16, authToken: String, contextTokens: Int,
+    socketPath: String, authToken: String, contextTokens: Int,
     hasLearnedWordAdapter: Bool = false
   ) {
-    self.port = port
+    self.socketPath = socketPath
     self.authToken = authToken
     self.contextTokens = contextTokens
     self.hasLearnedWordAdapter = hasLearnedWordAdapter
@@ -152,20 +153,37 @@ public actor LocalPolishProcessManager {
     /// The exact model the process is launched for (#4473): the identity availability and
     /// failures are handed out under. Set by the coordinator with `owningProvider`.
     public var owningModel: LocalPolishModelID?
-    /// Renders the child's argument list from the spec being spawned, the port and the bearer
-    /// chosen for that spawn (#4473). Required, with no default: the process manager knows no
+    /// Renders the child's launch from the spec being spawned and the private connection made
+    /// for that spawn (#4473, #4493). Required, with no default: the process manager knows no
     /// engine's command line, so each engine supplies its own.
-    public var makeArguments: @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String]
+    public var makeLaunch:
+      @Sendable (LocalPolishLaunchSpec, LocalPolishLaunchConnection.Inputs) ->
+        LocalPolishLaunchCommand
+    /// Where this manager's launch folders live (#4493). The app never changes it.
+    var launchHome: LocalPolishLaunchHome = .userCache
+    /// The queue the launch folder's watch registers on (#4493); nil is the connection's own.
+    /// Tests park registration with an inactive queue.
+    var watchQueue: DispatchQueue?
 
     public init(
       spec: LocalPolishLaunchSpec,
-      makeArguments: @escaping @Sendable (LocalPolishLaunchSpec, UInt16, String) -> [String],
+      makeLaunch: @escaping @Sendable (LocalPolishLaunchSpec, LocalPolishLaunchConnection.Inputs)
+        -> LocalPolishLaunchCommand,
       readinessBudgetSeconds: Int = 60, owningProvider: LLMProvider? = nil
     ) {
       self.spec = spec
       self.readinessBudgetSeconds = readinessBudgetSeconds
       self.owningProvider = owningProvider
-      self.makeArguments = makeArguments
+      self.makeLaunch = makeLaunch
+    }
+
+    /// The same configuration with its launch folders in `home` (tests; the app keeps
+    /// `.userCache`).
+    // periphery:ignore - test seam: tests put their launches in the test folder
+    func inLaunchHome(_ home: LocalPolishLaunchHome) -> Configuration {
+      var copy = self
+      copy.launchHome = home
+      return copy
     }
 
     /// The execution copy for a bare-base fallback: the same controls, the spec without its
@@ -201,14 +219,28 @@ public actor LocalPolishProcessManager {
   /// nor promote/fail over the successor's `.starting` state. (Same race
   /// shape as the crash-restart guard — this covers the normal start path.)
   private var launchGeneration = 0
-  private var process: Process? {
+  /// #4493: everything one running launch owns, held in ONE place: its generation, its
+  /// configuration, the child, the child's observation and the private connection (folder,
+  /// pipe, key file, watch). Set only after the child started; cleared, and its connection
+  /// released, by `tearDownProcess()` or `releaseLaunch()`.
+  private struct LaunchRecord {
+    let generation: Int
+    let configuration: Configuration
+    let process: Process
+    let observation: ChildProcessObservation
+    let connection: LocalPolishLaunchConnection
+  }
+  private var launch: LaunchRecord? {
     didSet {
-      let current = process
-      let observation = current == nil ? nil : processObservation
-      quitKillBox.withLock { $0 = (current, observation) }
+      let owned = launch.map { ($0.process, $0.observation) }
+      quitKillBox.withLock { $0 = (owned?.0, owned?.1) }
     }
   }
-  private var processObservation: ChildProcessObservation?
+  private var process: Process? { launch?.process }
+  private var processObservation: ChildProcessObservation? { launch?.observation }
+  /// #4493: the first spawn of this manager removes launch folders that earlier app processes
+  /// left behind.
+  private var leftoversRemoved = false
   private var restartedOnceThisGeneration = false
   private var memoryPressureSource: (any DispatchSourceMemoryPressure)?
   private var onStateChange: (@Sendable (LocalPolishLifecycleEvent) -> Void)?
@@ -443,8 +475,15 @@ public actor LocalPolishProcessManager {
         process.terminate()
       }
     }
-    process = nil
-    processObservation = nil
+    // #4493: after the stop signal, so the helper gets SIGTERM first and end-of-file second.
+    releaseLaunch()
+  }
+
+  /// Releases the stored launch's private connection (watch first, then the pipe, then its
+  /// files and folder) and forgets the launch. Signals nothing.
+  private func releaseLaunch() {
+    launch?.connection.release()
+    launch = nil
   }
 
   private func spawn(configuration: Configuration) async {
@@ -474,17 +513,44 @@ public actor LocalPolishProcessManager {
       return
     }
 
-    // App-chosen free port (bind-probe then release). llama-server's
-    // `--port 0` self-report is NOT assumed (plan §11 port strategy).
-    guard let port = Self.findFreePort() else {
-      transition(to: .failed(reason: "no_free_port"))
+    // #4493: the launch's private connection, made here and nowhere else: after the binary,
+    // model and adapter checks (nothing exists for them to release) and before the child.
+    if !leftoversRemoved {
+      leftoversRemoved = true
+      configuration.launchHome.removeLeftovers()
+    }
+    let secret = UUID().uuidString + UUID().uuidString
+    let connection: LocalPolishLaunchConnection
+    do {
+      connection = try configuration.launchHome.makeConnection(secret: secret)
+    } catch {
+      transition(to: .failed(reason: "socket_path_unusable"))
+      await AppLogger.shared.log(
+        "Local polish server has no usable private socket folder", level: .info, category: "LLM")
       return
     }
-    let token = UUID().uuidString + UUID().uuidString
+    let command = configuration.makeLaunch(configuration.spec, connection.inputs)
+    if command.writesKeyFile {
+      do {
+        try connection.writeKeyFile()
+      } catch {
+        connection.release()
+        transition(to: .failed(reason: "spawn_failed"))
+        return
+      }
+    }
 
     let proc = Process()
     proc.executableURL = configuration.spec.serverBinaryURL
-    proc.arguments = configuration.makeArguments(configuration.spec, port, token)
+    proc.arguments = command.arguments
+    if !command.environment.isEmpty {
+      proc.environment = ProcessInfo.processInfo.environment.merging(command.environment) {
+        _, added in added
+      }
+    }
+    // The helper's standard input is the "app is alive" pipe: when the last writer closes (the
+    // app releases it, quits or dies), the helper sees end-of-file and stops itself.
+    proc.standardInput = connection.standardInput
     // The server's stdout/stderr are noise for us; route to null so the
     // pipe buffers can never fill and wedge the child.
     proc.standardOutput = FileHandle.nullDevice
@@ -503,6 +569,7 @@ public actor LocalPolishProcessManager {
     do {
       try proc.run()
     } catch {
+      connection.release()
       onProcessFailure?(
         ChildProcessFailure(
           role: .server, provider: configuration.owningProvider, generation: generation,
@@ -514,12 +581,32 @@ public actor LocalPolishProcessManager {
         level: .info, category: "LLM")
       return
     }
-    processObservation = observation
-    process = proc
+    // The child holds its own copy of the reading end; this one would keep the pipe open.
+    connection.closeParentReadEnd()
+    if launch != nil {
+      // Every path into a spawn tears the previous launch down first; this only keeps a
+      // missed path from leaving a connection without an owner.
+      releaseLaunch()
+    }
+    launch = LaunchRecord(
+      generation: generation, configuration: configuration, process: proc,
+      observation: observation, connection: connection)
     installMemoryPressureSource()
+    if let preamble = command.stdinPreamble {
+      do {
+        try connection.writePreamble(preamble)
+      } catch {
+        tearDownProcess()
+        transition(to: .failed(reason: "spawn_failed"))
+        await AppLogger.shared.log(
+          "Local polish server did not take its start-up input", level: .info, category: "LLM")
+        return
+      }
+    }
 
     let endpoint = LocalPolishEndpoint(
-      port: port, authToken: token, contextTokens: configuration.spec.contextTokens,
+      socketPath: connection.inputs.socketPath, authToken: secret,
+      contextTokens: configuration.spec.contextTokens,
       hasLearnedWordAdapter: configuration.spec.learnedWordAdapterURL != nil)
     // Wait for the HTTP surface to come up (model load can take seconds;
     // poll /health until 200, the process dying, or budget exhausted).
@@ -545,22 +632,123 @@ public actor LocalPolishProcessManager {
       if case .starting = state {
         tearDownProcess()
         transition(to: .failed(reason: "server_never_became_ready"))
+      } else {
+        releaseOwnLaunch(generation)
       }
       return
     }
     // A child can answer /health and exit before promotion. It never became
     // a ready process, so an adapter launch still needs the bare-base retry.
     guard case .starting = state, proc.isRunning else {
-      if configuration.spec.learnedWordAdapterURL != nil {
-        checkerFailureReason = .adapterServerExited
-        tearDownProcess()
-        await spawn(configuration: configuration.withoutLearnedWordAdapter())
+      await failBeforePromotion(configuration: configuration, generation: generation)
+      return
+    }
+
+    // #4493 §3.7: the launch folder is watched BEFORE ready is published, so a socket file
+    // removed at any later moment is seen; one removed earlier is caught by the presence
+    // check right after promotion.
+    var watchFailed = false
+    do {
+      let onChange: @Sendable () -> Void = { [weak self] in
+        Task { [weak self] in
+          await self?.launchFolderChanged(generation: generation)
+        }
       }
+      if let queue = configuration.watchQueue {
+        try await connection.startWatch(queue: queue, onChange: onChange)
+      } else {
+        try await connection.startWatch(onChange: onChange)
+      }
+    } catch {
+      watchFailed = true
+    }
+    // A superseded launch touches nothing: whatever replaced it released this launch first.
+    guard generation == launchGeneration else { return }
+    // This launch's child died or its state changed while the watch was set up: its own exit.
+    guard case .starting = state, proc.isRunning else {
+      await failBeforePromotion(configuration: configuration, generation: generation)
+      return
+    }
+    if watchFailed {
+      tearDownProcess()
+      transition(to: .failed(reason: "spawn_failed"))
+      await AppLogger.shared.log(
+        "Local polish server folder could not be watched", level: .info, category: "LLM")
       return
     }
     transition(to: .ready(endpoint))
+    // The helper read its key at start-up; the file is not needed while it runs.
+    connection.removeKeyFile()
+    if !connection.socketFilePresent {
+      await launchFolderChanged(generation: generation)
+      return
+    }
     await AppLogger.shared.log(
-      "Local polish server ready on 127.0.0.1:\(port)", level: .info, category: "LLM")
+      "Local polish server ready (private socket)", level: .info, category: "LLM")
+  }
+
+  /// The exit of a launch that answered health but is not promotable: its child died or the
+  /// state moved on. An adapter launch takes the bare-base retry; any other releases its own
+  /// launch and keeps whatever failure the termination handler publishes.
+  private func failBeforePromotion(configuration: Configuration, generation: Int) async {
+    if configuration.spec.learnedWordAdapterURL != nil {
+      checkerFailureReason = .adapterServerExited
+      tearDownProcess()
+      await spawn(configuration: configuration.withoutLearnedWordAdapter())
+      return
+    }
+    releaseOwnLaunch(generation)
+  }
+
+  /// Real-boundary tests: closes only the current launch's pipe writer, as an app death would,
+  /// and leaves the child, its watch and its folder to the manager. False without a launch.
+  // periphery:ignore - test seam: R1/R2 real-boundary cases (EnviousDecodeEngineTests, LlamaServerRealBoundaryTests)
+  func closeLaunchWriterForTesting() -> Bool {
+    guard let launch else { return false }
+    launch.connection.closeWriteEnd()
+    return true
+  }
+
+  /// Real-boundary tests: the current launch's child, read only, so a test can observe how a
+  /// deliberate stop ends it (that stop's own reporting stays suppressed).
+  // periphery:ignore - test seam: LlamaServerRealBoundaryTests reads how a deliberate stop ends the child
+  func launchProcessForTesting() -> Process? { launch?.process }
+
+  /// Releases the stored launch only when it is this generation's.
+  private func releaseOwnLaunch(_ generation: Int) {
+    guard launch?.generation == generation else { return }
+    tearDownProcess()
+  }
+
+  /// #4493 §3.7: the launch folder changed. Acts only when, at this moment, the launch is the
+  /// current ready one and its socket file is gone: then no request can reach the helper,
+  /// although it runs. The helper is stopped and started again once, through the restart a
+  /// crashed ready helper takes; a second removal leaves local polish off.
+  func launchFolderChanged(generation: Int) async {
+    guard generation == launchGeneration, case .ready = state,
+      let launch, launch.generation == generation, !launch.connection.socketFilePresent
+    else { return }
+    // A termination the observation already accepted wins: its own callback handles it,
+    // including an outside stop and its notice.
+    if launch.observation.claimIntentionalStop() != nil { return }
+    // The launch's own configuration, read before the teardown below forgets the launch.
+    let configuration = launch.configuration
+    if restartedOnceThisGeneration {
+      tearDownProcess()
+      transition(to: .failed(reason: "socket_removed_twice"))
+      await AppLogger.shared.log(
+        "Local polish socket was removed again — staying down", level: .info, category: "LLM")
+      return
+    }
+    restartedOnceThisGeneration = true
+    tearDownProcess()
+    transition(to: .starting)
+    await AppLogger.shared.log(
+      "Local polish socket was removed — restarting", level: .info, category: "LLM")
+    // A stop, switch or newer launch during the await above owns the manager now; this
+    // recovery must not start its own configuration over it.
+    guard generation == launchGeneration, case .starting = state, process == nil else { return }
+    await spawn(configuration: configuration)
   }
 
   private func handleTermination(
@@ -575,10 +763,14 @@ public actor LocalPolishProcessManager {
     // Deliberate teardown paths null the handler first; reaching here
     // means the child died underneath us.
     guard case .ready = state else {
-      if case .starting = state { transition(to: .failed(reason: "crashed_during_start")) }
+      if case .starting = state {
+        releaseOwnLaunch(generation)
+        transition(to: .failed(reason: "crashed_during_start"))
+      }
       return
     }
-    process = nil
+    // #4493: the dead launch's connection goes with it, before any restart makes a new one.
+    releaseLaunch()
     // #3988: something outside the app stopped a working server (macOS under
     // memory pressure, Activity Monitor, a `kill`). Treating that as a crash
     // spent the restart, and a second stop gave up for the session with polish
@@ -613,8 +805,9 @@ public actor LocalPolishProcessManager {
     // may have run during the await above — only the crashed generation
     // (still `.starting`, no new process; this handler nulled `process`
     // before the await) may restart, or a deactivated provider gets its
-    // multi-GB server resurrected (#1271 Codex r4).
-    guard case .starting = state, process == nil else { return }
+    // multi-GB server resurrected (#1271 Codex r4). #4493: and only while no newer launch
+    // generation exists, so a stale restart never starts its captured configuration over one.
+    guard generation == launchGeneration, case .starting = state, process == nil else { return }
     await spawn(configuration: configuration)
   }
 
@@ -631,7 +824,7 @@ public actor LocalPolishProcessManager {
     memoryPressureSource = source
   }
 
-  private func pauseForMemoryPressure() async {
+  func pauseForMemoryPressure() async {
     // `.starting` is INCLUDED: model load is exactly when the child's
     // footprint ramps, so critical pressure mid-start must kill it too
     // (#1271 Codex r6). The in-flight spawn self-heals: awaitServerUp bails
@@ -678,51 +871,18 @@ public actor LocalPolishProcessManager {
 
   // MARK: - Helpers
 
-  /// Bind port 0, read the kernel-assigned port, release it. A race with
-  /// another process grabbing the port between release and spawn is
-  /// possible but self-healing (spawn fails → failed state → user retry).
-  static func findFreePort() -> UInt16? {
-    let sock = socket(AF_INET, SOCK_STREAM, 0)
-    guard sock >= 0 else { return nil }
-    defer { close(sock) }
-    var addr = sockaddr_in()
-    addr.sin_family = sa_family_t(AF_INET)
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
-    addr.sin_port = 0
-    let bindResult = withUnsafePointer(to: &addr) { ptr in
-      ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-        bind(sock, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
-      }
-    }
-    guard bindResult == 0 else { return nil }
-    var bound = sockaddr_in()
-    var len = socklen_t(MemoryLayout<sockaddr_in>.size)
-    let nameResult = withUnsafeMutablePointer(to: &bound) { ptr in
-      ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
-        getsockname(sock, sockaddrPtr, &len)
-      }
-    }
-    guard nameResult == 0 else { return nil }
-    return UInt16(bigEndian: bound.sin_port)
-  }
-
   static func awaitServerUp(
     endpoint: LocalPolishEndpoint, budgetSeconds: Int,
     processIsAlive: @escaping @Sendable () -> Bool = { true }
   ) async -> Bool {
     let deadline = ContinuousClock.now + .seconds(budgetSeconds)
-    guard let healthURL = URL(string: "http://127.0.0.1:\(endpoint.port)/health") else {
-      return false
-    }
+    let request = LocalPolishHelperRequest(method: .get, path: "/health", timeout: .seconds(2))
     while ContinuousClock.now < deadline {
       // A dead child can never become healthy — bail immediately instead
       // of burning the whole budget (also keeps fake-binary tests fast).
       guard processIsAlive() else { return false }
-      var request = URLRequest(url: healthURL)
-      request.timeoutInterval = 2
-      request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-      if let (_, response) = try? await URLSession.shared.data(for: request),
-        (response as? HTTPURLResponse)?.statusCode == 200
+      if let response = try? await LocalPolishHelperExchange.perform(request, endpoint),
+        response.status == 200
       {
         return true
       }

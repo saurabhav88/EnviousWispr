@@ -11,7 +11,8 @@ import Foundation
 /// `MeetingSummary`'s own policy: a length stop is a cut-off answer (`Failure.truncated`, never
 /// saved; no loop guard, founder 2026-11-01), an empty answer is `Failure.empty`, a timeout is
 /// `Failure.timedOut`, a dropped connection stays a `URLError` the summary's retry policy
-/// already treats as retryable, a prompt the server's window cannot hold is
+/// already treats as retryable (#4493: the helper exchange reports it in its own terms, and this
+/// call gives it back as the `URLError` code the policy keys on), a prompt the server's window cannot hold is
 /// `LLMError.classified(.inputTooLong)` (the summary re-plans with its byte count, as for the
 /// other engines), and any other HTTP status is a non-retryable request failure.
 /// No transcript-tag stripping (the summary prompt wraps nothing in transcript tags) and no
@@ -21,30 +22,30 @@ public enum EGOneSummaryCall {
   /// - Parameters:
   ///   - timeoutSeconds: the summary's local call limit; the request waits that plus ten
   ///     seconds, so the summary's own timeout fires first and reports `timedOut`.
-  ///   - send: the transport; the app uses `URLSession.shared`, tests a canned answer.
+  ///   - send: the transport; the app uses the helper exchange, tests a canned answer.
   public static func complete(
     endpoint: LocalPolishEndpoint, instructions: String, prompt: String, timeoutSeconds: Double,
-    send: @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-      try await URLSession.shared.data(for: $0)
-    }
+    send: LocalPolishHelperExchange.Perform = LocalPolishHelperExchange.perform
   ) async throws -> String {
-    var request = URLRequest(url: endpoint.chatCompletionsURL)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = timeoutSeconds + 10
-    request.httpBody = try JSONSerialization.data(
-      withJSONObject: requestBody(instructions: instructions, prompt: prompt))
-    let data: Data
-    let response: URLResponse
+    let request = LocalPolishHelperRequest(
+      method: .post, path: "/v1/chat/completions",
+      body: try JSONSerialization.data(
+        withJSONObject: requestBody(instructions: instructions, prompt: prompt)),
+      timeout: .seconds(timeoutSeconds + 10))
+    let response: LocalPolishHelperResponse
     do {
-      (data, response) = try await send(request)
-    } catch let error as URLError where error.code == .cancelled {
-      throw CancellationError()
-    } catch let error as URLError where error.code == .timedOut {
+      response = try await send(request, endpoint)
+    } catch LocalPolishHelperClientError.timedOut {
       throw MeetingSummary.Failure.timedOut
+    } catch LocalPolishHelperClientError.notConnectable {
+      // `LLMRetryPolicy` retries these two `URLError` codes; they are what this call threw
+      // when the transport was `URLSession` (plan #4493 §3.3, Q4).
+      throw URLError(.cannotConnectToHost)
+    } catch LocalPolishHelperClientError.connectionLost {
+      throw URLError(.networkConnectionLost)
     }
-    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+    let data = response.body
+    let status = response.status
     guard status == 200 else {
       // The planning estimate can undercount EG-1's tokenizer; the helper then answers 400
       // with type `exceed_context_size_error`. The type is checked first, so new wording

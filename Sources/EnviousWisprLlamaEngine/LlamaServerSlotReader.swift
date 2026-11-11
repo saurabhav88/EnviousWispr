@@ -16,25 +16,17 @@ import Foundation
     /// #4473: a transport failure is THROWN to the manager, which reports `transportFailed`;
     /// every answer the server did give comes back as an observation.
     package static func operation(
-      send: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-        try await URLSession.shared.data(for: $0)
-      }
+      send: @escaping LocalPolishHelperExchange.Perform = LocalPolishHelperExchange.perform
     ) -> LocalPolishSlotInspection {
       { endpoint, launchGeneration in
-        guard let url = URL(string: "http://127.0.0.1:\(endpoint.port)/slots") else {
-          return .unavailable
-        }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 2
-        request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await send(request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        switch status {
+        let request = LocalPolishHelperRequest(method: .get, path: "/slots", timeout: .seconds(2))
+        let response = try await send(request, endpoint)
+        switch response.status {
         case 200: break
         case 404, 501: return .unsupported
-        default: return .httpStatus(status)
+        default: return .httpStatus(response.status)
         }
-        return parseSlots(data, launchGeneration: launchGeneration)
+        return parseSlots(response.body, launchGeneration: launchGeneration)
           .map(EGOneSlotObservation.observed) ?? .malformed
       }
     }

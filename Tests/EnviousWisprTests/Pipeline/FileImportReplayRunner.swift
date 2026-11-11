@@ -197,11 +197,15 @@ struct FileImportReplayRunner {
   @Test("the Mini arm requires its own endpoint and model hash; other arms refuse one")
   func miniEndpointIsRequiredOnlyForMini() throws {
     let full = [
-      "EW_REPLAY_MINI_PORT": "47000", "EW_REPLAY_MINI_TOKEN": "t",
+      "EW_REPLAY_MINI_SOCKET": "/tmp/ew-mini/s.sock", "EW_REPLAY_MINI_TOKEN": "t",
       "EW_REPLAY_MINI_CONTEXT": "16384", "EW_REPLAY_MINI_SHA256": "abc",
     ]
     let endpoint = try #require(try Self.miniEndpoint(arm: .mini, env: full))
-    #expect(endpoint.port == 47000)
+    #expect(endpoint.socketPath == "/tmp/ew-mini/s.sock")
+    // #4493: the retired port setting fails loudly instead of being ignored.
+    var retired = full
+    retired["EW_REPLAY_MINI_PORT"] = "47000"
+    #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .mini, env: retired) }
     #expect(endpoint.hasLearnedWordAdapter == false)
     #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .mini, env: [:]) }
     #expect(throws: (any Error).self) { try Self.miniEndpoint(arm: .egOne, env: full) }
@@ -221,19 +225,28 @@ struct FileImportReplayRunner {
       }
       return value
     }
+    // #4493: the Mini server listens on a Unix socket now; a driver that still names a port
+    // starts it the old way and must be updated, not silently ignored.
+    if env["EW_REPLAY_MINI_PORT"] != nil {
+      throw ReplayConfigurationError(
+        description: "EW_REPLAY_MINI_PORT is retired: start the Mini server on a Unix socket "
+          + "(--host <path>.sock) and pass EW_REPLAY_MINI_SOCKET")
+    }
     guard arm == .mini else {
-      if env["EW_REPLAY_MINI_PORT"] != nil {
+      if env["EW_REPLAY_MINI_SOCKET"] != nil {
         throw ReplayConfigurationError(description: "a Mini endpoint was named for arm \(arm)")
       }
       return nil
     }
-    guard let port = UInt16(try need("EW_REPLAY_MINI_PORT")),
-      let context = Int(try need("EW_REPLAY_MINI_CONTEXT"))
-    else { throw ReplayConfigurationError(description: "Mini port or context is not a number") }
+    let socketPath = try need("EW_REPLAY_MINI_SOCKET")
+    guard let context = Int(try need("EW_REPLAY_MINI_CONTEXT")) else {
+      throw ReplayConfigurationError(description: "Mini context is not a number")
+    }
     let token = try need("EW_REPLAY_MINI_TOKEN")
     _ = try need("EW_REPLAY_MINI_SHA256")
     return LocalPolishEndpoint(
-      port: port, authToken: token, contextTokens: context, hasLearnedWordAdapter: false)
+      socketPath: socketPath, authToken: token, contextTokens: context,
+      hasLearnedWordAdapter: false)
   }
 
 
@@ -774,7 +787,6 @@ final class ReplayRig {
       identity["canned_answers_path"] = ProcessInfo.processInfo.environment["EW_REPLAY_CANNED"]
     }
     if let mini {
-      identity["mini_endpoint_port"] = Int(mini.port)
       identity["mini_model_sha256"] = miniSHA256 ?? NSNull()
       // #4450: the same EG-1 slot also serves EG-1 1.3 (Qwen3.5-4B); the driver names the model.
       identity["mini_label"] =

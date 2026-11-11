@@ -186,7 +186,7 @@ struct EGOneRealDeliveryTests {
       model: folders.model.path, draft: folders.draft.path, wordCheckAdapter: adapter.path)
     defer { helper.stop() }
     try await helper.untilReady()
-    let ready = try #require(helper.lines.first { $0.contains("ready port=") })
+    let ready = try #require(helper.lines.first { $0.contains("ready socket ") })
     #expect(ready.contains("wordcheck=on"))
     #expect(try await helper.request("/health", bearer: helper.token).status == 200)
 

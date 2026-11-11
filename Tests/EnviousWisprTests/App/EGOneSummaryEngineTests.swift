@@ -20,7 +20,7 @@ struct EGOneSummaryEngineTests {
     var activations = 0
     var restores = 0
     var activateAnswer = true
-    var requests: [URLRequest] = []
+    var requests: [LocalPolishHelperRequest] = []
     /// When set, the load waits for `releaseActivation()` after it has started.
     var parkActivation = false
     private(set) var activationParked = false
@@ -60,7 +60,7 @@ struct EGOneSummaryEngineTests {
       if installed { egOne.applyInstallStateForTesting(.installed(version: "1.2")) }
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
       let probe = probe
-      let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 16_384)
+      let endpoint = LocalPolishEndpoint(socketPath: "/t/51234.sock", authToken: "t", contextTokens: 16_384)
       let value = EGOneManifest(
         modelName: "eg-1", version: "eg1-1.2-c003", contextTokens: 16_384,
         promptTemplateID: "eg1-v1", minAppVersion: "2.3.0",
@@ -75,16 +75,15 @@ struct EGOneSummaryEngineTests {
           return probe.activateAnswer ? endpoint : nil
         },
         currentEndpoint: { _ in endpoint },
-        send: { request in
+        send: { request, _ in
           await MainActor.run { probe.requests.append(request) }
           let json: [String: Any] = [
             "choices": [
               ["message": ["content": "Title: Plan\n\nShip Friday."], "finish_reason": "stop"]
             ]
           ]
-          let response = HTTPURLResponse(
-            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-          return (try JSONSerialization.data(withJSONObject: json), response)
+          return LocalPolishHelperResponse(
+            status: 200, body: try JSONSerialization.data(withJSONObject: json))
         })
     }
   }
@@ -147,7 +146,7 @@ struct EGOneSummaryEngineTests {
         minAppVersion: "2.3.0", downloadURL: URL(string: "https://example.invalid/eg1")!)
     }
     let box = Box()
-    let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 8192)
+    let endpoint = LocalPolishEndpoint(socketPath: "/t/51234.sock", authToken: "t", contextTokens: 8192)
     let engine = EGOneSummaryEngine(
       runtimes: set, model: { box.model },
       manifest: {
@@ -166,13 +165,12 @@ struct EGOneSummaryEngineTests {
         box.asked.append(model)
         return endpoint
       },
-      send: { request in
+      send: { _, _ in
         let json: [String: Any] = [
           "choices": [["message": ["content": "Title: Plan"], "finish_reason": "stop"]]
         ]
-        let response = HTTPURLResponse(
-          url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-        return (try JSONSerialization.data(withJSONObject: json), response)
+        return LocalPolishHelperResponse(
+          status: 200, body: try JSONSerialization.data(withJSONObject: json))
       })
 
     #expect(engine.artifactRevision == "mini|mini-rev")
@@ -216,7 +214,7 @@ struct EGOneSummaryEngineTests {
     #expect(try await prepared.complete("Summarize.", "part one") == "Title: Plan\n\nShip Friday.")
     #expect(try await prepared.complete("Summarize.", "part two") == "Title: Plan\n\nShip Friday.")
     #expect(f.probe.requests.count == 2)
-    #expect(f.probe.requests.first?.timeoutInterval == 310)
+    #expect(f.probe.requests.first?.timeout == .seconds(310))
     await prepared.finish()
     await prepared.finish()
     #expect(f.set.summaryHeldProvider == nil)

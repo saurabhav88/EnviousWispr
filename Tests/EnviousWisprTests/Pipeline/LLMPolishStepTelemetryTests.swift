@@ -613,7 +613,7 @@ struct LLMPolishStepLanguageHintTests {
   final class Runtime: EGOneEndpointProviding {
     let endpoint: LocalPolishEndpoint?
     init(ready: Bool = true, contextTokens: Int = 32768) {
-      endpoint = ready ? LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: contextTokens) : nil
+      endpoint = ready ? LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: contextTokens) : nil
     }
     func activeEndpoint() async -> LocalPolishEndpoint? { endpoint }
   }

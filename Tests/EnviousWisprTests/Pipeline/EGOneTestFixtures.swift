@@ -86,7 +86,7 @@ extension BundledLocalPolisherFactories {
 /// #4473: the engine of a runtime in a test that is about the RUNTIME (install state, leases,
 /// holds, upgrade, telemetry), not about an engine. Its operations are the test's own: it
 /// starts the test's fake server with the generic command line every fake server here reads
-/// (model, host, port, context, bearer, and the adapter flag when one is asked for), and
+/// (model, socket, context, key file, and the adapter flag when one is asked for), and
 /// probes it with the stand-in connector. No model's real flags are in it, so it serves an
 /// EG-1 size or S1-mini alike. A test about llama-server itself uses `LlamaServerEngine()`.
 /// Each operation can be replaced: `TestLocalPolishEngine(makeLaunchConfiguration: { … })`.
@@ -111,7 +111,7 @@ struct TestLocalPolishEngine: LocalPolishEngine {
         serverBinaryURL: serverBinaryURL, modelURL: modelURL, contextTokens: contextTokens,
         learnedWordAdapterURL: adapter, extraArguments: [],
         learnedWordAdapterArguments: adapter.map { ["--lora-scaled", "\($0.path):0"] } ?? []),
-      makeArguments: LlamaServerLaunchBuilder.arguments)
+      makeLaunch: LlamaServerLaunchBuilder.launch)
   }
 
   /// A model's real engine where it has one that a fake server can stand in for (S1-mini on
@@ -149,7 +149,7 @@ final class LocalPolisherFactorySpy {
   static let egOneAnswer = "I was thinking we could ship the new thing sometime next week."
   static let s1MiniAnswer = "I was thinking we could ship the new thing next week."
   /// The endpoint `ReadyEGOneRuntime` reports.
-  static let endpoint = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+  static let endpoint = LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768)
 
   private struct FixedAnswerPolisher: TranscriptPolisher {
     let answer: String
@@ -208,7 +208,7 @@ final class LocalPolisherFactorySpy {
 @MainActor
 final class ReadyEGOneRuntime: EGOneEndpointProviding {
   func activeEndpoint() async -> LocalPolishEndpoint? {
-    LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 32768)
+    LocalPolishEndpoint(socketPath: "/t/1.sock", authToken: "t", contextTokens: 32768)
   }
 }
 

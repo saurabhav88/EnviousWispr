@@ -44,7 +44,7 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
         spec: engine.makeSpec(
           modelID: modelID, artifactIdentity: artifactIdentity, helperURL: helperURL,
           modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL),
-        makeArguments: Self.arguments)
+        makeLaunch: Self.launch)
     }
   }
 
@@ -98,27 +98,30 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
       draftArtifactIdentity: draftArtifactIdentity)
   }
 
-  /// The helper's complete argument list for one spawn: its seven arguments, each with its
-  /// value, then the adapter folder when the spec carries an adapter. The port and the bearer are chosen by the process manager for each spawn and are
-  /// not part of the spec. The model name is EG-1's wire name for every size (the name a
-  /// request must carry); it is never read from a folder name.
+  /// The helper's launch for one spawn: its six arguments, each with its value, then the
+  /// adapter folder when the spec carries an adapter; and the bearer as the first line of its
+  /// standard input, so the secret is never in its arguments or environment (#4493). The socket
+  /// path and the bearer belong to the launch connection the process manager made for this
+  /// spawn and are not part of the spec. The model name is EG-1's wire name for every size (the
+  /// name a request must carry); it is never read from a folder name.
   ///
   /// Renders the spec it is GIVEN. A spec without a draft model is not one this engine makes;
   /// rendered anyway, it has no `--draft-model`, and the helper refuses to start without one.
-  static func arguments(
-    spec: LocalPolishLaunchSpec, port: UInt16, authToken: String
-  ) -> [String] {
+  static func launch(
+    spec: LocalPolishLaunchSpec, inputs: LocalPolishLaunchConnection.Inputs
+  ) -> LocalPolishLaunchCommand {
     var arguments = ["--model", spec.modelURL.path]
     if let draftModelURL = spec.draftModelURL {
       arguments += ["--draft-model", draftModelURL.path]
     }
     arguments += [
       "--model-name", LLMProvider.egOneModelName,
-      "--port", String(port),
-      "--token", authToken,
+      "--socket", inputs.socketPath,
       "--ctx-size", String(spec.contextTokens),
     ]
-    return arguments + spec.extraArguments + spec.learnedWordAdapterArguments
+    return LocalPolishLaunchCommand(
+      arguments: arguments + spec.extraArguments + spec.learnedWordAdapterArguments,
+      stdinPreamble: Data((inputs.secret + "\n").utf8))
   }
 
   /// The health probe: a REAL polish of a fixed filler-and-self-correction transcript through

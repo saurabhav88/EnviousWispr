@@ -1,8 +1,8 @@
 import EnviousWisprCore
 import Foundation
 
-/// The localhost wire path shared by every model the bundled server runs
-/// (#2649).
+/// The chat request path shared by every model the bundled server runs (#2649), over the
+/// launch's private socket (#4493).
 ///
 /// EG-1 and S1-mini disagree about exactly ONE thing: what an empty answer
 /// means. Everything between the request body and the HTTP response is
@@ -34,8 +34,7 @@ public enum LocalPolishTransport {
   /// cancelled request is `CancellationError`.
   public static func send(endpoint: LocalPolishEndpoint, body: Data) async throws -> Data {
     try await send(
-      endpoint: endpoint, body: body,
-      perform: { try await URLSession.shared.data(for: $0) },
+      endpoint: endpoint, body: body, perform: LocalPolishHelperExchange.perform,
       retryPause: { try await Task.sleep(for: .milliseconds(750)) })
   }
 
@@ -44,17 +43,13 @@ public enum LocalPolishTransport {
   /// The app always enters through the two-argument form above.
   static func send(
     endpoint: LocalPolishEndpoint, body: Data,
-    perform: @Sendable (URLRequest) async throws -> (Data, URLResponse),
+    perform: LocalPolishHelperExchange.Perform,
     retryPause: @Sendable () async throws -> Void
   ) async throws -> Data {
-    var request = URLRequest(url: endpoint.chatCompletionsURL)
-    request.httpMethod = "POST"
-    request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = body
     // The pipeline's 15 s budget is the real cap; this transport timeout
     // only stops a zombie socket from outliving the step.
-    request.timeoutInterval = 20
+    let request = LocalPolishHelperRequest(
+      method: .post, path: "/v1/chat/completions", body: body, timeout: .seconds(20))
 
     // One internal retry on connection-refused/reset: covers the
     // restart-once window after a server crash (plan §4). This is the
@@ -62,37 +57,29 @@ public enum LocalPolishTransport {
     // deliberately treats the bypass error below as non-retryable so outer
     // machinery never stacks retries on top. (#4473: the connectors map
     // `unavailable` to that bypass error.)
-    var lastConnectionError = false
     for attempt in 0...1 {
       if attempt > 0 {
         try await retryPause()
       }
       do {
-        let (data, response) = try await perform(request)
-        guard let http = response as? HTTPURLResponse else {
-          throw LocalPolishTransportError.unavailable
-        }
-        guard http.statusCode == 200 else {
+        let response = try await perform(request, endpoint)
+        guard response.status == 200 else {
           Task {
             await AppLogger.shared.log(
-              "local polish server HTTP \(http.statusCode)", level: .verbose, category: "LLM")
+              "local polish server HTTP \(response.status)", level: .verbose, category: "LLM")
           }
           throw LocalPolishTransportError.unavailable
         }
-        return data
-      } catch let urlError as URLError {
-        switch urlError.code {
-        case .cannotConnectToHost, .networkConnectionLost:
-          lastConnectionError = true
+        return response.body
+      } catch let error as LocalPolishHelperClientError {
+        switch error {
+        case .notConnectable, .connectionLost:
           continue
-        case .cancelled:
-          throw CancellationError()
-        default:
+        case .timedOut, .failed:
           throw LocalPolishTransportError.unavailable
         }
       }
     }
-    _ = lastConnectionError
     throw LocalPolishTransportError.unavailable
   }
 }

@@ -32,13 +32,13 @@ actor HelperService {
   /// Any failure is thrown: there is no other model or adapter to fall back to and nothing is
   /// downloaded. An adapter that does not fit the polish model stops the start; the app then
   /// starts the helper again without one.
-  init(arguments: HelperArguments) async throws {
+  init(arguments: HelperArguments, token: String) async throws {
     let loaded = try await HelperTokenizer.load(
       modelFolder: arguments.modelFolder, modelName: arguments.modelName,
       contextTokens: arguments.contextTokens)
     tokenizer = loaded.tokenizer
     configuration = loaded.configuration
-    token = arguments.token
+    self.token = token
     if arguments.wordCheckAdapterFolder != nil {
       let a = loaded.tokenizer.encode(HelperWordCheck.answers.a)
       let b = loaded.tokenizer.encode(HelperWordCheck.answers.b)

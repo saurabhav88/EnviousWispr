@@ -1,9 +1,9 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprEG1Engine
+@testable import EnviousWisprLocalPolish
 
 /// #4473 P3: the app's learned-word checker for an EG-1 size on the EnviousDecode helper.
 ///
@@ -42,17 +42,17 @@ struct EnviousDecodeWordCheckerTests {
   /// What the scripted helper saw and what the checker did with its hold.
   final class Record: @unchecked Sendable {
     private let lock = NSLock()
-    private var requestList: [URLRequest] = []
+    private var requestList: [LocalPolishHelperRequest] = []
     private var acquiredCount = 0
     private var releasedCount = 0
     private var releasedDuringRequest = false
 
-    var requests: [URLRequest] { lock.withLock { requestList } }
+    var requests: [LocalPolishHelperRequest] { lock.withLock { requestList } }
     var acquired: Int { lock.withLock { acquiredCount } }
     var released: Int { lock.withLock { releasedCount } }
     var wasReleasedDuringARequest: Bool { lock.withLock { releasedDuringRequest } }
 
-    func add(_ request: URLRequest) {
+    func add(_ request: LocalPolishHelperRequest) {
       lock.withLock {
         requestList.append(request)
         if releasedCount > 0 { releasedDuringRequest = true }
@@ -63,7 +63,7 @@ struct EnviousDecodeWordCheckerTests {
   }
 
   static let endpoint = LocalPolishEndpoint(
-    port: 49_152, authToken: "bearer-1", contextTokens: 8192, hasLearnedWordAdapter: true)
+    socketPath: "/t/49152.sock", authToken: "bearer-1", contextTokens: 8192, hasLearnedWordAdapter: true)
 
   static func hold(_ record: Record, endpoint: LocalPolishEndpoint? = endpoint)
     -> @Sendable () async -> Checker.Hold?
@@ -75,14 +75,22 @@ struct EnviousDecodeWordCheckerTests {
     }
   }
 
-  static func response(_ status: Int = 200) -> URLResponse {
-    HTTPURLResponse(
-      url: URL(string: "http://127.0.0.1:49152/v1/wordcheck")!, statusCode: status,
-      httpVersion: "HTTP/1.1", headerFields: nil)!
+  /// #4493: the scripted helper answers in the helper exchange's terms: a status and bytes,
+  /// or one of its failures. Each request is recorded with the endpoint it names.
+  static func scripted(
+    _ answer: @escaping @Sendable (LocalPolishHelperRequest) async throws -> (Data, Int)
+  ) -> LocalPolishHelperExchange.Perform {
+    { request, endpoint in
+      #expect(endpoint == Self.endpoint)
+      let (data, status) = try await answer(request)
+      return LocalPolishHelperResponse(status: status, body: data)
+    }
   }
 
-  static func ids(in request: URLRequest) throws -> [Int] {
-    let bytes = try #require(request.httpBody)
+  static func response(_ status: Int = 200) -> Int { status }
+
+  static func ids(in request: LocalPolishHelperRequest) throws -> [Int] {
+    let bytes = try #require(request.body)
     let body = try #require(try JSONSerialization.jsonObject(with: bytes) as? [String: Any])
     return try #require(body["questions"] as? [[String: Any]]).compactMap { $0["id"] as? Int }
   }
@@ -121,14 +129,16 @@ struct EnviousDecodeWordCheckerTests {
     let questions = try Self.questions(19)
     // The scripted helper gives question `id` the pair (pA, pB) = (1 - p, p) / 2 with
     // p = (id - 100) / 20: half the total probability, so the ratio must be taken.
-    let checker = Checker(threshold: 0.5, hold: Self.hold(record)) { request in
-      record.add(request)
-      let entries = try Self.ids(in: request).map { id -> [String: Any] in
-        let p = Double(id - 100) / 20
-        return ["id": id, "pA": (1 - p) / 2, "pB": p / 2]
-      }
-      return (try Self.scores(entries), Self.response())
-    }
+    let checker = Checker(
+      threshold: 0.5, hold: Self.hold(record),
+      perform: Self.scripted { request in
+        record.add(request)
+        let entries = try Self.ids(in: request).map { id -> [String: Any] in
+          let p = Double(id - 100) / 20
+          return ["id": id, "pA": (1 - p) / 2, "pB": p / 2]
+        }
+        return (try Self.scores(entries), Self.response())
+      })
     let decisions = try await checker.decide(questions)
 
     // Requests: eight, eight, three, in order, one after the other.
@@ -138,11 +148,10 @@ struct EnviousDecodeWordCheckerTests {
         Array(100...107), Array(108...115), Array(116...118),
       ])
     let first = try #require(requests.first)
-    #expect(first.url?.absoluteString == "http://127.0.0.1:49152/v1/wordcheck")
-    #expect(first.httpMethod == "POST")
-    #expect(first.value(forHTTPHeaderField: "Authorization") == "Bearer bearer-1")
-    #expect(first.value(forHTTPHeaderField: "Content-Type") == "application/json")
-    let firstBytes = try #require(first.httpBody)
+    #expect(first.path == "/v1/wordcheck")
+    #expect(first.method == .post)
+    #expect(first.timeout == .seconds(60))
+    let firstBytes = try #require(first.body)
     let body = try #require(try JSONSerialization.jsonObject(with: firstBytes) as? [String: Any])
     #expect(Set(body.keys) == ["model", "questions"] && body["model"] as? String == "eg-1")
     let sent = try #require((body["questions"] as? [[String: Any]])?.first)
@@ -191,7 +200,7 @@ struct EnviousDecodeWordCheckerTests {
         .singleModel(for: .egOne), Engine.identity("model", "m1"), fixture.binary, fixture.model,
         4096, adapter)
       configuration.readinessBudgetSeconds = 4
-      return LocalPolishTarget(configuration: configuration)
+      return LocalPolishTarget(configuration: configuration.inLaunchHome(fixture.launchHome))
     }
     let coordinator = LocalPolishServerCoordinator()
     let server = CoordinatorServer(coordinator)
@@ -224,14 +233,15 @@ struct EnviousDecodeWordCheckerTests {
     let nine = try Self.questions(9)
     func failure(
       endpoint: LocalPolishEndpoint? = Self.endpoint, questions: [LearnedWordCheckQuestion] = nine,
-      _ answer: @escaping @Sendable (URLRequest, Int) throws -> (Data, URLResponse)
+      _ answer: @escaping @Sendable (LocalPolishHelperRequest, Int) throws -> (Data, Int)
     ) async -> (error: (any Error)?, record: Record) {
       let record = Record()
-      let checker = Checker(threshold: 0.5, hold: Self.hold(record, endpoint: endpoint)) {
-        request in
-        record.add(request)
-        return try answer(request, record.requests.count)
-      }
+      let checker = Checker(
+        threshold: 0.5, hold: Self.hold(record, endpoint: endpoint),
+        perform: Self.scripted { request in
+          record.add(request)
+          return try answer(request, record.requests.count)
+        })
       do {
         _ = try await checker.decide(questions)
         return (nil, record)
@@ -239,21 +249,21 @@ struct EnviousDecodeWordCheckerTests {
         return (error, record)
       }
     }
-    @Sendable func good(_ request: URLRequest) throws -> [[String: Any]] {
+    @Sendable func good(_ request: LocalPolishHelperRequest) throws -> [[String: Any]] {
       try Self.ids(in: request).map { ["id": $0, "pA": 0.25, "pB": 0.5] }
     }
     let absent = await failure(endpoint: nil) { _, _ in (Data(), Self.response()) }
     #expect(absent.error as? Checker.CheckerError == .adapterUnavailable)
     #expect(absent.record.requests.isEmpty && absent.record.acquired == 0)
     let bare = await failure(
-      endpoint: LocalPolishEndpoint(port: 49_152, authToken: "t", contextTokens: 8192)
+      endpoint: LocalPolishEndpoint(socketPath: "/t/49152.sock", authToken: "t", contextTokens: 8192)
     ) { _, _ in (Data(), Self.response()) }
     #expect(bare.error as? Checker.CheckerError == .adapterUnavailable)
     #expect(bare.record.requests.isEmpty && bare.record.released == 1)
 
     // Answers that are not the complete, usable answer. Each is the SECOND request's answer:
     // the first eight good scores are not returned as a partial result.
-    let broken: [(String, @Sendable (URLRequest) throws -> (Data, URLResponse))] = [
+    let broken: [(String, @Sendable (LocalPolishHelperRequest) throws -> (Data, Int))] = [
       (
         "refused",
         { _ in (Data(#"{"error":{"type":"word_check_unavailable"}}"#.utf8), Self.response(503)) }
@@ -340,15 +350,17 @@ struct EnviousDecodeWordCheckerTests {
 
     // A cancelled request is a cancellation, not a failure of the helper, and the next
     // request is not sent.
-    let cancelled = await failure { _, _ in throw URLError(.cancelled) }
+    let cancelled = await failure { _, _ in throw CancellationError() }
     #expect(cancelled.error is CancellationError)
     #expect(cancelled.record.requests.count == 1 && cancelled.record.released == 1)
     // A check that is already cancelled takes no hold and sends nothing.
     let record = Record()
-    let checker = Checker(threshold: 0.5, hold: Self.hold(record)) { request in
-      record.add(request)
-      return (Data(), Self.response())
-    }
+    let checker = Checker(
+      threshold: 0.5, hold: Self.hold(record),
+      perform: Self.scripted { request in
+        record.add(request)
+        return (Data(), Self.response())
+      })
     let task = Task {
       withUnsafeCurrentTask { $0?.cancel() }
       return try await checker.decide(nine)
@@ -366,11 +378,11 @@ struct EnviousDecodeWordCheckerTests {
           lateRecord.release()
           withUnsafeCurrentTask { $0?.cancel() }
         }
-      }
-    ) { request in
-      lateRecord.add(request)
-      return (try Self.scores(try good(request)), Self.response())
-    }
+      },
+      perform: Self.scripted { request in
+        lateRecord.add(request)
+        return (try Self.scores(try good(request)), Self.response())
+      })
     let lateTask = Task { try await late.decide(nine) }
     await #expect(throws: CancellationError.self) { try await lateTask.value }
     #expect(lateRecord.requests.count == 2 && lateRecord.released == 1)

@@ -149,23 +149,19 @@ public struct LlamaLearnedWordChecker: LearnedWordChecking {
           group.addTask {
             try Task.checkCancellation()
             let body = Self.makeRequestBody(question, index: index, style: style)
-            var request = URLRequest(url: endpoint.completionURL)
-            request.httpMethod = "POST"
-            request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-            do {
-              let (data, response) = try await URLSession.shared.data(for: request)
-              try Task.checkCancellation()
-              guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                throw CheckerError.invalidResponse
-              }
-              let decision = try Self.parseDecision(
-                data: data, question: question, threshold: threshold)
-              return (index, decision)
-            } catch let error as URLError where error.code == .cancelled {
-              throw CancellationError()
+            // No limit of its own: 60 s, the value this request had implicitly as a
+            // `URLRequest`. The caller's (`LearnedWordCheckStep`) limits are the real ones.
+            let request = LocalPolishHelperRequest(
+              method: .post, path: "/completion",
+              body: try JSONSerialization.data(withJSONObject: body), timeout: .seconds(60))
+            let response = try await LocalPolishHelperExchange.perform(request, endpoint)
+            try Task.checkCancellation()
+            guard response.status == 200 else {
+              throw CheckerError.invalidResponse
             }
+            let decision = try Self.parseDecision(
+              data: response.body, question: question, threshold: threshold)
+            return (index, decision)
           }
         }
         var results: [(Int, LearnedWordCheckDecision)] = []

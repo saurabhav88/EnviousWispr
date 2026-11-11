@@ -1,10 +1,10 @@
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, an EG-1 meeting summary is answered by the learned-word checker's
 /// weights, a looping answer cut at the cap is saved as a summary, a slow summary is cut off at
@@ -15,23 +15,25 @@ struct EGOneSummaryCallTests {
   /// Records the request and answers with a canned response.
   final class Transport: @unchecked Sendable {
     // Test-only recorder; one call per test, never concurrent.
-    var requests: [URLRequest] = []
+    var requests: [LocalPolishHelperRequest] = []
+    var endpoints: [LocalPolishEndpoint] = []
     let answer: Result<(Data, Int), Error>
 
     init(_ answer: Result<(Data, Int), Error>) { self.answer = answer }
 
-    func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    func send(_ request: LocalPolishHelperRequest, _ endpoint: LocalPolishEndpoint) async throws
+      -> LocalPolishHelperResponse
+    {
       requests.append(request)
+      endpoints.append(endpoint)
       let (data, status) = try answer.get()
-      let response = HTTPURLResponse(
-        url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
-      return (data, response)
+      return LocalPolishHelperResponse(status: status, body: data)
     }
   }
 
   static func endpoint(adapter: Bool) -> LocalPolishEndpoint {
     LocalPolishEndpoint(
-      port: 51234, authToken: "test-token", contextTokens: 16_384, hasLearnedWordAdapter: adapter)
+      socketPath: "/t/51234.sock", authToken: "test-token", contextTokens: 16_384, hasLearnedWordAdapter: adapter)
   }
 
   static func body(content: String?, finish: String = "stop") -> Data {
@@ -46,7 +48,7 @@ struct EGOneSummaryCallTests {
   {
     try await EGOneSummaryCall.complete(
       endpoint: endpoint(adapter: adapter), instructions: "Summarize.", prompt: "TRANSCRIPT",
-      timeoutSeconds: timeout, send: { try await transport.send($0) })
+      timeoutSeconds: timeout, send: { try await transport.send($0, $1) })
   }
 
   @Test("the request: system and user as given, EG-1, the summary cap, temperature 0, checker off")
@@ -55,11 +57,12 @@ struct EGOneSummaryCallTests {
     let answer = try await Self.call(transport)
     #expect(answer == "Title: Plan\n\nA summary.")
     let request = try #require(transport.requests.first)
-    #expect(request.url?.absoluteString == "http://127.0.0.1:51234/v1/chat/completions")
-    #expect(request.httpMethod == "POST")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token")
-    #expect(request.timeoutInterval == 310, "the summary's own timeout fires first")
-    let sent = try #require(request.httpBody)
+    // #4493: the helper exchange adds the endpoint's bearer; the call names this endpoint.
+    #expect(transport.endpoints == [Self.endpoint(adapter: true)])
+    #expect(request.path == "/v1/chat/completions")
+    #expect(request.method == .post)
+    #expect(request.timeout == .seconds(310), "the summary's own timeout fires first")
+    let sent = try #require(request.body)
     let json = try #require(try JSONSerialization.jsonObject(with: sent) as? [String: Any])
     #expect(json["model"] as? String == "eg-1")
     #expect(json["max_tokens"] as? Int == MeetingSummary.outputTokens)
@@ -81,7 +84,7 @@ struct EGOneSummaryCallTests {
     for adapter in [true, false] {
       let transport = Transport(.success((Self.body(content: "ok"), 200)))
       _ = try await Self.call(transport, adapter: adapter)
-      bodies.append(try #require(transport.requests.first?.httpBody))
+      bodies.append(try #require(transport.requests.first?.body))
     }
     let first = try JSONSerialization.jsonObject(with: bodies[0]) as! [String: Any]
     let second = try JSONSerialization.jsonObject(with: bodies[1]) as! [String: Any]
@@ -159,16 +162,21 @@ struct EGOneSummaryCallTests {
 
   @Test("a transport timeout is the summary's timeout; a cancel is a cancel")
   func timeoutAndCancel() async {
-    let timedOut = Transport(.failure(URLError(.timedOut)))
+    let timedOut = Transport(.failure(LocalPolishHelperClientError.timedOut))
     await #expect(throws: MeetingSummary.Failure.timedOut) { try await Self.call(timedOut) }
-    let cancelled = Transport(.failure(URLError(.cancelled)))
+    let cancelled = Transport(.failure(CancellationError()))
     await #expect(throws: CancellationError.self) { try await Self.call(cancelled) }
   }
 
   @Test("a dropped connection stays a connection error the summary may retry")
   func connectionLost() async {
-    for code in [URLError.Code.networkConnectionLost, .cannotConnectToHost] {
-      let transport = Transport(.failure(URLError(code)))
+    // #4493: the helper exchange's two connection failures come back as the `URLError` codes
+    // the summary's retry policy keys on.
+    for (failure, code) in [
+      (LocalPolishHelperClientError.connectionLost, URLError.Code.networkConnectionLost),
+      (.notConnectable, .cannotConnectToHost),
+    ] {
+      let transport = Transport(.failure(failure))
       do {
         _ = try await Self.call(transport)
         Issue.record("expected a failure")

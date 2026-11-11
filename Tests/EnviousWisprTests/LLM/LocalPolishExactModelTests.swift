@@ -26,7 +26,7 @@ struct LocalPolishExactModelTests {
         spec: .fixture(
           modelID: model, serverBinaryURL: URL(fileURLWithPath: "/nonexistent/\(name)-server"),
           modelURL: URL(fileURLWithPath: "/nonexistent/\(name)"), contextTokens: 8192),
-        makeArguments: LlamaServerLaunchBuilder.arguments, readinessBudgetSeconds: 1))
+        makeLaunch: LlamaServerLaunchBuilder.launch, readinessBudgetSeconds: 1))
   }
 
   static func runtime(
@@ -250,8 +250,8 @@ struct LocalPolishExactModelTests {
   )
   func twoRuntimesAreAddressedBySize() async throws {
     let rig = LLMPolishStepLanguageHintTests()
-    let fullEndpoint = LocalPolishEndpoint(port: 11, authToken: "full", contextTokens: 32768)
-    let microEndpoint = LocalPolishEndpoint(port: 22, authToken: "micro", contextTokens: 32768)
+    let fullEndpoint = LocalPolishEndpoint(socketPath: "/t/11.sock", authToken: "full", contextTokens: 32768)
+    let microEndpoint = LocalPolishEndpoint(socketPath: "/t/22.sock", authToken: "micro", contextTokens: 32768)
     func context() -> TextProcessingContext {
       rig.context(
         text: LocalPolisherFactorySpy.transcript, textLanguage: "en", language: "en",
