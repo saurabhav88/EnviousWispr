@@ -4,10 +4,9 @@ import Foundation
 /// #4473: the measured numbers a size card may show, read from the bundled
 /// `eg1-size-facts.json`. One owner for every number on the cards.
 ///
-/// A value is present only when a measurement of the SHIPPED files exists; each carries the
-/// receipt it came from. An absent value is not shown: the card never fills a gap with a
-/// number from another model, another engine or a design mock
-/// (grounding-discipline.md RULE: public-claims-need-binding-evidence).
+/// Each value carries the receipt it came from and states any difference from the shipped
+/// setup. The numbers are guidance for choosing a size, rounded from our own measurements
+/// (founder 2026-11-11), never a design mock's. An absent value is not shown.
 struct EGOneSizeFacts: Decodable, Equatable, Sendable {
   struct Measured: Decodable, Equatable, Sendable {
     let value: Int64
