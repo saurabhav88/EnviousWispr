@@ -52,6 +52,7 @@ import Testing
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -157,6 +158,7 @@ import Testing
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -166,7 +168,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 15, "expected fifteen bundled registrations, got \(keys.count)")
+    #expect(keys.count == 17, "expected seventeen bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -236,6 +238,7 @@ import Testing
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

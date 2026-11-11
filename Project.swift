@@ -758,6 +758,8 @@ let project = Project(
         "Sources/EnviousWispr/Resources/eg1-mlx-checker-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/eg1-micro-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/eg1-micro-checker-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-delivery-manifest.json",
+        "Sources/EnviousWispr/Resources/eg1-mini-checker-delivery-manifest.json",
         "Sources/EnviousWispr/Resources/s1-checker-delivery-manifest.json",
         // #2649: S1-mini — the third-party normalizer that sits beside EG-1 in
         // the polish picker. Same Bundle.main route and the same two trust
