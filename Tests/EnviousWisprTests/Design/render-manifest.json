@@ -1,0 +1,616 @@
+{
+  "version": 1,
+  "note": "The expected captures of DesignRenderHarness (#4506). Every capture is <name>.png. German entries are text-fit evidence built from source-catalog values and labelled unreviewed drafts, not a localized app render.",
+  "entries": [
+    {
+      "name": "appearance-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-stress-380-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "appearance-stress-380-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "appearance",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-stress-380-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "permissions-stress-380-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "permissions",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-stress-380-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "privacy-stress-380-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "privacy",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-stress-380-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenses-stress-380-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenses",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "licenseReader-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "licenseReader",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "noticesReader-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "noticesReader",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-min-750-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-default-820-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-default-820-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-wide-1300-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-wide-1300-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-stress-380-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-stress-380-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": null,
+      "pageWidth": 380,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "available"
+    },
+    {
+      "name": "pill-preview-off-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "previewOff"
+    },
+    {
+      "name": "pill-engine-unsupported-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "engineUnsupported"
+    },
+    {
+      "name": "pill-model-being-removed-min-750-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "modelBeingRemoved"
+    },
+    {
+      "name": "german-fit-page-508-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "light",
+      "locale": "de-fit-evidence",
+      "state": null
+    },
+    {
+      "name": "german-fit-page-508-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 750,
+      "pageWidth": 508,
+      "appearance": "dark",
+      "locale": "de-fit-evidence",
+      "state": null
+    },
+    {
+      "name": "german-fit-page-578-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "light",
+      "locale": "de-fit-evidence",
+      "state": null
+    },
+    {
+      "name": "german-fit-page-578-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 820,
+      "pageWidth": 578,
+      "appearance": "dark",
+      "locale": "de-fit-evidence",
+      "state": null
+    },
+    {
+      "name": "german-fit-page-1058-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "light",
+      "locale": "de-fit-evidence",
+      "state": null
+    },
+    {
+      "name": "german-fit-page-1058-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "germanFit",
+      "window": 1300,
+      "pageWidth": 1058,
+      "appearance": "dark",
+      "locale": "de-fit-evidence",
+      "state": null
+    }
+  ]
+}

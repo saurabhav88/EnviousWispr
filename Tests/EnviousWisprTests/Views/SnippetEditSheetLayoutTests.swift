@@ -103,7 +103,7 @@ struct SnippetEditSheetLayoutTests {
       let pageCoordinator = SnippetsCoordinator(manager: SnippetsManager(fileURL: directory.appending(path: "page.json")))
       for width in [750, 820, 1300] {
         for dark in [false, true] {
-          let pageWidth = AppearanceRenderHarness.pageWidth(window: CGFloat(width))
+          let pageWidth = SettingsRenderGeometry.pageWidth(window: CGFloat(width))
           let (host, window) = Self.host(SnippetsView().environment(pageCoordinator),
                                        width: pageWidth, height: 900, dark: dark)
           defer { window.contentView = nil }

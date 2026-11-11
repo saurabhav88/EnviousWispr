@@ -22,7 +22,7 @@ struct PillSettingsLayoutTests {
   init() { _ = NSApplication.shared }
 
   /// Three equal card widths inside the real page and row margins at 750/820/1300pt.
-  static let cardWidths: [CGFloat] = [750, 820, 1300].map { (AppearanceRenderHarness.pageWidth(window: $0) - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH - 24) / 3 }
+  static let cardWidths: [CGFloat] = [750, 820, 1300].map { (SettingsRenderGeometry.pageWidth(window: $0) - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH - 24) / 3 }
 
   /// The caption takes the full inner width; its name alone reserves the 26pt tick slot.
   static let captionInset: CGFloat = 12 * 2
@@ -97,7 +97,7 @@ struct PillSettingsLayoutTests {
   func threeChoicesAcross() {
     for width in [CGFloat(750), 820, 1300] {
       // Pill cards are inside BrandedRow's horizontal padding, in addition to page margins.
-      let gridWidth = AppearanceRenderHarness.pageWidth(window: width) - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH
+      let gridWidth = SettingsRenderGeometry.pageWidth(window: width) - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH
       let box = RecordingChimeLayoutTests.Box()
       let grid = RecordingPillGrid {
         ForEach(RecordingPillAppearancePanel.displayOrder, id: \.self) { design in
