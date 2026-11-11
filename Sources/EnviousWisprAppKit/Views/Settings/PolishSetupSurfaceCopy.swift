@@ -68,9 +68,18 @@ enum PolishSetupSurfaceCopy {
       comment: "Card after a dictation: closes the card and leaves the setup for later.")
   }
 
+  /// #4473: the name a setup message gives a bundled engine. EG-1 with a known size is named by
+  /// its size ("EG-1 Micro"), the same product name its card shows; every other engine, and an
+  /// EG-1 whose size is unknown, keeps the provider's name.
+  static func engineName(_ provider: LLMProvider, egOneSize: EGOneSize?) -> String {
+    if provider == .egOne, let egOneSize { return EGOneSizeCardCopy.title(egOneSize) }
+    return provider.displayName
+  }
+
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never
   /// from an error message).
-  static func shortReason(_ problem: PolishSetupProblem) -> String {
+  /// `egOneSize` is the size being set up when the problem is EG-1's.
+  static func shortReason(_ problem: PolishSetupProblem, egOneSize: EGOneSize? = nil) -> String {
     switch problem {
     case .cloudKeyMissing(let provider):
       return String(
@@ -104,34 +113,34 @@ enum PolishSetupSurfaceCopy {
       )
     case .localEngineNotDownloaded(let provider):
       return String(
-        localized: "\(provider.displayName) is not downloaded yet",
-        comment: "Short reason, no full stop. %@ is a model name, such as EG-1.")
+        localized: "\(engineName(provider, egOneSize: egOneSize)) is not downloaded yet",
+        comment: "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.")
     case .localEngineDownloadPaused(let provider):
       return String(
-        localized: "the \(provider.displayName) download is paused",
+        localized: "the \(engineName(provider, egOneSize: egOneSize)) download is paused",
         comment:
-          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1."
+          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro."
       )
     case .localEngineUpdatePaused(let provider):
       return String(
-        localized: "the \(provider.displayName) update is paused",
+        localized: "the \(engineName(provider, egOneSize: egOneSize)) update is paused",
         comment:
-          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1."
+          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro."
       )
     case .localEngineFailed(let provider):
       return String(
-        localized: "the \(provider.displayName) download did not finish",
+        localized: "the \(engineName(provider, egOneSize: egOneSize)) download did not finish",
         comment:
-          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1."
+          "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro."
       )
     case .localEngineDownloading(let provider):
       return String(
-        localized: "\(provider.displayName) is still downloading",
-        comment: "Short reason, no full stop. %@ is a model name, such as EG-1.")
+        localized: "\(engineName(provider, egOneSize: egOneSize)) is still downloading",
+        comment: "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.")
     case .localEngineVerifying(let provider):
       return String(
-        localized: "\(provider.displayName) is being checked",
-        comment: "Short reason, no full stop. %@ is a model name, such as EG-1.")
+        localized: "\(engineName(provider, egOneSize: egOneSize)) is being checked",
+        comment: "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.")
     case .appleUnavailable(let reason):
       if reason == .appleIntelligenceDisabled {
         return AppleIntelligenceSetupCopy.current.title

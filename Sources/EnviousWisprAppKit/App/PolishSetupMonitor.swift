@@ -489,7 +489,9 @@ final class PolishSetupMonitor {
     guard let problem = episodes.eligibleProblem, let episode = episodes.episode else {
       return nil
     }
-    return PolishSetupPromptSubject(problem: problem, provider: episode.configuration.provider)
+    return PolishSetupPromptSubject(
+      problem: problem, provider: episode.configuration.provider,
+      egOneSize: episode.configuration.egOneSize)
   }
 
   /// One `polish_setup.prompt` row about `subject`, as the surface had it when it showed. Never

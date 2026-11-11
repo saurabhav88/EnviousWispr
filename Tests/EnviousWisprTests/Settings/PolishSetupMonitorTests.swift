@@ -933,6 +933,27 @@ extension PolishSetupMonitorTests {
     #expect(request.goBackProvider == nil, "offered a way back to a key known to be rejected")
   }
 
+  // #4473
+  @Test("the prompt subject and the leave request carry the EG-1 size being set up")
+  func promptSubjectAndLeaveRequestCarryTheEGOneSize() throws {
+    let world = World()
+    world.facts = Self.facts(egOneInstall: .notInstalled, openAIKeySaved: true)
+    let monitor = Self.takeMonitor(world, keys: KeyLog())
+    monitor.start()
+    defer { monitor.stop() }
+    world.configuration = PolishSetupConfiguration(
+      provider: .egOne, model: "eg-1", credentialRevision: nil, egOneSize: .micro)
+    #expect(monitor.eligibleProblem == .localEngineNotDownloaded(.egOne))
+    #expect(monitor.promptSubject?.egOneSize == .micro)
+    let request = try #require(
+      PolishSetupLeaveGuard.request(
+        for: .sidebar(.history), from: PolishSetupScope.dictation.guardedState,
+        scope: .dictation, monitor: monitor, previousProvider: .openAI,
+        currentProvider: .egOne, keyNotSaved: false))
+    #expect(request.egOneSize == .micro)
+    #expect(request.promptSubject.egOneSize == .micro)
+  }
+
   @Test("each provider keeps its own dictation evidence: Gemini working says nothing about OpenAI")
   func cloudEvidenceIsPerProvider() throws {
     let world = World()

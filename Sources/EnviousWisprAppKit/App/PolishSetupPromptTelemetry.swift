@@ -12,6 +12,15 @@ import Foundation
 struct PolishSetupPromptSubject: Hashable {
   let problem: PolishSetupProblem
   let provider: LLMProvider
+  /// #4473: the EG-1 size that was being set up, so the words name it ("EG-1 Micro"). Nil for
+  /// every other provider and for an EG-1 notice that does not know its size.
+  let egOneSize: EGOneSize?
+
+  init(problem: PolishSetupProblem, provider: LLMProvider, egOneSize: EGOneSize? = nil) {
+    self.problem = problem
+    self.provider = provider
+    self.egOneSize = egOneSize
+  }
 }
 
 /// One row of `polish_setup.prompt`: a setup warning was shown, or a person pressed one of its
@@ -103,17 +112,5 @@ extension PolishSetupLeaveAction {
     case .ok: return .ok
     case .openSystemSettings: return .openSystemSettings
     }
-  }
-
-  /// The answer to report for a press of this button while `event` is the app's current event.
-  /// macOS sends the cancel keys (Escape, Command-period) to an alert's cancel-role button, so
-  /// the safe "Finish setup" or "Pick another" also runs on a cancel key; that is a dismissal
-  /// and reports `closed`. The behaviour is the same (stay on AI Polish), only the row differs.
-  func promptAction(isCancelRole: Bool, event: NSEvent?) -> PolishSetupPromptEvent.Action {
-    guard isCancelRole, let event, event.type == .keyDown else { return promptAction }
-    let cancelKey =
-      event.keyCode == 53
-      || (event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == ".")
-    return cancelKey ? .closed : promptAction
   }
 }

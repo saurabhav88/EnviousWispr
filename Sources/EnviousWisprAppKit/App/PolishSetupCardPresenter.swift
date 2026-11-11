@@ -117,7 +117,7 @@ final class PolishSetupCardPresenter {
       }
       card = Card(
         takeID: takeID, ticket: .setup(ticket), subject: subject,
-        model: PolishSetupCardModel(problem: subject.problem))
+        model: PolishSetupCardModel(problem: subject.problem, egOneSize: subject.egOneSize))
     }
     attempts &+= 1
     let attempt = attempts
