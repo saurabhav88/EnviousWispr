@@ -513,7 +513,7 @@ struct EnviousDecodeHelperIntegrationTests {
     try await checked.signal("the helper to end the dropped word check", within: 60) {
       ended("cancelled") == 1
     }
-    var impatient = URLRequest(url: EnviousDecodeWordChecker.url(checked.endpoint))
+    var impatient = URLRequest(url: URL(string: "http://127.0.0.1:\(checked.endpoint.port)/v1/wordcheck")!)
     impatient.httpMethod = "POST"
     impatient.timeoutInterval = 0.25  // test-fixture-timer: the client's own time limit is the thing under test
     impatient.setValue("Bearer \(checked.token)", forHTTPHeaderField: "Authorization")

@@ -1,9 +1,9 @@
 import EnviousWisprCore
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprEG1Engine
+@testable import EnviousWisprLocalPolish
 
 /// #4473 P3: the app's learned-word checker for an EG-1 size on the EnviousDecode helper.
 ///
@@ -75,6 +75,16 @@ struct EnviousDecodeWordCheckerTests {
     }
   }
 
+  /// #4493: the scripted helper in `URLSession`'s terms, reached through the helper exchange's
+  /// own loopback request and failure mapping, as the checker's requests are in the app.
+  static func loopback(
+    _ answer: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  ) -> LocalPolishHelperExchange.Perform {
+    { request, endpoint in
+      try await LocalPolishHelperExchange.perform(request, at: endpoint, transport: answer)
+    }
+  }
+
   static func response(_ status: Int = 200) -> URLResponse {
     HTTPURLResponse(
       url: URL(string: "http://127.0.0.1:49152/v1/wordcheck")!, statusCode: status,
@@ -121,14 +131,16 @@ struct EnviousDecodeWordCheckerTests {
     let questions = try Self.questions(19)
     // The scripted helper gives question `id` the pair (pA, pB) = (1 - p, p) / 2 with
     // p = (id - 100) / 20: half the total probability, so the ratio must be taken.
-    let checker = Checker(threshold: 0.5, hold: Self.hold(record)) { request in
-      record.add(request)
-      let entries = try Self.ids(in: request).map { id -> [String: Any] in
-        let p = Double(id - 100) / 20
-        return ["id": id, "pA": (1 - p) / 2, "pB": p / 2]
-      }
-      return (try Self.scores(entries), Self.response())
-    }
+    let checker = Checker(
+      threshold: 0.5, hold: Self.hold(record),
+      perform: Self.loopback { request in
+        record.add(request)
+        let entries = try Self.ids(in: request).map { id -> [String: Any] in
+          let p = Double(id - 100) / 20
+          return ["id": id, "pA": (1 - p) / 2, "pB": p / 2]
+        }
+        return (try Self.scores(entries), Self.response())
+      })
     let decisions = try await checker.decide(questions)
 
     // Requests: eight, eight, three, in order, one after the other.
@@ -227,11 +239,12 @@ struct EnviousDecodeWordCheckerTests {
       _ answer: @escaping @Sendable (URLRequest, Int) throws -> (Data, URLResponse)
     ) async -> (error: (any Error)?, record: Record) {
       let record = Record()
-      let checker = Checker(threshold: 0.5, hold: Self.hold(record, endpoint: endpoint)) {
-        request in
-        record.add(request)
-        return try answer(request, record.requests.count)
-      }
+      let checker = Checker(
+        threshold: 0.5, hold: Self.hold(record, endpoint: endpoint),
+        perform: Self.loopback { request in
+          record.add(request)
+          return try answer(request, record.requests.count)
+        })
       do {
         _ = try await checker.decide(questions)
         return (nil, record)
@@ -345,10 +358,12 @@ struct EnviousDecodeWordCheckerTests {
     #expect(cancelled.record.requests.count == 1 && cancelled.record.released == 1)
     // A check that is already cancelled takes no hold and sends nothing.
     let record = Record()
-    let checker = Checker(threshold: 0.5, hold: Self.hold(record)) { request in
-      record.add(request)
-      return (Data(), Self.response())
-    }
+    let checker = Checker(
+      threshold: 0.5, hold: Self.hold(record),
+      perform: Self.loopback { request in
+        record.add(request)
+        return (Data(), Self.response())
+      })
     let task = Task {
       withUnsafeCurrentTask { $0?.cancel() }
       return try await checker.decide(nine)
@@ -366,11 +381,11 @@ struct EnviousDecodeWordCheckerTests {
           lateRecord.release()
           withUnsafeCurrentTask { $0?.cancel() }
         }
-      }
-    ) { request in
-      lateRecord.add(request)
-      return (try Self.scores(try good(request)), Self.response())
-    }
+      },
+      perform: Self.loopback { request in
+        lateRecord.add(request)
+        return (try Self.scores(try good(request)), Self.response())
+      })
     let lateTask = Task { try await late.decide(nine) }
     await #expect(throws: CancellationError.self) { try await lateTask.value }
     #expect(lateRecord.requests.count == 2 && lateRecord.released == 1)

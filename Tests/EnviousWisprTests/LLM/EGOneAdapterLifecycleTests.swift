@@ -1702,28 +1702,30 @@ extension EGOneAdapterLifecycleTests {
         "no server is not idle")
       await manager.start(configuration: fixture.configuration())
       let replaced = await manager.observeSlotsForDebug(
-        operation: LlamaServerSlotReader.operation { request in
-          #expect(request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true)
-          #expect(request.url?.path == "/slots")
+        operation: LlamaServerSlotReader.operation { request, endpoint in
+          // #4493: the bearer is added by the helper exchange, on this endpoint's token.
+          #expect(!endpoint.authToken.isEmpty)
+          #expect(request.path == "/slots")
           await manager.stop()
-          let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-          return (Self.processingSlots, ok)
+          return LocalPolishHelperResponse(status: 200, body: Self.processingSlots)
         })
       #expect(replaced == .replaced)
       await manager.start(configuration: fixture.configuration())
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { _ in throw URLError(.timedOut) })
+          operation: LlamaServerSlotReader.operation { _, _ in
+            throw LocalPolishHelperClientError.timedOut
+          })
           == .transportFailed)
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { request in
-            (Data("not json".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+          operation: LlamaServerSlotReader.operation { _, _ in
+            LocalPolishHelperResponse(status: 200, body: Data("not json".utf8))
           }) == .malformed)
       #expect(
         await manager.observeSlotsForDebug(
-          operation: LlamaServerSlotReader.operation { request in
-            (Data(), HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+          operation: LlamaServerSlotReader.operation { _, _ in
+            LocalPolishHelperResponse(status: 500, body: Data())
           }) == .httpStatus(500))
       await manager.stop()
     }

@@ -85,7 +85,11 @@ struct LocalPolishTransportTests {
   private static func send(_ wire: Wire) async throws -> Data {
     try await LocalPolishTransport.send(
       endpoint: endpoint, body: body,
-      perform: { try wire.perform($0) }, retryPause: { try wire.pause() })
+      // #4493: through the helper exchange's own loopback mapping, so the script stays in
+      // `URLSession`'s terms while the transport reads the exchange's.
+      perform: { request, endpoint in
+        try await LocalPolishHelperExchange.perform(request, at: endpoint) { try wire.perform($0) }
+      }, retryPause: { try wire.pause() })
   }
 
   @Test("the request goes out as prepared and the answer bytes come back untouched")

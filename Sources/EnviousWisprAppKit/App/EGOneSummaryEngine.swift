@@ -29,12 +29,12 @@ final class EGOneSummaryEngine {
   /// Set when the app starts quitting: no new load, and no restore that could start a server
   /// the quit is about to kill (the child is killed synchronously at quit regardless).
   private(set) var isTerminating = false
-  /// The load, the endpoint read and the transport: the runtime's and `URLSession` in the app;
+  /// The load, the endpoint read and the transport: the runtime's and the helper exchange in the app;
   /// tests answer without a real server.
   private let activate:
     @MainActor (LocalPolishModelID, LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
   private let currentEndpoint: @MainActor (LocalPolishModelID) async -> LocalPolishEndpoint?
-  private let send: @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  private let send: LocalPolishHelperExchange.Perform
 
   init(
     runtimes: LocalPolishRuntimeSet, model: @escaping @MainActor () -> LocalPolishModelID,
@@ -44,9 +44,7 @@ final class EGOneSummaryEngine {
       @MainActor (LocalPolishModelID, LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
     )? = nil,
     currentEndpoint: (@MainActor (LocalPolishModelID) async -> LocalPolishEndpoint?)? = nil,
-    send: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
-      try await URLSession.shared.data(for: $0)
-    }
+    send: @escaping LocalPolishHelperExchange.Perform = LocalPolishHelperExchange.perform
   ) {
     self.runtimes = runtimes
     self.model = model

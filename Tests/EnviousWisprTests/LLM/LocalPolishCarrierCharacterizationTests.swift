@@ -10,11 +10,15 @@ import os
 
 /// #4493 C0: what the six helper operations send and how each reads a fixed answer, frozen
 /// against hand-written literals BEFORE the carrier changes from a loopback port to a private
-/// socket. The carrier switch must keep every row green without editing an expectation.
+/// socket. The carrier switch must keep every row green without editing an expectation, except
+/// the OWNER rows, which describe the loopback carrier itself and are replaced with it.
 ///
 /// Evidence kinds, named in each test:
 /// - WIRE: the lifecycle fixture's fake helper (a real child process) recorded the request.
-/// - REQUEST-OBJECT: the request the site handed to its injected executor.
+/// - REQUEST-OBJECT: the request the site handed to its injected executor (since C3 the helper
+///   exchange's `LocalPolishHelperRequest` and the endpoint it names).
+/// - OWNER: what the helper exchange makes of a request for the carrier (since C3): the bearer,
+///   the content type, the time limit, and its failure mapping.
 /// - SOURCE GUARD: a value no test can observe at run time (a site with no executor seam), read
 ///   from the owning function's text. It is not wire evidence.
 ///
@@ -35,9 +39,12 @@ struct LocalPolishCarrierCharacterizationTests {
     port: 4242, authToken: token, contextTokens: 8192, hasLearnedWordAdapter: true)
 
   private final class Captured: Sendable {
-    private let requests = OSAllocatedUnfairLock(initialState: [URLRequest]())
-    func append(_ request: URLRequest) { requests.withLock { $0.append(request) } }
-    var all: [URLRequest] { requests.withLock { $0 } }
+    private let requests = OSAllocatedUnfairLock(
+      initialState: [(LocalPolishHelperRequest, LocalPolishEndpoint)]())
+    func append(_ request: LocalPolishHelperRequest, _ endpoint: LocalPolishEndpoint) {
+      requests.withLock { $0.append((request, endpoint)) }
+    }
+    var all: [(LocalPolishHelperRequest, LocalPolishEndpoint)] { requests.withLock { $0 } }
   }
 
   private static func http(_ status: Int) -> HTTPURLResponse {
@@ -53,11 +60,6 @@ struct LocalPolishCarrierCharacterizationTests {
       options: [.sortedKeys, .fragmentsAllowed])
   }
 
-  private static func expectHeaders(_ request: URLRequest, json: Bool) {
-    var expected = ["Authorization": "Bearer \(token)"]
-    if json { expected["Content-Type"] = "application/json" }
-    #expect(request.allHTTPHeaderFields == expected)
-  }
 
   private static func question() -> LearnedWordCheckQuestion {
     let sentence = "I said toast"
@@ -78,27 +80,27 @@ struct LocalPolishCarrierCharacterizationTests {
         .utf8)
     let returned = try await LocalPolishTransport.send(
       endpoint: Self.endpoint, body: body,
-      perform: { request in
-        captured.append(request)
-        return (answer, Self.http(200))
+      perform: { request, endpoint in
+        captured.append(request, endpoint)
+        return LocalPolishHelperResponse(status: 200, body: answer)
       }, retryPause: {})
     #expect(returned == answer)
-    let request = try #require(captured.all.first)
+    let (request, endpoint) = try #require(captured.all.first)
     #expect(captured.all.count == 1)
-    #expect(request.httpMethod == "POST")
-    #expect(request.url?.path == "/v1/chat/completions")
-    Self.expectHeaders(request, json: true)
-    #expect(request.httpBody == body)
-    #expect(request.timeoutInterval == 20)
+    #expect(endpoint == Self.endpoint)
+    #expect(request.method == .post)
+    #expect(request.path == "/v1/chat/completions")
+    #expect(request.body == body)
+    #expect(request.timeout == .seconds(20))
 
     // Any status other than 200 is the neutral transport failure, with no second attempt.
     let refused = Captured()
     await #expect(throws: LocalPolishTransportError.unavailable) {
       _ = try await LocalPolishTransport.send(
         endpoint: Self.endpoint, body: body,
-        perform: { request in
-          refused.append(request)
-          return (Data(), Self.http(503))
+        perform: { request, endpoint in
+          refused.append(request, endpoint)
+          return LocalPolishHelperResponse(status: 503, body: Data())
         }, retryPause: {})
     }
     #expect(refused.all.count == 1)
@@ -135,8 +137,10 @@ struct LocalPolishCarrierCharacterizationTests {
     let text = try Self.functionText(
       in: "Sources/EnviousWisprLocalPolish/LocalPolishProcessManager.swift",
       signature: "static func awaitServerUp(")
-    #expect(Self.count("timeoutInterval", in: text) == 1)
-    #expect(text.contains("request.timeoutInterval = 2\n"))
+    #expect(Self.count("LocalPolishHelperRequest(", in: text) == 1)
+    #expect(
+      text.contains(
+        #"LocalPolishHelperRequest(method: .get, path: "/health", timeout: .seconds(2))"#))
     #expect(Self.count("Task.sleep(", in: text) == 1)
     #expect(text.contains("try? await Task.sleep(for: .milliseconds(500))"))
   }
@@ -148,26 +152,26 @@ struct LocalPolishCarrierCharacterizationTests {
     let captured = Captured()
     let hold = EnviousDecodeWordChecker.Hold(endpoint: Self.endpoint) {}
     let answer = Data(#"{"scores":[{"id":7,"pA":0.25,"pB":0.75}]}"#.utf8)
-    let checker = EnviousDecodeWordChecker(threshold: 0.5, hold: { hold }) { request in
-      captured.append(request)
-      return (answer, Self.http(200))
+    let checker = EnviousDecodeWordChecker(threshold: 0.5, hold: { hold }) { request, endpoint in
+      captured.append(request, endpoint)
+      return LocalPolishHelperResponse(status: 200, body: answer)
     }
     let decisions = try await checker.decide([Self.question()])
     #expect(decisions == [LearnedWordCheckDecision(questionID: 7, approved: true, score: 0.75)])
-    let request = try #require(captured.all.first)
+    let (request, endpoint) = try #require(captured.all.first)
     #expect(captured.all.count == 1)
-    #expect(request.httpMethod == "POST")
-    #expect(request.url?.path == "/v1/wordcheck")
-    Self.expectHeaders(request, json: true)
-    // No limit is set at this site: `URLRequest`'s own 60 s.
-    #expect(request.timeoutInterval == 60)
+    #expect(endpoint == Self.endpoint)
+    #expect(request.method == .post)
+    #expect(request.path == "/v1/wordcheck")
+    // C0 observed `URLRequest`'s own 60 s here (no limit set at the site); C3 states it.
+    #expect(request.timeout == .seconds(60))
     let expected = Data(
       #"{"model":"eg-1","questions":[{"id":7,"word":"Tuist","context":"I said toast","rewritten":"I said Tuist"}]}"#
         .utf8)
-    #expect(try Self.canonical(try #require(request.httpBody)) == Self.canonical(expected))
+    #expect(try Self.canonical(try #require(request.body)) == Self.canonical(expected))
 
-    let refused = EnviousDecodeWordChecker(threshold: 0.5, hold: { hold }) { _ in
-      (Data(#"{"error":"unauthorized"}"#.utf8), Self.http(401))
+    let refused = EnviousDecodeWordChecker(threshold: 0.5, hold: { hold }) { _, _ in
+      LocalPolishHelperResponse(status: 401, body: Data(#"{"error":"unauthorized"}"#.utf8))
     }
     await #expect(throws: EnviousDecodeWordChecker.CheckerError.invalidResponse) {
       _ = try await refused.decide([Self.question()])
@@ -187,32 +191,32 @@ struct LocalPolishCarrierCharacterizationTests {
     let text = try await EGOneSummaryCall.complete(
       endpoint: Self.endpoint, instructions: "Summarize.", prompt: "Meeting text.",
       timeoutSeconds: limit
-    ) { request in
-      captured.append(request)
-      return (answer, Self.http(200))
+    ) { request, endpoint in
+      captured.append(request, endpoint)
+      return LocalPolishHelperResponse(status: 200, body: answer)
     }
     #expect(text == "Title\nShip Friday.")
-    let request = try #require(captured.all.first)
-    #expect(request.httpMethod == "POST")
-    #expect(request.url?.path == "/v1/chat/completions")
-    Self.expectHeaders(request, json: true)
-    #expect(request.timeoutInterval == expectedTimeout)
+    let (request, endpoint) = try #require(captured.all.first)
+    #expect(endpoint == Self.endpoint)
+    #expect(request.method == .post)
+    #expect(request.path == "/v1/chat/completions")
+    #expect(request.timeout == .seconds(expectedTimeout))
     let expected = Data(
       #"{"model":"eg-1","messages":[{"role":"system","content":"Summarize."},{"role":"user","content":"Meeting text."}],"max_tokens":1500,"temperature":0,"stream":false}"#
         .utf8)
-    #expect(try Self.canonical(try #require(request.httpBody)) == Self.canonical(expected))
+    #expect(try Self.canonical(try #require(request.body)) == Self.canonical(expected))
 
     await #expect(throws: LLMError.requestFailed("EG-1 summary HTTP 500")) {
       _ = try await EGOneSummaryCall.complete(
         endpoint: Self.endpoint, instructions: "Summarize.", prompt: "Meeting text.",
         timeoutSeconds: limit
-      ) { _ in (Data(#"{"error":"boom"}"#.utf8), Self.http(500)) }
+      ) { _, _ in LocalPolishHelperResponse(status: 500, body: Data(#"{"error":"boom"}"#.utf8)) }
     }
     await #expect(throws: MeetingSummary.Failure.timedOut) {
       _ = try await EGOneSummaryCall.complete(
         endpoint: Self.endpoint, instructions: "Summarize.", prompt: "Meeting text.",
         timeoutSeconds: limit
-      ) { _ in throw URLError(.timedOut) }
+      ) { _, _ in throw LocalPolishHelperClientError.timedOut }
     }
   }
 
@@ -267,13 +271,15 @@ struct LocalPolishCarrierCharacterizationTests {
     await manager.stop()
   }
 
-  @Test("llama word check: SOURCE GUARD no time limit set, so URLRequest's own 60 s applies")
+  /// C0 observed no limit at this site (`URLRequest`'s own 60 s); C3 states that value.
+  @Test("llama word check: SOURCE GUARD 60 s, the limit the request always had")
   func llamaWordCheckLimit() throws {
     let text = try Self.functionText(
       in: "Sources/EnviousWisprLlamaEngine/LlamaLearnedWordChecker.swift",
       signature: "private func decide(")
-    #expect(text.contains("URLRequest(url: endpoint.completionURL)"))
-    #expect(Self.count("timeoutInterval", in: text) == 0)
+    #expect(Self.count("LocalPolishHelperRequest(", in: text) == 1)
+    #expect(Self.count("timeout: .seconds(60)", in: text) == 1)
+    #expect(text.contains(#"method: .post, path: "/completion","#))
   }
 
   // MARK: - 6. DEBUG slots
@@ -285,9 +291,9 @@ struct LocalPolishCarrierCharacterizationTests {
       let answer = Data(
         #"[{"id":0,"is_processing":true,"id_task":12,"next_token":[{"n_decoded":5,"n_remain":59}]},{"id":1,"is_processing":false}]"#
           .utf8)
-      let read = LlamaServerSlotReader.operation { request in
-        captured.append(request)
-        return (answer, Self.http(200))
+      let read = LlamaServerSlotReader.operation { request, endpoint in
+        captured.append(request, endpoint)
+        return LocalPolishHelperResponse(status: 200, body: answer)
       }
       let observed = try await read(Self.endpoint, 3)
       #expect(
@@ -302,17 +308,81 @@ struct LocalPolishCarrierCharacterizationTests {
                   id: 1, isProcessing: false, taskID: nil, decodedTokens: nil,
                   remainingTokens: nil),
               ])))
-      let request = try #require(captured.all.first)
-      #expect(request.httpMethod == "GET")
-      #expect(request.url?.path == "/slots")
-      Self.expectHeaders(request, json: false)
-      #expect(request.httpBody == nil)
-      #expect(request.timeoutInterval == 2)
+      let (request, endpoint) = try #require(captured.all.first)
+      #expect(endpoint == Self.endpoint)
+      #expect(request.method == .get)
+      #expect(request.path == "/slots")
+      #expect(request.body == nil)
+      #expect(request.timeout == .seconds(2))
 
-      let refused = LlamaServerSlotReader.operation { _ in (Data(), Self.http(401)) }
+      let refused = LlamaServerSlotReader.operation { _, _ in
+        LocalPolishHelperResponse(status: 401, body: Data())
+      }
       #expect(try await refused(Self.endpoint, 3) == .httpStatus(401))
     }
   #endif
+
+  // MARK: - 7. the helper exchange (C3)
+
+  /// What every operation's request becomes on the loopback carrier: C0's headers and limits,
+  /// now made in one place.
+  @Test(
+    "OWNER: the bearer always, JSON content type only with a body, the request's own limit",
+    arguments: [
+      (LocalPolishHelperRequest.Method.post, "/v1/chat/completions", true, Duration.seconds(20), 20.0),
+      (.get, "/health", false, .seconds(2), 2.0),
+      (.post, "/v1/wordcheck", true, .seconds(60), 60.0),
+      (.post, "/v1/chat/completions", true, .seconds(10.5), 10.5),
+      (.post, "/completion", true, .seconds(60), 60.0),
+      (.get, "/slots", false, .seconds(2), 2.0),
+    ])
+  func ownerRequest(
+    method: LocalPolishHelperRequest.Method, path: String, hasBody: Bool, timeout: Duration,
+    seconds: Double
+  ) async throws {
+    let body = hasBody ? Data(#"{"b": 1}"#.utf8) : nil
+    let built = LocalPolishHelperExchange.urlRequest(
+      LocalPolishHelperRequest(method: method, path: path, body: body, timeout: timeout),
+      at: Self.endpoint)
+    #expect(built.httpMethod == method.rawValue)
+    #expect(built.url?.path == path)
+    var headers = ["Authorization": "Bearer \(Self.token)"]
+    if hasBody { headers["Content-Type"] = "application/json" }
+    #expect(built.allHTTPHeaderFields == headers)
+    #expect(built.httpBody == body)
+    #expect(built.timeoutInterval == seconds)
+  }
+
+  @Test("OWNER: an answer comes back as status and bytes; loopback failures map as planned")
+  func ownerOutcomes() async throws {
+    let request = LocalPolishHelperRequest(method: .get, path: "/slots", timeout: .seconds(2))
+    let answered = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
+      (Data([0x01, 0x02]), Self.http(418))
+    }
+    #expect(answered == LocalPolishHelperResponse(status: 418, body: Data([0x01, 0x02])))
+    let mapped: [(URLError.Code, LocalPolishHelperClientError)] = [
+      (.cannotConnectToHost, .notConnectable), (.networkConnectionLost, .connectionLost),
+      (.timedOut, .timedOut), (.badServerResponse, .failed),
+    ]
+    for (code, expected) in mapped {
+      await #expect(throws: expected) {
+        _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
+          throw URLError(code)
+        }
+      }
+    }
+    await #expect(throws: CancellationError.self) {
+      _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { _ in
+        throw URLError(.cancelled)
+      }
+    }
+    await #expect(throws: LocalPolishHelperClientError.failed) {
+      _ = try await LocalPolishHelperExchange.perform(request, at: Self.endpoint) { request in
+        (Data(), URLResponse(url: request.url!, mimeType: nil, expectedContentLength: 0,
+          textEncodingName: nil))
+      }
+    }
+  }
 
   // MARK: - Fixture records and source text
 

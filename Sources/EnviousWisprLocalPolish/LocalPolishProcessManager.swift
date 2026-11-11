@@ -711,18 +711,13 @@ public actor LocalPolishProcessManager {
     processIsAlive: @escaping @Sendable () -> Bool = { true }
   ) async -> Bool {
     let deadline = ContinuousClock.now + .seconds(budgetSeconds)
-    guard let healthURL = URL(string: "http://127.0.0.1:\(endpoint.port)/health") else {
-      return false
-    }
+    let request = LocalPolishHelperRequest(method: .get, path: "/health", timeout: .seconds(2))
     while ContinuousClock.now < deadline {
       // A dead child can never become healthy — bail immediately instead
       // of burning the whole budget (also keeps fake-binary tests fast).
       guard processIsAlive() else { return false }
-      var request = URLRequest(url: healthURL)
-      request.timeoutInterval = 2
-      request.setValue("Bearer \(endpoint.authToken)", forHTTPHeaderField: "Authorization")
-      if let (_, response) = try? await URLSession.shared.data(for: request),
-        (response as? HTTPURLResponse)?.statusCode == 200
+      if let response = try? await LocalPolishHelperExchange.perform(request, endpoint),
+        response.status == 200
       {
         return true
       }

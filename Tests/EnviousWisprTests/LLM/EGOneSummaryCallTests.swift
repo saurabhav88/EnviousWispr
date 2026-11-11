@@ -1,10 +1,10 @@
-import EnviousWisprLocalPolish
 import Foundation
 import Testing
 
 @testable import EnviousWisprCore
 @testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
+@testable import EnviousWisprLocalPolish
 
 /// #4319: when these fail, an EG-1 meeting summary is answered by the learned-word checker's
 /// weights, a looping answer cut at the cap is saved as a summary, a slow summary is cut off at
@@ -46,7 +46,14 @@ struct EGOneSummaryCallTests {
   {
     try await EGOneSummaryCall.complete(
       endpoint: endpoint(adapter: adapter), instructions: "Summarize.", prompt: "TRANSCRIPT",
-      timeoutSeconds: timeout, send: { try await transport.send($0) })
+      timeoutSeconds: timeout,
+      // #4493: through the helper exchange's own loopback mapping, so these rows still script
+      // and read `URLSession`'s terms.
+      send: { request, endpoint in
+        try await LocalPolishHelperExchange.perform(request, at: endpoint) {
+          try await transport.send($0)
+        }
+      })
   }
 
   @Test("the request: system and user as given, EG-1, the summary cap, temperature 0, checker off")
