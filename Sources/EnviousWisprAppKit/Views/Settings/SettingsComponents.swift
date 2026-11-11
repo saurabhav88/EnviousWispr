@@ -2154,7 +2154,7 @@ enum ProviderStatusTone: Equatable {
   case error  // red — broken, needs attention
 
   /// The brand semantic color for this tone. Semantic tokens only, never raw
-  /// `.red`/`.green` (SettingsDesignTokens).
+  /// `.red`/`.green` (DESIGN.md tokens).
   var color: Color {
     switch self {
     case .ready: return .stSuccess

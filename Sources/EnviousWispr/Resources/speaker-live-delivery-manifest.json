@@ -5,7 +5,7 @@
   "name": "nemotron-3-diarization-coreml",
   "revision": "25a90f97f254428d4b30374b76af9c74fdee8327",
   "variant": "low-v2",
-  "runtimeABI": "fluidAudio-fb506037"
+  "runtimeABI": "fluidAudio-8e64f574"
  },
  "runtimeCompatibility": {
   "minAppVersion": "2.5.6"
@@ -70,5 +70,5 @@
   "evictPreviousRevisions": false,
   "entrypointFile": "Nemotron3Diarizer_low.mlmodelc/coremldata.bin"
  },
- "manifestDigest": "f4dde60bf3cc7f5dda343486dcd66c94b08b1cd2540a5dcce31d53c88c31a8cb"
+ "manifestDigest": "24ad0a799afdc68cf0ce527389729f830f47482fbfffdabfedba8602000bef8c"
 }

@@ -26,6 +26,7 @@ Usage:
   validation-receipt.py capture    --root R           identity JSON on stdout
   validation-receipt.py publish    --root R --start JSON --field KEY=VALUE ...
   validation-receipt.py validate   FILE [--tree T] [--toolchain B]
+  validation-receipt.py adopt      --root R --start JSON --from FILE --tested-on HOST
   validation-receipt.py --self-test
 
 Exit codes: 0 ok; 3 ineligible (reason on stderr, no receipt); 1 error.
@@ -246,6 +247,21 @@ def publish(root, start, fields):
     return final
 
 
+def adopt(root, start, remote_file, host):
+    """#4507: publish a backup Mac's receipt as this checkout's proof.
+
+    The backup Mac ran the full lane on the tree this checkout captured at its
+    start (shipped as is). Its receipt must be a complete passing receipt for that
+    same tree and the same Xcode build; this checkout must still hold that tree
+    (publish re-captures). Filtered runs never reach here (they issue no receipt)."""
+    data = validate(json.loads(Path(remote_file).read_text()), tree=start["tree"], build=start["toolchain"])
+    fields = [f"{key}={data[key]}" for key in ("configuration", "xcode_configuration", "scheme",
+                                                 "executed_tests", "debug_verdict", "eval_verdict")]
+    fields += ["bundles=" + " ".join(data["bundles"]), f"result_bundle={host}:{data['result_bundle']}",
+               f"tested_on={host}"]
+    return publish(root, start, fields)
+
+
 def main(argv):
     if argv[:1] == ["--self-test"]:
         return self_test()
@@ -257,7 +273,7 @@ def main(argv):
     i = 0
     while i < len(rest):
         a = rest[i]
-        if a in ("--root", "--start", "--tree", "--toolchain") and i + 1 < len(rest):
+        if a in ("--root", "--start", "--tree", "--toolchain", "--from", "--tested-on") and i + 1 < len(rest):
             opts[a[2:]] = rest[i + 1]; i += 2
         elif a == "--field" and i + 1 < len(rest):
             fields.append(rest[i + 1]); i += 2
@@ -272,6 +288,8 @@ def main(argv):
             print(json.dumps(capture(opts["root"])))
         elif cmd == "publish":
             print(publish(opts["root"], json.loads(opts["start"]), fields))
+        elif cmd == "adopt":
+            print(adopt(opts["root"], json.loads(opts["start"]), opts["from"], opts["tested-on"]))
         elif cmd == "validate":
             data = json.loads(Path(positional[0]).read_text())
             validate(data, tree=opts.get("tree"), build=opts.get("toolchain"), root=opts.get("root"))
@@ -344,6 +362,21 @@ def self_test():
             case("an existing receipt is never overwritten", True)
         invalidate(root)
         case("invalidate removes the receipt", not p.exists())
+
+        # #4507: a backup Mac's receipt is adopted only for the same tree and Xcode build.
+        remote = tmp / "remote-receipt.json"
+        remote.write_text(json.dumps(data))
+        adopted = json.loads(adopt(root, start, remote, "m6").read_text())
+        case("adopt publishes a backup Mac's receipt for the same tree",
+             adopted["tree"] == start["tree"] and adopted["tested_on"] == "m6"
+             and adopted["executed_tests"] == 5)
+        invalidate(root)
+        other = dict(data, tree="0" * 40)
+        remote.write_text(json.dumps(other))
+        try:
+            adopt(root, start, remote, "m6"); case("adopt refuses a receipt for another tree", False)
+        except ValueError:
+            case("adopt refuses a receipt for another tree", not receipt_path(root).exists())
 
         (root / "Sources/A.swift").write_text("let a = 2\n")
         run("add", "Sources/A.swift")

@@ -86,9 +86,9 @@ struct ClipboardSettingsRenderHarness {
     .enabled(if: ProcessInfo.processInfo.environment["EW_RENDER_CLIPBOARD"] == "1"))
   func renderTheClipboardPage() throws {
     let widths: [(String, CGFloat)] = [
-      ("min-750", AppearanceRenderHarness.pageWidth(window: 750)),
-      ("default-820", AppearanceRenderHarness.pageWidth(window: 820)),
-      ("wide-1300", AppearanceRenderHarness.pageWidth(window: 1300)),
+      ("min-750", SettingsRenderGeometry.pageWidth(window: 750)),
+      ("default-820", SettingsRenderGeometry.pageWidth(window: 820)),
+      ("wide-1300", SettingsRenderGeometry.pageWidth(window: 1300)),
       ("stress-380", 380),
     ]
     #expect(widths.map(\.1).prefix(3) == [508, 578, 1058], "the shell's page widths moved")
@@ -101,7 +101,7 @@ struct ClipboardSettingsRenderHarness {
             values: (true, true, true, true)))
       }
     }
-    let defaultWidth = AppearanceRenderHarness.pageWidth(window: 820)
+    let defaultWidth = SettingsRenderGeometry.pageWidth(window: 820)
     for dark in [false, true] {
       let scheme = dark ? "dark" : "light"
       made.append(

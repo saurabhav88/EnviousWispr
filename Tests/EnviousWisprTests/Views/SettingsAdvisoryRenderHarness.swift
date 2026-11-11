@@ -192,7 +192,7 @@ struct SettingsAdvisoryRenderHarness {
     let importPage = try Self.importPage(coordinator)
     let previewPage = try await Self.previewPage()
     for windowWidth: CGFloat in [750, 820, 1300] {
-      let pageWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      let pageWidth = SettingsRenderGeometry.pageWidth(window: windowWidth)
       for dark in [false, true] {
         _ = try Self.render("file-refusal-window-\(Int(windowWidth))",
           width: pageWidth, height: 900, dark: dark, content: importPage)

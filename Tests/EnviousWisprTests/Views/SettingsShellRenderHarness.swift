@@ -145,9 +145,9 @@ struct SettingsShellRenderHarness {
       made.append(try Self.render("sidebar-column", width: 200, dark: dark, Self.sidebarColumn))
       made.append(try Self.render("sidebar-states", width: 200, dark: dark, Self.stateSheet))
       for (name, page) in [
-        ("min-750", AppearanceRenderHarness.pageWidth(window: 750)),
-        ("default-820", AppearanceRenderHarness.pageWidth(window: 820)),
-        ("wide-1300", AppearanceRenderHarness.pageWidth(window: 1300)),
+        ("min-750", SettingsRenderGeometry.pageWidth(window: 750)),
+        ("default-820", SettingsRenderGeometry.pageWidth(window: 820)),
+        ("wide-1300", SettingsRenderGeometry.pageWidth(window: 1300)),
         ("stress-380", 380),
       ] {
         made.append(
@@ -156,16 +156,16 @@ struct SettingsShellRenderHarness {
       }
       made.append(
         try Self.render(
-          "dictionary-off-default-820", width: AppearanceRenderHarness.pageWidth(window: 820),
+          "dictionary-off-default-820", width: SettingsRenderGeometry.pageWidth(window: 820),
           dark: dark, Self.dictionary(enabled: false)))
       made.append(
         try Self.render(
-          "content-first-min-750", width: AppearanceRenderHarness.pageWidth(window: 750),
+          "content-first-min-750", width: SettingsRenderGeometry.pageWidth(window: 750),
           dark: dark,
           Self.sentinelPage))
       made.append(
         try Self.render(
-          "content-first-wide-1300", width: AppearanceRenderHarness.pageWidth(window: 1300),
+          "content-first-wide-1300", width: SettingsRenderGeometry.pageWidth(window: 1300),
           dark: dark, Self.sentinelPage))
     }
     #expect(made.count == 18, "rendered \(made.count) of 18 planned PNGs")

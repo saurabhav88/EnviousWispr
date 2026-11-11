@@ -16,8 +16,10 @@ struct MeetingSpeakerPairNamerTests {
   private static let user = "Saurabh Vaish"
   private static let alex = "Alex Rivera"
   private static let priya = "Priya Shah"
+  private static let ben = "Ben Okafor"
   private static let a = "sys:S1"
   private static let b = "sys:S2"
+  private static let c = "sys:S3"
 
   private static func turn(_ speaker: String, _ start: Int, _ end: Int) -> Turn {
     Turn(
@@ -196,8 +198,8 @@ struct MeetingSpeakerPairNamerTests {
     #expect(propose(turns, [Self.segment(pairs: [Self.stretch(0, 5_000)])]).proposals.isEmpty)
   }
 
-  @Test("any second call voice in the stretch gives nothing, however short")
-  func oneVoiceOnly() {
+  @Test("a second call voice gives nothing unless the main voice holds 90% of the stretch's speech")
+  func dominantVoice() {
     let pairs = [Self.stretch(0, 30_000)]
     let named = propose(
       [Self.turn(Self.a, 1_000, 20_000), Self.turn(Self.b, 30_000, 33_000)],
@@ -206,7 +208,96 @@ struct MeetingSpeakerPairNamerTests {
     let shortSecond = propose(
       [Self.turn(Self.a, 1_000, 20_000), Self.turn(Self.b, 27_100, 30_000)],
       [Self.segment(pairs: pairs)])
-    #expect(shortSecond.proposals.isEmpty, "2.9 s of a second voice still means two voices")
+    #expect(shortSecond.proposals.isEmpty, "19 s against 2.9 s is 86.8%, below 90%")
+    // #4477: the main voice at exactly 90% of the window's call speech is named.
+    let atBar = propose(
+      [Self.turn(Self.a, 0, 27_000), Self.turn(Self.b, 27_000, 30_000)],
+      [Self.segment(pairs: pairs)])
+    #expect(atBar.proposals == [Self.a: Self.alex])
+    #expect(atBar.pairProposals == 1)
+    let belowBar = propose(
+      [Self.turn(Self.a, 0, 26_900), Self.turn(Self.b, 26_900, 30_000)],
+      [Self.segment(pairs: pairs)])
+    #expect(belowBar.proposals.isEmpty, "26.9 s against 3.1 s is 89.7%")
+    let even = propose(
+      [Self.turn(Self.a, 0, 15_000), Self.turn(Self.b, 15_000, 30_000)],
+      [Self.segment(pairs: pairs)])
+    #expect(even.proposals.isEmpty, "two comparable voices may be two people on one laptop")
+  }
+
+  @Test("every stray voice counts against the main voice's share")
+  func everyStrayVoiceCounts() {
+    let pairs = [Self.stretch(0, 40_000)]
+    let oneStray = propose(
+      [Self.turn(Self.a, 0, 27_000), Self.turn(Self.b, 30_000, 31_600)],
+      [Self.segment(pairs: pairs)])
+    #expect(oneStray.proposals == [Self.a: Self.alex], "control: 27 s against 1.6 s is 94.4%")
+    let twoStrays = propose(
+      [
+        Self.turn(Self.a, 0, 27_000), Self.turn(Self.b, 30_000, 31_600),
+        Self.turn(Self.c, 32_000, 33_600),
+      ],
+      [Self.segment(pairs: pairs)])
+    #expect(twoStrays.proposals.isEmpty, "27 s against 3.2 s of two strays is 89.4%")
+  }
+
+  @Test("talker votes for other names block the pair name only when they are not a minority")
+  func voteMajority() {
+    let roster = [Self.user, Self.alex, Self.priya, Self.ben]
+    func named(_ votes: [String]) -> [String: String] {
+      let samples = votes.enumerated().map { (2_000 + $0.offset * 100, [$0.element]) }
+      return propose(
+        [Self.turn(Self.a, 1_000, 40_000)],
+        [Self.segment(pairs: [Self.stretch(10_000, 40_000)], roster: roster, samples: samples)]
+      ).proposals
+    }
+    #expect(named([Self.alex, Self.alex, Self.priya]) == [Self.a: Self.alex])
+    #expect(named([Self.alex, Self.alex, Self.priya, Self.priya]).isEmpty, "a tie blocks")
+    #expect(
+      named([Self.alex, Self.alex, Self.priya, Self.ben]).isEmpty,
+      "competing names count together")
+  }
+
+  @Test("a stray voice that votes already gave the name keeps it")
+  func strayKeepsItsVotedName() {
+    let alexVotes = (0..<5).map { (2_000 + $0 * 100, [Self.alex]) }
+    let result = propose(
+      [
+        Self.turn(Self.b, 1_000, 5_000), Self.turn(Self.a, 40_000, 60_000),
+        Self.turn(Self.b, 60_000, 61_000),
+      ],
+      [
+        Self.segment(
+          pairs: [Self.stretch(35_000, 65_000)], roster: [Self.user, Self.alex, Self.priya],
+          samples: alexVotes)
+      ])
+    #expect(result.proposals == [Self.b: Self.alex])
+    #expect(result.pairProposals == 0)
+  }
+
+  /// Shape of the 2026-11-10 field call (#4477): three people, Zoom's talker tag flickering
+  /// between the two guests, one guest leaving, then a long one-on-one in which the diarizer put
+  /// a few seconds of the remaining guest into the first voice.
+  @Test(
+    "a long one-on-one names the main voice despite a stray group and early flicker votes",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4477", "stray voice blocks the name"))
+  func strayVoiceAfterThirdPersonLeaves() {
+    let priyaEarly = (0..<6).map { (1_000 + $0 * 1_000, [Self.priya]) }
+    let alexFlicker = (0..<10).map { (16_100 + $0 * 500, [Self.alex]) }
+    let priyaFlicker = (0..<7).map { (21_000 + $0 * 300, [Self.priya]) }
+    let result = propose(
+      [
+        Self.turn(Self.a, 0, 16_000), Self.turn(Self.b, 16_000, 23_000),
+        Self.turn(Self.a, 23_000, 33_000), Self.turn(Self.b, 33_000, 35_000),
+        Self.turn(Self.b, 38_000, 560_000), Self.turn(Self.a, 560_000, 570_000),
+      ],
+      [
+        Self.segment(
+          pairs: [Self.stretch(36_000, 590_000)], roster: [Self.user, Self.alex, Self.priya],
+          samples: priyaEarly + alexFlicker + priyaFlicker)
+      ])
+    #expect(result.proposals == [Self.a: Self.priya, Self.b: Self.alex])
+    #expect(result.pairProposals == 1)
   }
 
   @Test("the voice needs 3 s of speech inside the stretch")

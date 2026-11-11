@@ -373,6 +373,33 @@ runs:
       run: |
         echo "==> Xcode cache: matched=${MATCHED:-<none>} hit=${HIT:-false}"
 
+    # #4485: the restore above can fall back to a cache saved for an OLDER
+    # Package.resolved (the broadest restore-key carries no lockfile hash, by
+    # design, so a dependency bump still starts warm). When that bump also
+    # ENABLES a package trait, SwiftPM checks the trait against the restored
+    # checkout at the old revision and stops before updating it: `Trait 'X'
+    # enabled by package ... is not declared by package ...` (PR #4484, run
+    # 42953588891, cured that once by deleting the hosted caches by hand).
+    # This drops only the checkouts whose recorded revision differs from
+    # Package.resolved, in both tree shapes the restore covers, so they are
+    # checked out fresh; a restore that already matches is not written to.
+    # A tree it cannot judge is left exactly as restored, with a warning: the
+    # lane then behaves as it did before this step existed. Owner and limits:
+    # scripts/lib/drop-stale-package-checkouts.py.
+    - name: Drop stale package checkouts
+      shell: bash
+      env:
+        DD: ${{ inputs.derived-data-path }}
+      run: |
+        set -uo pipefail
+        rc=0
+        python3 scripts/lib/drop-stale-package-checkouts.py \
+          --resolved "$GITHUB_WORKSPACE/Package.resolved" \
+          --derived-data "$GITHUB_WORKSPACE/$DD" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+          echo "::warning title=package-checkouts::stale package checkout check did not complete (exit $rc); restored package trees left as they are (#4485)"
+        fi
+
     - name: Generate Xcode project
       shell: bash
       env:

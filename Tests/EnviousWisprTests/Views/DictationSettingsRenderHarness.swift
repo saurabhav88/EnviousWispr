@@ -280,7 +280,7 @@ struct DictationSettingsRenderHarness {
 
   static func render(_ page: AnyView, label: String, windowWidth: CGFloat, dark: Bool,
     waitForFastRead: FastAdmissionReadSignals? = nil) async throws -> URL {
-    let width = AppearanceRenderHarness.pageWidth(window: windowWidth)
+    let width = SettingsRenderGeometry.pageWidth(window: windowWidth)
     let host = NSHostingView(rootView: page.frame(width: width, height: 1250)
       .environment(\.colorScheme, dark ? .dark : .light))
     host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -408,7 +408,7 @@ struct DictationSettingsRenderHarness {
         let page = try await Self.page(tab: tab, german: german,
           onFastReadFinished: { signal.record($0) })
         for windowWidth: CGFloat in [750, 820, 1300] {
-          let width = AppearanceRenderHarness.pageWidth(window: windowWidth)
+          let width = SettingsRenderGeometry.pageWidth(window: windowWidth)
           for dark in [false, true] {
             let label = "\(german ? "German-DRAFT-tabs-English-body" : "English")-\(tab)"
             let url = try await Self.render(page, label: label, windowWidth: windowWidth, dark: dark,

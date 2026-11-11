@@ -1,4 +1,4 @@
-"""Conservative, measured-cost scheduling for four local test processes.
+"""Conservative, measured-cost scheduling for up to four local test processes.
 
 Only reviewed suites move out of the protected remainder; new suites stay
 protected. The review mark lives in the test source as the `.localParallel`
@@ -7,20 +7,30 @@ TestInventoryFreezeTests fails when this list and the tagged suites differ.
 A listed file that no longer exists falls back to the protected worker.
 single_worker runs everything in one process: the inventory baseline writer,
 and every --real-boundary run, whose real models and GPU work must not overlap.
+`workers` (1-4, default 4, #4507) is the process budget of the Mac that runs the
+lane: an upper limit, never a reason to launch an empty worker. One worker runs
+the complete population with no selectors, exactly like single_worker. The
+profile's measured costs and its `slots: 4` describe how they were measured and
+do not change with the budget.
 """
 
 import math
 from pathlib import Path
 
 
-def plan_groups(root, profile, *, single_worker=False):
-    if profile.get("schema") != 2 or profile.get("slots") != 4:
+MAX_WORKERS = 4
+
+
+def plan_groups(root, profile, *, single_worker=False, workers=MAX_WORKERS):
+    if profile.get("schema") != 2 or profile.get("slots") != MAX_WORKERS:
         raise ValueError("local test profile must describe four worker slots")
+    if type(workers) is not int or not 1 <= workers <= MAX_WORKERS:
+        raise ValueError(f"worker budget must be 1-{MAX_WORKERS}, got {workers!r}")
     costs = profile["costs"]
     if not costs or any(not isinstance(v, (int, float)) or isinstance(v, bool)
                         or not math.isfinite(v) or v < 0 for v in costs.values()):
         raise ValueError("invalid measured suite costs")
-    if single_worker:
+    if single_worker or workers == 1:
         return [("serial", ())], [sum(costs.values())]
     admitted, seen, blocks = set(), set(), []
     for block in profile["blocks"]:
@@ -44,15 +54,15 @@ def plan_groups(root, profile, *, single_worker=False):
         if selected:
             # All AST consumers share one block, preserving the process cache.
             blocks.append((sum(costs[name] for name in selected), tuple(sorted(selected))))
-    selections = [[], [], [], []]
-    loads = [sum(v for name, v in costs.items() if name not in admitted), 0.0, 0.0, 0.0]
+    selections = [[] for _ in range(workers)]
+    loads = [sum(v for name, v in costs.items() if name not in admitted)] + [0.0] * (workers - 1)
     for cost, names in sorted(blocks, key=lambda b: (-b[0], b[1])):
-        slot = min(range(4), key=lambda i: (loads[i], i))
+        slot = min(range(workers), key=lambda i: (loads[i], i))
         selections[slot].extend(names)
         loads[slot] += cost
     # Slot zero owns every unlisted suite across all three bundles. Suites
     # assigned back to it need no selector; their costs already enter its load.
     groups = [("serial", tuple(sorted(selections[0])))]
     groups.extend((f"worker-{i}", tuple(sorted(selections[i])))
-                  for i in range(1, 4) if selections[i])
+                  for i in range(1, workers) if selections[i])
     return groups, loads

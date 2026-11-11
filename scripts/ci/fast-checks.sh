@@ -106,6 +106,11 @@ member_ci_self_tests() {
   # #4056: local execution, result aggregation and the cross-worktree queue.
   # All boundaries are private fixtures; this neither builds nor runs the app.
   bash scripts/xcode-test.sh --self-test
+  # #4507: the Mac host list and the read-only slot status (private fixtures only).
+  python3 scripts/lib/mac_hosts.py --self-test
+  python3 scripts/mac-slots.py --self-test
+  # #4507: a development snapshot reaches another checkout exactly; this one is untouched.
+  python3 scripts/lib/remote-ship-test.py
 }
 
 # CI step: Dependency direction (#3095)
@@ -152,6 +157,10 @@ member_dev_app_lock_self_test() {
 # remain local. Relative paths bind both fixture and helper to --tree.
 member_seed_cleanup_contracts() {
   PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/remove-tree-test.py --portable
+  # #4485: the stale-checkout drop deletes through that boundary. Its real
+  # SwiftPM and xcodebuild cases need a Mac; they run in the default (no flag)
+  # invocation on a dev machine.
+  PYTHONDONTWRITEBYTECODE=1 python3 scripts/lib/drop-stale-package-checkouts-test.py --portable
 }
 
 # CI step: Download-link lint (doorway tagging + on-site /#download)
@@ -600,6 +609,11 @@ with Path("selected-fixture").open("a") as stream:
     stream.write("fixture-from-selected-tree\n")
 print("GROUP selected-binding: executed=1 skipped=0")
 sys.exit(23 if Path("fail-selected-control").exists() else 0)
+PYFIXTURE
+  # #4485: the member's second command; the selected tree must supply it too.
+  cat > "$selected/scripts/lib/drop-stale-package-checkouts-test.py" <<'PYFIXTURE'
+import sys
+assert sys.argv[1:] == ["--portable"]
 PYFIXTURE
   if [ "$(grep -cx 'main "$@"' "$0")" != 1 ]; then
     check "selected-tree runner copy has one checked entrypoint" "invalid" "valid"

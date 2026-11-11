@@ -39,7 +39,7 @@ COMPONENTS=(
   # text too, not just Argmax's MIT LICENSE (Codex audit 2026-07-10). Empty
   # identity — it is vendored inside argmax-oss-swift, not its own SwiftPM pin.
   "swift-transformers (incorporated into Argmax OSS)|n/a|Apache-2.0|argmax-oss-swift/NOTICES|https://github.com/huggingface/swift-transformers|"
-  "FluidAudio|fb506037 (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
+  "FluidAudio|8e64f574 (fork saurabhav88/FluidAudio)|Apache-2.0|FluidAudio/LICENSE|https://github.com/saurabhav88/FluidAudio|fluidaudio"
   "PostHog iOS|3.89.0|MIT|posthog-ios/LICENSE|https://github.com/PostHog/posthog-ios|posthog-ios"
   "Sentry Cocoa|9.30.1 + EnviousWispr patch (beaa5941)|MIT|sentry-cocoa/LICENSE.md|https://github.com/saurabhav88/sentry-cocoa|sentry-cocoa"
   "Sparkle|2.10.0|MIT (with bundled BSD/MIT components)|Sparkle/LICENSE|https://github.com/sparkle-project/Sparkle|sparkle"
@@ -78,9 +78,12 @@ COMPONENTS=(
   # aggregate license file carries the NVIDIA NeMo Text Processing, rustfst,
   # and Rust-crate attributions the binary embeds. Empty identity — a binary
   # target inside FluidAudio, not its own SwiftPM pin.
-  # #3546: no longer linked. Package.swift declares FluidAudio with `traits: []`,
-  # which drops the `NemoTextProcessing` trait and its binary target, so the row
-  # is removed. The guard below fails if that opt-out disappears.
+  # #3546: no longer linked. Package.swift declares FluidAudio with an explicit trait
+  # list that leaves out `NemoTextProcessing` and its binary target, so the row is
+  # removed. #4483: the list is `["Diarizer"]` (a trait since upstream v0.18.0); its
+  # bundled fastcluster and VBx are the two rows above. The guard below fails if the
+  # list becomes anything else, because `NemoTextProcessing` and `TTS` would link
+  # components these notices do not carry.
   "PLCrashReporter + protobuf-c (bundled in PostHog)|n/a|MIT / Apache-2.0 / BSD-2-Clause|posthog-ios/vendor/PHPLCrashReporter/LICENSE|https://github.com/microsoft/plcrashreporter|"
   "libwebp (bundled in PostHog)|n/a|BSD-3-Clause|posthog-ios/vendor/libwebp/COPYING|https://chromium.googlesource.com/webm/libwebp|"
   # llama.cpp is NOT a SwiftPM dep — the bundled llama-server binary is built
@@ -248,8 +251,8 @@ matches = [
 if len(matches) != 1:
     raise SystemExit("expected exactly one FluidAudio fork dependency")
 fields = list(trait_fields(matches[0]))
-if fields != [[]]:
-    raise SystemExit("FluidAudio must explicitly disable all traits")
+if fields != [[{"name": "Diarizer"}]]:
+    raise SystemExit("FluidAudio traits must be exactly [\"Diarizer\"]")
 PY
 then
   echo "error: cannot verify FluidAudio's trait opt-out. Restore the opt-out or its notices attribution." >&2

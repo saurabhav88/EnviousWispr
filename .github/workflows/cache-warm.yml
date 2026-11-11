@@ -32,6 +32,10 @@ on:
       - 'scripts/ci/configure-compilation-cache.sh'
       - 'scripts/ci/configure-tuist-deriveddata-cache.sh'
       - 'scripts/ci/ensure-metal-toolchain.sh'
+      # #4485: run by the composite action through python3, so the `run: scripts/`
+      # grep above does not list it; the second file is the deletion it calls.
+      - 'scripts/lib/drop-stale-package-checkouts.py'
+      - 'scripts/lib/remove-tree.py'
       - 'scripts/ci/verify-checked-out-revision.sh'
       - 'scripts/ci/classify-changes.sh'
       - 'scripts/ci/build-for-testing-release.sh'

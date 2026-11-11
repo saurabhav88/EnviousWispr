@@ -13,7 +13,7 @@ import Testing
 ///
 /// **These rows read PIXELS, because the whole subject is paint.** `RenderedPillHarness` records
 /// that `fittingSize` is blind to colour and opacity, so no size assertion can see this change at
-/// all. `AppearanceRenderHarness` established the mechanism used here.
+/// all. `AppearanceRenderHarness` (now `DesignRenderHarness`, #4506) established the mechanism used here.
 ///
 /// **WHAT THESE ROWS DO NOT BIND, stated rather than left to be discovered.** No row constructs
 /// `RecordingOverlayView`, so its two container gates — the lock transition and the notice

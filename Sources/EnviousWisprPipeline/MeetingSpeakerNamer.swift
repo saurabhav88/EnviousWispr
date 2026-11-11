@@ -108,11 +108,14 @@ package struct MeetingNamingResult: Sendable, Equatable {
 /// `minimumVotes` votes and at least `minimumShare` of ALL its votes (competing names included),
 /// and no other speaker claims that name as strongly. Anything less leaves "Speaker N".
 ///
-/// One-on-one rule (#4013 chunk 14, after Granola 7.668.3's `zN`): where the saved evidence
-/// proves a two-person call (`CallPairStretch`) and the app marked which of the two is the user,
-/// the call sound in that stretch can only be the other person. A speaker with no vote name
-/// takes that name when it is the only call-sound voice in such stretches (`pairProposals`).
-/// Votes always come first; the rule only fills speakers votes left as "Speaker N".
+/// One-on-one rule (#4013 chunk 14, after Granola 7.668.3's `zN`; #4477): where the saved
+/// evidence proves a two-person call (`CallPairStretch`) and the app marked which of the two is
+/// the user, the call sound in that stretch can only be the other person. A proven two-person
+/// stretch may name its dominant call-sound speaker when it has enough speech
+/// (`minimumPairSpeechMs`) and the required share (`minimumPairVoiceShare`); other clusters
+/// retain their labels. A name applies to the whole speaker, including speech outside the
+/// stretch. Vote proposals and reserved names win: the rule only fills speakers votes left as
+/// "Speaker N".
 package enum MeetingSpeakerNamer {
   /// Proposed in the plan, to be confirmed by the real-call measurements (C1).
   package static let minimumVotes = 3
@@ -125,9 +128,14 @@ package enum MeetingSpeakerNamer {
   /// (founder 2026-11-03, after Granola's `II()`, which accepts a headcount of two or unknown;
   /// `CallSpeakerAccumulator.pairEvidence`); it still has to last this long.
   package static let minimumPairStretchMs = 15_000
-  /// The least call speech one speaker needs inside a stretch for it to name them; an
-  /// engineering threshold to validate with the real-call receipts, not a Granola constant.
+  /// Minimum eligible speech from the dominant speaker inside one stretch.
+  /// Engineering threshold, not a Granola constant.
   package static let minimumPairSpeechMs = 3_000
+  /// Founder decision (#4477): share of all eligible call-speaker time in the window. It
+  /// replaces the old "no other call voice at all" rule (#4013 R1.5), whose premise that the
+  /// diarizer keeps one remote voice as one speaker failed on a real 2026-11-10 call. Two
+  /// comparable voices (two people sharing one laptop) still give nothing.
+  package static let minimumPairVoiceShare = 0.9
 
   package static func propose(
     composition: MeetingComposition, eligibility: MeetingNamingEligibility?, log: CallSpeakerLog?
@@ -244,14 +252,19 @@ package enum MeetingSpeakerNamer {
           stretch.lastMs - stretch.firstMs >= minimumPairStretchMs,
           let window = MeetingNamingInterval(startMs: stretch.firstMs, endMs: stretch.lastMs)
         else { continue }
-        // Exactly one call-sound voice: one speaker with enough speech, nobody else at all.
+        // Count every genuine voice, including vote-named voices, in the denominator.
         var heard: [(speaker: String, ms: Int)] = []
         for (speaker, intervals) in speech {
           let ms = length(intersect(intervals, [window]))
           if ms > 0 { heard.append((speaker, ms)) }
         }
-        guard heard.count == 1, heard[0].ms >= minimumPairSpeechMs else { continue }
-        windows[heard[0].speaker, default: [:]][remote, default: []].append(window)
+        // A top-duration tie cannot pass the share (each tied leader holds at most half), so
+        // Dictionary order never changes an accepted speaker.
+        guard let top = heard.max(by: { $0.ms < $1.ms }),
+          top.ms >= minimumPairSpeechMs,
+          Double(top.ms) >= minimumPairVoiceShare * Double(heard.reduce(0) { $0 + $1.ms })
+        else { continue }
+        windows[top.speaker, default: [:]][remote, default: []].append(window)
       }
     }
 
@@ -265,8 +278,13 @@ package enum MeetingSpeakerNamer {
       guard leaders.count == 1, let winner = leaders.first,
         Double(top) >= minimumShare * Double(total)
       else { continue }
-      // Talker votes for this speaker that point at anyone else contradict the rule.
-      if (votes[speaker] ?? [:]).keys.contains(where: { $0 != winner.key }) { continue }
+      // Talker votes for this speaker that point at anyone else contradict the rule unless
+      // they are a minority (#4477: Zoom's tag flickers between guests before one leaves).
+      // No votes permits naming; otherwise competing votes must be a minority.
+      let tally = votes[speaker] ?? [:]
+      let own = tally[winner.key, default: 0]
+      let others = tally.filter { $0.key != winner.key }.values.reduce(0, +)
+      if others > 0, others >= own { continue }
       claims[winner.key, default: []].append((speaker, top))
     }
     let reserved = Set(voteProposals.values)

@@ -229,7 +229,7 @@ struct RecordingChimeLayoutTests {
       let badge = ((german ? "IN VERWENDUNG" : "IN USE") as NSString).size(withAttributes: [.font: font]).width
       let required = max(widestName + 44 + 8, badge + 16 + 4 + 12 + 8)
       for window: CGFloat in [750, 820, 1300] {
-        let width = AppearanceRenderHarness.pageWidth(window: window) - 2 * SettingsLayout.contentH
+        let width = SettingsRenderGeometry.pageWidth(window: window) - 2 * SettingsLayout.contentH
         let columns = RecordingChimeGrid.columns(forWidth: width)
         let cardWidth = (width - CGFloat(columns - 1) * 12) / CGFloat(columns)
         print("Chime localized window=\(window) de=\(german) columns=\(columns) card=\(cardWidth) needed=\(required)")

@@ -98,7 +98,7 @@ struct MicrophoneSettingsLayoutTests {
   @Test("every media and readiness segment stays inside the row in English and German")
   func allSegmentsFit() throws {
     for windowWidth: CGFloat in [750, 820, 1300] {
-      let rowWidth = AppearanceRenderHarness.pageWidth(window: windowWidth)
+      let rowWidth = SettingsRenderGeometry.pageWidth(window: windowWidth)
         - 2 * SettingsLayout.contentH - 2 * SettingsLayout.rowPaddingH
       for german in [false, true] {
         let mediaChoices = Self.choices(german: german, media: true)

@@ -38,7 +38,7 @@ struct KeybindsSettingsRenderHarness {
     var rendered = 0
     for width: CGFloat in [750, 820, 1300] {
       for dark in [false, true] {
-        let pageWidth = AppearanceRenderHarness.pageWidth(window: width)
+        let pageWidth = SettingsRenderGeometry.pageWidth(window: width)
         let page = KeybindsSettingsView().environment(settings).environment(runtime)
           .frame(width: pageWidth, height: 850)
         let host = NSHostingView(rootView: page)

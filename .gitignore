@@ -170,6 +170,8 @@ scripts/*
 !scripts/ollama-library/
 # #4353 D6: the cloud model list validator and its shared fixtures (CloudModelListTests reads them).
 !scripts/cloud-models/
+# #4506: the design-book token generator ships so every checkout can regenerate tokens from DESIGN.md.
+!scripts/design/
 # #2374 Phase 2: the view-split equivalence proof and its two-way control. The
 # PR's central claim is a MOVE-ONLY verdict from this script, so a reviewer who
 # cannot read it is being handed an unchecked premise.
@@ -192,6 +194,9 @@ scripts/lib/*
 !scripts/lib/spm-seed-test.sh
 !scripts/lib/remove-tree.py
 !scripts/lib/remove-tree-test.py
+# #4485: drops package checkouts that differ from Package.resolved before generation.
+!scripts/lib/drop-stale-package-checkouts.py
+!scripts/lib/drop-stale-package-checkouts-test.py
 # #4293: one build at a time in a checkout's .derivedData (tests share the dev app's folder).
 !scripts/lib/build-folder-lock.py
 !scripts/lib/build-folder-lock-test.py
@@ -215,6 +220,14 @@ scripts/lib/*
 !scripts/settings-map/
 # #3524: the tracked git hooks every checkout runs (core.hooksPath = scripts/githooks).
 !scripts/githooks/
+# #4507: the Mac host list and the read-only slot status for shared CI across Macs.
+!scripts/lib/mac_hosts.py
+!scripts/mac-slots.py
+!scripts/lib/output-watchdog.py
+!scripts/lib/remote_ship.py
+!scripts/lib/remote-job.py
+!scripts/lib/remote-lane.py
+!scripts/lib/remote-ship-test.py
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py

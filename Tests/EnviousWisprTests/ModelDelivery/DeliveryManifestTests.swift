@@ -93,7 +93,7 @@ enum ManifestFixture {
     #expect(final.files.count == 5)
     #expect(final.sources.map(\.id) == live.sources.map(\.id))
     #expect(final.sources.map(\.baseURL) == live.sources.map(\.baseURL))
-    #expect(live.manifestDigest == "f4dde60bf3cc7f5dda343486dcd66c94b08b1cd2540a5dcce31d53c88c31a8cb")
+    #expect(live.manifestDigest == "24ad0a799afdc68cf0ce527389729f830f47482fbfffdabfedba8602000bef8c")
     #expect(final.files.first { $0.path.hasSuffix("weights/weight.bin") }?.sha256
       == "bab76e5f190d0e4a4e174e7fcb1e9beea58c6b2be56e665e2cac8fba6d10f7f1")
     // #4424: the real app reads Bundle.main; source-tree fixture loading cannot prove shipping.
@@ -482,8 +482,12 @@ enum ManifestFixture {
   /// `runtimeABI` is fork pin fb506037 (the live inference-entry hook, requalified
   /// in `docs/audits/3546-ship/signal-requal/result.md`); regenerated with
   /// `scripts/regen-delivery-manifest-digest.py --write`, control OK.
+  /// Updated 2026-11-10 (#4483): `runtimeABI` advanced to fork pin 8e64f574 (upstream
+  /// v0.18.3 + the same three carries). Identical model bytes (`identity.revision`
+  /// unchanged): existing installs revalidate once and are re-admitted without a download.
+  /// Regenerated with the same script, control OK.
   static let shippedUltraGoldenDigest =
-    "a66864c7c96ca8fccfb00f50f784f02aa2275dc58d6f7b1d9d415120b97bdc7d"
+    "25c938573e75ed3089669ff45a34ed40855c01a68d021fe24708c5cd54a3ecd5"
 
   @Test func shippedManifestIsUltraAndMatchesGoldenDigest() throws {
     let data = try Data(contentsOf: Self.shippedManifestURL)
