@@ -139,6 +139,38 @@ public enum EGOneArtifactCatalog {
     return registration.installDirectory
   }
 
+  // MARK: - The engine
+
+  /// The helper's limit on MLX's reusable buffer cache: 256 MiB, the value every speed and
+  /// qualification receipt of the helper was recorded with. It bounds the cache MLX keeps for
+  /// reuse between requests; it is not a limit on the process's total memory.
+  public static let cacheLimitBytes = 256 * 1024 * 1024
+
+  /// The engine for one size's registered model. The draft model is the `helper` folder of the
+  /// same package, so its identity is the model registration's own: the two are admitted
+  /// together.
+  public static func engine(for registration: DeliveryRegistration) -> EnviousDecodeEngine {
+    EnviousDecodeEngine(
+      draftModelURL: registration.installDirectory.appendingPathComponent(
+        draftComponent, isDirectory: true),
+      draftArtifactIdentity: registration.manifest.identity, cacheLimitBytes: cacheLimitBytes)
+  }
+
+  /// The engine of a size whose manifest could not be read (a damaged app bundle). Its runtime
+  /// has no delivery, so it never launches anything; this only gives that runtime an engine of
+  /// the right kind, with the size's own folder and no revision.
+  public static func unregisteredEngine(_ size: EGOneSize, appSupport: URL) -> EnviousDecodeEngine {
+    let artifact = model(size)
+    return EnviousDecodeEngine(
+      draftModelURL: appSupport.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
+        .appendingPathComponent(artifact.installFolder, isDirectory: true)
+        .appendingPathComponent(draftComponent, isDirectory: true),
+      draftArtifactIdentity: ModelIdentity(
+        family: artifact.family, name: artifact.name, revision: "", variant: artifact.variant,
+        runtimeABI: runtimeABI),
+      cacheLimitBytes: cacheLimitBytes)
+  }
+
   // MARK: - Private
 
   private static func require(_ artifact: Artifact, _ identity: ModelIdentity) throws {

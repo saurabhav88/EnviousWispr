@@ -1682,11 +1682,11 @@ public final class SettingsManager {
   /// a dictation at its start, a recovery snapshot, a file import, a meeting summary. Every
   /// freeze point asks here, once; nothing in flight asks again.
   ///
-  /// TEMPORARY (P5 chunk 2): EG-1 is frozen as the full size whatever `egOneSize` says,
-  /// because the full size is the only EG-1 the app can run until the other sizes have
-  /// runtimes. The chunk that adds those runtimes makes this return `egOneSize`.
+  /// EG-1 is frozen at the saved size preference. Until the first resolution has run (a
+  /// moment at launch, before anything freezes work) there is no preference, and the answer
+  /// is the full size: the one EG-1 that existed before sizes.
   public func polishModelID(for provider: LLMProvider) -> LocalPolishModelID {
-    .singleModel(for: provider)
+    provider == .egOne ? .egOne(egOneSize ?? .full) : .singleModel(for: provider)
   }
 
   /// The user picked a size. The only way the preference changes after first resolution,

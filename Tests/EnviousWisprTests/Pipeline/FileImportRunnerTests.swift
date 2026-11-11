@@ -144,7 +144,7 @@ struct FileImportRunnerTests {
       localPolishers: .llamaForTests.replacingEGOne { _ in
         PromptCapturingPolisher(capture: capture)
       },
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.97) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     runner.freeze(settings: Self.egOneSnapshot, vocabulary: nil, cloudModelList: nil)
@@ -164,7 +164,7 @@ struct FileImportRunnerTests {
     let spy = LocalPolisherFactorySpy()
     let runner = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: spy.factories,
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime(),
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: ReadyEGOneRuntime(),
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     runner.freeze(

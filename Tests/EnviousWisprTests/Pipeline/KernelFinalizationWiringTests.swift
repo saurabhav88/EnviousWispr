@@ -303,7 +303,7 @@ import os
     let steps = makeSteps()
     // Polish ON (provider + mocked polisher) so the nil comes from the
     // too-short gate, not from the disabled-step path the other tests use.
-    steps.llmPolish.llmProvider = .openAI
+    steps.llmPolish.setPolish(provider: .openAI)
     steps.llmPolish.llmModel = "gpt-4o-mini"
     steps.llmPolish.makePolisher = { _, _, _, _ in CannedPolisher() }
     let wiring = makeWiring(
@@ -665,7 +665,7 @@ import os
     let outcome = KernelFinalizationOutcome()
     let saves = SaveCountBox()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .openAI
+    polish.setPolish(provider: .openAI)
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in ThrowingPolisher() }
@@ -702,7 +702,7 @@ import os
     outcome: KernelFinalizationOutcome
   ) async throws {
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .ollama
+    polish.setPolish(provider: .ollama)
     polish.llmModel = "some-unknown-model:7b"
     polish.ollamaReadinessProbe = { _ in .ready(facts: facts) }
     polish.makePolisher = { _, _, _, _ in CannedPolisher() }
@@ -736,7 +736,7 @@ import os
   func cloudPolishLeavesRemotenessNil() async throws {
     let outcome = KernelFinalizationOutcome()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .openAI
+    polish.setPolish(provider: .openAI)
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in CannedPolisher() }
     let context = KernelSessionContext()
@@ -765,7 +765,7 @@ import os
   func failedPolishLeavesRemotenessNil() async throws {
     let outcome = KernelFinalizationOutcome()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .ollama
+    polish.setPolish(provider: .ollama)
     polish.llmModel = "gpt-oss:20b-cloud"
     polish.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
@@ -793,7 +793,7 @@ import os
   func emptyRemotePolishDropsRemoteness() async throws {
     let outcome = KernelFinalizationOutcome()
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .ollama
+    polish.setPolish(provider: .ollama)
     polish.llmModel = "deepseek-v4-flash:latest"
     polish.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))
@@ -972,7 +972,7 @@ import os
     context.config = .testDefault(autoPasteToActiveApp: true)
 
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .openAI
+    polish.setPolish(provider: .openAI)
     // #4353 D2: the step has no implicit model; a cloud step without one is a bypass.
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in CancellingPolisher() }

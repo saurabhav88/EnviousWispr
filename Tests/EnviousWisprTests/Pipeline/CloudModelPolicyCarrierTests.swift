@@ -61,7 +61,7 @@ struct CloudModelPolicyCarrierTests {
   func batchingFollowsTheCapturedList() {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini-2024-07-18"
     // No list: the compiled #2905 fallback keeps GPT-4o mini (and its dated copies) ordinary.
     #expect(step.fileBatchMember(Self.batchContext()) == nil)

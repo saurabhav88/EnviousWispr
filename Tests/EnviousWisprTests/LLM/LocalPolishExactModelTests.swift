@@ -34,7 +34,7 @@ struct LocalPolishExactModelTests {
     defaults: UserDefaults? = nil
   ) -> LocalPolishRuntime {
     LocalPolishRuntime(
-      manifest: nil, serverBinaryURL: nil, delivery: nil, engine: LlamaServerEngine(),
+      manifest: nil, serverBinaryURL: nil, delivery: nil, engine: TestLocalPolishEngine.forModel(model),
       defaults: defaults, coordinator: coordinator, modelID: model)
   }
 
@@ -225,7 +225,7 @@ struct LocalPolishExactModelTests {
 
     for model in [LocalPolishModelID.egOne(.mini), .egOne(.micro), nil] as [LocalPolishModelID?] {
       let step = rig.step(spy: LLMPolishStepTelemetryTests.Spy())
-      step.polishModelID = model
+      step.setPolish(provider: .egOne, model: model)
       let error = try await rig.requireThrow { _ = try await step.process(context()) }
       guard case LLMError.localEngineSkipped(.notReady, .egOne) = error else {
         Issue.record("\(String(describing: model)): expected a not-ready skip, got \(error)")
@@ -236,14 +236,53 @@ struct LocalPolishExactModelTests {
     // A size with its own server is polished by it, with the full size's server absent.
     let mini = rig.step(spy: LLMPolishStepTelemetryTests.Spy())
     mini.egOneRuntime = nil
-    mini.polishModelID = .egOne(.mini)
+    mini.setPolish(provider: .egOne, model: .egOne(.mini))
     mini.localRuntimes[.egOne(.mini)] = LLMPolishStepLanguageHintTests.Runtime()
     _ = try await mini.process(context())
 
-    // Naming the provider again names its one model again: the model is set after it.
-    mini.llmProvider = .egOne
-    #expect(mini.polishModelID == .egOne(.full))
-    mini.llmProvider = .s1Mini
-    #expect(mini.polishModelID == .singleModel(for: .s1Mini))
+    // Provider and model are stated together; the step keeps exactly what it was given.
+    #expect(mini.llmProvider == .egOne && mini.polishModelID == .egOne(.mini))
+  }
+
+  // A user with two sizes installed must be answered by the size the take names, never its neighbour.
+  @Test(
+    "with two sizes running, a take reaches only its own size's server; a size with no server reaches none"
+  )
+  func twoRuntimesAreAddressedBySize() async throws {
+    let rig = LLMPolishStepLanguageHintTests()
+    let fullEndpoint = LocalPolishEndpoint(port: 11, authToken: "full", contextTokens: 32768)
+    let microEndpoint = LocalPolishEndpoint(port: 22, authToken: "micro", contextTokens: 32768)
+    func context() -> TextProcessingContext {
+      rig.context(
+        text: LocalPolisherFactorySpy.transcript, textLanguage: "en", language: "en",
+        source: .dictation)
+    }
+    func step(_ model: LocalPolishModelID, spy: LocalPolisherFactorySpy) -> LLMPolishStep {
+      let step = rig.step(spy: LLMPolishStepTelemetryTests.Spy())
+      step.localRuntimes = [
+        .egOne(.full): EGOnePipelineRoutingTests.FakeRuntime(endpoint: fullEndpoint),
+        .egOne(.micro): EGOnePipelineRoutingTests.FakeRuntime(endpoint: microEndpoint),
+      ]
+      step.makeEGOnePolisher = spy.factories.egOne
+      step.setPolish(provider: .egOne, model: model)
+      return step
+    }
+
+    let fullSpy = LocalPolisherFactorySpy()
+    _ = try await step(.egOne(.full), spy: fullSpy).process(context())
+    #expect(fullSpy.egOneEndpoints == [fullEndpoint])
+
+    let microSpy = LocalPolisherFactorySpy()
+    _ = try await step(.egOne(.micro), spy: microSpy).process(context())
+    #expect(microSpy.egOneEndpoints == [microEndpoint])
+
+    let missingSpy = LocalPolisherFactorySpy()
+    let missing = step(.egOne(.mini), spy: missingSpy)
+    let error = try await rig.requireThrow { _ = try await missing.process(context()) }
+    guard case LLMError.localEngineSkipped(.notReady, .egOne) = error else {
+      Issue.record("expected a not-ready skip, got \(error)")
+      return
+    }
+    #expect(missingSpy.egOneEndpoints.isEmpty, "no size's server answered for the missing one")
   }
 }

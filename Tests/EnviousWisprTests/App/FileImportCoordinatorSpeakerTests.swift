@@ -869,7 +869,7 @@ struct FileImportCoordinatorSpeakerTests {
     let store = FakeHistoryStore(); let capture = BatchCapture()
     let processor = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       promptPlanner: nil,
       makePolisher: { _, _, _, _ in BatchPolisher(capture: capture, preserveExistingPunctuation: sentenceBoundary) })

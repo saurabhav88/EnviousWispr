@@ -144,7 +144,7 @@ struct CheckerSelectionPathTests {
         }
         let polish = LLMPolishStep(
           keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: .silent())
-        polish.llmProvider = .egOne
+        polish.setPolish(provider: .egOne)
         let result = try await TextProcessingRunner(telemetry: .silent).run(
           rawText: spoken, evidence: evidence,
           targetAppName: nil, steps: [learned, polish])

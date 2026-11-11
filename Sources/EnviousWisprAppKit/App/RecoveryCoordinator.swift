@@ -303,15 +303,17 @@ final class RecoveryCoordinator {
   func makeDirective(
     settings: SettingsManager,
     backendType: ASRBackendType,
-    supportsLanguageDetection: Bool
+    supportsLanguageDetection: Bool,
+    polishModel: LocalPolishModelID,
+    polishWireModel: String
   ) async -> (recoverySessionID: String, payload: Data)? {
     guard settings.crashRecoveryEnabled else { return nil }
 
     let recoverySessionID = UUID().uuidString
     let keyData = RecoveryKeyStore.makeKey()
 
-    // #1173: single source of truth for the effective model.
-    let resolvedModel = settings.effectiveLLMModel
+    // #1173 / #4473: the effective model name the caller captured with `polishModel`.
+    let resolvedModel = polishWireModel
     // #3905: the same effective mode the live take freezes, so a replay matches it.
     let languageMode = LanguageLockOptions.effectiveLanguageMode(
       settings.languageMode, for: backendType)
@@ -328,9 +330,10 @@ final class RecoveryCoordinator {
         overrides: settings.spokenPunctuation.startWordOverrides),
       // #4216: the period switch in force, frozen with the start words.
       spokenPunctuationEnglishPeriodWord: settings.spokenPunctuation.englishPeriodWord,
-      llmProvider: settings.llmProvider.rawValue,
+      // #4473: the take's captured model, the same value its session configuration gets.
+      llmProvider: polishModel.provider.rawValue,
       llmModel: resolvedModel,
-      egOneSize: settings.polishModelID(for: settings.llmProvider).storedEGOneSize,
+      egOneSize: polishModel.storedEGOneSize,
       s1Control: settings.s1Control,
       // #3124: the value in force for this take, replayed on recovery.
       englishSpelling: EnglishSpelling.effective(

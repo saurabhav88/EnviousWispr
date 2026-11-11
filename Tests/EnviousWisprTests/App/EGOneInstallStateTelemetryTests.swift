@@ -110,7 +110,7 @@ import EnviousWisprAppKitTestSupport
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!, displayVersion: "1.1"
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: adapter,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     runtime.onEvent = { event in
       if case .pausedInstallStateChanged(let projection) = event {
         recorded.append(projection?.rawValue ?? "none")
@@ -200,7 +200,7 @@ import EnviousWisprAppKitTestSupport
     let first = Recorded()
     let runtimeA = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     runtimeA.onEvent = { event in
       if case .pausedInstallStateChanged(let p) = event { first.append(p?.rawValue ?? "none") }
     }
@@ -212,7 +212,7 @@ import EnviousWisprAppKitTestSupport
     let second = Recorded()
     let runtimeB = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     runtimeB.onEvent = { event in
       if case .pausedInstallStateChanged(let p) = event { second.append(p?.rawValue ?? "none") }
     }
@@ -235,14 +235,14 @@ import EnviousWisprAppKitTestSupport
 
     let first = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     first.applyInstallStateForTesting(.updatePaused(resumable: true, targetVersion: "1.1"))
 
     // Relaunch into `.notInstalled`, which equals the runtime's initial value.
     let recorded = Recorded()
     let second = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     second.onEvent = { event in
       if case .pausedInstallStateChanged(let p) = event { recorded.append(p?.rawValue ?? "none") }
     }
@@ -273,7 +273,7 @@ import EnviousWisprAppKitTestSupport
 
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
 
     runtime.applyInstallStateForTesting(.updatePaused(resumable: false, targetVersion: "1.1"))
     runtime.applyInstallStateForTesting(.downloading(fractionCompleted: 0.2, upgrade: nil))
@@ -295,7 +295,7 @@ import EnviousWisprAppKitTestSupport
     // an upgrade label, or the fix trades one wrong sentence for another.
     let fresh = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     fresh.applyInstallStateForTesting(.notInstalled)
     fresh.applyInstallStateForTesting(.downloading(fractionCompleted: 0.3, upgrade: nil))
     #expect(
@@ -326,7 +326,7 @@ import EnviousWisprAppKitTestSupport
 
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
 
     // A manifest with no `displayVersion` — optional by contract, so this is a
     // config we can ship, not a hostile value.

@@ -1896,8 +1896,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// (old Parakeet pipeline). VAD + device UID portions
   /// are already handled by `RecordingSessionKernel`.
   private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
-    steps.llmPolish.llmProvider = config.llmProvider
-    steps.llmPolish.polishModelID = config.polishModelID
+    steps.llmPolish.setPolish(provider: config.llmProvider, model: config.polishModelID)
     steps.llmPolish.llmModel = config.llmModel
     steps.llmPolish.cloudModelList = captureCloudModelList?()
     steps.llmPolish.polishInstructions = config.polishInstructions

@@ -177,7 +177,7 @@ struct TextProcessingContinuationTests {
         return LearnedWordCheckerSelection(
           checker: Self.checker, identity: "frozen-checker", judge: LearnedWordJudge(displayName: "Fixture"))
       }
-      polish.llmProvider = .claude
+      polish.setPolish(provider: .claude)
       polish.llmModel = "claude-haiku-4-5"
       polish.makePolisher = { _, _, _, _ in EchoPolisher() }
     }

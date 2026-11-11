@@ -44,8 +44,11 @@ struct LocalEngineDescriptor: Equatable {
     return Int((Double(ceiling) / Double(Self.charactersPerDictatedMinute)).rounded())
   }
 
+  /// EG-1 at its FULL size (#4473): 4,707,411,269 bytes of model and draft model, stated
+  /// decimal like S1-mini below. The headroom is the delivery manifest's factor (2.2) on that
+  /// download, rounded up. The other sizes get their own figures with the size cards.
   static let egOne = LocalEngineDescriptor(
-    name: LLMProvider.egOne.displayName, downloadSize: "2.9 GB", installHeadroom: "6 GB",
+    name: LLMProvider.egOne.displayName, downloadSize: "4.7 GB", installHeadroom: "11 GB",
     showsLowMemoryNote: true, contextTokens: 16384)
 
   static let s1Mini = LocalEngineDescriptor(

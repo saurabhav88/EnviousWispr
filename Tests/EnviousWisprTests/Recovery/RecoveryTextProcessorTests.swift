@@ -236,6 +236,48 @@ struct RecoveryTextProcessorTests {
     spy.expectOnlyFactory(of: provider)
   }
 
+  /// A recording from a newer build names an EG-1 size this build does not know: its words stay
+  /// as the deterministic steps left them, and no other size's server or checker answers.
+  @Test("#4473 a recovered take of an unknown EG-1 size reaches no server and no checker")
+  func recoveryOfAnUnknownSizeReachesNothing() async {
+    let spoken = LocalPolisherFactorySpy.transcript + " and the day toast regenerated my project"
+    let vocabulary = CorrectorVocabulary(
+      terms: [
+        .init(
+          canonical: "Tuist", aliases: ["toast"], learnedAliases: ["toast"],
+          learnedAt: Date(timeIntervalSince1970: 1_790_000_000))
+      ], generation: 1)
+    func run(_ snapshot: RecordingSettingsSnapshot) async -> (
+      outcome: RecoveryTextOutcome, spy: LocalPolisherFactorySpy, checkerCalls: Int
+    ) {
+      let spy = LocalPolisherFactorySpy()
+      var checkerCalls = 0
+      let processor = RecoveryTextProcessor(
+        keychainManager: KeychainManager(), localPolishers: spy.factories, cloudModelList: nil,
+        egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: ReadyEGOneRuntime(),
+        checkerSelectionProvider: { _, _ in
+          checkerCalls += 1
+          return .init(absence: .serverUnavailable)
+        })
+      processor.applySettings(snapshot)
+      processor.applyCustomWordsVocabulary(corrector: vocabulary, polish: .empty)
+      return (await processor.process(rawText: spoken), spy, checkerCalls)
+    }
+
+    // The deterministic text: the same take with polish off.
+    let baseline = await run(LocalPolishExactModelTests.snapshot(provider: .none, size: nil))
+    let unknown = await run(LocalPolishExactModelTests.snapshot(provider: .egOne, size: "giant"))
+    #expect(unknown.outcome.polishedText == nil)
+    #expect(unknown.outcome.text == baseline.outcome.text)
+    #expect(unknown.spy.egOneEndpoints.isEmpty && unknown.spy.s1MiniEndpoints.isEmpty)
+    #expect(unknown.checkerCalls == 0)
+
+    // Control: no size saved means the full size, which does reach its server and checker.
+    let full = await run(LocalPolishExactModelTests.snapshot(provider: .egOne, size: nil))
+    #expect(full.spy.egOneEndpoints == [LocalPolisherFactorySpy.endpoint])
+    #expect(full.checkerCalls == 1)
+  }
+
   // MARK: - Telemetry silence (#945, extended by #1446)
 
   /// A `KeychainManager` whose reads always throw, driving the cloud connector's

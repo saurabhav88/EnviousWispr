@@ -136,7 +136,7 @@ struct PolishTakeOutcomeCarryTests {
     _ outcome: KernelFinalizationOutcome, context: KernelSessionContext, takeID: String
   ) -> KernelFinalizationWiring {
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .openAI
+    polish.setPolish(provider: .openAI)
     polish.llmModel = "gpt-4o-mini"
     polish.makePolisher = { _, _, _, _ in MissingKeyPolisher() }
     let telemetry = KernelTelemetryState()
@@ -232,7 +232,7 @@ struct PolishTakeOutcomeCarryTests {
     _ engine: RestartingEngine, text: String
   ) async throws -> PolishTakeOutcome? {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = engine
     let probe = PolishSetupTakeProbe(
@@ -264,7 +264,7 @@ struct PolishTakeOutcomeCarryTests {
   func missTimeIsStampedAtTheMiss() async throws {
     let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = engine
     var wall = Date(timeIntervalSince1970: 1_800_000_000)
@@ -301,7 +301,7 @@ struct PolishTakeOutcomeCarryTests {
     let takeID = UUID().uuidString
     let engine = RestartingEngine(missed: Self.stop, recovery: Self.stop)
     let polish = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    polish.llmProvider = .egOne
+    polish.setPolish(provider: .egOne)
     polish.llmModel = LLMProvider.egOneModelName
     polish.egOneRuntime = engine
     let log = HookLog()

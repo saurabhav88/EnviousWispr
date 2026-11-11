@@ -1,6 +1,6 @@
 import EnviousWisprCore
+import EnviousWisprEG1Engine
 import EnviousWisprLLM
-import EnviousWisprLlamaEngine
 import EnviousWisprLocalPolish
 import Foundation
 
@@ -69,8 +69,10 @@ final class EGOneSummaryEngine {
   /// #4473: of the model a new attempt would use. The full size reports the bare revision, as
   /// before sizes existed, so no existing summary goes out of date; another size names itself,
   /// so a summary written by one size is out of date for another.
-  var artifactRevision: String? {
-    let model = model()
+  var artifactRevision: String? { artifactRevision(for: model()) }
+
+  /// The configuration identity of one EG-1 model's weights.
+  func artifactRevision(for model: LocalPolishModelID) -> String? {
     guard let version = manifest(model)?.version else { return nil }
     guard let size = model.size, size != .full else { return version }
     return "\(size.rawValue)|\(version)"
@@ -95,7 +97,9 @@ final class EGOneSummaryEngine {
           try await attempt.complete(instructions: instructions, prompt: prompt)
         },
         finish: { await attempt.finish() },
-        borrow: { try await attempt.borrow() }))
+        borrow: { try await attempt.borrow() },
+        // The captured model's revision: the attempt's saved identity names what wrote it.
+        artifactRevision: artifactRevision(for: model)))
   }
 
   /// One prepared attempt's state.

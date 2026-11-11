@@ -24,6 +24,17 @@ import Testing
 struct EnviousDecodeHelperIntegrationTests {
   typealias Fixtures = DFlashRuntimeTests
 
+  /// EG-1's word-check question as its adapters were trained and scored on it, written out
+  /// here: the shared system text and the A/B user turn, with nothing after the assistant
+  /// header (no think block, no language line). The helper builds its own; this is the
+  /// independent text the in-process scores are compared through.
+  static func egOneCheckPrompt(_ question: LearnedWordCheckQuestion) -> String {
+    "<|im_start|>system\n\(LlamaLearnedWordChecker.systemPrompt)<|im_end|>\n"
+      + "<|im_start|>user\nDictionary word: \(question.word)\n"
+      + "A: \(question.contextText)\nB: \(question.contextRewritten)<|im_end|>\n"
+      + "<|im_start|>assistant\n"
+  }
+
   // MARK: - The helper binary and its process
 
   /// The helper inside the Dev app that the build puts beside the test bundle. Exactly one
@@ -320,8 +331,7 @@ struct EnviousDecodeHelperIntegrationTests {
       endpoint: helper.endpoint, instructions: english.system, prompt: english.user,
       timeoutSeconds: 60)
     let summaryBody = try EnviousDecodeRequestMapperTests.data(
-      EGOneSummaryCall.requestBody(
-        instructions: english.system, prompt: english.user, hasLearnedWordAdapter: false))
+      EGOneSummaryCall.requestBody(instructions: english.system, prompt: english.user))
     #expect(
       summary
         == (try reference.expected(summaryBody)).content.trimmingCharacters(
@@ -412,7 +422,7 @@ struct EnviousDecodeHelperIntegrationTests {
         fileURLWithPath: try #require(Fixtures.helperFolders["mini"] ?? nil), isDirectory: true),
       wordCheckAdapterDirectory: URL(fileURLWithPath: adapter, isDirectory: true))
     let prompts = questions.map {
-      reference.tokenizer.encode(LlamaLearnedWordChecker.prompt(for: $0, style: .egOne))
+      reference.tokenizer.encode(Self.egOneCheckPrompt($0))
     }
     let inProcess =
       try adapted.wordCheckScores(

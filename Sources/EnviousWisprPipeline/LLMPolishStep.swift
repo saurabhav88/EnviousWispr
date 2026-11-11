@@ -18,17 +18,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// the default `.swallow` from the protocol extension.
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
-  public var llmProvider: LLMProvider = .none {
-    // A provider names its one model until a caller states the exact one: for EG-1 that is the
-    // full size, the only EG-1 before sizes. The three freeze points set `polishModelID` right
-    // after the provider.
-    didSet { polishModelID = .singleModel(for: llmProvider) }
+  /// The polish provider of this piece of work. Set only through `setPolish(provider:model:)`,
+  /// with the model, so the two can never disagree.
+  public private(set) var llmProvider: LLMProvider = .none
+  /// #4473: the exact polish model of this piece of work. For EG-1 it names one size, and only
+  /// that size's runtime may answer. nil means the work names an EG-1 size this build does not
+  /// know: local polish is skipped and the deterministic text is delivered; no other size is
+  /// used.
+  public private(set) var polishModelID: LocalPolishModelID? = .singleModel(for: .none)
+
+  /// The ONE way to say what polishes this piece of work: the provider and the exact model,
+  /// together, from the work's frozen settings (a dictation's session configuration, a
+  /// recovery or import snapshot). There is no provider-only form: a provider alone does not
+  /// say which EG-1 size, and guessing one is how a take gets another size's weights.
+  public func setPolish(provider: LLMProvider, model: LocalPolishModelID?) {
+    precondition(
+      model == nil || model?.provider == provider, "the polish model is not the provider's")
+    llmProvider = provider
+    polishModelID = model
   }
-  /// #4473: the exact polish model of this piece of work, frozen with `llmProvider` (set AFTER
-  /// it; setting the provider resets this). For EG-1 it names one size, and only that size's
-  /// runtime may answer. nil means the work names an EG-1 size this build does not know: local
-  /// polish is skipped and the deterministic text is delivered; no other size is used.
-  public var polishModelID: LocalPolishModelID? = .singleModel(for: .none)
   /// #4353 D2: no model until the session's settings set one; never a preselected default.
   public var llmModel: String = ""
   /// #4353 D6: the cloud model list the operation captured, set beside `llmProvider` and

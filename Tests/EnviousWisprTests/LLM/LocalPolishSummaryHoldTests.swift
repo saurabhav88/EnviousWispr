@@ -20,7 +20,7 @@ struct LocalPolishSummaryHoldTests {
     init() {
       let egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        engine: LlamaServerEngine(),
+        engine: TestLocalPolishEngine(),
         coordinator: coordinator,
         modelID: .egOne)
       let s1 = LocalPolishRuntime(

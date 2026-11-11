@@ -83,7 +83,7 @@ struct LLMPolishReentrancyTests {
     mutatedModel: String
   ) async throws -> TextProcessingContext {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = initialProvider
+    step.setPolish(provider: initialProvider)
     step.llmModel = initialModel
 
     let started = AsyncStream.makeStream(of: Void.self)
@@ -106,7 +106,7 @@ struct LLMPolishReentrancyTests {
     var iterator = started.stream.makeAsyncIterator()
     _ = await iterator.next()  // polisher entered; process() parked at the await, MainActor free
 
-    step.llmProvider = mutatedProvider  // reentrant mutation during the polish suspension
+    step.setPolish(provider: mutatedProvider)  // reentrant mutation during the polish suspension
     step.llmModel = mutatedModel
     await gate.release()
 
@@ -141,7 +141,7 @@ struct LLMPolishReentrancyTests {
   @Test("control: with no mid-polish mutation, the actual provider/model is recorded")
   func noMutationControl() async throws {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
 
     let gate = ReleaseGate()
@@ -193,7 +193,7 @@ struct LLMPolishReentrancyTests {
     let held = try Self.geminiList(#"{"level":"low"}"#)
     let refreshed = try Self.geminiList(#"{"budget":0}"#)
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .gemini
+    step.setPolish(provider: .gemini)
     step.llmModel = "gemini-x"
     step.cloudModelList = held
 
@@ -226,7 +226,7 @@ struct LLMPolishReentrancyTests {
   @Test("nil polisher factory throws providerUnavailable (so the runner keeps raw text)")
   func nilFactoryThrowsProviderUnavailable() async throws {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in nil }
 

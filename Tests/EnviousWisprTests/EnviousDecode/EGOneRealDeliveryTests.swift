@@ -353,18 +353,35 @@ struct EGOneRealDeliveryTests {
     "the Micro size downloads from the public address, a damaged draft model is repaired by fetching the draft folder again and nothing else, and the helper serves from the folders",
     .enabled(if: EGOneRealDeliveryTests.canRun), .timeLimit(.minutes(30)))
   func theMicroSizeDownloadsRepairsAndServes() async throws {
-    let scratch = try #require(Self.scratch).appendingPathComponent("micro", isDirectory: true)
+    try await Self.downloadRepairAndServe(
+      .micro, model: "eg1-micro-delivery-manifest",
+      checker: "eg1-micro-checker-delivery-manifest", label: "micro")
+  }
+
+  @Test(
+    "the Mini size downloads from the public address, a damaged draft model is repaired by fetching the draft folder again and nothing else, and the helper serves from the folders",
+    .enabled(if: EGOneRealDeliveryTests.canRun), .timeLimit(.minutes(30)))
+  func theMiniSizeDownloadsRepairsAndServes() async throws {
+    try await Self.downloadRepairAndServe(
+      .mini, model: "eg1-mini-delivery-manifest",
+      checker: "eg1-mini-checker-delivery-manifest", label: "mini")
+  }
+
+  /// One size whose files all travel whole: download, damage the draft model, repair, serve.
+  private static func downloadRepairAndServe(
+    _ size: EGOneSize, model modelName: String, checker checkerName: String, label: String
+  ) async throws {
+    let scratch = try #require(Self.scratch).appendingPathComponent(label, isDirectory: true)
     try? FileManager.default.removeItem(at: scratch)
     try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
     let appSupport = scratch.appendingPathComponent("app-support", isDirectory: true)
     RequestRecorder.reset()
 
-    let manifest = try Self.manifest("eg1-micro-delivery-manifest")
+    let manifest = try Self.manifest(modelName)
     let model = try EGOneArtifactCatalog.modelRegistration(
-      .micro, manifest: manifest, appSupport: appSupport)
+      size, manifest: manifest, appSupport: appSupport)
     let checker = try EGOneArtifactCatalog.checkerRegistration(
-      .micro, manifest: try Self.manifest("eg1-micro-checker-delivery-manifest"),
-      appSupport: appSupport)
+      size, manifest: try Self.manifest(checkerName), appSupport: appSupport)
     let delivery = Self.controller()
     #expect(await delivery.ensureModelAvailable(model) == .admitted)
     let prefix = "/eg1/\(manifest.identity.revision)/"
@@ -404,7 +421,7 @@ struct EGOneRealDeliveryTests {
         "requests_checker": Self.lines(RequestRecorder.log.dropFirst(beforeChecker)),
         "damaged_file": weights.resolvedInstallPath, "installed_sha256": hashes,
         "staging_removed": true, "helper": served,
-      ], "report-micro.json", in: try #require(Self.scratch))
+      ], "report-\(label).json", in: try #require(Self.scratch))
     try FileManager.default.removeItem(at: scratch)
   }
 }

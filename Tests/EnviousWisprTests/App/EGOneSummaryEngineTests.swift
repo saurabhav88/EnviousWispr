@@ -49,7 +49,7 @@ struct EGOneSummaryEngineTests {
     init(installed: Bool = true, manifest: Bool = true) {
       let egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        engine: LlamaServerEngine(),
+        engine: TestLocalPolishEngine(),
         coordinator: coordinator,
         modelID: .egOne)
       let s1 = LocalPolishRuntime(
@@ -133,7 +133,7 @@ struct EGOneSummaryEngineTests {
     let coordinator = LocalPolishServerCoordinator()
     func runtime(_ model: LocalPolishModelID) -> LocalPolishRuntime {
       let runtime = LocalPolishRuntime(
-        manifest: nil, serverBinaryURL: nil, delivery: nil, engine: LlamaServerEngine(),
+        manifest: nil, serverBinaryURL: nil, delivery: nil, engine: TestLocalPolishEngine.forModel(model),
         coordinator: coordinator, modelID: model)
       runtime.applyInstallStateForTesting(.installed(version: "x"))
       return runtime
@@ -181,6 +181,8 @@ struct EGOneSummaryEngineTests {
       return
     }
     #expect(prepared.window.contextTokens == 8192, "Mini's window, not the full size's")
+    // The saved summary's fingerprint comes from the prepared size, not the live one.
+    #expect(prepared.artifactRevision == "mini|mini-rev")
 
     // The size is changed after the attempt was prepared.
     box.model = .egOne(.full)

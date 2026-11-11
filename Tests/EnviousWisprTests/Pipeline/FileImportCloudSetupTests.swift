@@ -57,7 +57,7 @@ struct FileImportCloudSetupTests {
   {
     let subject = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("en", 0.99) },
       promptPlanner: nil, checkerSelectionProvider: nil,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })

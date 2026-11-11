@@ -87,7 +87,7 @@ struct FileImportBatchTests {
   ) -> FileImportRunner {
     FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
-      egOneRuntime: nil, s1MiniRuntime: nil,
+      egOneRuntime: nil, additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: identify,
       promptPlanner: nil, checkerSelectionProvider: selection,
       makePolisher: { _, _, _, _ in Polisher(capture: capture) })
@@ -413,7 +413,7 @@ struct FileImportBatchTests {
       localPolishers: .llamaForTests.replacingEGOne { _ in
         PromptCapturingPolisher(capture: capture)
       },
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       outputClassifierHolder: nil, languageIdentifier: { _ in ("pl", 0.99) },
       promptPlanner: DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage))
     subject.freeze(settings: FileImportRunnerTests.egOneSnapshot, vocabulary: nil, cloudModelList: nil)

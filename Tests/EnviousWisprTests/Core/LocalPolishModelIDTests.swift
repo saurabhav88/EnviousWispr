@@ -45,7 +45,7 @@ struct LocalPolishModelIDTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store,
+      engine: TestLocalPolishEngine(), defaults: store,
       coordinator: coordinator, modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,

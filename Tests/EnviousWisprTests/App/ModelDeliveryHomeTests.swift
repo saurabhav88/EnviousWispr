@@ -237,7 +237,7 @@ struct ModelDeliveryHomeTests {
 
   @Test(
     "each engine's checker has its own registration, host rule and removal; an unadmitted base fetches nothing",
-    arguments: LearnedWordCheckerEngine.allCases)
+    arguments: LearnedWordCheckerEngine.published)
   func checkerRegistrationAndTriggerGate(engine: LearnedWordCheckerEngine) async throws {
     let home = ModelDeliveryHome(
       engineMutationScope: .live(
@@ -250,7 +250,7 @@ struct ModelDeliveryHomeTests {
       "\(checker.installDirectory.path) is not under \(engine.installFolder)")
     #expect(checker.manifest.identity.family == engine.checkerFamily)
     #expect(ModelDeliveryHome.checkerHostIsConfigured(checker.manifest, engine: engine))
-    let other: LearnedWordCheckerEngine = engine == .egOne ? .s1Mini : .egOne
+    let other: LearnedWordCheckerEngine = engine == .s1Mini ? .egOne(.full) : .s1Mini
     #expect(
       ModelDeliveryHome.checkerHostIsConfigured(checker.manifest, engine: other) == false,
       "a manifest is hosted only for its own engine")
@@ -292,7 +292,12 @@ struct ModelDeliveryHomeTests {
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
-    let baseName = engine == .egOne ? "eg1-delivery-manifest" : "s1-delivery-manifest"
+    let baseName =
+      switch engine {
+      case .egOne(.micro): "eg1-micro-delivery-manifest"
+      case .egOne: "eg1-mlx-delivery-manifest"
+      case .s1Mini: "s1-delivery-manifest"
+      }
     let baseManifest = try DeliveryManifest.load(
       from: Data(
         contentsOf: root.appendingPathComponent(
@@ -317,7 +322,7 @@ struct ModelDeliveryHomeTests {
   /// `EGOneDeliveryAdapter.remove` does for the base (cloud review of #3227).
   @Test(
     "a switched-off checker family refuses removal and leaves its bytes",
-    arguments: LearnedWordCheckerEngine.allCases)
+    arguments: LearnedWordCheckerEngine.published)
   func checkerRemovalHonoursTheDeliverySwitch(engine: LearnedWordCheckerEngine) async throws {
     let suite = try #require(TestDefaults.suite("ew-3105-checker-switch-\(UUID().uuidString)"))
     suite.set(false, forKey: "modelDelivery.\(engine.checkerFamily.rawValue).enabled")

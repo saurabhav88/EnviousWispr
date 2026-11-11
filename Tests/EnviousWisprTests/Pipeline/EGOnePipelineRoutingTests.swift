@@ -50,7 +50,7 @@ struct EGOnePipelineRoutingTests {
 
   private func makeStep(runtime: FakeRuntime?) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime
     return step
@@ -153,7 +153,7 @@ struct EGOnePipelineRoutingTests {
     // error must still surface (adversarial pairing for the new branch).
     let spy = CaptureSpy()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .ollama
+    step.setPolish(provider: .ollama)
     step.llmModel = "llama3.2"
     // #1305: report ready so this stays a MID-FLIGHT surfacing test (the
     // preflight gate would otherwise intercept, and would probe a real socket).

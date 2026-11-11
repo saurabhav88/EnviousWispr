@@ -3,7 +3,7 @@ import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import Foundation
 
-/// One EnviousMeet summary call on the bundled EG-1 server (#4319).
+/// One EnviousMeet summary call on EG-1's EnviousDecode helper (#4319, #4473).
 ///
 /// Deliberately NOT `LocalPolishTransport`: that path is built for a dictation that must never
 /// wait, so it caps a request at 20 seconds and turns every failure into the silent polish skip
@@ -34,9 +34,7 @@ public enum EGOneSummaryCall {
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.timeoutInterval = timeoutSeconds + 10
     request.httpBody = try JSONSerialization.data(
-      withJSONObject: requestBody(
-        instructions: instructions, prompt: prompt,
-        hasLearnedWordAdapter: endpoint.hasLearnedWordAdapter))
+      withJSONObject: requestBody(instructions: instructions, prompt: prompt))
     let data: Data
     let response: URLResponse
     do {
@@ -48,9 +46,9 @@ public enum EGOneSummaryCall {
     }
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     guard status == 200 else {
-      // The planning estimate can undercount EG-1's tokenizer; the bundled llama-server then
-      // answers 400 with type `exceed_context_size_error` and "request (N tokens) exceeds the
-      // available context size". The type is checked first, so new wording still re-plans.
+      // The planning estimate can undercount EG-1's tokenizer; the helper then answers 400
+      // with type `exceed_context_size_error`. The type is checked first, so new wording
+      // still re-plans.
       if status == 400, isContextOverflow(data) {
         throw LLMError.classified(.inputTooLong)
       }
@@ -70,12 +68,11 @@ public enum EGOneSummaryCall {
   }
 
   /// The chat-completions body: system and user as given, the fixed EG-1 model name, the
-  /// summary's output cap and temperature 0, with the learned-word adapter switched off by the
-  /// same owner polish uses.
-  static func requestBody(
-    instructions: String, prompt: String, hasLearnedWordAdapter: Bool
-  ) -> [String: Any] {
-    let body: [String: Any] = [
+  /// summary's output cap and temperature 0. Exactly the fields the helper serves and no
+  /// other (it refuses a field it does not know): the learned-word adapter is a separate model
+  /// tree in the helper and never rides a chat request, so nothing switches it off here.
+  static func requestBody(instructions: String, prompt: String) -> [String: Any] {
+    [
       "model": LLMProvider.egOneModelName,
       "messages": [
         ["role": "system", "content": instructions],
@@ -85,8 +82,6 @@ public enum EGOneSummaryCall {
       "temperature": 0,
       "stream": false,
     ]
-    return EGOneConnector.withLearnedWordAdapterOff(
-      body, hasLearnedWordAdapter: hasLearnedWordAdapter)
   }
 
   /// The answer, or why there is none. A length stop is checked before the content: the bench

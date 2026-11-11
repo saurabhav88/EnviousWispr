@@ -118,12 +118,15 @@ struct EGOneAdapterLifecycleTests {
         spec: .fixture(
           modelID: .singleModel(for: provider), serverBinaryURL: binary, modelURL: model,
           contextTokens: 4096, learnedWordAdapterURL: adapterURL,
-          extraArguments: LlamaServerLaunchBuilder.engineArguments(for: provider),
+          // #4473: the fake server reads llama-server's command line. S1-mini is the model
+          // that still has one; an EG-1 runtime here carries no model flags of its own.
+          extraArguments: provider == .s1Mini
+            ? LlamaServerLaunchBuilder.engineArguments(for: .s1Mini) : [],
           learnedWordAdapterArguments: adapterURL.map {
             Array(
               LlamaServerLaunchBuilder.launchArguments(
-                for: .egOne, learnedWordAdapterURL: $0
-              ).dropFirst(6))
+                for: .s1Mini, learnedWordAdapterURL: $0
+              ).dropFirst(LlamaServerLaunchBuilder.engineArguments(for: .s1Mini).count))
           } ?? []),
         makeArguments: LlamaServerLaunchBuilder.arguments,
         readinessBudgetSeconds: readinessBudgetSeconds)
@@ -155,7 +158,7 @@ struct EGOneAdapterLifecycleTests {
     var available: URL? = nil
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(),
+      engine: TestLocalPolishEngine(),
       learnedWordAdapterProvider: {
         calls += 1
         return available
@@ -287,7 +290,7 @@ struct EGOneAdapterLifecycleTests {
         "max_tokens": cap,
         "temperature": 0,
       ]
-      let actual = try EGOneConnector.makeRequestBody(
+      let actual = try LlamaChatRequest.makeBody(
         system: system, user: user, config: config, hasLearnedWordAdapter: false)
       #expect(
         try JSONSerialization.data(withJSONObject: actual, options: .sortedKeys)
@@ -346,7 +349,7 @@ struct EGOneAdapterLifecycleTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: LlamaServerEngine(),
+      engine: TestLocalPolishEngine(),
       defaults: store, coordinator: coordinator,
       learnedWordAdapterProvider: { fixture.adapter })
     let activation = try #require(runtime.activateAndProbe())
@@ -498,6 +501,27 @@ struct EGOneAdapterLifecycleTests {
     #expect(try fixture.launches().count == 1, "only the summary's EG-1 ever launched")
     #expect(await coordinator.endpoint(for: .s1Mini) == nil)
     #expect(await coordinator.reserveForSummary(.egOne) == .cancelled)
+  }
+
+  // Quitting the app must take the resident model server with it, or a multi-GB process outlives the app.
+  @Test("app quit stops the resident server process")
+  func appQuitStopsTheResidentServer() async throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanup() }
+    let coordinator = LocalPolishServerCoordinator()
+    await coordinator.transition(
+      to: .run(LocalPolishTarget(configuration: fixture.configuration())),
+      intent: coordinator.claimIntent())
+    try #require(await coordinator.endpoint(for: .egOne) != nil, "fake server never became ready")
+    let pid = try fixture.lastPID()
+    try #require(kill(pid, 0) == 0, "the server process was not running before the quit")
+
+    // The runtime's `terminateServerForAppQuit()` is this call, forwarded.
+    coordinator.terminateForAppQuit()
+
+    try await EnviousDecodeEngineTests.signal("the server process to be gone", within: 5) {
+      kill(pid, 0) != 0
+    }
   }
 
   @Test("switching to S1 and back boots EG-1 with the latest adapter set")
@@ -652,7 +676,7 @@ struct EGOneOutsideStopRecoveryTests {
     #expect(try fixture.launches().count == 1, "an outside stop must not restart on its own")
     #expect(
       await manager.probeHealth(
-        operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
+        operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
         == .yellow(reason: "stopped_outside"))
 
     // Repeated outside stops never reach the session give-up.
@@ -934,7 +958,7 @@ struct EGOneRecordingRecoveryTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: LlamaServerEngine(),
+      engine: TestLocalPolishEngine(),
       defaults: store, coordinator: coordinator)
     let recorder = AppliedRecorder()
     runtime.onLifecycleAppliedForTesting = { recorder.record($0) }
@@ -1086,7 +1110,7 @@ struct EGOneRecordingRecoveryTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine())
+      engine: TestLocalPolishEngine())
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block health")
     runtime.applyInstallStateForTesting(.installed(version: nil))
     let first = LocalPolishEndpoint(port: 1, authToken: "a", contextTokens: 1)
@@ -1109,7 +1133,7 @@ struct EGOneRecordingRecoveryTests {
   func lateEventsAndOneSamplePerStop(provider: LLMProvider) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), modelID: .singleModel(for: provider))
+      engine: TestLocalPolishEngine.forModel(.singleModel(for: provider)), modelID: .singleModel(for: provider))
     var samples = 0
     var pressure: OutsideStopContext.MemoryPressure? = .normal
     runtime.memoryPressureLevel = {
@@ -1155,7 +1179,7 @@ struct EGOneRecordingRecoveryTests {
   func pressureLevels(level: OutsideStopContext.MemoryPressure) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine())
+      engine: TestLocalPolishEngine())
     runtime.memoryPressureLevel = { level }
     runtime.receive(
       LocalPolishLifecycleEvent(
@@ -1228,7 +1252,7 @@ struct EGOneRecordingRecoveryTests {
     _ runtime: any EGOneLeaseProviding, polisher: (any TranscriptPolisher)? = nil
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = runtime
     if let polisher { step.makeEGOnePolisher = { _ in polisher } }
@@ -1401,7 +1425,7 @@ struct EGOneRecordingRecoveryTests {
   func unacceptedStopHasUnknownPressure() {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine())
+      engine: TestLocalPolishEngine())
     var samples = 0
     runtime.memoryPressureLevel = {
       samples += 1
@@ -1559,7 +1583,7 @@ extension EGOneAdapterLifecycleTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: LlamaServerEngine(),
+      engine: TestLocalPolishEngine(),
       defaults: store, coordinator: coordinator)
 
     guard case .granted(let reservation) = await runtime.reserveServerForSummary() else {
@@ -1831,7 +1855,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
       serverBinaryURL: fixture.binary, delivery: delivery,
-      engine: LlamaServerEngine(),
+      engine: TestLocalPolishEngine.forModel(.singleModel(for: provider)),
       defaults: store, coordinator: LocalPolishServerCoordinator(),
       modelID: .singleModel(for: provider))
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")

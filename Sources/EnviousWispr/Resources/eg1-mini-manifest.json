@@ -1,0 +1,9 @@
+{
+  "modelName": "eg-1",
+  "version": "eg1-mini-1.0-g3onestage",
+  "contextTokens": 16384,
+  "promptTemplateID": "eg1-v2-named-language",
+  "downloadURL": "https://models.enviouswispr.com/eg1/eg1-mini-1.0-g3onestage/",
+  "licenseURL": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt",
+  "displayVersion": "1.0"
+}

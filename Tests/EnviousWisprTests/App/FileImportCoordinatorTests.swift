@@ -1350,7 +1350,7 @@ struct FileImportCoordinatorTests {
       localPolishers: .llamaForTests.replacingEGOne { _ in
         PromptCapturingPolisher(capture: capture)
       },
-      egOneRuntime: ReadyEGOneRuntime(), s1MiniRuntime: nil,
+      egOneRuntime: ReadyEGOneRuntime(), additionalLocalRuntimes: [:], s1MiniRuntime: nil,
       // Polish only for the SAVED raw text: a second pass fed the first pass's cleaned output
       // (which differs from the raw text) would read as English and name nothing.
       outputClassifierHolder: nil,

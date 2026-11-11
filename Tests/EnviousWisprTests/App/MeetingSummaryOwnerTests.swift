@@ -803,6 +803,47 @@ struct MeetingSummaryOwnerTests {
     #expect(rig.owner.isOutOfDate(id))
   }
 
+  // A size changed while a summary is written must never leave it saved under the wrong size's identity.
+  @Test("a summary written under its attempt's revision is saved with it; a revision changed meanwhile saves nothing")
+  func theSavedSummaryKeepsItsAttemptRevision() async throws {
+    func prepared(_ world: World) {
+      world.prepareOverride = {
+        .success(
+          MeetingSummaryProviders.Prepared(
+            execution: world.execution, window: world.window,
+            complete: { @MainActor _, prompt in try await world.call(prompt) },
+            artifactRevision: "mini|rev"))
+      }
+    }
+    // Control: nothing changes, so the summary is saved under the attempt's revision.
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    rig.world.artifactRevision = "mini|rev"
+    prepared(rig.world)
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .hosted)])
+    let inputs = try #require(try rig.manifest(id).summary?.inputs)
+    #expect(
+      inputs.configurationSHA256
+        == MeetingSummary.configurationFingerprint(
+          provider: .openAI, model: "gpt-4o-mini", artifactRevision: "mini|rev"))
+
+    // The revision changes while the call is out: the attempt is stale and nothing is saved.
+    let other = try Rig()
+    let otherID = try other.readyMeeting()
+    other.world.artifactRevision = "mini|rev"
+    prepared(other.world)
+    other.world.holdCalls = true
+    _ = await Self.schedule(other, otherID)
+    await Self.eventually("calling") { other.world.callsWaiting == 1 }
+    other.world.artifactRevision = "full-rev"
+    other.world.releaseCall()
+    await Self.eventually("finished") { other.world.finished.count == 1 }
+    #expect(other.world.finished == [Self.row(.stale, .hosted)])
+    #expect(try other.manifest(otherID).summary == nil)
+  }
+
   @Test("deleting a meeting ends its summary: one cancelled row, nothing written")
   func deletion() async throws {
     let rig = try Rig()

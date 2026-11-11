@@ -126,7 +126,7 @@ struct WordCheckRuntimeResidencyTests {
     withCheck.recoveryStarted(needsWordCheck: true)
     #expect(withCheck.loadAttemptsForTests == 1)
     let (ownCheck, _) = try admittedIdle()
-    ownCheck.recoveryStarted(needsWordCheck: LearnedWordCheckerEngine(provider: .egOne) == nil)
+    ownCheck.recoveryStarted(needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(.egOne))
     #expect(ownCheck.loadAttemptsForTests == 0)
   }
 
@@ -140,7 +140,7 @@ struct WordCheckRuntimeResidencyTests {
   func recordStart(provider: LLMProvider, loads: Int) throws {
     let (runtime, _) = try admittedIdle()
     runtime.recordingStarted(
-      needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
+      needsWordCheckForRecording: !LearnedWordCheckerEngine.hasOwnChecker(provider))
     #expect(runtime.loadAttemptsForTests == loads, "\(provider)")
   }
 
@@ -161,7 +161,7 @@ struct WordCheckRuntimeResidencyTests {
     withCheck.fileImportStarted(needsWordCheck: true)
     #expect(withCheck.loadAttemptsForTests == 1)
     let (ownCheck, _) = try admittedIdle()
-    ownCheck.fileImportStarted(needsWordCheck: LearnedWordCheckerEngine(provider: .egOne) == nil)
+    ownCheck.fileImportStarted(needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(.egOne))
     #expect(ownCheck.loadAttemptsForTests == 0)
   }
 

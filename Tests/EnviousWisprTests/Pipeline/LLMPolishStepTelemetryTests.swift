@@ -96,7 +96,7 @@ struct LLMPolishStepTelemetryTests {
   ) -> LLMPolishStep {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: telemetry)
-    step.llmProvider = provider
+    step.setPolish(provider: provider)
     step.llmModel = model
     return step
   }
@@ -207,7 +207,7 @@ struct LLMPolishStepTelemetryTests {
     let step = makeStep(provider: .egOne, telemetry: spy.seams)
     // No egOneRuntime injected -> egOneSkipped(.notReady), not providerInitFailed.
     // Use a provider whose makePolisher legitimately returns nil instead.
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.makePolisher = { _, _, _, _ in nil }
 
     await #expect(throws: LLMError.self) {
@@ -598,7 +598,7 @@ struct LLMPolishStepLanguageHintTests {
   ) -> LLMPolishStep {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: spy.seams)
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime(ready: ready, contextTokens: contextTokens)
     step.promptPlanner = DefaultPromptPlanner(egOneFamily: family)
@@ -738,7 +738,7 @@ struct LLMPolishStepLanguageHintTests {
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       telemetry: .silent(wrapping: spy.seams))
-    step.llmProvider = .egOne
+    step.setPolish(provider: .egOne)
     step.llmModel = LLMProvider.egOneModelName
     step.egOneRuntime = Runtime()
     step.promptPlanner = DefaultPromptPlanner(egOneFamily: .egOneEnvelopeNamedLanguage)

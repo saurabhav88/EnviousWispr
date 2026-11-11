@@ -188,13 +188,14 @@ struct LearnFromEditsRowTests {
         manifestBundle: try #require(Bundle(url: resources)),
         appSupportOverride: dir.appendingPathComponent("delivery", isDirectory: true)),
       engines: [
-        .egOne: .init(
+        .egOne(.full): .init(
           base: nil, promptTemplateID: nil,
           runtime: LocalPolishRuntime(
             manifest: nil, serverBinaryURL: nil, delivery: nil,
-            engine: LlamaServerEngine()),
+            engine: TestLocalPolishEngine()),
           debugThreshold: nil)
-      ])
+      ],
+      currentModel: { .singleModel(for: $0) })
     let enabled = host(
       LearningSection().environment(settings).environment(contacts).environment(checker)
         .environment(words)

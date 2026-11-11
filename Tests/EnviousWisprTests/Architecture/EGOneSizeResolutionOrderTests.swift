@@ -24,4 +24,24 @@ struct EGOneSizeResolutionOrderTests {
     let delivery = try only("let modelDelivery = ModelDeliveryHome(")
     #expect(settings < resolution && resolution < delivery)
   }
+
+  // A leftover server of any size is cleared before the launch size starts, or the user's first polish hits a stale one.
+  @Test func theLaunchSweepCoversBothServersAndRunsBeforeAnyRuntimeStarts() throws {
+    let source = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift"),
+      encoding: .utf8)
+    let sweeps = source.ranges(of: "reapOrphansIfIdle(")
+    try #require(sweeps.count == 1, "reapOrphansIfIdle( appears \(sweeps.count) times")
+    let sweep = sweeps[0].lowerBound
+
+    // The loop that makes the call names both server binaries.
+    let loopHeads = source.ranges(of: "for binary in [llamaServerBinaryURL, egOneHelperURL]")
+    try #require(loopHeads.count == 1, "the sweep loop appears \(loopHeads.count) times")
+    #expect(loopHeads[0].lowerBound < sweep)
+    #expect(source.distance(from: loopHeads[0].lowerBound, to: sweep) < 400, "the call is in that loop")
+
+    let starts = source.ranges(of: "startIfActiveProvider()").map(\.lowerBound)
+    #expect(starts.allSatisfy { $0 > sweep }, "a runtime starts before the sweep")
+    #expect(starts.contains { $0 > sweep }, "no runtime start follows the sweep")
+  }
 }

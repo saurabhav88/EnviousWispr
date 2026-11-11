@@ -195,7 +195,7 @@ struct OutsideStopChildTelemetryTests {
   ) -> (LocalPolishRuntime, Box) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), modelID: .singleModel(for: provider))
+      engine: TestLocalPolishEngine.forModel(.singleModel(for: provider)), modelID: .singleModel(for: provider))
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {

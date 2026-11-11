@@ -105,7 +105,7 @@ struct TextProcessingRunnerCaptureTests {
     throwing makeError: @escaping @Sendable () -> any Error
   ) -> LLMPolishStep {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = provider
+    step.setPolish(provider: provider)
     step.llmModel = model
     step.makePolisher = { _, _, _, _ in ThrowingPolisher(makeError: makeError) }
     // #1305: the .ollama entry gate consults a readiness probe before the
@@ -585,8 +585,8 @@ struct TextProcessingRunnerCaptureTests {
     let step = makeStep(provider: .openAI, model: "gpt-4o-mini") {
       LLMError.egOneSkipped(.notReady)
     }
-    step.llmProvider = .openAI
-    step.onWillProcess = { step.llmProvider = .egOne }
+    step.setPolish(provider: .openAI)
+    step.onWillProcess = { step.setPolish(provider: .egOne) }
 
     _ = try await runner.run(
       rawText: Self.longTranscript, evidence: .locked("en"), targetAppName: nil, steps: [step])
@@ -802,7 +802,7 @@ struct TextProcessingRunnerCaptureTests {
     let skips = SkipSpy()
     let runner = makeRunner(spy, records, skips)
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
     step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
 

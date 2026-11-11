@@ -1,6 +1,7 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprEG1Engine
 import EnviousWisprLLM
 import EnviousWisprLivePreview
 import EnviousWisprLlamaEngine
@@ -521,29 +522,106 @@ package final class WisprBootstrapper {
     // recognizes it by exact size + digest, records the owed replacement,
     // deletes it, and asks the adapter for the normal download; fresh
     // installs land in the owned `Models/eg-1` home.
-    let egOneManifest = try? EGOneManifest.loadBundled()
-    let egOneServerBinaryURL = Bundle.main.url(forResource: "llama-server", withExtension: nil)
     let egOneAppSupport = FileManager.default.urls(
       for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    var egOneAdapter: EGOneDeliveryAdapter?
-    var egOneUpgrade: (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
-    if let deliveryManifest = try? DeliveryManifest.loadBundled(resource: "eg1-delivery-manifest") {
-      let registration = DeliveryRegistration(
-        manifest: deliveryManifest,
-        installDirectory: egOneAppSupport.appendingPathComponent(
-          "EnviousWispr/Models/eg-1", isDirectory: true),
-        metadataDirectory: egOneAppSupport.appendingPathComponent(
-          "EnviousWispr/ModelDelivery", isDirectory: true))
-      let adapter = EGOneDeliveryAdapter(
-        controller: modelDelivery.controller,
-        registration: registration,
-        version: egOneManifest?.resolvedDisplayVersion)  // #2109: label, not revision
-      egOneAdapter = adapter
+    // S1-mini's server, and (#4473) EG-1's: the EnviousDecode helper in `Contents/MacOS`.
+    let llamaServerBinaryURL = Bundle.main.url(forResource: "llama-server", withExtension: nil)
+    let egOneHelperURL = Bundle.main.url(forAuxiliaryExecutable: "envious-decode")
+    // ONE coordinator for every local polish model: one-model-at-a-time is a property of the
+    // set, and two coordinators would each own a process (#2649).
+    let localPolishCoordinator = LocalPolishServerCoordinator()
+    #if DEBUG
+      let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
+      // #4473: EG-1's GGUF adapter door is retired; asking it logs the refusal when its keys
+      // are set. S1-mini's door is unchanged.
+      if debugScriptedChecker == nil {
+        _ = LearnedWordCheckAdapterDoor.configuration(.egOne(.full))
+      }
+      let debugS1LearnedWordAdapter =
+        debugScriptedChecker == nil
+        ? LearnedWordCheckAdapterDoor.configuration(.s1Mini) : nil
+    #else
+      let debugScriptedChecker: (any LearnedWordChecking)? = nil
+      let debugS1LearnedWordAdapter: (url: URL, threshold: Double)? = nil
+    #endif
 
+    // #4473: one EG-1 size on the EnviousDecode engine. Each size is its own model: its own
+    // runtime facts, delivery registration (model folder plus draft model), engine, checker
+    // adapter and persisted keys. Only the server coordinator is shared.
+    struct EGOneSizeWiring {
+      let facts: EGOneManifest?
+      let registration: DeliveryRegistration?
+      let adapter: EGOneDeliveryAdapter?
+      let runtime: LocalPolishRuntime
+    }
+    func makeEGOne(_ size: EGOneSize, facts factsResource: String, delivery deliveryResource: String)
+      -> EGOneSizeWiring
+    {
+      let facts = try? EGOneManifest.loadBundled(resourceName: factsResource)
+      let registration = (try? DeliveryManifest.loadBundled(resource: deliveryResource)).flatMap {
+        try? EGOneArtifactCatalog.modelRegistration(
+          size, manifest: $0, appSupport: egOneAppSupport)
+      }
+      let adapter = registration.map {
+        EGOneDeliveryAdapter(
+          controller: modelDelivery.controller, registration: $0,
+          version: facts?.resolvedDisplayVersion)  // #2109: label, not revision
+      }
+      // The engine is handed FOLDERS, decided by the catalog from the admitted registration.
+      let folders = registration.flatMap { EGOneArtifactCatalog.launchFolders(for: $0) }
+      let checker = LearnedWordCheckerEngine.egOne(size)
+      let runtime = LocalPolishRuntime(
+        manifest: facts?.runtimeFacts(
+          expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
+        serverBinaryURL: egOneHelperURL, delivery: adapter,
+        engine: registration.map { EGOneArtifactCatalog.engine(for: $0) }
+          ?? EGOneArtifactCatalog.unregisteredEngine(size, appSupport: egOneAppSupport),
+        coordinator: localPolishCoordinator, modelID: .egOne(size),
+        launchLocation: { folders?.model },
+        learnedWordAdapterProvider: {
+          guard let registration, let promptTemplateID = facts?.promptTemplateID else {
+            return nil
+          }
+          return await modelDelivery.admittedCompatibleCheckerURL(
+            engine: checker, baseRegistration: registration, promptTemplateID: promptTemplateID)
+        })
+      // Active means: this exact size is what new dictation freezes.
+      runtime.isActiveProvider = { [weak settings] in
+        guard let settings else { return false }
+        return settings.polishModelID(for: settings.llmProvider) == .egOne(size)
+      }
+      runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
+      runtime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(checker) }
+      return EGOneSizeWiring(
+        facts: facts, registration: registration, adapter: adapter, runtime: runtime)
+    }
+    // Every size is published and has its own runtime; a take is polished by the size it
+    // was frozen on, never by another one.
+    let egOneFull = makeEGOne(.full, facts: "eg1-manifest", delivery: "eg1-mlx-delivery-manifest")
+    let egOneMicro = makeEGOne(
+      .micro, facts: "eg1-micro-manifest", delivery: "eg1-micro-delivery-manifest")
+    let egOneMini = makeEGOne(
+      .mini, facts: "eg1-mini-manifest", delivery: "eg1-mini-delivery-manifest")
+    /// The sizes other than full, which the upgrade coordinator below owns.
+    let egOneOtherSizes: [(size: EGOneSize, wiring: EGOneSizeWiring)] = [
+      (.mini, egOneMini), (.micro, egOneMicro),
+    ]
+    let egOneManifests: [LocalPolishModelID: EGOneManifest] = [
+      LocalPolishModelID.egOne(.full): egOneFull.facts,
+      LocalPolishModelID.egOne(.mini): egOneMini.facts,
+      LocalPolishModelID.egOne(.micro): egOneMicro.facts,
+    ].compactMapValues { $0 }
+    let egOneRuntime = egOneFull.runtime
+
+    // The upgrade coordinator belongs to the FULL size, whatever size the user prefers: it
+    // replaces the installed llama EG-1 (and, before it, the one shipped monolith, #1386) with
+    // the full size's current revision in the same `Models/eg-1` home.
+    var egOneUpgrade: (registration: DeliveryRegistration, coordinator: EGOneUpgradeCoordinator)?
+    if let registration = egOneFull.registration, let adapter = egOneFull.adapter {
       let coordinator = EGOneUpgradeCoordinator(
         adapter: adapter,
         appSupportDirectory: egOneAppSupport,
-        identity: deliveryManifest.identity,
+        identity: registration.manifest.identity,
         installDirectory: registration.installDirectory,
         isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
       // `selected_provider` attaches here (settings in scope); coordinator
@@ -552,35 +630,6 @@ package final class WisprBootstrapper {
         selectedProvider: { [weak settings] in settings?.llmProvider == .egOne })
       egOneUpgrade = (registration, coordinator)
     }
-    #if DEBUG
-      let debugScriptedChecker = LearnedWordCheckUATDoor.configuration()
-      let debugLearnedWordAdapter =
-        debugScriptedChecker == nil
-        ? LearnedWordCheckAdapterDoor.configuration(.egOne) : nil
-      let debugS1LearnedWordAdapter =
-        debugScriptedChecker == nil
-        ? LearnedWordCheckAdapterDoor.configuration(.s1Mini) : nil
-    #else
-      let debugScriptedChecker: (any LearnedWordChecking)? = nil
-      let debugLearnedWordAdapter: (url: URL, threshold: Double)? = nil
-      let debugS1LearnedWordAdapter: (url: URL, threshold: Double)? = nil
-    #endif
-    let learnedWordAdapterProvider: @MainActor () async -> URL? = {
-      if let debugLearnedWordAdapter { return debugLearnedWordAdapter.url }
-      guard let base = egOneUpgrade?.registration,
-        let promptTemplateID = egOneManifest?.promptTemplateID
-      else { return nil }
-      return await modelDelivery.admittedCompatibleCheckerURL(
-        engine: .egOne, baseRegistration: base, promptTemplateID: promptTemplateID)
-    }
-    let egOneRuntime = LocalPolishRuntime(
-      manifest: egOneManifest?.runtimeFacts(
-        expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
-      serverBinaryURL: egOneServerBinaryURL, delivery: egOneAdapter,
-      engine: LlamaServerEngine(),
-      learnedWordAdapterProvider: learnedWordAdapterProvider)
-    egOneRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .egOne }
-    egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
     if let egOneUpgrade {
       // First-run baseline (#1348 §16.2) → legacy launch table → the RUNTIME
       // decides if the completed replacement boots the server (PR #1500 P1).
@@ -591,10 +640,23 @@ package final class WisprBootstrapper {
         await egOneUpgrade.coordinator.runLaunch()
         egOneRuntime.activateAfterAutomaticReplacementIfNeeded()
         // #3105: the word check follows the installed base, selected or not.
-        if let prompt = egOneManifest?.promptTemplateID {
+        if let prompt = egOneFull.facts?.promptTemplateID {
           _ = await delivery.ensureCheckerAdapter(
-            engine: .egOne, baseRegistration: egOneUpgrade.registration,
+            engine: .egOne(.full), baseRegistration: egOneUpgrade.registration,
             promptTemplateID: prompt)
+        }
+      }
+    }
+    for (size, wiring) in egOneOtherSizes {
+      guard let registration = wiring.registration else { continue }
+      let delivery = modelDelivery
+      let prompt = wiring.facts?.promptTemplateID
+      Task {
+        await delivery.controller.sweepSupersededStaging(registration)
+        await delivery.recordFirstRunBaseline(for: registration)
+        if let prompt {
+          _ = await delivery.ensureCheckerAdapter(
+            engine: .egOne(size), baseRegistration: registration, promptTemplateID: prompt)
         }
       }
     }
@@ -611,7 +673,7 @@ package final class WisprBootstrapper {
     // EG-1 monolith, and S1-mini has no predecessor to retire.
     let s1Manifest = try? EGOneManifest.loadBundled(resourceName: "s1-manifest")
     // #3105: hoisted, because S1-mini's word check pins this registration's
-    // admitted base exactly as EG-1's pins `egOneUpgrade.registration`.
+    // admitted base exactly as EG-1's pins its own registration.
     let s1BaseRegistration = (try? DeliveryManifest.loadBundled(resource: "s1-delivery-manifest"))
       .map { s1DeliveryManifest in
         DeliveryRegistration(
@@ -626,8 +688,8 @@ package final class WisprBootstrapper {
         controller: modelDelivery.controller, registration: $0,
         version: s1Manifest?.resolvedDisplayVersion)
     }
-    // #3105: S1-mini's word check (D5): the Debug door first, as EG-1, then the
-    // delivered adapter pinned to the admitted S1-mini base.
+    // #3105: S1-mini's word check (D5): the Debug door first, then the delivered adapter
+    // pinned to the admitted S1-mini base.
     let s1LearnedWordAdapterProvider: @MainActor () async -> URL? = {
       if let debugS1LearnedWordAdapter { return debugS1LearnedWordAdapter.url }
       guard let base = s1BaseRegistration, let promptTemplateID = s1Manifest?.promptTemplateID
@@ -638,11 +700,10 @@ package final class WisprBootstrapper {
     let s1MiniRuntime = LocalPolishRuntime(
       manifest: s1Manifest?.runtimeFacts(
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
-      serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
+      serverBinaryURL: llamaServerBinaryURL, delivery: s1Adapter,
       engine: LlamaServerEngine(),
-      coordinator: egOneRuntime.serverCoordinator, modelID: .singleModel(for: .s1Mini),
+      coordinator: localPolishCoordinator, modelID: .singleModel(for: .s1Mini),
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
-    egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }
     s1MiniRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.s1Mini) }
     s1MiniRuntime.isActiveProvider = { [weak settings] in settings?.llmProvider == .s1Mini }
     // #2649 (cloud review): the second engine reports through the same bridge,
@@ -650,35 +711,34 @@ package final class WisprBootstrapper {
     // sweep did not cover: every `egOneRuntime.<property> =` needs its twin.
     s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)
     let localPolishRuntimes = LocalPolishRuntimeSet(
-      egOne: egOneRuntime, s1Mini: s1MiniRuntime)
+      egOne: egOneRuntime, s1Mini: s1MiniRuntime,
+      additional: egOneOtherSizes.map(\.wiring.runtime))
+    // #4473: the runtime handles of the EG-1 sizes other than full, by exact model, for the
+    // polish step of live dictation, crash recovery and file import.
+    let additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [
+      .egOne(.mini): egOneMini.runtime,
+      .egOne(.micro): egOneMicro.runtime,
+    ]
     // #4473: the one place that names the engine behind each bundled model. Live dictation,
     // crash recovery and file import all receive this same pair; the pipeline builds no
-    // connector of its own.
+    // connector of its own. EG-1 (every size) speaks to the EnviousDecode helper.
     let localPolishers = BundledLocalPolisherFactories(
       egOne: { EGOneConnector(endpoint: $0) },
       s1Mini: { S1MiniConnector(endpoint: $0) })
 
-    // Exactly one path sweeps orphans — a detached sweep alongside a spawn
-    // would race it and kill the fresh server (Codex r10 P1).
-    // #2649: whichever local engine is selected starts; the other only sweeps.
-    // Starting both would put two models in the coordinator's start path at
-    // launch, and the second would evict the first the user actually chose.
-    switch settings.llmProvider {
-    case .egOne:
-      egOneRuntime.startIfActiveProvider()
-      s1MiniRuntime.sweepStaleServersAtLaunch()
-    case .s1Mini:
-      s1MiniRuntime.startIfActiveProvider()
-      egOneRuntime.sweepStaleServersAtLaunch()
-    // No bundled server is the active provider, so neither starts and BOTH
-    // sweep. #2651: the `default:` this replaces swept EG-1 only, so an S1-mini
-    // server left running from a previous launch survived every subsequent
-    // launch under a cloud provider, Ollama, Apple Intelligence or Off. Nothing
-    // spawns on this arm, so the race the comment above guards against cannot
-    // occur here.
-    case .openAI, .gemini, .claude, .ollama, .appleIntelligence, .none:
-      egOneRuntime.sweepStaleServersAtLaunch()
-      s1MiniRuntime.sweepStaleServersAtLaunch()
+    // #4473: ONE ordered pass over BOTH child binaries, then the one activation. A child left
+    // by a crashed launch is reaped only while nothing is starting (the reap is idle-gated in
+    // the process manager), so the sweeps must finish before the selected model starts; the
+    // per-runtime fire-and-forget sweeps this replaces could be skipped by that gate.
+    // Whichever local model new dictation freezes is the one that starts; none for a cloud
+    // provider, Ollama, Apple Intelligence or Off (#2651: both binaries are still swept).
+    let launchModel = settings.polishModelID(for: settings.llmProvider)
+    Task {
+      for binary in [llamaServerBinaryURL, egOneHelperURL] {
+        guard let path = binary?.path else { continue }
+        await localPolishCoordinator.reapOrphansIfIdle(binaryPath: path)
+      }
+      localPolishRuntimes.runtime(for: launchModel)?.startIfActiveProvider()
     }
 
     // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared
@@ -717,6 +777,7 @@ package final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
+        additionalLocalRuntimes: additionalLocalRuntimes,
         s1MiniRuntime: s1MiniRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
@@ -787,6 +848,7 @@ package final class WisprBootstrapper {
         dictationAudioArchiveOptInProvider: { settings.isDictationAudioArchiveEnabled },
         microphonePermissionIsDenied: { permissions.microphonePermissionIsDenied },
         egOneRuntime: egOneRuntime,
+        additionalLocalRuntimes: additionalLocalRuntimes,
         s1MiniRuntime: s1MiniRuntime,
         batchDecodeFaultController: batchDecodeFaultController,
         escapeRecovery: EscapeRecoveryWiring.wire(transcriptCoordinator),
@@ -871,17 +933,27 @@ package final class WisprBootstrapper {
     let checkerEligibility = LearnedWordCheckerEligibility(
       delivery: modelDelivery,
       engines: [
-        .egOne: .init(
-          base: egOneUpgrade?.registration, promptTemplateID: egOneManifest?.promptTemplateID,
-          runtime: egOneRuntime, debugThreshold: debugLearnedWordAdapter?.threshold),
+        // #4473: one row per PUBLISHED EG-1 size, each with its own base and runtime.
+        .egOne(.full): .init(
+          base: egOneFull.registration, promptTemplateID: egOneFull.facts?.promptTemplateID,
+          runtime: egOneFull.runtime, debugThreshold: nil),
+        .egOne(.mini): .init(
+          base: egOneMini.registration, promptTemplateID: egOneMini.facts?.promptTemplateID,
+          runtime: egOneMini.runtime, debugThreshold: nil),
+        .egOne(.micro): .init(
+          base: egOneMicro.registration, promptTemplateID: egOneMicro.facts?.promptTemplateID,
+          runtime: egOneMicro.runtime, debugThreshold: nil),
         .s1Mini: .init(
           base: s1BaseRegistration, promptTemplateID: s1Manifest?.promptTemplateID,
           runtime: s1MiniRuntime, debugThreshold: debugS1LearnedWordAdapter?.threshold),
       ],
+      currentModel: { [settings] in settings.polishModelID(for: $0) },
       debugScriptedChecker: debugScriptedChecker)
-    egOneRuntime.onEvent = { event in
-      EGOneTelemetryBridge.handler(engine: .egOne)(event)
-      Task { @MainActor in checkerEligibility.statusDidChange() }
+    for runtime in [egOneFull.runtime] + egOneOtherSizes.map(\.wiring.runtime) {
+      runtime.onEvent = { event in
+        EGOneTelemetryBridge.handler(engine: .egOne)(event)
+        Task { @MainActor in checkerEligibility.statusDidChange() }
+      }
     }
     s1MiniRuntime.onEvent = { event in
       EGOneTelemetryBridge.handler(engine: .s1Mini)(event)
@@ -894,9 +966,10 @@ package final class WisprBootstrapper {
     // Selection and import activation never fetch.
     Task { await checkerEligibility.requestAdapterDownload(for: .s1Mini) }
     let runtimes: [LearnedWordCheckerEngine: LocalPolishRuntime] = [
-      .egOne: egOneRuntime, .s1Mini: s1MiniRuntime,
+      .egOne(.full): egOneFull.runtime, .egOne(.mini): egOneMini.runtime,
+      .egOne(.micro): egOneMicro.runtime, .s1Mini: s1MiniRuntime,
     ]
-    for engine in LearnedWordCheckerEngine.allCases {
+    for engine in LearnedWordCheckerEngine.published {
       guard let checkerIdentity = modelDelivery.checkerRegistrations[engine]?.manifest.identity,
         let runtime = runtimes[engine]
       else { continue }
@@ -937,6 +1010,7 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       egOneRuntime: egOneRuntime,
+      additionalRuntimes: egOneOtherSizes.map(\.wiring.runtime),
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: { [checkerEligibility] model, language in
         await checkerEligibility.selection(model: model, language: language)
@@ -966,8 +1040,8 @@ package final class WisprBootstrapper {
       isDictionaryEnabled: { [weak settings] in settings?.wordCorrectionEnabled ?? false },
       someEngineLacksOwnChecker: { [weak settings] in
         guard let settings else { return false }
-        return LearnedWordCheckerEngine(provider: settings.llmProvider) == nil
-          || LearnedWordCheckerEngine(provider: settings.effectiveFileImportLLMProvider) == nil
+        return !LearnedWordCheckerEngine.hasOwnChecker(settings.llmProvider)
+          || !LearnedWordCheckerEngine.hasOwnChecker(settings.effectiveFileImportLLMProvider)
       },
       isOnboardingComplete: { [weak settings] in settings?.onboardingState == .completed })
     wordCheck.onStatusChange = { [checkerEligibility] in checkerEligibility.statusDidChange() }
@@ -1445,6 +1519,7 @@ package final class WisprBootstrapper {
       localPolishers: localPolishers,
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
+      additionalLocalRuntimes: additionalLocalRuntimes,
       s1MiniRuntime: s1MiniRuntime,
       checkerSelectionProvider: { [checkerEligibility] model, language in
         await checkerEligibility.selection(model: model, language: language)
@@ -1454,12 +1529,12 @@ package final class WisprBootstrapper {
       // #3853: and the output classifier counts the replay as a consumer, by the same provider.
       onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider in
         checkerEligibility?.wordCheck?.recoveryStarted(
-          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryStarted(provider: provider, settings: settings)
       },
       onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider in
         checkerEligibility?.wordCheck?.recoveryFinished(
-          needsWordCheck: LearnedWordCheckerEngine(provider: provider) == nil)
+          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
@@ -2042,7 +2117,7 @@ package final class WisprBootstrapper {
             ?? whisperKernelDriver?.currentSessionConfig
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
-          needsWordCheckForRecording: LearnedWordCheckerEngine(provider: config.llmProvider) == nil)
+          needsWordCheckForRecording: !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
         // #4473: the take's exact model. A size no runtime serves gets none, never another's.
         localPolishRuntimes.runtime(for: config.polishModelID)?.recordingStarted()
       }
@@ -2084,6 +2159,7 @@ package final class WisprBootstrapper {
       keychainManager: keychainManager,
       localPolishers: localPolishers,
       egOneRuntime: egOneRuntime,
+      additionalLocalRuntimes: additionalLocalRuntimes,
       s1MiniRuntime: s1MiniRuntime,
       // #2648, cloud review: the SAME output-safety classifier live dictation
       // and crash recovery get. Without it an imported part polished by Apple
@@ -2103,7 +2179,7 @@ package final class WisprBootstrapper {
     // start moves the epoch, so a probe measured across it is discarded. The coordinator's
     // reservation already refuses a probe; this keeps a verdict from a probe admitted just
     // before from being published.
-    for runtime in [egOneRuntime, s1MiniRuntime] {
+    for runtime in localPolishRuntimes.all {
       runtime.isSharedEngineBusy = { [weak engineLease, localPolishRuntimes] in
         (engineLease?.isBusy ?? false) || localPolishRuntimes.summaryHeldProvider != nil
       }
@@ -2321,8 +2397,8 @@ package final class WisprBootstrapper {
         // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
         // it loading or ready. Opening the page or a refused claim never reaches this line.
         checkerEligibility.wordCheck?.fileImportStarted(
-          needsWordCheck: LearnedWordCheckerEngine(
-            provider: LLMProvider(rawValue: snapshot.llmProvider) ?? .none) == nil)
+          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+            LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
         var configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
           ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
@@ -2557,7 +2633,7 @@ package final class WisprBootstrapper {
     let meetingMemoryPressure = MeetingMemoryPressure()
     // #3988: the pressure a local polish engine records when something outside
     // the app stops it. Context for the notice, never a cause.
-    for runtime in [localPolishRuntimes.egOne, localPolishRuntimes.s1Mini] {
+    for runtime in localPolishRuntimes.all {
       runtime.memoryPressureLevel = { [weak meetingMemoryPressure] in
         meetingMemoryPressure.map { pressure in
           // Exhaustive, so a new level must be mapped here, never defaulted.
@@ -2740,8 +2816,8 @@ package final class WisprBootstrapper {
       runtimes: localPolishRuntimes,
       // #4473: a summary freezes its model like every other piece of work.
       model: { [settings] in settings.polishModelID(for: .egOne) },
-      // The one EG-1 with runtime facts in this build is the full size.
-      manifest: { $0 == .egOne(.full) ? egOneManifest : nil },
+      // Each published size's own runtime facts; a size with none is not ready.
+      manifest: { egOneManifests[$0] },
       restoreSelection: { [weak settingsSync, settings] in
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })

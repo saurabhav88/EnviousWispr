@@ -7,8 +7,13 @@ import Testing
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLlamaEngine
 
-@Suite("EG-1 learned-word adapter wire contract (#3105)", .tags(.driftGuard))
+/// #4473: EG-1's checker left this server for its own engine; S1-mini's is the one that runs
+/// here, so every row asks in S1-mini's form.
+@Suite("llama-server learned-word adapter wire contract (S1-mini, #3105)", .tags(.driftGuard))
 struct EGOneLearnedWordCheckerTests {
+  /// S1-mini's question with no language named.
+  private static let style = LlamaLearnedWordChecker.PromptStyle.s1Mini(language: nil)
+
   private static func question() -> LearnedWordCheckQuestion {
     let sentence = "I said toast"
     return LearnedWordCheckQuestion(
@@ -19,7 +24,10 @@ struct EGOneLearnedWordCheckerTests {
   @Test func trainedChatMLPromptIsPinned() {
     let expected =
       "<|im_start|>system\n[Task: check] A word from the user's dictionary may have been misheard in a dictated sentence. A is the sentence as transcribed. B writes the dictionary word at one spot. Answer B only if the speaker meant the dictionary word there; otherwise answer A. Answer with one letter.<|im_end|>\n<|im_start|>user\nDictionary word: Tuist\nA: I said toast\nB: I said Tuist<|im_end|>\n<|im_start|>assistant\n"
-    #expect(LlamaLearnedWordChecker.prompt(for: Self.question()) == expected)
+    // The shared question, then the empty think block S1-mini's adapter was trained after.
+    #expect(
+      LlamaLearnedWordChecker.prompt(for: Self.question(), style: Self.style)
+        == expected + "<think>\n\n</think>\n\n")
   }
 
   /// Pinned to the text D5 was trained and graded with (hint-validation
@@ -46,7 +54,6 @@ struct EGOneLearnedWordCheckerTests {
     let unnamed = LlamaLearnedWordChecker.prompt(for: q, style: .s1Mini(language: "ja"))
     #expect(unnamed == english)
     #expect(LlamaLearnedWordChecker.prompt(for: q, style: .s1Mini(language: nil)) == english)
-    #expect(LlamaLearnedWordChecker.prompt(for: q).hasSuffix("<|im_start|>assistant\n"))
     let checker = LlamaLearnedWordChecker(threshold: 0.5, style: .s1Mini(language: "fr")) {
       nil as EGOneCheckerHold?
     }
@@ -60,25 +67,32 @@ struct EGOneLearnedWordCheckerTests {
     let question = LearnedWordCheckQuestion(
       id: 0, sentence: text, range: text.range(of: "twist")!,
       contextRange: text.range(of: "The plot twist surprised me.")!, word: "Tuist")
-    let prompt = LlamaLearnedWordChecker.prompt(for: question)
+    let prompt = LlamaLearnedWordChecker.prompt(for: question, style: Self.style)
     #expect(prompt.contains("A: The plot twist surprised me.\n"))
     #expect(prompt.contains("B: The plot Tuist surprised me.<|im_end|>"))
     #expect(prompt.contains("We use cotton daily.") == false)
   }
 
   @Test func eachRequestCarriesOnePromptAndItsCheckerSlot() {
-    let checker = LlamaLearnedWordChecker(threshold: 0.5) { nil as EGOneCheckerHold? }
-    #expect(checker.armName == "eg1_lora")
+    let checker = LlamaLearnedWordChecker(threshold: 0.5, style: Self.style) {
+      nil as EGOneCheckerHold?
+    }
+    #expect(checker.armName == "s1_lora")
     #expect(checker.scoresAreComparable)
-    let body = LlamaLearnedWordChecker.makeRequestBody(Self.question(), index: 0)
-    #expect(body["prompt"] as? String == LlamaLearnedWordChecker.prompt(for: Self.question()))
+    let body = LlamaLearnedWordChecker.makeRequestBody(
+      Self.question(), index: 0, style: Self.style)
+    #expect(
+      body["prompt"] as? String
+        == LlamaLearnedWordChecker.prompt(for: Self.question(), style: Self.style))
     #expect(body["id_slot"] as? Int == 1)
     let sentence = "We said coffee"
     let second = LearnedWordCheckQuestion(
       id: 8, sentence: sentence, range: sentence.range(of: "coffee")!,
       contextRange: sentence.startIndex..<sentence.endIndex, word: "Kaggle")
-    let secondBody = LlamaLearnedWordChecker.makeRequestBody(second, index: 1)
-    #expect(secondBody["prompt"] as? String == LlamaLearnedWordChecker.prompt(for: second))
+    let secondBody = LlamaLearnedWordChecker.makeRequestBody(second, index: 1, style: Self.style)
+    #expect(
+      secondBody["prompt"] as? String
+        == LlamaLearnedWordChecker.prompt(for: second, style: Self.style))
     #expect(secondBody["id_slot"] as? Int == 2)
     let secondLoRA = secondBody["lora"] as? [[String: Any]]
     #expect(secondLoRA?.first?["id"] as? Int == 0)
@@ -97,14 +111,16 @@ struct EGOneLearnedWordCheckerTests {
   func failedCheckReleasesHold() async {
     let released = OSAllocatedUnfairLock<Int>(initialState: 0)
     let bare = LocalPolishEndpoint(port: 1, authToken: "t", contextTokens: 4096)
-    let checker = LlamaLearnedWordChecker(threshold: 0.5) {
+    let checker = LlamaLearnedWordChecker(threshold: 0.5, style: Self.style) {
       EGOneCheckerHold(endpoint: bare) { released.withLock { $0 += 1 } }
     }
     await #expect(throws: LlamaLearnedWordChecker.CheckerError.self) {
       try await checker.decide([Self.question()])
     }
     #expect(released.withLock { $0 } == 1)
-    let refused = LlamaLearnedWordChecker(threshold: 0.5) { nil as EGOneCheckerHold? }
+    let refused = LlamaLearnedWordChecker(threshold: 0.5, style: Self.style) {
+      nil as EGOneCheckerHold?
+    }
     await #expect(throws: LlamaLearnedWordChecker.CheckerError.self) {
       try await refused.decide([Self.question()])
     }
@@ -112,38 +128,32 @@ struct EGOneLearnedWordCheckerTests {
 
   @Test func checkerSlotsWrapAfterEightQuestions() {
     let slots = (0..<16).map {
-      LlamaLearnedWordChecker.makeRequestBody(Self.question(), index: $0)["id_slot"] as? Int
+      LlamaLearnedWordChecker.makeRequestBody(Self.question(), index: $0, style: Self.style)[
+        "id_slot"] as? Int
     }
     #expect(slots == [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8])
   }
 
-  @Test("the adapter loads at scale 0 on a configured EG-1 or S1-mini launch, never on a bare one")
+  @Test("the adapter loads at scale 0 on a configured S1-mini launch, never on a bare one")
   func adapterFlagsAreOnlyOnConfiguredLaunch() {
     let path = URL(fileURLWithPath: "/tmp/check.gguf")
-    let baseline = ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
-    let egOneBaseline = baseline + ["--spec-type", "ngram-simple"]
-    #expect(LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: nil) == egOneBaseline)
-    #expect(
-      LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: path)
-        == egOneBaseline + [
-          "--lora-scaled", "\(path.path):0",
-          "-np", "9", "--kv-unified", "--no-cache-idle-slots",
-        ])
+    let baseline =
+      ["-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
+      + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
     #expect(
       LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: path)
-        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
-        + [
+        == baseline + [
           "--lora-scaled", "\(path.path):0",
           "-np", "9", "--kv-unified", "--no-cache-idle-slots",
         ])
     #expect(
       LlamaServerLaunchBuilder.launchArguments(for: .s1Mini, learnedWordAdapterURL: nil)
-        == baseline + ["--jinja", "--chat-template-kwargs", #"{"enable_thinking":false}"#])
+        == baseline)
     // The server splits `--lora-scaled` on "," and ":": such a path boots without the adapter.
     for odd in ["/tmp/a,b/check.gguf", "/tmp/a:b/check.gguf"] {
       #expect(
-        LlamaServerLaunchBuilder.launchArguments(for: .egOne, learnedWordAdapterURL: URL(fileURLWithPath: odd))
-          == egOneBaseline)
+        LlamaServerLaunchBuilder.launchArguments(
+          for: .s1Mini, learnedWordAdapterURL: URL(fileURLWithPath: odd)) == baseline)
     }
   }
 
@@ -178,10 +188,10 @@ struct EGOneLearnedWordCheckerTests {
 
   @Test func polishBodyIsUnchangedWithoutAdapterAndDisablesLoadedAdapter() throws {
     let config = LLMProviderConfig(
-      model: LLMProvider.egOneModelName, apiKeyKeychainId: nil,
+      model: LLMProvider.s1MiniModelName, apiKeyKeychainId: nil,
       outputTokens: .capped(12), temperature: 0, thinking: nil)
     let baseline: [String: Any] = [
-      "model": LLMProvider.egOneModelName,
+      "model": LLMProvider.s1MiniModelName,
       "messages": [
         ["role": "system", "content": "sys"],
         ["role": "user", "content": "text"],
@@ -189,14 +199,14 @@ struct EGOneLearnedWordCheckerTests {
       "max_tokens": 12,
       "temperature": 0,
     ]
-    let absent = try EGOneConnector.makeRequestBody(
+    let absent = try LlamaChatRequest.makeBody(
       system: "sys", user: "text", config: config, hasLearnedWordAdapter: false)
     #expect(
       try JSONSerialization.data(withJSONObject: baseline, options: .sortedKeys)
         == JSONSerialization.data(withJSONObject: absent, options: .sortedKeys))
     #expect(absent["lora"] == nil)
     #expect(absent["id_slot"] == nil)
-    let loaded = try EGOneConnector.makeRequestBody(
+    let loaded = try LlamaChatRequest.makeBody(
       system: "sys", user: "text", config: config, hasLearnedWordAdapter: true)
     let lora = loaded["lora"] as? [[String: Any]]
     #expect(lora?.first?["id"] as? Int == 0)

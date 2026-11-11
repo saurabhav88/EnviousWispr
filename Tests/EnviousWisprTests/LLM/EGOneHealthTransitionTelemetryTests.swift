@@ -41,7 +41,7 @@ import Testing
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!
       ).runtimeFacts(expectedModelName: LLMProvider.egOneModelName),
       serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }
@@ -143,7 +143,7 @@ import Testing
     // No manifest: `activationBlockers == ["manifest_missing"]` from init.
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: store)
+      engine: TestLocalPolishEngine(), defaults: store)
     let recorded = Recorded()
     runtime.onEvent = { event in
       if case .healthChanged = event { recorded.append(event) }

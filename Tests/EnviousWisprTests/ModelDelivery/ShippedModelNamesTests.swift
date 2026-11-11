@@ -45,13 +45,14 @@ import Testing
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
 
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -150,13 +151,14 @@ import Testing
 
     var keys: [String] = []
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -229,13 +231,14 @@ import Testing
       .deletingLastPathComponent()
     let resourceDir = repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")
     for resource in [
-      "edit-judge-delivery-manifest", "eg1-checker-delivery-manifest", "eg1-delivery-manifest", "parakeet-delivery-manifest",
+      "edit-judge-delivery-manifest", "parakeet-delivery-manifest",
       "parakeet-v3-retired-manifest",
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
       "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
       "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
+      "eg1-mini-delivery-manifest", "eg1-mini-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

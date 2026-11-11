@@ -90,12 +90,18 @@ struct LocalEngineDescriptorTests {
 
   @Test("EG-1's stated download size is the size of the file we actually serve")
   func egOneSizeMatchesItsManifest() throws {
-    let manifest = try Self.manifest("eg1-delivery-manifest.json")
-    #expect(LocalEngineDescriptor.egOne.downloadSize == "2.9 GB")
+    // #4473: the full size on its own engine: the model and its draft model, one download.
+    let manifest = try Self.manifest("eg1-mlx-delivery-manifest.json")
+    #expect(LocalEngineDescriptor.egOne.downloadSize == "4.7 GB")
     let actualGB = Double(manifest.totalBytes) / 1_000_000_000
     #expect(
-      abs(actualGB - 2.9) < 0.1,
-      "the card promises 2.9 GB but the manifest ships \(actualGB) GB")
+      abs(actualGB - 4.7) < 0.1,
+      "the card promises 4.7 GB but the manifest ships \(actualGB) GB")
+    // The free space asked for is the manifest's own headroom factor on that download,
+    // rounded up to a whole gigabyte.
+    let factor = try #require(Double(manifest.admission.diskHeadroomFactor))
+    #expect(
+      LocalEngineDescriptor.egOne.installHeadroom == "\(Int((actualGB * factor).rounded(.up))) GB")
   }
 
   /// The licence's ADDITIONAL TERM binds this name, so the descriptor must READ

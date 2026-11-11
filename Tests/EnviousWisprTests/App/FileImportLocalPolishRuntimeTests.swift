@@ -50,7 +50,7 @@ struct FileImportLocalPolishRuntimeTests {
     let coordinator = LocalPolishServerCoordinator()
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), coordinator: coordinator,
+      engine: TestLocalPolishEngine(), coordinator: coordinator,
       modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,

@@ -107,6 +107,7 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     cloudModelList: @escaping @MainActor () -> CloudModelList?,
     egOneRuntime: LocalPolishRuntime? = nil,
+    additionalRuntimes: [LocalPolishRuntime] = [],
     s1MiniRuntime: LocalPolishRuntime? = nil,
     checkerSelectionProvider: (
       @MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection
@@ -163,33 +164,22 @@ final class PipelineSettingsSync {
     self.asrManager = asrManager
     self.hotkeyService = hotkeyService
     self.egOneRuntime = egOneRuntime
+    self.additionalRuntimes = additionalRuntimes
     self.s1MiniRuntime = s1MiniRuntime
     self.checkerSelectionProvider = checkerSelectionProvider
     self.ollamaRemotenessLookup = ollamaRemotenessLookup
-    // #1271 matrix gap 3: Remove Model defers while a recording froze
-    // `.egOne`. The pinned-session authority is THIS class (it owns both
-    // drivers), so it wires the runtime's read itself.
-    // #4473: asked by exact model, so one size of EG-1 never answers for another.
-    egOneRuntime?.isPinnedInFlight = { [weak self, model = egOneRuntime?.modelID] in
-      self?.pinnedLocalModel() == model
-    }
-    // #2649: each engine's Remove refusal asks about ITS OWN frozen session.
-    // Sharing EG-1's answer would refuse an S1-mini removal while an EG-1 take
-    // was running, and allow one while an S1-mini take was.
-    s1MiniRuntime?.isPinnedInFlight = { [weak self, model = s1MiniRuntime?.modelID] in
-      self?.pinnedLocalModel() == model
-    }
-    // #2649 (cloud review P1): a direct activation (refresh button, completed
-    // download) must not evict the engine a running take froze. Same authority
-    // as `reconcileEGOneActivation`'s own defer, wired to the two entry points
-    // that do not pass through it.
-    egOneRuntime?.isBlockedByOtherPinnedSession = { [weak self, model = egOneRuntime?.modelID] in
-      guard let pinned = self?.pinnedLocalModel() else { return false }
-      return pinned != model
-    }
-    s1MiniRuntime?.isBlockedByOtherPinnedSession = { [weak self, model = s1MiniRuntime?.modelID] in
-      guard let pinned = self?.pinnedLocalModel() else { return false }
-      return pinned != model
+    // #1271 matrix gap 3, #2649, #4473: Remove Model defers while an in-flight piece of work
+    // froze THIS model, and a direct activation (refresh button, completed download) must not
+    // evict the model a running take froze. The pinned-session authority is THIS class (it
+    // owns both drivers), so it wires each runtime's reads itself, by exact model: one EG-1
+    // size never answers for another, nor EG-1 for S1-mini.
+    for runtime in localRuntimes {
+      let model = runtime.modelID
+      runtime.isPinnedInFlight = { [weak self] in self?.pinnedLocalModel() == model }
+      runtime.isBlockedByOtherPinnedSession = { [weak self] in
+        guard let pinned = self?.pinnedLocalModel() else { return false }
+        return pinned != model
+      }
     }
   }
 
@@ -202,6 +192,12 @@ final class PipelineSettingsSync {
   /// #2649: the second local engine. Switching TO it must start it, and
   /// switching AWAY must stop it, exactly as EG-1 does.
   private let s1MiniRuntime: LocalPolishRuntime?
+  /// #4473: the runtimes of the EG-1 sizes other than the full size.
+  private let additionalRuntimes: [LocalPolishRuntime]
+  /// Every local polish runtime this class reconciles, each exactly once.
+  private var localRuntimes: [LocalPolishRuntime] {
+    [egOneRuntime, s1MiniRuntime].compactMap { $0 } + additionalRuntimes
+  }
   private let checkerSelectionProvider:
     (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
 
@@ -446,7 +442,9 @@ final class PipelineSettingsSync {
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:
       break  // Frozen per recording; see `DictationSessionConfig`.
     case .egOneSize:
-      break  // #4473: a preference for future work; each invocation freezes its own model.
+      // #4473: the size new work freezes changed. The selected local model follows it like a
+      // provider change: deferred while a running take, import or summary pins another model.
+      reconcileEGOneActivation(settings: settings)
     case .whisperKitLanguage:
       break  // Deprecated — legacy migration only (SettingsManager:460-484).
     case .onboardingState, .hasCompletedOnboarding,
@@ -545,12 +543,12 @@ final class PipelineSettingsSync {
     // is never started while the other still holds the server — the coordinator
     // would then have to evict it mid-start, and the user would wait through a
     // stop the switch had already asked for.
-    reconcile(
-      runtime: egOneRuntime, isSelected: egOneRuntime?.modelID == selected, deselectFirst: true)
-    reconcile(
-      runtime: s1MiniRuntime, isSelected: s1MiniRuntime?.modelID == selected, deselectFirst: true)
-    reconcile(runtime: egOneRuntime, isSelected: egOneRuntime?.modelID == selected)
-    reconcile(runtime: s1MiniRuntime, isSelected: s1MiniRuntime?.modelID == selected)
+    for runtime in localRuntimes {
+      reconcile(runtime: runtime, isSelected: runtime.modelID == selected, deselectFirst: true)
+    }
+    for runtime in localRuntimes {
+      reconcile(runtime: runtime, isSelected: runtime.modelID == selected)
+    }
   }
 
   /// One pass over one engine. `deselectFirst` runs only the STOP half, so the
@@ -607,14 +605,16 @@ final class PipelineSettingsSync {
   func retryDeferredEGOneDeactivation(
     settings: SettingsManager, forceReconciliation: Bool = false
   ) {
-    egOneRuntime?.retryPendingRemoval()
-    // #2649: a deferred REMOVAL belongs to whichever engine the user asked to
-    // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
-    // pending forever, with the model still on disk and nothing saying so.
-    s1MiniRuntime?.retryPendingRemoval()
-    if let egOneRuntime, egOneRuntime.modelID == settings.polishModelID(for: settings.llmProvider)
-    {
-      egOneRuntime.retryPendingAdapterReconfiguration()
+    // #2649: a deferred REMOVAL belongs to whichever model the user asked to remove, so every
+    // runtime is retried. Retrying only EG-1 left an S1-mini removal pending forever, with the
+    // model still on disk and nothing saying so.
+    let selected = settings.polishModelID(for: settings.llmProvider)
+    for runtime in localRuntimes {
+      runtime.retryPendingRemoval()
+      // #4473: only an EG-1 size has this retry, and only the selected one.
+      if runtime.modelID == selected, selected.provider == .egOne {
+        runtime.retryPendingAdapterReconfiguration()
+      }
     }
     guard forceReconciliation || egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)

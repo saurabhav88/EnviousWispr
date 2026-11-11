@@ -60,7 +60,8 @@ struct EGOneTelemetryBridgeTests {
     let source = try String(
       contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift"),
       encoding: .utf8)
-    #expect(source.contains("egOneRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)"))
+    // #4473: every EG-1 size is built by one local function, so one assignment wires them all.
+    #expect(source.contains("runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)"))
     #expect(
       source.contains("s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)"))
   }

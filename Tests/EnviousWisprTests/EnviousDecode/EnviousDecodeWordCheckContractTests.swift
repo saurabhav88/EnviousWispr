@@ -32,7 +32,7 @@ struct EnviousDecodeWordCheckContractTests {
   static func signed(_ name: String, mutate: (inout [String: Any]) -> Void) throws -> Data {
     var object = try #require(
       try JSONSerialization.jsonObject(
-        with: Data(contentsOf: resources.appendingPathComponent("\(name).json")))
+        with: Data(contentsOf: DeliveryManifestFiles.url(name)))
         as? [String: Any])
     mutate(&object)
     object.removeValue(forKey: "manifestDigest")
@@ -97,7 +97,7 @@ struct EnviousDecodeWordCheckContractTests {
       manifest.files.map(\.sha256) == [Self.sha256(Self.weights), Self.sha256(Self.settings)])
     #expect(manifest.totalBytes == 4096 + Int64(Self.settings.count))
     let base = try DeliveryManifest.load(
-      from: Data(contentsOf: Self.resources.appendingPathComponent("eg1-delivery-manifest.json")))
+      from: Data(contentsOf: DeliveryManifestFiles.url("eg1-delivery-manifest")))
     #expect(
       compatibility(
         contract: contract, checkerFamily: .egOneChecker,
@@ -181,7 +181,7 @@ struct EnviousDecodeWordCheckContractTests {
     // format over its one file, and a second file beside it, are refused.
     let shipped = try DeliveryManifest.load(
       from: Data(
-        contentsOf: Self.resources.appendingPathComponent("eg1-checker-delivery-manifest.json")))
+        contentsOf: DeliveryManifestFiles.url("eg1-checker-delivery-manifest")))
     #expect(
       shipped.manifestDigest == "d911630224094b506c1bf3552487a711b280f9716ed5124b76b35870f6fcd034")
     #expect(shipped.checkerContract?.format == "gguf-lora" && shipped.files.count == 1)

@@ -392,7 +392,7 @@ struct SettingsMapRenderingTests {
         ollamaSetup: ollama)
       egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
-        engine: LlamaServerEngine(), defaults: defaults)
+        engine: TestLocalPolishEngine(), defaults: defaults)
       s1 = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         engine: LlamaServerEngine(),
@@ -679,10 +679,11 @@ struct SettingsMapRenderingTests {
         manifestBundle: try #require(Bundle(url: resources)),
         appSupportOverride: dir.appending(path: "delivery", directoryHint: .isDirectory)),
       engines: [
-        .egOne: .init(
+        .egOne(.full): .init(
           base: nil, promptTemplateID: nil,
           runtime: home.egOne, debugThreshold: nil)
-      ])
+      ],
+      currentModel: { .singleModel(for: $0) })
     return AnyView(
       view
         .environment(home.settings).environment(words).environment(packs)

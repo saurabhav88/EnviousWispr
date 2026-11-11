@@ -286,6 +286,12 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   /// holds residency, leases and reservations for this identity, and the lookup in
   /// `LocalPolishRuntimeSet` matches on it, so one size never answers for another.
   public let modelID: LocalPolishModelID
+  /// #4473: where the engine is told the admitted model is, when that is not delivery's
+  /// entrypoint file (an engine that loads a FOLDER). Supplied by the composition root, which
+  /// knows the artifact's layout; this type knows no engine and guesses no path. Not supplied:
+  /// the admitted entrypoint file, as before. Supplied and answering nil: the model is not
+  /// started (it is never started from the file as a fallback).
+  private let launchLocation: (@MainActor () -> URL?)?
   /// The engine this runtime's model runs on (#4473). Two operations come from it.
   ///
   /// Builds this runtime's health probe from its own model identity and the manifest's prompt
@@ -318,8 +324,10 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     defaults: UserDefaults? = nil,
     coordinator: LocalPolishServerCoordinator? = nil,
     modelID: LocalPolishModelID = .egOne(.full),
+    launchLocation: (@MainActor () -> URL?)? = nil,
     learnedWordAdapterProvider: @escaping @MainActor () async -> URL? = { nil }
   ) {
+    self.launchLocation = launchLocation
     let provider = modelID.provider
     self.provider = provider
     // Derived from the provider rather than taken as a parameter: the two must
@@ -997,12 +1005,12 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
     manifest: LocalPolishManifestFacts, delivery: EGOneDeliveryAdapter, intent: Int, generation: Int,
     retriesAdapterFallback: Bool
   ) async {
-    guard let serverBinaryURL else { return }
+    guard let serverBinaryURL, let modelURL = admittedLaunchLocation(delivery) else { return }
     await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
       serverBinaryURL: serverBinaryURL,
       // Delivery exposes the verified admitted entrypoint, not a discovered file.
-      modelURL: delivery.installedArtifactURL,
+      modelURL: modelURL,
       contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     guard generation == activationGeneration else { return }
     await server.transition(
@@ -1010,6 +1018,13 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
         LocalPolishTarget(
           configuration: configuration, retriesAdapterFallback: retriesAdapterFallback)),
       intent: intent)
+  }
+
+  /// The location the engine launches the admitted model from: the composition root's answer
+  /// when it gave one, else delivery's entrypoint file.
+  private func admittedLaunchLocation(_ delivery: EGOneDeliveryAdapter) -> URL? {
+    guard let launchLocation else { return delivery.installedArtifactURL }
+    return launchLocation()
   }
 
   /// Internal seam tests can use without staging a multi-shard base model.
@@ -1101,10 +1116,12 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       let serverBinaryURL, activationBlockers.isEmpty
     else { return nil }
     let intent = server.claimIntent()
-    guard await delivery.adoptIfPresent() else { return nil }
+    guard await delivery.adoptIfPresent(), let modelURL = admittedLaunchLocation(delivery) else {
+      return nil
+    }
     await registerProcessFailureObserver()
     let configuration = await makeServerConfiguration(
-      serverBinaryURL: serverBinaryURL, modelURL: delivery.installedArtifactURL,
+      serverBinaryURL: serverBinaryURL, modelURL: modelURL,
       contextTokens: manifest.contextTokens, artifactIdentity: delivery.modelIdentity)
     await server.transition(
       to: .run(LocalPolishTarget(configuration: configuration)),

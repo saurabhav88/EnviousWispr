@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousDecodeKit
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLlamaEngine
 
 /// #4473 P2: the request mapper. The app sends the new engine the same chat request it sends
@@ -118,7 +119,7 @@ struct EnviousDecodeRequestMapperTests {
     // A summary, from the app's own builder: it sends `stream: false`, and its user text has
     // no transcript tag, so the instruction prefix ends where the user text begins.
     let summaryBody = EGOneSummaryCall.requestBody(
-      instructions: system, prompt: "Summarise:\nAda spoke.", hasLearnedWordAdapter: false)
+      instructions: system, prompt: "Summarise:\nAda spoke.")
     #expect(summaryBody["stream"] as? Bool == false)
     let summary = try EnviousDecodeRequestMapper.prepare(
       body: try Self.data(summaryBody), configuration: configuration, tokenizer: Self.fake)
@@ -229,9 +230,9 @@ struct EnviousDecodeRequestMapperTests {
     #expect(
       Self.refusal(try changed { $0["top_p"] = 0.9 }, configuration)
         == .unsupported(field: "top_p", reason: "not served"))
-    // The body the app sends when the old engine holds a word-check adapter: its two extra
-    // fields are not served here, and they are not dropped.
-    let withAdapter = try EGOneConnector.makeRequestBody(
+    // The body llama-server is sent when it holds a word-check adapter (S1-mini today): its
+    // two extra fields are not served here, and they are not dropped.
+    let withAdapter = try LlamaChatRequest.makeBody(
       system: system, user: user,
       config: LLMProviderConfig(
         model: LLMProvider.egOneModelName, apiKeyKeychainId: nil, outputTokens: .capped(300),

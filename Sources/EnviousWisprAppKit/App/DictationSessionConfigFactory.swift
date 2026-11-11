@@ -17,6 +17,8 @@ enum DictationSessionConfigFactory {
     kernelDriver: KernelDictationDriver,
     whisperKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
+    polishModel: LocalPolishModelID,
+    polishWireModel: String,
     triggerSource: TriggerSource,
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil
@@ -36,9 +38,9 @@ enum DictationSessionConfigFactory {
     // the cascade entirely (the wiring's direct copyToClipboard branch),
     // depriving AX-denied users of both the diagnostic and the toast.
     let autoPaste = activePipelineIdle
-    // #1173: the single source of truth for the effective model (was an inline
-    // switch here; now shared with the settings telemetry projection).
-    let resolvedModel = settings.effectiveLLMModel
+    // #1173 / #4473: the effective model name the caller captured with `polishModel`
+    // (`SettingsManager.effectiveLLMModel`), never a second settings read here.
+    let resolvedModel = polishWireModel
     // #3905: frozen as the ACTIVE engine can honour it (an unhonoured lock runs as Auto).
     let languageMode = LanguageLockOptions.effectiveLanguageMode(
       settings.languageMode, for: asrManager.activeBackendType)
@@ -60,8 +62,9 @@ enum DictationSessionConfigFactory {
         languageMode: languageMode, stored: settings.englishSpelling),
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
-      llmProvider: settings.llmProvider,
-      polishModelID: settings.polishModelID(for: settings.llmProvider),
+      // #4473: provider and model from the caller's ONE capture, never a second settings read.
+      llmProvider: polishModel.provider,
+      polishModelID: polishModel,
       llmModel: resolvedModel,
       polishInstructions: settings.activePolishInstructions,
       selectedInputDeviceUID: settings.selectedInputDeviceUID,

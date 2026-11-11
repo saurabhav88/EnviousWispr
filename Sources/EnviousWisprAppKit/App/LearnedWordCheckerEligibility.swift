@@ -26,6 +26,8 @@ final class LearnedWordCheckerEligibility {
   private(set) var statusRevision = 0
   private let delivery: ModelDeliveryHome
   private let engines: [LearnedWordCheckerEngine: EngineInputs]
+  /// #4473: the model NEW work would freeze for a provider (the Settings rows ask about it).
+  private let currentModel: @MainActor (LLMProvider) -> LocalPolishModelID
   /// #3242: the word check for every provider without a checker of its own. Set by the
   /// composition root after construction (it needs the delivery home's registration); nil
   /// leaves those providers at `.engineHasNoChecker`, as before.
@@ -36,10 +38,12 @@ final class LearnedWordCheckerEligibility {
 
   init(
     delivery: ModelDeliveryHome, engines: [LearnedWordCheckerEngine: EngineInputs],
+    currentModel: @escaping @MainActor (LLMProvider) -> LocalPolishModelID,
     debugScriptedChecker: (any LearnedWordChecking)? = nil
   ) {
     self.delivery = delivery
     self.engines = engines
+    self.currentModel = currentModel
     #if DEBUG
       self.debugScriptedChecker = debugScriptedChecker
     #endif
@@ -64,13 +68,11 @@ final class LearnedWordCheckerEligibility {
   /// its model (#3242); an engine's own check reports through its take selection, as before.
   func settingsStatus(provider: LLMProvider) async -> LearnedCheckerSettingsStatus {
     let status: LearnedCheckerSettingsStatus
-    if LearnedWordCheckerEngine(provider: provider) == nil, let wordCheck {
+    if !LearnedWordCheckerEngine.hasOwnChecker(provider), let wordCheck {
       status = wordCheck.settingsStatus()
     } else {
-      // #4473: the status of the model this table serves for the provider.
-      let model =
-        LearnedWordCheckerEngine(provider: provider).flatMap { engines[$0]?.runtime.modelID }
-        ?? .singleModel(for: provider)
+      // #4473: the status of the model new work would use for this provider.
+      let model = currentModel(provider)
       status = LearnedCheckerSettingsStatus(
         selection: await selection(model: model, language: nil))
     }
@@ -79,7 +81,7 @@ final class LearnedWordCheckerEligibility {
 
   /// "Try again" in the Dictionary row, for whichever check the provider uses.
   func retryDownload(for provider: LLMProvider) async {
-    if let engine = LearnedWordCheckerEngine(provider: provider) {
+    if let engine = LearnedWordCheckerEngine(model: currentModel(provider)) {
       await requestAdapterDownload(for: engine)
     } else {
       wordCheck?.retryDownload()
@@ -98,9 +100,12 @@ final class LearnedWordCheckerEligibility {
     #endif
     // Founder 2026-09-26 (#3105): every dictation language, every engine. The
     // language reaches only S1-mini's prompt, which names it.
-    guard let engine = LearnedWordCheckerEngine(provider: provider) else {
+    guard LearnedWordCheckerEngine.hasOwnChecker(provider) else {
       // #3242: Apple Intelligence, the cloud engines, Ollama and no polish use the word check.
       return await wordCheck?.selection() ?? .init(absence: .engineHasNoChecker)
+    }
+    guard let engine = LearnedWordCheckerEngine(model: model) else {
+      return .init(absence: .engineHasNoChecker)
     }
     // #4473: the checker of the take's EXACT model. A size this table has no runtime for gets
     // no checker; it is never checked on another size's adapter.
@@ -147,7 +152,9 @@ final class LearnedWordCheckerEligibility {
         manifest: base.manifest, promptTemplateID: promptTemplateID),
       endpoint: endpoint, serverReason: serverReason,
       debugThreshold: inputs.debugThreshold,
-      hold: { [runtime = inputs.runtime] in await LlamaLearnedWordChecker.hold(on: runtime) })
+      makeChecker: { [runtime = inputs.runtime] threshold in
+        engine.makeChecker(threshold: threshold, language: language, runtime: runtime)
+      })
     if let checker = answer.checker {
       #if DEBUG
         let identity = doorAdapter ? engine.debugDoorIdentity : adapter.manifest.identity.revision
@@ -166,7 +173,7 @@ final class LearnedWordCheckerEligibility {
     contract: LearnedWordCheckerContract?,
     admittedBase: AdmittedCheckerBase?, endpoint: LocalPolishEndpoint?,
     serverReason: String?, debugThreshold: Double? = nil,
-    hold: @escaping @Sendable () async -> EGOneCheckerHold?
+    makeChecker: @MainActor (Double) -> any LearnedWordChecking
   ) -> LearnedWordCheckerSelection {
     func absent(_ reason: LearnedWordCheckerAbsence) -> LearnedWordCheckerSelection {
       LearnedWordCheckerSelection(absence: reason)
@@ -211,8 +218,7 @@ final class LearnedWordCheckerEligibility {
     }
     // `endpoint` above is the selection-time read; each check takes its own
     // lease and reads the endpoint again under it.
-    let checker = LlamaLearnedWordChecker(
-      threshold: qualifiedThreshold, style: engine.promptStyle(language: language), hold: hold)
+    let checker = makeChecker(qualifiedThreshold)
     return LearnedWordCheckerSelection(checker: checker, identity: checker.armName)
   }
 }

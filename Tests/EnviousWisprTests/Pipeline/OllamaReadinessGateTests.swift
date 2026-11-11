@@ -51,7 +51,7 @@ struct OllamaReadinessGateTests {
     invocationCounter: InvocationCounter = InvocationCounter()
   ) -> (step: LLMPolishStep, factoryCalls: () -> Int) {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .ollama
+    step.setPolish(provider: .ollama)
     step.llmModel = "llama3.2"
     step.ollamaReadinessProbe = probe
     let factoryCounter = Counter()
@@ -103,7 +103,7 @@ struct OllamaReadinessGateTests {
   ) -> (step: LLMPolishStep, capture: ConfigCapture) {
     let capture = ConfigCapture()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .ollama
+    step.setPolish(provider: .ollama)
     step.llmModel = model
     step.ollamaReadinessProbe = { _ in .ready(facts: facts) }
     step.makePolisher = { _, _, _, _ in CapturingPolisher(capture: capture) }
@@ -191,7 +191,7 @@ struct OllamaReadinessGateTests {
       probeCalls += 1
       return .serverDown
     })
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
 
     _ = try? await step.process(context())
@@ -249,7 +249,7 @@ struct OllamaReadinessGateTests {
   func completedCloudPolishCarriesNoRemoteness() async throws {
     let (step, _) = makeStep(
       probe: { _ in .ready(facts: OllamaModelFacts(isRemote: true, thinks: false)) })
-    step.llmProvider = .openAI
+    step.setPolish(provider: .openAI)
     step.llmModel = "gpt-4o-mini"
 
     let result = try await step.process(context())
@@ -269,7 +269,7 @@ struct OllamaReadinessGateTests {
   @Test("a remote-ready attempt whose polish throws never reaches the stamp")
   func failedRemotePolishThrowsBeforeTheStamp() async throws {
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .ollama
+    step.setPolish(provider: .ollama)
     step.llmModel = "gpt-oss:20b-cloud"
     step.ollamaReadinessProbe = { _ in
       .ready(facts: OllamaModelFacts(isRemote: true, thinks: false))

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import os
 
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLlamaEngine
 @testable import EnviousWisprLocalPolish
@@ -67,7 +68,7 @@ struct EGOneServerManagerTests {
     let endpoint = await manager.activeEndpoint()
     #expect(endpoint == nil)
     let health = await manager.probeHealth(
-      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "not_running"))
   }
 
@@ -78,7 +79,7 @@ struct EGOneServerManagerTests {
       serverBinaryURL: URL(fileURLWithPath: "/nonexistent/llama-server"))
     await manager.start(configuration: config)
     let health = await manager.probeHealth(
-      operation: LlamaServerHealthProbe.operation(spec: .egOne, promptFamily: .egOneFixed))
+      operation: LlamaServerHealthProbe.operation(spec: .s1Mini, promptFamily: .s1ControlLine))
     #expect(health == .red(reason: "server_binary_missing"))
   }
 

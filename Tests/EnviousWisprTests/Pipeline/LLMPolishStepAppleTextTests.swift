@@ -33,7 +33,7 @@ struct LLMPolishStepAppleTextTests {
   func transcriptAlwaysSentAsText(instructions: PolishInstructions) async throws {
     let box = TextBox()
     let step = LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests)
-    step.llmProvider = .appleIntelligence
+    step.setPolish(provider: .appleIntelligence)
     step.llmModel = "apple-intelligence"
     step.polishInstructions = instructions
     step.makePolisher = { _, _, _, _ in TextRecordingPolisher(box: box) }

@@ -60,15 +60,18 @@ struct EGOneFrozenModelTests {
         == .egOne(.mini))
   }
 
-  /// TEMPORARY, with `SettingsManager.polishModelID(for:)`: until the other sizes have
-  /// runtimes, new work freezes EG-1 as the full size whatever the saved preference is. The
-  /// chunk that adds the runtimes changes this test to expect the preference.
-  @Test("until the other sizes can run, new work freezes EG-1 as the full size")
-  func newWorkFreezesTheFullSizeForNow() {
+  @Test("new work freezes EG-1 at the size the user prefers; other providers have their one model")
+  func newWorkFreezesThePreferredSize() {
     let settings = Self.settings()
-    settings.selectEGOneSize(.micro)
-    #expect(settings.egOneSize == .micro)
-    #expect(settings.polishModelID(for: .egOne) == .egOne(.full))
+    // Before the first resolution there is no preference: the one EG-1 before sizes.
+    #expect(settings.egOneSize == nil && settings.polishModelID(for: .egOne) == .egOne(.full))
+    for size in EGOneSize.allCases {
+      settings.selectEGOneSize(size)
+      #expect(settings.polishModelID(for: .egOne) == .egOne(size))
+      settings.fileImportLLMProvider = .egOne
+      let snapshot = FileImportSettingsFreeze.snapshot(settings: settings)
+      #expect(snapshot.egOneSize == size.rawValue && snapshot.polishModelID == .egOne(size))
+    }
     #expect(settings.polishModelID(for: .s1Mini) == .singleModel(for: .s1Mini))
     #expect(settings.polishModelID(for: .claude) == .singleModel(for: .claude))
   }

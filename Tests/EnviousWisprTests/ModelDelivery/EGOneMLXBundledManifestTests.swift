@@ -6,7 +6,7 @@ import Testing
 @testable import EnviousWisprModelDelivery
 
 /// #4473 P4: the bundled delivery manifests of the published EG-1 sizes on the EnviousDecode
-/// engine (full and Micro; Mini is not published yet), read from the committed resources
+/// engine (full, Micro and Mini), read from the committed resources
 /// through the real loader.
 ///
 /// When this fails, a user who picks a size cannot get it or gets a broken one: the app
@@ -26,7 +26,7 @@ struct EGOneMLXBundledManifestTests {
   }
 
   private static func resource(_ name: String) -> URL {
-    root.appendingPathComponent("Sources/EnviousWispr/Resources/\(name).json")
+    DeliveryManifestFiles.url(name)
   }
 
   private static func manifest(_ name: String) throws -> DeliveryManifest {
@@ -73,6 +73,15 @@ struct EGOneMLXBundledManifestTests {
       checkerDigest: "d2b2df0f9ad736798ce927d0242c886f5b45e9ff63d40cbc0a7878c140c4070f",
       fileCount: 12, totalBytes: 805_133_748, checkerBytes: 40_932_473,
       adapterSHA256: "7247de61", threshold: "0.20181324142004287",
+      partedFiles: []),
+    Published(
+      size: .mini, model: "eg1-mini-delivery-manifest",
+      checker: "eg1-mini-checker-delivery-manifest",
+      revision: "eg1-mini-1.0-g3onestage", checkerRevision: "eg1c-mini-v1",
+      modelDigest: "3824476c5c4f321d267024624754a3fdc9e28abcf1f3a9d07bbdc314d75ca235",
+      checkerDigest: "fb3b65e8754eb85e7b736ea4e66b42790493d6450d416e18f37623328a9f9886",
+      fileCount: 16, totalBytes: 2_074_163_194, checkerBytes: 62_559_409,
+      adapterSHA256: "94d090aa", threshold: "0.20181324011109297",
       partedFiles: []),
   ]
 
@@ -189,7 +198,7 @@ struct EGOneMLXBundledManifestTests {
     #expect(try verdict("eg1-mlx-delivery-manifest") == .refused(.baseRevisionMismatch))
   }
 
-  @Test func theFourManifestsAreAppResources() throws {
+  @Test func everyPublishedManifestIsAnAppResource() throws {
     let project = try String(
       contentsOf: Self.root.appendingPathComponent("Project.swift"), encoding: .utf8)
     for item in Self.published {

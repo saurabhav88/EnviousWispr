@@ -118,7 +118,7 @@ struct SettingsAdvisoryRenderHarness {
       preloadAction: {}, ollamaStatusProbe: { _ in })
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), defaults: defaults)
+      engine: TestLocalPolishEngine(), defaults: defaults)
     let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
