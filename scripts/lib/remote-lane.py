@@ -55,9 +55,11 @@ SETUP_EXIT = 4
 HUNG_EXIT = 5
 STREAM_LIMIT = 1500
 HEARTBEAT_EVERY = 15
-# Forwarded to the remote runner (the supervisor checks the same list).
-FORWARD = ("EW_NO_OUTPUT_LIMIT_SECS", "TEST_RUNNER_EW_REAL_BOUNDARY",
-           "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE")
+# Forwarded to the remote runner (the supervisor checks the same list). Anything
+# else EW_/TEST_RUNNER_ keeps the run here, including
+# TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE: it rewrites a tracked file in the
+# checkout that runs it, and a backup Mac's copy never comes back.
+FORWARD = ("EW_NO_OUTPUT_LIMIT_SECS", "TEST_RUNNER_EW_REAL_BOUNDARY")
 # Set by the runner for this run; meaningful only on this Mac.
 INTERNAL = ("EW_HUNG_MARKER", "EW_RUNNER_PID", "EW_CARD_HOST")
 
