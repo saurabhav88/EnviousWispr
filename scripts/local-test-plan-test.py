@@ -32,6 +32,24 @@ class PlanningContract(unittest.TestCase):
         self.assertEqual(set(selected), {"EnviousWisprTests/" + n for n in "ABC"})
         self.assertEqual(len(selected), len(set(selected)))
 
+    def test_two_worker_budget_keeps_every_suite_once_and_the_remainder_protected(self):
+        # #4507 T5: the 2-worker case (backup Macs); the 4-worker default is the
+        # balanced-slots test above.
+        groups, loads = plan_groups(self.root, self.profile, workers=2)
+        self.assertEqual(len(loads), 2)
+        self.assertEqual([name for name, _ in groups], ["serial", "worker-1"])
+        # Every reviewed suite runs exactly once (one may balance back into the
+        # serial group, which carries it without a selector), and the protected
+        # remainder stays in the serial group.
+        placed = [name for _, names in groups for name in names]
+        self.assertEqual(sorted(placed), sorted("EnviousWisprTests/" + n for n in "ABC"))
+        self.assertGreaterEqual(loads[0], 100)
+        self.assertEqual(sum(loads), 400)
+        for bad in (0, 5, "2", True):
+            with self.subTest(workers=bad):
+                with self.assertRaises(ValueError):
+                    plan_groups(self.root, self.profile, workers=bad)
+
     def test_edited_test_file_keeps_its_admission(self):
         # #4279: the review mark is the .localParallel tag in the source, not a file hash.
         (self.root / "Tests/EnviousWisprTests/A.swift").write_text("struct A { let edited = 1 }\n")

@@ -333,6 +333,40 @@ class QueueContract(unittest.TestCase):
         self.assertTrue(self.lock.is_file())
         self.assertTrue(self.lock.with_name("priority.lock").is_file())
 
+    # --- #4507 T3: one slot per Mac, primary first, then the backup -----------
+    def host_descriptor(self, host):
+        self.call(self.helpers[0], "prepare-host", host)
+        path = self.lock if host == "local" else self.lock.parent / "hosts" / host / "runner.lock"
+        fd = os.open(path, os.O_RDWR)
+        self.fds.append(fd)
+        return fd
+
+    def test_slots_go_to_the_primary_then_the_backup_then_wait_naming_holders(self):
+        won = []
+        for label in ("first", "second"):
+            local, spare = self.host_descriptor("local"), self.host_descriptor("spare")
+            result = subprocess.run([sys.executable, str(self.helpers[0]), "acquire-any", "--kind", "full",
+                                     "--slots", f"local={local},spare={spare}", "--label", label,
+                                     "--worktree", f"/w/{label}"],
+                                    pass_fds=(local, spare), text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            won.append([line for line in result.stdout.splitlines() if line.startswith("EW_SLOT_HOST=")])
+        self.assertEqual(won, [["EW_SLOT_HOST=local"], ["EW_SLOT_HOST=spare"]])
+        local, spare = self.host_descriptor("local"), self.host_descriptor("spare")
+        proc = subprocess.Popen([sys.executable, str(self.helpers[1]), "acquire-any", "--kind", "full",
+                                 "--slots", f"local={local},spare={spare}"],
+                                pass_fds=(local, spare), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(self.reap, proc)
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            self.assertTrue(selector.select(timeout=8), "queue never announced its wait")
+            line = proc.stdout.readline()
+        self.assertIn("waiting", line)
+        self.assertIn("local: first", line)
+        self.assertIn("spare: second", line)
+        self.assertIsNone(proc.poll())
+
 
 if __name__ == "__main__":
     unittest.main()

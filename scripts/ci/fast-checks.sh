@@ -106,6 +106,11 @@ member_ci_self_tests() {
   # #4056: local execution, result aggregation and the cross-worktree queue.
   # All boundaries are private fixtures; this neither builds nor runs the app.
   bash scripts/xcode-test.sh --self-test
+  # #4507: the Mac host list and the read-only slot status (private fixtures only).
+  python3 scripts/lib/mac_hosts.py --self-test
+  python3 scripts/mac-slots.py --self-test
+  # #4507: a development snapshot reaches another checkout exactly; this one is untouched.
+  python3 scripts/lib/remote-ship-test.py
 }
 
 # CI step: Dependency direction (#3095)

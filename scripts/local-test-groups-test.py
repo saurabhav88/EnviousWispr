@@ -23,7 +23,7 @@ class GroupContract(unittest.TestCase):
         (self.root / "scripts/lib").mkdir(parents=True)
         shutil.copyfile(HERE / "local-test-groups.py", self.root / "scripts/local-test-groups.py")
         shutil.copyfile(HERE / "local_test_plan.py", self.root / "scripts/local_test_plan.py")
-        for name in ("xcode-test-run.sh", "lane-verdict.sh", "lane-verdict.py"):
+        for name in ("xcode-test-run.sh", "lane-verdict.sh", "lane-verdict.py", "output-watchdog.py"):
             shutil.copyfile(HERE / "lib" / name, self.root / "scripts/lib" / name)
         self.products = self.root / "products"
         self.products.mkdir()
@@ -103,7 +103,7 @@ if os.environ.get('DROP_PARAMETER'): roots[0]['children'][0]['children'][0]['chi
         for key in ("HOLD_GROUP", "FAIL_GROUP", "FAIL_VERDICT", "MISSING_SUITE", "LEAK_SOURCE",
                     "FAIL_MERGE", "DROP_MERGED_CASE", "DROP_PARAMETER", "DUPLICATE_IDENTITY", "IGNORE_CHILD_TERM",
                     "EXPECTED_GROUPS", "TEST_RUNNER_EW_WRITE_TEST_INVENTORY_BASELINE",
-                    "TEST_RUNNER_EW_REAL_BOUNDARY"):
+                    "TEST_RUNNER_EW_REAL_BOUNDARY", "EW_LOCAL_TEST_WORKERS"):
             self.env.pop(key, None)
         self.command = [sys.executable, str(self.root / "scripts/local-test-groups.py"),
                         "--products", str(self.products), "--scheme", "EnviousWispr",

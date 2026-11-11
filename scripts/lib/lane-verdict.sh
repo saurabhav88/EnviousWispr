@@ -91,6 +91,17 @@ EW_LANE_VERDICT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EW_LANE_JUDGE="$EW_LANE_VERDICT_DIR/lane-verdict.py"
 
 ew_lane_verdict() {
+  # #4461/#4507: a step the no-output watchdog stopped. Decided without a log or
+  # result bundle (neither may exist), and never a pass: returns the runner's
+  # hung exit 5. Usage: ew_lane_verdict --outcome hung <diagnostic>
+  if [ "${1:-}" = "--outcome" ]; then
+    if [ "$#" -ne 3 ] || [ "$2" != "hung" ]; then
+      echo "ew_lane_verdict: expected --outcome hung <diagnostic>" >&2
+      return 2
+    fi
+    echo "==> lane verdict: FAIL (hung): $3"
+    return 5
+  fi
   if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
     echo "ew_lane_verdict: expected <log> <result_bundle> <label> [expected_count]" >&2
     return 2

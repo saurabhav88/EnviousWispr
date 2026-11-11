@@ -87,7 +87,24 @@ ew_validation_lock() {
   fi
   return 0
 }
-trap 'ew_validation_cleanup; ew_seed_on_exit' EXIT
+# #4461/#4507: one verdict path for a step stopped after printing nothing for
+# EW_NO_OUTPUT_LIMIT_SECS (default 1200). The watchdog (scripts/lib/output-watchdog.py)
+# or the group supervisor writes the diagnostic to $EW_HUNG_MARKER; whatever branch
+# then ends the run, it ends here with FAIL (hung) and exit 5, after the cleanup below.
+ew_hung_exit() {
+  [ -n "${EW_HUNG_MARKER:-}" ] && [ -s "$EW_HUNG_MARKER" ] || return 0
+  ew_lane_verdict --outcome hung "$(cat "$EW_HUNG_MARKER")" || true
+  return 5
+}
+ew_exit_trap() {
+  local hung=0
+  ew_hung_exit || hung=$?
+  ew_validation_cleanup
+  ew_seed_on_exit
+  [ -z "${EW_HUNG_MARKER:-}" ] || rm -f "$EW_HUNG_MARKER"
+  [ "$hung" -eq 0 ] || exit "$hung"
+}
+trap ew_exit_trap EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
 ew_validation_interrupt() {
@@ -117,6 +134,8 @@ TEST_ARGS=()
 CONFIGURATION="Debug"
 CONFIGURATION_SELECTED=0
 RESULT_BUNDLE_PATH=""
+HOST_SELECTION="auto"
+FORWARD_ARGS=()
 # Default keeps the existing per-invocation log directory and lane filenames.
 LOG_DIR=""
 # The candidate default is validated in this worktree before it reaches main.
@@ -141,6 +160,7 @@ while [ "$#" -gt 0 ]; do
     --filter)
       option_value "$1" "${2:-}"
       TEST_ARGS+=("-only-testing:$2")
+      FORWARD_ARGS+=("$1" "$2")
       shift 2 ;;
     --serial|--grouped)
       if [ "$EXECUTION_SELECTED" = 1 ]; then
@@ -148,6 +168,7 @@ while [ "$#" -gt 0 ]; do
       fi
       EXECUTION_SELECTED=1
       TEST_EXECUTION="${1#--}"
+      FORWARD_ARGS+=("$1")
       shift ;;
     --configuration|--release)
       if [ "$CONFIGURATION_SELECTED" = 1 ]; then
@@ -166,11 +187,16 @@ while [ "$#" -gt 0 ]; do
         *) echo "ERROR: configuration must be Debug, Release or both" >&2; exit 2 ;;
       esac ;;
     --help|-h)
-      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH]"
-      echo "Default: one Debug run with up to four measured-cost worker groups. --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
+      echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]"
+      echo "--host: auto (default) runs here, or on a backup Mac from ~/.config/enviouswispr/mac-hosts.json when this Mac's slot is taken; a remote setup failure exits 4, never a test result."
+      echo "Default: one Debug run with up to four measured-cost worker groups (EW_LOCAL_TEST_WORKERS=1-4 sets this Mac's budget). --serial restores the previous order. Batch related suites with repeated --filter. Release is for release-cut validation; --release retains legacy both-config behavior. --real-boundary also runs real-world tests (real models, microphone, GPU, live OS state), which the everyday lane skips: use it when validating a feature and before a release."
       exit 0 ;;
     --result-bundle-path) option_value "$1" "${2:-}"; RESULT_BUNDLE_PATH="$2"; shift 2 ;;
-    --real-boundary) REAL_BOUNDARY=1; shift ;;
+    --real-boundary) REAL_BOUNDARY=1; FORWARD_ARGS+=("$1"); shift ;;
+    # #4507: which Mac runs this lane. auto (default) = this Mac first, then a
+    # backup Mac from ~/.config/enviouswispr/mac-hosts.json when this Mac's slot is
+    # taken; local = this Mac only; a host name = that backup Mac only.
+    --host) option_value "$1" "${2:-}"; HOST_SELECTION="$2"; shift 2 ;;
     # #2165: a per-invocation log directory. `run_lane` SUMS every
     # `Test run with N test` line in its log, so two runs sharing one fixed path
     # inflate the count — 10806 observed against a real 5387 — and the guard
@@ -178,7 +204,7 @@ while [ "$#" -gt 0 ]; do
     # one. A caller running many lanes (a mutation battery, a matrix) needs its
     # own path per row or its counts are not its own.
     --log-dir) option_value "$1" "${2:-}"; LOG_DIR="$2"; shift 2 ;;
-    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH]" >&2; exit 2 ;;
+    *) echo "usage: scripts/xcode-test.sh [--filter TARGET/SUITE ...] [--configuration Debug|Release|both | --release] [--serial | --grouped] [--real-boundary] [--log-dir DIR] [--result-bundle-path PATH] [--host auto|local|NAME]" >&2; exit 2 ;;
   esac
 done
 
@@ -287,9 +313,110 @@ exec 9<>"$CI_QUEUE_PATH"
 # #4089/#4090: a filtered run is short and goes before a queued full run.
 CI_QUEUE_KIND="full"
 [ "${#TEST_ARGS[@]}" -gt 0 ] && CI_QUEUE_KIND="short"
-python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KIND" &
-CI_QUEUE_PID=$!
-if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
+# #4507: the local Mac host list (scripts/lib/mac_hosts.py). No file is today's
+# single-Mac behavior; an invalid file stops the run here rather than guessing.
+# The holder card it labels is informational: the flock below decides ownership.
+if ! MAC_HOSTS_SHA="$(python3 "$PROJECT_ROOT/scripts/lib/mac_hosts.py" sha)"; then
+  exit 2
+fi
+# #4507: backup Macs this run may use. Only a local Debug lane with no output
+# path of its own routes (CI, Release, DERIVED_DATA_PATH, --log-dir and
+# --result-bundle-path stay here), never from a remote runner, and never with a
+# setting that only means something on this Mac (remote-lane.py env-check).
+REMOTE_CANDIDATES=()
+if [ "$HOST_SELECTION" != "local" ] && [ -z "${EW_REMOTE_CHILD:-}" ] && [ -z "${CI:-}" ] &&
+   [ -z "${DERIVED_DATA_PATH:-}" ] && [ "$CONFIGURATION" = "Debug" ] && [ -z "$LOG_DIR" ] &&
+   [ -z "$RESULT_BUNDLE_PATH" ] && python3 "$PROJECT_ROOT/scripts/lib/remote-lane.py" env-check; then
+  ELIGIBLE_ARGS=()
+  [ "$REAL_BOUNDARY" = 1 ] && ELIGIBLE_ARGS+=(--real)
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ "$HOST_SELECTION" = "auto" ] || [ "$HOST_SELECTION" = "$name" ]; then
+      REMOTE_CANDIDATES+=("$name")
+    fi
+  done < <(python3 "$PROJECT_ROOT/scripts/lib/mac_hosts.py" eligible-ci ${ELIGIBLE_ARGS[@]+"${ELIGIBLE_ARGS[@]}"} || true)
+fi
+if [ "$HOST_SELECTION" != "auto" ] && [ "$HOST_SELECTION" != "local" ] && [ "${#REMOTE_CANDIDATES[@]}" -eq 0 ]; then
+  echo "==> remote run SETUP FAILED: host '$HOST_SELECTION' cannot take this run (see the lines above)" >&2
+  exit 4
+fi
+SLOT_HOST=local
+if [ "${#REMOTE_CANDIDATES[@]}" -eq 0 ]; then
+  python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KIND" \
+    --label "$(basename "$PROJECT_ROOT")" --worktree "$PROJECT_ROOT" --config-sha256 "$MAC_HOSTS_SHA" &
+  CI_QUEUE_PID=$!
+  if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
+else
+  # The parent opens one descriptor per candidate slot (9 = this Mac, 10+ the
+  # backups, in host order); the helper locks the inherited ones and writes which
+  # won. Only the winner stays open, for the whole run.
+  SLOTS=""
+  [ "$HOST_SELECTION" = "auto" ] && SLOTS="local=9"
+  [ "$HOST_SELECTION" = "auto" ] || exec 9>&-
+  slot_fd=10
+  for name in "${REMOTE_CANDIDATES[@]}"; do
+    [ "$slot_fd" -le 17 ] || break
+    # shellcheck disable=SC2034  # read by the eval below (bash 3.2 has no {fd} syntax)
+    slot_path="$(python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" prepare-host "$name")"
+    eval "exec $slot_fd<>\"\$slot_path\""
+    SLOTS="${SLOTS:+$SLOTS,}$name=$slot_fd"
+    slot_fd=$((slot_fd + 1))
+  done
+  SLOT_WON_FILE="$(mktemp "${TMPDIR:-/tmp}/ew-slot.XXXXXX")"
+  python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire-any --kind "$CI_QUEUE_KIND" --slots "$SLOTS" \
+    --label "$(basename "$PROJECT_ROOT")" --worktree "$PROJECT_ROOT" --config-sha256 "$MAC_HOSTS_SHA" \
+    --won-file "$SLOT_WON_FILE" &
+  CI_QUEUE_PID=$!
+  # Keep the helper's status: cleanup must never turn a failed claim into exit 0.
+  if wait "$CI_QUEUE_PID"; then queue_rc=0; else queue_rc=$?; fi
+  SLOT_HOST="$(cat "$SLOT_WON_FILE" 2>/dev/null || true)"
+  rm -f "$SLOT_WON_FILE"
+  [ "$queue_rc" -eq 0 ] || exit "$queue_rc"
+  if [ -z "$SLOT_HOST" ]; then
+    echo "==> Local CI queue: the slot helper named no winning slot; refusing to run" >&2
+    exit 2
+  fi
+  # Close every losing descriptor (fd 9 too when a backup won).
+  [ "$SLOT_HOST" = "local" ] || exec 9>&-
+  slot_fd=10
+  for name in "${REMOTE_CANDIDATES[@]}"; do
+    [ "$slot_fd" -le 17 ] || break
+    [ "$name" = "$SLOT_HOST" ] || eval "exec $slot_fd>&-"
+    slot_fd=$((slot_fd + 1))
+  done
+fi
+# #4461/#4507: from here on, every build and test step runs under the no-output
+# watchdog. Waiting for a lock above is not a step and is never timed.
+WATCHDOG="$PROJECT_ROOT/scripts/lib/output-watchdog.py"
+EW_HUNG_MARKER="$(mktemp "${TMPDIR:-/tmp}/ew-hung.XXXXXX")"
+# #4507: a run that stays here uses this Mac's own worker budget from the host
+# list unless EW_LOCAL_TEST_WORKERS is set (a backup Mac gets its own from the
+# dispatcher).
+if [ "$SLOT_HOST" = "local" ] && [ -z "${EW_LOCAL_TEST_WORKERS:-}" ]; then
+  if EW_LOCAL_TEST_WORKERS="$(python3 "$PROJECT_ROOT/scripts/lib/mac_hosts.py" local-workers)"; then
+    export EW_LOCAL_TEST_WORKERS
+  else
+    exit 2
+  fi
+fi
+EW_RUNNER_PID=$$
+EW_CARD_HOST="$SLOT_HOST"
+export EW_HUNG_MARKER EW_RUNNER_PID EW_CARD_HOST
+ew_watch() { local phase="$1"; shift; python3 "$WATCHDOG" run --phase "$phase" -- "$@"; }
+# #4507: a backup Mac won the slot. This shell stays alive (its EXIT trap still
+# releases the checkout lock and reports a hang) and holds that Mac's slot
+# descriptor until remote-lane.py has stopped the remote job and fetched results.
+# A full eligible run ships the captured index tree; anything else ships a
+# development snapshot, which is never push proof. A passing full run's receipt is
+# adopted by remote-lane.py through validation-receipt.py adopt.
+if [ "$SLOT_HOST" != "local" ]; then
+  REMOTE_START=""
+  [ -n "$START_IDENTITY" ] && [ -z "$NO_RECEIPT_REASON" ] && REMOTE_START="$START_IDENTITY"
+  python3 "$PROJECT_ROOT/scripts/lib/remote-lane.py" run --host "$SLOT_HOST" --start "$REMOTE_START" \
+    -- ${FORWARD_ARGS[@]+"${FORWARD_ARGS[@]}"} &
+  REMOTE_PID=$!
+  if wait "$REMOTE_PID"; then exit 0; else exit "$?"; fi
+fi
 # #4293: this checkout's build lock (scripts/lib/build-folder-lock.py), held on
 # descriptor 8 until exit, so scripts/build-dev-app.sh and scripts/build-dev-only.sh
 # wait for this run instead of building in the shared .derivedData/Dev beside it.
@@ -351,7 +478,9 @@ done
 # #4485: before generation, which is the first package resolve. The lane folders
 # are named because DERIVED_DATA_PATH can put one outside this checkout.
 ew_drop_stale_package_checkouts "$PROJECT_ROOT" "${LANE_DERIVED_DATA[@]}"
-ew_ensure_generated "$PROJECT_ROOT"
+# shellcheck disable=SC2016  # the inner shell expands $1/$2, by design
+ew_watch generate bash -c '. "$1"; ew_ensure_generated "$2"' ew-generate \
+  "$PROJECT_ROOT/scripts/lib/ensure-generated.sh" "$PROJECT_ROOT"
 echo "==> phase generate: $((SECONDS - PHASE_START))s"
 
 printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "${LANE_DERIVED_DATA[*]}"
@@ -445,7 +574,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   # run that the pre-push receipt requires still compiles this bundle before any
   # push (it cost 6-39 s on every filtered run; 2026-10-31).
   if [ "$config" = Debug ] && [ "$FULL_VALIDATION" = 1 ]; then
-    xcodebuild build-for-testing \
+    ew_watch "critical build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme EnviousWispr-Critical \
       -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
@@ -455,7 +584,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   fi
   if [ "$TEST_EXECUTION" = "grouped" ]; then
     local build_start=$SECONDS supervisor rc
-    xcodebuild build-for-testing \
+    ew_watch "$config build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme "$scheme" -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
       -onlyUsePackageVersionsFromResolvedFile \
@@ -483,7 +612,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   # against it fails OPEN, which is how a machine-dependent assertion reaches CI
   # while its author believes it is gated (#2376 Phase 4).
   TEST_RUNNER_EW_APP_LOG_DIRECTORY="$APP_LOG_DIR" \
-  TEST_RUNNER_CI="${CI:-}" xcodebuild test \
+  TEST_RUNNER_CI="${CI:-}" ew_watch "$config tests" xcodebuild test \
     -project "$PROJECT" \
     -scheme "$scheme" \
     -configuration "$xcode_config" \
@@ -529,7 +658,7 @@ for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
     RESOLVE_SCHEME="$RELEASE_SCHEME"
   fi
   ew_seed_resolve_or_unseed "$lane_dd" \
-    xcodebuild -resolvePackageDependencies \
+    ew_watch "package resolution" xcodebuild -resolvePackageDependencies \
       -project "$PROJECT" \
       -scheme "$RESOLVE_SCHEME" \
       -derivedDataPath "$lane_dd"
@@ -561,7 +690,7 @@ done
 # serially, Release, each in its own persistent .build directory, held to tracked pins.
 PHASE_START=$SECONDS
 echo "==> eval packages: compiling the eval runner package scripts/eval (Release)"
-if bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
+if ew_watch "eval compile" bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
   echo "==> phase eval compile: $((SECONDS - PHASE_START))s"
   echo "==> eval packages verdict: PASS"
 else
