@@ -33,15 +33,17 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
     self.cacheLimitBytes = cacheLimitBytes
   }
 
-  /// The checker adapter the runtime offers (the last argument) is not loaded by this engine,
-  /// so the returned spec carries none and the endpoint never claims a checker.
+  /// The checker adapter the runtime offers (the last argument) is the adapter's installed
+  /// weights file. The spec carries it, so the endpoint says a checker is loaded, and the
+  /// helper is told the folder that file is in (it reads the weights and their settings file
+  /// from there). No adapter is ever chosen here: with none offered, none is launched.
   public var makeLaunchConfiguration: LocalPolishLaunchConfigurationFactory {
     let engine = self
-    return { modelID, artifactIdentity, helperURL, modelURL, contextTokens, _ in
+    return { modelID, artifactIdentity, helperURL, modelURL, contextTokens, adapterURL in
       LocalPolishProcessManager.Configuration(
         spec: engine.makeSpec(
           modelID: modelID, artifactIdentity: artifactIdentity, helperURL: helperURL,
-          modelURL: modelURL, contextTokens: contextTokens),
+          modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL),
         makeArguments: Self.arguments)
     }
   }
@@ -65,6 +67,8 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
   /// The cache limit as the helper's own argument. It is part of the spec's extra arguments,
   /// so two launches with different limits are different processes.
   static let cacheLimitArgument = "--cache-limit-bytes"
+  /// The helper's argument for the folder of the learned-word adapter.
+  static let wordCheckAdapterArgument = "--word-check-adapter"
 
   /// This engine serves EG-1 only. Another model here would be launched with EG-1's wire name
   /// and probed as EG-1, so it stops instead of answering for the wrong model.
@@ -75,23 +79,27 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
   }
 
   /// The launch spec of one EG-1 size on the helper: the polish model folder from the runtime,
-  /// and this engine's draft model, its identity and the cache limit.
+  /// this engine's draft model, its identity and the cache limit, and the offered checker
+  /// adapter. The adapter's arguments are its own field, so the fallback copy of the spec (the
+  /// launch the process manager runs when the adapter fails) has no adapter and no argument.
   func makeSpec(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, helperURL: URL,
-    modelURL: URL, contextTokens: Int
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
   ) -> LocalPolishLaunchSpec {
     Self.requireEGOne(modelID)
     return LocalPolishLaunchSpec(
       engineKind: .enviousDecode, modelID: modelID, artifactIdentity: artifactIdentity,
       serverBinaryURL: helperURL, modelURL: modelURL, contextTokens: contextTokens,
-      learnedWordAdapterURL: nil,
+      learnedWordAdapterURL: learnedWordAdapterURL,
       extraArguments: [Self.cacheLimitArgument, String(cacheLimitBytes)],
-      learnedWordAdapterArguments: [], draftModelURL: draftModelURL,
+      learnedWordAdapterArguments: learnedWordAdapterURL.map {
+        [Self.wordCheckAdapterArgument, $0.deletingLastPathComponent().path]
+      } ?? [], draftModelURL: draftModelURL,
       draftArtifactIdentity: draftArtifactIdentity)
   }
 
   /// The helper's complete argument list for one spawn: its seven arguments, each with its
-  /// value. The port and the bearer are chosen by the process manager for each spawn and are
+  /// value, then the adapter folder when the spec carries an adapter. The port and the bearer are chosen by the process manager for each spawn and are
   /// not part of the spec. The model name is EG-1's wire name for every size (the name a
   /// request must carry); it is never read from a folder name.
   ///
@@ -110,7 +118,7 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
       "--token", authToken,
       "--ctx-size", String(spec.contextTokens),
     ]
-    return arguments + spec.extraArguments
+    return arguments + spec.extraArguments + spec.learnedWordAdapterArguments
   }
 
   /// The health probe: a REAL polish of a fixed filler-and-self-correction transcript through

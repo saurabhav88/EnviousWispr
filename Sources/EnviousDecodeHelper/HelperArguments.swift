@@ -1,7 +1,7 @@
 import Foundation
 
-/// What the app tells the helper when it starts it. Every value is required and checked before
-/// any model file is read. The bearer token is never printed, in an error or anywhere else.
+/// What the app tells the helper when it starts it. Every value but the word-check adapter is
+/// required, and each is checked before any model file is read. The bearer token is never printed, in an error or anywhere else.
 struct HelperArguments: Equatable {
   /// The polish model's folder.
   let modelFolder: URL
@@ -17,6 +17,9 @@ struct HelperArguments: Equatable {
   let contextTokens: Int
   /// MLX's buffer cache limit, in bytes, set before a model is loaded.
   let cacheLimitBytes: Int
+  /// The folder of the learned-word adapter for this polish model (`adapter_config.json` and
+  /// `adapters.safetensors`), or nil when the helper serves no word check.
+  let wordCheckAdapterFolder: URL?
 
   enum ParseError: Error, Equatable, CustomStringConvertible {
     case unknownArgument(String)
@@ -38,12 +41,14 @@ struct HelperArguments: Equatable {
 
   static let usage =
     "usage: envious-decode --model <folder> --draft-model <folder> --model-name <name> "
-    + "--port <1-65535> --token <bearer> --ctx-size <tokens> --cache-limit-bytes <bytes>"
+    + "--port <1-65535> --token <bearer> --ctx-size <tokens> --cache-limit-bytes <bytes> "
+    + "[--word-check-adapter <folder>]"
 
   static let names: Set<String> = [
     "--model", "--draft-model", "--model-name", "--port", "--token", "--ctx-size",
-    "--cache-limit-bytes",
+    "--cache-limit-bytes", wordCheckAdapterName,
   ]
+  static let wordCheckAdapterName = "--word-check-adapter"
 
   static func parse(_ arguments: [String]) throws -> HelperArguments {
     var values: [String: String] = [:]
@@ -93,6 +98,8 @@ struct HelperArguments: Equatable {
       modelFolder: try folder("--model"), draftFolder: try folder("--draft-model"),
       modelName: modelName, port: UInt16(try number("--port", in: 1...65_535)), token: token,
       contextTokens: try number("--ctx-size", in: 1...1_048_576),
-      cacheLimitBytes: try number("--cache-limit-bytes", in: 0...Int.max))
+      cacheLimitBytes: try number("--cache-limit-bytes", in: 0...Int.max),
+      wordCheckAdapterFolder: values[wordCheckAdapterName] == nil
+        ? nil : try folder(wordCheckAdapterName))
   }
 }

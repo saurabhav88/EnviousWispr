@@ -20,6 +20,8 @@ package enum EnviousDecodeSessionError: Error, Equatable, Sendable {
   /// The request cannot run. `reason` names the rule that failed, for a log line.
   case requestRefused(reason: String)
   case instructionPrefixRefused(EnviousDecodeInstructionPrefixRefusal)
+  /// The session was loaded with no word-check adapter. Nothing ran.
+  case wordCheckUnavailable
 }
 
 /// What one request produced.
@@ -48,12 +50,18 @@ package struct EnviousDecodeResult: Equatable, Sendable {
 package final class EnviousDecodeSession {
   private let target: any DFlashTargetModel
   private let draft: DFlashDraftModel
+  /// The learned-word check of this polish model, when the session was loaded with its
+  /// adapter. It is a tree of its own; the polish model above is never wrapped or switched.
+  private let wordCheck: EnviousDecodeWordCheck?
   /// At most one: the state after the instruction prefix of the last request that named one.
   private var instructionSnapshot: DFlashPrefixSnapshot?
 
-  private init(target: any DFlashTargetModel, draft: DFlashDraftModel) {
+  private init(
+    target: any DFlashTargetModel, draft: DFlashDraftModel, wordCheck: EnviousDecodeWordCheck?
+  ) {
     self.target = target
     self.draft = draft
+    self.wordCheck = wordCheck
   }
 
   deinit {
@@ -71,6 +79,17 @@ package final class EnviousDecodeSession {
   /// starts no task of its own.
   package static func load(
     targetDirectory: URL, draftDirectory: URL
+  ) async throws -> EnviousDecodeSession {
+    try await load(
+      targetDirectory: targetDirectory, draftDirectory: draftDirectory,
+      wordCheckAdapterDirectory: nil)
+  }
+
+  /// As above, and with a word-check adapter folder also builds the learned-word check of the
+  /// polish model (`EnviousDecodeWordCheck`). An adapter that does not fit the model exactly
+  /// is an error for the whole load: the session is not returned without its check.
+  package static func load(
+    targetDirectory: URL, draftDirectory: URL, wordCheckAdapterDirectory: URL?
   ) async throws -> EnviousDecodeSession {
     let configuration = try Data(
       contentsOf: targetDirectory.appendingPathComponent("config.json"))
@@ -96,7 +115,44 @@ package final class EnviousDecodeSession {
     // kernel only when the model is not in training mode.
     target.train(false)
     draft.train(false)
-    return EnviousDecodeSession(target: target, draft: draft)
+    var wordCheck: EnviousDecodeWordCheck?
+    if let wordCheckAdapterDirectory {
+      wordCheck = try await EnviousDecodeWordCheck.make(
+        polish: model, configuration: configuration, modelType: base.modelType,
+        adapterDirectory: wordCheckAdapterDirectory)
+    }
+    return EnviousDecodeSession(target: target, draft: draft, wordCheck: wordCheck)
+  }
+
+  /// True when the session can score learned-word questions.
+  package var hasWordCheck: Bool { wordCheck != nil }
+
+  /// Layers the word-check adapter wraps in its own tree, or nil with no adapter. For tests.
+  var wordCheckWrappedLayerCount: Int? { wordCheck?.wrappedLayerCount }
+
+  /// Adapter wrappers inside the POLISH model. Always 0: the adapter is never attached to
+  /// it. For tests.
+  var polishAdapterLayerCount: Int { EnviousDecodeWordCheck.adapterLayerCount(in: target) }
+
+  /// The polish model's parameters and the word-check tree's base parameters, by name. For
+  /// tests: the second must be the first's own storage, not a copy.
+  var polishParameters: [String: MLXArray] {
+    Dictionary(target.parameters().flattened(), uniquingKeysWith: { first, _ in first })
+  }
+  var wordCheckBaseParameters: [String: MLXArray]? { wordCheck?.baseParameters }
+
+  /// Scores 1 to 8 learned-word questions in one forward pass of the word-check tree and
+  /// returns, for each, the next-token probabilities of the two answer tokens. It reads and
+  /// writes nothing of polish: no cache, no snapshot, no model state.
+  ///
+  /// - Throws: `EnviousDecodeSessionError.wordCheckUnavailable` with no adapter;
+  ///   `EnviousDecodeWordCheckError.requestRefused`; `CancellationError`.
+  package func wordCheckScores(
+    promptTokenIDs: [[Int]], answerTokenIDs: (a: Int, b: Int)
+  ) throws -> [EnviousDecodeWordCheckScore] {
+    guard let wordCheck else { throw EnviousDecodeSessionError.wordCheckUnavailable }
+    return try wordCheck.scores(
+      promptTokenIDs: promptTokenIDs, tokenA: answerTokenIDs.a, tokenB: answerTokenIDs.b)
   }
 
   /// True when both models are in inference mode. For tests.

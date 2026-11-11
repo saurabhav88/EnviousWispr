@@ -183,6 +183,7 @@ final class HelperHTTPServer: @unchecked Sendable {
     case 417: "Expectation Failed"
     case 431: "Request Header Fields Too Large"
     case 501: "Not Implemented"
+    case 503: "Service Unavailable"
     default: "Internal Server Error"
     }
   }

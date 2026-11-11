@@ -112,16 +112,14 @@ struct EnviousDecodeEngineTests {
     let draft = URL(fileURLWithPath: "/models/eg1-mini-draft", isDirectory: true)
     let modelIdentity = Self.identity("eg1-mini", "m1")
     let draftIdentity = Self.identity("eg1-mini-draft", "d1")
+    let adapter = URL(fileURLWithPath: "/models/eg1-mini-checker/adapters.safetensors")
     func configuration(
       draft: URL = draft, draftIdentity: ModelIdentity = draftIdentity,
-      cacheLimit: Int = 268_435_456
+      cacheLimit: Int = 268_435_456, adapter: URL? = nil
     ) -> LocalPolishProcessManager.Configuration {
-      // A checker adapter is offered (the last argument): this engine does not load one.
       EnviousDecodeEngine(
         draftModelURL: draft, draftArtifactIdentity: draftIdentity, cacheLimitBytes: cacheLimit
-      ).makeLaunchConfiguration(
-        .egOne(.mini), modelIdentity, helper, model, 8192,
-        URL(fileURLWithPath: "/models/checker.safetensors"))
+      ).makeLaunchConfiguration(.egOne(.mini), modelIdentity, helper, model, 8192, adapter)
     }
 
     // The spec, field by field.
@@ -143,6 +141,28 @@ struct EnviousDecodeEngineTests {
     // The same values again are the same launch; the fallback copy keeps the draft model.
     #expect(configuration().spec == launch.spec)
     #expect(launch.spec.withoutLearnedWordAdapter() == launch.spec)
+
+    // With the checker adapter's weights file offered (#4473 P3): the spec carries that file,
+    // the helper is told its folder after its seven arguments, and it is another launch. The
+    // fallback copy is the launch without the adapter, argument included.
+    let adapted = configuration(adapter: adapter)
+    #expect(
+      adapted.spec
+        == LocalPolishLaunchSpec(
+          engineKind: .enviousDecode, modelID: .egOne(.mini), artifactIdentity: modelIdentity,
+          serverBinaryURL: helper, modelURL: model, contextTokens: 8192,
+          learnedWordAdapterURL: adapter, extraArguments: ["--cache-limit-bytes", "268435456"],
+          learnedWordAdapterArguments: ["--word-check-adapter", "/models/eg1-mini-checker"],
+          draftModelURL: draft, draftArtifactIdentity: draftIdentity))
+    #expect(
+      adapted.makeArguments(adapted.spec, 49152, "bearer-1") == [
+        "--model", "/models/eg1-mini", "--draft-model", "/models/eg1-mini-draft",
+        "--model-name", "eg-1", "--port", "49152", "--token", "bearer-1",
+        "--ctx-size", "8192", "--cache-limit-bytes", "268435456",
+        "--word-check-adapter", "/models/eg1-mini-checker",
+      ])
+    #expect(adapted.spec != launch.spec)
+    #expect(adapted.spec.withoutLearnedWordAdapter() == launch.spec)
 
     // Another draft revision, another draft folder, another cache limit: each another launch.
     let otherRevision = configuration(draftIdentity: Self.identity("eg1-mini-draft", "d2")).spec
@@ -311,10 +331,10 @@ struct EnviousDecodeEngineTests {
         cacheLimitBytes: Self.cacheLimit)
     }
     func target(_ engine: EnviousDecodeEngine) -> LocalPolishTarget {
-      // The fixture's checker adapter is offered, as the runtime offers one.
+      // No checker adapter is offered here; the launch with one is in the word checker's suite.
       var configuration = engine.makeLaunchConfiguration(
         .singleModel(for: .egOne), Self.identity("model", "m1"), fixture.binary, fixture.model,
-        4096, fixture.adapter)
+        4096, nil)
       configuration.readinessBudgetSeconds = 4
       return LocalPolishTarget(configuration: configuration)
     }
