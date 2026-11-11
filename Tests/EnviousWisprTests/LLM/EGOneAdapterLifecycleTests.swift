@@ -63,6 +63,16 @@ struct EGOneAdapterLifecycleTests {
         port = int(args[args.index('--port') + 1])
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                # #4493 C0: record what each GET sends (path and bearer), and let a test script
+                # a failing /health status in get_status.
+                with open(os.path.join(root, 'gets.jsonl'), 'a') as gets:
+                    gets.write(json.dumps({'path': self.path,
+                        'authorization': self.headers.get('Authorization')}) + '\n')
+                get_status = os.path.join(root, 'get_status')
+                if self.path == '/health' and os.path.exists(get_status):
+                    self.send_response(int(open(get_status).read()))
+                    self.end_headers()
+                    return
                 # #4319: /slots answers from slots.json when the test wrote one, and only with
                 # the launch's bearer.
                 slots = os.path.join(root, 'slots.json')
@@ -85,13 +95,24 @@ struct EGOneAdapterLifecycleTests {
                 length = int(self.headers.get('Content-Length') or 0)
                 body = self.rfile.read(length).decode('utf-8', 'replace')
                 with open(os.path.join(root, 'posts.jsonl'), 'a') as posts:
-                    posts.write(json.dumps({'path': self.path, 'body': body}) + '\n')
+                    posts.write(json.dumps({'path': self.path, 'body': body,
+                        'authorization': self.headers.get('Authorization'),
+                        'content_type': self.headers.get('Content-Type')}) + '\n')
                 # #4473 chunk 2c.2: a test may script the answer. post_status holds a failing
                 # HTTP status (no body); post_content holds the assistant text of a 200 reply.
                 status_path = os.path.join(root, 'post_status')
                 if os.path.exists(status_path):
                     self.send_response(int(open(status_path).read()))
                     self.end_headers()
+                    return
+                # #4493 C0: a test may script the exact bytes of a /completion answer.
+                completion_path = os.path.join(root, 'completion_reply')
+                if self.path == '/completion' and os.path.exists(completion_path):
+                    reply = open(completion_path, 'rb').read()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(reply)
                     return
                 content_path = os.path.join(root, 'post_content')
                 content = (open(content_path).read() if os.path.exists(content_path)
