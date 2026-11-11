@@ -444,6 +444,8 @@ final class PipelineSettingsSync {
       .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:
       break  // Frozen per recording; see `DictationSessionConfig`.
+    case .egOneSize:
+      break  // #4473: a preference for future work; each invocation freezes its own model.
     case .whisperKitLanguage:
       break  // Deprecated — legacy migration only (SettingsManager:460-484).
     case .onboardingState, .hasCompletedOnboarding,

@@ -239,6 +239,16 @@ package final class WisprBootstrapper {
     // (mutates the store it reads). Release/shipped builds no-op. See migration doc.
     SettingsDefaultsMigration.migrateIfNeeded()
     let settings = SettingsManager()
+    // #4473 (plan §3.1.1 S4): the EG-1 size preference is set HERE, before model delivery is
+    // built and before any launch work can admit, clean up or replace an EG-1 install: the
+    // install records it reads must be the ones the last run left.
+    settings.resolveEGOneSizeIfNeeded(
+      hasEGOneInstallRecord: PriorRevisionAdmission.hasReadableMarker(
+        family: .egOne, name: LLMProvider.egOneModelName,
+        metadataDirectory: FileManager.default.urls(
+          for: .applicationSupportDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)),
+      recommendation: EGOneSizeRecommendation.forThisMac(language: settings.languageMode))
     // #1047: apply the persisted appearance before any window is built so a
     // pinned Dark never flashes white. `.system` clears the override (follow OS).
     AppearanceController.apply(settings.appearancePreference)

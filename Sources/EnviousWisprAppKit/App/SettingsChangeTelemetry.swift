@@ -207,6 +207,9 @@ enum SettingsProjection {
     case .learnFromEdits: return [.learnFromEdits]
     case .languageMode: return [.languageMode]
     case .englishSpelling: return [.englishSpelling]
+    // #4473: no settings delta yet. The size reaches telemetry as `model_size` on each polish
+    // attempt, added with its contract review in a later chunk of the same plan.
+    case .egOneSize: return []
     case .useStreamingASR: return [.streamingASR]
     case .livePreviewEnabled: return [.livePreview]
     case .livePreviewEngine: return [.livePreviewEngine]

@@ -2,7 +2,9 @@
 ///
 /// A logical size, not an artifact revision: which bytes serve a size is decided by model
 /// delivery when the work runs.
-public enum EGOneSize: Sendable, Hashable, CaseIterable {
+///
+/// The raw value is the stored form of the size preference (`egOneSize` in Settings).
+public enum EGOneSize: String, Sendable, Hashable, CaseIterable {
   case full
   case mini
   case micro

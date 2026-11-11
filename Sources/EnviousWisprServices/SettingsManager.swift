@@ -102,6 +102,8 @@ public final class SettingsManager {
     case languageMode
     /// #3124: the English spelling preference; frozen per recording with `languageMode`.
     case englishSpelling
+    /// #4473: the EG-1 size preference.
+    case egOneSize
     case selectedInputDeviceUID
     case preferredInputDeviceIDOverride
     /// #2664: per-device "Microphone socket" choice, keyed by device UID.
@@ -174,7 +176,7 @@ public final class SettingsManager {
     "spokenPunctuationStartWords", "spokenPunctuationEnglishPeriodWord", "casualModeEnabled",
     "crashRecoveryEnabled", "shareUsageMetrics", "sendCrashReports", "contactsSyncOnLaunchEnabled",
     "isDebugModeEnabled", "isDictationAudioArchiveEnabled", "debugLogLevel",
-    "whisperKitLanguage", "languageMode", "englishSpelling",
+    "egOneSize", "whisperKitLanguage", "languageMode", "englishSpelling",
     "selectedInputDeviceUID", "preferredInputDeviceIDOverride", "inputChannelByDeviceUID",
     "useStreamingASR", "livePreviewEnabled", "livePreviewEngine",
     "warmEnginePolicy", "appearancePreference",
@@ -1661,6 +1663,44 @@ public final class SettingsManager {
     }
   }
 
+  /// #4473 (plan §3.1.1 S3 to S5): the EG-1 size the user prefers, for future work on every
+  /// surface. nil only between the start of the app and `resolveEGOneSizeIfNeeded`, which runs
+  /// once at launch before anything reads a size. After that it changes only when the user
+  /// picks a size or removes the preferred one: never on a language change, a provider change
+  /// or onboarding.
+  public private(set) var egOneSize: EGOneSize? {
+    didSet {
+      guard oldValue != egOneSize, let egOneSize else { return }
+      defaults.set(egOneSize.rawValue, forKey: Self.egOneSizeKey)
+      onChange?(.egOneSize)
+    }
+  }
+
+  static let egOneSizeKey = "egOneSize"
+
+  /// The user picked a size. The only way the preference changes after first resolution,
+  /// apart from removing the preferred size (plan §3.1.1 S5, S9).
+  public func selectEGOneSize(_ size: EGOneSize) {
+    egOneSize = size
+  }
+
+  /// EG-1 is the polish engine chosen for dictation, file import or meeting summaries.
+  public var selectsEGOneOnAnySurface: Bool {
+    llmProvider == .egOne || fileImportLLMProvider == .egOne || meetingSummaryLLMProvider == .egOne
+  }
+
+  /// Sets the size preference the first time, by `EGOneSizeResolution`. Does nothing when a
+  /// known size is already stored. `hasEGOneInstallRecord` is model delivery's answer about its
+  /// own install records; this type does not read them.
+  public func resolveEGOneSizeIfNeeded(hasEGOneInstallRecord: Bool, recommendation: EGOneSize) {
+    guard egOneSize == nil else { return }
+    let stored: EGOneSizeResolution.Stored =
+      defaults.object(forKey: Self.egOneSizeKey) == nil ? .absent : .unknown
+    egOneSize = EGOneSizeResolution.resolve(
+      stored: stored, hasPriorEGOneUse: selectsEGOneOnAnySurface || hasEGOneInstallRecord,
+      recommendation: recommendation)
+  }
+
   public var selectedInputDeviceUID: String {
     didSet {
       defaults.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
@@ -2102,6 +2142,9 @@ public final class SettingsManager {
     englishSpelling =
       EnglishSpelling(rawValue: defaults.string(forKey: "englishSpelling") ?? "")
       ?? SettingsDefaultValues.englishSpelling
+    // #4473: no default here. Absent, and a value this build does not know, both load as nil
+    // and are told apart at first resolution.
+    egOneSize = defaults.string(forKey: Self.egOneSizeKey).flatMap(EGOneSize.init(rawValue:))
     selectedInputDeviceUID =
       defaults.string(forKey: "selectedInputDeviceUID")
       ?? SettingsDefaultValues.selectedInputDeviceUID
