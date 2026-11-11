@@ -274,17 +274,21 @@ def acquire_any(slots, kind):
         finally:
             os.close(pfd)
     else:
+        # Short-first priority guards this Mac's slot only: a queued short run (often
+        # an older runner that cannot use a backup Mac) never keeps a full run off a
+        # free backup Mac (#4507).
+        remotes = [slot for slot in slots if slot[0] != "local"]
         while won is None:
             pfd = open_checked(priority_path())
             try:
                 try:
                     fcntl.flock(pfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    won = try_slots(slots)  # no short run queued: this Mac first
                 except BlockingIOError:
-                    if not announced:
+                    won = try_slots(remotes) if remotes else None
+                    if won is None and not announced:
                         print(waiting_line(slots, "full run; a short run is queued"), flush=True)
                         announced = True
-                    fcntl.flock(pfd, fcntl.LOCK_EX)
-                won = try_slots(slots)
             finally:
                 os.close(pfd)
             if won is None:
