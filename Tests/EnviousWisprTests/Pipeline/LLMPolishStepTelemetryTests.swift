@@ -575,10 +575,10 @@ struct LLMPolishStepTelemetryTests {
     let data = try #require(spy.completedCalls.first?.data)
     #expect(data["model_size"] as? String == "micro")
     #expect(data["implementation_actual"] as? String == "envious_decode")
-    #expect(data["draft_proposed_tokens"] as? Int == 12)
-    #expect(data["draft_accepted_tokens"] as? Int == 0, "a measured zero is kept, as a number")
-    #expect(data["emitted_tokens"] as? Int == 20)
-    #expect(data["draft_accepted_tokens"] as? String == nil)
+    #expect(data["draft_proposed_count"] as? Int == 12)
+    #expect(data["draft_accepted_count"] as? Int == 0, "a measured zero is kept, as a number")
+    #expect(data["emitted_count"] as? Int == 20)
+    #expect(data["draft_accepted_count"] as? String == nil)
   }
 
   @Test("a non-EG-1 take's completed breadcrumb has no size and none of the decode keys")
@@ -590,8 +590,8 @@ struct LLMPolishStepTelemetryTests {
 
     let data = try #require(spy.completedCalls.first?.data)
     for key in [
-      "model_size", "implementation_actual", "draft_proposed_tokens", "draft_accepted_tokens",
-      "emitted_tokens",
+      "model_size", "implementation_actual", "draft_proposed_count", "draft_accepted_count",
+      "emitted_count",
     ] {
       #expect(data[key] == nil, "\(key) must not ride a non-EG-1 take")
     }

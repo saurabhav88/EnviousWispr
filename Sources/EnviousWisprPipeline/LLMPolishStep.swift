@@ -1786,7 +1786,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     data.merge(extraData) { _, new in new }
 
     // #4473: the same size and engine report `llm.polish_completed` carries, so a Sentry trail
-    // names the size and the engine that answered. Counts stay numbers.
+    // names the size and the engine that answered. Counts stay numbers. The count keys end in
+    // `_count`, NOT `_tokens` as in PostHog: Sentry's server-side password filter removes the
+    // value of any key that contains "token" (measured on the development proof, 2026-11-11:
+    // all three counts arrived null with the remark `@password:filter`).
     var breadcrumbData = data.mapValues { $0 as Any }
     if provider == .egOne, let size = polishModelID?.size {
       breadcrumbData["model_size"] = size.rawValue
@@ -1794,13 +1797,13 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     if let decode = result.localDecode {
       breadcrumbData["implementation_actual"] = decode.implementation
       if let n = decode.draftProposedTokens {
-        breadcrumbData["draft_proposed_tokens"] = n
+        breadcrumbData["draft_proposed_count"] = n
       }
       if let n = decode.draftAcceptedTokens {
-        breadcrumbData["draft_accepted_tokens"] = n
+        breadcrumbData["draft_accepted_count"] = n
       }
       if let n = decode.emittedTokens {
-        breadcrumbData["emitted_tokens"] = n
+        breadcrumbData["emitted_count"] = n
       }
     }
     telemetry.breadcrumbCompleted("LLM polish completed", breadcrumbData)
