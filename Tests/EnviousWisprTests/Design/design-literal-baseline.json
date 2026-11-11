@@ -1,0 +1,290 @@
+{
+  "files" : {
+    "Sources\/EnviousWisprAppKit\/App\/ApplicationRelocationCoordinator+Live.swift" : {
+      "color" : 1,
+      "fontSize" : 7
+    },
+    "Sources\/EnviousWisprAppKit\/App\/BluetoothAwarenessCardView.swift" : {
+      "color" : 9,
+      "fontSize" : 8,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/App\/CallPromptView.swift" : {
+      "color" : 2,
+      "fontSize" : 4,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/App\/EscapeRecoveryPillView.swift" : {
+      "color" : 24
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/AccessibilityToastView.swift" : {
+      "fontSize" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/ColdStartNoticeView.swift" : {
+      "color" : 3,
+      "fontSize" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/CorrectionLearnedPillView.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/ImportStatusOverlayView.swift" : {
+      "fontSize" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/LanguageChipView.swift" : {
+      "fontSize" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/NotificationOverlayView.swift" : {
+      "fontSize" : 7,
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/OverlayCapsuleBackgrounds.swift" : {
+      "color" : 14,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/PolishingOverlayView.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/RecordingOverlayView.swift" : {
+      "fontSize" : 7
+    },
+    "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/RecoveryNoticeView.swift" : {
+      "fontSize" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/App\/PolishSetupCardView.swift" : {
+      "fontSize" : 4,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Components\/AccessibilityWarningBanner.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Components\/HotkeyRecorderView.swift" : {
+      "fontSize" : 1,
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Components\/PolishSetupBanner.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Components\/UpdateAvailableBanner.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/MainWindowView.swift" : {
+      "color" : 4,
+      "fontSize" : 4,
+      "radius" : 11
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingHistoryDetailView.swift" : {
+      "fontSize" : 2,
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingNotesEditor.swift" : {
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingSummaryView.swift" : {
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/SidebarStatsHeader.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptDetailView.swift" : {
+      "fontSize" : 6,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptHistoryView.swift" : {
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Main\/TurnDocumentView.swift" : {
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/OnboardingDesignTokens.swift" : {
+      "color" : 9,
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/OnboardingV2View.swift" : {
+      "fontSize" : 18,
+      "radius" : 21
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/PracticeScreen.swift" : {
+      "fontSize" : 3,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/WarmingScreen.swift" : {
+      "fontSize" : 4,
+      "radius" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/QuickAdd\/QuickAddPanelView.swift" : {
+      "fontSize" : 5,
+      "radius" : 6
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/AIPolishProviderCatalog.swift" : {
+      "color" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/AIPolishProviderPicker.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/AudioSettingsView.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomTermsSection.swift" : {
+      "fontSize" : 3,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomWordEditSheet.swift" : {
+      "fontSize" : 2,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomWordsImportSheet.swift" : {
+      "fontSize" : 1,
+      "radius" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/EngineSummaryPresentation.swift" : {
+      "fontSize" : 1,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/FeedbackHelpViews.swift" : {
+      "fontSize" : 6,
+      "radius" : 10
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/FeedbackPopover.swift" : {
+      "color" : 4,
+      "fontSize" : 6,
+      "radius" : 12
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/ImportSheetComponents.swift" : {
+      "fontSize" : 1,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/LanguageLockSheet.swift" : {
+      "fontSize" : 3,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/LearningSection.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/LivePreviewPackCatalogSheet.swift" : {
+      "fontSize" : 1,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/LivePreviewSettingsView.swift" : {
+      "fontSize" : 2,
+      "radius" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingControls.swift" : {
+      "radius" : 6
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingOnboardingView.swift" : {
+      "fontSize" : 11,
+      "radius" : 6
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingRainbowLogo.swift" : {
+      "color" : 3,
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingSetupHowTo.swift" : {
+      "color" : 4,
+      "fontSize" : 19,
+      "radius" : 13
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingSummariesTab.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/MicrophoneDevicePicker.swift" : {
+      "fontSize" : 3,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/PolishSectionViews.swift" : {
+      "fontSize" : 3,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/PrivacySettingsView.swift" : {
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/ProviderSetup.swift" : {
+      "fontSize" : 12,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/QuickAddTeachingSection.swift" : {
+      "fontSize" : 2,
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/RecordingChimesContent.swift" : {
+      "fontSize" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/RecordingPillAppearancePanel.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsArrival.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsComponents.swift" : {
+      "fontSize" : 13,
+      "radius" : 16
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsDesignTokens.swift" : {
+      "color" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsDropdown.swift" : {
+      "fontSize" : 4,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsSearchViews.swift" : {
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsView.swift" : {
+      "fontSize" : 4,
+      "radius" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SidebarNavRow.swift" : {
+      "color" : 3,
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SnippetEditSheet.swift" : {
+      "fontSize" : 2,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SnippetImportSheet.swift" : {
+      "fontSize" : 1,
+      "radius" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SnippetsView.swift" : {
+      "fontSize" : 5,
+      "radius" : 5
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SpokenPunctuationConfigureSheet.swift" : {
+      "fontSize" : 1
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/SpokenPunctuationLanguagePicker.swift" : {
+      "fontSize" : 3,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/TranscribeFileView.swift" : {
+      "fontSize" : 12,
+      "radius" : 4
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/TranscribeFileWorkingCard.swift" : {
+      "fontSize" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/TranscribeFileWorkingPage.swift" : {
+      "fontSize" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/VocabPacksSection.swift" : {
+      "radius" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/VocabularyPackDetailSheet.swift" : {
+      "fontSize" : 6,
+      "radius" : 3
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/WhatsNewMenuView.swift" : {
+      "color" : 6,
+      "fontSize" : 2
+    },
+    "Sources\/EnviousWisprAppKit\/Views\/Settings\/YourWordsView.swift" : {
+      "fontSize" : 4,
+      "radius" : 6
+    }
+  },
+  "total" : {
+    "color" : 88,
+    "fontSize" : 243,
+    "radius" : 232
+  }
+}
