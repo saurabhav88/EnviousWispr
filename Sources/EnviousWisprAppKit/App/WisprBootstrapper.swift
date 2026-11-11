@@ -975,11 +975,17 @@ package final class WisprBootstrapper {
       guard let checkerIdentity = modelDelivery.checkerRegistrations[engine]?.manifest.identity,
         let runtime = runtimes[engine]
       else { continue }
-      let baseIdentity: ModelIdentity? =
-        switch engine {
-        case .egOne: egOneUpgrade?.registration.manifest.identity
-        case .s1Mini: s1BaseRegistration?.manifest.identity
-        }
+      // #4473: each checker follows ITS OWN model's admission. One identity for every EG-1
+      // size would leave Mini and Micro without their word check after a first download.
+      let baseIdentity = engine.baseIdentity(
+        egOne: { size in
+          switch size {
+          case .full: egOneFull.registration?.manifest.identity
+          case .mini: egOneMini.registration?.manifest.identity
+          case .micro: egOneMicro.registration?.manifest.identity
+          }
+        },
+        s1Mini: s1BaseRegistration?.manifest.identity)
       // Act on admission EDGES only. A runtime refresh can re-adopt the base,
       // which republishes `.admitted`; acting on every event would request the
       // checker again and refresh the runtime again (confirming review of #3227).

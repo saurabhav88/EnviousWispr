@@ -53,6 +53,17 @@ enum LearnedWordCheckerEngine: Hashable, Sendable {
 
   var provider: LLMProvider { model.provider }
 
+  /// The model whose admission owes this engine its checker download: the engine's OWN model,
+  /// so an EG-1 size is never answered with another size's identity.
+  func baseIdentity(
+    egOne: (EGOneSize) -> ModelIdentity?, s1Mini: ModelIdentity?
+  ) -> ModelIdentity? {
+    switch self {
+    case .egOne(let size): egOne(size)
+    case .s1Mini: s1Mini
+    }
+  }
+
   var checkerFamily: ModelFamily {
     switch self {
     case .egOne(let size): EGOneArtifactCatalog.checker(size).family

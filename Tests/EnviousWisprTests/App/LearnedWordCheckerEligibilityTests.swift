@@ -271,6 +271,28 @@ struct LearnedWordCheckerEligibilityTests {
     #expect(edges.changed(a, admitted: true), "re-admission is a change")
   }
 
+  // A first download of Mini or Micro must bring that size's word check, not wait on the full size.
+  @Test("each engine's checker download follows its own model's admission")
+  func eachCheckerFollowsItsOwnBase() {
+    func identity(_ name: String) -> ModelIdentity {
+      ModelIdentity(family: .egOne, name: name, revision: "r", variant: "v", runtimeABI: "a")
+    }
+    let bases: [EGOneSize: ModelIdentity] = [
+      .full: identity("full"), .mini: identity("mini"), .micro: identity("micro"),
+    ]
+    let s1 = identity("s1")
+    for size in EGOneSize.allCases {
+      #expect(
+        LearnedWordCheckerEngine.egOne(size).baseIdentity(egOne: { bases[$0] }, s1Mini: s1)
+          == bases[size])
+    }
+    #expect(LearnedWordCheckerEngine.s1Mini.baseIdentity(egOne: { bases[$0] }, s1Mini: s1) == s1)
+    // A size this build has no registration for owes nothing; it does not borrow full's.
+    #expect(
+      LearnedWordCheckerEngine.egOne(.mini).baseIdentity(
+        egOne: { $0 == .full ? bases[.full] : nil }, s1Mini: s1) == nil)
+  }
+
   @Test("each model maps to its own checker or to none; every EG-1 size is published")
   func engineTable() {
     for provider in LLMProvider.allCases {
