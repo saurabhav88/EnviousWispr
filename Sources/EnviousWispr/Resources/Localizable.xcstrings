@@ -382,7 +382,7 @@
       }
     },
     "%@ is being checked" : {
-      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -404,7 +404,7 @@
       }
     },
     "%@ is not downloaded yet" : {
-      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -454,7 +454,7 @@
       }
     },
     "%@ is still downloading" : {
-      "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1.",
+      "comment" : "AI Polish, notice when leaving the page during a download. %@ is a model name.\nShort reason, no full stop. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28636,7 +28636,7 @@
       }
     },
     "the %@ download did not finish" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28647,7 +28647,7 @@
       }
     },
     "the %@ download is paused" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28658,7 +28658,7 @@
       }
     },
     "the %@ update is paused" : {
-      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1.",
+      "comment" : "Short reason, no full stop, starts lower case after a colon. %@ is a model name, such as EG-1 or EG-1 Micro.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
