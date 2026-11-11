@@ -6,6 +6,7 @@ import Foundation
 import Testing
 
 @testable import EnviousDecodeKit
+@testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLlamaEngine
 
 /// #4473 P2: the helper process itself. These tests start the helper binary the build puts in
@@ -61,8 +62,11 @@ struct EnviousDecodeHelperIntegrationTests {
     private let lock = NSLock()
     private var log = ""
 
-    init(size: String, contextTokens: Int = 8192) throws {
+    let hasWordCheck: Bool
+
+    init(size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil) throws {
       self.contextTokens = contextTokens
+      hasWordCheck = wordCheckAdapter != nil
       port = try Self.freePort()
       process.executableURL = try #require(
         EnviousDecodeHelperIntegrationTests.helperCandidates.first)
@@ -72,6 +76,9 @@ struct EnviousDecodeHelperIntegrationTests {
         "--model-name", LLMProvider.egOneModelName, "--port", String(port), "--token", token,
         "--ctx-size", String(contextTokens), "--cache-limit-bytes", String(256 * 1024 * 1024),
       ]
+      if let wordCheckAdapter {
+        process.arguments? += ["--word-check-adapter", wordCheckAdapter]
+      }
       let pipe = Pipe()
       process.standardError = pipe
       process.standardOutput = FileHandle.nullDevice
@@ -86,7 +93,9 @@ struct EnviousDecodeHelperIntegrationTests {
     var lines: [String] { lock.withLock { log.split(separator: "\n").map(String.init) } }
 
     var endpoint: LocalPolishEndpoint {
-      LocalPolishEndpoint(port: port, authToken: token, contextTokens: contextTokens)
+      LocalPolishEndpoint(
+        port: port, authToken: token, contextTokens: contextTokens,
+        hasLearnedWordAdapter: hasWordCheck)
     }
 
     /// A port nothing listens on now: the system picks it, and it is given back before the
@@ -265,7 +274,7 @@ struct EnviousDecodeHelperIntegrationTests {
   // MARK: - 1. Start, token, and the app's requests
 
   @Test(
-    "the built helper starts, answers only with the token, and gives the app's polish and summary requests the engine's own answer",
+    "the built helper starts, answers only with the token, gives the app's polish and summary requests the engine's own answer, and with a word-check adapter scores the app's learned-word questions and leaves polish as it was",
     .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
   func theHelperStartsAndAnswersTheAppsRequests() async throws {
     let reference = try await Reference.load(size: "mini")
@@ -336,6 +345,169 @@ struct EnviousDecodeHelperIntegrationTests {
     #expect(!log.contains(helper.token) && !log.contains("TRANSCRIPT"))
     #expect(!log.contains(expected.content))
     #expect(helper.process.isRunning)
+
+    // MARK: The learned-word check (#4473 P3)
+
+    // This helper was started without an adapter: a well-formed question gets "unavailable",
+    // a body that is not a question list gets "invalid", and neither gets scores.
+    let questions = try (0..<9).map {
+      // Even: a build tool is meant. Odd: breakfast is meant, the dictionary word is not.
+      try EnviousDecodeWordCheckerTests.question(
+        40 + $0,
+        $0 % 2 == 0
+          ? "Please open Twist number \($0) and generate the Xcode project."
+          : "I had toast number \($0) for breakfast and then walked the dog.",
+        heard: $0 % 2 == 0 ? "Twist" : "toast", word: "Tuist")
+    }
+    let checkBody = try EnviousDecodeWordChecker.makeRequestBody(Array(questions.prefix(8)))
+    let unavailable = try await helper.request(
+      "/v1/wordcheck", method: "POST", bearer: helper.token, body: checkBody)
+    #expect(unavailable.status == 503)
+    #expect(Self.errorType(unavailable.data) == "word_check_unavailable")
+    #expect(
+      try await helper.request(
+        "/v1/wordcheck", method: "POST", bearer: helper.token, body: Data("{}".utf8)
+      ).status == 400)
+    #expect(try await helper.request("/v1/wordcheck", bearer: helper.token).status == 405)
+    helper.stop()
+
+    guard let adapter = EnviousDecodeWordCheckTests.environment("WORDCHECK_MINI_ADAPTER_DIR"),
+      FileManager.default.fileExists(atPath: adapter)
+    else { return }
+    let checked = try Helper(size: "mini", wordCheckAdapter: adapter)
+    defer { checked.stop() }
+    try await checked.untilReady()
+    #expect(checked.lines.contains { $0.contains("word check loaded answer_tokens=32,33") })
+    #expect(checked.lines.contains { $0.contains("ready port=") && $0.hasSuffix("wordcheck=on") })
+    // Polish with the adapter loaded is the engine's own answer.
+    func polished() async throws -> String {
+      try Self.fields(try await LocalPolishTransport.send(endpoint: checked.endpoint, body: body))
+        .content
+    }
+    #expect(try await polished() == expected.content)
+
+    // The app's checker, through the route, against the same adapter in this process scoring
+    // the app's own prompt text (the llama checker's EG-1 prompt) in the same groups of eight.
+    let checker = EnviousDecodeWordChecker(threshold: 0.5) {
+      EnviousDecodeWordChecker.Hold(endpoint: checked.endpoint) {}
+    }
+    let decisions = try await checker.decide(questions)
+    let adapted = try await EnviousDecodeSession.load(
+      targetDirectory: URL(
+        fileURLWithPath: try #require(Fixtures.targetFolders["mini"] ?? nil), isDirectory: true),
+      draftDirectory: URL(
+        fileURLWithPath: try #require(Fixtures.helperFolders["mini"] ?? nil), isDirectory: true),
+      wordCheckAdapterDirectory: URL(fileURLWithPath: adapter, isDirectory: true))
+    let prompts = questions.map {
+      reference.tokenizer.encode(LlamaLearnedWordChecker.prompt(for: $0, style: .egOne))
+    }
+    let inProcess =
+      try adapted.wordCheckScores(
+        promptTokenIDs: Array(prompts.prefix(8)), answerTokenIDs: (a: 32, b: 33))
+      + adapted.wordCheckScores(
+        promptTokenIDs: Array(prompts.suffix(1)), answerTokenIDs: (a: 32, b: 33))
+    #expect(decisions.map(\.questionID) == questions.map(\.id))
+    var largestScoreDifference = 0.0
+    for (decision, score) in zip(decisions, inProcess) {
+      let expectedScore = score.pB / (score.pA + score.pB)
+      largestScoreDifference = max(
+        largestScoreDifference, abs(try #require(decision.score) - expectedScore))
+      #expect(decision.approved == (expectedScore >= 0.5), "question \(decision.questionID)")
+    }
+    #expect(largestScoreDifference < 1e-4, "\(largestScoreDifference)")
+    // The questions do not all get one score: each is scored on its own text.
+    #expect(Set(decisions.compactMap(\.score)).count > 1)
+    #expect(try await polished() == expected.content)
+
+    // The token, and requests the route does not take.
+    func check(_ object: [String: Any], bearer: String? = checked.token) async throws
+      -> (status: Int, type: String?)
+    {
+      let answer = try await checked.request(
+        "/v1/wordcheck", method: "POST", bearer: bearer,
+        body: try JSONSerialization.data(withJSONObject: object))
+      return (answer.status, Self.errorType(answer.data))
+    }
+    let good = try #require(try JSONSerialization.jsonObject(with: checkBody) as? [String: Any])
+    let entries = try #require(good["questions"] as? [[String: Any]])
+    #expect(try await check(good).status == 200)
+    #expect(try await check(good, bearer: nil).status == 401)
+    #expect(try await check(good, bearer: "wrong").status == 401)
+    var entry = entries[0]
+    let refusedBodies: [(String, [String: Any])] = [
+      ("another model", ["model": "s1-mini", "questions": entries]),
+      ("no questions", ["model": "eg-1", "questions": [[String: Any]]()]),
+      ("nine questions", ["model": "eg-1", "questions": entries + [entries[0]]]),
+      ("an id twice", ["model": "eg-1", "questions": [entries[0], entries[0]]]),
+      ("a third field", ["model": "eg-1", "questions": entries, "stream": false]),
+      ("an empty word", ["model": "eg-1", "questions": [entry.merging(["word": ""]) { $1 }]]),
+      ("an id that is text", ["model": "eg-1", "questions": [entry.merging(["id": "7"]) { $1 }]]),
+      (
+        "a field the question does not have",
+        ["model": "eg-1", "questions": [entry.merging(["lora": 1]) { $1 }]]
+      ),
+    ]
+    for (name, object) in refusedBodies {
+      let answer = try await check(object)
+      #expect(answer.status == 400 && answer.type == "invalid_request_error", "\(name)")
+    }
+    // A question that does not fit the model's context gets the answer a polish prompt gets.
+    entry["context"] = String(repeating: "word ", count: 20_000)
+    let tooLong = try await check(["model": "eg-1", "questions": [entry]])
+    #expect(tooLong.status == 400 && tooLong.type == "exceed_context_size_error")
+    #expect(try await polished() == expected.content)
+
+    // A client that goes away, and a client that stops waiting: eight long questions keep the
+    // helper busy for a moment; neither request gets scores, and polish is as it was.
+    let long = String(repeating: "word ", count: 2_500)
+    let longBody = try JSONSerialization.data(withJSONObject: [
+      "model": "eg-1",
+      "questions": (0..<8).map {
+        ["id": $0, "word": "Tuist", "context": long + "Twist", "rewritten": long + "Tuist"]
+          as [String: Any]
+      },
+    ])
+    @Sendable func ended(_ status: String) -> Int {
+      checked.lines.filter { $0.contains("wordcheck end status=\(status)") }.count
+    }
+    @Sendable func begun() -> Int {
+      checked.lines.filter { $0.contains("wordcheck begin") }.count
+    }
+    let answered = ended("200")
+    let alreadyBegun = begun()
+    let dropped = Task {
+      try await checked.request(
+        "/v1/wordcheck", method: "POST", bearer: checked.token, body: longBody)
+    }
+    // deadline-fallback: the signal is the helper's "wordcheck begin" line for the long request
+    try await checked.signal("the long word check to begin", within: 60) {
+      begun() == alreadyBegun + 1
+    }
+    dropped.cancel()
+    let droppedResult = await dropped.result
+    #expect(throws: (any Error).self) { try droppedResult.get() }
+    // deadline-fallback: the signal is the helper's "wordcheck end status=cancelled" line
+    try await checked.signal("the helper to end the dropped word check", within: 60) {
+      ended("cancelled") == 1
+    }
+    var impatient = URLRequest(url: EnviousDecodeWordChecker.url(checked.endpoint))
+    impatient.httpMethod = "POST"
+    impatient.timeoutInterval = 0.25  // test-fixture-timer: the client's own time limit is the thing under test
+    impatient.setValue("Bearer \(checked.token)", forHTTPHeaderField: "Authorization")
+    impatient.httpBody = longBody
+    await #expect(throws: URLError.self) { try await URLSession.shared.data(for: impatient) }
+    // deadline-fallback: the signal is the helper's second "wordcheck end status=cancelled" line
+    try await checked.signal("the helper to end the timed-out word check", within: 60) {
+      ended("cancelled") == 2
+    }
+    #expect(ended("200") == answered, "a dropped or timed-out word check was answered")
+    #expect(try await polished() == expected.content)
+    #expect(try await checker.decide(questions).map(\.score) == decisions.map(\.score))
+    let checkedLog = checked.lines.joined(separator: "\n")
+    #expect(!checkedLog.contains(checked.token) && !checkedLog.contains("Tuist"))
+    print(
+      "WORDCHECK_HELPER size=mini questions=\(questions.count) largestScoreDifference=\(largestScoreDifference) approved=\(decisions.filter(\.approved).count) cancelled=\(ended("cancelled"))"
+    )
   }
 
   // MARK: - 2. One request at a time, and instruction texts kept apart

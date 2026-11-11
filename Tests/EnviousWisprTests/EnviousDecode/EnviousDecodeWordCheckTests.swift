@@ -502,7 +502,7 @@ struct EnviousDecodeWordCheckTests {
       #expect(decisions.contains(true) && decisions.contains(false), "\(size.name)")
       try polishIsRecorded("after 24 checks")
       print(
-        "WORDCHECK_REAL size=\(size.name) wrapped=\(size.wrappedLayers) shared=\(sharedCount)/\(polishParameters.count) batchMarginDifference=\(largestBatchDifference) recordedMarginDifference=\(largestRecordedDifference) answersB=\(decisions.filter { $0 }.count)/\(decisions.count)"
+        "WORDCHECK_REAL size=\(size.name) wrapped=\(size.wrappedLayers) shared=\(sharedCount)/\(polishParameters.count) batchMarginDifference=\(largestBatchDifference) recordedMarginDifference=\(size.name == "mini" ? String(largestRecordedDifference) : "NA") answersB=\(decisions.filter { $0 }.count)/\(decisions.count)"
       )
     }
   }
