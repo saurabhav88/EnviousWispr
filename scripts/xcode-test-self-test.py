@@ -56,7 +56,9 @@ class RunnerContract(unittest.TestCase):
             '#!/usr/bin/env bash\necho eval >> "$TRACE"\nexit "${EVAL_RC:-0}"\n')
         # Replace only dependencies in the private fixture. The runner itself is
         # byte-identical, with no production environment bypass or rewrite.
-        (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
+        (lib / 'ensure-generated.sh').write_text(
+            'ew_drop_stale_package_checkouts() { echo "drop-stale:$#" >> "$TRACE"; }\n'
+            'ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / 'spm-seed.sh').write_text('''ew_seed_on_exit() { :; }
 ew_seed_consume() { echo seed >> "$TRACE"; }
 ew_seed_publish() { cp "$PACKAGE_STATE" "$PUBLISHED_STATE"; echo publish >> "$TRACE"; }
@@ -224,6 +226,10 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         self.assertEqual(self.critical_builds(), [])
         trace = (self.root / 'trace').read_text().splitlines()
         self.assertEqual(trace.count('generate'), 1)
+        # #4485: stale package checkouts are dropped once, for the checkout plus this
+        # run's one lane folder, before generation (the first package resolve).
+        self.assertEqual([line for line in trace if line.startswith('drop-stale:')], ['drop-stale:2'])
+        self.assertLess(trace.index('drop-stale:2'), trace.index('generate'))
         self.assertIn('verdict:Debug lane:required=', trace)
 
     def test_serial_is_full_debug_with_required_bundles(self):
@@ -820,7 +826,9 @@ class BuildEntrypointHookContract(unittest.TestCase):
         lib = self.root / 'scripts/lib'
         lib.mkdir(parents=True)
         shutil.copyfile(RUNNER.with_name('build-dev-app.sh'), self.root / 'scripts/build-dev-app.sh')
-        (lib / 'ensure-generated.sh').write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
+        (lib / 'ensure-generated.sh').write_text(
+            'ew_drop_stale_package_checkouts() { :; }\n'
+            'ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / 'launch-check.sh').write_text(':\n')
         (lib / 'spm-seed.sh').write_text('ew_seed_on_exit() { :; }\n')
         (lib / 'l10n-build-with-receipt.sh').write_text(':\n')

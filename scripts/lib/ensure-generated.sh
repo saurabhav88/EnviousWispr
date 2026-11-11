@@ -126,6 +126,33 @@ ew_generation_key_impl() {
   } | shasum -a 256 | awk '{print $1}'
 }
 
+# ew_drop_stale_package_checkouts <project_root> [derived_data_path...]
+#
+# #4485: run BEFORE generation and before any package resolve. A dependency pin
+# change that also ENABLES a package trait fails to resolve on a tree that still
+# holds the old checkout (`Trait 'X' enabled by package ... is not declared by
+# package ...`), at `tuist generate` and again at the lane's own resolve, and the
+# seed recovery in spm-seed.sh runs too late to help and only for a cloned tree.
+# The owner drops just the checkouts that differ from Package.resolved, in this
+# checkout's `.derivedData` trees, any extra build folder named here, and the
+# Xcode default folder `tuist generate` resolves into.
+#
+# Never fails the build: a tree the owner cannot judge is left as it is and the
+# build proceeds exactly as it did before this existed.
+ew_drop_stale_package_checkouts() {
+  local root="$1" dd rc=0
+  shift
+  local args=(--resolved "$root/Package.resolved" --project-root "$root")
+  for dd in "$@"; do
+    args+=(--derived-data "$dd")
+  done
+  python3 "$root/scripts/lib/drop-stale-package-checkouts.py" "${args[@]}" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "==> WARNING: stale package checkout check did not complete (exit $rc); package trees left as they are (#4485)" >&2
+  fi
+  return 0
+}
+
 ew_ensure_generated() {
   local root="$1"
   local project_file="$root/EnviousWispr.xcodeproj/project.pbxproj"

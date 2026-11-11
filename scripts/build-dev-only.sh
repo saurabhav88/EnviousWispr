@@ -58,6 +58,8 @@ python3 "$BUILD_LOCK_HELPER" acquire "$BUILD_LOCK_FD" "$PROJECT_ROOT"
 # #2157 chunk C: only regenerates when a generation INPUT changed. Measured 6.7 s
 # per invocation for a byte-identical `project.pbxproj` on a warm tree.
 echo "==> Step 3: Ensuring Xcode project is current (Tuist)..."
+# #4485: before generation, which is the first package resolve.
+ew_drop_stale_package_checkouts "$PROJECT_ROOT" "$DERIVED_DATA"
 ew_ensure_generated "$PROJECT_ROOT"
 
 # ─── Build + sign the Dev configuration via Xcode ─────────────────────────────

@@ -337,7 +337,9 @@ def main():
         shutil.copy(SCRIPTS / "build-dev-only.sh", repo / "scripts/build-dev-only.sh")
         lib = repo / "scripts/lib"
         shutil.copy(SCRIPTS / "lib/build-folder-lock.py", lib / "build-folder-lock.py")
-        (lib / "ensure-generated.sh").write_text('ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
+        (lib / "ensure-generated.sh").write_text(
+            'ew_drop_stale_package_checkouts() { :; }\n'
+            'ew_ensure_generated() { echo generate >> "$TRACE"; }\n')
         (lib / "launch-check.sh").write_text('ew_wait_for_launch() { echo launch-check >> "$TRACE"; return 1; }\n')
         (lib / "spm-seed.sh").write_text('ew_seed_on_exit() { :; }\new_seed_consume() { :; }\n'
                                          'ew_seed_resolve_or_unseed() { shift; "$@"; }\new_seed_publish() { :; }\n')
