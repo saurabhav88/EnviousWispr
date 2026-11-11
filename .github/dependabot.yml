@@ -6,6 +6,20 @@ version: 2
 #   and get tagged 'needs-review' so a human (Claude session) decides
 # - the 'ci' label referenced in Dependabot config must exist in the repo; it
 #   doesn't today, so it's omitted until created
+#
+# #4488: every Dependabot job runs behind a proxy that refuses hosts outside its
+# allowlist ("egress not allowlisted <host>", then a 403). Package.swift's
+# CWebRTCAEC binaryTarget downloads from our own public host, so the Swift job
+# could not resolve packages. A host named by a registry declared here and
+# referenced from the job is allowed for that job (dependabot/proxy,
+# internal/handlers/egress_dynamic_hosts.go). The host is public and anonymous:
+# no credential is set and none is needed. A new non-GitHub binaryTarget host
+# needs its own entry here.
+registries:
+  ew-binary-host:
+    type: git
+    url: https://models.enviouswispr.com
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -28,6 +42,8 @@ updates:
 
   - package-ecosystem: "swift"
     directory: "/"
+    registries:
+      - ew-binary-host
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 3
