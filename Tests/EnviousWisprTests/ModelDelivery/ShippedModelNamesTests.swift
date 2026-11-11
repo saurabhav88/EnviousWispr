@@ -50,6 +50,8 @@ import Testing
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let manifest = try DeliveryManifest.load(from: try Data(contentsOf: url))
@@ -153,6 +155,8 @@ import Testing
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity
@@ -162,7 +166,7 @@ import Testing
     #expect(
       Self.firstCollision(keys) == nil,
       "two bundled manifests share family+name+variant, so the staging sweep would treat one as a superseded revision of the other and delete a live download")
-    #expect(keys.count == 11, "expected eleven bundled registrations, got \(keys.count)")
+    #expect(keys.count == 15, "expected fifteen bundled registrations, got \(keys.count)")
   }
 
   /// Two-way control that drives the REAL detector. Every set we ship is
@@ -230,6 +234,8 @@ import Testing
       "s1-checker-delivery-manifest", "s1-delivery-manifest", "whisper-delivery-manifest",
       "whisper-preview-delivery-manifest", "word-check-delivery-manifest",
       "speaker-live-delivery-manifest",
+      "eg1-mlx-delivery-manifest", "eg1-mlx-checker-delivery-manifest",
+      "eg1-micro-delivery-manifest", "eg1-micro-checker-delivery-manifest",
     ] {
       let url = resourceDir.appendingPathComponent("\(resource).json")
       let identity = try DeliveryManifest.load(from: try Data(contentsOf: url)).identity

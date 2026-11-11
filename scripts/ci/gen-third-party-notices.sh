@@ -287,7 +287,7 @@ if [[ "$MODE" == "check" ]]; then
   # (same reason), so the gate names it too; #3482 adds multilingual-e5-small's.
   # #4355 PR C: OpenMDW-1.1 requires its text and the notices of origin with the
   # speaker model, so the gate names the model, NVIDIA's origin and the agreement.
-  for needle in 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP' 'multilingual-e5-small by Microsoft Corporation' 'nvidia/Nemotron-3-Diarization by NVIDIA, OpenMDW-1.1' 'OpenMDW License Agreement, version 1.1'; do
+  for needle in 'Qwen3.5 by Alibaba Cloud (base of the EG-1 polish models' 'z-lab/Qwen3.5-4B-DFlash' 'Moonlight556/Qwen3.5-0.8B-DFlash' 'S1-mini by Superwhisper' '"S1-mini" by "Superwhisper"' 'mmBERT-small by JHU CLSP' 'multilingual-e5-small by Microsoft Corporation' 'nvidia/Nemotron-3-Diarization by NVIDIA, OpenMDW-1.1' 'OpenMDW License Agreement, version 1.1'; do
     if ! grep -qF "$needle" "$NOTICES"; then
       echo "error: THIRD-PARTY-NOTICES.txt is missing '$needle' — regenerate it (scripts/ci/gen-third-party-notices.sh > THIRD-PARTY-NOTICES.txt)." >&2
       stale=1
@@ -521,3 +521,52 @@ printf 'AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n
 printf 'LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n'
 printf 'OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n'
 printf 'SOFTWARE.\n'
+
+# #4473 BEGIN: the EG-1 family on the EnviousDecode engine (EG-1, EG-1 Mini, EG-1 Micro).
+# Envious Labs trained these models, but each polish model is a fine-tune of a Qwen3.5 base
+# (Alibaba Cloud; Apache-2.0), and two of the three draft models were trained further from
+# third-party DFlash models (Apache-2.0). We SERVE the derived weights from
+# models.enviouswispr.com, so the attribution travels with the notices as S1-mini's does.
+# Each model folder also carries its own LICENSE and NOTICE. The learned-word adapters are
+# delivered as two-file sets with no notice file of their own, so THIS section is where
+# their recipients get the licence and the attribution. The Apache-2.0 text is reproduced
+# above (S1-MINI-LICENSE.txt is the unmodified licence plus that publisher's naming term).
+printf '\n'
+printf -- '--------------------------------------------------------------------------------\n'
+printf 'Qwen3.5 by Alibaba Cloud (base of the EG-1 polish models and learned-word adapters, downloaded at runtime from Envious Labs)\n'
+printf '  License: Apache-2.0\n'
+printf '  Source:  https://huggingface.co/Qwen/Qwen3.5-4B (revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a)\n'
+printf '           https://huggingface.co/Qwen/Qwen3.5-2B (revision 15852e8c16360a2fea060d615a32b45270f8a8fc)\n'
+printf '           https://huggingface.co/Qwen/Qwen3.5-0.8B (revision 2fc06364715b967f1860aea9cf38778875588b17)\n'
+printf -- '--------------------------------------------------------------------------------\n\n'
+printf 'EnviousWispr downloads an EG-1 model only when a user selects it: EG-1\n'
+printf '(from Qwen3.5-4B), EG-1 Mini (from Qwen3.5-2B) or EG-1 Micro (from\n'
+printf 'Qwen3.5-0.8B). Envious Labs fine-tuned each base on dictation-polish data,\n'
+printf 'merged the result into the weights and quantized them to 6 bits. With each\n'
+printf 'model comes a learned-word adapter that Envious Labs trained on that\n'
+printf 'model. The files are served from models.enviouswispr.com and are not\n'
+printf 'distributed inside this disk image. Qwen3.5 is Copyright 2026 Alibaba\n'
+printf 'Cloud, licensed under the Apache License, Version 2.0, reproduced in full\n'
+printf 'in the S1-mini section above. Envious Labs'"'"' modifications and the combined\n'
+printf 'models are offered under the EG-1 Community Model License\n'
+printf '(https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt); nothing here\n'
+printf 'removes rights granted directly by the upstream licences.\n'
+printf '\n'
+printf -- '--------------------------------------------------------------------------------\n'
+printf 'DFlash draft models (speed helpers of the EG-1 models, downloaded at runtime from Envious Labs)\n'
+printf '  License: Apache-2.0\n'
+printf '  Source:  https://huggingface.co/z-lab/Qwen3.5-4B-DFlash (revision 9a1996ccf887b79ab3af4fcbf8c1d1f4b5658bcf)\n'
+printf '           https://huggingface.co/Moonlight556/Qwen3.5-0.8B-DFlash (revision 0c2dde05fc9f75dfd259b4eb0028bf04fed3abd5)\n'
+printf -- '--------------------------------------------------------------------------------\n\n'
+printf 'Each EG-1 model comes with a small draft model that speeds it up. The\n'
+printf 'draft model of EG-1 was trained further by Envious Labs from\n'
+printf 'Qwen3.5-4B-DFlash by Z Lab (a joint retrain from Z-Lab and Modal). The\n'
+printf 'draft model of EG-1 Micro was trained further by Envious Labs from\n'
+printf 'Qwen3.5-0.8B-DFlash by Moonlight556, whose authors credit the SGLang\n'
+printf 'team'"'"'s SpecForge / DFlash work and la-draftery, and whose training data\n'
+printf 'credits the NVIDIA Nemotron post-training math corpus. The draft model of\n'
+printf 'EG-1 Mini was trained by Envious Labs from random initialization and\n'
+printf 'derives from no third-party weights. Both upstream models are licensed\n'
+printf 'under the Apache License, Version 2.0, reproduced in full in the S1-mini\n'
+printf 'section above. DFlash: arXiv:2602.06036.\n'
+# #4473 END

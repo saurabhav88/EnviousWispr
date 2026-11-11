@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "family": "eg_one_micro_checker",
+    "name": "eg1c-micro",
+    "revision": "eg1c-micro-v1",
+    "variant": "mlx-f32",
+    "runtimeABI": "enviousdecode-v1"
+  },
+  "files": [
+    {
+      "path": "adapter_config.json",
+      "sizeBytes": 417,
+      "sha256": "d0e64161799a4fa222663035ca778de76bea3a41eda8fc81408dfde1f78fb6e5",
+      "component": "adapter_config.json"
+    },
+    {
+      "path": "adapters.safetensors",
+      "sizeBytes": 40932056,
+      "sha256": "7247de615fb5f33c5fc6b4d3bf392e9c5c76a35a945935078ce82eae220f1a3a",
+      "component": "adapters.safetensors"
+    }
+  ],
+  "optionalFiles": [],
+  "totalBytes": 40932473,
+  "sources": [
+    {
+      "id": "our_copy",
+      "baseURL": "https://models.enviouswispr.com/eg1/checker/eg1c-micro-v1/"
+    }
+  ],
+  "license": {
+    "name": "EG-1 Model License",
+    "url": "https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt"
+  },
+  "admission": {
+    "layout": "componentSet",
+    "installLocation": "egOneCheckerCache",
+    "diskHeadroomFactor": "2.2",
+    "evictPreviousRevisions": true,
+    "entrypointFile": "adapters.safetensors"
+  },
+  "checkerContract": {
+    "version": 1,
+    "adapterFileName": "adapters.safetensors",
+    "adapterSizeBytes": 40932056,
+    "adapterSHA256": "7247de615fb5f33c5fc6b4d3bf392e9c5c76a35a945935078ce82eae220f1a3a",
+    "format": "mlx-lora",
+    "qualifiedThreshold": "0.20181324142004287",
+    "base": {
+      "revision": "eg1-micro-1.0-g3d",
+      "variant": "mlx-q6",
+      "shardSHA256": [
+        "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "0e2f5996ea26f4ff2a0df43a2a696ef2f8e7f738e00c6509f90f2f401cbb8527",
+        "64f85b198065d0fba2a81f37e10ed68161ce2c19a754c7100e67e0ca2ee9c326",
+        "9ea3949cc37e2dcc99cec7ca9a9f58cd6350debbc9f01684caf427db7748e95b",
+        "63953f0d51d53dcc4f972a9fa5d42e38e357c4118cec380be0cd1e5fa5235c23",
+        "b7c91578ce460a1f2a078e7797107d253fae46f395443661be871beca3f33368",
+        "4c69854f078a44fa52bb19332620cf2f4e77589019fe8bdb2e37acd933397f9a",
+        "2d75668a4c8b83654774beede42b82b3a882152ea0adc016f7436cc440d95c60",
+        "1f345030443be493e0f9f0ff509789de1d079793090d6839b57a4ecdb23c35f7",
+        "8ba3b05d23c82b06a535628dc17254f5a4fa1414f9e46f22925d4a20c79c8b39",
+        "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+        "4d2fc7899270dc76b57a7aa1d5ec3234e6a25934c6e2aea6166f989f1d453892"
+      ],
+      "promptTemplateID": "eg1-v2-named-language",
+      "runtimeABI": "enviousdecode-v1"
+    }
+  },
+  "manifestDigest": "d2b2df0f9ad736798ce927d0242c886f5b45e9ff63d40cbc0a7878c140c4070f"
+}

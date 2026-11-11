@@ -166,7 +166,51 @@ def test_adding_a_row_still_rebuilds():
         assert "eg1-1.1-c001" in msg, msg
 
 
-EXPECTED_TESTS = 4
+def test_kept_candidate_ids_and_export_ids_are_checked():
+    # #4473: three candidate ids outside the id format are kept by a CLOSED map, each
+    # tied to one release; an export id belongs to one artifact and is used once.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import model_registry
+
+    def artifact(aid, release, exports=None):
+        row = {"artifactId": aid, "release": release, "status": "candidate",
+               "statusReason": "test", "legacyNames": ["x"], "legacyExemption": True,
+               "evaluations": []}
+        if exports is not None:
+            row["exports"] = exports
+        return row
+
+    def check(rows):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "model-registry.json"
+            path.write_text(json.dumps({"artifacts": rows}), encoding="utf-8")
+            try:
+                model_registry.load(path)
+                return None
+            except model_registry.RegistryError as exc:
+                return str(exc)
+
+    sha = "a" * 64
+    kept = "eg1-mini-1.0-g3onestage"
+    good = {"exportId": kept + "-mlx-q6-e001", "packageSHA256": sha}
+    assert check([artifact(kept, "1.0", [good])]) is None
+    assert check([artifact("eg1-1.1-c001", "1.1")]) is None
+    # A kept id under another release, and an id that is in neither the map nor the format.
+    assert "belongs to release" in check([artifact(kept, "1.3")])
+    assert "bad artifact id" in check([artifact("eg1-mini-1.0-g3other", "1.0")])
+    # The same export id under two artifacts, an export id of another artifact, no hash.
+    other = "eg1-micro-1.0-g3d"
+    assert "duplicate export id" in check(
+        [artifact(kept, "1.0", [good]), artifact(other, "1.0", [good])]) or \
+        "bad export id" in check([artifact(kept, "1.0", [good]), artifact(other, "1.0", [good])])
+    assert "duplicate export id" in check([artifact(kept, "1.0", [good, good])])
+    assert "bad export id" in check(
+        [artifact(kept, "1.0", [{"exportId": other + "-mlx-q6-e001", "packageSHA256": sha}])])
+    assert "no packageSHA256" in check(
+        [artifact(kept, "1.0", [{"exportId": kept + "-mlx-q6-e002"}])])
+
+
+EXPECTED_TESTS = 5
 
 
 def _run() -> int:

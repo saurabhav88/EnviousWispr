@@ -4489,3 +4489,43 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--------------------------------------------------------------------------------
+Qwen3.5 by Alibaba Cloud (base of the EG-1 polish models and learned-word adapters, downloaded at runtime from Envious Labs)
+  License: Apache-2.0
+  Source:  https://huggingface.co/Qwen/Qwen3.5-4B (revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a)
+           https://huggingface.co/Qwen/Qwen3.5-2B (revision 15852e8c16360a2fea060d615a32b45270f8a8fc)
+           https://huggingface.co/Qwen/Qwen3.5-0.8B (revision 2fc06364715b967f1860aea9cf38778875588b17)
+--------------------------------------------------------------------------------
+
+EnviousWispr downloads an EG-1 model only when a user selects it: EG-1
+(from Qwen3.5-4B), EG-1 Mini (from Qwen3.5-2B) or EG-1 Micro (from
+Qwen3.5-0.8B). Envious Labs fine-tuned each base on dictation-polish data,
+merged the result into the weights and quantized them to 6 bits. With each
+model comes a learned-word adapter that Envious Labs trained on that
+model. The files are served from models.enviouswispr.com and are not
+distributed inside this disk image. Qwen3.5 is Copyright 2026 Alibaba
+Cloud, licensed under the Apache License, Version 2.0, reproduced in full
+in the S1-mini section above. Envious Labs' modifications and the combined
+models are offered under the EG-1 Community Model License
+(https://models.enviouswispr.com/eg1/EG-1-MODEL-LICENSE.txt); nothing here
+removes rights granted directly by the upstream licences.
+
+--------------------------------------------------------------------------------
+DFlash draft models (speed helpers of the EG-1 models, downloaded at runtime from Envious Labs)
+  License: Apache-2.0
+  Source:  https://huggingface.co/z-lab/Qwen3.5-4B-DFlash (revision 9a1996ccf887b79ab3af4fcbf8c1d1f4b5658bcf)
+           https://huggingface.co/Moonlight556/Qwen3.5-0.8B-DFlash (revision 0c2dde05fc9f75dfd259b4eb0028bf04fed3abd5)
+--------------------------------------------------------------------------------
+
+Each EG-1 model comes with a small draft model that speeds it up. The
+draft model of EG-1 was trained further by Envious Labs from
+Qwen3.5-4B-DFlash by Z Lab (a joint retrain from Z-Lab and Modal). The
+draft model of EG-1 Micro was trained further by Envious Labs from
+Qwen3.5-0.8B-DFlash by Moonlight556, whose authors credit the SGLang
+team's SpecForge / DFlash work and la-draftery, and whose training data
+credits the NVIDIA Nemotron post-training math corpus. The draft model of
+EG-1 Mini was trained by Envious Labs from random initialization and
+derives from no third-party weights. Both upstream models are licensed
+under the Apache License, Version 2.0, reproduced in full in the S1-mini
+section above. DFlash: arXiv:2602.06036.
