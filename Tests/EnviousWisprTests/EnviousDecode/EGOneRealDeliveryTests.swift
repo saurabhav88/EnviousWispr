@@ -20,12 +20,14 @@ import Testing
 /// downloaded folders do not start the helper. Encounter: every first use of a size.
 /// Owner: plan #4473 P4.
 ///
-/// This suite uses the network (5.5 GB) and the GPU, so it runs only when it is asked for:
-/// `TEST_RUNNER_EG1_REAL_DELIVERY_DIR=<an empty scratch folder>` and a filter on this suite.
+/// This suite uses the network (5.5 GB) and the GPU, so it runs only in the real-world run and
+/// only when it is given a scratch folder:
+/// `TEST_RUNNER_EG1_REAL_DELIVERY_DIR=<an empty scratch folder>`
+/// `scripts/xcode-test.sh --real-boundary --filter EnviousWisprTests/EGOneRealDeliveryTests`
 /// It must run alone: it sets the process-wide download protocol list.
 @Suite(
   "The published EG-1 sizes download from the public address, resume, repair, replace the old revision and start the helper (#4473)",
-  .serialized, .tags(.productOutcome))
+  .serialized, .tags(.productOutcome, .realBoundary), .realBoundaryRun)
 struct EGOneRealDeliveryTests {
   typealias HelperTests = EnviousDecodeHelperIntegrationTests
 
