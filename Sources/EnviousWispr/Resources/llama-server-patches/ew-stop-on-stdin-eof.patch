@@ -1,0 +1,60 @@
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index eafef86..ec18da6 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -14,8 +14,13 @@
+ 
+ #include <atomic>
+ #include <clocale>
++#include <cerrno>
++#include <cstdlib>
+ #include <exception>
+ #include <signal.h>
++#if !defined(_WIN32)
++#include <unistd.h>
++#endif
+ #include <thread> // for std::thread::hardware_concurrency
+ 
+ #if defined(_WIN32)
+@@ -24,9 +29,14 @@
+ 
+ static std::function<void(int)> shutdown_handler;
+ static std::atomic_flag is_terminating = ATOMIC_FLAG_INIT;
++// EnviousWispr #4493: set when the launching app manages this process (see llama_server()).
++static std::atomic<bool> ew_managed_stop{false};
+ 
+ static inline void signal_handler(int signal) {
+     if (is_terminating.test_and_set()) {
++        // EnviousWispr #4493: under a managing app a stop can arrive twice (its SIGTERM, then our
++        // own on stdin end-of-file, in either order). That is one stop, not a forced exit.
++        if (ew_managed_stop.load()) { return; }
+         // in case it hangs, we can force terminate the server by hitting Ctrl+C twice
+         // this is for better developer experience, we can remove when the server is stable enough
+         fprintf(stderr, "Received second interrupt, terminating immediately.\n");
+@@ -78,6 +88,26 @@ int llama_server(int argc, char ** argv);
+ int llama_server(int argc, char ** argv) {
+     std::setlocale(LC_NUMERIC, "C");
+ 
++#if !defined(_WIN32)
++    // EnviousWispr #4493: stop when the launching app is gone. The app holds the write end of a
++    // pipe on our stdin and never writes to it; end-of-file means every writer is closed, which
++    // the kernel does when the app dies for any reason. The stop is the process's own SIGTERM:
++    // before the handler below is installed that ends the process at once, afterwards it takes
++    // the same clean shutdown path as a SIGTERM from the app.
++    if (std::getenv("EW_STOP_ON_STDIN_EOF") != nullptr) {
++        ew_managed_stop.store(true);
++        std::thread([]() {
++            char byte;
++            for (;;) {
++                const ssize_t n = read(STDIN_FILENO, &byte, 1);
++                if (n > 0 || (n < 0 && errno == EINTR)) { continue; }
++                break;
++            }
++            kill(getpid(), SIGTERM);
++        }).detach();
++    }
++#endif
++
+     // own arguments required by this example
+     common_params params;
+ 
