@@ -74,9 +74,23 @@ struct EnviousDecodeHelperIntegrationTests {
     let socketPath: String
     /// The helper's standard input. The token is its first line; the writer stays open for the
     /// helper's life, because the helper stops when its input ends.
-    let input = Pipe()
+    let input = Helper.privatePipe()
     let token = "test-" + UUID().uuidString
+
+    /// The helper's input pipe with its writing end close-on-exec, as the app makes it (#4493):
+    /// another test's child started by plain `posix_spawn` must not inherit the writer, or the
+    /// helper never sees its input end (measured: the before-load case hung for 30 s while the
+    /// unrelated-child case's `/bin/sleep` ran in the same test process).
+    static func privatePipe() -> Pipe {
+      let pipe = Pipe()
+      _ = fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETFD, FD_CLOEXEC)
+      return pipe
+    }
     let contextTokens: Int
+    /// Left once, by the process's own termination handler, which is set before the process
+    /// starts (#4480: `waitUntilExit()` on a dispatch thread missed a measured exit for 30 s;
+    /// the helper had logged "stopping" and was gone when the test's stop ran).
+    private let exitGroup = DispatchGroup()
     private let lock = NSLock()
     private var log = ""
 
@@ -124,11 +138,17 @@ struct EnviousDecodeHelperIntegrationTests {
         self.lock.withLock { self.log += String(decoding: data, as: UTF8.self) }
       }
       process.standardInput = input
+      exitGroup.enter()
+      process.terminationHandler = { [exitGroup] _ in exitGroup.leave() }
       if inputEndsAtStart {
         try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
         try input.fileHandleForWriting.close()
       }
-      try process.run()
+      do { try process.run() } catch {
+        process.terminationHandler = nil
+        exitGroup.leave()
+        throw error
+      }
       try input.fileHandleForReading.close()
       if !inputEndsAtStart {
         try input.fileHandleForWriting.write(contentsOf: Data((token + "\n").utf8))
@@ -140,13 +160,8 @@ struct EnviousDecodeHelperIntegrationTests {
 
     /// Waits until the process has exited, at most `seconds`; true when it did.
     func exited(within seconds: Double) -> Bool {
-      let done = DispatchSemaphore(value: 0)
-      DispatchQueue.global().async {
-        self.process.waitUntilExit()
-        done.signal()
-      }
       // deadline-fallback: the signal is the child's own exit; the bound only fails the check
-      return done.wait(timeout: .now() + seconds) == .success
+      exitGroup.wait(timeout: .now() + seconds) == .success
     }
 
     var lines: [String] { lock.withLock { log.split(separator: "\n").map(String.init) } }
@@ -266,17 +281,12 @@ struct EnviousDecodeHelperIntegrationTests {
     }
 
     /// Stops the helper if it still runs: SIGTERM, then SIGKILL of this child if it has not
-    /// exited when the exit is awaited on another thread for 5 seconds.
+    /// exited within 5 seconds.
     func stop() {
       guard process.isRunning else { return }
       process.terminate()
-      let exited = DispatchSemaphore(value: 0)
-      DispatchQueue.global().async {
-        self.process.waitUntilExit()
-        exited.signal()
-      }
       // deadline-fallback: the signal is the child's exit; 5 s bounds it before the child is killed
-      if exited.wait(timeout: .now() + 5) == .timedOut {
+      if !exited(within: 5) {
         kill(process.processIdentifier, SIGKILL)
       }
     }
