@@ -23,7 +23,7 @@ class GroupContract(unittest.TestCase):
         (self.root / "scripts/lib").mkdir(parents=True)
         shutil.copyfile(HERE / "local-test-groups.py", self.root / "scripts/local-test-groups.py")
         shutil.copyfile(HERE / "local_test_plan.py", self.root / "scripts/local_test_plan.py")
-        for name in ("xcode-test-run.sh", "lane-verdict.sh", "lane-verdict.py"):
+        for name in ("xcode-test-run.sh", "lane-verdict.sh", "lane-verdict.py", "output-watchdog.py"):
             shutil.copyfile(HERE / "lib" / name, self.root / "scripts/lib" / name)
         self.products = self.root / "products"
         self.products.mkdir()

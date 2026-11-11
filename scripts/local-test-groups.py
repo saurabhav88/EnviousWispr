@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from urllib.parse import unquote, urlsplit
 
@@ -33,6 +34,45 @@ REQUIRED = f"{TARGET} EnviousWisprDesktopEffectsTests EnviousWisprASRTests"
 # Existing owned-process termination precedent: scripts/mutation-battery.py.
 TERMINATION_GRACE_SECONDS = 10
 SIGNALS = (signal.SIGHUP, signal.SIGINT, signal.SIGTERM, signal.SIGQUIT)
+# #4461/#4507: a progress line at most this often while workers run, so a caller
+# watching this process's own output (a remote dispatcher) sees it alive.
+PROGRESS_SECONDS = 60
+
+
+class Hung(RuntimeError):
+    """A worker printed nothing for the no-output limit; the run exits 5."""
+
+
+def watchdog_module(root):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("output_watchdog", root / "scripts/lib/output-watchdog.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+FORWARD_LOCK = threading.Lock()
+
+
+def pump(stream, handle, clock, card, forward):
+    """Copy one worker's raw output bytes to its driver log, timing silence; with
+    `forward`, also to this process's stdout (a remote run's stream, #4507 §3.7)."""
+    fd = stream.fileno()
+    while True:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            return  # the pipe was closed during cleanup
+        if not data:
+            return
+        handle.write(data)
+        handle.flush()
+        clock.saw(data)
+        card.touch()
+        if forward:
+            with FORWARD_LOCK:
+                sys.stdout.buffer.write(data)
+                sys.stdout.buffer.flush()
 
 
 def inventory(payload):
@@ -218,6 +258,15 @@ def run_groups(opts):
     groups = balanced_groups(root, group_dir)
     selected = [suite for name, _, suites in groups if name != "serial" for suite in suites]
     cancelled = []
+    watch = watchdog_module(root)
+    limit = watch.limit_seconds()
+    card = watch.CardToucher()
+    # Raw worker output reaches this process's stdout only when a remote dispatcher
+    # asks (EW_FORWARD_WORKER_OUTPUT=1, set for remote runs): there the stream is
+    # what proves the run alive. Locally the per-group logs keep it and the runner's
+    # terminal gets a progress line instead of four interleaved test logs.
+    forward = os.environ.get("EW_FORWARD_WORKER_OUTPUT") == "1"
+    clocks, pumps = [], []
 
     def cancel(signum, _frame):
         # Never raise here: Popen must finish and register its owned process
@@ -239,7 +288,7 @@ def run_groups(opts):
             app_log.mkdir()
             env = dict(os.environ, TEST_RUNNER_EW_APP_LOG_DIRECTORY=str(app_log),
                        TEST_RUNNER_CI=os.environ.get("CI", ""))
-            handle = (group_dir / (name + "-driver.log")).open("w")
+            handle = (group_dir / (name + "-driver.log")).open("wb")
             handles.append(handle)
             args = (["-skip-testing:" + suite for suite in selected] if name == "serial"
                     else ["-only-testing:" + suite for suite in suites])
@@ -250,16 +299,30 @@ def run_groups(opts):
                 "-parallel-testing-enabled", "NO", *args,
             ]
             print(f"==> Debug {name} group: {prefix}.log", flush=True)
-            children.append(subprocess.Popen(command, cwd=root, env=env, stdin=subprocess.DEVNULL,
-                                             stdout=handle, stderr=subprocess.STDOUT,
-                                             start_new_session=True))
+            child = subprocess.Popen(command, cwd=root, env=env, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+            children.append(child)
+            # A separate silence clock per worker: one busy worker never keeps a
+            # silent sibling alive. Timing starts when the worker starts.
+            clock = watch.SilenceClock(f"Debug {name} group")
+            clocks.append(clock)
+            thread = threading.Thread(target=pump, args=(child.stdout, handle, clock, card, forward), daemon=True)
+            thread.start()
+            pumps.append(thread)
         pending = set(range(len(children)))
+        next_progress = time.monotonic() + PROGRESS_SECONDS
         while pending:
             if cancelled:
                 raise InterruptedError(f"interrupted by signal {cancelled[0]}")
             for index in tuple(pending):
                 rc = observed_exit(children[index])
                 if rc is None:
+                    if clocks[index].silent_for() >= limit:
+                        text = clocks[index].diagnostic(limit)
+                        watch.record_hung(text)
+                        print(f"==> HUNG: {text}", flush=True)
+                        raise Hung(text)
                     continue
                 pending.remove(index)
                 name = groups[index][0]
@@ -269,9 +332,21 @@ def run_groups(opts):
                     raise RuntimeError(f"Debug {name} group failed (exit {rc}):\n{detail}")
                 print(f"==> Debug {name} group completed", flush=True)
             if pending:
+                if not forward and time.monotonic() >= next_progress:
+                    next_progress = time.monotonic() + PROGRESS_SECONDS
+                    print("==> Debug groups running: " + ", ".join(
+                        f"{groups[i][0]} (last output {int(clocks[i].silent_for())}s ago, "
+                        f"last test {clocks[i].last_test or 'none yet'})" for i in sorted(pending)),
+                        flush=True)
                 time.sleep(0.05)
         if cancelled:
             raise InterruptedError(f"interrupted by signal {cancelled[0]}")
+        # No unbounded wait here: a worker can exit while a descendant keeps its
+        # pipe open. The driver logs are diagnostics only (results and the combined
+        # log come from each group's own files), and the owned-group cleanup in the
+        # finally block below ends such descendants.
+        for thread in pumps:
+            thread.join(timeout=1)
         inventories = {name: read_inventory(group_dir / (name + ".xcresult"))
                        for name, _, _ in groups}
         check_group_partition(inventories, groups)
@@ -304,6 +379,11 @@ def run_groups(opts):
                 print(f"ERROR: original test group failure: {original_error}", file=sys.stderr)
             raise
         finally:
+            for thread in pumps:
+                thread.join(timeout=TERMINATION_GRACE_SECONDS)
+            for child in children:
+                if child.stdout:
+                    child.stdout.close()
             for handle in handles:
                 handle.close()
             for sig, old in previous.items():
@@ -320,6 +400,9 @@ def main():
     started = time.monotonic()
     try:
         run_groups(opts)
+    except Hung as error:
+        print(f"ERROR: Debug test groups: hung: {error}", file=sys.stderr, flush=True)
+        return 5
     except BaseException as error:
         print(f"ERROR: Debug test groups: {error}", file=sys.stderr, flush=True)
         return 1

@@ -88,6 +88,21 @@ def write_card(host, pid, kind, label, worktree, config_sha256):
     os.replace(tmp, card)
 
 
+def touch_card(host, pid):
+    """Set last_output_at on the card held by `pid` (the runner); never create one."""
+    card = card_path(host)
+    try:
+        data = json.loads(card.read_text())
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict) or data.get("pid") != pid:
+        return
+    data["last_output_at"] = time.time()
+    tmp = card.with_name(f"holder.json.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, card)
+
+
 def read_card(host):
     """The card when its holder process is still the same process, else None."""
     try:

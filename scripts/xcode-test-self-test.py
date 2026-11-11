@@ -96,7 +96,15 @@ if os.environ.get('GROUP_RC'): sys.exit(int(os.environ['GROUP_RC']))
 Path(a.result_bundle).mkdir()
 Path(a.log).write_text('Test run with 2 tests passed.\\n')
 ''')
+        # #4507: the real no-output watchdog, and the real verdict owner for the
+        # hung outcome only (the stub below delegates that one case to it).
+        shutil.copyfile(RUNNER.with_name('lib') / 'output-watchdog.py', lib / 'output-watchdog.py')
+        shutil.copyfile(RUNNER.with_name('lib') / 'lane-verdict.sh', lib / 'lane-verdict-real.sh')
         (lib / 'lane-verdict.sh').write_text('''ew_lane_verdict() {
+  if [ "${1:-}" = "--outcome" ]; then
+    ( . "$FIXTURE_ROOT/scripts/lib/lane-verdict-real.sh"; ew_lane_verdict "$@" )
+    return $?
+  fi
   echo "verdict:$3:required=${EW_LANE_REQUIRED_BUNDLES-unset}" >> "$TRACE"
   EW_LANE_EXECUTED_COUNT=2
   EW_LANE_JUDGED_BUNDLES="${EW_LANE_REQUIRED_BUNDLES-EnviousWisprTests EnviousWisprDesktopEffectsTests EnviousWisprASRTests}"
@@ -123,6 +131,11 @@ if args[0] == 'build-for-testing':
     sys.exit(int(os.environ.get('BUILD_RC', '0')))
 if args[0] == 'test':
     Path(args[args.index('-resultBundlePath') + 1]).mkdir()
+    if os.environ.get('HANG'):
+        helper = subprocess.Popen(['sleep', '60'])
+        print("Test Case 'Hang.forever' started", flush=True)
+        Path(os.environ['HANG']).write_text(f'{os.getpid()} {helper.pid}')
+        time.sleep(60)
     root = Path(os.environ['FIXTURE_ROOT'])
     if os.environ.get('STARTED'):
         Path(os.environ['STARTED']).write_text('running')
@@ -245,6 +258,21 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
         card = json.loads((self.root / 'private-queue/holder.json').read_text())
         self.assertEqual((card['host'], card['kind'], card['config_sha256']), ('local', 'short', 'none'))
         self.assertEqual(card['worktree'], str(self.root))
+
+    def test_a_silent_test_step_is_stopped_as_hung(self):
+        # #4507 T4: a test step that prints once and then nothing is stopped at the
+        # limit; the run says FAIL (hung) with the last test, exits 5, leaves no
+        # process behind, issues no receipt and releases its checkout lock.
+        pidfile = self.root / 'hang.pid'
+        result = self.run_runner('--filter', 'EnviousWisprTests/A', rc=5,
+                                 HANG=str(pidfile), EW_NO_OUTPUT_LIMIT_SECS='2')
+        self.assertIn('FAIL (hung)', result.stdout)
+        self.assertIn('last test: Hang.forever', result.stdout)
+        for pid in map(int, pidfile.read_text().split()):  # the step and its helper
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
+        self.assertFalse(self.receipt.exists())
+        self.assertFalse(self.lock.exists())
 
     def test_serial_is_full_debug_with_required_bundles(self):
         self.run_runner()

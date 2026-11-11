@@ -221,6 +221,7 @@ scripts/lib/*
 # #4507: the Mac host list and the read-only slot status for shared CI across Macs.
 !scripts/lib/mac_hosts.py
 !scripts/mac-slots.py
+!scripts/lib/output-watchdog.py
 # #3400: the machine-wide claim on the shared dev app, read by build-dev-app.sh.
 !scripts/lib/dev-app-lock.py
 !scripts/lib/dev-app-lock-test.py

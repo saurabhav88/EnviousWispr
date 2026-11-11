@@ -87,7 +87,24 @@ ew_validation_lock() {
   fi
   return 0
 }
-trap 'ew_validation_cleanup; ew_seed_on_exit' EXIT
+# #4461/#4507: one verdict path for a step stopped after printing nothing for
+# EW_NO_OUTPUT_LIMIT_SECS (default 1200). The watchdog (scripts/lib/output-watchdog.py)
+# or the group supervisor writes the diagnostic to $EW_HUNG_MARKER; whatever branch
+# then ends the run, it ends here with FAIL (hung) and exit 5, after the cleanup below.
+ew_hung_exit() {
+  [ -n "${EW_HUNG_MARKER:-}" ] && [ -s "$EW_HUNG_MARKER" ] || return 0
+  ew_lane_verdict --outcome hung "$(cat "$EW_HUNG_MARKER")" || true
+  return 5
+}
+ew_exit_trap() {
+  local hung=0
+  ew_hung_exit || hung=$?
+  ew_validation_cleanup
+  ew_seed_on_exit
+  [ -z "${EW_HUNG_MARKER:-}" ] || rm -f "$EW_HUNG_MARKER"
+  [ "$hung" -eq 0 ] || exit "$hung"
+}
+trap ew_exit_trap EXIT
 # bash exits on a signal WITHOUT running the EXIT trap, which would strand a
 # seed lock. Converting each signal into a normal exit makes EXIT run.
 ew_validation_interrupt() {
@@ -297,6 +314,14 @@ python3 "$PROJECT_ROOT/scripts/local-ci-queue.py" acquire 9 --kind "$CI_QUEUE_KI
   --label "$(basename "$PROJECT_ROOT")" --worktree "$PROJECT_ROOT" --config-sha256 "$MAC_HOSTS_SHA" &
 CI_QUEUE_PID=$!
 if wait "$CI_QUEUE_PID"; then :; else exit "$?"; fi
+# #4461/#4507: from here on, every build and test step runs under the no-output
+# watchdog. Waiting for a lock above is not a step and is never timed.
+WATCHDOG="$PROJECT_ROOT/scripts/lib/output-watchdog.py"
+EW_HUNG_MARKER="$(mktemp "${TMPDIR:-/tmp}/ew-hung.XXXXXX")"
+EW_RUNNER_PID=$$
+EW_CARD_HOST=local
+export EW_HUNG_MARKER EW_RUNNER_PID EW_CARD_HOST
+ew_watch() { local phase="$1"; shift; python3 "$WATCHDOG" run --phase "$phase" -- "$@"; }
 # #4293: this checkout's build lock (scripts/lib/build-folder-lock.py), held on
 # descriptor 8 until exit, so scripts/build-dev-app.sh and scripts/build-dev-only.sh
 # wait for this run instead of building in the shared .derivedData/Dev beside it.
@@ -358,7 +383,9 @@ done
 # #4485: before generation, which is the first package resolve. The lane folders
 # are named because DERIVED_DATA_PATH can put one outside this checkout.
 ew_drop_stale_package_checkouts "$PROJECT_ROOT" "${LANE_DERIVED_DATA[@]}"
-ew_ensure_generated "$PROJECT_ROOT"
+# shellcheck disable=SC2016  # the inner shell expands $1/$2, by design
+ew_watch generate bash -c '. "$1"; ew_ensure_generated "$2"' ew-generate \
+  "$PROJECT_ROOT/scripts/lib/ensure-generated.sh" "$PROJECT_ROOT"
 echo "==> phase generate: $((SECONDS - PHASE_START))s"
 
 printf "==> Test plan: %s; %s filter(s); incremental build data: %s\n" "$CONFIGURATION" "${#TEST_ARGS[@]}" "${LANE_DERIVED_DATA[*]}"
@@ -452,7 +479,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   # run that the pre-push receipt requires still compiles this bundle before any
   # push (it cost 6-39 s on every filtered run; 2026-10-31).
   if [ "$config" = Debug ] && [ "$FULL_VALIDATION" = 1 ]; then
-    xcodebuild build-for-testing \
+    ew_watch "critical build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme EnviousWispr-Critical \
       -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
@@ -462,7 +489,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   fi
   if [ "$TEST_EXECUTION" = "grouped" ]; then
     local build_start=$SECONDS supervisor rc
-    xcodebuild build-for-testing \
+    ew_watch "$config build" xcodebuild build-for-testing \
       -project "$PROJECT" -scheme "$scheme" -configuration "$xcode_config" \
       -derivedDataPath "$derived" -destination "$DEST" \
       -onlyUsePackageVersionsFromResolvedFile \
@@ -490,7 +517,7 @@ run_lane() {  # $1=scheme $2=lane label (Debug|Release) $3=Xcode configuration $
   # against it fails OPEN, which is how a machine-dependent assertion reaches CI
   # while its author believes it is gated (#2376 Phase 4).
   TEST_RUNNER_EW_APP_LOG_DIRECTORY="$APP_LOG_DIR" \
-  TEST_RUNNER_CI="${CI:-}" xcodebuild test \
+  TEST_RUNNER_CI="${CI:-}" ew_watch "$config tests" xcodebuild test \
     -project "$PROJECT" \
     -scheme "$scheme" \
     -configuration "$xcode_config" \
@@ -536,7 +563,7 @@ for lane_dd in "${LANE_DERIVED_DATA[@]}"; do
     RESOLVE_SCHEME="$RELEASE_SCHEME"
   fi
   ew_seed_resolve_or_unseed "$lane_dd" \
-    xcodebuild -resolvePackageDependencies \
+    ew_watch "package resolution" xcodebuild -resolvePackageDependencies \
       -project "$PROJECT" \
       -scheme "$RESOLVE_SCHEME" \
       -derivedDataPath "$lane_dd"
@@ -568,7 +595,7 @@ done
 # serially, Release, each in its own persistent .build directory, held to tracked pins.
 PHASE_START=$SECONDS
 echo "==> eval packages: compiling the eval runner package scripts/eval (Release)"
-if bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
+if ew_watch "eval compile" bash "$PROJECT_ROOT/scripts/ci/compile-eval-packages.sh" 2>&1 | tee "$LOG_DIR/eval-packages.log"; then
   echo "==> phase eval compile: $((SECONDS - PHASE_START))s"
   echo "==> eval packages verdict: PASS"
 else
