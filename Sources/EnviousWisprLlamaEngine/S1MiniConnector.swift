@@ -111,6 +111,8 @@ public struct S1MiniConnector: TranscriptPolisher {
       }
     }
 
-    return LLMResult(polishedText: cleaned)
+    // #4473: llama-server answered. It has no draft model, so it reports no counts.
+    return LLMResult(
+      polishedText: cleaned, localDecode: LocalDecodeStats(implementation: LocalDecodeStats.llamaServer))
   }
 }

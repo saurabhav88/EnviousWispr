@@ -126,7 +126,7 @@ struct FileImportHistoryTests {
         onSpeakerStep?()
         return .failed(.modelsUnavailable)
       },
-      emitRunTelemetry: { _, _, _, _, _, _, _, _ in onRunTelemetry?() },
+      emitRunTelemetry: { _, _, _, _, _, _, _, _, _ in onRunTelemetry?() },
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       onEngineReleased: { onEngineReleased?() },
       beginRun: {

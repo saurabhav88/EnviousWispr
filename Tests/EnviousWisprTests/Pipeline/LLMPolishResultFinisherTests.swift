@@ -189,7 +189,7 @@ struct LLMPolishResultFinisherTests {
       limbFailureObserved: { _, _, _, _, _ in }, breadcrumbStarted: { _, _ in },
       captureProviderInitError: { _ in }, captureAFMPolishError: { _ in },
       breadcrumbCompleted: { _, _ in completions += 1 },
-      recordPolishSkipped: { _, _, _ in }, recordPolishLanguageHint: { _, _ in })
+      recordPolishSkipped: { _, _, _, _ in }, recordPolishLanguageHint: { _, _ in })
     let step = LLMPolishStep(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: seams)
     step.setPolish(provider: provider)

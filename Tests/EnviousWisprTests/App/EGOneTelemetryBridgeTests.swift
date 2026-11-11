@@ -36,6 +36,43 @@ struct EGOneTelemetryBridgeTests {
       }
     }
 
+    /// Fires `emit`, then waits for the named event on a fresh waiter (the waiter returns an
+    /// earlier match, so each emission gets its own).
+    private func captured(
+      _ name: String, emit: () -> Void
+    ) async throws -> CapturedTelemetryEvent {
+      let waiter = TelemetryEventWaiter()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { waiter.record(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      emit()
+      return try await waiter.waitForEvent(named: name)
+    }
+
+    // #4473: loses the per-size split of EG-1 health rows if this fails.
+    @Test("an EG-1 size adds model_size to its health and paused-install rows; S1-mini adds none")
+    func sizeRidesOnHealthRows() async throws {
+      let sized = try await captured("eg1.health_changed") {
+        EGOneTelemetryBridge.handler(engine: .egOne, size: .micro)(
+          .healthChanged(from: "yellow", to: "green", reason: nil))
+      }
+      #expect(sized.stringProps["model_size"] == "micro")
+      #expect(sized.stringProps["engine"] == LLMProvider.egOne.rawValue)
+
+      let paused = try await captured("eg1.paused_install_state_changed") {
+        EGOneTelemetryBridge.handler(engine: .egOne, size: .mini)(.pausedInstallStateChanged(nil))
+      }
+      #expect(paused.stringProps["model_size"] == "mini")
+
+      let unsized = try await captured("eg1.health_changed") {
+        EGOneTelemetryBridge.handler(engine: .s1Mini)(
+          .healthChanged(from: "green", to: "yellow", reason: nil))
+      }
+      #expect(unsized.stringProps["model_size"] == nil)
+      #expect(unsized.stringProps["engine"] == LLMProvider.s1Mini.rawValue)
+    }
+
     @Test("a paused-install change carries the engine too")
     func pausedInstallCarriesEngine() async throws {
       let waiter = TelemetryEventWaiter()
@@ -60,8 +97,10 @@ struct EGOneTelemetryBridgeTests {
     let source = try String(
       contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift"),
       encoding: .utf8)
-    // #4473: every EG-1 size is built by one local function, so one assignment wires them all.
-    #expect(source.contains("runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)"))
+    // #4473: every EG-1 size is built by one local function, so one assignment wires them all,
+    // and it passes that size so the rows carry `model_size`.
+    #expect(
+      source.contains("runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne, size: size)"))
     #expect(
       source.contains("s1MiniRuntime.onEvent = EGOneTelemetryBridge.handler(engine: .s1Mini)"))
   }

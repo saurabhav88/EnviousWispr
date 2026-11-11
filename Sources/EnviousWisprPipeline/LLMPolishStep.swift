@@ -327,7 +327,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     /// seam — this field does not duplicate that.
     /// `takeID` (#1846) is the LIVE in-flight take — polish runs before the session
     /// terminal, so the concluded key is not yet stamped.
-    let recordPolishSkipped: @MainActor (String, String, String?) -> Void
+    /// The last parameter (#4473) is the frozen EG-1 size, nil for every other provider.
+    let recordPolishSkipped: @MainActor (String, String, String?, String?) -> Void
     /// #3111: which instruction EG-1's named-language prompt selected, for the take's
     /// terminal row. `(takeID, hint)`. Silenced for recovery and file import like the rest.
     let recordPolishLanguageHint: @MainActor (String, String) -> Void
@@ -349,8 +350,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       breadcrumbCompleted: { message, data in
         SentryBreadcrumb.add(stage: "polish", message: message, data: data)
       },
-      recordPolishSkipped: { provider, reason, takeID in
-        TelemetryService.shared.polishSkipped(provider: provider, reason: reason, takeID: takeID)
+      recordPolishSkipped: { provider, reason, takeID, modelSize in
+        TelemetryService.shared.polishSkipped(
+          provider: provider, reason: reason, takeID: takeID, modelSize: modelSize)
       },
       recordPolishLanguageHint: { takeID, hint in
         TelemetryService.shared.recordPolishLanguageHint(takeID: takeID, hint: hint)
@@ -372,7 +374,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         captureProviderInitError: { _ in },
         captureAFMPolishError: { _ in },
         breadcrumbCompleted: { _, _ in },
-        recordPolishSkipped: { _, _, _ in },
+        recordPolishSkipped: { _, _, _, _ in },
         recordPolishLanguageHint: { _, _ in })
     }
   }
@@ -802,6 +804,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // Cleared rather than left alone because this returns the CALLER's context,
     // and a value arriving here could otherwise ride a bypass into telemetry.
     ctx.polishRanRemote = nil
+    // #4473: nothing was polished, so no size and no engine report ride a bypass either.
+    ctx.polishModelSize = nil
+    ctx.polishLocalDecode = nil
     // #1948: same reasoning for the route receipt. A stale family riding a bypass would tell
     // `EmojiRestoreStep` that a polish it never saw used the local prompt.
     ctx.promptFamily = nil
@@ -837,7 +842,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         }
         let skipReason = PolishSkipReason.tooShort(provider)
         telemetry.recordPolishSkipped(
-          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID,
+          provider == .egOne ? polishModelID?.size?.rawValue : nil)
         return Self.bypassedContext(context)
       }
     } else {
@@ -851,7 +857,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         }
         let skipReason = PolishSkipReason.tooShort(provider)
         telemetry.recordPolishSkipped(
-          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID)
+          skipReason.provider.rawValue, skipReason.telemetryTag, context.takeID,
+          provider == .egOne ? polishModelID?.size?.rawValue : nil)
         return Self.bypassedContext(context)
       }
     }
@@ -1508,6 +1515,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // too. Apple Intelligence cannot reach this stamp because its branch returns
     // above.
     ctx.polishRanRemote = ollamaRemote
+    // #4473: same stamp site. The size is the step's frozen model (`setPolish`, set once for
+    // the take); the engine report is what the engine sent with THIS answer.
+    ctx.polishModelSize = provider == .egOne ? polishModelID?.size?.rawValue : nil
+    ctx.polishLocalDecode = result.localDecode
     // #1948: same stamp site, same reasoning — set only after a real polish returned.
     ctx.promptFamily = family
     return ctx
@@ -1774,7 +1785,25 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     ]
     data.merge(extraData) { _, new in new }
 
-    telemetry.breadcrumbCompleted("LLM polish completed", data)
+    // #4473: the same size and engine report `llm.polish_completed` carries, so a Sentry trail
+    // names the size and the engine that answered. Counts stay numbers.
+    var breadcrumbData = data.mapValues { $0 as Any }
+    if provider == .egOne, let size = polishModelID?.size {
+      breadcrumbData["model_size"] = size.rawValue
+    }
+    if let decode = result.localDecode {
+      breadcrumbData["implementation_actual"] = decode.implementation
+      if let n = decode.draftProposedTokens {
+        breadcrumbData["draft_proposed_tokens"] = n
+      }
+      if let n = decode.draftAcceptedTokens {
+        breadcrumbData["draft_accepted_tokens"] = n
+      }
+      if let n = decode.emittedTokens {
+        breadcrumbData["emitted_tokens"] = n
+      }
+    }
+    telemetry.breadcrumbCompleted("LLM polish completed", breadcrumbData)
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "

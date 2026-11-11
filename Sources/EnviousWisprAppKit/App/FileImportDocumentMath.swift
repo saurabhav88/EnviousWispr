@@ -124,7 +124,25 @@ enum FileImportDocumentMath {
     else {
       return TranscriptSplitter.maximumWordsPerPart
     }
+    // #4473: an EG-1 run is cut for the size it FROZE at its start (`localPolishModel`), never
+    // for the size preferred now. A run that names EG-1 without a known size keeps the
+    // on-device default below; it never takes another size's larger part.
+    if configuration.polishProvider == .egOne, let size = configuration.localPolishModel?.size {
+      return egOnePartCeiling(size)
+    }
     return TranscriptSplitter.maximumWordsPerLocalPart
+  }
+
+  /// Words per part for an import polished by one EG-1 size (plan #4473 P5, the approved
+  /// table). A part is one polish request, so the ceiling follows what the size cleans well in
+  /// one request, not its context window (16,384 tokens for the full size and Mini, 8,192 for
+  /// Micro), which is a separate, larger limit.
+  static func egOnePartCeiling(_ size: EGOneSize) -> Int {
+    switch size {
+    case .full: 300
+    case .mini: 500
+    case .micro: 200
+    }
   }
 
   /// Cuts the raw transcript into the pieces the cleanup runs on: one per speaker turn when

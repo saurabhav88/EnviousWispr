@@ -590,7 +590,7 @@ package final class WisprBootstrapper {
         guard let settings else { return false }
         return settings.polishModelID(for: settings.llmProvider) == .egOne(size)
       }
-      runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne)
+      runtime.onEvent = EGOneTelemetryBridge.handler(engine: .egOne, size: size)
       runtime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(checker) }
       return EGOneSizeWiring(
         facts: facts, registration: registration, adapter: adapter, runtime: runtime)
@@ -959,8 +959,9 @@ package final class WisprBootstrapper {
       currentModel: { [settings] in settings.polishModelID(for: $0) },
       debugScriptedChecker: debugScriptedChecker)
     for runtime in [egOneFull.runtime] + egOneOtherSizes.map(\.wiring.runtime) {
+      let report = EGOneTelemetryBridge.handler(engine: .egOne, size: runtime.modelID.size)
       runtime.onEvent = { event in
-        EGOneTelemetryBridge.handler(engine: .egOne)(event)
+        report(event)
         Task { @MainActor in checkerEligibility.statusDidChange() }
       }
     }
@@ -2314,11 +2315,12 @@ package final class WisprBootstrapper {
       },
       // #3069: which engine, whether it and the configured polisher succeeded.
       emitRunTelemetry: {
-        outcome, backend, asrModel, durationSeconds, asrOutcome, polishOutcome, provider, model in
+        outcome, backend, asrModel, durationSeconds, asrOutcome, polishOutcome, provider, model,
+        modelSize in
         TelemetryService.shared.trackFileImportCompleted(
           outcome: outcome, asrBackend: backend, model: asrModel,
           durationSeconds: durationSeconds, asrOutcome: asrOutcome, polishOutcome: polishOutcome,
-          polishProvider: provider, polishModel: model)
+          polishProvider: provider, polishModel: model, polishModelSize: modelSize)
       },
       // #3069: same `.asrFailed` category and fingerprint dictation's own ASR failures use
       // (one engine defect, one Sentry issue), tagged `stage: "file_import"` so it is

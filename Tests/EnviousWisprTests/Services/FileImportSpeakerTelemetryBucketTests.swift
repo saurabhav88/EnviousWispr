@@ -150,5 +150,27 @@ struct FileImportSpeakerTelemetryBucketTests {
       #expect(recorder.event?.stringProps["polish_provider"] == "ollama")
       #expect(recorder.event?.stringProps["polish_model"] == "llama3.1")
     }
+
+    // #4473: the import row's size field exists only for EG-1; Ollama or cloud never show one.
+    @Test("trackFileImportCompleted carries polish_model_size only for an EG-1 run")
+    func trackFileImportCompletedCarriesTheSizeOnlyForEGOne() {
+      let recorder = SyncEventRecorder()
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        MainActor.assumeIsolated { recorder.event = event }
+      }
+      defer { TelemetryService.shared.testEventHook = nil }
+      TelemetryService.shared.trackFileImportCompleted(
+        outcome: .success, asrBackend: .parakeet, model: nil, durationSeconds: 30,
+        asrOutcome: .success, polishOutcome: .success, polishProvider: .egOne,
+        polishModel: "eg-1", polishModelSize: "mini")
+      #expect(recorder.event?.stringProps["polish_model_size"] == "mini")
+
+      TelemetryService.shared.trackFileImportCompleted(
+        outcome: .success, asrBackend: .parakeet, model: nil, durationSeconds: 30,
+        asrOutcome: .success, polishOutcome: .success, polishProvider: .ollama,
+        polishModel: "llama3.1", polishModelSize: "mini")
+      #expect(recorder.event?.stringProps["polish_provider"] == "ollama")
+      #expect(recorder.event?.stringProps["polish_model_size"] == nil)
+    }
   #endif
 }

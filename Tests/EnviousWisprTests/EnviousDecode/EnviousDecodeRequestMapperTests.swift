@@ -474,4 +474,58 @@ struct EnviousDecodeRequestMapperTests {
       tokenizer: Self.fake)
     #expect(roomy.maxNewTokens == 50)
   }
+
+  // MARK: - 4. The decode report (#4473)
+
+  /// #4473: the response says which engine answered and what speculative decoding did. If this
+  /// fails, `draft_accepted_tokens` / `emitted_tokens` in telemetry stop matching the request:
+  /// a stop token would count as an answer token, or the counters would be dropped.
+  @Test("the response carries x_decode with the result's counters and emitted_tokens without the stop token")
+  func theResponseCarriesTheDecodeReport() throws {
+    let configuration = try Self.configuration()
+    func report(_ result: EnviousDecodeResult) throws -> [String: Any] {
+      let data = try EnviousDecodeRequestMapper.response(
+        for: result, configuration: configuration, tokenizer: Self.fake)
+      let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+      return try #require(json["x_decode"] as? [String: Any])
+    }
+    let answer = Self.fakeEncode("Hello there")
+    let stopped = try report(
+      EnviousDecodeResult(
+        tokenIDs: answer + [901], endedOnStopToken: true, restoredPrefixTokens: 0,
+        draftProposedTokens: 12, draftAcceptedTokens: 9))
+    #expect(Set(stopped.keys) == ["implementation", "draft_proposed", "draft_accepted", "emitted_tokens"])
+    #expect(stopped["implementation"] as? String == "envious_decode")
+    #expect(stopped["implementation"] as? String == EnviousDecodeRequestMapper.implementationName)
+    #expect(stopped["draft_proposed"] as? Int == 12)
+    #expect(stopped["draft_accepted"] as? Int == 9)
+    #expect(stopped["emitted_tokens"] as? Int == answer.count, "the stop token is not an answer token")
+
+    // #4473: an in-block stop. Numbers pinned by the DFlash in-block stop case: 3 generated
+    // tokens including the stop, 3 proposed, 1 accepted draft inside the answer. (Built from
+    // those numbers; the real-run version is in EnviousDecodeSessionTests.)
+    let inBlock = try report(
+      EnviousDecodeResult(
+        tokenIDs: Self.fakeEncode("Hi") + [901], endedOnStopToken: true, restoredPrefixTokens: 0,
+        draftProposedTokens: 3, draftAcceptedTokens: 1))
+    let inBlockEmitted = try #require(inBlock["emitted_tokens"] as? Int)
+    let inBlockAccepted = try #require(inBlock["draft_accepted"] as? Int)
+    #expect(inBlockAccepted == 1)
+    #expect(inBlockEmitted == Self.fakeEncode("Hi").count)
+    #expect(inBlockAccepted <= inBlockEmitted, "accepted never exceeds the answer's tokens")
+
+    // The same answer ended by the cap carries no stop token to drop.
+    let capped = try report(
+      EnviousDecodeResult(
+        tokenIDs: answer, endedOnStopToken: false, restoredPrefixTokens: 0,
+        draftProposedTokens: 4, draftAcceptedTokens: 0))
+    #expect(capped["emitted_tokens"] as? Int == answer.count)
+    #expect(capped["draft_proposed"] as? Int == 4)
+    #expect(capped["draft_accepted"] as? Int == 0, "a measured zero is reported, not omitted")
+
+    // A result built without counters reports zeros (the package init's defaults).
+    let plain = try report(
+      EnviousDecodeResult(tokenIDs: answer, endedOnStopToken: false, restoredPrefixTokens: 0))
+    #expect(plain["draft_proposed"] as? Int == 0 && plain["draft_accepted"] as? Int == 0)
+  }
 }

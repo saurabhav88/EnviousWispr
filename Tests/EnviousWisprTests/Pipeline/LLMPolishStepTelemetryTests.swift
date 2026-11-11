@@ -43,7 +43,8 @@ struct LLMPolishStepTelemetryTests {
     private(set) var providerInitErrorCalls: [any Error] = []
     private(set) var afmPolishErrorCalls: [any Error] = []
     private(set) var completedCalls: [(message: String, data: [String: Any]?)] = []
-    private(set) var skipCalls: [(provider: String, reason: String, takeID: String?)] = []
+    private(set) var skipCalls:
+      [(provider: String, reason: String, takeID: String?, modelSize: String?)] = []
     private(set) var hintCalls: [(takeID: String, hint: String)] = []
 
     var seams: LLMPolishStep.TelemetrySeams {
@@ -63,8 +64,8 @@ struct LLMPolishStepTelemetryTests {
         breadcrumbCompleted: { message, data in
           self.completedCalls.append((message, data))
         },
-        recordPolishSkipped: { provider, reason, takeID in
-          self.skipCalls.append((provider, reason, takeID))
+        recordPolishSkipped: { provider, reason, takeID, modelSize in
+          self.skipCalls.append((provider, reason, takeID, modelSize))
         },
         recordPolishLanguageHint: { takeID, hint in
           self.hintCalls.append((takeID, hint))
@@ -331,7 +332,7 @@ struct LLMPolishStepTelemetryTests {
       live.captureProviderInitError(LLMError.modelNotReady(.downloadingOrRestricted))
       live.captureAFMPolishError(LLMError.modelNotReady(.downloadingOrRestricted))
       live.breadcrumbCompleted("live probe", nil)
-      live.recordPolishSkipped("openAI", "probe", nil)
+      live.recordPolishSkipped("openAI", "probe", nil, nil)
       #expect(
         recorder.telemetryEvents.count == 2, "live must fire limbFailureObserved + polishSkipped")
       #expect(
@@ -350,7 +351,7 @@ struct LLMPolishStepTelemetryTests {
       silent.captureProviderInitError(LLMError.modelNotReady(.downloadingOrRestricted))
       silent.captureAFMPolishError(LLMError.modelNotReady(.downloadingOrRestricted))
       silent.breadcrumbCompleted("silent probe", nil)
-      silent.recordPolishSkipped("openAI", "probe", nil)
+      silent.recordPolishSkipped("openAI", "probe", nil, nil)
 
       #expect(
         recorder.telemetryEvents.isEmpty,
@@ -550,6 +551,50 @@ struct LLMPolishStepTelemetryTests {
     #expect(spy.skipCalls.isEmpty)
     #expect(spy.providerInitErrorCalls.isEmpty)
     #expect(spy.afmPolishErrorCalls.isEmpty)
+  }
+
+  // #4473: the completed breadcrumb names the size and the engine's report. A count that
+  // arrives as a String, or a measured zero that is dropped, breaks the Sentry trail's numbers.
+  @Test("an EG-1 Micro take's completed breadcrumb carries its size and the decode report, counts as Int")
+  func microBreadcrumbCarriesSizeAndDecodeReport() async throws {
+    let rig = LLMPolishStepLanguageHintTests()
+    let spy = Spy()
+    let decode = LocalDecodeStats(
+      implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 0,
+      emittedTokens: 20)
+    let step = rig.step(
+      spy: spy, polisher: LocalPolishExactModelTests.DecodeReportingPolisher(decode: decode))
+    step.egOneRuntime = nil
+    step.setPolish(provider: .egOne, model: .egOne(.micro))
+    step.localRuntimes[.egOne(.micro)] = LLMPolishStepLanguageHintTests.Runtime()
+    _ = try await step.process(
+      rig.context(
+        text: Self.longTranscript, textLanguage: "en", language: "en", source: .dictation))
+
+    #expect(spy.completedCalls.count == 1)
+    let data = try #require(spy.completedCalls.first?.data)
+    #expect(data["model_size"] as? String == "micro")
+    #expect(data["implementation_actual"] as? String == "envious_decode")
+    #expect(data["draft_proposed_tokens"] as? Int == 12)
+    #expect(data["draft_accepted_tokens"] as? Int == 0, "a measured zero is kept, as a number")
+    #expect(data["emitted_tokens"] as? Int == 20)
+    #expect(data["draft_accepted_tokens"] as? String == nil)
+  }
+
+  @Test("a non-EG-1 take's completed breadcrumb has no size and none of the decode keys")
+  func otherProviderBreadcrumbHasNoSizeOrDecodeKeys() async throws {
+    let spy = Spy()
+    let step = makeStep(provider: .openAI, telemetry: spy.seams)
+    step.makePolisher = { _, _, _, _ in SucceedingPolisher() }
+    _ = try await step.process(TextProcessingContext(text: Self.longTranscript, language: "en"))
+
+    let data = try #require(spy.completedCalls.first?.data)
+    for key in [
+      "model_size", "implementation_actual", "draft_proposed_tokens", "draft_accepted_tokens",
+      "emitted_tokens",
+    ] {
+      #expect(data[key] == nil, "\(key) must not ride a non-EG-1 take")
+    }
   }
 }
 

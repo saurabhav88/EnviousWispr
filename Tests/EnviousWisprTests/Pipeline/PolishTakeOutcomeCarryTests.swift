@@ -240,8 +240,8 @@ struct PolishTakeOutcomeCarryTests {
       recordTerminalProblem: { _, _ in }, now: { .now })
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
-        recordPolishSkipped: { _, _, _ in }),
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _, _ in }),
       timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
     return try await runner.run(
       rawText: text, evidence: .locked("en"), targetAppName: nil, steps: [step],
@@ -272,8 +272,8 @@ struct PolishTakeOutcomeCarryTests {
     step.wallNow = { wall }
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
-        recordPolishSkipped: { _, _, _ in }),
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _, _ in }),
       timeoutExecutor: { _, operation in
         do {
           return try await operation()

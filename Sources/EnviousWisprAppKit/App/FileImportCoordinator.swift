@@ -529,7 +529,7 @@ final class FileImportCoordinator {
     @MainActor (
       TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
       TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-      LLMProvider?, String?
+      LLMProvider?, String?, String?
     ) -> Void
   /// Reports an ASR engine failure to Sentry (#3069), tagged `stage: "file_import"` so it is
   /// filterable separately from dictation's own ASR failures while sharing the SAME
@@ -902,8 +902,8 @@ final class FileImportCoordinator {
       @escaping @MainActor (
         TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
         TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-        LLMProvider?, String?
-      ) -> Void = { _, _, _, _, _, _, _, _ in },
+        LLMProvider?, String?, String?
+      ) -> Void = { _, _, _, _, _, _, _, _, _ in },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
     engineAdmission: EngineAdmissionAccess,
     polishOllamaLocalityNow: @escaping @MainActor () -> Bool? = { false },
@@ -2321,7 +2321,9 @@ final class FileImportCoordinator {
     }
     emitRunTelemetry(
       outcome, configuration.backendType, model, file.seconds, asrOutcome, polishOutcome,
-      provider, provider == nil ? nil : configuration.polishModel)
+      provider, provider == nil ? nil : configuration.polishModel,
+      // #4473: the EG-1 size the run FROZE, never the size preferred when it ends.
+      provider == .egOne ? configuration.localPolishModel?.size?.rawValue : nil)
   }
 
   /// `.skipped` when nothing was ever asked (no provider, or every part was a deliberate

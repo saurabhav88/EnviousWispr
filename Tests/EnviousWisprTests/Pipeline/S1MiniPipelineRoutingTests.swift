@@ -92,7 +92,7 @@ struct S1MiniPipelineRoutingTests {
     let executor = FakeTimeoutExecutor(throwBelowSeconds: timeoutBelow)
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _ in },
+        captureError: spy.sink, recordPolishFailed: { _, _, _, _, _, _ in },
         recordPolishSkipped: TextProcessingRunner.TelemetrySeams.live.recordPolishSkipped),
       timeoutExecutor: executor.run)
     return try await runner.run(

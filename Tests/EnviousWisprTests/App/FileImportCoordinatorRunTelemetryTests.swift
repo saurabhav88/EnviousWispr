@@ -108,13 +108,14 @@ struct FileImportCoordinatorRunTelemetryTests {
       FileImportRunner.PartOutcome(text: $0, polishedText: $0)
     },
     polishProvider: LLMProvider = .egOne,
+    localPolishModel: @escaping @MainActor () -> LocalPolishModelID? = { nil },
     asrModel: ASRModelIdentity? = nil,
     emitRunTelemetry:
       @escaping @MainActor (
         TelemetryService.FileImportRunOutcome, ASRBackendType, ASRModelAttribution?, TimeInterval,
         TelemetryService.FileImportASROutcome?, TelemetryService.FileImportPolishOutcome?,
-        LLMProvider?, String?
-      ) -> Void = { _, _, _, _, _, _, _, _ in },
+        LLMProvider?, String?, String?
+      ) -> Void = { _, _, _, _, _, _, _, _, _ in },
     captureASRFailure: @escaping @MainActor (any Error, ASRBackendType) -> Void = { _, _ in },
     updateHistoryRow: @escaping @MainActor (Transcript) async throws -> Bool = { _ in true }
   ) -> FileImportCoordinator {
@@ -135,7 +136,7 @@ struct FileImportCoordinatorRunTelemetryTests {
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishModel: nil, polishProvider: polishProvider,
+          polishIsCloud: false, localPolishModel: localPolishModel(), polishProvider: polishProvider,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet, asrModel: asrModel)
       },
       saveToHistory: { _ in },
@@ -171,7 +172,7 @@ struct FileImportCoordinatorRunTelemetryTests {
         throw EngineError()
       },
       asrModel: ultra,
-      emitRunTelemetry: { _, _, model, _, _, _, _, _ in box.models.append(model) })
+      emitRunTelemetry: { _, _, model, _, _, _, _, _, _ in box.models.append(model) })
 
     coordinator.choose(url: Self.anyURL)
     _ = await settleUntil {
@@ -205,7 +206,7 @@ struct FileImportCoordinatorRunTelemetryTests {
         throw EngineError()
       },
       asrModel: ASRModelIdentity(name: "parakeet-ultra-coreml", revision: nil, variant: nil),
-      emitRunTelemetry: { _, _, model, _, _, _, _, _ in box.models.append(model) })
+      emitRunTelemetry: { _, _, model, _, _, _, _, _, _ in box.models.append(model) })
 
     for _ in 0..<2 {
       coordinator.choose(url: Self.anyURL)
@@ -234,7 +235,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       transcribe: { _ in throw EngineError() },
-      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       captureASRFailure: { _, backend in
@@ -270,7 +271,7 @@ struct FileImportCoordinatorRunTelemetryTests {
         try await Task.sleep(for: .seconds(30))  // settle: cancelled by stop() below, never reached
         return "unreachable"
       },
-      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       captureASRFailure: { _, backend in
@@ -302,7 +303,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let telemetry = RunTelemetryRecorder()
     let coordinator = makeCoordinator(
       lease: EngineLease(), polishProvider: .ollama,
-      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, provider, model in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, provider, model, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
         #expect(provider == .ollama)
         #expect(model == "eg-1")
@@ -327,7 +328,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     let coordinator = makeCoordinator(
       lease: EngineLease(),
       processPart: { _ in throw PolishError() },
-      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       })
 
@@ -351,7 +352,7 @@ struct FileImportCoordinatorRunTelemetryTests {
     struct WriteError: Error {}
     let coordinator = makeCoordinator(
       lease: EngineLease(),
-      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _ in
+      emitRunTelemetry: { outcome, _, _, _, asrOutcome, polishOutcome, _, _, _ in
         telemetry.record(outcome: outcome, asrOutcome: asrOutcome, polishOutcome: polishOutcome)
       },
       updateHistoryRow: { _ in throw WriteError() })
@@ -368,5 +369,60 @@ struct FileImportCoordinatorRunTelemetryTests {
       "the RAW words saved fine, but the cleaned document's own write failed — that must not read as success"
     )
     #expect(telemetry.calls.last?.polishOutcome == nil)
+  }
+
+  // MARK: - #4473 frozen EG-1 size
+
+  @MainActor
+  private final class SizeBox {
+    var sizes: [String?] = []
+    var preferred: EGOneSize = .mini
+  }
+
+  /// #4473: a run reports the EG-1 size it FROZE at start. If this fails, `polish_model_size`
+  /// follows the setting at the end of the run and mislabels a long import after a size switch.
+  @Test("a run frozen on EG-1 Mini reports polish_model_size mini after the preference changes")
+  func frozenEGOneSizeSurvivesAPreferenceChange() async {
+    let box = SizeBox()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(),
+      processPart: { part in
+        box.preferred = .full  // the user flips the size while the run is polishing
+        return FileImportRunner.PartOutcome(text: part, polishedText: part)
+      },
+      polishProvider: .egOne,
+      localPolishModel: { .egOne(box.preferred) },
+      emitRunTelemetry: { _, _, _, _, _, _, _, _, size in box.sizes.append(size) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    #expect(box.preferred == .full, "the preference really changed mid-run")
+    #expect(box.sizes == ["mini"])
+  }
+
+  /// #4473: another polisher never carries an EG-1 size. If this fails, an Ollama or cloud run
+  /// would show an EG-1 size it never used.
+  @Test("a run with another polisher reports no polish_model_size")
+  func otherPolisherReportsNoSize() async {
+    let box = SizeBox()
+    let coordinator = makeCoordinator(
+      lease: EngineLease(), polishProvider: .ollama,
+      localPolishModel: { .egOne(.micro) },
+      emitRunTelemetry: { _, _, _, _, _, _, _, _, size in box.sizes.append(size) })
+
+    coordinator.choose(url: Self.anyURL)
+    _ = await settleUntil {
+      if case .ready = coordinator.state { return true } else { return false }
+    }
+    coordinator.start()
+    _ = await settleUntil { coordinator.state == .finished }
+
+    #expect(box.sizes.count == 1)
+    #expect(box.sizes.first == .some(nil))
   }
 }

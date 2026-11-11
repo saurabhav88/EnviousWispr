@@ -21,7 +21,7 @@ struct CloudModelPreflightTests {
     var factoryCalls = 0
     var captures = 0
     var failures: [String] = []
-    var skips: [(provider: String, reason: String, takeID: String?)] = []
+    var skips: [(provider: String, reason: String, takeID: String?, modelSize: String?)] = []
     var classified: [PolishSetupEvidence] = []
   }
 
@@ -53,8 +53,8 @@ struct CloudModelPreflightTests {
     let runner = TextProcessingRunner(
       telemetry: .init(
         captureError: { _, _, _, _, _, _ in spies.captures += 1 },
-        recordPolishFailed: { _, _, reason, _, _ in spies.failures.append(reason) },
-        recordPolishSkipped: { spies.skips.append(($0, $1, $2)) }),
+        recordPolishFailed: { _, _, reason, _, _, _ in spies.failures.append(reason) },
+        recordPolishSkipped: { spies.skips.append(($0, $1, $2, $3)) }),
       timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: 0.0).run)
     guard let take else {
       return try await runner.run(
@@ -93,6 +93,7 @@ struct CloudModelPreflightTests {
     #expect(spies.skips.first?.provider == provider.rawValue)
     #expect(spies.skips.first?.reason == "cloud_no_model_selected")
     #expect(spies.skips.first?.takeID == "take-A")
+    #expect(spies.skips.first?.modelSize == nil, "a cloud skip never carries an EG-1 size (#4473)")
     #expect(spies.failures.isEmpty)
     #expect(spies.captures == 0)
   }

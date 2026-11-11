@@ -285,4 +285,92 @@ struct LocalPolishExactModelTests {
     }
     #expect(missingSpy.egOneEndpoints.isEmpty, "no size's server answered for the missing one")
   }
+
+  // MARK: - #4473: what the step stamps on the context
+
+  /// Echoes the dictation like the rig's own polisher, and reports `decode` with the answer.
+  struct DecodeReportingPolisher: TranscriptPolisher {
+    let decode: LocalDecodeStats?
+    func polish(
+      text: String, instructions: PolishInstructions, config: LLMProviderConfig,
+      onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+      LLMResult(
+        polishedText: text.prefix(1).uppercased() + text.dropFirst() + ".", localDecode: decode)
+    }
+  }
+
+  static let reported = LocalDecodeStats(
+    implementation: "envious_decode", draftProposedTokens: 12, draftAcceptedTokens: 9,
+    emittedTokens: 20)
+
+  // Loses `model_size` and the decode counters on every EG-1 dictation if the stamp is missing.
+  @Test("a Micro take that polishes carries its frozen size and the engine's report")
+  func aPolishedMicroTakeIsStamped() async throws {
+    let rig = LLMPolishStepLanguageHintTests()
+    let step = rig.step(
+      spy: LLMPolishStepTelemetryTests.Spy(), polisher: DecodeReportingPolisher(decode: Self.reported))
+    step.egOneRuntime = nil
+    step.setPolish(provider: .egOne, model: .egOne(.micro))
+    step.localRuntimes[.egOne(.micro)] = LLMPolishStepLanguageHintTests.Runtime()
+    let out = try await step.process(
+      rig.context(
+        text: LocalPolisherFactorySpy.transcript, textLanguage: "en", language: "en",
+        source: .dictation))
+    #expect(out.polishedText != nil, "the take really polished")
+    #expect(out.llmProvider == LLMProvider.egOne.rawValue)
+    #expect(out.polishModelSize == "micro")
+    #expect(out.polishLocalDecode == Self.reported)
+  }
+
+  // A stale size or report riding a skipped take would label a take that never polished.
+  @Test("a too-short Micro take is bypassed with no size and no report, and the skip names Micro")
+  func aBypassedTakeCarriesNeitherAndTheSkipNamesTheSize() async throws {
+    let rig = LLMPolishStepLanguageHintTests()
+    let spy = LLMPolishStepTelemetryTests.Spy()
+    let step = rig.step(spy: spy, polisher: DecodeReportingPolisher(decode: Self.reported))
+    step.setPolish(provider: .egOne, model: .egOne(.micro))
+    step.localRuntimes[.egOne(.micro)] = LLMPolishStepLanguageHintTests.Runtime()
+    var context = rig.context(text: "yeah", textLanguage: "en", language: "en", source: .dictation)
+    // A value arriving on the caller's context must not ride the bypass.
+    context.polishModelSize = "full"
+    context.polishLocalDecode = Self.reported
+    let out = try await step.process(context)
+    #expect(out.polishedText == nil)
+    #expect(out.polishModelSize == nil)
+    #expect(out.polishLocalDecode == nil)
+    #expect(spy.skipCalls.count == 1)
+    #expect(spy.skipCalls.first?.reason == "too_short")
+    #expect(spy.skipCalls.first?.modelSize == "micro")
+
+    // The same bypass for a take whose size this build does not know reports no size.
+    let unknownSpy = LLMPolishStepTelemetryTests.Spy()
+    let unknown = rig.step(spy: unknownSpy)
+    unknown.setPolish(provider: .egOne, model: nil)
+    _ = try await unknown.process(
+      rig.context(text: "yeah", textLanguage: "en", language: "en", source: .dictation))
+    #expect(unknownSpy.skipCalls.count == 1)
+    #expect(unknownSpy.skipCalls.first?.modelSize == nil)
+  }
+
+  // An EG-1 size on another engine's take would mislabel every size split.
+  @Test("a take polished by another provider carries no size, and a too-short one skips without one")
+  func anotherProviderCarriesNoSize() async throws {
+    let spy = LLMPolishStepTelemetryTests.Spy()
+    let step = LLMPolishStep(
+      keychainManager: KeychainManager(), localPolishers: .llamaForTests, telemetry: spy.seams)
+    step.setPolish(provider: .openAI)
+    step.llmModel = "gpt-4o-mini"
+    step.makePolisher = { _, _, _, _ in DecodeReportingPolisher(decode: nil) }
+    let out = try await step.process(
+      TextProcessingContext(text: LocalPolisherFactorySpy.transcript, language: "en"))
+    #expect(out.polishedText != nil, "the take really polished")
+    #expect(out.polishModelSize == nil)
+    #expect(out.polishLocalDecode == nil)
+
+    _ = try await step.process(TextProcessingContext(text: "yeah", language: "en"))
+    #expect(spy.skipCalls.count == 1)
+    #expect(spy.skipCalls.first?.provider == "openAI")
+    #expect(spy.skipCalls.first?.modelSize == nil)
+  }
 }

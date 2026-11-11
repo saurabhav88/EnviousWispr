@@ -34,6 +34,21 @@ package struct EnviousDecodeResult: Equatable, Sendable {
   /// Prompt tokens that came from the instruction snapshot and were not prefilled again.
   /// 0 for a request with no instruction prefix.
   package let restoredPrefixTokens: Int
+  /// Draft tokens that entered a verification round (`DFlashSummary.proposedFromDraft`).
+  package let draftProposedTokens: Int
+  /// Draft tokens that were accepted AND emitted (`DFlashSummary.emittedFromDraft`).
+  package let draftAcceptedTokens: Int
+
+  package init(
+    tokenIDs: [Int], endedOnStopToken: Bool, restoredPrefixTokens: Int,
+    draftProposedTokens: Int = 0, draftAcceptedTokens: Int = 0
+  ) {
+    self.tokenIDs = tokenIDs
+    self.endedOnStopToken = endedOnStopToken
+    self.restoredPrefixTokens = restoredPrefixTokens
+    self.draftProposedTokens = draftProposedTokens
+    self.draftAcceptedTokens = draftAcceptedTokens
+  }
 }
 
 /// One loaded pair of models (the polish model and its matched draft model) and the saved
@@ -232,7 +247,9 @@ package final class EnviousDecodeSession {
       }
     return EnviousDecodeResult(
       tokenIDs: tokenIDs, endedOnStopToken: endedOnStopToken,
-      restoredPrefixTokens: summary.restoredPrefixTokens)
+      restoredPrefixTokens: summary.restoredPrefixTokens,
+      draftProposedTokens: summary.proposedFromDraft,
+      draftAcceptedTokens: summary.emittedFromDraft)
   }
 
   /// Runs `body` and turns the engine's own error types into the session's. The engine's types

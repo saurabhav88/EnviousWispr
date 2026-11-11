@@ -54,6 +54,9 @@ final class KernelFinalizationOutcome {
   /// #1914: carried straight through from the context, never re-derived here.
   /// Nil unless an Ollama polish completed. See `TextProcessingContext`.
   var polishRanRemote: Bool?
+  /// #4473: carried straight through from the context, like `polishRanRemote`.
+  var polishModelSize: String?
+  var polishLocalDecode: LocalDecodeStats?
   /// #3195: whether a completed live Apple polish used the session prepared at
   /// key-up, and the take it belongs to (the driver reports it only when that take
   /// is the concluded one). Carried straight through from the context.
@@ -665,6 +668,8 @@ struct KernelFinalizationWiring {
       outcome.polishValidatorGuard = ctx.polishValidatorGuard
       outcome.symbolTokens = ctx.symbolTokens
       outcome.polishRanRemote = ctx.polishRanRemote
+      outcome.polishModelSize = ctx.polishModelSize
+      outcome.polishLocalDecode = ctx.polishLocalDecode
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
@@ -705,6 +710,10 @@ struct KernelFinalizationWiring {
         // `polishedText != nil`; leaving remoteness set would emit
         // `result: "skipped"` together with `ollama_remote`.
         outcome.polishRanRemote = nil
+        // #4473: the engine DID answer, but the result is reported as skipped: its report
+        // (engine and draft counts) describes an answer nobody received, so it is dropped. The
+        // size stays: a skipped EG-1 row still names the size that was asked.
+        outcome.polishLocalDecode = nil
         // #3195: same reason; the rejected polish reports no prewarm outcome.
         outcome.afmPrewarmOutcome = nil
         outcome.afmPrewarmTakeID = nil
@@ -1828,6 +1837,8 @@ struct KernelFinalizationWiring {
       // recovery above clears it when finalization reclassifies the result as
       // skipped. `emitFallbackFields` owns different telemetry.
       polishRanRemote: outcome.polishRanRemote,
+      polishModelSize: outcome.polishModelSize,
+      polishLocalDecode: outcome.polishLocalDecode,
       // #3038: same transport as `polishRanRemote`: stamped by `LLMPolishStep`, cleared by the
       // two non-validator fallbacks above, projected here without another policy.
       polishValidatorGuard: outcome.polishValidatorGuard,

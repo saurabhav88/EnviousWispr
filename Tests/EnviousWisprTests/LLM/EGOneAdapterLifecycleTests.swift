@@ -1273,8 +1273,8 @@ struct EGOneRecordingRecoveryTests {
       classify: { _ in nil }, recordTerminalProblem: { _, _ in }, now: { .now })
     let runner = TextProcessingRunner(
       telemetry: .init(
-        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _ in },
-        recordPolishSkipped: { _, _, _ in }),
+        captureError: { _, _, _, _, _, _ in }, recordPolishFailed: { _, _, _, _, _, _ in },
+        recordPolishSkipped: { _, _, _, _ in }),
       timeoutExecutor: { _, operation in
         do {
           let result = try await operation()
