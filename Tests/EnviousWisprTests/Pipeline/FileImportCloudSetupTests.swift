@@ -67,7 +67,7 @@ struct FileImportCloudSetupTests {
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
         spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-        llmProvider: provider.rawValue, llmModel: model, s1Control: nil,
+        llmProvider: provider.rawValue, llmModel: model, egOneSize: nil, s1Control: nil,
         englishSpelling: .american, casualModeEnabled: false),
       vocabulary: nil, cloudModelList: nil)
     return subject

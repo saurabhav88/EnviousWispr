@@ -117,7 +117,7 @@ struct FileImportCoordinatorTests {
     },
     beginRun: @escaping @MainActor () -> FileImportCoordinator.RunConfiguration = {
       FileImportCoordinator.RunConfiguration(
-        polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+        polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
         ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
     },
     engineSelectionSettled: @escaping @MainActor () -> Bool = { true },
@@ -1276,7 +1276,7 @@ struct FileImportCoordinatorTests {
       lease: lease,
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: cloud, localPolishProvider: cloud ? nil : .egOne,
+          polishIsCloud: cloud, localPolishModel: cloud ? nil : .egOne,
           polishProvider: cloud ? .openAI : .egOne, ollamaModel: nil, polishModel: "eg-1",
           backendType: .parakeet)
       })
@@ -1321,7 +1321,7 @@ struct FileImportCoordinatorTests {
       lease: lease,
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: polisher,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: polisher,
           ollamaModel: nil, polishModel: polisher.rawValue, backendType: engine)
       })
     coordinator.choose(url: Self.anyURL)

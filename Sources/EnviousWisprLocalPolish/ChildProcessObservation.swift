@@ -14,12 +14,16 @@ final class ChildProcessObservation: Sendable {
   }
   private let state: OSAllocatedUnfairLock<State>
   private let provider: LLMProvider?
+  private let modelID: LocalPolishModelID?
   private let generation: Int
   private let report: (@Sendable (ChildProcessFailure) -> Void)?
 
-  init(provider: LLMProvider?, generation: Int, report: (@Sendable (ChildProcessFailure) -> Void)?)
-  {
+  init(
+    provider: LLMProvider?, modelID: LocalPolishModelID? = nil, generation: Int,
+    report: (@Sendable (ChildProcessFailure) -> Void)?
+  ) {
     self.provider = provider
+    self.modelID = modelID
     self.generation = generation
     self.report = report
     state = OSAllocatedUnfairLock(initialState: State(phase: .starting))
@@ -46,7 +50,7 @@ final class ChildProcessObservation: Sendable {
       guard !state.suppressed else { return (nil, false) }
       let record = ChildProcessFailure(
         role: .server, provider: provider, generation: generation, phase: state.phase,
-        termination: reason, status: status, pid: pid)
+        termination: reason, status: status, pid: pid, modelID: modelID)
       state.accepted = record
       return (record, true)
     }

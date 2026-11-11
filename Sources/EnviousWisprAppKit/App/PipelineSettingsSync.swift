@@ -81,8 +81,8 @@ final class PipelineSettingsSync {
   var evictionScheduler: ((String) -> Void)?
 
   /// #2648 — see the initializer parameter of the same name.
-  private let importPinnedLocalProvider: @MainActor () -> LLMProvider?
-  private let summaryPinnedLocalProvider: @MainActor () -> LLMProvider?
+  private let importPinnedLocalModel: @MainActor () -> LocalPolishModelID?
+  private let summaryPinnedLocalModel: @MainActor () -> LocalPolishModelID?
 
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
@@ -109,7 +109,7 @@ final class PipelineSettingsSync {
     egOneRuntime: LocalPolishRuntime? = nil,
     s1MiniRuntime: LocalPolishRuntime? = nil,
     checkerSelectionProvider: (
-      @MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection
+      @MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection
     )? = nil,
     ollamaRemotenessLookup: @escaping (String) -> Bool?,
     /// #2648 — the bundled local polisher a RUNNING file import has frozen, or
@@ -120,11 +120,11 @@ final class PipelineSettingsSync {
     /// deactivated the very server the import was polishing through and the
     /// remaining parts came back raw. Found by cloud review. Defaults to nil so
     /// every existing construction is unchanged.
-    importPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
+    importPinnedLocalModel: @escaping @MainActor () -> LocalPolishModelID? = { nil },
     /// #4319 — the bundled model an EnviousMeet summary attempt holds
     /// (`LocalPolishRuntimeSet.summaryHeldProvider`), or nil. Like an import, it has no
     /// session config, and a provider switch must not tear its server down mid-summary.
-    summaryPinnedLocalProvider: @escaping @MainActor () -> LLMProvider? = { nil },
+    summaryPinnedLocalModel: @escaping @MainActor () -> LocalPolishModelID? = { nil },
     /// #2648 — the Ollama model a RUNNING file import froze, or nil.
     ///
     /// `isOllamaModelPinnedInFlight` reads the two DICTATION drivers' session
@@ -153,8 +153,8 @@ final class PipelineSettingsSync {
     self.outputClassifierHolder = outputClassifierHolder
     self.loadOutputClassifier = loadOutputClassifier
     self.importPinnedPolishProvider = importPinnedPolishProvider
-    self.importPinnedLocalProvider = importPinnedLocalProvider
-    self.summaryPinnedLocalProvider = summaryPinnedLocalProvider
+    self.importPinnedLocalModel = importPinnedLocalModel
+    self.summaryPinnedLocalModel = summaryPinnedLocalModel
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.summaryPinnedOllamaModel = summaryPinnedOllamaModel
     self.kernelDriver = kernelDriver
@@ -169,26 +169,27 @@ final class PipelineSettingsSync {
     // #1271 matrix gap 3: Remove Model defers while a recording froze
     // `.egOne`. The pinned-session authority is THIS class (it owns both
     // drivers), so it wires the runtime's read itself.
-    egOneRuntime?.isPinnedInFlight = { [weak self] in
-      self?.pinnedLocalProvider() == .egOne
+    // #4473: asked by exact model, so one size of EG-1 never answers for another.
+    egOneRuntime?.isPinnedInFlight = { [weak self, model = egOneRuntime?.modelID] in
+      self?.pinnedLocalModel() == model
     }
     // #2649: each engine's Remove refusal asks about ITS OWN frozen session.
     // Sharing EG-1's answer would refuse an S1-mini removal while an EG-1 take
     // was running, and allow one while an S1-mini take was.
-    s1MiniRuntime?.isPinnedInFlight = { [weak self] in
-      self?.pinnedLocalProvider() == .s1Mini
+    s1MiniRuntime?.isPinnedInFlight = { [weak self, model = s1MiniRuntime?.modelID] in
+      self?.pinnedLocalModel() == model
     }
     // #2649 (cloud review P1): a direct activation (refresh button, completed
     // download) must not evict the engine a running take froze. Same authority
     // as `reconcileEGOneActivation`'s own defer, wired to the two entry points
     // that do not pass through it.
-    egOneRuntime?.isBlockedByOtherPinnedSession = { [weak self] in
-      guard let pinned = self?.pinnedLocalProvider() else { return false }
-      return pinned != .egOne
+    egOneRuntime?.isBlockedByOtherPinnedSession = { [weak self, model = egOneRuntime?.modelID] in
+      guard let pinned = self?.pinnedLocalModel() else { return false }
+      return pinned != model
     }
-    s1MiniRuntime?.isBlockedByOtherPinnedSession = { [weak self] in
-      guard let pinned = self?.pinnedLocalProvider() else { return false }
-      return pinned != .s1Mini
+    s1MiniRuntime?.isBlockedByOtherPinnedSession = { [weak self, model = s1MiniRuntime?.modelID] in
+      guard let pinned = self?.pinnedLocalModel() else { return false }
+      return pinned != model
     }
   }
 
@@ -202,7 +203,7 @@ final class PipelineSettingsSync {
   /// switching AWAY must stop it, exactly as EG-1 does.
   private let s1MiniRuntime: LocalPolishRuntime?
   private let checkerSelectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
 
   private func syncEGOneLearnedWordChecker() {
     kernelDriver.learnedWordCheck.selectionProvider = checkerSelectionProvider
@@ -532,7 +533,10 @@ final class PipelineSettingsSync {
     // reconciliation, not just the stop half. Deferring only the stop and then
     // starting the incoming model would have the coordinator evict the frozen
     // engine to make room, which is the outcome the defer exists to prevent.
-    if isLocalPolishPinnedInFlight(), pinnedLocalProvider() != settings.llmProvider {
+    // #4473: the selection is an exact model. A pinned take on another size of the same
+    // provider defers the change like a pinned take on another engine.
+    let selected = settings.polishModelID(for: settings.llmProvider)
+    if isLocalPolishPinnedInFlight(), pinnedLocalModel() != selected {
       egOneDeactivationPending = true
       return
     }
@@ -542,11 +546,11 @@ final class PipelineSettingsSync {
     // would then have to evict it mid-start, and the user would wait through a
     // stop the switch had already asked for.
     reconcile(
-      runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne, deselectFirst: true)
+      runtime: egOneRuntime, isSelected: egOneRuntime?.modelID == selected, deselectFirst: true)
     reconcile(
-      runtime: s1MiniRuntime, isSelected: settings.llmProvider == .s1Mini, deselectFirst: true)
-    reconcile(runtime: egOneRuntime, isSelected: settings.llmProvider == .egOne)
-    reconcile(runtime: s1MiniRuntime, isSelected: settings.llmProvider == .s1Mini)
+      runtime: s1MiniRuntime, isSelected: s1MiniRuntime?.modelID == selected, deselectFirst: true)
+    reconcile(runtime: egOneRuntime, isSelected: egOneRuntime?.modelID == selected)
+    reconcile(runtime: s1MiniRuntime, isSelected: s1MiniRuntime?.modelID == selected)
   }
 
   /// One pass over one engine. `deselectFirst` runs only the STOP half, so the
@@ -608,8 +612,9 @@ final class PipelineSettingsSync {
     // remove, so both are retried. Retrying only EG-1 left an S1-mini removal
     // pending forever, with the model still on disk and nothing saying so.
     s1MiniRuntime?.retryPendingRemoval()
-    if settings.llmProvider == .egOne {
-      egOneRuntime?.retryPendingAdapterReconfiguration()
+    if let egOneRuntime, egOneRuntime.modelID == settings.polishModelID(for: settings.llmProvider)
+    {
+      egOneRuntime.retryPendingAdapterReconfiguration()
     }
     guard forceReconciliation || egOneDeactivationPending else { return }
     reconcileEGOneActivation(settings: settings)
@@ -629,21 +634,24 @@ final class PipelineSettingsSync {
   /// a name is the wrong shape: the question is "is a local server load-bearing
   /// for a take that is still running", and the answer has to say WHICH, so a
   /// switch back to the frozen engine is not needlessly deferred.
-  func pinnedLocalProvider() -> LLMProvider? {
+  func pinnedLocalProvider() -> LLMProvider? { pinnedLocalModel()?.provider }
+
+  /// #4473: the exact local model an in-flight piece of work froze, if any. Each holder
+  /// answers with the identity it captured at its own start; Settings is not read.
+  func pinnedLocalModel() -> LocalPolishModelID? {
     // #2648: the file import is a third holder of a bundled local server, and it
     // has no session config for the loop below to read.
-    if let imported = importPinnedLocalProvider() { return imported }
+    if let imported = importPinnedLocalModel() { return imported }
     // #4319: an EnviousMeet summary is a fourth holder, with no session config either.
-    if let summarized = summaryPinnedLocalProvider() { return summarized }
+    if let summarized = summaryPinnedLocalModel() { return summarized }
     for cfg in [kernelDriver.currentSessionConfig, whisperKernelDriver.currentSessionConfig] {
       // #2651: the optional is unwrapped BEFORE the switch, so `.none` means
       // `LLMProvider.none` and nothing else. Matching on `cfg?.llmProvider`
       // directly makes `.none` read as `Optional.none`, which leaves the
       // provider's own `.none` case uncovered and does not compile.
-      guard let provider = cfg?.llmProvider else { continue }
-      switch provider {
-      case .egOne: return .egOne
-      case .s1Mini: return .s1Mini
+      guard let cfg else { continue }
+      switch cfg.llmProvider {
+      case .egOne, .s1Mini: return cfg.polishModelID
       // Enumerated rather than `default:`. This answers "is a bundled local
       // server load-bearing for a take that is still running", so a NEW
       // bundled engine on a `default:` arm would report NOT pinned, and a

@@ -51,12 +51,12 @@ struct EGOneSummaryEngineTests {
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         engine: LlamaServerEngine(),
         coordinator: coordinator,
-        provider: .egOne)
+        modelID: .egOne)
       let s1 = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         engine: LlamaServerEngine(),
         coordinator: coordinator,
-        provider: .s1Mini)
+        modelID: .s1Mini)
       if installed { egOne.applyInstallStateForTesting(.installed(version: "1.2")) }
       set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1)
       let probe = probe
@@ -66,14 +66,15 @@ struct EGOneSummaryEngineTests {
         promptTemplateID: "eg1-v1", minAppVersion: "2.3.0",
         downloadURL: URL(string: "https://example.invalid/eg1.gguf")!)
       engine = EGOneSummaryEngine(
-        runtimes: set, manifest: { manifest ? value : nil },
+        runtimes: set, model: { .egOne(.full) },
+        manifest: { manifest && $0 == .egOne(.full) ? value : nil },
         restoreSelection: { probe.restores += 1 },
-        activate: { _ in
+        activate: { _, _ in
           probe.activations += 1
           await probe.activationGate()
           return probe.activateAnswer ? endpoint : nil
         },
-        currentEndpoint: { endpoint },
+        currentEndpoint: { _ in endpoint },
         send: { request in
           await MainActor.run { probe.requests.append(request) }
           let json: [String: Any] = [
@@ -114,6 +115,90 @@ struct EGOneSummaryEngineTests {
         Issue.record("prepared without install \(installed) / manifest \(manifest)")
         continue
       }
+    }
+  }
+
+  /// #4473: when this fails, a summary is written by another EG-1 size than the one it was
+  /// planned for: its text is cut for one model's context window and sent to another, or a size
+  /// picked during the summary takes it over.
+  @Test(
+    "a summary keeps the EG-1 size it was prepared with: window, hold, load and calls, after the size is changed"
+  )
+  func theAttemptKeepsItsPreparedSize() async throws {
+    @MainActor final class Box {
+      var model = LocalPolishModelID.egOne(.mini)
+      var loaded: [LocalPolishModelID] = []
+      var asked: [LocalPolishModelID] = []
+    }
+    let coordinator = LocalPolishServerCoordinator()
+    func runtime(_ model: LocalPolishModelID) -> LocalPolishRuntime {
+      let runtime = LocalPolishRuntime(
+        manifest: nil, serverBinaryURL: nil, delivery: nil, engine: LlamaServerEngine(),
+        coordinator: coordinator, modelID: model)
+      runtime.applyInstallStateForTesting(.installed(version: "x"))
+      return runtime
+    }
+    let set = LocalPolishRuntimeSet(
+      egOne: runtime(.egOne(.full)), s1Mini: runtime(.s1Mini),
+      additional: [runtime(.egOne(.mini))])
+    func facts(_ version: String, _ context: Int) -> EGOneManifest {
+      EGOneManifest(
+        modelName: "eg-1", version: version, contextTokens: context, promptTemplateID: "eg1-v1",
+        minAppVersion: "2.3.0", downloadURL: URL(string: "https://example.invalid/eg1")!)
+    }
+    let box = Box()
+    let endpoint = LocalPolishEndpoint(port: 51234, authToken: "t", contextTokens: 8192)
+    let engine = EGOneSummaryEngine(
+      runtimes: set, model: { box.model },
+      manifest: {
+        switch $0 {
+        case .egOne(.mini): facts("mini-rev", 8192)
+        case .egOne(.full): facts("full-rev", 16_384)
+        default: nil
+        }
+      },
+      restoreSelection: {},
+      activate: { model, _ in
+        box.loaded.append(model)
+        return endpoint
+      },
+      currentEndpoint: { model in
+        box.asked.append(model)
+        return endpoint
+      },
+      send: { request in
+        let json: [String: Any] = [
+          "choices": [["message": ["content": "Title: Plan"], "finish_reason": "stop"]]
+        ]
+        let response = HTTPURLResponse(
+          url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        return (try JSONSerialization.data(withJSONObject: json), response)
+      })
+
+    #expect(engine.artifactRevision == "mini|mini-rev")
+    guard case .success(let prepared) = engine.prepare(timeoutSeconds: 300) else {
+      Issue.record("the installed Mini was not prepared")
+      return
+    }
+    #expect(prepared.window.contextTokens == 8192, "Mini's window, not the full size's")
+
+    // The size is changed after the attempt was prepared.
+    box.model = .egOne(.full)
+    #expect(engine.artifactRevision == "full-rev", "the full size reports the bare revision")
+    let borrow = try #require(prepared.borrow)
+    #expect(try await borrow() == .ready)
+    #expect(set.summaryHeldModel == .egOne(.mini))
+    #expect(box.loaded == [.egOne(.mini)])
+    #expect(try await prepared.complete("Summarize.", "part") == "Title: Plan")
+    #expect(box.asked == [.egOne(.mini)])
+    await prepared.finish()
+    #expect(set.summaryHeldModel == nil)
+
+    // A size no runtime serves is not ready; nothing else answers for it.
+    box.model = .egOne(.micro)
+    guard case .failure(.notReady) = engine.prepare(timeoutSeconds: 300) else {
+      Issue.record("a size with no runtime was prepared")
+      return
     }
   }
 

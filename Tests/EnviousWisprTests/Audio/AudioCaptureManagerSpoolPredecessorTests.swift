@@ -47,7 +47,7 @@ import EnviousWisprAppKitTestSupport
         wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
         customWordsVersion: nil,
-        llmProvider: "none", llmModel: "none", polishPromptVersion: nil, s1Control: nil,
+        llmProvider: "none", llmModel: "none", egOneSize: nil, polishPromptVersion: nil, s1Control: nil,
         englishSpelling: nil, casualModeEnabled: nil)
     }
 

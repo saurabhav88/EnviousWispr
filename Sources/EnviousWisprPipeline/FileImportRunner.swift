@@ -75,7 +75,7 @@ public final class FileImportRunner {
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let outputClassifierHolder: OutputClassifierHolder?
   private let checkerSelectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
 
   /// Test seams (#3111), production defaults unchanged: the language recogniser the
   /// runner resolves with, the EG-1 polisher factory, and the prompt planner, so a test
@@ -126,7 +126,7 @@ public final class FileImportRunner {
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     outputClassifierHolder: OutputClassifierHolder? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     self.init(
       keychainManager: keychainManager, localPolishers: localPolishers,
@@ -144,7 +144,7 @@ public final class FileImportRunner {
     outputClassifierHolder: OutputClassifierHolder?,
     languageIdentifier: @escaping (String) -> (language: String, confidence: Double)?,
     promptPlanner: (any PromptPlanning)?,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
     makePolisher: LLMPolishStep.PolisherFactory? = nil
   ) {
     self.keychainManager = keychainManager
@@ -447,6 +447,8 @@ public final class FileImportRunner {
     if let makePolisher { llmPolish.makePolisher = makePolisher }
     llmPolish.s1MiniRuntime = s1MiniRuntime
     llmPolish.llmProvider = LLMProvider(rawValue: settings.llmProvider) ?? .none
+    // #4473: the run's frozen model, from the same snapshot.
+    llmPolish.polishModelID = settings.polishModelID
     // #4353 decision 4: the chosen model is requested as chosen, retired or not; a model
     // that no longer works fails at request time and the user picks a new one.
     llmPolish.llmModel = settings.llmModel

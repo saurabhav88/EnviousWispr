@@ -177,7 +177,7 @@ struct EGOneAdapterLifecycleTests {
     let d5 = URL(fileURLWithPath: "/fake/s1-d5.gguf")
     let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: .s1Mini,
+      engine: LlamaServerEngine(), modelID: .s1Mini,
       learnedWordAdapterProvider: { d5 })
     let s1Config = await s1.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
@@ -186,7 +186,7 @@ struct EGOneAdapterLifecycleTests {
     // A runtime built without a provider boots bare.
     let bare = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: .s1Mini)
+      engine: LlamaServerEngine(), modelID: .s1Mini)
     let bareConfig = await bare.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
     #expect(bareConfig.spec.learnedWordAdapterURL == nil)
@@ -195,7 +195,7 @@ struct EGOneAdapterLifecycleTests {
     // does not claim an adapter the requests would name.
     let unsplittable = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: .s1Mini,
+      engine: LlamaServerEngine(), modelID: .s1Mini,
       learnedWordAdapterProvider: { URL(fileURLWithPath: "/fake/a,b/s1-d5.gguf") })
     let refused = await unsplittable.makeServerConfiguration(
       serverBinaryURL: binary, modelURL: model, contextTokens: 4096, artifactIdentity: identity)
@@ -247,7 +247,7 @@ struct EGOneAdapterLifecycleTests {
         }
         return answer
       }),
-      provider: .s1Mini,
+      modelID: .s1Mini,
       learnedWordAdapterProvider: {
         adapterReads += 1
         return adapter
@@ -1014,7 +1014,7 @@ struct EGOneRecordingRecoveryTests {
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
       coordinator: rig.coordinator,
-      provider: .s1Mini)
+      modelID: .s1Mini)
     s1Mini.isActiveProvider = { true }
     await s1Mini.recordingStarted()?.value
     #expect(try rig.fixture.launches().count == 2)
@@ -1109,7 +1109,7 @@ struct EGOneRecordingRecoveryTests {
   func lateEventsAndOneSamplePerStop(provider: LLMProvider) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: provider)
+      engine: LlamaServerEngine(), modelID: .singleModel(for: provider))
     var samples = 0
     var pressure: OutsideStopContext.MemoryPressure? = .normal
     runtime.memoryPressureLevel = {
@@ -1286,7 +1286,7 @@ struct EGOneRecordingRecoveryTests {
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
       coordinator: rig.coordinator,
-      provider: .s1Mini)
+      modelID: .s1Mini)
     let other = await s1Mini.beginPolishAttempt(takeID: "s1-take")
     if case .granted(let lease) = other.admission { await s1Mini.releaseLocalServerLease(lease) }
     #expect(other.endpoint == nil)
@@ -1832,7 +1832,8 @@ struct LocalPolishProbeIdentityCharacterizationTests {
       manifest: manifest.runtimeFacts(expectedModelName: expectedModel),
       serverBinaryURL: fixture.binary, delivery: delivery,
       engine: LlamaServerEngine(),
-      defaults: store, coordinator: LocalPolishServerCoordinator(), provider: provider)
+      defaults: store, coordinator: LocalPolishServerCoordinator(),
+      modelID: .singleModel(for: provider))
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
     runtime.isActiveProvider = { true }
     // Nothing else holds the engine, so activation runs the inference probe.
@@ -1933,7 +1934,7 @@ struct LocalPolishProbeIdentityCharacterizationTests {
     let runtime = LocalPolishRuntime(
       manifest: manifest.runtimeFacts(expectedModelName: "s1-mini"),
       serverBinaryURL: fixture.binary, delivery: delivery, engine: engine,
-      defaults: store, coordinator: coordinator, provider: .s1Mini)
+      defaults: store, coordinator: coordinator, modelID: .s1Mini)
     #expect(runtime.activationBlockers.isEmpty, "manifest must not block activation")
     runtime.isActiveProvider = { true }
     runtime.isSharedEngineBusy = { false }

@@ -33,6 +33,7 @@ struct RecoverySpoolStoreTests {
       customWordsVersion: nil,
       llmProvider: "openAI",
       llmModel: "gpt-4o-mini",
+      egOneSize: nil,
       polishPromptVersion: nil,
       s1Control: nil, englishSpelling: nil, casualModeEnabled: nil)
   }

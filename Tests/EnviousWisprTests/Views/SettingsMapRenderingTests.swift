@@ -396,7 +396,7 @@ struct SettingsMapRenderingTests {
       s1 = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         engine: LlamaServerEngine(),
-        defaults: defaults, provider: .s1Mini)
+        defaults: defaults, modelID: .s1Mini)
     }
 
     /// Everything the AI Polish and Transcribe a File pages read.
@@ -805,7 +805,7 @@ struct SettingsMapRenderingTests {
       ensureEngineReady: { .notInstalled },
       beginRun: {
         .init(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: .none,
           ollamaModel: nil, polishModel: "", backendType: .parakeet)
       },
       saveToHistory: { _ in throw Unexpected.work },

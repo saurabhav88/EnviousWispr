@@ -32,7 +32,7 @@ struct CloudModelPolicyCarrierTests {
     languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
     emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
     spokenPunctuationEnglishPeriodWord: nil,
-    llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-4o-mini", s1Control: nil,
+    llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-4o-mini", egOneSize: nil, s1Control: nil,
     englishSpelling: nil, casualModeEnabled: nil)
 
   static func batchContext() -> TextProcessingContext {

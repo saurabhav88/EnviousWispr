@@ -597,7 +597,7 @@ final class ReplayRig {
     let s1MiniRuntime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: serverBinary, delivery: nil,
       engine: LlamaServerEngine(),
-      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini)
+      coordinator: egOneRuntime.serverCoordinator, modelID: .s1Mini)
     let localPolish = LocalPolishRuntimeSet(egOne: egOneRuntime, s1Mini: s1MiniRuntime)
     let checkerEligibility = LearnedWordCheckerEligibility(
       delivery: home,
@@ -696,10 +696,10 @@ final class ReplayRig {
       promptPlanner: RecordingPlanner(inner: productionPlanner, log: rigLog),
       checkerSelectionProvider: { [checkerEligibility] provider, language in
         let caseID = await rigLog.currentCase
-        let selection = await checkerEligibility.selection(provider: provider, language: language)
+        let selection = await checkerEligibility.selection(model: provider, language: language)
         await rigLog.appendPlan([
           "checker_case": caseID,
-          "checker_provider": provider.rawValue, "checker_language": language ?? "",
+          "checker_provider": provider.provider.rawValue, "checker_language": language ?? "",
           "checker_identity": selection.identity ?? "",
           "checker_absence": selection.absence.map { String(describing: $0) } ?? "",
         ])
@@ -822,8 +822,8 @@ final class ReplayRig {
     if configuration.polishProvider == .appleIntelligence {
       try await loadClassifier()
     }
-    if let provider = configuration.localPolishProvider {
-      try await prepareLocalPolish(provider)
+    if let model = configuration.localPolishModel {
+      try await prepareLocalPolish(model)
     }
     defer {
       localPolish.releaseImportHold()
@@ -837,12 +837,13 @@ final class ReplayRig {
 
   /// `prepareLocalPolish` from `WisprBootstrapper`: activation awaited, the endpoint checked,
   /// then the import hold. A refusal invalidates the case rather than letting the step skip.
-  private func prepareLocalPolish(_ provider: LLMProvider) async throws {
-    let runtime = try #require(localPolish.runtime(for: .singleModel(for: provider)))
+  private func prepareLocalPolish(_ model: LocalPolishModelID) async throws {
+    let provider = model.provider
+    let runtime = try #require(localPolish.runtime(for: model))
     if let activation = runtime.activateAndProbe() { await activation.value }
     let endpoint = await runtime.activeEndpoint()
     try #require(endpoint != nil, "\(provider) endpoint unavailable after activation")
-    try #require(await localPolish.holdForImport(provider), "\(provider) import hold refused")
+    try #require(await localPolish.holdForImport(model), "\(provider) import hold refused")
     lastChecker = [
       "provider": provider.rawValue,
       "server_has_learned_word_adapter": String(endpoint?.hasLearnedWordAdapter ?? false),

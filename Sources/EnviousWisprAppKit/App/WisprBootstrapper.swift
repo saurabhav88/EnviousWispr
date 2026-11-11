@@ -640,7 +640,7 @@ package final class WisprBootstrapper {
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
       serverBinaryURL: egOneServerBinaryURL, delivery: s1Adapter,
       engine: LlamaServerEngine(),
-      coordinator: egOneRuntime.serverCoordinator, provider: .s1Mini,
+      coordinator: egOneRuntime.serverCoordinator, modelID: .singleModel(for: .s1Mini),
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     egOneRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.egOne) }
     s1MiniRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.s1Mini) }
@@ -938,13 +938,13 @@ package final class WisprBootstrapper {
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      checkerSelectionProvider: { [checkerEligibility] provider, language in
-        await checkerEligibility.selection(provider: provider, language: language)
+      checkerSelectionProvider: { [checkerEligibility] model, language in
+        await checkerEligibility.selection(model: model, language: language)
       },
       ollamaRemotenessLookup: ollamaRemoteness,
-      importPinnedLocalProvider: { fileImportCoordinatorForGates?.pinnedLocalPolishProvider },
-      summaryPinnedLocalProvider: { [localPolishRuntimes] in
-        localPolishRuntimes.summaryHeldProvider
+      importPinnedLocalModel: { fileImportCoordinatorForGates?.pinnedLocalPolishModel },
+      summaryPinnedLocalModel: { [localPolishRuntimes] in
+        localPolishRuntimes.summaryHeldModel
       },
       importPinnedOllamaModel: { fileImportCoordinatorForGates?.pinnedOllamaModel },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
@@ -1446,8 +1446,8 @@ package final class WisprBootstrapper {
       outputClassifierHolder: outputClassifierHolder,
       egOneRuntime: egOneRuntime,
       s1MiniRuntime: s1MiniRuntime,
-      checkerSelectionProvider: { [checkerEligibility] provider, language in
-        await checkerEligibility.selection(provider: provider, language: language)
+      checkerSelectionProvider: { [checkerEligibility] model, language in
+        await checkerEligibility.selection(model: model, language: language)
       },
       // #3289: start loading the word check behind the recovered recording's transcription when
       // its frozen polish engine uses it (the model is no longer loaded at launch).
@@ -2038,12 +2038,13 @@ package final class WisprBootstrapper {
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
         guard
-          let provider = kernelDriver?.currentSessionConfig?.llmProvider
-            ?? whisperKernelDriver?.currentSessionConfig?.llmProvider
+          let config = kernelDriver?.currentSessionConfig
+            ?? whisperKernelDriver?.currentSessionConfig
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
-          needsWordCheckForRecording: LearnedWordCheckerEngine(provider: provider) == nil)
-        localPolishRuntimes.runtime(for: .singleModel(for: provider))?.recordingStarted()
+          needsWordCheckForRecording: LearnedWordCheckerEngine(provider: config.llmProvider) == nil)
+        // #4473: the take's exact model. A size no runtime serves gets none, never another's.
+        localPolishRuntimes.runtime(for: config.polishModelID)?.recordingStarted()
       }
     )
 
@@ -2089,8 +2090,8 @@ package final class WisprBootstrapper {
       // Intelligence silently loses the classifier-aware output filter, even
       // when the classifier prewarmed successfully.
       outputClassifierHolder: outputClassifierHolder,
-      checkerSelectionProvider: { [checkerEligibility] provider, language in
-        await checkerEligibility.selection(provider: provider, language: language)
+      checkerSelectionProvider: { [checkerEligibility] model, language in
+        await checkerEligibility.selection(model: model, language: language)
       })
     fileImportRunnerForGates = fileImportRunner
     // #2648: the health probe asks the lease, not the settings sync, because
@@ -2359,12 +2360,12 @@ package final class WisprBootstrapper {
       // the cloud providers have nothing on this Mac to start, which is the same set
       // `localPolishProvider` already names for the eviction pin.
       prepareLocalPolish: { [localPolishRuntimes] configuration in
-        guard let localPolish = configuration.localPolishProvider else { return true }
+        guard let localPolish = configuration.localPolishModel else { return true }
         // A nil activation is a refusal before the server is even asked: another session
         // pins the engine, or an activation blocker stands. Red after the probe is the server
         // itself not coming up. Either way the cleanup is refused rather than run against a
         // missing endpoint, which the polish step would read as a silent skip.
-        guard let runtime = localPolishRuntimes.runtime(for: .singleModel(for: localPolish)),
+        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
           let activation = runtime.activateAndProbe()
         else { return false }
         await activation.value
@@ -2736,7 +2737,11 @@ package final class WisprBootstrapper {
     // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
     // through the same forced reconcile a file import uses.
     meetingInputs.egOneSummaryEngine = EGOneSummaryEngine(
-      runtimes: localPolishRuntimes, manifest: { egOneManifest },
+      runtimes: localPolishRuntimes,
+      // #4473: a summary freezes its model like every other piece of work.
+      model: { [settings] in settings.polishModelID(for: .egOne) },
+      // The one EG-1 with runtime facts in this build is the full size.
+      manifest: { $0 == .egOne(.full) ? egOneManifest : nil },
       restoreSelection: { [weak settingsSync, settings] in
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })

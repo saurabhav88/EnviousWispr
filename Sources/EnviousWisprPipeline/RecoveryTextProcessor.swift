@@ -67,7 +67,7 @@ public final class RecoveryTextProcessor {
     outputClassifierHolder: OutputClassifierHolder? = nil,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil
   ) {
     let llmPolish = LLMPolishStep(
       keychainManager: keychainManager, localPolishers: localPolishers, telemetry: .silent())
@@ -128,6 +128,8 @@ public final class RecoveryTextProcessor {
     // record-time capability, never an engine-identity literal (Codex PR0 P2).
     steps.inverseTextNormalization.backendSupportsLID = snapshot.backendSupportsLanguageDetection
     steps.llmPolish.llmProvider = LLMProvider(rawValue: snapshot.llmProvider) ?? .none
+    // #4473: the recorded model. nil (a size this build does not know) skips local polish.
+    steps.llmPolish.polishModelID = snapshot.polishModelID
     // Replay the RECORDED model, as chosen (#4353 decision 4 supersedes the #1770 swap to the
     // default): a model the provider has withdrawn fails at request time and the recovered
     // take keeps its deterministic text, the same as a live dictation.

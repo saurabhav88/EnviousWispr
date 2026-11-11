@@ -95,7 +95,7 @@ final class LocalPolisherFactorySpy {
       emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
       spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
       llmProvider: provider.rawValue,
-      llmModel: LLMProvider.localModel(for: provider, ollamaModel: "") ?? "", s1Control: nil,
+      llmModel: LLMProvider.localModel(for: provider, ollamaModel: "") ?? "", egOneSize: nil, s1Control: nil,
       englishSpelling: nil, casualModeEnabled: nil)
   }
 

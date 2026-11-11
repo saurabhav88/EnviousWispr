@@ -18,7 +18,17 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// the default `.swallow` from the protocol extension.
   internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
 
-  public var llmProvider: LLMProvider = .none
+  public var llmProvider: LLMProvider = .none {
+    // A provider names its one model until a caller states the exact one: for EG-1 that is the
+    // full size, the only EG-1 before sizes. The three freeze points set `polishModelID` right
+    // after the provider.
+    didSet { polishModelID = .singleModel(for: llmProvider) }
+  }
+  /// #4473: the exact polish model of this piece of work, frozen with `llmProvider` (set AFTER
+  /// it; setting the provider resets this). For EG-1 it names one size, and only that size's
+  /// runtime may answer. nil means the work names an EG-1 size this build does not know: local
+  /// polish is skipped and the deterministic text is delivered; no other size is used.
+  public var polishModelID: LocalPolishModelID? = .singleModel(for: .none)
   /// #4353 D2: no model until the session's settings set one; never a preselected default.
   public var llmModel: String = ""
   /// #4353 D6: the cloud model list the operation captured, set beside `llmProvider` and
@@ -218,13 +228,24 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     max(0, (contextTokens - localPromptOverheadBytes) / 2)
   }
 
-  public var egOneRuntime: (any EGOneEndpointProviding)?
+  /// #4473: the bundled-server runtime handles, by exact model. A model with no handle here is
+  /// not served: its take is skipped as "not ready", never answered by another model's handle.
+  public var localRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:]
+
+  /// EG-1 at its full size.
+  public var egOneRuntime: (any EGOneEndpointProviding)? {
+    get { localRuntimes[.egOne(.full)] }
+    set { localRuntimes[.egOne(.full)] = newValue }
+  }
 
   /// S1-mini runtime handle (#2649). SEPARATE from EG-1's, deliberately: both
   /// resolve an endpoint from the same coordinator, and that coordinator returns
   /// nil for a model that is not the resident one. Sharing one handle would
   /// throw that answer away and let a polish be served by other weights.
-  public var s1MiniRuntime: (any EGOneEndpointProviding)?
+  public var s1MiniRuntime: (any EGOneEndpointProviding)? {
+    get { localRuntimes[.singleModel(for: .s1Mini)] }
+    set { localRuntimes[.singleModel(for: .s1Mini)] = newValue }
+  }
 
   /// Test seam for `.egOne` (mirrors `makePolisher` for the other
   /// providers): production builds the localhost connector from the live
@@ -878,6 +899,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // read below uses these locals, never `self`, so reentrancy cannot tear it.
     let provider = llmProvider
     let model = llmModel
+    let localModel = polishModelID
     // #4353 D6: the operation's cloud model list, read with provider and model; every request
     // policy below (thinking, connector body, chat preflight) comes from this local.
     let cloudModelList = cloudModelList
@@ -1010,8 +1032,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let localServerHandles: (runtime: (any EGOneEndpointProviding)?,
       make: (@MainActor (LocalPolishEndpoint) -> any TranscriptPolisher))? =
       switch provider {
-      case .egOne: (egOneRuntime, makeEGOnePolisher)
-      case .s1Mini: (s1MiniRuntime, makeS1MiniPolisher)
+      // #4473: the handle of the take's EXACT model, or none.
+      case .egOne: (localModel.flatMap { localRuntimes[$0] }, makeEGOnePolisher)
+      case .s1Mini: (localModel.flatMap { localRuntimes[$0] }, makeS1MiniPolisher)
       // #2651: enumerated rather than `default:`. nil means "not served by a
       // bundled server", which sends the provider down `makePolisher` and its
       // keychain lookup. A NEW bundled-server engine reaching a `default:`

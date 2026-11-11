@@ -43,13 +43,14 @@ struct LearnedWordCheckerEligibilityTests {
         ],
         debugScriptedChecker: checker)
       for provider in [LLMProvider.egOne, .s1Mini, .appleIntelligence] {
-        let selection = await eligibility.selection(provider: provider, language: "de")
+        let selection = await eligibility.selection(
+          model: .singleModel(for: provider), language: "de")
         #expect(selection.identity == "uat_scripted")
         #expect(selection.checker?.armName == "uat_scripted")
         #expect(selection.absence == nil)
       }
       #expect(
-        (await eligibility.selection(provider: .egOne, language: nil)).identity
+        (await eligibility.selection(model: .egOne, language: nil)).identity
           == "uat_scripted")
       let emptyChecker = LearnedWordCheckUATDoor.configuration(environment: [
         LearnedWordCheckUATDoor.environmentKey: " ,  \t "
@@ -62,11 +63,23 @@ struct LearnedWordCheckerEligibilityTests {
         ],
         debugScriptedChecker: emptyChecker)
       #expect(
-        (await emptyEligibility.selection(provider: .appleIntelligence, language: "de")).absence
+        (await emptyEligibility.selection(
+          model: .singleModel(for: .appleIntelligence), language: "de")).absence
           == .engineHasNoChecker)
       #expect(
-        (await emptyEligibility.selection(provider: .s1Mini, language: "de")).absence
+        (await emptyEligibility.selection(model: .s1Mini, language: "de")).absence
           == .engineHasNoChecker, "an engine the owner was not given has no checker")
+      // #4473: the table serves EG-1 at its full size. Another size is not that model: it gets
+      // no checker (it is never checked on the full size's adapter); the full size itself gets
+      // past this point and is refused later, for its own reason.
+      for size in [EGOneSize.mini, .micro] {
+        #expect(
+          (await emptyEligibility.selection(model: .egOne(size), language: "de")).absence
+            == .engineHasNoChecker)
+      }
+      #expect(
+        (await emptyEligibility.selection(model: .egOne(.full), language: "de")).absence
+          == .baseNotAdmitted)
     }
 
     /// The UAT drills set and clear these exact keys (`CHECKER_DOOR_KEYS` in

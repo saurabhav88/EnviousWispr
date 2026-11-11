@@ -35,6 +35,7 @@ struct RecoveryTextProcessorTests {
       customWordsVersion: nil,
       llmProvider: provider,
       llmModel: "none",
+      egOneSize: nil,
       polishPromptVersion: nil,
       s1Control: s1Control,
       englishSpelling: englishSpelling, casualModeEnabled: casualMode)

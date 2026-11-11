@@ -19,7 +19,11 @@ import Foundation
 @MainActor
 final class EGOneSummaryEngine {
   private let runtimes: LocalPolishRuntimeSet
-  private let manifest: () -> EGOneManifest?
+  /// #4473: the EG-1 model a NEW attempt uses. Asked once per attempt, in `prepare`, before the
+  /// context window is computed; the attempt keeps that answer through waits, load and calls.
+  private let model: @MainActor () -> LocalPolishModelID
+  /// The runtime facts of one EG-1 model; nil when this build has none for it.
+  private let manifest: (LocalPolishModelID) -> EGOneManifest?
   /// The forced selection reconcile (`retryDeferredEGOneDeactivation(forceReconciliation:)`).
   private let restoreSelection: @MainActor () -> Void
   /// Set when the app starts quitting: no new load, and no restore that could start a server
@@ -27,24 +31,34 @@ final class EGOneSummaryEngine {
   private(set) var isTerminating = false
   /// The load, the endpoint read and the transport: the runtime's and `URLSession` in the app;
   /// tests answer without a real server.
-  private let activate: @MainActor (LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
-  private let currentEndpoint: @MainActor () async -> LocalPolishEndpoint?
+  private let activate:
+    @MainActor (LocalPolishModelID, LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
+  private let currentEndpoint: @MainActor (LocalPolishModelID) async -> LocalPolishEndpoint?
   private let send: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
   init(
-    runtimes: LocalPolishRuntimeSet, manifest: @escaping () -> EGOneManifest?,
+    runtimes: LocalPolishRuntimeSet, model: @escaping @MainActor () -> LocalPolishModelID,
+    manifest: @escaping (LocalPolishModelID) -> EGOneManifest?,
     restoreSelection: @escaping @MainActor () -> Void,
-    activate: (@MainActor (LocalPolishSummaryReservation) async -> LocalPolishEndpoint?)? = nil,
-    currentEndpoint: (@MainActor () async -> LocalPolishEndpoint?)? = nil,
+    activate: (
+      @MainActor (LocalPolishModelID, LocalPolishSummaryReservation) async -> LocalPolishEndpoint?
+    )? = nil,
+    currentEndpoint: (@MainActor (LocalPolishModelID) async -> LocalPolishEndpoint?)? = nil,
     send: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse) = {
       try await URLSession.shared.data(for: $0)
     }
   ) {
     self.runtimes = runtimes
+    self.model = model
     self.manifest = manifest
     self.restoreSelection = restoreSelection
-    self.activate = activate ?? { [runtimes] in await runtimes.egOne.activateForSummary($0) }
-    self.currentEndpoint = currentEndpoint ?? { [runtimes] in await runtimes.egOne.activeEndpoint() }
+    // The attempt's own model's runtime, by exact identity: no other size is ever used.
+    self.activate =
+      activate ?? { [runtimes] model, reservation in
+        await runtimes.runtime(for: model)?.activateForSummary(reservation)
+      }
+    self.currentEndpoint =
+      currentEndpoint ?? { [runtimes] model in await runtimes.runtime(for: model)?.activeEndpoint() }
     self.send = send
   }
 
@@ -52,16 +66,26 @@ final class EGOneSummaryEngine {
 
   /// The weights' revision, for the summary's configuration identity: a new EG-1 makes an
   /// older summary out of date.
-  var artifactRevision: String? { manifest()?.version }
+  /// #4473: of the model a new attempt would use. The full size reports the bare revision, as
+  /// before sizes existed, so no existing summary goes out of date; another size names itself,
+  /// so a summary written by one size is out of date for another.
+  var artifactRevision: String? {
+    let model = model()
+    guard let version = manifest(model)?.version else { return nil }
+    guard let size = model.size, size != .full else { return version }
+    return "\(size.rawValue)|\(version)"
+  }
 
   /// A cold attempt: checks EG-1 is installed and has a manifest, and loads nothing.
   func prepare(timeoutSeconds: Double) -> Result<
     MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable
   > {
-    guard !isTerminating, let manifest = manifest(),
-      case .installed = runtimes.egOne.installState
+    // #4473: the model is captured HERE, once, before the context window below is computed.
+    let model = model()
+    guard !isTerminating, let manifest = manifest(model),
+      let runtime = runtimes.runtime(for: model), case .installed = runtime.installState
     else { return .failure(.notReady) }
-    let attempt = Attempt(engine: self, timeoutSeconds: timeoutSeconds)
+    let attempt = Attempt(engine: self, model: model, timeoutSeconds: timeoutSeconds)
     return .success(
       MeetingSummaryProviders.Prepared(
         execution: .local,
@@ -78,6 +102,8 @@ final class EGOneSummaryEngine {
   @MainActor
   final class Attempt {
     private weak var engine: EGOneSummaryEngine?
+    /// The model captured when the attempt was prepared. Never read again from Settings.
+    private let model: LocalPolishModelID
     private let timeoutSeconds: Double
     private var hold: LocalPolishRuntimeSet.SummaryHold?
     /// Recorded before the load is awaited, so a load that fails or is cancelled still ends in
@@ -85,8 +111,9 @@ final class EGOneSummaryEngine {
     private var activationAttempted = false
     private var finished = false
 
-    init(engine: EGOneSummaryEngine, timeoutSeconds: Double) {
+    init(engine: EGOneSummaryEngine, model: LocalPolishModelID, timeoutSeconds: Double) {
       self.engine = engine
+      self.model = model
       self.timeoutSeconds = timeoutSeconds
     }
 
@@ -96,7 +123,7 @@ final class EGOneSummaryEngine {
     func borrow() async throws -> MeetingSummaryProviders.BorrowOutcome {
       guard let engine, !engine.isTerminating, !finished else { throw CancellationError() }
       if hold != nil { return .ready }
-      switch await engine.runtimes.beginSummaryHold(.egOne) {
+      switch await engine.runtimes.beginSummaryHold(model) {
       case .retryLater:
         return .retryLater
       case .cancelled:
@@ -108,7 +135,7 @@ final class EGOneSummaryEngine {
         }
         activationAttempted = true
         guard !engine.isTerminating else { throw CancellationError() }
-        guard await engine.activate(reservation) != nil else {
+        guard await engine.activate(model, reservation) != nil else {
           throw LLMError.requestFailed("EG-1 did not start for the summary")
         }
         return .ready
@@ -120,7 +147,7 @@ final class EGOneSummaryEngine {
       guard let engine, let hold, engine.runtimes.reservation(for: hold) != nil else {
         throw LLMError.requestFailed("EG-1 summary call without the server")
       }
-      guard let endpoint = await engine.currentEndpoint() else {
+      guard let endpoint = await engine.currentEndpoint(model) else {
         throw LLMError.requestFailed("EG-1 is not running")
       }
       return try await EGOneSummaryCall.complete(

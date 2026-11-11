@@ -90,7 +90,7 @@ struct FileImportRunnerTests {
         emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
         spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
         llmProvider: "none",
-        llmModel: "none", s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
+        llmModel: "none", egOneSize: nil, s1Control: nil, englishSpelling: spelling, casualModeEnabled: nil)
     }
     let british = FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests)
@@ -116,7 +116,7 @@ struct FileImportRunnerTests {
         languageMode: .locked("en"), wordCorrectionEnabled: false, fillerRemovalEnabled: false,
         emojiFormatterEnabled: false, spokenPunctuationEnabled: true,
         spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: periodWord,
-        llmProvider: "none", llmModel: "none", s1Control: nil, englishSpelling: nil,
+        llmProvider: "none", llmModel: "none", egOneSize: nil, s1Control: nil, englishSpelling: nil,
         casualModeEnabled: nil)
     }
     let spoken = "We met over a period of weeks full stop"
@@ -185,7 +185,7 @@ struct FileImportRunnerTests {
     languageMode: .auto, wordCorrectionEnabled: false, fillerRemovalEnabled: false,
     emojiFormatterEnabled: false, spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil,
     spokenPunctuationEnglishPeriodWord: nil,
-    llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, s1Control: nil,
+    llmProvider: LLMProvider.egOne.rawValue, llmModel: LLMProvider.egOneModelName, egOneSize: nil, s1Control: nil,
     englishSpelling: nil, casualModeEnabled: nil)
 
   /// A part cannot run before the import's configuration is frozen. This is a programming error rather

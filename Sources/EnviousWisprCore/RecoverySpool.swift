@@ -107,6 +107,11 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
   /// Polish provider/model identity at record time (e.g. "appleIntelligence").
   public let llmProvider: String
   public let llmModel: String
+  /// #4473: the EG-1 size at record time, as its raw value; nil for every other provider. A
+  /// String, not the enum, so a size written by a newer build cannot fail the whole decode and
+  /// lose every other field. nil with provider EG-1 means the snapshot predates sizes: full.
+  /// Read through `polishModelID`. Not defaulted, so every writer states what it froze.
+  public let egOneSize: String?
   /// Polish prompt version at record time. Nil for providers without one.
   public let polishPromptVersion: String?
   /// #2649: the S1-mini control-line picks at record time, so a recovered take
@@ -148,6 +153,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     customWordsVersion: String? = nil,
     llmProvider: String,
     llmModel: String,
+    egOneSize: String?,
     polishPromptVersion: String? = nil,
     s1Control: S1ControlSettings?,
     englishSpelling: EnglishSpelling?,
@@ -165,6 +171,7 @@ public struct RecordingSettingsSnapshot: Codable, Sendable, Equatable {
     self.customWordsVersion = customWordsVersion
     self.llmProvider = llmProvider
     self.llmModel = llmModel
+    self.egOneSize = egOneSize
     self.polishPromptVersion = polishPromptVersion
     self.s1Control = s1Control
     self.englishSpelling = englishSpelling
@@ -347,5 +354,15 @@ public struct RecoveryFrame: Sendable, Equatable {
     self.nonceCounter = nonceCounter
     self.samples = samples
     self.terminationReason = terminationReason
+  }
+}
+
+extension RecordingSettingsSnapshot {
+  /// The exact polish model this snapshot names, or nil when it names an EG-1 size this build
+  /// does not know (#4473). nil means: keep every other setting of the snapshot and run the
+  /// work without local polish; never pick another size.
+  public var polishModelID: LocalPolishModelID? {
+    LocalPolishModelID.stored(
+      provider: LLMProvider(rawValue: llmProvider) ?? .none, egOneSize: egOneSize)
   }
 }

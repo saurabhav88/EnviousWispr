@@ -134,7 +134,7 @@ struct ChildProcessFailureTests {
         to: .run(LocalPolishTarget(configuration: configuration)),
         intent: coordinator.claimIntent())
       let resident = await coordinator.residentModelForTesting
-      #expect(resident == provider)
+      #expect(resident == .singleModel(for: provider))
     }
     let fact = ChildProcessFailure(
       role: .server, provider: .egOne, generation: 1, phase: .ready,
@@ -195,7 +195,7 @@ struct OutsideStopChildTelemetryTests {
   ) -> (LocalPolishRuntime, Box) {
     let runtime = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
-      engine: LlamaServerEngine(), provider: provider)
+      engine: LlamaServerEngine(), modelID: .singleModel(for: provider))
     let box = Box()
     runtime.onEvent = { event in MainActor.assumeIsolated { box.events.append(event) } }
     runtime.memoryPressureLevel = {

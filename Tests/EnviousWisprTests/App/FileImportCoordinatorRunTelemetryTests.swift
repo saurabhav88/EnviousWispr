@@ -135,7 +135,7 @@ struct FileImportCoordinatorRunTelemetryTests {
       engineAdmission: .live(lease: lease, as: .fileImport),
       beginRun: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: polishProvider,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: polishProvider,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet, asrModel: asrModel)
       },
       saveToHistory: { _ in },

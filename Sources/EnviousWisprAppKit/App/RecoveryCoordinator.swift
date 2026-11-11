@@ -330,6 +330,7 @@ final class RecoveryCoordinator {
       spokenPunctuationEnglishPeriodWord: settings.spokenPunctuation.englishPeriodWord,
       llmProvider: settings.llmProvider.rawValue,
       llmModel: resolvedModel,
+      egOneSize: settings.polishModelID(for: settings.llmProvider).storedEGOneSize,
       s1Control: settings.s1Control,
       // #3124: the value in force for this take, replayed on recovery.
       englishSpelling: EnglishSpelling.effective(

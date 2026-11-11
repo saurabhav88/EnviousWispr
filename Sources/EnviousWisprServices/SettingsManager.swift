@@ -1678,6 +1678,17 @@ public final class SettingsManager {
 
   static let egOneSizeKey = "egOneSize"
 
+  /// The exact polish model a NEW piece of work freezes for `provider` (#4473 plan §3.1.1 S6):
+  /// a dictation at its start, a recovery snapshot, a file import, a meeting summary. Every
+  /// freeze point asks here, once; nothing in flight asks again.
+  ///
+  /// TEMPORARY (P5 chunk 2): EG-1 is frozen as the full size whatever `egOneSize` says,
+  /// because the full size is the only EG-1 the app can run until the other sizes have
+  /// runtimes. The chunk that adds those runtimes makes this return `egOneSize`.
+  public func polishModelID(for provider: LLMProvider) -> LocalPolishModelID {
+    .singleModel(for: provider)
+  }
+
   /// The user picked a size. The only way the preference changes after first resolution,
   /// apart from removing the preferred size (plan §3.1.1 S5, S9).
   public func selectEGOneSize(_ size: EGOneSize) {

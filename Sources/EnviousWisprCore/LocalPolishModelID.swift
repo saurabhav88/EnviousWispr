@@ -46,3 +46,21 @@ public struct LocalPolishModelID: Sendable, Hashable {
     }
   }
 }
+
+extension LocalPolishModelID {
+  /// The EG-1 size as a saved snapshot stores it: the size's raw value for EG-1, nil for every
+  /// other provider (#4473).
+  public var storedEGOneSize: String? { provider == .egOne ? size?.rawValue : nil }
+
+  /// The model a saved snapshot names, from its stored provider and EG-1 size (#4473).
+  ///
+  /// - A snapshot written before sizes existed stores no size: that EG-1 was the one model
+  ///   which is now the full size.
+  /// - A stored size this build does not know gives nil. The work then runs WITHOUT local
+  ///   polish: it never runs on another size's weights.
+  public static func stored(provider: LLMProvider, egOneSize: String?) -> LocalPolishModelID? {
+    guard provider == .egOne else { return .singleModel(for: provider) }
+    guard let egOneSize else { return .egOne(.full) }
+    return EGOneSize(rawValue: egOneSize).map { .egOne($0) }
+  }
+}

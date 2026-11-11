@@ -282,11 +282,17 @@ internal final class TextProcessingRunner {
     if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
       learnedStep.isEnabled(for: context)
     {
-      let selectedProvider = (steps.first { $0 is LLMPolishStep } as? LLMPolishStep)?.llmProvider
-        ?? .none
-      // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
-      context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
-        for: selectedProvider, language: resolution.language)
+      // #4473: the polish step's frozen model. No polish step is "no polish"; a step that
+      // names no runnable model (an EG-1 size this build does not know) gets no checker.
+      let polishStep = steps.first { $0 is LLMPolishStep } as? LLMPolishStep
+      if let selectedModel = polishStep.map(\.polishModelID) ?? .singleModel(for: .none) {
+        // Bounded: this runs before the timed loop, so the step's own cap cannot cover it.
+        context.frozenLearnedWordChecker = await learnedStep.boundedSelection(
+          for: selectedModel, language: resolution.language)
+      } else {
+        context.frozenLearnedWordChecker = LearnedWordCheckerSelection(
+          absence: .engineHasNoChecker)
+      }
     }
     let logger = self.logger
     Task {

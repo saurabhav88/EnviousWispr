@@ -47,13 +47,13 @@ struct CheckerSelectionPathTests {
       languageMode: languageMode, wordCorrectionEnabled: true,
       fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil, llmProvider: LLMProvider.egOne.rawValue,
-      llmModel: "none", s1Control: nil, englishSpelling: nil, casualModeEnabled: nil)
+      llmModel: "none", egOneSize: nil, s1Control: nil, englishSpelling: nil, casualModeEnabled: nil)
   }
 
   @Test("recovery asks its frozen provider with the replay language")
   func recovery() async {
     for choice in choices {
-      var calls: [(LLMProvider, String?)] = []
+      var calls: [(LocalPolishModelID, String?)] = []
       let processor = RecoveryTextProcessor(
         keychainManager: KeychainManager(), localPolishers: .llamaForTests, cloudModelList: nil,
         checkerSelectionProvider: { provider, language in
@@ -72,7 +72,7 @@ struct CheckerSelectionPathTests {
   @Test("file import asks once per part using the frozen import provider")
   func fileImport() async throws {
     for choice in choices {
-      var calls: [(LLMProvider, String?)] = []
+      var calls: [(LocalPolishModelID, String?)] = []
       let runner = FileImportRunner(
         keychainManager: KeychainManager(), localPolishers: .llamaForTests,
         checkerSelectionProvider: { provider, language in

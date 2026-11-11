@@ -46,11 +46,11 @@ struct LocalPolishModelIDTests {
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .egOne)
+      coordinator: coordinator, modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .s1Mini)
+      coordinator: coordinator, modelID: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
     #expect(egOne.modelID == .egOne(.full))

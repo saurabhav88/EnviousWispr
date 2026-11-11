@@ -61,6 +61,8 @@ enum FileImportSettingsFreeze {
       customWordsVersion: nil,
       llmProvider: settings.effectiveFileImportLLMProvider.rawValue,
       llmModel: settings.effectiveFileImportLLMModel,
+      egOneSize: settings.polishModelID(for: settings.effectiveFileImportLLMProvider)
+        .storedEGOneSize,
       s1Control: settings.s1Control,
       // #3124: frozen at Start like the language; "Clean it again" re-snapshots.
       englishSpelling: EnglishSpelling.effective(
@@ -92,7 +94,9 @@ enum FileImportSettingsFreeze {
         provider, ollamaModelIsRemote: ollamaModelIsRemote),
       // Only the BUNDLED servers are pinnable: Ollama is the user's own process
       // and the cloud providers have nothing on this Mac to tear down.
-      localPolishProvider: (provider == .egOne || provider == .s1Mini) ? provider : nil,
+      // #4473: the exact model, from the same snapshot. A stored EG-1 size this build does not
+      // know names no model: nothing is pinned and the parts run without local polish.
+      localPolishModel: (provider == .egOne || provider == .s1Mini) ? snapshot.polishModelID : nil,
       polishProvider: provider,
       // Only a LOCAL Ollama model has weights on this Mac for the eviction rule
       // to unload, so a remote one is deliberately nil: pinning it would defer

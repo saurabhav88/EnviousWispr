@@ -108,7 +108,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// under, so the second engine needs its own handle here too.
   private let s1MiniRuntime: (any EGOneEndpointProviding)?
   private let checkerSelectionProvider:
-    (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)?
+    (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)?
   /// #3289: told the recovered recording's frozen polish engine just before it is transcribed, so
   /// the word check can start loading behind the transcription, and again when this replay ends on
   /// any path, so the word check stops counting it as work. Nil in tests that do not care.
@@ -154,7 +154,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     outputClassifierHolder: OutputClassifierHolder,
     egOneRuntime: (any EGOneEndpointProviding)? = nil,
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
-    checkerSelectionProvider: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil,
+    checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
     onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
     onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },

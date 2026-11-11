@@ -1897,6 +1897,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// are already handled by `RecordingSessionKernel`.
   private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
     steps.llmPolish.llmProvider = config.llmProvider
+    steps.llmPolish.polishModelID = config.polishModelID
     steps.llmPolish.llmModel = config.llmModel
     steps.llmPolish.cloudModelList = captureCloudModelList?()
     steps.llmPolish.polishInstructions = config.polishInstructions

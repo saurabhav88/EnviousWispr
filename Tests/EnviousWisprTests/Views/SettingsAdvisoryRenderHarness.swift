@@ -84,7 +84,7 @@ struct SettingsAdvisoryRenderHarness {
       engineAdmission: .live(lease: EngineLease(), as: .fileImport),
       ensureEngineReady: { .notInstalled },
       beginRun: {
-        .init(polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
+        .init(polishIsCloud: false, localPolishModel: nil, polishProvider: .none,
           ollamaModel: nil, polishModel: "", backendType: .parakeet)
       },
       saveToHistory: { _ in throw HarnessFailure.unexpectedWork },
@@ -122,7 +122,7 @@ struct SettingsAdvisoryRenderHarness {
     let s1 = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
-      defaults: defaults, provider: .s1Mini)
+      defaults: defaults, modelID: .s1Mini)
     return AnyView(TranscribeFileView()
       .environment(coordinator).environment(settings).environment(setup)
       .environment(AIAvailabilityCoordinator())

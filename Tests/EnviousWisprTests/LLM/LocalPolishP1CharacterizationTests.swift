@@ -73,11 +73,11 @@ struct LocalPolishP1CharacterizationTests {
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .egOne)
+      coordinator: coordinator, modelID: .egOne)
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(), defaults: store,
-      coordinator: coordinator, provider: .s1Mini)
+      coordinator: coordinator, modelID: .s1Mini)
     let set = LocalPolishRuntimeSet(egOne: egOne, s1Mini: s1Mini)
 
     #expect(set.runtime(for: .singleModel(for: .egOne)) === egOne)
@@ -116,7 +116,7 @@ struct LocalPolishP1CharacterizationTests {
     let egOne = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
-      defaults: store, provider: .egOne)
+      defaults: store, modelID: .egOne)
     egOne.applyInstallStateForTesting(.paused)
     #expect(store.string(forKey: egKey) == "paused")
     #expect(store.string(forKey: s1Key) == nil)
@@ -127,7 +127,7 @@ struct LocalPolishP1CharacterizationTests {
     let s1Mini = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
-      defaults: store, provider: .s1Mini)
+      defaults: store, modelID: .s1Mini)
     s1Mini.onEvent = { s1Events.record($0) }
     s1Mini.applyInstallStateForTesting(.paused)
     #expect(s1Events.paused == [.paused])
@@ -140,7 +140,7 @@ struct LocalPolishP1CharacterizationTests {
     let restored = LocalPolishRuntime(
       manifest: nil, serverBinaryURL: nil, delivery: nil,
       engine: LlamaServerEngine(),
-      defaults: store, provider: .egOne)
+      defaults: store, modelID: .egOne)
     restored.onEvent = { restoredEvents.record($0) }
     restored.applyInstallStateForTesting(.paused)
     #expect(restoredEvents.paused.isEmpty)

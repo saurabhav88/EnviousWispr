@@ -171,7 +171,7 @@ struct FileImportCoordinatorSpeakerTests {
       onEngineReleased: onEngineReleased,
       beginRun: beginRunOverride ?? {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: false, localPolishProvider: nil, polishProvider: .egOne,
+          polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
           ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
       },
       prepareLocalPolish: prepareLocalPolish,
@@ -877,7 +877,7 @@ struct FileImportCoordinatorSpeakerTests {
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: .locked("en"),
       wordCorrectionEnabled: false, fillerRemovalEnabled: sentenceBoundary, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol",
+      llmProvider: LLMProvider.openAI.rawValue, llmModel: "gpt-6.1-sol", egOneSize: nil,
       s1Control: nil, englishSpelling: .american, casualModeEnabled: false)
     var finished = BoundedWait.Signal()
     weak var observed: FileImportCoordinator?
@@ -901,7 +901,7 @@ struct FileImportCoordinatorSpeakerTests {
       beginRunOverride: {
         processor.freeze(settings: settings, vocabulary: nil, cloudModelList: nil)
         return FileImportCoordinator.RunConfiguration(
-          polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
+          polishIsCloud: true, localPolishModel: nil, polishProvider: .openAI,
           ollamaModel: nil, polishModel: settings.llmModel, backendType: .parakeet)
       }, onEngineReleased: { processor.releaseCheckerSelections(); finished.fire() })
     observed = coordinator
@@ -1514,16 +1514,16 @@ struct FileImportCoordinatorSpeakerTests {
   @Test("the part ceiling is the local one for an on-device polisher and the default for cloud")
   func partCeilingFollowsThePolisher() {
     let local = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: false, localPolishProvider: .egOne, polishProvider: .egOne,
+      polishIsCloud: false, localPolishModel: .egOne, polishProvider: .egOne,
       ollamaModel: nil, polishModel: "eg-1", backendType: .parakeet)
     let cloud = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: true, localPolishProvider: nil, polishProvider: .openAI,
+      polishIsCloud: true, localPolishModel: nil, polishProvider: .openAI,
       ollamaModel: nil, polishModel: "gpt-4o-mini", backendType: .parakeet)
     #expect(FileImportDocumentMath.partCeiling(local) == TranscriptSplitter.maximumWordsPerLocalPart)
     #expect(FileImportDocumentMath.partCeiling(cloud) == TranscriptSplitter.maximumWordsPerPart)
     #expect(FileImportDocumentMath.partCeiling(nil) == TranscriptSplitter.maximumWordsPerPart)
     let none = FileImportCoordinator.RunConfiguration(
-      polishIsCloud: false, localPolishProvider: nil, polishProvider: .none,
+      polishIsCloud: false, localPolishModel: nil, polishProvider: .none,
       ollamaModel: nil, polishModel: "", backendType: .parakeet)
     #expect(FileImportDocumentMath.partCeiling(none) == TranscriptSplitter.maximumWordsPerPart)
   }
@@ -1740,7 +1740,7 @@ struct FileImportCoordinatorSpeakerTests {
       },
       beginRunOverride: {
         FileImportCoordinator.RunConfiguration(
-          polishIsCloud: true, localPolishProvider: nil,
+          polishIsCloud: true, localPolishModel: nil,
           polishProvider: script.rerun ? .gemini : .openAI, ollamaModel: nil,
           polishModel: script.rerun ? "second-model" : "first-model", backendType: .parakeet)
       })

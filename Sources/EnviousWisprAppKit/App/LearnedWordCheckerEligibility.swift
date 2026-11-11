@@ -67,8 +67,12 @@ final class LearnedWordCheckerEligibility {
     if LearnedWordCheckerEngine(provider: provider) == nil, let wordCheck {
       status = wordCheck.settingsStatus()
     } else {
+      // #4473: the status of the model this table serves for the provider.
+      let model =
+        LearnedWordCheckerEngine(provider: provider).flatMap { engines[$0]?.runtime.modelID }
+        ?? .singleModel(for: provider)
       status = LearnedCheckerSettingsStatus(
-        selection: await selection(provider: provider, language: nil))
+        selection: await selection(model: model, language: nil))
     }
     return status
   }
@@ -82,7 +86,10 @@ final class LearnedWordCheckerEligibility {
     }
   }
 
-  func selection(provider: LLMProvider, language: String?) async -> LearnedWordCheckerSelection {
+  func selection(model: LocalPolishModelID, language: String?) async
+    -> LearnedWordCheckerSelection
+  {
+    let provider = model.provider
     #if DEBUG
       if let debugScriptedChecker {
         return LearnedWordCheckerSelection(
@@ -95,7 +102,11 @@ final class LearnedWordCheckerEligibility {
       // #3242: Apple Intelligence, the cloud engines, Ollama and no polish use the word check.
       return await wordCheck?.selection() ?? .init(absence: .engineHasNoChecker)
     }
-    guard let inputs = engines[engine] else { return .init(absence: .engineHasNoChecker) }
+    // #4473: the checker of the take's EXACT model. A size this table has no runtime for gets
+    // no checker; it is never checked on another size's adapter.
+    guard let inputs = engines[engine], inputs.runtime.modelID == model else {
+      return .init(absence: .engineHasNoChecker)
+    }
     let judge = LearnedWordJudge(displayName: provider.displayName)
     return await engineSelection(engine, inputs: inputs, language: language).naming(judge)
   }

@@ -61,6 +61,7 @@ enum DictationSessionConfigFactory {
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
       llmProvider: settings.llmProvider,
+      polishModelID: settings.polishModelID(for: settings.llmProvider),
       llmModel: resolvedModel,
       polishInstructions: settings.activePolishInstructions,
       selectedInputDeviceUID: settings.selectedInputDeviceUID,

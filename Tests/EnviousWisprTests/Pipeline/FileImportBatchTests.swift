@@ -77,12 +77,13 @@ struct FileImportBatchTests {
       backendType: .parakeet, backendSupportsLanguageDetection: false, languageMode: language,
       wordCorrectionEnabled: correction, fillerRemovalEnabled: false, emojiFormatterEnabled: false,
       spokenPunctuationEnabled: false, spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: provider.rawValue, llmModel: model ?? batchModel, s1Control: nil,
+      llmProvider: provider.rawValue, llmModel: model ?? batchModel, egOneSize: nil, s1Control: nil,
       englishSpelling: spelling, casualModeEnabled: false)
   }
   private func runner(
     _ capture: Capture, identify: @escaping (String) -> (language: String, confidence: Double)? = { _ in ("en", 0.99) },
-    selection: (@MainActor (LLMProvider, String?) async -> LearnedWordCheckerSelection)? = nil
+    selection: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? =
+      nil
   ) -> FileImportRunner {
     FileImportRunner(
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
