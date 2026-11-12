@@ -23,8 +23,9 @@ package enum PinnedSetupRulesKey: SetupRulesSigningKey {
 ///   whitespace ignored).
 /// - The public key is the 32 raw bytes, standard base64.
 package enum SetupRulesSignature {
-  /// The production public key. Its fingerprint is in the #4528 B2 receipt.
-  package static let pinnedPublicKeyBase64 = "REPLACE_WITH_PINNED_PUBLIC_KEY"
+  /// The production public key (founder-created 2026-11-12; private half in Secret Manager as
+  /// `setup-rules-signing-key`, derived with `sign.py public-key` through `get-key launch`).
+  package static let pinnedPublicKeyBase64 = "jRkec6xbPEc82+HCe/G9wJBvRgW7YQRE7J1FQOTJ5ZA="
 
   package enum Failure: Error, Equatable {
     case badPublicKey
