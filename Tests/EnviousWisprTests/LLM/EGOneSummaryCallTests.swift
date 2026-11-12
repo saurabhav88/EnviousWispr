@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 
+@testable import EnviousDecodeKit
 @testable import EnviousWisprCore
 @testable import EnviousWisprEG1Engine
 @testable import EnviousWisprLLM
@@ -33,7 +34,8 @@ struct EGOneSummaryCallTests {
 
   static func endpoint(adapter: Bool) -> LocalPolishEndpoint {
     LocalPolishEndpoint(
-      socketPath: "/t/51234.sock", authToken: "test-token", contextTokens: 16_384, hasLearnedWordAdapter: adapter)
+      socketPath: "/t/51234.sock", authToken: "test-token", contextTokens: 16_384,
+      hasLearnedWordAdapter: adapter)
   }
 
   static func body(content: String?, finish: String = "stop") -> Data {
@@ -76,6 +78,22 @@ struct EGOneSummaryCallTests {
     // know, so a loaded checker adapter adds nothing to a summary request.
     #expect(Set(json.keys) == ["model", "messages", "max_tokens", "temperature", "stream"])
     #expect(json["stream"] as? Bool == false)
+  }
+
+  /// Summary messages are normalized before sending; the stricter supported template accepts them.
+  @Test("summary message edge whitespace is trimmed before sending")
+  func edgeWhitespaceIsTrimmedBeforeSending() async throws {
+    let transport = Transport(.success((Self.body(content: "A summary."), 200)))
+    _ = try await EGOneSummaryCall.complete(
+      endpoint: Self.endpoint(adapter: false), instructions: " Summarize.\n",
+      prompt: "\nPart:\nwe agreed to ship on Friday and ", timeoutSeconds: 300,
+      send: { try await transport.send($0, $1) })
+    let request = try #require(transport.requests.first)
+    let sent = try #require(request.body)
+    let json = try #require(try JSONSerialization.jsonObject(with: sent) as? [String: Any])
+    let turns = try EnviousDecodeRequestMapper.turns(json["messages"], template: .emptyThinkBlock)
+    #expect(turns.system == "Summarize.")
+    #expect(turns.user == "Part:\nwe agreed to ship on Friday and")
   }
 
   @Test("the request is the same with and without a loaded checker adapter")
@@ -142,7 +160,9 @@ struct EGOneSummaryCallTests {
       Issue.record("expected inputTooLong, got \(error)")
     }
     // The error type alone is enough, whatever the message says.
-    let typed = Data(#"{"error":{"code":400,"message":"too many tokens","type":"exceed_context_size_error"}}"#.utf8)
+    let typed = Data(
+      #"{"error":{"code":400,"message":"too many tokens","type":"exceed_context_size_error"}}"#.utf8
+    )
     do {
       _ = try await Self.call(Transport(.success((typed, 400))))
       Issue.record("expected a failure")

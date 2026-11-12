@@ -72,12 +72,17 @@ public enum EGOneSummaryCall {
   /// summary's output cap and temperature 0. Exactly the fields the helper serves and no
   /// other (it refuses a field it does not know): the learned-word adapter is a separate model
   /// tree in the helper and never rides a chat request, so nothing switches it off here.
+  /// Normalize whitespace at the edges of summary messages, including parts cut at a
+  /// token budget. This also satisfies the supported emptyThinkBlock template's
+  /// whitespace restriction. Bundled Micro currently uses plainAssistant.
   static func requestBody(instructions: String, prompt: String) -> [String: Any] {
     [
       "model": LLMProvider.egOneModelName,
       "messages": [
-        ["role": "system", "content": instructions],
-        ["role": "user", "content": prompt],
+        [
+          "role": "system", "content": instructions.trimmingCharacters(in: .whitespacesAndNewlines),
+        ],
+        ["role": "user", "content": prompt.trimmingCharacters(in: .whitespacesAndNewlines)],
       ],
       "max_tokens": MeetingSummary.outputTokens,
       "temperature": 0,
