@@ -23,12 +23,76 @@ struct EGOneSizeCard: Equatable, Identifiable, Sendable {
     case remove
   }
 
+  /// #4525: the memory row and its bar. Gray is the Mac's memory in use now (live); purple is
+  /// the size's measured peak. For a size that is not running, purple stacks after gray ("now
+  /// plus this size"). For a size that is starting or running, its memory is already part of
+  /// gray, so purple is drawn over the end of gray instead, never added (founder 2026-11-11:
+  /// EnviousWispr's part must stay visible on the bar). With no live figure the bar is
+  /// today's: purple from the left, warned by the more-than-half rule.
   struct Memory: Equatable, Sendable {
+    enum Warning: Equatable, Sendable {
+      /// No live figure: the size needs more than half of this Mac's memory.
+      case tight
+      /// Live: memory in use now plus this size passes 90% of this Mac's memory (founder
+      /// 2026-11-11, plan #4525 §14 Q1).
+      case wontFitNow
+    }
+
+    /// The size's measured peak.
     let bytes: Int64
     let macBytes: UInt64
-    /// The size needs more than half of this Mac's memory.
-    let isTight: Bool
-    var fraction: Double { macBytes == 0 ? 0 : min(1, Double(bytes) / Double(macBytes)) }
+    /// The Mac's memory in use now; nil when the live read is unavailable.
+    let systemUsedBytes: UInt64?
+    let activity: LocalPolishRuntime.ServerActivity
+
+    var warning: Warning? {
+      // A starting or running size is already using its memory: never warned, live or not.
+      guard activity == .inactive else { return nil }
+      let peak = UInt64(max(0, bytes))
+      guard let used = systemUsedBytes else { return peak * 2 > macBytes ? .tight : nil }
+      // Whole numbers, so exactly 90% is not a warning and nothing rounds across the line.
+      let (projected, o1) = used.addingReportingOverflow(peak)
+      let (scaled, o2) = projected.multipliedReportingOverflow(by: 10)
+      let (limit, o3) = macBytes.multipliedReportingOverflow(by: 9)
+      if o1 || o2 || o3 { return .wontFitNow }
+      return scaled > limit ? .wontFitNow : nil
+    }
+
+    /// Gray: memory in use now, as a share of the Mac's memory; 0 with no live figure.
+    var usedFraction: Double { Self.share(systemUsedBytes ?? 0, of: macBytes) }
+    /// The size's part of the bar while it is starting or running with a live figure: its peak,
+    /// at most the memory in use (it is inside gray).
+    private var includedFraction: Double? {
+      guard let used = systemUsedBytes, activity != .inactive else { return nil }
+      return Self.share(min(UInt64(max(0, bytes)), used), of: macBytes)
+    }
+    /// Where purple starts: inside the end of gray for a running size, after gray for a size
+    /// that is not running, at the left edge with no live figure.
+    var peakStart: Double {
+      if let included = includedFraction { return max(0, usedFraction - included) }
+      return usedFraction
+    }
+    /// Purple's width; never past the end of the track.
+    var peakFraction: Double {
+      if let included = includedFraction { return included }
+      return min(1 - peakStart, Self.share(UInt64(max(0, bytes)), of: macBytes))
+    }
+
+    /// Percent of the Mac's memory the bar ends at, rounded: memory in use now plus this size
+    /// for a size that is not running, memory in use now (this size included) for a running
+    /// one. Nil with no live figure.
+    var projectedPercent: Int? {
+      guard let used = systemUsedBytes, macBytes > 0 else { return nil }
+      let peak = activity == .inactive ? UInt64(max(0, bytes)) : 0
+      let (total, overflow) = used.addingReportingOverflow(peak)
+      let bytes = overflow ? UInt64.max : total
+      return Int((Double(bytes) / Double(macBytes) * 100).rounded())
+    }
+
+    private static func share(_ part: UInt64, of whole: UInt64) -> Double {
+      whole == 0 ? 0 : min(1, Double(part) / Double(whole))
+    }
+
   }
 
   let size: EGOneSize
@@ -69,6 +133,11 @@ enum EGOneSizeCardPresenter {
     var downloadBytes: [EGOneSize: Int64]
     var facts: EGOneSizeFacts
     var physicalMemoryBytes: UInt64
+    /// #4525: the Mac's memory in use now; nil when unread or unavailable.
+    var systemUsedBytes: UInt64? = nil
+    /// #4525: each size's helper process, from `LocalPolishRuntime.serverActivity`; a size
+    /// missing here is not running.
+    var activity: [EGOneSize: LocalPolishRuntime.ServerActivity] = [:]
   }
 
   /// Largest first, as the cards read left to right.
@@ -106,7 +175,8 @@ enum EGOneSizeCardPresenter {
         memory: facts.memoryBytes.map {
           EGOneSizeCard.Memory(
             bytes: $0.value, macBytes: inputs.physicalMemoryBytes,
-            isTight: UInt64(max(0, $0.value)) * 2 > inputs.physicalMemoryBytes)
+            systemUsedBytes: inputs.systemUsedBytes,
+            activity: inputs.activity[size] ?? .inactive)
         },
         isLightest: size == lightest)
     }

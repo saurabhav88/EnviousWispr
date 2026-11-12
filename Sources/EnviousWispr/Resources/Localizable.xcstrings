@@ -141,6 +141,23 @@
         }
       }
     },
+    "%@ adds %@ GB" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part. %1$@ is the size's name, such as EG-1 Mini; %2$@ its memory, such as 2.9.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ adds %2$@ GB"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: +%2$@ GB"
+          }
+        }
+      }
+    },
     "%@ already knows \"%@\"" : {
       "comment" : "Quick Add panel: the word already has that spelling. The first %@ is the word, the second the misheard text; use this language's quotation marks.",
       "localizations" : {
@@ -1014,6 +1031,28 @@
         }
       }
     },
+    "%@, running" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, running now. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, läuft"
+          }
+        }
+      }
+    },
+    "%@, starting" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the purple part is this size, starting now. %@ is its name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, wird gestartet"
+          }
+        }
+      }
+    },
     "%@. %@" : {
       "comment" : "Recording Pill settings, style picker, VoiceOver: a design card. The first %@ is the design's name, the second one sentence about it.\nSettings sidebar, VoiceOver: a row's value. The first %@ is Selected or Not selected; the second says what is running on that page.",
       "localizations" : {
@@ -1260,6 +1299,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld%%"
+          }
+        }
+      }
+    },
+    "%lld%% in use" : {
+      "comment" : "AI Polish, EG-1 size card, under the memory bar of the running size: memory in use now, this size included, as a percent of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% belegt"
+          }
+        }
+      }
+    },
+    "%lld%% with this size" : {
+      "comment" : "AI Polish, EG-1 size card, under the memory bar: memory in use now plus this size, as a percent of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%% mit dieser Größe"
           }
         }
       }
@@ -10839,6 +10900,17 @@
         }
       }
     },
+    "In use now" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar: the gray part, memory the Mac uses now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt belegt"
+          }
+        }
+      }
+    },
     "Indonesian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -12730,6 +12802,23 @@
         }
       }
     },
+    "Mac is using %@ GB of %lld GB now." : {
+      "comment" : "AI Polish, EG-1 size card, VoiceOver: memory in use now (%1$@, such as 48.1) of the Mac's memory (%2$lld GB).",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mac is using %1$@ GB of %2$lld GB now."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac belegt gerade %1$@ GB von %2$lld GB Arbeitsspeicher."
+          }
+        }
+      }
+    },
     "Macedonian" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -13590,6 +13679,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "Needs about %@ GB." : {
+      "comment" : "AI Polish, EG-1 size card, VoiceOver: the memory this size needs, such as 5.5.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt etwa %@ GB."
           }
         }
       }
@@ -15747,6 +15847,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Original bleibt erhalten"
+          }
+        }
+      }
+    },
+    "Other apps" : {
+      "comment" : "AI Polish, EG-1 size card, key under the memory bar of the running size: the gray part, memory everything else uses.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Apps"
           }
         }
       }
@@ -22405,6 +22516,23 @@
         }
       }
     },
+    "This Mac: %lld GB memory · %@ GB in use · %lld%%" : {
+      "comment" : "AI Polish, above the EG-1 size cards. %1$lld is the Mac's installed memory in GB; %2$@ is the memory in use right now, such as 48.1; %3$lld is that as a percent of the Mac's memory.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Mac: %1$lld GB memory · %2$@ GB in use · %3$lld%%"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac: %1$lld GB Arbeitsspeicher · %2$@ GB belegt · %3$lld%%"
+          }
+        }
+      }
+    },
     "This build has no download source configured." : {
       "comment" : "AI Polish, local model card: why the model download failed.",
       "localizations" : {
@@ -25039,6 +25167,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn dies eingeschaltet ist, transkribiert EnviousWispr während des Sprechens überlappende Audioabschnitte und fügt sie zusammen. Wenn zwei Abschnitte dieselbe Stelle unterschiedlich erkennen, lässt sich nicht sicher sagen, welche Fassung stimmt. Je länger du sprichst, desto mehr Übergänge gibt es und desto größer wird das Problem."
+          }
+        }
+      }
+    },
+    "Won't fit right now. Close some apps or pick a smaller size." : {
+      "comment" : "AI Polish, EG-1 size card: the memory in use now plus this size is more than 90% of the Mac's memory.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reicht gerade nicht. Schließe einige Apps oder wähle eine kleinere Größe."
           }
         }
       }

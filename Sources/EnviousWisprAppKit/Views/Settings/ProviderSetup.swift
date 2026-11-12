@@ -761,6 +761,10 @@ struct ProviderSetupSection: View {
   /// Whether the API key field shows the key in plain text. Local presentation only: reset
   /// when the provider changes or the key is cleared, and the draft itself never moves.
   @State private var revealsKey = false
+  /// #4525: the live "memory in use" figure for EG-1's heading and size cards, made while the
+  /// EG-1 section is shown and dropped when it is not (see the `.task` on the body).
+  @State private var memorySampler: MacMemorySampler?
+  @State private var egOneHostWindow = EGOneHostWindow()
   /// Which field-style dropdown is open, if any.
   @State private var modelMenuOpen = false
   /// The Models sheet's search text. Filters rows only; counts, selection and downloads are
@@ -833,7 +837,8 @@ struct ProviderSetupSection: View {
           PolishSectionHeading(
             provider: provider, detail: EGOneSizeCardCopy.chooseASize,
             trailing: EGOneSizeCardCopy.thisMac(
-              physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory))
+              physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory,
+              usedBytes: memorySampler?.usedBytes))
         } else {
           PolishSectionHeading(provider: provider)
         }
@@ -855,6 +860,22 @@ struct ProviderSetupSection: View {
       .onChange(of: provider) { _, _ in
         revealsKey = false
         modelMenuOpen = false
+      }
+      // #4525: sample memory only while EG-1's section is shown. SwiftUI cancels this task when
+      // the section leaves the screen or the provider changes; the sampler skips its read while
+      // the hosting window is hidden.
+      .background(EGOneHostWindowReader(host: egOneHostWindow))
+      .task(id: provider) {
+        guard provider == .egOne else {
+          memorySampler = nil
+          return
+        }
+        let host = egOneHostWindow
+        let sampler = MacMemorySampler(isVisible: { host.isVisible })
+        memorySampler = sampler
+        host.didAttach = { [weak sampler] in sampler?.tick() }
+        await sampler.run()
+        host.didAttach = nil
       }
       .onAppear { openRequestedModelMenu() }
       .onChange(of: navigation?.pendingModelMenu) { _, _ in openRequestedModelMenu() }
@@ -909,7 +930,12 @@ private var egOneSizeCards: some View {
           }),
         displayVersions: egOneSizeCatalog.displayVersions,
         downloadBytes: egOneSizeCatalog.downloadBytes,
-        facts: egOneSizeCatalog.facts, physicalMemoryBytes: memory)),
+        facts: egOneSizeCatalog.facts, physicalMemoryBytes: memory,
+        systemUsedBytes: memorySampler?.usedBytes,
+        activity: Dictionary(
+          uniqueKeysWithValues: EGOneSize.allCases.compactMap { size in
+            localPolishRuntimes.runtime(for: .egOne(size)).map { (size, $0.serverActivity) }
+          }))),
     measuredOn: egOneSizeCatalog.facts.measuredOn
   ) { action, size in
     switch action {
