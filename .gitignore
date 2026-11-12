@@ -223,6 +223,7 @@ scripts/lib/*
 # #4507: the Mac host list and the read-only slot status for shared CI across Macs.
 !scripts/lib/mac_hosts.py
 !scripts/mac-slots.py
+!scripts/remote-dev-app.py
 !scripts/lib/output-watchdog.py
 !scripts/lib/remote_ship.py
 !scripts/lib/remote-job.py
