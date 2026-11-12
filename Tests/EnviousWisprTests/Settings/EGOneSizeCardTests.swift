@@ -287,22 +287,82 @@ struct EGOneSizeCardTests {
     let small = EGOneSizeCardPresenter.cards(
       Self.inputs(facts: facts, physicalMemoryBytes: 8 << 30))
     #expect(small.filter(\.isLightest).map(\.size) == [.micro])
-    #expect(small.first { $0.size == .full }?.memory?.isTight == true)
-    #expect(small.first { $0.size == .micro }?.memory?.isTight == false)
+    #expect(small.first { $0.size == .full }?.memory?.warning == .tight)
+    #expect(small.first { $0.size == .micro }?.memory?.warning == nil)
 
     let big = EGOneSizeCardPresenter.cards(Self.inputs(facts: facts, physicalMemoryBytes: 64 << 30))
-    #expect(big.allSatisfy { $0.memory?.isTight == false })
+    #expect(big.allSatisfy { $0.memory?.warning == nil })
 
     let partial = EGOneSizeFacts(
       measuredOn: "Mac", sizes: [.full: Self.size(memory: 4_900_000_000)])
     #expect(EGOneSizeCardPresenter.cards(Self.inputs(facts: partial)).allSatisfy { !$0.isLightest })
   }
 
-  // A user would see a memory bar overflowing its track.
-  @Test func memoryFractionClampsToOne() {
-    let over = EGOneSizeCard.Memory(bytes: 10, macBytes: 4, isTight: true)
-    #expect(over.fraction == 1)
-    #expect(EGOneSizeCard.Memory(bytes: 1, macBytes: 4, isTight: false).fraction == 0.25)
+  // MARK: - Live memory bar (#4525)
+
+  private static func memory(
+    peak: Int64, mac: UInt64, used: UInt64?,
+    activity: LocalPolishRuntime.ServerActivity = .inactive
+  ) -> EGOneSizeCard.Memory {
+    .init(bytes: peak, macBytes: mac, systemUsedBytes: used, activity: activity)
+  }
+
+  // A user with no live figure would see a different bar from today's, or one past its track.
+  @Test func noLiveFigureKeepsTodaysBarAndRule() {
+    let quarter = Self.memory(peak: 1, mac: 4, used: nil)
+    #expect(quarter.usedFraction == 0 && quarter.peakStart == 0 && quarter.peakFraction == 0.25)
+    #expect(quarter.warning == nil)
+    let over = Self.memory(peak: 10, mac: 4, used: nil)
+    #expect(over.peakFraction == 1)
+    #expect(over.warning == .tight)
+  }
+
+  // A user would see the size's need drawn over memory already in use, or past the track's end.
+  @Test func aSizeNotRunningStacksAfterMemoryInUse() {
+    let half = Self.memory(peak: 2, mac: 16, used: 8)
+    #expect(half.usedFraction == 0.5 && half.peakStart == 0.5 && half.peakFraction == 0.125)
+    let full = Self.memory(peak: 4, mac: 16, used: 15)
+    #expect(full.peakFraction == 0.0625)
+    #expect(full.peakStart + full.peakFraction == 1)
+  }
+
+  // A user would see a running size counted twice, or warned that it will not fit.
+  @Test(arguments: [LocalPolishRuntime.ServerActivity.starting, .ready])
+  func aStartingOrRunningSizeAddsNoPurpleAndNoWarning(activity: LocalPolishRuntime.ServerActivity) {
+    let card = Self.memory(peak: 4, mac: 16, used: 15, activity: activity)
+    #expect(card.usedFraction == 15.0 / 16)
+    #expect(card.peakFraction == 0)
+    #expect(card.warning == nil)
+    // A failed live read does not bring back the more-than-half warning for it either.
+    #expect(Self.memory(peak: 6, mac: 8, used: nil, activity: activity).warning == nil)
+    #expect(Self.memory(peak: 6, mac: 8, used: nil).warning == .tight)
+  }
+
+  // A user would be told a size will not fit when it will, or not told when it will not.
+  @Test func wontFitNowMeansMoreThanNinetyPercentWhenLive() {
+    #expect(Self.memory(peak: 10, mac: 100, used: 79).warning == nil)  // 89%
+    #expect(Self.memory(peak: 10, mac: 100, used: 80).warning == nil)  // exactly 90%
+    #expect(Self.memory(peak: 10, mac: 100, used: 81).warning == .wontFitNow)  // 91%
+    // Live data replaces the more-than-half rule: 60% of the Mac with room left warns nothing.
+    #expect(Self.memory(peak: 60, mac: 100, used: 0).warning == nil)
+  }
+
+  // A user would see the live figure or a size's running state on the wrong card.
+  @Test func presenterCarriesTheLiveFigureAndEachSizesActivity() throws {
+    let facts = EGOneSizeFacts(
+      measuredOn: "Mac",
+      sizes: [
+        .full: Self.size(memory: 4_900_000_000), .mini: Self.size(memory: 3_000_000_000),
+        .micro: Self.size(memory: 2_000_000_000),
+      ])
+    var inputs = Self.inputs(facts: facts, physicalMemoryBytes: 64 << 30)
+    inputs.systemUsedBytes = 40 << 30
+    inputs.activity = [.mini: .ready]
+    let cards = EGOneSizeCardPresenter.cards(inputs)
+    #expect(cards.allSatisfy { $0.memory?.systemUsedBytes == 40 << 30 })
+    #expect(try Self.card(.mini, inputs).memory?.activity == .ready)
+    #expect(try Self.card(.full, inputs).memory?.activity == .inactive)
+    #expect(try Self.card(.micro, inputs).memory?.activity == .inactive)
   }
 
   // A user would see a dangling "V" with no number.

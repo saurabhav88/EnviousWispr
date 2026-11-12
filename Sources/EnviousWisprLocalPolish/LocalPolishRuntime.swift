@@ -612,6 +612,22 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
   private let defaults: UserDefaults
 
   private var serverState: LocalPolishProcessManager.ServerState = .stopped
+
+  /// #4525: whether this engine's helper process is starting, running or not running, for the
+  /// EG-1 size cards' memory bar. A read-only projection of `serverState`, never a second
+  /// authority and never derived from `health`: a running helper can be yellow
+  /// (`ready_unchecked`) or carry a failed probe and still hold its memory.
+  public enum ServerActivity: Sendable, Equatable {
+    case inactive, starting, ready
+  }
+
+  public var serverActivity: ServerActivity {
+    switch serverState {
+    case .starting: .starting
+    case .ready: .ready
+    case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside: .inactive
+    }
+  }
   /// The probe verdict and the endpoint it was measured on (#3988). Ordered
   /// delivery may skip a replacement's intermediate events, so the verdict is
   /// bound to the server it tested, never to "ready" in general.
