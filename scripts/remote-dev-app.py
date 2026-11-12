@@ -259,6 +259,7 @@ def push(host, path):
     local = Path(path)
     if not local.is_file():
         raise SetupError(f"no such file: {path}")
+    mount_ok(host)  # never write a clip onto the host's system disk
     q = shlex.quote
     folder = f"{host['root']}/uat-inputs/{uuid.uuid4().hex}"
     remote = f"{folder}/{local.name}"
