@@ -407,6 +407,5 @@
 .ew-sidebar-icon { width: 20px; text-align: center; color: var(--ew-st-accent); flex: none; }
 .ew-sidebar-item[aria-current="page"] .ew-sidebar-icon { color: var(--ew-white); }
 
-/* A template image (the idle menu bar icon): macOS tints it, so draw the SVG as a mask in the text color. */
-.ew-template-icon { display: inline-block; width: 22px; height: 22px; background: var(--ew-st-text-primary);
-  -webkit-mask: var(--ew-icon) center / contain no-repeat; mask: var(--ew-icon) center / contain no-repeat; }
+/* A template image (the idle menu bar icon): macOS tints it, so it is inline SVG in the text color. */
+.ew-template-icon { color: var(--ew-st-text-primary); }

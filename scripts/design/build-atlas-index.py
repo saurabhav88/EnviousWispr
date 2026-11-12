@@ -152,7 +152,7 @@ for (const part of data.parts) {
   const show = el("button", {class: "ew-btn ew-btn--quiet"}, ["Show HTML"]);
   show.addEventListener("click", () => code.classList.toggle("hidden"));
   const shot = part.picture === "none"
-    ? el("div", {class: "shot meta"}, ["No app picture shows this part; it is drawn from its Swift source (" + part.swift + ")."])
+    ? el("div", {class: "shot meta"}, ["No app picture shows this part; it is drawn from its source (" + part.swift + ")."])
     : el("div", {class: "shot"}, [pictureImg(part.picture)]);
   const item = el("section", {class: "item", "data-search": (part.id + " " + part.title + " " + part.swift).toLowerCase()}, [
     el("h3", {}, [part.title]),
