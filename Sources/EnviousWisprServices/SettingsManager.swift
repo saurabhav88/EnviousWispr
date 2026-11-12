@@ -1050,6 +1050,24 @@ public final class SettingsManager {
 
   static let onboardingEverCompletedKey = "ew.onboarding.everCompleted"
 
+  /// The polish provider when none is stored (#4528 D1).
+  ///
+  /// A FRESH install (no provider key, onboarding never completed) starts on the provider Setup
+  /// recommends (`SetupAdvice.recommendedPolishProvider`, EG-1 under the approved rules), so a Mac
+  /// that cannot run Apple Intelligence is not left without AI polish (#1454: 109 users). Every
+  /// other case keeps the canonical default: an install that completed onboarding before this
+  /// release with no stored key, and an unreadable stored value (the key exists). Nothing is
+  /// written, so the value still reads as a default rather than a choice.
+  static func defaultPolishProvider(
+    providerKeyAbsent: Bool, everCompletedOnboarding: Bool, onboardingStateRaw: String?
+  ) -> LLMProvider {
+    let isFreshInstall =
+      providerKeyAbsent && !everCompletedOnboarding
+      && onboardingStateRaw != OnboardingState.completed.rawValue
+    return isFreshInstall
+      ? SetupAdvice.recommendedPolishProvider() : SettingsDefaultValues.llmProvider
+  }
+
   /// #1176: true once the user has EVER finished onboarding (durable; survives a
   /// Diagnostics restart). Read by the onboarding-abandon `source` label. Backfilled
   /// from the legacy completion key in `init` for users who completed before this key.
@@ -1699,11 +1717,6 @@ public final class SettingsManager {
     egOneSize = size
   }
 
-  /// EG-1 is the polish engine chosen for dictation, file import or meeting summaries.
-  public var selectsEGOneOnAnySurface: Bool {
-    llmProvider == .egOne || fileImportLLMProvider == .egOne || meetingSummaryLLMProvider == .egOne
-  }
-
   /// Sets the size preference the first time, by `EGOneSizeResolution`. Does nothing when a
   /// known size is already stored. `hasEGOneInstallRecord` is model delivery's answer about its
   /// own install records; this type does not read them.
@@ -1712,8 +1725,19 @@ public final class SettingsManager {
     let stored: EGOneSizeResolution.Stored =
       defaults.object(forKey: Self.egOneSizeKey) == nil ? .absent : .unknown
     egOneSize = EGOneSizeResolution.resolve(
-      stored: stored, hasPriorEGOneUse: selectsEGOneOnAnySurface || hasEGOneInstallRecord,
+      stored: stored, hasPriorEGOneUse: storedChoiceSelectsEGOne || hasEGOneInstallRecord,
       recommendation: recommendation)
+  }
+
+  /// EG-1 was CHOSEN and stored on a surface (dictation, file import or meeting summaries). Prior
+  /// EG-1 use is a stored choice, never a default: since #4528 D1 a fresh install's dictation
+  /// default is EG-1, and reading the in-memory value would treat every new user as an existing
+  /// EG-1 user and seed the full size even on an 8 GB Mac.
+  var storedChoiceSelectsEGOne: Bool {
+    let egOne = LLMProvider.egOne.rawValue
+    return defaults.string(forKey: "llmProvider") == egOne
+      || defaults.string(forKey: "fileImportLLMProvider") == egOne
+      || defaults.string(forKey: Self.meetingSummaryProviderKey) == egOne
   }
 
   public var selectedInputDeviceUID: String {
@@ -1887,7 +1911,10 @@ public final class SettingsManager {
       ?? SettingsDefaultValues.recordingMode
     let resolvedProvider =
       LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "")
-      ?? SettingsDefaultValues.llmProvider
+      ?? Self.defaultPolishProvider(
+        providerKeyAbsent: defaults.object(forKey: "llmProvider") == nil,
+        everCompletedOnboarding: defaults.bool(forKey: Self.onboardingEverCompletedKey),
+        onboardingStateRaw: defaults.string(forKey: "onboardingState"))
     llmProvider = resolvedProvider
     // Seed the remembered engine. If the key is already stored, honor it.
     // Otherwise seed from the resolved provider (existing users keep their

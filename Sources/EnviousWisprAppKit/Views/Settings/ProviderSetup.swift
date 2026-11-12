@@ -915,7 +915,7 @@ struct ProviderSetupSection: View {
 @ViewBuilder
 private var egOneSizeCards: some View {
   let actions = EGOneSizeActions(runtimes: localPolishRuntimes)
-  let recommendation = EGOneSizeRecommendation.forThisMac(language: settings.languageMode)
+  let recommendation = SetupAdvice.recommendedEGOneSize(languageMode: settings.languageMode)
   let memory = ProcessInfo.processInfo.physicalMemory
   EGOneSizeCards(
     cards: EGOneSizeCardPresenter.cards(

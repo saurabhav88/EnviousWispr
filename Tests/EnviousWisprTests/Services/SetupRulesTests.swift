@@ -115,4 +115,28 @@ struct SetupRulesTests {
       try Self.validate(Self.edited(#""primary": "eg1.full""#, #""primary": "s1mini""#))
     }
   }
+
+  /// The polish answers are asked without speech language data, and `primary` only exists once a
+  /// primary is chosen: a row using either in the wrong table would make Setup and Settings disagree.
+  @Test("each table uses only the conditions that mean something there")
+  func conditionsPerTable() {
+    #expect(throws: SetupRules.ValidationError.conditionNotAllowed(table: "polish.primary", condition: "languageIn")) {
+      try Self.validate(
+        Self.edited(
+          #"{"when": {"memoryAtLeastGiB": 32}, "pick": "eg1.full"}"#,
+          #"{"when": {"languageIn": "parakeet"}, "pick": "eg1.full"}"#))
+    }
+    #expect(throws: SetupRules.ValidationError.conditionNotAllowed(table: "polish.primary", condition: "primary")) {
+      try Self.validate(
+        Self.edited(
+          #"{"when": {"memoryAtLeastGiB": 32}, "pick": "eg1.full"}"#,
+          #"{"when": {"primary": "eg1.mini"}, "pick": "eg1.full"}"#))
+    }
+    #expect(throws: SetupRules.ValidationError.conditionNotAllowed(table: "speech.choice", condition: "primary")) {
+      try Self.validate(Self.edited(#"{"when": {"languageIn": "parakeet"}, "pick": "parakeet"}"#, #"{"when": {"primary": "eg1.mini"}, "pick": "parakeet"}"#))
+    }
+    #expect(throws: SetupRules.ValidationError.conditionNotAllowed(table: "polish.neighbour", condition: "languageIn")) {
+      try Self.validate(Self.edited(#"{"when": {"primary": "eg1.full"}, "pick": "eg1.mini"}"#, #"{"when": {"languageIn": "whisper"}, "pick": "eg1.mini"}"#))
+    }
+  }
 }

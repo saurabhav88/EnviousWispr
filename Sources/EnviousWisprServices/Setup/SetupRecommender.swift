@@ -145,3 +145,80 @@ public enum SetupRecommender {
     }
   }
 }
+
+/// The one composition point between the recommender and the app (#4528 B3, plan §3.2): which
+/// rules are in force and which Mac profile advice is read from. Every recommendation consumer
+/// (launch EG-1 seeding, Settings size cards, removal fallback, the provider "Recommended"
+/// label, the fresh-install polish default, the dictation language lock default, Transcribe a
+/// File badges) reads it here, so no consumer reads rules or hardware on its own.
+public enum SetupAdvice {
+  /// The rules in force.
+  ///
+  /// B2 INTEGRATION HANDOFF (outstanding delivery gate, plan §3.11 M39): when the signed store
+  /// lands, this returns the store's trusted rules (`SetupRulesStore.live.current().rules`), the
+  /// higher of the bundled copy and the last good signed download. Until then it is the bundled
+  /// copy; bundled-only is not the final delivery.
+  public static var activeRules: SetupRules { bundledRules }
+
+  private static let bundledRules: SetupRules = (try? SetupRules.bundled()) ?? .builtIn
+
+  /// This Mac for advice: memory, macOS, chip and the Mac's own language list. Free disk space is
+  /// not advice (the download preflight reads it), so it is left out of the per-render read.
+  private static let profileReader = MacProfileReader(
+    physicalMemoryBytes: MacProfileReader.live.physicalMemoryBytes,
+    macOSMajor: MacProfileReader.live.macOSMajor, chipName: MacProfileReader.live.chipName,
+    freeDiskBytes: { nil }, systemLanguages: MacProfileReader.live.systemLanguages)
+
+  /// The full recommendation for this Mac.
+  public static func recommendation(
+    languageMode: LanguageMode, appleIntelligence: AppleIntelligenceSetupState = .unavailable,
+    capabilities: SpeechLanguageCapabilities
+  ) -> SetupRecommendation {
+    SetupRecommender.recommend(
+      profile: profileReader.read(appleIntelligence: appleIntelligence), rules: activeRules,
+      languageMode: languageMode, capabilities: capabilities)
+  }
+
+  /// The recommended EG-1 size. It depends only on memory and the dictation language, never on
+  /// Apple Intelligence or the speech engines, so they are not asked for.
+  ///
+  /// Advice only (#4473, founder 2026-11-10, moved here by #4528): not from which sizes are
+  /// published or installed, not from the interface language, not from what was recognised
+  /// recently. The size the app USES is the stored preference (`SettingsManager.egOneSize`); this
+  /// value only seeds that preference once, for a user with no EG-1 history
+  /// (`EGOneSizeResolution`), and labels a card "Best for this Mac". Automatic language detection
+  /// counts as English, so the 8 GB default stays Micro (rules row `lockedNonEnglish`).
+  public static func recommendedEGOneSize(languageMode: LanguageMode) -> EGOneSize {
+    egOneSize(of: recommendation(languageMode: languageMode, capabilities: .polishOnly).polishPrimary)
+  }
+
+  /// The polish provider Setup preselects: the provider of the preselected card (EG-1 under the
+  /// approved rules, D1/D2). Read by the provider "Recommended" label and the fresh-install
+  /// default.
+  public static func recommendedPolishProvider(languageMode: LanguageMode = .auto) -> LLMProvider {
+    let advice = recommendation(languageMode: languageMode, capabilities: .polishOnly)
+    let preselected = advice.polishCards.first { $0.preselected }?.model ?? advice.polishPrimary
+    return SetupRules.registeredPolish[preselected]?.provider ?? .egOne
+  }
+
+  /// The Mac's own primary language code ("fr" on a French Mac), for language defaults. Callers
+  /// still apply their own supported-language check.
+  public static var macLanguageCode: String? {
+    profileReader.read(appleIntelligence: .unavailable).primaryMacLanguageCode
+  }
+
+  /// The EG-1 size a polish-table pick names. Validated polish tables pick only EG-1 sizes
+  /// (`SetupRules.polishTablePicks`), so a pick without a size is a broken rules invariant.
+  static func egOneSize(of pick: String) -> EGOneSize {
+    guard let size = SetupRules.registeredPolish[pick]?.size else {
+      assertionFailure("polish pick \(pick) has no EG-1 size; SetupRules validation should refuse it")
+      return .micro
+    }
+    return size
+  }
+}
+
+extension SpeechLanguageCapabilities {
+  /// For questions that do not involve speech (the EG-1 size, the polish provider).
+  public static let polishOnly = SpeechLanguageCapabilities(parakeet: [], whisper: [])
+}

@@ -36,7 +36,7 @@ struct MeetingTranscriptLanguageSection: View {
       ? .auto
       : .locked(
         LanguageLockOptions.defaultLockCode(
-          current: model.transcriptLanguage, candidate: systemLanguage,
+          current: model.transcriptLanguage, candidates: [systemLanguage],
           lockable: LanguageLockOptions.lockableCodes(for: engine.backendType)))
   }
 

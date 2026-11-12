@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprLocalPolish
+import EnviousWisprServices
 import SwiftUI
 
 // MARK: - Provider status (one authority for the card and the dropdown)
@@ -317,14 +318,16 @@ struct PolishRailProvider: Identifiable, Equatable {
   /// The line under the name on the provider card (founder's Claude Design, 2026-10-03).
   let short: String
   let group: PolishRailGroup
-  let recommended: Bool
+  /// The provider Setup recommends (#4528 B3): read from the one recommendation policy
+  /// (`SetupAdvice.recommendedPolishProvider`), never a per-row constant.
+  var recommended: Bool { provider == SetupAdvice.recommendedPolishProvider() }
 
   var id: LLMProvider { provider }
   var tagline: String { String(localized: taglineResource) }
 
   static func == (lhs: Self, rhs: Self) -> Bool {
     lhs.provider == rhs.provider && lhs.name == rhs.name && lhs.tagline == rhs.tagline
-      && lhs.short == rhs.short && lhs.group == rhs.group && lhs.recommended == rhs.recommended
+      && lhs.short == rhs.short && lhs.group == rhs.group
   }
 }
 
@@ -346,10 +349,10 @@ enum PolishRailCatalog {
       short: String(
         localized: "Our model for cleaning up dictation on this Mac.",
         comment: "AI Polish provider card: the line under EG-1's name."),
-      group: .onThisMac, recommended: true),
+      group: .onThisMac),
     // #2649. Founder placement: beside EG-1 on this Mac, never above it; the 2026-10-03 design
-    // puts it second. EG-1 keeps `recommended`; Apple Intelligence remains what a fresh install
-    // selects. The tagline says what the model IS rather than praising it, because it is
+    // puts it second. EG-1 is the recommended engine (`SetupAdvice`), and since #4528 (D1) a fresh
+    // install selects it too. The tagline says what the model IS rather than praising it, because it is
     // somebody else's model and the licence binds the name.
     PolishRailProvider(
       provider: .s1Mini, name: LLMProvider.s1Mini.displayName,
@@ -366,7 +369,7 @@ enum PolishRailCatalog {
         comment:
           "AI Polish provider card: the line under S1-mini's name. Required licence credit; keep Superwhisper as written."
       ),
-      group: .onThisMac, recommended: false),
+      group: .onThisMac),
     PolishRailProvider(
       provider: .appleIntelligence, name: LLMProvider.appleIntelligence.displayName,
       taglineResource: LocalizedStringResource(
@@ -375,7 +378,7 @@ enum PolishRailCatalog {
       short: String(
         localized: "On-device polish on supported Macs with macOS 26+.",
         comment: "AI Polish provider card: the line under Apple Intelligence's name."),
-      group: .onThisMac, recommended: false),
+      group: .onThisMac),
     PolishRailProvider(
       provider: .ollama, name: LLMProvider.ollama.displayName,
       taglineResource: LocalizedStringResource(
@@ -384,7 +387,7 @@ enum PolishRailCatalog {
       short: String(
         localized: "Your models, local or hosted.",
         comment: "AI Polish provider card: the line under Ollama's name."),
-      group: .yourOwnSetup, recommended: false),
+      group: .yourOwnSetup),
     PolishRailProvider(
       provider: .openAI, name: LLMProvider.openAI.displayName,
       taglineResource: LocalizedStringResource(
@@ -395,7 +398,7 @@ enum PolishRailCatalog {
       short: String(
         localized: "Use your OpenAI API key for cloud polish.",
         comment: "AI Polish provider card: the line under OpenAI's name."),
-      group: .cloud, recommended: false),
+      group: .cloud),
     // Intentionally NOT `LLMProvider.gemini.displayName` ("Gemini"): the list carries the
     // vendor so the row reads as a cloud service beside OpenAI and Claude.
     // `PolishRailCatalogTests` pins this exact copy.
@@ -409,7 +412,7 @@ enum PolishRailCatalog {
       short: String(
         localized: "Use your Gemini API key for cloud polish.",
         comment: "AI Polish provider card: the line under Google Gemini's name."),
-      group: .cloud, recommended: false),
+      group: .cloud),
     PolishRailProvider(
       provider: .claude, name: LLMProvider.claude.displayName,
       taglineResource: LocalizedStringResource(
@@ -420,7 +423,7 @@ enum PolishRailCatalog {
       short: String(
         localized: "Use your Claude API key for cloud polish.",
         comment: "AI Polish provider card: the line under Claude's name."),
-      group: .cloud, recommended: false),
+      group: .cloud),
   ]
 
   static func providers(in group: PolishRailGroup) -> [PolishRailProvider] {

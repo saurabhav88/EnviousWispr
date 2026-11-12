@@ -11,9 +11,8 @@ import Testing
 /// where it cannot run (#1454), or cards in the wrong order with the wrong label.
 ///
 /// Expectations are written out by hand from the approved plan §3.2 and the mockup's `polishPlan`
-/// (Main.baseline-before-audit.html:613-620); none is computed by the recommender. The EG-1 tiers
-/// are additionally checked against the shipped `EGOneSizeRecommendation`, an independent
-/// implementation of the same founder rule, until B3 retires it.
+/// (Main.baseline-before-audit.html:613-620); none is computed by the recommender. The founder's
+/// EG-1 tier table also runs against it in `EGOneSizePreferenceTests`.
 @Suite(.tags(.productOutcome))
 struct SetupRecommenderTests {
   /// A fixed capability fixture: Parakeet speaks a European set, Whisper speaks those plus Hindi
@@ -119,16 +118,6 @@ struct SetupRecommenderTests {
     let a = try Self.advice(Self.profile(memory: 16, afm: state))
     #expect(!a.polishCards.contains { $0.model == "appleIntelligence" })
     #expect(a.appleIntelligence == state)
-  }
-
-  /// Parity with the shipped size rule over its own boundary table (EGOneSizePreferenceTests).
-  @Test(
-    "the recommended EG-1 size matches the shipped size rule",
-    arguments: EGOneSizePreferenceTests.tiers)
-  func parityWithTheShippedSizeRule(_ tier: EGOneSizePreferenceTests.Tier) throws {
-    let memory = Int(tier.bytes / (1 << 30))
-    let a = try Self.advice(Self.profile(memory: memory), tier.language)
-    #expect(a.polishPrimary == "eg1.\(tier.expected.rawValue)")
   }
 
   @Test("Auto stays Auto; the Mac's language is suggested when an engine speaks it")

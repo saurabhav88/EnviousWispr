@@ -722,7 +722,7 @@ struct TranscribeFileView: View {
     HStack(alignment: .top, spacing: 14) {
       engineCard(
         backend: .parakeet, title: WorkingPageModel.engineName(.parakeet),
-        icon: "bolt.fill", recommended: true,
+        icon: "bolt.fill", recommended: recommendedSpeech == .parakeet,
         blurb: String(
           localized: "Best for everyday English and European recordings.",
           comment: "Transcribe a File, Transcription step: the Fast engine's card."),
@@ -748,7 +748,7 @@ struct TranscribeFileView: View {
         ])
       engineCard(
         backend: .whisper, title: WorkingPageModel.engineName(.whisper),
-        icon: "globe", recommended: false,
+        icon: "globe", recommended: recommendedSpeech == .whisper,
         blurb: String(
           localized: "Best for other languages or the toughest audio.",
           comment: "Transcribe a File, Transcription step: the All Languages engine's card."),
@@ -777,6 +777,20 @@ struct TranscribeFileView: View {
   static var continueTitle: String {
     String(localized: "Continue", comment: "Transcribe a File: button that goes to the next step.")
   }
+
+  /// The speech engine and polish provider the Setup recommender names (#4528 B3), so the badges
+  /// here agree with Settings and Setup for the same inputs. A badge only; the import's own
+  /// processing choices are never replaced by advice.
+  private var recommendedSpeech: ASRBackendType {
+    SetupAdvice.recommendation(
+      languageMode: settings.languageMode, capabilities: LanguageLockOptions.speechCapabilities
+    ).speech
+  }
+
+  private var recommendedPolishProvider: LLMProvider {
+    SetupAdvice.recommendedPolishProvider(languageMode: settings.languageMode)
+  }
+
   static var recommendedBadge: String {
     String(localized: "Recommended", comment: "Transcribe a File: badge on the recommended engine.")
   }
@@ -1169,7 +1183,7 @@ struct TranscribeFileView: View {
             .foregroundStyle(selected ? Color.stAccent : Color.stTextSecondary)
         }
         Text(choice.title).font(.stRowLabel).fixedSize(horizontal: false, vertical: true)
-        if choice.provider == .egOne { Self.wizardBadge(Self.recommendedBadge) }
+        if choice.provider == recommendedPolishProvider { Self.wizardBadge(Self.recommendedBadge) }
         // Wraps, like the title. A single-line subtitle truncated at three columns, and the
         // words it lost were the ones saying whether the engine is ready.
         Text(cardSubtitle(for: choice.provider))
@@ -1369,7 +1383,7 @@ struct TranscribeFileView: View {
             .foregroundStyle(Color.stAccent)
         },
         title: WorkingPageModel.engineName(settings.selectedBackend),
-        recommended: settings.selectedBackend == .parakeet,
+        recommended: settings.selectedBackend == recommendedSpeech,
         blurb: String(
           localized: "Writes down what was said.",
           comment:
@@ -1399,7 +1413,7 @@ struct TranscribeFileView: View {
             provider: settings.effectiveFileImportLLMProvider, size: 22, isSelected: false)
         },
         title: settings.effectiveFileImportLLMProvider.displayName,
-        recommended: settings.effectiveFileImportLLMProvider == .egOne,
+        recommended: settings.effectiveFileImportLLMProvider == recommendedPolishProvider,
         blurb: String(
           localized: "Cleans it into readable text.",
           comment:

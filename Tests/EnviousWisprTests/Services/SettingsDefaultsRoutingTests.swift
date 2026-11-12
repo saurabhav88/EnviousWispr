@@ -29,7 +29,11 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.emojiFormatterEnabled == true)
     // #1794: the ONE Text-cleanup toggle that ships OFF.
     #expect(settings.spokenPunctuation == SpokenPunctuationSettings.off)
-    #expect(settings.llmProvider == .appleIntelligence)
+    // #4528 D1 (unreleased, pending founder review): a FRESH install starts on the provider Setup
+    // recommends (EG-1); the canonical Apple Intelligence default remains for installs that
+    // completed onboarding (SetupAdviceConsumerTests).
+    #expect(settings.llmProvider == .egOne)
+    #expect(SettingsDefaultValues.llmProvider == .appleIntelligence)
     // Unchanged canonical values (lock them so an accidental flip fails here):
     #expect(settings.recordingMode == .pushToTalk)
     #expect(settings.toggleKeyCode == ModifierKeyCodes.rightOption)
@@ -708,11 +712,13 @@ struct SettingsDefaultsRoutingTests {
   func lastLLMProviderFreshSeed() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
-    #expect(settings.lastLLMProvider == SettingsDefaultValues.lastLLMProvider)
+    // #4528 D1: the fresh-install engine is the Setup recommendation (EG-1), and the remembered
+    // engine is seeded from it, as it is from any resolved provider.
+    #expect(settings.lastLLMProvider == settings.llmProvider)
+    #expect(settings.lastLLMProvider == .egOne)
     // Write-through: init must persist the seed even though didSet does not fire
     // on init assignment (the upgrade-toggle-off-then-quit data-loss guard).
-    #expect(
-      suite.string(forKey: "lastLLMProvider") == SettingsDefaultValues.lastLLMProvider.rawValue)
+    #expect(suite.string(forKey: "lastLLMProvider") == LLMProvider.egOne.rawValue)
   }
 
   // MARK: - Migration (effective-state, dev-store sentinel)

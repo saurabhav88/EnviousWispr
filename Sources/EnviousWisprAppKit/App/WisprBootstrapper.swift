@@ -249,7 +249,7 @@ package final class WisprBootstrapper {
         metadataDirectory: FileManager.default.urls(
           for: .applicationSupportDirectory, in: .userDomainMask)[0]
           .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)),
-      recommendation: EGOneSizeRecommendation.forThisMac(language: settings.languageMode))
+      recommendation: SetupAdvice.recommendedEGOneSize(languageMode: settings.languageMode))
     // #1047: apply the persisted appearance before any window is built so a
     // pinned Dark never flashes white. `.system` clears the override (follow OS).
     AppearanceController.apply(settings.appearancePreference)
@@ -2634,8 +2634,8 @@ package final class WisprBootstrapper {
             egOneRemove: { [egOneSizeActions, settings] size in
               egOneSizeActions.remove(
                 size, settings: settings,
-                recommendation: EGOneSizeRecommendation.forThisMac(
-                  language: settings.languageMode))
+                recommendation: SetupAdvice.recommendedEGOneSize(
+                  languageMode: settings.languageMode))
             },
             egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) }),
           dictation: devControlDictation,

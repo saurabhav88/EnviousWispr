@@ -62,6 +62,23 @@ public struct SetupRules: Sendable, Equatable {
   public static let polishTablePicks: Set<String> = Set(
     registeredPolish.filter { $0.value.size != nil }.keys)
 
+  /// Which conditions each table may use (#4528 B3). The polish answers are asked without speech
+  /// language data (`SetupAdvice` polish helpers), so a polish row that read `languageIn` would make
+  /// Setup and Settings disagree; `primary` only means something once the primary is chosen.
+  ///   speech.choice:    languageIn, memoryAtLeastGiB, memoryBelowGiB, lockedNonEnglish
+  ///   polish.primary:   memoryAtLeastGiB, memoryBelowGiB, lockedNonEnglish
+  ///   polish.neighbour: memoryAtLeastGiB, memoryBelowGiB, lockedNonEnglish, primary
+  static func disallowedConditions(_ c: Conditions, table: String) -> [String] {
+    var used: [String] = []
+    if c.languageIn != nil { used.append("languageIn") }
+    if c.primary != nil { used.append("primary") }
+    switch table {
+    case "speech.choice": return used.filter { $0 == "primary" }
+    case "polish.primary": return used
+    default: return used.filter { $0 == "languageIn" }
+    }
+  }
+
   /// The language sets a `languageIn` condition may name.
   public static let languageSets: Set<String> = ["parakeet", "whisper"]
 
@@ -77,6 +94,7 @@ public struct SetupRules: Sendable, Equatable {
     case unknownLanguageSet(String)
     case nonPositiveRevision
     case notAnEGOneSize(table: String, pick: String)
+    case conditionNotAllowed(table: String, condition: String)
 
     public var description: String {
       switch self {
@@ -91,6 +109,7 @@ public struct SetupRules: Sendable, Equatable {
       case .unknownLanguageSet(let s): "unknown language set \(s)"
       case .nonPositiveRevision: "revision must be a positive integer"
       case .notAnEGOneSize(let t, let p): "table \(t) picks \(p); the polish tables pick EG-1 sizes only"
+      case .conditionNotAllowed(let t, let c): "table \(t) may not use the condition \(c)"
       }
     }
   }
@@ -137,6 +156,9 @@ public struct SetupRules: Sendable, Equatable {
       guard let last = table.rows.last else { throw ValidationError.emptyTable(table.name) }
       guard last.when.isCatchAll else { throw ValidationError.noFinalCatchAll(table.name) }
       for row in table.rows {
+        if let condition = Self.disallowedConditions(row.when, table: table.name).first {
+          throw ValidationError.conditionNotAllowed(table: table.name, condition: condition)
+        }
         guard table.registered.contains(row.pick) else {
           throw ValidationError.unregisteredPick(table: table.name, pick: row.pick)
         }

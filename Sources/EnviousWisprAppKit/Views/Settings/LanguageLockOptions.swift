@@ -246,6 +246,13 @@ enum LanguageLockOptions {
   /// engine's full catalogue. Returning an empty set instead would render an
   /// empty picker, which is why the optional is preserved verbatim from the
   /// property this replaces rather than "cleaned up" into a non-optional.
+  /// The speech engines' languages as the Setup recommender takes them (#4528 B3): the same
+  /// authorities as `lockableCodes(for:)`, handed to Services as data.
+  static var speechCapabilities: SpeechLanguageCapabilities {
+    SpeechLanguageCapabilities(
+      parakeet: lockableCodes(for: .parakeet) ?? [], whisper: lockableCodes(for: .whisper))
+  }
+
   static func lockableCodes(for backend: ASRBackendType) -> Set<String>? {
     switch backend {
     case .whisper:
@@ -294,14 +301,15 @@ enum LanguageLockOptions {
   /// the same silent failure the picker restriction exists to prevent, arriving
   /// through the toggle instead of the list (Codex review r1).
   ///
-  /// #4320: shared by dictation's Auto-detect toggle (candidate: the migrated
-  /// `whisperKitLanguage`) and EnviousMeet's Transcript Language switch.
+  /// #4320: shared by dictation's Auto-detect toggle and EnviousMeet's Transcript Language switch.
+  /// #4528 B3: candidates are tried in order; dictation passes the Mac's own language first
+  /// (`SetupAdvice.macLanguageCode`), then the migrated `whisperKitLanguage`.
   ///
   /// - Parameter lockable: nil means "no restriction" (the multilingual
   ///   engine), which preserves the pre-#1678 behaviour exactly.
   static func defaultLockCode(
     current: LanguageMode,
-    candidate: String,
+    candidates: [String],
     lockable: Set<String>?
   ) -> String {
     if case .locked(let code) = current,
@@ -309,9 +317,8 @@ enum LanguageLockOptions {
     {
       return code
     }
-    if LanguageTypes.isSupported(candidate),
-      isLockHonoured(candidate, in: lockable)
-    {
+    for candidate in candidates
+    where LanguageTypes.isSupported(candidate) && isLockHonoured(candidate, in: lockable) {
       return candidate
     }
     // English is in every engine's set, so this fallback is always honourable.

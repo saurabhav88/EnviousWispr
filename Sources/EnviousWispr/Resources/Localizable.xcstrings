@@ -22472,17 +22472,6 @@
         }
       }
     },
-    "This Mac has 8 GB of memory. %@ may run slower here. Dictation always works, even when polish is unavailable." : {
-      "comment" : "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Mac hat 8 GB Arbeitsspeicher. %@ kann hier langsamer laufen. Diktieren funktioniert immer, auch wenn die Nachbearbeitung nicht verfügbar ist."
-          }
-        }
-      }
-    },
     "This Mac · Apple GPU" : {
       "comment" : "Transcribe a File: where the All Languages engine runs.",
       "localizations" : {

@@ -48,11 +48,17 @@ struct EGOneSizePreferenceTests {
     Tier(bytes: 128 * gib, language: .locked("en"), expected: .full),
   ]
 
+  /// #4528 B3: the advice now comes from the Setup recommender and its bundled rules; this
+  /// hand-written founder table stays the independent expectation.
   @Test("the recommendation follows installed memory and the dictation language", arguments: tiers)
-  func recommendation(_ tier: Tier) {
-    #expect(
-      EGOneSizeRecommendation.recommended(
-        physicalMemoryBytes: tier.bytes, language: tier.language) == tier.expected)
+  func recommendation(_ tier: Tier) throws {
+    let profile = MacProfile(
+      memoryGiB: Int(tier.bytes / Self.gib), chipName: nil, macOSMajor: 26,
+      appleIntelligence: .unavailable, macLanguages: [], freeDiskBytes: nil)
+    let advice = SetupRecommender.recommend(
+      profile: profile, rules: try SetupRules.bundled(), languageMode: tier.language,
+      capabilities: .polishOnly)
+    #expect(advice.polishPrimary == "eg1.\(tier.expected.rawValue)")
   }
 
   @Test("a new user with no EG-1 history starts on the recommendation, and it is saved")
