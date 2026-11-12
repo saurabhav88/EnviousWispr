@@ -291,13 +291,16 @@ struct MeetingLiveWordsCard: View {
           VStack(alignment: .leading, spacing: 6) {
             // Drawn exactly as dictation's Universal Remove (`LivePreviewSettingsView`), so the
             // shared model looks the same on both pages.
-            SettingsActionButton(
-              verbatimTitle: String(localized: SettingsItemCopy.LivePreview.universalRemove),
-              isEnabled: model.downloadRefusalForRemove == nil,
-              emphasis: .quiet, shape: .roundedRect, size: .medium
-            ) {
+            Button {
               model.removeUniversal()
+            } label: {
+              EnviousButtonLabel(
+                verbatim: String(localized: SettingsItemCopy.LivePreview.universalRemove),
+                size: .medium)
             }
+            .settingsButton(
+              .quiet, shape: .roundedRect, size: .medium,
+              isEnabled: model.downloadRefusalForRemove == nil)
             if let refusal = model.downloadRefusalForRemove { meetingStatusText(refusal) }
           }
           .padding([.horizontal, .bottom], 16)

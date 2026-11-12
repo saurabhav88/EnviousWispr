@@ -119,17 +119,17 @@ struct SidebarStatsHeader: View {
     } else {
       switch meetings.phase {
       case .idle:
-        SettingsActionButton(
-          title: MeetingsCopy.startRecording, isEnabled: startFlow.waitingForMicrophone == nil,
-          emphasis: .filled, systemImage: "record.circle"
-        ) {
+        Button {
           Task {
             let outcome = await startFlow.requestStart(from: .history)
             if case .started(.recording(let meetingID)) = outcome {
               transcriptCoordinator.showRecordings(meetingID: meetingID)
             }
           }
+        } label: {
+          EnviousButtonLabel(MeetingsCopy.startRecording, systemImage: "record.circle")
         }
+        .settingsButton(.filled, isEnabled: startFlow.waitingForMicrophone == nil)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("history.meeting.start")
       case .starting, .stopping:

@@ -67,6 +67,10 @@
     "Sources\/EnviousWisprAppKit\/Views\/Components\/UpdateAvailableBanner.swift" : {
       "radius" : 2
     },
+    "Sources\/EnviousWisprAppKit\/Views\/Design\/EnviousButtonStyle.swift" : {
+      "fontSize" : 3,
+      "radius" : 1
+    },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MainWindowView.swift" : {
       "color" : 4,
       "fontSize" : 4,
@@ -216,8 +220,8 @@
       "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsComponents.swift" : {
-      "fontSize" : 13,
-      "radius" : 16
+      "fontSize" : 10,
+      "radius" : 15
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsDesignTokens.swift" : {
       "color" : 1

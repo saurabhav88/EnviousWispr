@@ -113,9 +113,11 @@ struct LivePreviewPackCatalogSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      SettingsSheetCloseButton(
-        accessibilityTitle: LivePreviewSettingsCopy.catalogCloseLabel
-      ) { dismiss() }
+      Button { dismiss() } label: {
+        EnviousCloseGlyph()
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(LivePreviewSettingsCopy.catalogCloseLabel)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -135,14 +137,12 @@ struct LivePreviewPackCatalogSheet: View {
       // NOT `.borderedProminent`, which rendered filled while it lived in the
       // navigation toolbar and grey the moment it moved into a plain row — the
       // same container-dependence measured on `Browse`.
-      SettingsActionButton(
-        verbatimTitle: LivePreviewSettingsCopy.catalogDoneButton,
-        isEnabled: true,
-        emphasis: .filled,
-        shortcut: .defaultAction
-      ) {
+      Button {
         dismiss()
+      } label: {
+        EnviousButtonLabel(verbatim: LivePreviewSettingsCopy.catalogDoneButton)
       }
+      .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -333,16 +333,17 @@ struct LivePreviewPackCatalogSheet: View {
       // install was running, which meant "looks disabled" and "is disabled" were
       // indistinguishable at exactly the moment the difference mattered.
       //
-      // `SettingsActionButton` carries an accent tint, a hover fill, and a
+      // `.settingsButton(...)` (`EnviousButtonStyle`) carries an accent tint, a hover fill, and a
       // disabled state that is visibly different from both.
-      SettingsActionButton(
-        verbatimTitle: packs.failedTag == pack.tag
-          ? LivePreviewSettingsCopy.packRetry
-          : LivePreviewSettingsCopy.packInstall,
-        isEnabled: packs.installingTag == nil
-      ) {
+      Button {
         packs.install(tag: pack.tag)
+      } label: {
+        EnviousButtonLabel(
+          verbatim: packs.failedTag == pack.tag
+            ? LivePreviewSettingsCopy.packRetry
+            : LivePreviewSettingsCopy.packInstall)
       }
+      .settingsButton(isEnabled: packs.installingTag == nil)
     }
   }
 }
@@ -353,5 +354,5 @@ struct LivePreviewPackCatalogSheet: View {
 ///
 // Nothing in this sheet is committed on exit, so the X and `Done` simply both
 // leave. The control itself is now
-// `SettingsSheetCloseButton` in `SettingsComponents.swift`, shared with
+// `EnviousCloseGlyph` in `Views/Design/EnviousButtonStyle.swift`, shared with
 // `LanguageLockSheet`, which held a byte-identical copy.

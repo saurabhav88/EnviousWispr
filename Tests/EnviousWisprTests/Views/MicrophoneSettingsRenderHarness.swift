@@ -126,8 +126,10 @@ struct MicrophoneSettingsRenderHarness {
           SettingsRow(fixtureTitle: german ? "Bluetooth-Tipps" : "Bluetooth tips", icon: "dot.radiowaves.left.and.right",
             resolvedShort: german ? "So vermeidest du Verzögerungen beim Start." : String(localized: DictationSettingsCopy.Microphone.bluetoothShort),
             resolvedHelp: "Draft surrounding row; the unchanged full guide and toggle remain production UAT.") {
-            SettingsActionButton(title: "Learn more", isEnabled: true, size: .large,
-              trailingSystemImage: "chevron.right") {}
+            Button {} label: {
+              EnviousButtonLabel("Learn more", size: .large, trailingSystemImage: "chevron.right")
+            }
+            .settingsButton(size: .large, isEnabled: true)
           }
         }
       }

@@ -265,9 +265,12 @@ private struct PackWordRow: View {
   private var controls: some View {
     HStack(spacing: 10) {
       if word.isEdited {
-        SettingsActionButton(title: "Restore", isEnabled: true) {
+        Button {
           packManager.restoreWord(packID, canonical: word.canonical)
+        } label: {
+          EnviousButtonLabel("Restore")
         }
+        .settingsButton(isEnabled: true)
       }
       Toggle(
         "",
@@ -330,11 +333,12 @@ private struct PackWordRow: View {
         .textFieldStyle(.plain)
         .font(.stHelper)
         .onSubmit(addAlias)
-      SettingsActionButton(
-        title: "Add", isEnabled: !newAlias.trimmingCharacters(in: .whitespaces).isEmpty
-      ) {
+      Button {
         addAlias()
+      } label: {
+        EnviousButtonLabel("Add")
       }
+      .settingsButton(isEnabled: !newAlias.trimmingCharacters(in: .whitespaces).isEmpty)
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 5)

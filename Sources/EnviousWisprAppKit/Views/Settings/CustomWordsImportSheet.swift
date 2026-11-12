@@ -132,7 +132,10 @@ struct CustomWordsImportSheet: View {
   private var header: some View {
     HStack(spacing: 8) {
       if model.canGoBack {
-        SettingsActionButton(title: "Back", isEnabled: true) { model.goBack() }
+        Button { model.goBack() } label: {
+          EnviousButtonLabel("Back")
+        }
+        .settingsButton(isEnabled: true)
       }
       Text(title)
         .font(.title3)
@@ -174,11 +177,12 @@ struct CustomWordsImportSheet: View {
         // a control nobody can look at -- and every word of the comment above
         // describes constraints on THAT button, which restyling risks quietly
         // invalidating.
-        SettingsActionButton(
-          title: "Done", isEnabled: true, emphasis: .filled, shortcut: .defaultAction
-        ) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Done")
         }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
         .overlay {
           Button("Done") { requestCancel() }
             .keyboardShortcut(.cancelAction)
@@ -202,18 +206,25 @@ struct CustomWordsImportSheet: View {
             .allowsHitTesting(false)
         }
       case .review:
-        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Cancel")
         }
-        SettingsActionButton(
-          verbatimTitle: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
-        ) {
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
+        Button {
           model.confirm()
+        } label: {
+          EnviousButtonLabel(verbatim: confirmTitle)
         }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
       case .methodPicker, .paste, .upload, .smartImportAppPicker, .working:
-        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Cancel")
         }
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
       }
     }
   }
@@ -477,15 +488,15 @@ private struct ImportPasteScreen: View {
         // edit it (cloud review, #1683) -- and #2447 makes that refusal VISIBLE,
         // since the system style drew the blocked and the ready states in the
         // same grey.
-        SettingsActionButton(
-          title: "Continue",
-          isEnabled: !(isCounting || wordCount == 0
-            || wordCount > CustomWordsImportLimits.maximumCandidates),
-          emphasis: .filled,
-          shortcut: .defaultAction
-        ) {
+        Button {
           model.begin(with: PasteWordsImportSource(text: model.pasteDraft))
+        } label: {
+          EnviousButtonLabel("Continue")
         }
+        .settingsButton(
+          .filled,
+          isEnabled: !(isCounting || wordCount == 0
+            || wordCount > CustomWordsImportLimits.maximumCandidates), shortcut: .defaultAction)
       }
     }
     .onAppear {
@@ -603,15 +614,16 @@ private struct ImportUploadScreen: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
 
-      SettingsActionButton(
-        title: "Choose a file", isEnabled: true, emphasis: .filled, systemImage: "folder"
-      ) {
+      Button {
         // The panel is opened first and the file read only after a choice, so
         // cancelling reads nothing and starts no work.
         if let url = CustomWordsImportFilePanel.chooseFile() {
           model.begin(with: FileImportSource(url: url))
         }
+      } label: {
+        EnviousButtonLabel("Choose a file", systemImage: "folder")
       }
+      .settingsButton(.filled, isEnabled: true)
 
       Text("Spreadsheets aren't supported yet.")
         .font(.stHelper)

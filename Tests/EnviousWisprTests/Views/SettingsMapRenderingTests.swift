@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprAppKitTestSupport
 import EnviousWisprAudio
 import EnviousWisprContacts
 import EnviousWisprCore
@@ -16,7 +17,6 @@ import Testing
 @testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
-import EnviousWisprAppKitTestSupport
 
 /// #3482 PR A, plan §3a(c) and §3.6 item 4: render the real Settings pages in every state that
 /// exposes a conditional control, and collect what each page registers with the Settings Map.
@@ -53,6 +53,17 @@ struct SettingsMapRenderingTests {
   /// without that wrapper (#3545).
   @TaskLocal static var pageTag: SettingsArrivalContent?
 
+  /// #4506: lets `DesignRenderHarness` photograph a page this suite builds, at the harness's own
+  /// size and appearance, once the page is ready (after any `until` wait). Nil for every test in
+  /// this suite, which then renders exactly as before.
+  struct CaptureHook: @unchecked Sendable {
+    let size: CGSize
+    let appearance: NSAppearance
+    let wrap: @MainActor (AnyView) -> AnyView
+    let capture: @MainActor (NSView, NSWindow) throws -> Void
+  }
+  @TaskLocal static var captureHook: CaptureHook?
+
   /// Tab stops the page itself declares. A focused text field hosts AppKit's shared field editor
   /// (an `NSTextView` with `isFieldEditor`), which also answers `canBecomeKeyView`; it is editing
   /// machinery that comes and goes with focus, not a stop the page adds, so it is not counted
@@ -75,9 +86,12 @@ struct SettingsMapRenderingTests {
     let sink = focusSink
     let tabStopSink = tabStopSink
     let revealSink = revealSink
+    let hook = captureHook
+    let width = hook?.size.width ?? width
+    let height = hook?.size.height ?? height
     let (changes, continuation) = AsyncStream<Void>.makeStream()
     let root =
-      view
+      (hook?.wrap(view) ?? view)
       .environment(\.settingsArrivalContent, pageTag)
       .frame(width: width, height: height)
       .onPreferenceChange(SettingsMapRegistrationKey.self) { value in
@@ -97,6 +111,10 @@ struct SettingsMapRenderingTests {
     host.frame = CGRect(x: 0, y: 0, width: width, height: height)
     let window = NSWindow(
       contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    if let hook {
+      host.appearance = hook.appearance
+      window.appearance = hook.appearance
+    }
     window.contentView = host
     defer { window.contentView = nil }
     host.layoutSubtreeIfNeeded()
@@ -117,6 +135,7 @@ struct SettingsMapRenderingTests {
     }
     continuation.finish()
     tabStopSink?.keyViews = keyViewCount(host)
+    try hook?.capture(host, window)
     return box.value
   }
 
@@ -596,7 +615,9 @@ struct SettingsMapRenderingTests {
       let (home, words) = try dictionaryHome()
       if state != "empty" { try await #require(words.add(CustomWord(canonical: "Envious")) == nil) }
       let list = try await registrations(
-        AnyView(YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(words)))
+        AnyView(
+          YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(
+            words)))
       let always = alwaysShown(on: .dictionary).filter {
         let node = SettingsMap.node($0)
         return node.dictionaryTab == nil || node.dictionaryTab == .yourWords
@@ -627,8 +648,7 @@ struct SettingsMapRenderingTests {
     _ tab: DictionaryTab, searching: Bool = false,
     learnFromPresentation: LearnFromEditsSettingsPresentation = .unwired,
     learnMemoryStored: Bool = false
-  ) async throws -> [SettingsMapRegistration]
-  {
+  ) async throws -> [SettingsMapRegistration] {
     let (home, words) = try Self.dictionaryHome()
     if searching { try await #require(words.add(CustomWord(canonical: "Envious")) == nil) }
     if learnMemoryStored {
@@ -650,7 +670,8 @@ struct SettingsMapRenderingTests {
           ScrollView { LazyVStack(alignment: .leading, spacing: 0) { content } }
             // As YourWordsView tags the tab it draws (#3545).
             .environment(
-              \.settingsArrivalContent, SettingsArrivalContent(page: .dictionary, dictionaryTab: tab))),
+              \.settingsArrivalContent,
+              SettingsArrivalContent(page: .dictionary, dictionaryTab: tab))),
         home: home, words: words, learnFromPresentation: learnFromPresentation))
   }
 
@@ -748,7 +769,9 @@ struct SettingsMapRenderingTests {
         PrivacySettingsView(launchedCrashReports: { launched })
           .environment(\.settingsPR1Density, true)
           // As AppSettingsView tags the tab it draws (#3545).
-          .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
     case "languageChange":
       // The appearance page with an isolated language preference that already chose German.
       let name = "ew.settingsMapLanguage.\(UUID().uuidString)"
@@ -761,7 +784,9 @@ struct SettingsMapRenderingTests {
         AppearanceSettingsView(languagePreference: preference)
           .environment(\.settingsPR1Density, true)
           // As AppSettingsView tags the tab it draws (#3545).
-          .environment(\.settingsArrivalContent, SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
+          .environment(
+            \.settingsArrivalContent,
+            SettingsArrivalContent(page: .appSettings, appSettingsTab: tab)))
     default:
       page = AnyView(AppSettingsView(selection: .constant(tab)))
     }
@@ -821,7 +846,8 @@ struct SettingsMapRenderingTests {
   /// #3972: the EnviousMeet page at rest, with no meetings, on one tab (#4058) with its strip.
   static func meetings(_ label: String) async throws -> Rendered {
     let parts = label.split(separator: ".").map(String.init)
-    let tab = try #require(MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
+    let tab = try #require(
+      MeetingsTab(rawValue: parts.count > 1 ? parts[1] : ""), "\(label) names no tab")
     let variant = parts.count > 2 ? parts[2] : nil
     let (home, environment) = try meetingsEnvironment(
       summaryProvider: tab == .summaries ? variant : nil,
@@ -920,13 +946,17 @@ struct SettingsMapRenderingTests {
     let page = try #require(SettingsPage(rawValue: parts[0]), "\(label) names no page")
     switch page {
     case .dictation:
-      return SettingsArrivalContent(page: page, dictationTab: try #require(DictationTab(rawValue: parts[1])))
+      return SettingsArrivalContent(
+        page: page, dictationTab: try #require(DictationTab(rawValue: parts[1])))
     case .appSettings:
-      return SettingsArrivalContent(page: page, appSettingsTab: try #require(AppSettingsTab(rawValue: parts[1])))
+      return SettingsArrivalContent(
+        page: page, appSettingsTab: try #require(AppSettingsTab(rawValue: parts[1])))
     case .dictionary:
-      return SettingsArrivalContent(page: page, dictionaryTab: try #require(DictionaryTab(rawValue: parts[1])))
+      return SettingsArrivalContent(
+        page: page, dictionaryTab: try #require(DictionaryTab(rawValue: parts[1])))
     case .meetings:
-      return SettingsArrivalContent(page: page, meetingsTab: try #require(MeetingsTab(rawValue: parts[1])))
+      return SettingsArrivalContent(
+        page: page, meetingsTab: try #require(MeetingsTab(rawValue: parts[1])))
     default:
       return SettingsArrivalContent(page: page)
     }
@@ -955,7 +985,9 @@ struct SettingsMapRenderingTests {
   /// content: the real YourWordsView for Dictionary states (search seeded through the page's own
   /// input), and for the two App Settings states the same page with App Settings' real tab strip
   /// above it, as AppSettingsView draws it.
-  static func wholePagePlaces(_ label: String) async throws -> [SettingsMapID: SettingsArrivalContent?] {
+  static func wholePagePlaces(_ label: String) async throws -> [SettingsMapID:
+    SettingsArrivalContent?]
+  {
     let content = try declaredContent(label)
     let sink = RevealSink()
     let view: AnyView
@@ -1019,7 +1051,8 @@ struct SettingsMapRenderingTests {
       let lands = request.ladder.contains {
         places[$0.id] == .some(content) || places[$0.id] == .some(content.pageOnly)
       }
-      #expect(lands, "\(label): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
+      #expect(
+        lands, "\(label): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
     }
   }
 
@@ -1104,7 +1137,8 @@ struct SettingsMapRenderingTests {
           places[$0.id] == .some(content) || places[$0.id] == .some(content.pageOnly)
         }
         #expect(
-          lands, "\(content): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
+          lands,
+          "\(content): \(entry.id) has no rung on screen: \(request.ladder.map(\.id.rawValue))")
       }
     }
   }
