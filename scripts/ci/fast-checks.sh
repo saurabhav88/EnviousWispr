@@ -109,6 +109,7 @@ member_ci_self_tests() {
   # #4507: the Mac host list and the read-only slot status (private fixtures only).
   python3 scripts/lib/mac_hosts.py --self-test
   python3 scripts/mac-slots.py --self-test
+  python3 scripts/remote-dev-app.py --self-test
   # #4507: a development snapshot reaches another checkout exactly; this one is untouched.
   python3 scripts/lib/remote-ship-test.py
 }
