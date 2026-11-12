@@ -267,7 +267,7 @@ Short messages that take the pill's place after or around a recording. Built fro
 **Advisory.** Muted microphone icon and a three-line explanation ("Audio isn't capturing. Your lid may be closed, ..."). `NotificationOverlayView` (multiline).
 
 ## notice-interruption-device-removed
-**Interrupted.** Red lips and orange "Microphone disconnected." on the dark capsule with a red edge. `DistressCapsuleBackground`.
+**Interrupted.** Red lips and orange "Microphone disconnected." on the dark capsule with a red edge. In the app the lips and edge pulse; the picture is the still Reduce Motion frame. `DistressCapsuleBackground`.
 
 ## notice-caching-model
 **Preparing a model.** Rainbow wheel, "Getting dictation ready...", subtitle "Parakeet is warming up after a restart". `ColdStartNoticeView` (spinner).

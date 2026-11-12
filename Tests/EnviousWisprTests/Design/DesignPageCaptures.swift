@@ -316,7 +316,11 @@ enum DesignPageCaptures {
     ).definition
     let model = OverlayRenderModel()
     model.publish(definition)
+    // The interruption pill pulses on a clock (red lips and edge glow), so two runs differ; it is
+    // photographed in its Reduce Motion picture (same red look, steady), as `holdsAnimatedMarksStill`
+    // stills the EnviousMeet mark. Every other notice is already still.
     let root = OverlayRootView(model: model, sendEvent: { _ in })
+      .environment(\.overlayReduceMotionOverride, key.hasPrefix("interruption-") ? true : nil)
     if let definition, case .fixed(let width) = definition.requestedWidth, width > 0 {
       if let height = definition.reservesFixedHeight {
         return AnyView(root.frame(width: width, height: height))

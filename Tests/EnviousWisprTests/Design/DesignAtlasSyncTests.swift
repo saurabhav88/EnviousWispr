@@ -52,6 +52,12 @@ struct DesignAtlasSyncTests {
       let close = try #require(rest.range(of: "\n}"), "\(opener) block is not closed")
       return rest[..<close.lowerBound]
     }
+    // The system-dark values must sit inside the dark media query, guarded by "no light
+    // choice"; the declarations alone cannot show which condition encloses them.
+    try #require(
+      generated.contains(
+        "@media (prefers-color-scheme: dark) {\n  :root:not([data-theme=\"light\"]) {"),
+      "atlas.css: the system-dark block is not inside @media (prefers-color-scheme: dark)")
     return (
       declarations(try block(after: ":root, :root[data-theme=\"light\"] {")),
       declarations(try block(after: ":root:not([data-theme=\"light\"]) {")),
@@ -130,7 +136,7 @@ struct DesignAtlasSyncTests {
     for (key, font) in book.fonts {
       let name = "--ew-font-" + Self.cssName(key)
       expectedLight.formUnion([name + "-size", name + "-weight", name + "-family"])
-      #expect(blocks.light[name + "-size"] == "\(Self.points(font.size))px", "\(key): size")
+      #expect(Self.number(blocks.light[name + "-size"], unit: "px") == font.size, "\(key): size")
       #expect(blocks.light[name + "-weight"] == weights[font.weight ?? "regular"], "\(key): weight")
       let lead = try #require(familyLead[font.design ?? "default"], "\(key): unknown design")
       #expect(
@@ -140,7 +146,7 @@ struct DesignAtlasSyncTests {
     for (key, value) in book.layout {
       let name = "--ew-" + Self.cssName(key)
       expectedLight.insert(name)
-      #expect(blocks.light[name] == "\(Self.points(value))px", "\(key): \(name)")
+      #expect(Self.number(blocks.light[name], unit: "px") == value, "\(key): \(name)")
     }
     let curves = [
       "easeIn": "ease-in", "easeOut": "ease-out", "easeInOut": "ease-in-out", "linear": "linear",
@@ -150,7 +156,7 @@ struct DesignAtlasSyncTests {
       let name = "--ew-motion-" + Self.cssName("Color." + member)
       expectedLight.formUnion([name + "-duration", name + "-curve"])
       #expect(
-        blocks.light[name + "-duration"] == "\(Self.points(motion.duration))s", "\(key): duration")
+        Self.number(blocks.light[name + "-duration"], unit: "s") == motion.duration, "\(key): duration")
       #expect(blocks.light[name + "-curve"] == curves[motion.curve], "\(key): curve")
     }
 
@@ -159,9 +165,11 @@ struct DesignAtlasSyncTests {
     #expect(Set(blocks.dark.keys) == expectedDark, "explicit-dark block names differ")
   }
 
-  /// `14.0` -> "14", `0.15` -> "0.15": the spelling the generator writes for a JSON number.
-  static func points(_ value: Double) -> String {
-    value == value.rounded() ? String(Int(value)) : String(value)
+  /// `14px` -> 14, `0.15s` -> 0.15; nil when the unit differs or the number does not parse, so
+  /// `14` and `14.0` in DESIGN.md compare equal whatever spelling the generator writes.
+  static func number(_ value: String?, unit: String) -> Double? {
+    guard let value, value.hasSuffix(unit) else { return nil }
+    return Double(value.dropLast(unit.count))
   }
 
   @Test("the hand-written part classes use only atlas variables, never a raw color")
@@ -169,7 +177,8 @@ struct DesignAtlasSyncTests {
     let css = try Self.generatedBlocks().css
     let start = try #require(css.range(of: Self.partClassesMarker), "atlas.css has no part classes")
     let classes = css[start.upperBound...]
-    let raw = try Regex(#"#[0-9a-fA-F]{3,8}\b|\brgba?\(\s*[0-9.]|\bhsla?\(\s*[0-9.]"#)
+    let raw = try Regex(#"#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(\s*[0-9.]"#)
+      .ignoresCase()
     let hits = classes.matches(of: raw).map { String(classes[$0.range]) }
     #expect(hits.isEmpty, "raw colors in atlas.css part classes: \(hits)")
   }
