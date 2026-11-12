@@ -305,6 +305,6 @@ enum DesignMotion {
   static let firstRunScreenIn = Animation.easeOut(duration: 0.32)
   /// Setup card, caption or check rising into place.
   ///
-  /// The approved mockup uses cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token.
-  static let firstRunRise = Animation.easeOut(duration: 0.45)
+  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token.
+  static let firstRunRise = Animation.easeOut(duration: 0.4)
 }

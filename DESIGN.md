@@ -272,7 +272,7 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "DesignMotion.standard": {"curve": "easeInOut", "duration": 0.3, "usage": "Default transition (the most-used duration)."},
     "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."},
     "DesignMotion.firstRunScreenIn": {"curve": "easeOut", "duration": 0.32, "usage": "Setup screen entering (slide and fade)."},
-    "DesignMotion.firstRunRise": {"curve": "easeOut", "duration": 0.45, "usage": "Setup card, caption or check rising into place.", "note": "The approved mockup uses cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token."}
+    "DesignMotion.firstRunRise": {"curve": "easeOut", "duration": 0.4, "usage": "Setup card, caption or check rising into place.", "note": "The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token."}
   }
 }
 ```
@@ -373,7 +373,7 @@ Each drawing has one owner file. Never redraw it elsewhere.
 ## Motion
 
 - **One hover curve:** `SettingsHover.animation` (ease out, 0.12 s). Everything in the window fades at that speed.
-- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). The Setup window adds two ease-out entries: `firstRunScreenIn` (0.32 s) and `firstRunRise` (0.45 s). Springs are used for physical movement, such as the switch knob.
+- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). The Setup window adds two ease-out entries: `firstRunScreenIn` (0.32 s) and `firstRunRise` (0.4 s). Springs are used for physical movement, such as the switch knob.
 - **Respect Reduce Motion.** Gate every animation on `accessibilityReduceMotion`; the state still changes, without the movement.
 
 ## Sound
