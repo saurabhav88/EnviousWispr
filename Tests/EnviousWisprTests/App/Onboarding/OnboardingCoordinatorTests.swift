@@ -77,6 +77,9 @@ struct OnboardingCoordinatorTests {
     /// The recommendation now (a rules refresh replaces it; a visit keeps the one it captured).
     var recommended = OnboardingRecommended(
       speech: .parakeet, polish: "eg1.mini", rulesVersion: "rules-a")
+    /// Per-language advice (M73); nil falls back to `recommended`. Every read is recorded.
+    var advice: (LanguageMode?) -> OnboardingRecommended? = { _ in nil }
+    var adviceReads: [LanguageMode?] = []
     var engine: (ASRBackendType, ASREngineReadiness) = (.parakeet, .ready)
     var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
     var permissions = (microphone: true, accessibility: true)
@@ -195,7 +198,11 @@ struct OnboardingCoordinatorTests {
           },
           writeLanguage: { self.log.append("language(\($0 == .auto ? "auto" : "locked"))") },
           writeNonLocalPolish: { self.log.append("writePolish(\($0.polish ?? "nil"))") },
-          savedChoices: { self.saved }, recommended: { self.recommended },
+          savedChoices: { self.saved },
+          recommended: { language in
+            self.adviceReads.append(language)
+            return self.advice(language) ?? self.recommended
+          },
           downloadsInParallel: { self.parallel },
           downloadBytes: { self.bytes[$0] }, freeDiskBytes: { self.free },
           acquireSleepAssertion: { self.log.append("awake") },
@@ -545,5 +552,128 @@ struct OnboardingCoordinatorTests {
     off.polish = OnboardingChoices.polishOff
     OnboardingCoordinator.writeNonLocalPolish(off, to: settings)
     #expect(settings.llmProvider == LLMProvider.none)
+  }
+
+  // MARK: M73 — the visit's advice follows the chosen language
+
+  private static let micro = OnboardingRecommended(
+    speech: .parakeet, polish: "eg1.micro", rulesVersion: "rules-a")
+  private static let germanMini = OnboardingRecommended(
+    speech: .parakeet, polish: "eg1.mini", rulesVersion: "rules-a")
+  private static let japaneseWhisper = OnboardingRecommended(
+    speech: .whisper, polish: "eg1.mini", rulesVersion: "rules-a")
+
+  /// An 8 GB Mac: Micro for Auto/English, Mini for locked German, Whisper for Japanese.
+  private static func eightGigWorld() -> World {
+    let world = World()
+    world.recommended = micro
+    world.advice = { mode in
+      switch mode {
+      case .locked("de")?: germanMini
+      case .locked("ja")?: japaneseWhisper
+      default: nil
+      }
+    }
+    return world
+  }
+
+  @Test("choosing German on 8 GB re-forms the advice to Mini before Next; untouched defaults use it")
+  func germanRefreshesPolishAdvice() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    #expect(c.state.recommended == Self.micro)
+    c.send(.next)
+    var observed: [OnboardingRecommended] = []
+    c.onObservation = {
+      if case .choicesCommitted(_, _, let recommended) = $0 { observed.append(recommended) }
+    }
+    c.send(.chooseLanguage(.locked("de")))
+    #expect(c.state.recommended == Self.germanMini)
+    #expect(observed == [Self.germanMini], "the observation saw other advice than the flow")
+    c.send(.next)  // language → speech pick
+    c.send(.next)  // speech default: Parakeet
+    c.send(.next)  // polish intro → pick
+    c.send(.next)  // polish default
+    #expect(c.state.choices.speech == .parakeet && c.state.choices.polish == "eg1.mini")
+  }
+
+  @Test("choosing Japanese re-forms the speech advice to Whisper")
+  func japaneseRefreshesSpeechAdvice() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.chooseLanguage(.locked("ja")))
+    c.send(.next)
+    c.send(.next)  // speech default
+    #expect(c.state.choices.speech == .whisper)
+  }
+
+  @Test("changing the language through Back keeps every committed pick, cloud and off included")
+  func backLanguageChangeKeepsPicks() {
+    for skip in [false, true] {
+      let world = Self.eightGigWorld()
+      let c = world.coordinator()
+      c.begin()
+      c.send(.next)
+      c.send(.chooseLanguage(.auto))
+      c.send(.next)
+      c.send(.chooseSpeech(.parakeet))
+      c.send(.next)
+      if skip {
+        c.send(.skipPolish)
+      } else {
+        c.send(.seeAllPolish)
+        c.send(.chooseCloud(.openAI, model: "gpt-4o-mini"))
+      }
+      let picks = c.state.choices
+      while c.state.step != .language { c.send(.back) }
+      c.send(.chooseLanguage(.locked("de")))
+      #expect(c.state.recommended == Self.germanMini)
+      var expected = picks
+      expected.languageMode = .locked("de")
+      #expect(c.state.choices == expected, "advice replaced a committed pick (skip: \(skip))")
+    }
+  }
+
+  @Test("the same language again, or a refused event, reads no new advice")
+  func noRefreshWithoutALanguageChange() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.chooseLanguage(.locked("de")))
+    let reads = world.adviceReads.count
+    c.send(.chooseLanguage(.locked("de")))
+    c.send(.choosePolish(OnboardingChoices.polishCloud))  // refused: wrong step and no provider
+    #expect(world.adviceReads.count == reads)
+    #expect(c.state.recommended == Self.germanMini)
+  }
+
+  @Test("restore forms the advice for the saved language and keeps the saved picks")
+  func restoreUsesSavedLanguage() throws {
+    let world = Self.eightGigWorld()
+    var saved = OnboardingFlowState()
+    saved.step = .polishPick
+    saved.choices = OnboardingChoices(languageMode: .locked("de"), speech: .parakeet)
+    world.checkpoint = try OnboardingCheckpoint(
+      state: saved, startedAt: Date(timeIntervalSince1970: 1),
+      savedAt: Date(timeIntervalSince1970: 2)
+    ).encoded()
+    let c = world.coordinator()
+    c.begin()
+    #expect(c.state.step == .polishPick && c.state.choices == saved.choices)
+    #expect(c.state.recommended == Self.germanMini)
+    c.send(.next)
+    #expect(c.state.choices.polish == "eg1.mini")
+
+    let legacy = Self.eightGigWorld()
+    legacy.legacy = .needsPermissions
+    legacy.saved = OnboardingChoices(languageMode: .locked("ja"))
+    let d = legacy.coordinator()
+    d.begin()
+    #expect(d.state.recommended == Self.japaneseWhisper)
+    #expect(d.state.choices.speech == .whisper && d.state.choices.polish == "eg1.mini")
   }
 }

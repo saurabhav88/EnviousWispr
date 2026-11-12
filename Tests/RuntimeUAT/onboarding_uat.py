@@ -516,19 +516,17 @@ def s_profiles(run, speech):
                  f"profile ram {case['ram']} is labelled simulated")
         run.reset(s, f"start a flow under ram {case['ram']}")
         run.send("next")
-        run.send("chooseLanguage", value=case["language"])
-        # The flow's recommendation is frozen at a fresh start (plan DELIVERY GATE): reset is
-        # the supported way to read the advice for the language just picked.
-        r = run.reset(s, "read the advice for the picked language (frozen-recommendation gate)")
+        # M73: the language pick itself re-forms the advice; its reply shows it.
+        r = run.send("chooseLanguage", value=case["language"])
         rec = r.get("recommended") or {}
         s.expect(rec.get("speech") == case["speech"] and rec.get("polish") == case["polish"],
                  f"ram {case['ram']} + {case['language']}: {case['speech']} / {case['polish']}",
                  rec)
     for afm in ("available", "unavailable"):
         r = run.app.call("onboarding", "profile", "--ram", "16", "--afm", afm)
-        run.app.call("onboarding", "send", "next")
-        run.send("chooseLanguage", value="auto")
-        r = run.reset(s, f"read advice with Apple Intelligence {afm}")
+        run.reset(s, f"start a flow with Apple Intelligence {afm}")
+        run.send("next")
+        r = run.send("chooseLanguage", value="auto")
         s.expect((r.get("recommended") or {}).get("polish") == "eg1.mini",
                  f"Apple Intelligence {afm} keeps EG-1 preselected (D1/D2)", r.get("recommended"))
     r = run.app.call("onboarding", "profile", "--clear")

@@ -82,8 +82,9 @@ final class OnboardingCoordinator {
     /// Writes an Apple Intelligence, cloud or off pick through SettingsManager.
     var writeNonLocalPolish: (OnboardingChoices) -> Void
     var savedChoices: () -> OnboardingChoices
-    /// The recommendation now, from one recommendation read (picks and rules version together).
-    var recommended: () -> OnboardingRecommended
+    /// The recommendation for a dictation language, from one recommendation read (picks and
+    /// rules version together). nil = not chosen yet: the language the app already uses.
+    var recommended: (LanguageMode?) -> OnboardingRecommended
     /// `memoryGiB >= activeRules.parallelDownloadsMinMemoryGiB`.
     var downloadsInParallel: () -> Bool
     /// Manifest `totalBytes` for a model; nil when unknown (delivery's own checks still run).
@@ -172,7 +173,7 @@ final class OnboardingCoordinator {
     if isActive { return true }  // Refocus or reopen: same flow, no restart.
     switch OnboardingRestore.resolve(
       legacyState: deps.legacyState(), checkpointData: deps.checkpointData(),
-      recommended: deps.recommended(),
+      recommend: deps.recommended,
       saved: deps.savedChoices())
     {
     case .completed:
@@ -184,7 +185,9 @@ final class OnboardingCoordinator {
       if let outcome { deps.onPracticeOutcome(outcome) }
       deps.markCompleted()
       onObservation?(
-        .completed(choices, interrupted: true, rulesVersion: deps.recommended().rulesVersion))
+        .completed(
+          choices, interrupted: true,
+          rulesVersion: deps.recommended(choices.languageMode).rulesVersion))
       deps.onCompleted()
       return false
     case .fresh:
@@ -223,13 +226,18 @@ final class OnboardingCoordinator {
   func send(_ event: OnboardingEvent) {
     guard isActive else { return }
     let before = state
-    let transition = OnboardingFlow.reduce(state, event)
+    var transition = OnboardingFlow.reduce(state, event)
     if case .refused(let why) = transition.outcome {
       lastRefusal = why
       onChange?()
       return
     }
     lastRefusal = nil
+    // M73: an accepted language change re-forms the advice for that language before anything
+    // reads it (Next defaults, the observation, telemetry). Picks already made stay as they are.
+    if before.choices.languageMode != transition.state.choices.languageMode {
+      transition.state.recommended = deps.recommended(transition.state.choices.languageMode)
+    }
     if before.choices != transition.state.choices {
       // Before effects, so a final transition's completion follows its picks.
       onObservation?(
@@ -457,7 +465,7 @@ final class OnboardingCoordinator {
 
   private func freshState() -> OnboardingFlowState {
     var s = OnboardingFlowState()
-    s.recommended = deps.recommended()
+    s.recommended = deps.recommended(nil)
     return s
   }
 

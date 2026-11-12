@@ -70,23 +70,24 @@ extension OnboardingRestore {
   /// 5. otherwise Welcome.
   static func resolve(
     legacyState: OnboardingState, checkpointData: Data?,
-    recommended: OnboardingRecommended, saved: OnboardingChoices
+    recommend: (LanguageMode?) -> OnboardingRecommended, saved: OnboardingChoices
   ) -> OnboardingRestore {
     if legacyState == .completed { return .completed }
     var state = OnboardingFlowState()
-    state.recommended = recommended
     if let checkpoint = OnboardingCheckpoint.decode(checkpointData) {
       if checkpoint.step == .done { return .finishCompletion(checkpoint.practiceOutcome) }
       state.step = checkpoint.step
       state.choices = checkpoint.choices
       state.practiceOutcome = checkpoint.practiceOutcome
+      state.recommended = recommend(checkpoint.choices.languageMode)  // the saved language's advice
       return .resume(state, startedAt: checkpoint.startedAt)
     }
     if legacyState == .needsPermissions {
       state.step = .permissions
       state.choices = saved
-      state.choices.speech = saved.speech ?? recommended.speech
-      state.choices.polish = saved.polish ?? recommended.polish
+      state.recommended = recommend(saved.languageMode)
+      state.choices.speech = saved.speech ?? state.recommended.speech
+      state.choices.polish = saved.polish ?? state.recommended.polish
       return .resume(state, startedAt: nil)
     }
     return .fresh

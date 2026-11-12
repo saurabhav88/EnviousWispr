@@ -43,9 +43,10 @@ extension OnboardingCoordinator.Dependencies {
         notice: owners.aiAvailability.onboardingPolishNoticeForDisplay,
         live: facts.appleIntelligenceLive)
     }
-    let recommendation = {
+    // M73: the language is passed in; nil (not chosen yet) is the language the app already uses.
+    let recommendation = { (language: LanguageMode?) in
       SetupAdvice.recommendation(
-        languageMode: settings.languageMode, appleIntelligence: appleIntelligence(),
+        languageMode: language ?? settings.languageMode, appleIntelligence: appleIntelligence(),
         capabilities: LanguageLockOptions.speechCapabilities)
     }
     return Self(
@@ -77,13 +78,14 @@ extension OnboardingCoordinator.Dependencies {
       writeLanguage: { mode in if settings.languageMode != mode { settings.languageMode = mode } },
       writeNonLocalPolish: { OnboardingCoordinator.writeNonLocalPolish($0, to: settings) },
       savedChoices: { OnboardingLiveMapping.savedChoices(settings) },
-      recommended: {
-        let advice = recommendation()
+      recommended: { language in
+        let advice = recommendation(language)
         return OnboardingRecommended(
           speech: advice.speech, polish: OnboardingLiveMapping.preselectedPolish(advice),
           rulesVersion: advice.rulesVersion)
       },
-      downloadsInParallel: { recommendation().parallelDownloads },
+      // Memory only (§3.2 `parallelDownloadsMinMemoryGiB`): no language dependence.
+      downloadsInParallel: { recommendation(nil).parallelDownloads },
       downloadBytes: { model in
         let bytes = OnboardingLiveMapping.downloadBytes(
           model, parakeet: owners.modelDelivery.parakeetHandle?.modelTotalBytes,

@@ -43,7 +43,9 @@ struct OnboardingCheckpointTests {
   ) -> OnboardingRestore {
     OnboardingRestore.resolve(
       legacyState: legacy, checkpointData: data,
-      recommended: OnboardingRecommended(speech: .parakeet, polish: "eg1.mini", rulesVersion: "r1"),
+      recommend: { _ in
+        OnboardingRecommended(speech: .parakeet, polish: "eg1.mini", rulesVersion: "r1")
+      },
       saved: saved)
   }
 
