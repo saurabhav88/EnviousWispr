@@ -1,0 +1,60 @@
+# EG-M step 1 (#4443), research only: does Gemma 4 E4B / Qwen 3.5 4B finish the shipping summary
+# requests within a GitHub-hosted M1 runner's 7 GB, and how much memory and swap does it use?
+# Runs only on pushes to the research/egm-m1-memory branch; never on main or PRs. No secrets.
+name: egm-m1-memory
+on:
+  push:
+    branches: [research/egm-m1-memory]
+permissions:
+  contents: read
+concurrency:
+  group: egm-m1-memory
+  cancel-in-progress: true
+jobs:
+  replay:
+    if: github.repository == 'saurabhav88/EnviousWispr'
+    runs-on: macos-14
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gemma4-e4b
+            url: https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf
+            sha256: 676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee
+          - name: qwen35-4b
+            url: https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf
+            sha256: 00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          sparse-checkout: |
+            research/egm-m1
+            Sources/EnviousWispr/Resources/llama-server
+          sparse-checkout-cone-mode: false
+      - name: Machine facts
+        run: |
+          sysctl -n machdep.cpu.brand_string hw.memsize hw.ncpu | tee machine.txt
+          sw_vers | tee -a machine.txt
+          sysctl -n vm.swapusage | tee -a machine.txt
+          df -h . | tee -a machine.txt
+      - name: Download model
+        run: |
+          curl -sL --fail --retry 5 -o model.gguf "${{ matrix.url }}"
+          echo "${{ matrix.sha256 }}  model.gguf" | shasum -a 256 -c -
+      - name: Replay recorded summary requests
+        run: |
+          chmod +x Sources/EnviousWispr/Resources/llama-server
+          rc=0
+          python3 research/egm-m1/replay.py Sources/EnviousWispr/Resources/llama-server model.gguf \
+            "research/egm-m1/requests-${{ matrix.name }}.jsonl" result.json 4200 || rc=$?
+          grep -iE "metal|gpu|offload" server.log | head -20 || true
+          exit $rc
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: egm-m1-${{ matrix.name }}
+          path: |
+            machine.txt
+            result.json
+            server.log
