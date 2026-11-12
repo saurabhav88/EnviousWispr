@@ -40,15 +40,19 @@ struct ContactsImportConfirm: View {
         // button on the language selector." Both halves of each pair move
         // together here for that reason.
         if hasNewNames {
-          SettingsActionButton(
-            title: "Cancel", isEnabled: true, shortcut: .cancelAction, action: onCancel)
-          SettingsActionButton(
-            verbatimTitle: addButtonTitle, isEnabled: true, emphasis: .filled,
-            shortcut: .defaultAction, action: onConfirm)
+          Button(action: onCancel) {
+            EnviousButtonLabel("Cancel")
+          }
+          .settingsButton(isEnabled: true, shortcut: .cancelAction)
+          Button(action: onConfirm) {
+            EnviousButtonLabel(verbatim: addButtonTitle)
+          }
+          .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
         } else {
-          SettingsActionButton(
-            title: "Done", isEnabled: true, emphasis: .filled,
-            shortcut: .defaultAction, action: onCancel)
+          Button(action: onCancel) {
+            EnviousButtonLabel("Done")
+          }
+          .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
         }
       }
     }

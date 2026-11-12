@@ -26,23 +26,25 @@ struct MeetingCallSoundExplainer: View {
       .foregroundStyle(.stTextPrimary)
       .fixedSize(horizontal: false, vertical: true)
       HStack(spacing: 10) {
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Continue",
-            comment: "EnviousMeet: starts the recording after the call-sound explanation."),
-          isEnabled: true, emphasis: .filled, shortcut: .defaultAction
-        ) {
+        Button {
           Task { await startFlow.continueAfterExplainer() }
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Continue",
+              comment: "EnviousMeet: starts the recording after the call-sound explanation."))
         }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
         .accessibilityIdentifier("meetings.explainer.continue")
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Cancel",
-            comment: "EnviousMeet: closes the call-sound explanation without recording."),
-          isEnabled: true, emphasis: .quiet, shortcut: .cancelAction
-        ) {
+        Button {
           startFlow.cancelExplainer()
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Cancel",
+              comment: "EnviousMeet: closes the call-sound explanation without recording."))
         }
+        .settingsButton(.quiet, isEnabled: true, shortcut: .cancelAction)
         .accessibilityIdentifier("meetings.explainer.cancel")
       }
     }
@@ -80,14 +82,17 @@ struct MeetingLivePanel: View {
                 comment: "EnviousMeet, VoiceOver: how long the meeting has been recording."))
         }
         Spacer()
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Stop Recording",
-            comment: "EnviousMeet: the button that stops the meeting recording."),
-          isEnabled: true, emphasis: .destructive, size: .medium, systemImage: "stop.circle"
-        ) {
+        Button(role: .destructive) {
           Task { await meetings.stop(reason: .user) }
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Stop Recording",
+              comment: "EnviousMeet: the button that stops the meeting recording."),
+            size: .medium,
+            systemImage: "stop.circle")
         }
+        .settingsButton(size: .medium, isEnabled: true)
         .accessibilityIdentifier("meetings.stop")
       }
       meters

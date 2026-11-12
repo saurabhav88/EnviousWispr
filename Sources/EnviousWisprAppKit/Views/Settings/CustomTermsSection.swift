@@ -191,9 +191,12 @@ struct CustomTermsSection<Actions: View>: View {
             // The one irreversible action on this page. The system destructive
             // role renders as ordinary grey here, so the control that deletes a
             // word list looked exactly like the control that cancels.
-            SettingsActionButton(title: "Delete…", isEnabled: true, emphasis: .destructive) {
+            Button(role: .destructive) {
               pendingBulkDelete = BulkDeleteRequest(ids: list.selectedIDs)
+            } label: {
+              EnviousButtonLabel("Delete…")
             }
+            .settingsButton(isEnabled: true)
           }
         }
       }

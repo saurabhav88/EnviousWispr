@@ -158,11 +158,13 @@ struct LanguageLockSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      SettingsSheetCloseButton(
-        accessibilityTitle: String(
+      Button { dismiss() } label: {
+        EnviousCloseGlyph()
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(String(
           localized: "Close",
-          comment: "Dictation language picker: VoiceOver name of the close button.")
-      ) { dismiss() }
+          comment: "Dictation language picker: VoiceOver name of the close button."))
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -181,9 +183,12 @@ struct LanguageLockSheet: View {
       // WITHOUT choosing is a secondary action here, because the rows are the
       // primary one. `Done` on the catalogue sheet is filled because nothing
       // competes with it there.
-      SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+      Button {
         dismiss()
+      } label: {
+        EnviousButtonLabel("Cancel")
       }
+      .settingsButton(isEnabled: true, shortcut: .cancelAction)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)

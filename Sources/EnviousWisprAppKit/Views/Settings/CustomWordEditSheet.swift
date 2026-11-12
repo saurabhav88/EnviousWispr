@@ -165,22 +165,29 @@ struct CustomWordEditSheet: View {
       // Actions
       HStack {
         if onDelete != nil {
-          SettingsActionButton(title: "Delete", isEnabled: !isSubmitting, emphasis: .destructive) {
+          Button(role: .destructive) {
             showingDeleteConfirmation = true
+          } label: {
+            EnviousButtonLabel("Delete")
           }
+          .settingsButton(isEnabled: !isSubmitting)
         }
         Spacer()
-        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           dismiss()
+        } label: {
+          EnviousButtonLabel("Cancel")
         }
-        SettingsActionButton(
-          title: "Save",
-          isEnabled: !isSubmitting && !word.canonical.trimmingCharacters(in: .whitespaces).isEmpty,
-          emphasis: .filled,
-          shortcut: .defaultAction
-        ) {
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
+        Button {
           submit { await onSave(word) }
+        } label: {
+          EnviousButtonLabel("Save")
         }
+        .settingsButton(
+          .filled,
+          isEnabled: !isSubmitting && !word.canonical.trimmingCharacters(in: .whitespaces).isEmpty,
+          shortcut: .defaultAction)
       }
     }
     .confirmationDialog(

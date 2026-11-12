@@ -141,18 +141,19 @@ struct MeetingHistoryDetailView: View {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
         Spacer(minLength: 0)
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Delete meeting",
-            comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
-          isEnabled: !actionInFlight, emphasis: .destructive
-        ) {
+        Button(role: .destructive) {
           actionInFlight = true
           Task {
             orphanRefused = !(await meetings.deleteOrphan(meetingID: meetingID))
             actionInFlight = false
           }
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Delete meeting",
+              comment: "EnviousMeet: removes the meeting, its audio and its transcript."))
         }
+        .settingsButton(isEnabled: !actionInFlight)
         .accessibilityIdentifier("meetings.detail.deleteOrphan")
       }
       if orphanRefused {
@@ -258,14 +259,15 @@ struct MeetingHistoryDetailView: View {
       .settingsButton(.quiet, isEnabled: offered.deleteAudio && !actionInFlight)
       .accessibilityIdentifier("meetings.detail.deleteAudio")
       Spacer(minLength: 0)
-      SettingsActionButton(
-        title: LocalizedStringResource(
-          "Delete meeting",
-          comment: "EnviousMeet: removes the meeting, its audio and its transcript."),
-        isEnabled: offered.delete && !actionInFlight, emphasis: .destructive
-      ) {
+      Button(role: .destructive) {
         confirming = .deleteMeeting
+      } label: {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Delete meeting",
+            comment: "EnviousMeet: removes the meeting, its audio and its transcript."))
       }
+      .settingsButton(isEnabled: offered.delete && !actionInFlight)
       .accessibilityIdentifier("meetings.detail.delete")
     }
   }
@@ -286,11 +288,7 @@ struct MeetingHistoryDetailView: View {
       .foregroundStyle(.stTextPrimary)
       .fixedSize(horizontal: false, vertical: true)
       HStack(spacing: 10) {
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Delete", comment: "EnviousMeet: confirms a deletion."),
-          isEnabled: !actionInFlight, emphasis: .destructive
-        ) {
+        Button(role: .destructive) {
           confirming = nil
           switch kind {
           case .deleteAudio:
@@ -306,15 +304,21 @@ struct MeetingHistoryDetailView: View {
                 row: meeting.row))
             Task { await transcripts.delete(item) }
           }
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Delete", comment: "EnviousMeet: confirms a deletion."))
         }
+        .settingsButton(isEnabled: !actionInFlight)
         .accessibilityIdentifier("meetings.detail.confirmDelete")
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Cancel", comment: "EnviousMeet: keeps the meeting as it is."),
-          isEnabled: true, emphasis: .quiet, shortcut: .cancelAction
-        ) {
+        Button {
           confirming = nil
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Cancel", comment: "EnviousMeet: keeps the meeting as it is."))
         }
+        .settingsButton(.quiet, isEnabled: true, shortcut: .cancelAction)
       }
     }
     .padding(12)

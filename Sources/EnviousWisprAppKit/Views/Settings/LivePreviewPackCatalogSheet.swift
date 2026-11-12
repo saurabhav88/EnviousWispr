@@ -113,9 +113,11 @@ struct LivePreviewPackCatalogSheet: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(Color.stTextPrimary)
       Spacer(minLength: 12)
-      SettingsSheetCloseButton(
-        accessibilityTitle: LivePreviewSettingsCopy.catalogCloseLabel
-      ) { dismiss() }
+      Button { dismiss() } label: {
+        EnviousCloseGlyph()
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(LivePreviewSettingsCopy.catalogCloseLabel)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)
@@ -135,14 +137,12 @@ struct LivePreviewPackCatalogSheet: View {
       // NOT `.borderedProminent`, which rendered filled while it lived in the
       // navigation toolbar and grey the moment it moved into a plain row — the
       // same container-dependence measured on `Browse`.
-      SettingsActionButton(
-        verbatimTitle: LivePreviewSettingsCopy.catalogDoneButton,
-        isEnabled: true,
-        emphasis: .filled,
-        shortcut: .defaultAction
-      ) {
+      Button {
         dismiss()
+      } label: {
+        EnviousButtonLabel(verbatim: LivePreviewSettingsCopy.catalogDoneButton)
       }
+      .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
     }
     .padding(.horizontal, Self.inset)
     .padding(.vertical, 12)

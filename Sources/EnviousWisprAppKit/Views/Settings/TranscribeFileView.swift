@@ -2370,10 +2370,16 @@ struct TranscribeFileView: View {
   /// thing this feature exists to keep on the Mac.
   private var shareButton: some View {
     ShareLink(item: coordinator.exportText) {
-      SettingsActionButton(
-        verbatimTitle: coordinator.exportButtonLabels.share, isEnabled: coordinator.hasDocument,
-        emphasis: .quiet, shape: .roundedRect, size: .medium,
+      EnviousButtonLabel(
+        verbatim: coordinator.exportButtonLabels.share,
+        size: .medium,
         systemImage: "square.and.arrow.up")
+        .modifier(
+          EnviousButtonFace(
+            emphasis: .quiet, shape: .roundedRect, size: .medium,
+            paintsEnabled: coordinator.hasDocument)
+        )
+        .disabled(!coordinator.hasDocument)
     }
     .buttonStyle(.plain)
     // Same rule as Copy and Save: nothing to hand over means no offer, rather than a sheet

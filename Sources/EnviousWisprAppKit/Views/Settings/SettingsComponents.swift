@@ -1043,9 +1043,11 @@ struct SettingsSummaryCard<Summary: View, Status: View, Choices: View>: View {
     Button {
       open(fromKeyboard: changeFocused, fromAccessibility: changeAccessibilityFocused)
     } label: {
-      SettingsActionButton(
-        title: SettingsItemCopy.Shared.change,
-        isEnabled: true, emphasis: .outlined, shape: .roundedRect, size: .medium)
+      EnviousButtonLabel(SettingsItemCopy.Shared.change, size: .medium)
+        .modifier(
+          EnviousButtonFace(
+            emphasis: .outlined, shape: .roundedRect, size: .medium, paintsEnabled: true)
+        )
     }
     .buttonStyle(.plain)
     .fixedSize()

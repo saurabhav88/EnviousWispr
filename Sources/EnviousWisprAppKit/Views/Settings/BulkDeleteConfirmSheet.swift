@@ -67,8 +67,10 @@ struct BulkDeleteConfirmSheet: View {
       }
 
       HStack {
-        SettingsActionButton(
-          title: "Cancel", isEnabled: !isExporting, shortcut: .cancelAction, action: onCancel)
+        Button(action: onCancel) {
+          EnviousButtonLabel("Cancel")
+        }
+        .settingsButton(isEnabled: !isExporting, shortcut: .cancelAction)
 
         Spacer()
 
@@ -89,13 +91,12 @@ struct BulkDeleteConfirmSheet: View {
         // as Cancel with only the system's destructive ROLE separating them --
         // a role that renders as red TEXT on macOS and disappears entirely
         // against this palette.
-        SettingsActionButton(
-          verbatimTitle: Self.deleteLabel(count: ids.count),
-          isEnabled: !isExporting && !isDeleting,
-          emphasis: .destructive
-        ) {
+        Button(role: .destructive) {
           deleteSelection()
+        } label: {
+          EnviousButtonLabel(verbatim: Self.deleteLabel(count: ids.count))
         }
+        .settingsButton(isEnabled: !isExporting && !isDeleting)
       }
     }
     .padding(24)

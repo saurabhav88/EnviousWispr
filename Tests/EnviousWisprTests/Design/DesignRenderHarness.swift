@@ -330,7 +330,10 @@ struct DesignRenderHarness {
           }.rowStatus {
             Text(verbatim: de["EnviousWispr uses the new language after it relaunches."]!)
               .font(.stRowHelper).fixedSize(horizontal: false, vertical: true)
-            SettingsActionButton(verbatimTitle: de["Relaunch to apply"]!, isEnabled: true) {}
+            Button {} label: {
+              EnviousButtonLabel(verbatim: de["Relaunch to apply"]!)
+            }
+            .settingsButton(isEnabled: true)
           }
         }
         BrandedRow(showDivider: false) {

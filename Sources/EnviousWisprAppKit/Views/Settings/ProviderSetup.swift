@@ -1477,14 +1477,14 @@ private var apiKeyRow: some View {
             // Clear destroys a stored key, so it is offered only when one is stored, and in
             // the destructive style so it never reads like an inert button.
             if savedKeyIsPresentForCurrentProvider {
-              SettingsActionButton(
-                title: SettingsItemCopy.AIPolish.keyClear,
-                isEnabled: model.hasPendingKeyMutation == false, emphasis: .destructive, size: .medium
-              ) {
+              Button(role: .destructive) {
                 ProviderSetupKeyActions.clear(
                   provider: provider, model: model, owners: keyActionOwners,
                   onCleared: { revealsKey = false })
+              } label: {
+                EnviousButtonLabel(SettingsItemCopy.AIPolish.keyClear, size: .medium)
               }
+              .settingsButton(size: .medium, isEnabled: model.hasPendingKeyMutation == false)
               .settingsMapRegistration(.apiKeyClear)
             }
           }
@@ -2390,12 +2390,14 @@ private var ollamaBrowseModelsCard: some View {
           .foregroundStyle(Color.stTextPrimary)
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        SettingsSheetCloseButton(
-          accessibilityTitle: String(
-            localized: "Close Models", comment: "AI Polish, Ollama: closes the model list sheet.")
-        ) {
+        Button {
           model.modelsSheetOpen = false
+        } label: {
+          EnviousCloseGlyph()
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(
+            localized: "Close Models", comment: "AI Polish, Ollama: closes the model list sheet."))
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 14)
@@ -2410,13 +2412,15 @@ private var ollamaBrowseModelsCard: some View {
       Divider().overlay(Color.stDivider)
       HStack {
         Spacer()
-        SettingsActionButton(
-          title: LocalizedStringResource(
-            "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
-          isEnabled: true, emphasis: .filled, size: .medium, shortcut: .defaultAction
-        ) {
+        Button {
           model.modelsSheetOpen = false
+        } label: {
+          EnviousButtonLabel(
+            LocalizedStringResource(
+              "Done", comment: "AI Polish, Ollama: closes the model list sheet."),
+            size: .medium)
         }
+        .settingsButton(.filled, size: .medium, isEnabled: true, shortcut: .defaultAction)
       }
       .padding(.horizontal, 18)
       .padding(.vertical, 12)

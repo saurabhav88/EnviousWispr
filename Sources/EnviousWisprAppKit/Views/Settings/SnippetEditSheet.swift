@@ -216,16 +216,21 @@ struct SnippetEditSheet: View {
       }
       HStack(spacing: 8) {
         if let existing = draft.snippet {
-          SettingsActionButton(title: "Delete", isEnabled: true, emphasis: .destructive) {
+          Button(role: .destructive) {
             if coordinator.delete(existing) { dismiss() } else { error = coordinator.errorMessage }
+          } label: {
+            EnviousButtonLabel("Delete")
           }
+          .settingsButton(isEnabled: true)
           .background { layoutProbe?("Delete") }
         }
         Spacer(minLength: 0)
-        SettingsActionButton(
-          title: "Cancel", isEnabled: true, emphasis: .outlined, shape: .roundedRect,
-          size: .medium, shortcut: .cancelAction
-        ) { dismiss() }
+        Button { dismiss() } label: {
+          EnviousButtonLabel("Cancel", size: .medium)
+        }
+        .settingsButton(
+          shape: .roundedRect, size: .medium,
+          isEnabled: true, shortcut: .cancelAction)
         .background { layoutProbe?("Cancel") }
         // A new snippet's confirm says what it does (mockup 15); an edit keeps Save.
         Button { save() } label: {

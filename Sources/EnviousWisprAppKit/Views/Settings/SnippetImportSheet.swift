@@ -152,11 +152,12 @@ struct SnippetImportSheet: View {
         // so a hover treatment on it would be decoration for a control nobody can look at,
         // and every word of the comment above describes constraints on THAT button, which
         // restyling risks quietly invalidating.
-        SettingsActionButton(
-          title: "Done", isEnabled: true, emphasis: .filled, shortcut: .defaultAction
-        ) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Done")
         }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
         .overlay {
           Button("Done") { requestCancel() }
             .keyboardShortcut(.cancelAction)
@@ -178,18 +179,25 @@ struct SnippetImportSheet: View {
             .allowsHitTesting(false)
         }
       case .review:
-        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Cancel")
         }
-        SettingsActionButton(
-          verbatimTitle: confirmTitle, isEnabled: true, emphasis: .filled, shortcut: .defaultAction
-        ) {
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
+        Button {
           model.confirm()
+        } label: {
+          EnviousButtonLabel(verbatim: confirmTitle)
         }
+        .settingsButton(.filled, isEnabled: true, shortcut: .defaultAction)
       case .methodPicker, .paste, .file, .appPicker, .working:
-        SettingsActionButton(title: "Cancel", isEnabled: true, shortcut: .cancelAction) {
+        Button {
           requestCancel()
+        } label: {
+          EnviousButtonLabel("Cancel")
         }
+        .settingsButton(isEnabled: true, shortcut: .cancelAction)
       }
     }
   }
@@ -453,17 +461,17 @@ private struct SnippetImportPasteScreen: View {
         Spacer(minLength: 0)
         // Over-limit is a refusal, not a warning: Continue would land the user on the
         // terminal failure screen, which has no Back. Block it where they can still edit.
-        SettingsActionButton(
-          title: "Continue",
-          isEnabled: !(isCounting || count == 0 || parseProblem != nil),
-          emphasis: .filled,
-          shortcut: .defaultAction
-        ) {
+        Button {
           // The same resolution the count used: the choice applies only to an ambiguous
           // paste (`PasteSnippetsImportSource.resolvedFormat`).
           model.begin(
             with: PasteSnippetsImportSource(text: model.pasteDraft, format: model.pasteFormat))
+        } label: {
+          EnviousButtonLabel("Continue")
         }
+        .settingsButton(
+          .filled,
+          isEnabled: !(isCounting || count == 0 || parseProblem != nil), shortcut: .defaultAction)
       }
     }
     .onAppear {
