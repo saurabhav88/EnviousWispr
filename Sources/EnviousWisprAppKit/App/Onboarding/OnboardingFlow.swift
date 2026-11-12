@@ -256,6 +256,9 @@ enum OnboardingFlow {
       return s.isReadyForPractice ? move(.practice) : refuse("not ready for practice")
 
     case (.practice, .practiceSucceeded):
+      // A resumed Practice opens with empty readiness; a take only counts once the current
+      // picks are ready again (plan §3.3.1, C2b).
+      guard s.isReadyForPractice else { return refuse("not ready for practice") }
       s.practiceOutcome = .succeeded
       return move(.film, [.recordPracticeOutcome(.succeeded)])
     case (.practice, .skipPractice):

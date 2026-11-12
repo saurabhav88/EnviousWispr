@@ -284,6 +284,16 @@ struct OnboardingFlowTests {
     #expect(OnboardingFlow.reduce(Self.at(.downloads), .turnPolishOn).state.step == .polishPick)
   }
 
+  @Test("a take on a resumed Practice counts only once the current picks are ready")
+  func practiceNeedsCurrentReadiness() {
+    var s = Self.at(.practice)
+    s.choices.speech = .parakeet
+    s.choices.polish = OnboardingChoices.polishOff
+    #expect(OnboardingFlow.reduce(s, .practiceSucceeded).outcome == .refused("not ready for practice"))
+    s.readiness = Self.ready(speech: .parakeet, polish: nil)
+    #expect(OnboardingFlow.reduce(s, .practiceSucceeded).state.step == .film)
+  }
+
   @Test("Skip practice finishes Setup and records the skip before completion")
   func skipPractice() {
     let t = OnboardingFlow.reduce(Self.at(.practice), .skipPractice)
