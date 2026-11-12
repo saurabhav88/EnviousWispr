@@ -45,6 +45,8 @@
     /// abandon or complete it. The old onboarding's live visit is never touched from here.
     private(set) var ownsVisit = false
     private(set) var session: Session?
+    /// The new Setup's screens for this session (D0); closed by the single ownership release.
+    private let presenter = DevControlSetupPresenter()
     /// The catalog's in-flight owner query, so repeated `status` reads start at most one.
     private var installedQuery: Task<Void, Never>?
 
@@ -124,6 +126,18 @@
       endOwnership()
     }
 
+    /// Shows (or refocuses) the new Setup's screens for this session's running flow (D0). A
+    /// mutation: it opens a window. Refused unless this session owns Setup and runs, and while
+    /// the old onboarding's window is open. Never begins, resets or moves the flow.
+    func present() -> Result {
+      guard workflow.current == .backend, let session, session.coordinator.isActive else {
+        return notRunning()
+      }
+      guard !workflow.legacyWindowVisible() else { return legacyBusy() }
+      presenter.show(coordinator: session.coordinator)
+      return .ok(snapshot())
+    }
+
     /// Holds Setup for a CLI session from launch (`holdAtLaunchEnvironmentKey`).
     func holdForUAT() -> Bool { claim() }
 
@@ -165,6 +179,7 @@
     /// The one way this door gives Setup back (stop, and completion through the session's
     /// observer): simulation is cleared first, so no override outlives the session (M60).
     func endOwnership() {
+      presenter.close()
       clearSimulation()
       workflow.releaseBackendSession()
     }
@@ -403,6 +418,7 @@
         "checkpoint": OnboardingCheckpoint.decode(checkpointData()).map { $0.step.rawValue }
           ?? NSNull(),
         "sessionBuilt": session != nil,
+        "presented": presenter.isVisible,
         "simulated": simulatedSnapshot(),
       ]
       if let coordinator = session?.coordinator {

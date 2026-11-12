@@ -429,6 +429,7 @@ def build_parser():
     ).add_subparsers(dest="action", required=True, metavar="ACTION")
     for verb in ("status", "begin", "reset", "stop"):
         onboarding.add_parser(verb)
+    onboarding.add_parser("present", help="show the new Setup screens for the running session (D0)")
     goto = onboarding.add_parser("goto", help="DEBUG positioning, not proof of prerequisites")
     goto.add_argument("step", choices=ONBOARDING_STEPS)
     send = onboarding.add_parser("send", help="send the event a Setup button sends")
@@ -604,7 +605,7 @@ def route(args):
     if args.group == "onboarding":
         if args.action == "status":
             return "onboarding.status", None, False
-        if args.action in ("begin", "reset", "stop"):
+        if args.action in ("begin", "reset", "stop", "present"):
             return f"onboarding.{args.action}", None, True
         if args.action == "goto":
             return "onboarding.goto", {"step": args.step}, True

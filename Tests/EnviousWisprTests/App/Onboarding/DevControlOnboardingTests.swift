@@ -29,7 +29,8 @@
     private static func make(
       _ world: OnboardingCoordinatorTests.World = .init(),
       workflow: OnboardingWorkflowOwner = .init(),
-      box: Box = Box()
+      box: Box = Box(),
+      telemetry: OnboardingTelemetryObserver? = nil
     ) -> (DevControlOnboarding, OnboardingWorkflowOwner, OnboardingCoordinatorTests.World) {
       let door = DevControlOnboarding(
         workflow: workflow,
@@ -46,7 +47,7 @@
               sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
               pollInterval: .seconds(3600)))
           return .init(
-            coordinator: coordinator, runtime: runtime,
+            coordinator: coordinator, runtime: runtime, telemetry: telemetry,
             downloadPhases: { choices in
               ["speech": DevControlOnboarding.phaseName(choices.speech.map {
                 world.speechPhase[$0] ?? .notStarted
@@ -155,6 +156,43 @@
       #expect(workflow.legacyMayOpen == false)
       _ = door.stop()
       #expect(workflow.backendSessionActive == false && workflow.legacyMayOpen)
+    }
+
+    @Test("present needs the running backend session, refocuses one window, and stop closes it (D0)")
+    func presentLifecycle() {
+      let (door, workflow, _) = Self.make()
+      #expect(Self.code(door.present()) == "rejected", "presented with no session")
+      _ = door.begin()
+      let first = Self.payload(door.present())
+      #expect(first?["presented"] as? Bool == true && first?["step"] as? String == "welcome")
+      _ = door.send(["event": "next"])
+      let again = Self.payload(door.present())  // refocus: same flow, not restarted
+      #expect(again?["presented"] as? Bool == true && again?["step"] as? String == "language")
+      #expect(NSApp.windows.filter { $0.title == "Setup" && $0.isVisible }.count == 1)
+      _ = door.stop()
+      #expect(Self.payload(door.status())?["presented"] as? Bool == false)
+      #expect(NSApp.windows.filter { $0.title == "Setup" && $0.isVisible }.isEmpty)
+      #expect(workflow.legacyMayOpen)
+    }
+
+    @Test("closing the Setup window keeps the flow; placeholders send no screen rows (D0, M67)")
+    func closeKeepsFlowAndPlaceholdersSendNothing() throws {
+      let recorder = OnboardingTelemetryObserverTests.Recorder()
+      let observer = recorder.observer()
+      let (door, _, _) = Self.make(telemetry: observer)
+      _ = door.begin()
+      _ = door.present()
+      _ = door.send(["event": "next"])
+      _ = door.send(["event": "chooseLanguage", "value": "auto"])
+      let window = try #require(NSApp.windows.first { $0.title == "Setup" && $0.isVisible })
+      window.close()
+      let status = Self.payload(door.status())
+      #expect(status?["presented"] as? Bool == false)
+      #expect(status?["active"] as? Bool == true && status?["step"] as? String == "language")
+      #expect(recorder.rows.isEmpty, "a placeholder or step change sent screen rows")
+      _ = door.present()  // reattaches to the same flow
+      #expect(Self.payload(door.status())?["step"] as? String == "language")
+      _ = door.stop()
     }
 
     @Test("a completed install opens no session and keeps Setup unowned")

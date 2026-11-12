@@ -400,6 +400,7 @@ def routes_and_values(r, tree):
         (["onboarding", "begin"], "onboarding.begin", None),
         (["onboarding", "reset"], "onboarding.reset", None),
         (["onboarding", "stop"], "onboarding.stop", None),
+        (["onboarding", "present"], "onboarding.present", None),
         (["onboarding", "goto", "permissions"], "onboarding.goto", {"step": "permissions"}),
         (["onboarding", "send", "next"], "onboarding.send", {"event": "next"}),
         (["onboarding", "profile", "--ram", "8", "--afm", "unavailable", "--lang", "de"],

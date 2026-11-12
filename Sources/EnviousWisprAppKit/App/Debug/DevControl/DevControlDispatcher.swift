@@ -55,6 +55,7 @@
       case onboardingProfile = "onboarding.profile"
       case onboardingPermissions = "onboarding.permissions"
       case onboardingFault = "onboarding.fault"
+      case onboardingPresent = "onboarding.present"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -300,6 +301,8 @@
         return onboardingCommand(args, allowed: ["mic", "ax", "clear"]) { $0.permissionsCommand(args) }
       case .onboardingFault:
         return onboardingCommand(args, allowed: ["name", "off", "clear"]) { $0.fault(args) }
+      case .onboardingPresent:
+        return onboardingCommand(args, allowed: []) { $0.present() }
       case .onboardingGoto:
         return onboardingCommand(args, allowed: ["step"]) { $0.goto(args) }
       case .onboardingSend:

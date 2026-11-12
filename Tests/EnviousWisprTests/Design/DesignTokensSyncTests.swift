@@ -275,7 +275,7 @@ struct DesignTokensSyncTests {
     "Color.firstRunErrorText": .firstRunErrorText, "Color.firstRunButtonHover": .firstRunButtonHover,
     "Color.firstRunButtonDisabled": .firstRunButtonDisabled,
     "Color.firstRunButtonDisabledText": .firstRunButtonDisabledText,
-    "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft,
+    "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft, "Color.firstRunRule": .firstRunRule,
   ]
 
   static let compiledFonts: [String: Font] = [

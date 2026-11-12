@@ -188,7 +188,8 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Color.firstRunButtonDisabled": {"light": [0.89, 0.871, 0.925, 1], "dark": [0.212, 0.188, 0.278, 1], "group": "First-run Setup", "usage": "Setup primary button fill while it cannot be pressed."},
     "Color.firstRunButtonDisabledText": {"light": [0.435, 0.38, 0.537, 1], "dark": [0.604, 0.573, 0.69, 1], "group": "First-run Setup", "usage": "Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable)."},
     "Color.firstRunOnAccent": {"light": [1.0, 1.0, 1.0, 1], "dark": [0.082, 0.071, 0.11, 1], "group": "First-run Setup", "usage": "Text or icon on an obAccent fill (selected tab, step dot)."},
-    "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."}
+    "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."},
+    "Color.firstRunRule": {"light": [0.0, 0.0, 0.0, 0.1], "dark": [1.0, 1.0, 1.0, 0.12], "group": "First-run Setup", "usage": "Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these."}
   },
   "fonts": {
     "Font.stSectionHeader": {

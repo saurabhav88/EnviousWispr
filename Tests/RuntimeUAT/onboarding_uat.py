@@ -64,6 +64,8 @@ ALLOWLIST = {
         "llmModel", "egOneSize", "cloudModelByProvider",
         # Consent, changed only by the telemetry suppression check.
         "shareUsageMetrics",
+        # App appearance, changed only by the shell screenshots (light and dark).
+        "appearancePreference",
     },
     DEV: set(),
 }
@@ -694,6 +696,87 @@ def s_consent_off(run, speech):
     return s
 
 
+SHELL_STEPS = ("welcome", "language", "speechPick", "polishPick", "permissions", "practice")
+
+
+def window_id(pid, title):
+    """The on-screen CGWindowID of `pid`'s window named `title`, or None (needs Quartz)."""
+    from Quartz import CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListOptionOnScreenOnly
+    for w in CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID) or []:
+        if w.get("kCGWindowOwnerPID") == pid and w.get("kCGWindowName") == title:
+            return w.get("kCGWindowNumber")
+    return None
+
+
+def setup_window_ax(pid, title="Setup"):
+    """(window title or None, every AXDescription/AXTitle text under it) for `pid`'s window
+    named `title`, read from the running app's accessibility tree."""
+    from ui_helpers import get_ax_app, get_attr
+    window = next((w for w in (get_attr(get_ax_app(pid), "AXWindows") or [])
+                   if get_attr(w, "AXTitle") == title), None)
+    if window is None:
+        return None, []
+    texts, stack = [], [window]
+    while stack and len(texts) < 500:
+        el = stack.pop()
+        for attr in ("AXDescription", "AXTitle", "AXValue", "AXLabel"):
+            v = get_attr(el, attr)
+            if isinstance(v, str) and v:
+                texts.append(v)
+        stack.extend(get_attr(el, "AXChildren") or [])
+    return get_attr(window, "AXTitle"), texts
+
+
+def capture_window(wid, path):
+    """Captures one window to `path`; True only for exit 0 and a fresh, nonempty file."""
+    if os.path.exists(path):
+        os.remove(path)
+    started = time.time()
+    done = subprocess.run(["screencapture", "-x", "-o", "-l", str(wid), path],
+                          capture_output=True, timeout=10)
+    return (done.returncode == 0 and os.path.exists(path) and os.path.getsize(path) > 0
+            and os.path.getmtime(path) >= started - 1)
+
+
+def s_shell(run, speech):
+    """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
+    light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
+    nothing about prerequisites. Appearance is set through the door and restored at the end."""
+    s = Scenario("shell")
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+    run.reset(s, "a fresh flow for the shell")
+    r = run.app.call("onboarding", "present")
+    s.expect(r.get("presented") is True, "present shows the Setup window", r.get("presented"))
+    again = run.app.call("onboarding", "present")
+    s.expect(again.get("presented") is True and again.get("step") == r.get("step"),
+             "a second present refocuses without moving the flow", again.get("step"))
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        for step in SHELL_STEPS:
+            run.app.call("onboarding", "goto", step)
+            time.sleep(0.6)  # test-fixture-timer: the 0.32 s screen entrance settles before capture
+            wid = window_id(run.app.client.pid, "Setup")
+            path = os.path.join(shots, f"shell-{appearance}-{step}.png")
+            if wid is None:
+                s.expect(False, f"Setup window found for {appearance}/{step}")
+                continue
+            s.expect(capture_window(wid, path), f"captured {appearance}/{step}", path)
+            if appearance == "light" and step == "polishPick":
+                title, texts = setup_window_ax(run.app.client.pid)
+                s.expect(title == "Setup", "the window's accessibility title is Setup", title)
+                s.expect(any(t.startswith("Step 3 of 6") for t in texts),
+                         "the step strip reads Step 3 of 6 to VoiceOver",
+                         [t for t in texts if "Step" in t])
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    st = run.status()
+    s.expect(st.get("presented") is False, "stop closes the Setup window", st.get("presented"))
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} against the source-of-truth mockup")
+    return s
+
+
 def s_interrupted(run, speech):
     s = Scenario("interrupted")
     run.app.call("onboarding", "stop")
@@ -728,6 +811,7 @@ SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
     "interrupted": s_interrupted, "consent_off": s_consent_off,
+    "shell": s_shell,
 }
 
 

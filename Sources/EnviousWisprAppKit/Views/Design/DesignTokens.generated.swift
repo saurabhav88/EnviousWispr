@@ -169,6 +169,9 @@ extension Color {
   /// Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1.
   static let firstRunAccentSoft = stDynamic(
     lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.655, 0.545, 0.98, 0.12))
+  /// Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these.
+  static let firstRunRule = stDynamic(
+    lightRGB: (0.0, 0.0, 0.0, 0.1), darkRGB: (1.0, 1.0, 1.0, 0.12))
 }
 
 // MARK: - Fonts (SF Pro)
