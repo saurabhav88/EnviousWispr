@@ -55,8 +55,6 @@ final class OnboardingTelemetryObserver {
     /// The settings-telemetry model projection (`SettingsProjection.model`) with the existing
     /// model list; the only way a cloud model value is built.
     var projectModel: (LLMProvider, String) -> OnboardingTelemetry.ProjectedModel
-    /// The rules version in force now (read at choice time and at completion).
-    var rulesVersion: () -> String
   }
 
   /// Plan §3.8: the accepted ceiling, one per Setup screen (`done` is never presented).
@@ -150,9 +148,9 @@ final class OnboardingTelemetryObserver {
 
   func observe(_ observation: OnboardingObservation) {
     switch observation {
-    case .choicesCommitted(let before, let after, let speech, let polish):
+    case .choicesCommitted(let before, let after, let recommended):
       guard ownedVisit() else { return }
-      record(before: before, after: after, recommendedSpeech: speech, recommendedPolish: polish)
+      record(before: before, after: after, recommended: recommended)
     case .downloadStarting(let model, let request, let at, let bytes, let ownerReportsEnd):
       guard ownedVisit(), let visit else { return }
       // Before the owner sees the start (a Retry clears the old failure): every earlier
@@ -218,10 +216,10 @@ final class OnboardingTelemetryObserver {
     case .reset:
       choices = [:]
       blocker = nil
-    case .completed(let final, let interrupted):
+    case .completed(let final, let interrupted, let rulesVersion):
       let owned = !interrupted && ownedVisit()
       // Agreement is read from this visit's picks before they are sent and cleared.
-      let summary = completionSummary(final, interrupted: !owned)
+      let summary = completionSummary(final, interrupted: !owned, rulesVersion: rulesVersion)
       if owned {
         observeAllEnds()
         emitChoices()
@@ -270,10 +268,9 @@ final class OnboardingTelemetryObserver {
   }
 
   private func record(
-    before: OnboardingChoices, after: OnboardingChoices, recommendedSpeech: ASRBackendType,
-    recommendedPolish: String
+    before: OnboardingChoices, after: OnboardingChoices, recommended: OnboardingRecommended
   ) {
-    let version = inputs.rulesVersion()
+    let version = recommended.rulesVersion
     func set(
       _ kind: OnboardingTelemetry.ChoiceKind, _ choice: OnboardingTelemetry.Choice?,
       recommended: OnboardingTelemetry.Choice? = nil
@@ -292,10 +289,10 @@ final class OnboardingTelemetryObserver {
       set(.language, after.languageMode.map { .language($0) })
     }
     if before.speech != after.speech {
-      set(.speech, after.speech.map { .speech($0) }, recommended: .speech(recommendedSpeech))
+      set(.speech, after.speech.map { .speech($0) }, recommended: .speech(recommended.speech))
     }
     if before.polish != after.polish {
-      set(.polish, after.polish.map { .polish($0) }, recommended: .polish(recommendedPolish))
+      set(.polish, after.polish.map { .polish($0) }, recommended: .polish(recommended.polish))
     }
     if before.cloudProvider != after.cloudProvider {
       set(.cloudProvider, after.cloudProvider.map { .cloudProvider($0) })
@@ -406,7 +403,7 @@ final class OnboardingTelemetryObserver {
 
   /// The summary from the actual picks; nil when a required pick is missing (the event then
   /// carries only its original properties). Agreement is known only from this visit's picks.
-  private func completionSummary(_ c: OnboardingChoices, interrupted: Bool)
+  private func completionSummary(_ c: OnboardingChoices, interrupted: Bool, rulesVersion: String)
     -> OnboardingTelemetry.CompletionSummary?
   {
     guard let speech = c.speech, let language = c.languageMode else { return nil }
@@ -434,7 +431,7 @@ final class OnboardingTelemetryObserver {
     return OnboardingTelemetry.CompletionSummary(
       polishProvider: provider, polishModel: model, speechModel: speech,
       followedAllRecommendations: interrupted ? nil : followedAll(), languageMode: language,
-      rulesVersion: inputs.rulesVersion(), filmResult: nil)  // Film: chunk E supplies the result.
+      rulesVersion: rulesVersion, filmResult: nil)  // Film: chunk E supplies the result.
   }
 
   /// False if any recommended pick this visit differed; true only when both recommended kinds
@@ -504,7 +501,6 @@ extension OnboardingTelemetryObserver.Inputs {
         OnboardingTelemetry.ProjectedModel(
           projectedBySettingsTelemetry: SettingsProjection.model(
             provider: provider, id: id, list: owners.cloudModelList.snapshot?.list))
-      },
-      rulesVersion: { SetupAdvice.activeRules.rulesVersion })
+      })
   }
 }

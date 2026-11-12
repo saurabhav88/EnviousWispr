@@ -127,8 +127,8 @@ struct OnboardingFlowTests {
   @Test("continuing with the recommendations downloads them and finishes after the film")
   func recommendedPath() {
     var start = OnboardingFlowState()
-    start.recommendedSpeech = .parakeet
-    start.recommendedPolish = "eg1.mini"
+    start.recommended.speech = .parakeet
+    start.recommended.polish = "eg1.mini"
     let (afterPicks, picks) = Self.run(start, [.next, .next, .next, .next, .next, .next])
     #expect(afterPicks.step == .permissions)
     #expect(afterPicks.choices.speech == .parakeet && afterPicks.choices.polish == "eg1.mini")

@@ -70,12 +70,11 @@ extension OnboardingRestore {
   /// 5. otherwise Welcome.
   static func resolve(
     legacyState: OnboardingState, checkpointData: Data?,
-    recommendedSpeech: ASRBackendType, recommendedPolish: String, saved: OnboardingChoices
+    recommended: OnboardingRecommended, saved: OnboardingChoices
   ) -> OnboardingRestore {
     if legacyState == .completed { return .completed }
     var state = OnboardingFlowState()
-    state.recommendedSpeech = recommendedSpeech
-    state.recommendedPolish = recommendedPolish
+    state.recommended = recommended
     if let checkpoint = OnboardingCheckpoint.decode(checkpointData) {
       if checkpoint.step == .done { return .finishCompletion(checkpoint.practiceOutcome) }
       state.step = checkpoint.step
@@ -86,8 +85,8 @@ extension OnboardingRestore {
     if legacyState == .needsPermissions {
       state.step = .permissions
       state.choices = saved
-      state.choices.speech = saved.speech ?? recommendedSpeech
-      state.choices.polish = saved.polish ?? recommendedPolish
+      state.choices.speech = saved.speech ?? recommended.speech
+      state.choices.polish = saved.polish ?? recommended.polish
       return .resume(state, startedAt: nil)
     }
     return .fresh

@@ -58,6 +58,15 @@ enum OnboardingPracticeOutcome: String, Codable, Equatable, Sendable {
   case succeeded, skipped
 }
 
+/// The recommendation a Setup visit holds (#4528 B2, plan M71): the picks and the rules version
+/// they came from, captured from ONE recommendation read, so telemetry never pairs a pick with a
+/// rules version that did not produce it.
+struct OnboardingRecommended: Equatable, Sendable {
+  var speech: ASRBackendType = .parakeet
+  var polish: String = "eg1.mini"
+  var rulesVersion: String = ""
+}
+
 /// The flow's whole state. Pure value; C2's coordinator owns the one live copy.
 struct OnboardingFlowState: Equatable, Sendable {
   var step: OnboardingStep = .welcome
@@ -65,8 +74,7 @@ struct OnboardingFlowState: Equatable, Sendable {
   var readiness = OnboardingReadiness()
   var practiceOutcome: OnboardingPracticeOutcome?
   /// The recommendation's defaults, used when the person continues without choosing.
-  var recommendedSpeech: ASRBackendType = .parakeet
-  var recommendedPolish: String = "eg1.mini"
+  var recommended = OnboardingRecommended()
 
   /// Ready for practice with the CURRENT selections (plan §3.4, D6).
   var isReadyForPractice: Bool {
@@ -215,7 +223,7 @@ enum OnboardingFlow {
     case (.speechPick, .chooseSpeech(let engine)), (.speechCompare, .chooseSpeech(let engine)):
       return chooseSpeech(engine)
     case (.speechPick, .next), (.speechCompare, .next):
-      return chooseSpeech(s.choices.speech ?? s.recommendedSpeech)
+      return chooseSpeech(s.choices.speech ?? s.recommended.speech)
 
     case (.polishIntro, .next): return move(.polishPick)
 
@@ -234,7 +242,7 @@ enum OnboardingFlow {
       {
         return chooseCloud(provider, model)
       }
-      return choosePolish(s.choices.polish ?? s.recommendedPolish)
+      return choosePolish(s.choices.polish ?? s.recommended.polish)
     case (.polishPick, .skipPolish), (.polishSeeAll, .skipPolish):
       if s.choices.polish != OnboardingChoices.polishOff { s.readiness.clearPolish() }
       s.choices.polish = OnboardingChoices.polishOff

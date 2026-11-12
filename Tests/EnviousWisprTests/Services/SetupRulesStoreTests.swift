@@ -352,4 +352,119 @@ struct SetupRulesStoreTests {
     _ = await offlineStore.refreshIfDue()
     #expect(await offlineStore.lastRefreshOutcome() == .notDue)
   }
+
+  // MARK: - The synchronous holder (SetupAdvice's rules in force)
+
+  private func signedUnit(_ revision: Int) throws -> Data {
+    try SetupRulesCacheUnit(
+      payload: Self.rules(revision: revision),
+      signature: SetupRulesTestKey.sign(Self.rules(revision: revision))
+    ).encoded()
+  }
+
+  @Test("the synchronous selection and the store's first answer pick the same trusted rules")
+  func synchronousSelectionMatchesStore() async throws {
+    let offline = Site(payload: Data(), signature: nil)
+    let mixed = try SetupRulesCacheUnit(
+      payload: Self.rules(revision: 9), signature: SetupRulesTestKey.sign(Self.rules(revision: 3))
+    ).encoded()
+    let oversized = Data(repeating: 0x20, count: Document.maximumCacheBytes + 1)
+    // (cache file, bundled copy, expected revision, expected origin)
+    let cases: [(Data?, Data, Int, RemoteRulesOrigin)] = [
+      (nil, Self.rules(revision: 2), 2, .bundled),
+      (try signedUnit(3), Self.rules(revision: 2), 3, .cached),
+      (try signedUnit(3), Self.rules(revision: 3), 3, .bundled),
+      (mixed, Self.rules(revision: 2), 2, .bundled),
+      (oversized, Self.rules(revision: 2), 2, .bundled),
+      (Data("not a cache unit".utf8), Self.rules(revision: 2), 2, .bundled),
+      (nil, Data("broken".utf8), SetupRules.builtIn.revision, .empty),
+    ]
+    for (index, (cache, bundled, revision, origin)) in cases.enumerated() {
+      let folder = Folder()
+      if let cache { try folder.writeCache(cache) }
+      let subject = store(folder, bundled: bundled, site: offline, clock: Clock(Self.start))
+      let synchronous = subject.trustedLocalDocument()
+      let isolated = await subject.current()
+      #expect(synchronous == isolated, "case \(index): the two reads chose different rules")
+      #expect(
+        synchronous.revision == revision && synchronous.origin == origin,
+        "case \(index): chose revision \(synchronous.revision) from \(synchronous.origin)")
+    }
+    #expect(offline.count == 0, "a local read must not touch the network")
+  }
+
+  @Test("the holder answers a higher signed cache on its first read, before any refresh")
+  func holderSeedsFromSignedCache() throws {
+    let folder = Folder()
+    try folder.writeCache(try signedUnit(3))
+    let site = Site(payload: Data(), signature: nil)
+    let holder = SetupRulesHolder(
+      store: store(folder, bundled: Self.rules(revision: 2), site: site, clock: Clock(Self.start)))
+    let first = holder.document
+    #expect(first.revision == 3 && first.origin == .cached)
+    // Later reads use memory: removing the cache does not change the rules in force.
+    try FileManager.default.removeItem(at: folder.cache)
+    #expect(holder.document == first)
+    #expect(site.count == 0)
+  }
+
+  @Test("the holder moves up to a newer signed download and never down")
+  func holderMovesOnlyUp() async throws {
+    let folder = Folder()
+    let clock = Clock(Self.start)
+    let up = SetupRulesHolder(
+      store: store(folder, site: Self.signedSite(Self.rules(revision: 4)), clock: clock))
+    #expect(up.document.revision == 1 && up.document.origin == .bundled)
+    await up.refreshIfDue()
+    #expect(up.document.revision == 4 && up.document.origin == .downloaded)
+
+    // Seeded from a signed revision-3 cache that then goes bad on disk (the store itself would
+    // now choose the bundled revision 1). A failed refresh, and a valid signed revision 2, both
+    // leave revision 3 in force, and revision 2 is refused as not newer and never cached.
+    let cases: [(Site, RemoteRulesRefreshOutcome)] = [
+      (Site(payload: Data(), signature: nil), .signatureUnavailable),
+      (Self.signedSite(Self.rules(revision: 2)), .notNewer),
+    ]
+    for (site, expected) in cases {
+      let damaged = Folder()
+      try damaged.writeCache(try signedUnit(3))
+      let subject = store(damaged, site: site, clock: clock)
+      let down = SetupRulesHolder(store: subject)
+      #expect(down.document.revision == 3)
+      let garbage = Data("not a cache unit".utf8)
+      try damaged.writeCache(garbage)
+      await down.refreshIfDue()
+      #expect(down.document.revision == 3 && down.document.origin == .cached)
+      #expect(await subject.current().revision == 3, "the store's baseline fell below the holder")
+      #expect(await subject.lastRefreshOutcome() == expected)
+      #expect(try Data(contentsOf: damaged.cache) == garbage, "a lower revision was cached")
+    }
+  }
+
+  @Test("concurrent reads during a refresh always see rules and origin from one document")
+  func holderReadsArePaired() async {
+    let holder = SetupRulesHolder(
+      store: store(
+        Folder(), site: Self.signedSite(Self.rules(revision: 4)), clock: Clock(Self.start)))
+    let seen = await withTaskGroup(of: [SignedSetupRules<SetupRulesTestKey>].self) { group in
+      group.addTask {
+        await holder.refreshIfDue()
+        return [holder.document]
+      }
+      for _ in 0..<8 {
+        group.addTask { (0..<50).map { _ in holder.document } }
+      }
+      var all: [SignedSetupRules<SetupRulesTestKey>] = []
+      for await batch in group { all += batch }
+      return all
+    }
+    for document in seen {
+      let paired =
+        (document.revision == 1 && document.origin == .bundled)
+        || (document.revision == 4 && document.origin == .downloaded)
+      #expect(paired, "revision \(document.revision) arrived with origin \(document.origin)")
+      #expect(document.rules.revision == document.revision)
+    }
+    #expect(holder.document.revision == 4)
+  }
 }

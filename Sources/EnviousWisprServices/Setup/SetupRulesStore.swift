@@ -1,6 +1,7 @@
 import CryptoKit
 import EnviousWisprCore
 import Foundation
+import os
 
 /// The public half of a key that signs Setup rules (#4528 plan §3.2). Production pins one key;
 /// tests declare their own throwaway key type, so no runtime switch can replace the pinned key.
@@ -150,6 +151,49 @@ package struct SetupRulesCacheUnit: Codable, Equatable, Sendable {
 package enum SetupRulesStore {
   package static let live = RemoteRulesStore<SignedSetupRules<PinnedSetupRulesKey>>.live(
     directoryName: "SetupRules")
+  /// The rules in force for the app's synchronous readers (`SetupAdvice`).
+  package static let inForce = SetupRulesHolder(store: live)
+}
+
+/// The Setup rules document in force for synchronous readers (#4528 B2, plan §3.2). Recommendation
+/// reads happen on the main actor and at launch, before any async work, so they cannot ask the
+/// store actor. The holder seeds once from the store's own local selection (the higher of the
+/// bundled copy and the last good signed download, re-verified on that read) and afterwards
+/// answers from memory. It only ever moves to a store result with a strictly higher revision, so
+/// rules, revision and origin always change together.
+package final class SetupRulesHolder<Key: SetupRulesSigningKey>: Sendable {
+  private let store: RemoteRulesStore<SignedSetupRules<Key>>
+  private let held = OSAllocatedUnfairLock<SignedSetupRules<Key>?>(initialState: nil)
+
+  package init(store: RemoteRulesStore<SignedSetupRules<Key>>) {
+    self.store = store
+  }
+
+  /// The document in force. The first read loads the local copies; later reads use memory.
+  package var document: SignedSetupRules<Key> {
+    held.withLock { held in
+      if let held { return held }
+      let seeded = store.trustedLocalDocument()
+      held = seeded
+      return seeded
+    }
+  }
+
+  /// Runs the store's daily refresh over the document in force (its floor), and moves to the
+  /// answer when that is newer. A failed or refused refresh answers with the store's baseline,
+  /// which is never below the document in force.
+  package func refreshIfDue() async {
+    adopt(await store.refreshIfDue(floor: document))
+  }
+
+  /// Only a store result reaches here: a `SignedSetupRules` exists only as validated bundled
+  /// rules, a signature-verified download or cache, or the compiled fallback.
+  private func adopt(_ candidate: SignedSetupRules<Key>) {
+    held.withLock { held in
+      let current = held ?? store.trustedLocalDocument()
+      held = candidate.revision > current.revision ? candidate : current
+    }
+  }
 }
 
 extension SignedSetupRules {

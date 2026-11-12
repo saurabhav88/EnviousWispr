@@ -153,15 +153,9 @@ public enum SetupRecommender {
 /// label, the fresh-install polish default, the dictation language lock default, Transcribe a
 /// File badges) reads it here, so no consumer reads rules or hardware on its own.
 public enum SetupAdvice {
-  /// The rules in force.
-  ///
-  /// B2 INTEGRATION HANDOFF (outstanding delivery gate, plan §3.11 M39): when the signed store
-  /// lands, this returns the store's trusted rules (`SetupRulesStore.live.current().rules`), the
-  /// higher of the bundled copy and the last good signed download. Until then it is the bundled
-  /// copy; bundled-only is not the final delivery.
-  public static var activeRules: SetupRules { bundledRules }
-
-  private static let bundledRules: SetupRules = (try? SetupRules.bundled()) ?? .builtIn
+  /// The rules in force: the higher of the bundled copy and the last good signed download, moved
+  /// up by the daily refresh (`SetupRulesStore.inForce`, plan §3.2). Read it once per decision.
+  public static var activeRules: SetupRules { SetupRulesStore.inForce.document.rules }
 
   /// This Mac for advice: memory, macOS, chip and the Mac's own language list. Free disk space is
   /// not advice (the download preflight reads it), so it is left out of the per-render read.

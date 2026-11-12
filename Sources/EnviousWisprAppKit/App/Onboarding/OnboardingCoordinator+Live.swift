@@ -77,8 +77,12 @@ extension OnboardingCoordinator.Dependencies {
       writeLanguage: { mode in if settings.languageMode != mode { settings.languageMode = mode } },
       writeNonLocalPolish: { OnboardingCoordinator.writeNonLocalPolish($0, to: settings) },
       savedChoices: { OnboardingLiveMapping.savedChoices(settings) },
-      recommendedSpeech: { recommendation().speech },
-      recommendedPolish: { OnboardingLiveMapping.preselectedPolish(recommendation()) },
+      recommended: {
+        let advice = recommendation()
+        return OnboardingRecommended(
+          speech: advice.speech, polish: OnboardingLiveMapping.preselectedPolish(advice),
+          rulesVersion: advice.rulesVersion)
+      },
       downloadsInParallel: { recommendation().parallelDownloads },
       downloadBytes: { model in
         let bytes = OnboardingLiveMapping.downloadBytes(

@@ -2884,8 +2884,10 @@ package final class WisprBootstrapper {
       }
     }
     meetingInputs.refreshRules = refreshRules
-    // The day's rules downloads at launch, off the launch path.
+    // The day's rules downloads at launch, off the launch path. Setup rules refresh on their own
+    // (#4528 B2): a meeting start never triggers them.
     refreshRules()
+    Task.detached(priority: .utility) { await SetupRulesStore.inForce.refreshIfDue() }
     let callDetectionNow: @MainActor () -> Date = {
       Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
     }

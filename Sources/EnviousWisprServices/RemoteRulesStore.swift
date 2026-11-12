@@ -150,18 +150,25 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
   /// The document in force now, without the network. Freeze this at recording start.
   package func current() -> Document {
     if let snapshot { return snapshot }
-    let bundled = bundledData().flatMap { try? Document(validating: $0, origin: .bundled) }
-    let cached = readCache()
-    let best: Document
-    switch (bundled, cached) {
-    case let (bundled?, cached?):
-      best = cached.revision > bundled.revision ? cached : bundled
-    case let (bundled?, nil): best = bundled
-    case let (nil, cached?): best = cached
-    case (nil, nil): best = Document.empty
-    }
+    let best = trustedLocalDocument()
     snapshot = best
     return best
+  }
+
+  /// The best trusted document from the local copies alone, without the actor (#4528 B2): the
+  /// selection `current()` makes on its first read. It reads the files on every call, so a
+  /// synchronous reader calls it once to seed and keeps the result.
+  nonisolated package func trustedLocalDocument() -> Document {
+    let bundled = bundledData().flatMap { try? Document(validating: $0, origin: .bundled) }
+    let cached = Self.readCache(
+      at: directory.appendingPathComponent(Document.cacheFileName, isDirectory: false))
+    switch (bundled, cached) {
+    case let (bundled?, cached?):
+      return cached.revision > bundled.revision ? cached : bundled
+    case let (bundled?, nil): return bundled
+    case let (nil, cached?): return cached
+    case (nil, nil): return Document.empty
+    }
   }
 
   /// Downloads a newer document when a day has passed since the last attempt, then answers like
@@ -170,12 +177,20 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
   /// How the last refresh attempt in this run ended, or nil when none was made.
   package func lastRefreshOutcome() -> RemoteRulesRefreshOutcome? { lastOutcome }
 
-  package func refreshIfDue() async -> Document {
+  /// `floor` is a document the caller already trusts from this store (a synchronous holder's
+  /// copy, #4528 B2): the baseline becomes the higher of it and `current()`, so a download at or
+  /// below a revision the app already holds is refused and never cached, even when the cache file
+  /// changed after the caller read it.
+  package func refreshIfDue(floor: Document? = nil) async -> Document {
     if let inFlight {
       onJoinedRefresh?()
       return await inFlight.value
     }
-    let base = current()
+    var base = current()
+    if let floor, floor.revision > base.revision {
+      snapshot = floor
+      base = floor
+    }
     guard isDue() else {
       lastOutcome = .notDue
       return base
@@ -273,8 +288,8 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
 
   // MARK: - Last good copy
 
-  private func readCache() -> Document? {
-    guard let handle = try? FileHandle(forReadingFrom: fileURL(Document.cacheFileName)) else {
+  private static func readCache(at url: URL) -> Document? {
+    guard let handle = try? FileHandle(forReadingFrom: url) else {
       return nil
     }
     defer { try? handle.close() }

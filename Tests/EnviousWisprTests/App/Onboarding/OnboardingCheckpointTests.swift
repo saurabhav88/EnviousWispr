@@ -42,8 +42,9 @@ struct OnboardingCheckpointTests {
     _ legacy: OnboardingState, _ data: Data?, saved: OnboardingChoices = OnboardingChoices()
   ) -> OnboardingRestore {
     OnboardingRestore.resolve(
-      legacyState: legacy, checkpointData: data, recommendedSpeech: .parakeet,
-      recommendedPolish: "eg1.mini", saved: saved)
+      legacyState: legacy, checkpointData: data,
+      recommended: OnboardingRecommended(speech: .parakeet, polish: "eg1.mini", rulesVersion: "r1"),
+      saved: saved)
   }
 
   /// Grants, then speech and polish ready for exactly these picks.
@@ -76,7 +77,9 @@ struct OnboardingCheckpointTests {
     #expect(state.step == .downloads && state.choices == Self.midway().choices)
     #expect(state.readiness == OnboardingReadiness())
     #expect(startedAt == Date(timeIntervalSince1970: 100))
-    #expect(state.recommendedSpeech == .parakeet && state.recommendedPolish == "eg1.mini")
+    #expect(
+      state.recommended
+        == OnboardingRecommended(speech: .parakeet, polish: "eg1.mini", rulesVersion: "r1"))
   }
 
   @Test("the saved bytes hold only step, choices, practice outcome and times")

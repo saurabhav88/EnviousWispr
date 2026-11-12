@@ -30,10 +30,9 @@ struct OnboardingWarmup {
 /// chunk F2b, plan §3.8, M68). Observation only: nothing here changes the flow.
 enum OnboardingObservation: Equatable {
   /// An accepted transition changed the picks (never a refusal, DEBUG positioning or restore),
-  /// with the recommendation the flow held at that moment.
+  /// with the recommendation (and its rules version) the flow held at that moment.
   case choicesCommitted(
-    before: OnboardingChoices, after: OnboardingChoices, recommendedSpeech: ASRBackendType,
-    recommendedPolish: String)
+    before: OnboardingChoices, after: OnboardingChoices, recommended: OnboardingRecommended)
   /// A Setup download start is about to reach its owner (before any owner call can change the
   /// model's phase). `request` numbers it; its answer reports the same number.
   /// `ownerReportsEnd`: the owner answers only once the attempt ended (Parakeet).
@@ -52,8 +51,9 @@ enum OnboardingObservation: Equatable {
   /// The engine owner's warm-up for the current pick failed (P2); once per failure.
   case warmFailed(step: OnboardingStep)
   /// Completion is durable (SettingsManager already wrote `.completed`). `interrupted` is a
-  /// completion finished on relaunch, with no visit shown.
-  case completed(OnboardingChoices, interrupted: Bool)
+  /// completion finished on relaunch, with no visit shown. `rulesVersion`: the visit's captured
+  /// recommendation's, or for an interrupted completion the rules in force when it finished.
+  case completed(OnboardingChoices, interrupted: Bool, rulesVersion: String)
 }
 
 /// Owns the one live Setup flow (#4528 chunk C2b, plan §3.3-3.4, §5). It applies C1's reducer
@@ -82,8 +82,8 @@ final class OnboardingCoordinator {
     /// Writes an Apple Intelligence, cloud or off pick through SettingsManager.
     var writeNonLocalPolish: (OnboardingChoices) -> Void
     var savedChoices: () -> OnboardingChoices
-    var recommendedSpeech: () -> ASRBackendType
-    var recommendedPolish: () -> String
+    /// The recommendation now, from one recommendation read (picks and rules version together).
+    var recommended: () -> OnboardingRecommended
     /// `memoryGiB >= activeRules.parallelDownloadsMinMemoryGiB`.
     var downloadsInParallel: () -> Bool
     /// Manifest `totalBytes` for a model; nil when unknown (delivery's own checks still run).
@@ -172,7 +172,7 @@ final class OnboardingCoordinator {
     if isActive { return true }  // Refocus or reopen: same flow, no restart.
     switch OnboardingRestore.resolve(
       legacyState: deps.legacyState(), checkpointData: deps.checkpointData(),
-      recommendedSpeech: deps.recommendedSpeech(), recommendedPolish: deps.recommendedPolish(),
+      recommended: deps.recommended(),
       saved: deps.savedChoices())
     {
     case .completed:
@@ -183,7 +183,8 @@ final class OnboardingCoordinator {
         OnboardingCheckpoint.decode(deps.checkpointData())?.choices ?? OnboardingChoices())
       if let outcome { deps.onPracticeOutcome(outcome) }
       deps.markCompleted()
-      onObservation?(.completed(choices, interrupted: true))
+      onObservation?(
+        .completed(choices, interrupted: true, rulesVersion: deps.recommended().rulesVersion))
       deps.onCompleted()
       return false
     case .fresh:
@@ -234,8 +235,7 @@ final class OnboardingCoordinator {
       onObservation?(
         .choicesCommitted(
           before: before.choices, after: transition.state.choices,
-          recommendedSpeech: transition.state.recommendedSpeech,
-          recommendedPolish: transition.state.recommendedPolish))
+          recommended: transition.state.recommended))
       generation &+= 1
       readinessTask?.cancel()
     }
@@ -457,8 +457,7 @@ final class OnboardingCoordinator {
 
   private func freshState() -> OnboardingFlowState {
     var s = OnboardingFlowState()
-    s.recommendedSpeech = deps.recommendedSpeech()
-    s.recommendedPolish = deps.recommendedPolish()
+    s.recommended = deps.recommended()
     return s
   }
 
@@ -540,7 +539,10 @@ final class OnboardingCoordinator {
     updateSleepAssertion()
     deps.markCompleted()
     // After the durable write, before completion hands Setup back.
-    onObservation?(.completed(resolvedChoices(state.choices), interrupted: false))
+    onObservation?(
+      .completed(
+        resolvedChoices(state.choices), interrupted: false,
+        rulesVersion: state.recommended.rulesVersion))
     deps.onCompleted()
   }
 

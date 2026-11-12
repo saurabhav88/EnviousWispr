@@ -25,7 +25,6 @@ struct OnboardingTelemetryObserverTests {
       [(OnboardingTelemetry.DownloadModel, OnboardingTelemetry.DownloadResult, Double, Int64?)] = []
     var blocked: [(String, OnboardingTelemetry.BlockedReason)] = []
     var completed: [OnboardingTelemetry.CompletionSummary?] = []
-    var version = "rules-a"
     var phase: (OnboardingTelemetry.DownloadModel) -> OnboardingDownloadPhase? = { _ in nil }
     /// Every emitted row's name, in order, into a shared log (ordering checks).
     var sink: (String) -> Void = { _ in }
@@ -84,8 +83,7 @@ struct OnboardingTelemetryObserverTests {
           // The real settings-telemetry projection (no model list: nothing published).
           projectModel: {
             .init(projectedBySettingsTelemetry: SettingsProjection.model(provider: $0, id: $1, list: nil))
-          },
-          rulesVersion: { self.version })
+          })
     }
   }
 

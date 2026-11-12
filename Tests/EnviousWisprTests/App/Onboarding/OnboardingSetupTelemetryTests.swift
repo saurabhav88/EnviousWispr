@@ -78,27 +78,29 @@ struct OnboardingSetupTelemetryTests {
   }
 
   @Test(
-    "the recommendation and rules version are the ones in force at choice time; a cloud model is projected"
+    "each choice carries the visit's recommendation with that recommendation's own rules version; a cloud model is projected"
   )
-  func frozenAtChoiceTimeAndProjected() async {
+  func capturedRecommendationAndProjected() async {
     let world = World()
     let r = Recorder()
     let (c, o, _) = Self.wired(world, r)
-    c.begin()
+    c.begin()  // captures recommendation A (rules-a)
     c.send(.next)
     c.send(.next)
-    r.version = "rules-a"
+    // Rules refresh to B mid-visit: a different recommendation with a newer version.
+    world.recommended = OnboardingRecommended(
+      speech: .whisper, polish: "eg1.full", rulesVersion: "rules-b")
     c.send(.chooseSpeech(.whisper))
     c.send(.next)
     c.send(.seeAllPolish)
-    r.version = "rules-b"  // rules refreshed between the two picks
     c.send(.chooseCloud(.openAI, model: "my-private-finetune"))
-    r.version = "rules-c"  // a refresh after the last pick rewrites nothing
     await c.settle()
     o.visitEnded()
+    // Compared with recommendation A, stamped with A's version, never B's.
     let speech = r.choices.first { $0.0.kind == .speech }
     #expect(speech?.3 == "rules-a" && speech?.2 == false && speech?.1 == .speech(.parakeet))
-    #expect(r.choices.first { $0.0.kind == .polish }?.3 == "rules-b")
+    let polish = r.choices.first { $0.0.kind == .polish }
+    #expect(polish?.3 == "rules-a" && polish?.1 == .polish("eg1.mini"))
     #expect(r.choices.first { $0.0.kind == .cloudProvider }?.0.value == "openAI")
     let model = r.choices.first { $0.0.kind == .cloudModel }?.0.value
     #expect(model != nil && model != "my-private-finetune")  // never the raw id
@@ -441,6 +443,8 @@ struct OnboardingSetupTelemetryTests {
     c.begin()
     c.send(.next)
     c.send(.chooseLanguage(.auto))
+    // A rules refresh mid-visit: completion still reports the visit's recommendation (rules-a).
+    world.recommended.rulesVersion = "rules-b"
     c.send(.next)
     c.send(.chooseSpeech(.parakeet))
     c.send(.next)
@@ -480,12 +484,15 @@ struct OnboardingSetupTelemetryTests {
     ).encoded()
     let r = Recorder()
     r.owned = false  // no visit is shown
+    world.recommended.rulesVersion = "rules-now"
     let (c, _, _) = Self.wired(world, r)
     #expect(!c.begin())
     #expect(r.completed.count == 1 && r.choices.isEmpty && r.downloads.isEmpty)
     let summary = r.completed.first ?? nil
     #expect(summary?.speechModel == .whisper && summary?.polishModel.id == Self.eg1Mini)
     #expect(summary?.languageMode == .locked("de") && summary?.followedAllRecommendations == nil)
+    // No visit captured a recommendation: the rules in force when it finished.
+    #expect(summary?.rulesVersion == "rules-now")
     #expect(world.log.firstIndex(of: "completed")! < world.log.firstIndex(of: "event(completed)")!)
   }
 

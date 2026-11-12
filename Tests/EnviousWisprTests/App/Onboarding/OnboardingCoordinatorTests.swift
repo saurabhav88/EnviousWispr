@@ -74,6 +74,9 @@ struct OnboardingCoordinatorTests {
     var free: Int64? = 100_000
     var bytes: [OnboardingModel: Int64] = [:]
     var saved = OnboardingChoices()
+    /// The recommendation now (a rules refresh replaces it; a visit keeps the one it captured).
+    var recommended = OnboardingRecommended(
+      speech: .parakeet, polish: "eg1.mini", rulesVersion: "rules-a")
     var engine: (ASRBackendType, ASREngineReadiness) = (.parakeet, .ready)
     var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
     var permissions = (microphone: true, accessibility: true)
@@ -192,8 +195,8 @@ struct OnboardingCoordinatorTests {
           },
           writeLanguage: { self.log.append("language(\($0 == .auto ? "auto" : "locked"))") },
           writeNonLocalPolish: { self.log.append("writePolish(\($0.polish ?? "nil"))") },
-          savedChoices: { self.saved }, recommendedSpeech: { .parakeet },
-          recommendedPolish: { "eg1.mini" }, downloadsInParallel: { self.parallel },
+          savedChoices: { self.saved }, recommended: { self.recommended },
+          downloadsInParallel: { self.parallel },
           downloadBytes: { self.bytes[$0] }, freeDiskBytes: { self.free },
           acquireSleepAssertion: { self.log.append("awake") },
           releaseSleepAssertion: { self.log.append("sleepOK") },
