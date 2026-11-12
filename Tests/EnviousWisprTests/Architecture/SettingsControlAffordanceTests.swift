@@ -42,9 +42,21 @@ struct SettingsControlAffordanceTests {
   /// **Fails closed.** An empty or unreadable directory would otherwise make
   /// every assertion below vacuously true, which is the shape where a guard
   /// stops guarding without anything going red.
+  ///
+  /// #4506: the button paint, role and hover moved out of `Views/Settings` into the design
+  /// parts, so that owner is read here too. A missing or unreadable file throws.
   private static func settingsSources() throws -> [(path: String, text: String)] {
-    try SettingsSourceEnumeration.sources()
+    var files = try SettingsSourceEnumeration.sources()
+    for path in designOwners {
+      files.append((path, try String(contentsOf: RepoRoot.url.appending(path: path), encoding: .utf8)))
+    }
+    return files
   }
+
+  /// Files outside `Views/Settings` that own Settings control paint (#4506).
+  private static let designOwners = [
+    "Sources/EnviousWisprAppKit/Views/Design/EnviousButtonStyle.swift"
+  ]
 
   /// The system button styles whose appearance is a property of the CONTAINER
   /// rather than of the control.
