@@ -150,16 +150,30 @@ struct DictationPlaybackTests {
   func absenceLines() {
     var seen: Set<String> = []
     for reason in RecordingAbsence.allCases {
-      seen.insert(String(localized: DictationRecordingSection.absenceLine(reason)))
+      seen.insert(String(localized: DictationRecordingSection.absenceLine(RecordedAbsence(reason))))
     }
     let unexplained = String(localized: DictationRecordingSection.absenceLine(nil))
     #expect(seen.count == RecordingAbsence.allCases.count, "one distinct line per reason")
     #expect(unexplained == "Recording unavailable.")
     #expect(!seen.contains(unexplained))
     #expect(
-      String(localized: DictationRecordingSection.absenceLine(.saveFailed))
+      String(localized: DictationRecordingSection.absenceLine(RecordedAbsence(.saveFailed)))
         == "Recording couldn't be saved.", "an encoder failure is never described as recordings off"
     )
+    #expect(
+      String(
+        localized: DictationRecordingSection.absenceLine(
+          RecordedAbsence(.expired, expiredAfterDays: 7)))
+        == "Recording expired after 7 days. The text stays.", "the recorded period, not a guess")
+    #expect(
+      String(
+        localized: DictationRecordingSection.absenceLine(
+          RecordedAbsence(.expired, expiredAfterDays: 1)))
+        == "Recording expired after 1 day. The text stays.", "one day reads as singular")
+    #expect(
+      String(localized: DictationRecordingSection.absenceLine(RecordedAbsence(.expired)))
+        == "Recording removed after your keep period. The text stays.",
+      "an older expiry without a period stays generic")
   }
 
   /// Answers silence for any window, for players whose audio this test does not read.

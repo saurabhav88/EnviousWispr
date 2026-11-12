@@ -477,7 +477,7 @@ struct DictationRecordingsTests {
     #expect(pinned)
 
     try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
-    #expect(await rig.recordings.status(for: row.id) == .absent(.deleted))
+    #expect(await rig.recordings.status(for: row.id) == .absent(RecordedAbsence(.deleted)))
     #expect(await rig.recordings.status(for: UUID()) == .absent(nil), "legacy rows give no reason")
 
     try Data("not json".utf8).write(to: rig.archive.directory.appendingPathComponent("absences.json"))

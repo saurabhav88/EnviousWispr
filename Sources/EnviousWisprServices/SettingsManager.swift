@@ -125,6 +125,11 @@ public final class SettingsManager {
     case otherAudioWhileDictating
     /// #996: ask before remembering a word the user fixed in pasted text.
     case learnFromEdits
+    /// #3147: how long dictation and meeting recordings are kept, and the storage warning.
+    case dictationRecordingRetention
+    case meetingRecordingRetention
+    case recordingStorageWarningThreshold
+    case recordingThresholdBehavior
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -183,6 +188,8 @@ public final class SettingsManager {
     "recordingPillDesignWithoutWords", "recordingPillDesignWithWords",
     "showBluetoothTips", "showInDock", "showMenuBarUpdateAlert", "playRecordingSounds", "recordingSoundPairing",
     "otherAudioWhileDictating", "learnFromEdits",
+    "dictationRecordingRetention", "meetingRecordingRetention",
+    "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
   ]
@@ -1418,6 +1425,41 @@ public final class SettingsManager {
     }
   }
 
+  /// #3147 D2: how long a dictation's recording is kept. Read by `RecordingRetention` at each
+  /// sweep and again inside each removal. A shorter value reaches here only after the Settings
+  /// page's count preview and Undo (`RecordingRetention.stage`), never on a bare picker change.
+  public var dictationRecordingRetention: DictationRecordingRetention {
+    didSet {
+      defaults.set(dictationRecordingRetention.rawValue, forKey: "dictationRecordingRetention")
+      onChange?(.dictationRecordingRetention)
+    }
+  }
+
+  /// #3147 D3: how long a finished meeting's audio is kept; text, notes and summary stay.
+  public var meetingRecordingRetention: MeetingRecordingRetention {
+    didSet {
+      defaults.set(meetingRecordingRetention.rawValue, forKey: "meetingRecordingRetention")
+      onChange?(.meetingRecordingRetention)
+    }
+  }
+
+  /// #3147 D3: the recording storage size that raises a warning (never a hard limit).
+  public var recordingStorageWarningThreshold: RecordingStorageWarningThreshold {
+    didSet {
+      defaults.set(
+        recordingStorageWarningThreshold.rawValue, forKey: "recordingStorageWarningThreshold")
+      onChange?(.recordingStorageWarningThreshold)
+    }
+  }
+
+  /// #3147 D3: warn only, or remove the oldest unpinned dictation recordings, past the threshold.
+  public var recordingThresholdBehavior: RecordingThresholdBehavior {
+    didSet {
+      defaults.set(recordingThresholdBehavior.rawValue, forKey: "recordingThresholdBehavior")
+      onChange?(.recordingThresholdBehavior)
+    }
+  }
+
   /// #3809: eligibility of the selected settings, not readiness of the active engine.
   /// Whisper must commit to a language before streaming; an early guess can spoil a take.
   /// Parakeet streams in Auto too. Keep this choice shared between both engines.
@@ -2107,6 +2149,24 @@ public final class SettingsManager {
       learnFromEdits = SettingsDefaultValues.learnFromEdits
       defaults.set(SettingsDefaultValues.learnFromEdits, forKey: "learnFromEdits")
     }
+    // #3147: absent or unknown values resolve to the canonical defaults, never seeded, so an
+    // unreadable value cannot turn on deletion.
+    dictationRecordingRetention =
+      DictationRecordingRetention(
+        rawValue: defaults.string(forKey: "dictationRecordingRetention") ?? ""
+      ) ?? SettingsDefaultValues.dictationRecordingRetention
+    meetingRecordingRetention =
+      MeetingRecordingRetention(
+        rawValue: defaults.string(forKey: "meetingRecordingRetention") ?? ""
+      ) ?? SettingsDefaultValues.meetingRecordingRetention
+    recordingStorageWarningThreshold =
+      RecordingStorageWarningThreshold(
+        rawValue: defaults.string(forKey: "recordingStorageWarningThreshold") ?? ""
+      ) ?? SettingsDefaultValues.recordingStorageWarningThreshold
+    recordingThresholdBehavior =
+      RecordingThresholdBehavior(
+        rawValue: defaults.string(forKey: "recordingThresholdBehavior") ?? ""
+      ) ?? SettingsDefaultValues.recordingThresholdBehavior
     isDebugModeEnabled =
       defaults.object(forKey: "isDebugModeEnabled") as? Bool
       ?? SettingsDefaultValues.isDebugModeEnabled

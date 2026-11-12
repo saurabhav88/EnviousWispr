@@ -17589,6 +17589,28 @@
         }
       }
     },
+    "Recording expired after %lld days. The text stays." : {
+      "comment" : "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme nach %lld Tagen abgelaufen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Recording expired after 1 day. The text stays." : {
+      "comment" : "History: the recording was removed after the one-day keep period chosen in Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme nach 1 Tag abgelaufen. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "Recording for %@" : {
       "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.\nMenu bar menu: how long the meeting has been recording, e.g. 12:34.",
       "localizations" : {

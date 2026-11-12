@@ -2218,11 +2218,15 @@ final class MeetingCoordinator {
     await persist(record)
   }
 
-  func deleteAudio(meetingID: UUID) async {
+  /// True only when the deletion mark was saved AND every audio file was removed; a refused
+  /// request, a failed save or a failed removal (the mark stays and the next launch retries)
+  /// is false.
+  @discardableResult
+  func deleteAudio(meetingID: UUID) async -> Bool {
     // #3973 C2: an unknown commit outcome blocks every record edit until the next launch.
     guard !unknownCommits.contains(meetingID), var record = live[meetingID],
       !isActive(meetingID), !closeOwned.contains(meetingID)
-    else { return }
+    else { return false }
     // Claimed in the same turn as the guard (#3994): a pass cannot start on this audio while
     // its removal is saved and carried out.
     removingAudio.insert(meetingID)
@@ -2239,22 +2243,83 @@ final class MeetingCoordinator {
       record.state = .failed
       record.failureCode = "audio_deleted"
     }
-    guard await persist(record) else { return }
-    await finishAudioDeletion(meetingID)
+    guard await persist(record) else { return false }
+    return await finishAudioDeletion(meetingID)
+  }
+
+  // MARK: - Recording retention (#3147)
+
+  /// A finished meeting whose audio is still kept, and when it ended.
+  struct AudioRetentionCandidate: Sendable, Equatable {
+    let meetingID: UUID
+    let endedAt: Date
+  }
+
+  /// What became of one retention removal.
+  enum AudioRetentionOutcome: Sendable, Equatable {
+    case removed
+    /// No longer eligible when its turn came.
+    case skipped
+    /// The mark could not be saved or a file could not be removed (the mark stays; the next
+    /// launch retries the files).
+    case failed
+  }
+
+  /// Saved meetings whose audio is still kept and that no work owns now, once launch has loaded
+  /// every record: ready, failed and interrupted meetings (a failed transcription does not exempt
+  /// its audio). Recording, stopping, queued and processing meetings, deleting ones and those a
+  /// close or an unknown save still owns are left out. Folders this run could not read, or a
+  /// newer build wrote, are not records here, so retention never touches them.
+  func audioRetentionCandidates() async -> [AudioRetentionCandidate] {
+    if let launchTask { await launchTask.value }
+    return live.values.compactMap { record in
+      guard isRetentionEligible(record), let endedAt = record.endedAt else { return nil }
+      return AudioRetentionCandidate(meetingID: record.id, endedAt: endedAt)
+    }
+  }
+
+  /// Retention's audio-only removal: rechecks the meeting now (still finished and kept, not
+  /// active, not playing) and asks `stillEligible` with its end date under the current policy,
+  /// then takes the same path as Delete audio. Removed only when the files are actually gone.
+  /// Every check runs in the same main-actor turn as Delete audio's own guard and claim, so
+  /// nothing can start between them.
+  func removeAudioForRetention(
+    meetingID: UUID, stillEligible: @MainActor (Date) -> Bool
+  ) async -> AudioRetentionOutcome {
+    guard let record = live[meetingID], isRetentionEligible(record),
+      let endedAt = record.endedAt, stillEligible(endedAt),
+      playbackArbiter?.isPlaying(.meeting(meetingID)) != true
+    else { return .skipped }
+    return await deleteAudio(meetingID: meetingID) ? .removed : .failed
+  }
+
+  private func isRetentionEligible(_ record: MeetingRecord) -> Bool {
+    let saved: Bool
+    switch record.state {
+    case .ready, .failed, .interrupted: saved = true
+    case .recording, .stopping, .queued, .processing, .notesOnly: saved = false
+    }
+    return saved && record.audioKept && !record.deletionRequested
+      && !isActive(record.id) && !closeOwned.contains(record.id)
+      && !unknownCommits.contains(record.id)
   }
 
   /// Removes the audio of a meeting whose record says it is deleted. Repeatable: a launch runs
   /// it for every such meeting, and with no files left it does nothing.
-  private func finishAudioDeletion(_ meetingID: UUID) async {
+  /// True when every file went.
+  @discardableResult
+  private func finishAudioDeletion(_ meetingID: UUID) async -> Bool {
     playbackArbiter?.stopForDeletion(.meeting(meetingID))
     do {
       try await writer.run { store in
         try store.deleteAudio(meeting: meetingID)
         try MeetingProcessingCheckpointStore(meetingFolder: store.folder(for: meetingID)).clear()
       }
+      return true
     } catch {
       deps.log("meeting delete audio failed error=\(type(of: error))")
       notice = .storageFailed
+      return false
     }
   }
 

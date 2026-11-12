@@ -281,6 +281,65 @@ import Foundation
     }.get()
   }
 
+  /// Why retention removes a recording on its own.
+  enum AutomaticRemoval: Sendable, Equatable {
+    /// The keep period, in days, that expired it.
+    case expired(days: Int)
+    /// The storage warning threshold's automatic mode.
+    case removedForSpace
+  }
+
+  enum AutomaticRemovalOutcome: Sendable, Equatable {
+    case removed
+    /// No longer eligible when its turn came: kept, playing, re-recording, already gone, or the
+    /// policy changed.
+    case skipped
+    case failed
+  }
+
+  /// Retention's one way to remove a dictation recording (#3147 §3.1): a History command that
+  /// rechecks everything a scan may have gotten stale before any file goes. Inside the command,
+  /// in order: the recording must still exist and not be kept (archive reads; Keep changes run
+  /// on this same queue, so they cannot interleave); `stillNeeded` may do its own async check
+  /// (storage pressure measured now); then, after the last suspension and in the same turn as
+  /// the deletion's first step, there must be no encode in flight, no player playing it, and
+  /// `stillEligible` (the policy read now) must still say remove. Then it takes the same
+  /// deletion path as the user's own Delete.
+  func removeAutomatically(
+    rowID: UUID, as removal: AutomaticRemoval,
+    stillNeeded: @escaping @MainActor () async -> Bool = { true },
+    stillEligible: @escaping @MainActor () -> Bool
+  ) async -> AutomaticRemovalOutcome {
+    let result = await executor.admit { [self] () async -> Result<AutomaticRemovalOutcome, any Error> in
+      await executor.capture {
+        guard await archive.url(for: rowID) != nil, try await !archive.isPinned(rowID),
+          await stillNeeded()
+        else { return AutomaticRemovalOutcome.skipped }
+        #if DEBUG
+          await automaticRemovalWillDecideForTesting?()
+        #endif
+        // No suspension from here to the deletion's first step (ticket withdrawn, playback
+        // stopped): a policy change or a Play after this point waits for the command.
+        guard generations[rowID] == nil, stillEligible(),
+          arbiter?.isPlaying(.dictation(rowID)) != true
+        else { return AutomaticRemovalOutcome.skipped }
+        switch removal {
+        case .expired(let days):
+          try await deleteRecordingInCommand(rowID: rowID, reason: .expired, expiredAfterDays: days)
+        case .removedForSpace:
+          try await deleteRecordingInCommand(rowID: rowID, reason: .removedForSpace)
+        }
+        return .removed
+      }
+    }
+    switch result {
+    case .success(let outcome): return outcome
+    case .failure(let error):
+      log("automatic recording removal failed: \(type(of: error))")
+      return .failed
+    }
+  }
+
   func pin(rowID: UUID) async throws {
     try await executor.admit { [self] in
       await executor.capture {
@@ -305,7 +364,7 @@ import Foundation
     let archive = archive
     do {
       guard let url = await archive.url(for: rowID) else {
-        return .absent(try await archive.absence(for: rowID))
+        return .absent(try await archive.recordedAbsence(for: rowID))
       }
       let pinned = try await archive.isPinned(rowID)
       let durationMs = try await Task.detached(priority: .userInitiated) {
@@ -321,12 +380,14 @@ import Foundation
 
   /// Audio-only deletion. The ticket is withdrawn before the files go, so a late encode cannot
   /// bring the recording back even if the removal fails.
-  func deleteRecordingInCommand(rowID: UUID, reason: RecordingAbsence) async throws {
+  func deleteRecordingInCommand(
+    rowID: UUID, reason: RecordingAbsence, expiredAfterDays: Int? = nil
+  ) async throws {
     generations[rowID] = nil
     // Playback stops before any file goes, and never resumes from this file.
     arbiter?.stopForDeletion(.dictation(rowID))
     defer { changes.changed(rowID) }
-    try await archive.delete(rowID: rowID, reason: reason)
+    try await archive.delete(rowID: rowID, reason: reason, expiredAfterDays: expiredAfterDays)
   }
 
   /// The text row was removed (or was already gone): its recording, Keep mark and recorded
@@ -350,6 +411,9 @@ import Foundation
     /// Runs inside a publication command after its ticket check and before its row check, so a
     /// test can hold that suspension while a newer take is handed over.
     var rowCheckWillRunForTesting: (@MainActor () async -> Void)?
+    /// Runs inside an automatic removal after its archive reads and before its final checks, so
+    /// a test can change the policy or start playback in that window.
+    var automaticRemovalWillDecideForTesting: (@MainActor () async -> Void)?
   #endif
 
   private func log(_ message: String) {

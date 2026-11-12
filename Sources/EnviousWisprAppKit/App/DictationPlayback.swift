@@ -83,6 +83,13 @@ final class PlaybackArbiter {
     nowPlaying = player
   }
 
+  /// Whether a player of `id` is the one playing now. Retention never removes a recording
+  /// someone is listening to; the next sweep takes it.
+  func isPlaying(_ id: PlaybackSourceID) -> Bool {
+    guard let nowPlaying, nowPlaying.state == .playing else { return false }
+    return players[id]?.contains { $0.player === nowPlaying } ?? false
+  }
+
   /// The deletion count for `id`; a lookup that began under an older count is stale.
   func deletionCount(for id: PlaybackSourceID) -> Int { deletions[id, default: 0] }
 
@@ -108,8 +115,9 @@ final class PlaybackArbiter {
 /// History's view of one dictation's recording (#3147 §3.4).
 enum DictationRecordingStatus: Equatable, Sendable {
   case available(url: URL, durationMs: Int, pinned: Bool)
-  /// No recording, with the reason recorded when it happened (nil: legacy or unexplained).
-  case absent(RecordingAbsence?)
+  /// No recording, with the reason (and an expiry's keep period) recorded when it happened
+  /// (nil: legacy or unexplained).
+  case absent(RecordedAbsence?)
   /// The recording or its metadata could not be read just now; nothing is concluded.
   case unreadable
 }
@@ -121,9 +129,18 @@ enum DictationRecordingStatus: Equatable, Sendable {
 final class DictationRecordingChanges {
   private(set) var revisions: [UUID: Int] = [:]
   private(set) var allRevision = 0
+  /// Told after every change, so recording storage use is measured again (`RecordingRetention`).
+  @ObservationIgnored var onChange: (@MainActor () -> Void)?
 
-  func changed(_ rowID: UUID) { revisions[rowID, default: 0] += 1 }
-  func changedAll() { allRevision += 1 }
+  func changed(_ rowID: UUID) {
+    revisions[rowID, default: 0] += 1
+    onChange?()
+  }
+
+  func changedAll() {
+    allRevision += 1
+    onChange?()
+  }
 
   /// One number that moves whenever `rowID`'s recording may have changed.
   func revision(for rowID: UUID) -> Int { revisions[rowID, default: 0] &+ allRevision &* 1_000_003 }

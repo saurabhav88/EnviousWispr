@@ -165,6 +165,13 @@ enum SettingsDefaultValues {
   // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
   static let learnFromEdits = true
 
+  // #3147 Gate 2 (founder 2026-11-12): recordings are kept until the user deletes them (D2:
+  // no automatic seven-day removal); meeting audio likewise; warn at 2 GB and ask (D3).
+  static let dictationRecordingRetention: DictationRecordingRetention = .forever
+  static let meetingRecordingRetention: MeetingRecordingRetention = .forever
+  static let recordingStorageWarningThreshold: RecordingStorageWarningThreshold = .gb2
+  static let recordingThresholdBehavior: RecordingThresholdBehavior = .ask
+
   static let isDebugModeEnabled = false
   static let debugLogLevel: DebugLogLevel = .info
 

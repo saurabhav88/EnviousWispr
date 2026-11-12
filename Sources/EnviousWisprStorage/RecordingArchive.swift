@@ -17,6 +17,48 @@ public enum RecordingAbsence: String, Codable, Sendable, CaseIterable {
   case removedForSpace
 }
 
+/// One recorded absence: its reason and, for a retention expiry, the keep period in force when
+/// it happened, so History says "expired after 7 days" even after the setting changes. Stored as
+/// the bare reason string when there is no period, so entries written before periods existed
+/// read back unchanged (their expiry period is unknown and History says so generically).
+public struct RecordedAbsence: Codable, Sendable, Equatable {
+  public let reason: RecordingAbsence
+  /// The keep period in days for `.expired`; nil for every other reason and for older expiries.
+  public let expiredAfterDays: Int?
+
+  public init(_ reason: RecordingAbsence, expiredAfterDays: Int? = nil) {
+    self.reason = reason
+    self.expiredAfterDays = reason == .expired ? expiredAfterDays : nil
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case reason
+    case expiredAfterDays
+  }
+
+  public init(from decoder: Decoder) throws {
+    if let reason = try? decoder.singleValueContainer().decode(RecordingAbsence.self) {
+      self.init(reason)
+      return
+    }
+    let keyed = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      try keyed.decode(RecordingAbsence.self, forKey: .reason),
+      expiredAfterDays: try keyed.decodeIfPresent(Int.self, forKey: .expiredAfterDays))
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    guard let expiredAfterDays else {
+      var single = encoder.singleValueContainer()
+      try single.encode(reason)
+      return
+    }
+    var keyed = encoder.container(keyedBy: CodingKeys.self)
+    try keyed.encode(reason, forKey: .reason)
+    try keyed.encode(expiredAfterDays, forKey: .expiredAfterDays)
+  }
+}
+
 /// Sentence timings for one recording (#3147 §3.2), stored beside the audio and deleted with it.
 /// This chunk stores and reads them back exactly; it never invents anchors.
 public struct RecordingTiming: Codable, Sendable, Equatable {
@@ -174,7 +216,7 @@ public actor RecordingArchive {
   public func recordAbsence(_ reason: RecordingAbsence, for rowID: UUID) throws {
     try prepareDirectory()
     var absences = try readAbsences()
-    absences[rowID] = reason
+    absences[rowID] = RecordedAbsence(reason)
     try writeAbsences(absences)
   }
 
@@ -183,14 +225,15 @@ public actor RecordingArchive {
   /// removed throws before the recording is gone, leaving the Keep flag and no recorded reason.
   /// If the metadata write after a successful removal fails, the recording is gone, the error
   /// is thrown and History shows the row as "Recording unavailable".
-  public func delete(rowID: UUID, reason: RecordingAbsence) throws {
+  /// `expiredAfterDays` is recorded only with `.expired`: the keep period that removed it.
+  public func delete(rowID: UUID, reason: RecordingAbsence, expiredAfterDays: Int? = nil) throws {
     // Metadata is read before anything is removed, so damaged metadata stops the deletion
     // while the recording is still there.
     var pins = try readPins()
     var absences = try readAbsences()
     try removeFiles(of: rowID)
     pins.remove(rowID)
-    absences[rowID] = reason
+    absences[rowID] = RecordedAbsence(reason, expiredAfterDays: expiredAfterDays)
     try writePins(pins)
     try writeAbsences(absences)
   }
@@ -207,7 +250,7 @@ public actor RecordingArchive {
       for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
         try removeFiles(of: id)
         pins.remove(id)
-        absences[id] = reason
+        absences[id] = RecordedAbsence(reason)
         removed += 1
       }
     } catch {
@@ -305,6 +348,11 @@ public actor RecordingArchive {
 
   /// Why this row has no recording, when one was recorded.
   public func absence(for rowID: UUID) throws -> RecordingAbsence? {
+    try recordedAbsence(for: rowID)?.reason
+  }
+
+  /// The recorded absence with its expiry period, when one was recorded.
+  public func recordedAbsence(for rowID: UUID) throws -> RecordedAbsence? {
     try readAbsences()[rowID]
   }
 
@@ -458,9 +506,9 @@ public actor RecordingArchive {
   }
 
   /// Stored as a JSON object keyed by the row's UUID string.
-  private func readAbsences() throws -> [UUID: RecordingAbsence] {
-    let stored = try readMetadata([String: RecordingAbsence].self, named: Self.absencesFileName) ?? [:]
-    var absences: [UUID: RecordingAbsence] = [:]
+  private func readAbsences() throws -> [UUID: RecordedAbsence] {
+    let stored = try readMetadata([String: RecordedAbsence].self, named: Self.absencesFileName) ?? [:]
+    var absences: [UUID: RecordedAbsence] = [:]
     for (key, value) in stored {
       guard let id = UUID(uuidString: key) else {
         throw ArchiveError.unreadableMetadata(Self.absencesFileName)
@@ -470,7 +518,7 @@ public actor RecordingArchive {
     return absences
   }
 
-  private func writeAbsences(_ absences: [UUID: RecordingAbsence]) throws {
+  private func writeAbsences(_ absences: [UUID: RecordedAbsence]) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = .sortedKeys
     let stored = Dictionary(uniqueKeysWithValues: absences.map { ($0.key.uuidString, $0.value) })

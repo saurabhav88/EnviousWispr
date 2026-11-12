@@ -102,9 +102,10 @@ struct DictationRecordingSection: View {
     .settingsButton(.quiet, size: .medium, isEnabled: true)
   }
 
-  /// One line per recorded reason (#3147 §3.4). Legacy or unexplained absence never guesses.
-  static func absenceLine(_ reason: RecordingAbsence?) -> LocalizedStringResource {
-    switch reason {
+  /// One line per recorded reason (#3147 §3.4). Legacy or unexplained absence never guesses. An
+  /// expiry names the keep period recorded when it happened, never today's setting.
+  static func absenceLine(_ absence: RecordedAbsence?) -> LocalizedStringResource {
+    switch absence?.reason {
     case .recordingsOff:
       LocalizedStringResource(
         "Recordings were off for this dictation.",
@@ -118,9 +119,19 @@ struct DictationRecordingSection: View {
         "Recording deleted. The text stays.",
         comment: "History: the user deleted this dictation's recording and kept its text.")
     case .expired:
-      LocalizedStringResource(
-        "Recording removed after your keep period. The text stays.",
-        comment: "History: the recording was removed by the user's recording keep period.")
+      if absence?.expiredAfterDays == 1 {
+        LocalizedStringResource(
+          "Recording expired after 1 day. The text stays.",
+          comment: "History: the recording was removed after the one-day keep period chosen in Settings.")
+      } else if let days = absence?.expiredAfterDays {
+        LocalizedStringResource(
+          "Recording expired after \(days) days. The text stays.",
+          comment: "History: the recording was removed after the keep period chosen in Settings. %lld is a number of days, more than one.")
+      } else {
+        LocalizedStringResource(
+          "Recording removed after your keep period. The text stays.",
+          comment: "History: the recording was removed by the user's recording keep period.")
+      }
     case .removedForSpace:
       LocalizedStringResource(
         "Recording removed to free space. The text stays.",

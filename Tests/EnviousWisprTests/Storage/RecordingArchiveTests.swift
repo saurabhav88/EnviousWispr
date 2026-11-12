@@ -315,4 +315,45 @@ struct RecordingArchiveTests {
     #expect(await archive.url(for: row) != nil)
     #expect(try await archive.timing(for: row) == timing)
   }
+
+  @Test("an expiry keeps its keep period; reasons saved before periods existed still read")
+  func expiryPeriodAndOlderReasons() async throws {
+    let dir = folder()
+    let archive = RecordingArchive(directory: dir)
+    let expired = UUID()
+    try await archive.store(
+      rowID: expired, fileURL: try await finishedEncode(archive, rowID: expired), timing: nil)
+    try await archive.delete(rowID: expired, reason: .expired, expiredAfterDays: 7)
+    let deleted = UUID()
+    try await archive.store(
+      rowID: deleted, fileURL: try await finishedEncode(archive, rowID: deleted), timing: nil)
+    try await archive.delete(rowID: deleted, reason: .deleted, expiredAfterDays: 7)
+
+    let reopened = RecordingArchive(directory: dir)
+    #expect(
+      try await reopened.recordedAbsence(for: expired)
+        == RecordedAbsence(.expired, expiredAfterDays: 7))
+    #expect(
+      try await reopened.recordedAbsence(for: deleted) == RecordedAbsence(.deleted),
+      "a period belongs to an expiry only")
+    #expect(try await reopened.absence(for: expired) == .expired)
+
+    // An absences file written before periods existed: bare reason strings, an expiry without
+    // a period among them.
+    let older = UUID()
+    let olderExpiry = UUID()
+    let file = dir.appendingPathComponent("absences.json")
+    try Data(
+      #"{"\#(older.uuidString)":"recordingsOff","\#(olderExpiry.uuidString)":"expired"}"#.utf8
+    ).write(to: file)
+    #expect(try await reopened.recordedAbsence(for: older) == RecordedAbsence(.recordingsOff))
+    #expect(
+      try await reopened.recordedAbsence(for: olderExpiry) == RecordedAbsence(.expired),
+      "an older expiry has no period, so History stays generic")
+    // A reason without a period is written back in the older form.
+    try await reopened.recordAbsence(.saveFailed, for: UUID())
+    let text = try String(contentsOf: file, encoding: .utf8)
+    #expect(text.contains(#""recordingsOff""#))
+    #expect(!text.contains("expiredAfterDays"))
+  }
 }

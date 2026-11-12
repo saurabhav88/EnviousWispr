@@ -68,6 +68,8 @@
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
       .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+      .dictationRecordingRetention, .meetingRecordingRetention, .recordingStorageWarningThreshold,
+      .recordingThresholdBehavior,
     ]
 
     /// The wire name: the enum case's own name.
@@ -113,6 +115,11 @@
         return make(.extractedCheck)
       case .hotkeyEnabled, .vadSensitivity, .vadEnergyGate, .crashRecoveryEnabled,
         .onboardingState:
+        return make(.staging)
+      // #3147: no screen writes these yet; the Settings page (chunk 6) writes a shorter keep
+      // period only after its count preview and Undo.
+      case .dictationRecordingRetention, .meetingRecordingRetention,
+        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
         return make(.staging)
       case .whisperKitLanguage, .pushToTalkKeyCode, .pushToTalkModifiers:
         return make(.staging, legacy: true)
@@ -215,6 +222,11 @@
       case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
       case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
       case .learnFromEdits: return settings.learnFromEdits
+      case .dictationRecordingRetention: return settings.dictationRecordingRetention.rawValue
+      case .meetingRecordingRetention: return settings.meetingRecordingRetention.rawValue
+      case .recordingStorageWarningThreshold:
+        return settings.recordingStorageWarningThreshold.rawValue
+      case .recordingThresholdBehavior: return settings.recordingThresholdBehavior.rawValue
       }
     }
 
@@ -474,6 +486,22 @@
         }
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
+      case .dictationRecordingRetention:
+        return set(Codec.raw(value, DictationRecordingRetention.self)) {
+          settings.dictationRecordingRetention = $0
+        }
+      case .meetingRecordingRetention:
+        return set(Codec.raw(value, MeetingRecordingRetention.self)) {
+          settings.meetingRecordingRetention = $0
+        }
+      case .recordingStorageWarningThreshold:
+        return set(Codec.raw(value, RecordingStorageWarningThreshold.self)) {
+          settings.recordingStorageWarningThreshold = $0
+        }
+      case .recordingThresholdBehavior:
+        return set(Codec.raw(value, RecordingThresholdBehavior.self)) {
+          settings.recordingThresholdBehavior = $0
+        }
       }
     }
 
@@ -614,7 +642,8 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
-        .egOneSize:
+        .egOneSize, .dictationRecordingRetention, .meetingRecordingRetention,
+        .recordingStorageWarningThreshold, .recordingThresholdBehavior:
         return .typed
       }
     }
