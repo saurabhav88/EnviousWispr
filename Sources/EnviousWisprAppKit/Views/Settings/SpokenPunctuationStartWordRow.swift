@@ -50,14 +50,15 @@ struct SpokenPunctuationStartWordRow: View {
         field
         // Clicking elsewhere in the window does not always take focus off the field, so a typed word
         // needs a button that saves it; Return and focus loss still save it too.
-        SettingsActionButton(
-          verbatimTitle: SpokenPunctuationCopy.saveLabel, isEnabled: editor.hasUnsavedDraft,
-          emphasis: .filled
-        ) { editor.commitDraft() }
+        Button { editor.commitDraft() } label: {
+          EnviousButtonLabel(verbatim: SpokenPunctuationCopy.saveLabel)
+        }
+        .settingsButton(.filled, isEnabled: editor.hasUnsavedDraft)
         .accessibilityLabel(Text(SpokenPunctuationCopy.saveAccessibilityLabel))
-        SettingsActionButton(
-          verbatimTitle: SpokenPunctuationCopy.resetLabel, isEnabled: editor.canReset
-        ) { editor.reset() }
+        Button { editor.reset() } label: {
+          EnviousButtonLabel(verbatim: SpokenPunctuationCopy.resetLabel)
+        }
+        .settingsButton(isEnabled: editor.canReset)
         .accessibilityLabel(Text(SpokenPunctuationCopy.resetAccessibilityLabel))
       }
       if let example = editor.exampleCommand {

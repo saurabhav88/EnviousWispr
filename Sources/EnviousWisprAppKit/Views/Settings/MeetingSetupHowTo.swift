@@ -134,40 +134,46 @@ struct MeetingSetupHowTo: View {
   }
 
   private var backButton: some View {
-    SettingsActionButton(
-      title: LocalizedStringResource(
-        "Back", comment: "EnviousMeet setup: shows the previous how-it-works card."),
-      isEnabled: true, emphasis: .quiet, size: .medium
-    ) {
+    Button {
       model.previous()
+    } label: {
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Back", comment: "EnviousMeet setup: shows the previous how-it-works card."),
+        size: .medium)
     }
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
     .fixedSize()
   }
 
   private var pauseButton: some View {
-    SettingsActionButton(
-      title: model.paused
-        ? LocalizedStringResource(
+    Button {
+      model.togglePause()
+    } label: {
+      EnviousButtonLabel(
+        model.paused
+          ? LocalizedStringResource(
           "Play",
           comment: "EnviousMeet setup: turns the how-it-works cards' auto-advance back on.")
-        : LocalizedStringResource(
+          : LocalizedStringResource(
           "Pause",
           comment: "EnviousMeet setup: stops the how-it-works cards from moving on by themselves."),
-      isEnabled: true, emphasis: .quiet, size: .medium
-    ) {
-      model.togglePause()
+        size: .medium)
     }
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
     .fixedSize()
   }
 
   private var nextButton: some View {
-    SettingsActionButton(
-      title: LocalizedStringResource(
-        "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
-      isEnabled: true, emphasis: .quiet, size: .medium
-    ) {
+    Button {
       model.next()
+    } label: {
+      EnviousButtonLabel(
+        LocalizedStringResource(
+          "Next", comment: "EnviousMeet setup: shows the next how-it-works card."),
+        size: .medium)
     }
+    .settingsButton(.quiet, size: .medium, isEnabled: true)
     .fixedSize()
   }
 

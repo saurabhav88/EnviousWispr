@@ -676,31 +676,35 @@ private struct EGOneSizeCardView: View {
   private func button(_ action: EGOneSizeCard.Action) -> some View {
     switch action {
     case .download:
-      SettingsActionButton(
-        verbatimTitle: SettingsMapRef.id(.localModelDownload).title, isEnabled: true,
-        emphasis: card.isRecommended || card.isSelected ? .filled : .outlined,
-        systemImage: "arrow.down.to.line"
-      ) { perform(.download) }
+      Button { perform(.download) } label: {
+        EnviousButtonLabel(
+          verbatim: SettingsMapRef.id(.localModelDownload).title, systemImage: "arrow.down.to.line")
+      }
+      .settingsButton(card.isRecommended || card.isSelected ? .filled : .outlined, isEnabled: true)
       .settingsMapRegistration(registration(.localModelDownload))
     case .resume:
-      SettingsActionButton(
-        verbatimTitle: SettingsMapRef.id(.localModelResume).title, isEnabled: true
-      ) { perform(.resume) }
+      Button { perform(.resume) } label: {
+        EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelResume).title)
+      }
+      .settingsButton(isEnabled: true)
       .settingsMapRegistration(registration(.localModelResume))
     case .resumeUpgrade:
-      SettingsActionButton(
-        verbatimTitle: SettingsMapRef.id(.localModelResumeUpgrade).title, isEnabled: true
-      ) { perform(.resumeUpgrade) }
+      Button { perform(.resumeUpgrade) } label: {
+        EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelResumeUpgrade).title)
+      }
+      .settingsButton(isEnabled: true)
       .settingsMapRegistration(registration(.localModelResumeUpgrade))
     case .finishUpgrade:
-      SettingsActionButton(
-        verbatimTitle: SettingsMapRef.id(.localModelFinishUpgrade).title, isEnabled: true
-      ) { perform(.finishUpgrade) }
+      Button { perform(.finishUpgrade) } label: {
+        EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelFinishUpgrade).title)
+      }
+      .settingsButton(isEnabled: true)
       .settingsMapRegistration(registration(.localModelFinishUpgrade))
     case .tryAgain:
-      SettingsActionButton(
-        verbatimTitle: SettingsMapRef.id(.localModelTryAgain).title, isEnabled: true
-      ) { perform(.tryAgain) }
+      Button { perform(.tryAgain) } label: {
+        EnviousButtonLabel(verbatim: SettingsMapRef.id(.localModelTryAgain).title)
+      }
+      .settingsButton(isEnabled: true)
       .settingsMapRegistration(registration(.localModelTryAgain))
     case .cancel:
       PolishTextAction(

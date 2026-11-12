@@ -335,14 +335,15 @@ struct LivePreviewPackCatalogSheet: View {
       //
       // `SettingsActionButton` carries an accent tint, a hover fill, and a
       // disabled state that is visibly different from both.
-      SettingsActionButton(
-        verbatimTitle: packs.failedTag == pack.tag
-          ? LivePreviewSettingsCopy.packRetry
-          : LivePreviewSettingsCopy.packInstall,
-        isEnabled: packs.installingTag == nil
-      ) {
+      Button {
         packs.install(tag: pack.tag)
+      } label: {
+        EnviousButtonLabel(
+          verbatim: packs.failedTag == pack.tag
+            ? LivePreviewSettingsCopy.packRetry
+            : LivePreviewSettingsCopy.packInstall)
       }
+      .settingsButton(isEnabled: packs.installingTag == nil)
     }
   }
 }

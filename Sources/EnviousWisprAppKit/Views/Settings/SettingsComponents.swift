@@ -2236,19 +2236,7 @@ struct SettingsActionButton: View {
   var size: Size = .regular
   var trailingSystemImage: String? = nil
   var systemImage: String? = nil
-  /// Return or Escape for a sheet's confirm and cancel.
-  ///
-  /// **A parameter rather than something the call site applies, so the shortcut
-  /// lands on a control rather than on a wrapper.** Apple documents
-  /// `keyboardShortcut(_:modifiers:)` as assigning the shortcut to "the modified
-  /// control"; this type is a composite `View`, not a control, so a call site
-  /// writing the modifier on the outside is relying on behaviour the
-  /// documentation does not describe. Passed in, it is applied to the `Button`
-  /// below, which is unambiguously the control.
-  ///
-  /// The failure this avoids is a silent one: a footer that swapped `Button` for
-  /// this type and kept its own modifier still works when CLICKED, so nothing on
-  /// screen would say Escape had stopped answering.
+  /// Return or Escape for a sheet's confirm and cancel; see `View.settingsButton`.
   var shortcut: KeyboardShortcut? = nil
 
   /// OPTIONAL, so this type can render its treatment WITHOUT being a control.
@@ -2292,42 +2280,23 @@ struct SettingsActionButton: View {
 
   private var label: EnviousButtonLabel {
     EnviousButtonLabel(
-      verbatim: title, size: size, systemImage: systemImage,
+      verbatim: title,
+      size: size,
+      systemImage: systemImage,
       trailingSystemImage: trailingSystemImage)
   }
 
   var body: some View {
-    Group {
-      if let action {
-        shortcutBound(
-          Button(role: emphasis == .destructive ? .destructive : nil, action: action) { label }
-            .settingsButton(
-              emphasis == .destructive ? .outlined : emphasis, shape: shape, size: size,
-              paintsEnabled: isEnabled))
-      } else {
-        label.modifier(
-          EnviousButtonFace(emphasis: emphasis, shape: shape, size: size, paintsEnabled: isEnabled))
-      }
-    }
-    .disabled(!isEnabled)
-  }
-
-  /// Binds `shortcut` to the `Button`, and leaves the shortcut ALONE when there
-  /// is none.
-  ///
-  /// **The branch is the fix, not a style choice.** An unconditional
-  /// `.keyboardShortcut(shortcut)` also runs for `nil`, and a caller that
-  /// applies its own modifier on the OUTSIDE of this composite then has it
-  /// overridden from within -- which is how a Cancel button keeps working when
-  /// clicked and silently stops answering Escape. Found by review on exactly
-  /// that: the two #2445 sheet footers had their `.cancelAction` and
-  /// `.defaultAction` cleared by this type's own default.
-  @ViewBuilder
-  private func shortcutBound(_ content: some View) -> some View {
-    if let shortcut {
-      content.keyboardShortcut(shortcut)
+    if let action {
+      Button(role: emphasis == .destructive ? .destructive : nil, action: action) { label }
+        .settingsButton(
+          emphasis, shape: shape, size: size, isEnabled: isEnabled, shortcut: shortcut)
     } else {
-      content
+      label
+        .modifier(
+          EnviousButtonFace(emphasis: emphasis, shape: shape, size: size, paintsEnabled: isEnabled)
+        )
+        .disabled(!isEnabled)
     }
   }
 }

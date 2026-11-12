@@ -64,17 +64,61 @@ struct EnviousButtonStyle: PrimitiveButtonStyle {
 }
 
 extension View {
-  /// A Settings action button: the style, and the search-arrival focus adapter every Settings
-  /// action button carries (#3482). Apply to the `Button` itself.
+  /// A Settings action button: the style, the search-arrival focus adapter every Settings
+  /// action button carries (#3482), the keyboard shortcut and the disabled state, in the order
+  /// the `SettingsActionButton` wrapper applied them (#4506). Apply to the `Button` itself.
+  ///
+  /// `isEnabled` is the caller's own enabled condition, written once: it picks the enabled or
+  /// disabled paint (`EnviousButtonStyle.paintsEnabled`) and disables the button. A parent's
+  /// `.disabled` still disables it as well; the paint then stays as `isEnabled` says and only
+  /// the system dimming shows, as it did before.
+  ///
+  /// `shortcut`: Return or Escape for a sheet's confirm and cancel.
+  ///
+  /// **A parameter rather than something the call site applies, so the shortcut
+  /// lands on a control rather than on a wrapper.** Apple documents
+  /// `keyboardShortcut(_:modifiers:)` as assigning the shortcut to "the modified
+  /// control"; this type is a composite `View`, not a control, so a call site
+  /// writing the modifier on the outside is relying on behaviour the
+  /// documentation does not describe. Passed in, it is applied to the `Button`
+  /// below, which is unambiguously the control.
+  ///
+  /// The failure this avoids is a silent one: a footer that swapped `Button` for
+  /// this type and kept its own modifier still works when CLICKED, so nothing on
+  /// screen would say Escape had stopped answering.
   func settingsButton(
     _ emphasis: EnviousButtonFace.Emphasis = .outlined, shape: EnviousButtonFace.Shape = .capsule,
-    size: EnviousButtonFace.Size = .regular, paintsEnabled: Bool = true
+    size: EnviousButtonFace.Size = .regular, isEnabled: Bool, shortcut: KeyboardShortcut? = nil
   ) -> some View {
     buttonStyle(
-      EnviousButtonStyle(
-        emphasis: emphasis, shape: shape, size: size, paintsEnabled: paintsEnabled)
+      EnviousButtonStyle(emphasis: emphasis, shape: shape, size: size, paintsEnabled: isEnabled)
     )
     .settingsArrivalFocusControl()
+    .modifier(SettingsButtonShortcut(shortcut: shortcut))
+    .disabled(!isEnabled)
+  }
+}
+
+/// Binds `shortcut` to the `Button`, and leaves the shortcut ALONE when there
+/// is none.
+///
+/// **The branch is the fix, not a style choice.** An unconditional
+/// `.keyboardShortcut(shortcut)` also runs for `nil`, and a caller that
+/// applies its own modifier on the OUTSIDE of this composite then has it
+/// overridden from within -- which is how a Cancel button keeps working when
+/// clicked and silently stops answering Escape. Found by review on exactly
+/// that: the two #2445 sheet footers had their `.cancelAction` and
+/// `.defaultAction` cleared by this type's own default.
+private struct SettingsButtonShortcut: ViewModifier {
+  let shortcut: KeyboardShortcut?
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if let shortcut {
+      content.keyboardShortcut(shortcut)
+    } else {
+      content
+    }
   }
 }
 

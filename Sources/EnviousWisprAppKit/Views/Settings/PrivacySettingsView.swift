@@ -87,13 +87,14 @@ struct PrivacySettingsView: View {
                     .font(.stRowHelper)
                     .foregroundStyle(.stTextSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                  SettingsActionButton(
-                    verbatimTitle: PrivacySettingsCopy.restartAction, isEnabled: !isBusy
-                  ) {
+                  Button {
                     Self.restartNow(isBusy: { isBusy }) {
                       AppRelauncher.relaunchWhenSafe(stillBusy: $0)
                     }
+                  } label: {
+                    EnviousButtonLabel(verbatim: PrivacySettingsCopy.restartAction)
                   }
+                  .settingsButton(isEnabled: !isBusy)
                   .settingsMapRegistration(.sendCrashReportsRestart)
                 }
                 .padding(.top, 4)

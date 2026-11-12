@@ -331,9 +331,10 @@ struct TranscribeFileView: View {
     _ title: String, isEnabled: Bool = true, systemImage: String? = nil,
     action: @escaping () -> Void
   ) -> some View {
-    SettingsActionButton(
-      verbatimTitle: title, isEnabled: isEnabled, emphasis: .quiet, shape: .roundedRect,
-      size: .medium, systemImage: systemImage, action: action)
+    Button(action: action) {
+      EnviousButtonLabel(verbatim: title, size: .medium, systemImage: systemImage)
+    }
+    .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: isEnabled)
   }
 
   /// `showsArrow` is opt-OUT, because the prototype's primaries carry the arrow wherever
@@ -342,14 +343,27 @@ struct TranscribeFileView: View {
   /// carries none in the prototype either.
   /// `action` is OPTIONAL: `nil` draws the treatment without being a control, which the drop
   /// zone needs because the whole box is already the button (#2772 finding 1).
+  @ViewBuilder
   private func wizardPrimary(
-    _ title: String, isEnabled: Bool = true, size: SettingsActionButton.Size = .medium,
+    _ title: String, isEnabled: Bool = true, size: EnviousButtonFace.Size = .medium,
     systemImage: String? = nil, showsArrow: Bool = true, action: (() -> Void)? = nil
   ) -> some View {
-    SettingsActionButton(
-      verbatimTitle: title, isEnabled: isEnabled, emphasis: .filled, shape: .roundedRect,
-      size: size, trailingSystemImage: showsArrow ? "arrow.right" : nil,
-      systemImage: systemImage, action: action)
+    let label = EnviousButtonLabel(
+      verbatim: title,
+      size: size,
+      systemImage: systemImage,
+      trailingSystemImage: showsArrow ? "arrow.right" : nil)
+    if let action {
+      Button(action: action) { label }
+        .settingsButton(.filled, shape: .roundedRect, size: size, isEnabled: isEnabled)
+    } else {
+      label
+        .modifier(
+          EnviousButtonFace(
+            emphasis: .filled, shape: .roundedRect, size: size, paintsEnabled: isEnabled)
+        )
+        .disabled(!isEnabled)
+    }
   }
 
   /// `forwardEnabled` exists for #2772 finding 7a: with a cloud engine selected and no key

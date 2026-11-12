@@ -162,9 +162,12 @@ struct SnippetEditSheet: View {
   private var fillInButtons: some View {
     HStack(spacing: 8) {
       ForEach(SnippetPlaceholder.allCases, id: \.self) { placeholder in
-        SettingsActionButton(verbatimTitle: Self.fillInTitle(for: placeholder), isEnabled: true) {
+        Button {
           expansion += placeholder.token
+        } label: {
+          EnviousButtonLabel(verbatim: Self.fillInTitle(for: placeholder))
         }
+        .settingsButton(isEnabled: true)
         .background { layoutProbe?("fillIn-\(placeholder.token)") }
       }
       Spacer(minLength: 0)
@@ -225,10 +228,10 @@ struct SnippetEditSheet: View {
         ) { dismiss() }
         .background { layoutProbe?("Cancel") }
         // A new snippet's confirm says what it does (mockup 15); an edit keeps Save.
-        SettingsActionButton(
-          title: isEditing ? "Save" : "Add snippet", isEnabled: canSave, emphasis: .filled,
-          shape: .roundedRect, size: .medium
-        ) { save() }
+        Button { save() } label: {
+          EnviousButtonLabel(isEditing ? "Save" : "Add snippet", size: .medium)
+        }
+        .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: canSave)
           .background { layoutProbe?("Save") }
       }
     }

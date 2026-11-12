@@ -112,7 +112,10 @@ struct SnippetImportSheet: View {
   private var header: some View {
     HStack(spacing: 8) {
       if model.canGoBack {
-        SettingsActionButton(title: "Back", isEnabled: true) { model.goBack() }
+        Button { model.goBack() } label: {
+          EnviousButtonLabel("Back")
+        }
+        .settingsButton(isEnabled: true)
       }
       Text(title)
         .font(.title3)
@@ -558,15 +561,16 @@ private struct SnippetImportFileScreen: View {
         .font(.stHelper)
         .foregroundStyle(.stTextSecondary)
 
-      SettingsActionButton(
-        title: "Choose a file", isEnabled: true, emphasis: .filled, systemImage: "folder"
-      ) {
+      Button {
         // The panel is opened first and the file read only after a choice, so cancelling
         // reads nothing and starts no work.
         if let url = SnippetImportFilePanel.chooseFile() {
           model.begin(with: SnippetFileImportSource(url: url))
         }
+      } label: {
+        EnviousButtonLabel("Choose a file", systemImage: "folder")
       }
+      .settingsButton(.filled, isEnabled: true)
     }
   }
 }

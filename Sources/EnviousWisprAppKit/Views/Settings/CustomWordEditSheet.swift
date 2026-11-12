@@ -307,9 +307,12 @@ struct CustomWordEditSheet: View {
         // Enabled whatever the field holds. Empty, it puts the cursor in the
         // field rather than doing nothing — a greyed-out Add was the second
         // thing on this sheet that looked broken.
-        SettingsActionButton(title: "Add", isEnabled: true, emphasis: .filled) {
+        Button {
           addAlias()
+        } label: {
+          EnviousButtonLabel("Add")
         }
+        .settingsButton(.filled, isEnabled: true)
       }
 
       aliasList

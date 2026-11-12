@@ -238,22 +238,24 @@ struct MeetingHistoryDetailView: View {
         .disabled(!offered.transcribeAgain)
         .accessibilityIdentifier("meetings.detail.retry")
       } else {
-        SettingsActionButton(
-          title: title, isEnabled: offered.transcribeAgain, systemImage: "arrow.clockwise"
-        ) {
+        Button {
           let engine = engines.first ?? .parakeet
           run { meetings in await meetings.transcribeAgain(meetingID: meetingID, engine: engine) }
+        } label: {
+          EnviousButtonLabel(title, systemImage: "arrow.clockwise")
         }
+        .settingsButton(isEnabled: offered.transcribeAgain)
         .accessibilityIdentifier("meetings.detail.retry")
       }
-      SettingsActionButton(
-        title: LocalizedStringResource(
-          "Delete audio",
-          comment: "EnviousMeet: removes the meeting's recording and keeps its transcript."),
-        isEnabled: offered.deleteAudio && !actionInFlight, emphasis: .quiet
-      ) {
+      Button {
         confirming = .deleteAudio
+      } label: {
+        EnviousButtonLabel(
+          LocalizedStringResource(
+            "Delete audio",
+            comment: "EnviousMeet: removes the meeting's recording and keeps its transcript."))
       }
+      .settingsButton(.quiet, isEnabled: offered.deleteAudio && !actionInFlight)
       .accessibilityIdentifier("meetings.detail.deleteAudio")
       Spacer(minLength: 0)
       SettingsActionButton(

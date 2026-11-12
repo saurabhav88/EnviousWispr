@@ -411,9 +411,10 @@ struct TranscribeFileWorkingCard: View {
             showsSweep: WorkingPulseMark.showsPulse(reduceMotion: reduceMotion))
         }
       }
-      SettingsActionButton(
-        title: "Stop", isEnabled: true, emphasis: .quiet, shape: .roundedRect,
-        size: .medium, systemImage: nil, action: onStop)
+      Button(action: onStop) {
+        EnviousButtonLabel("Stop", size: .medium, systemImage: nil)
+      }
+      .settingsButton(.quiet, shape: .roundedRect, size: .medium, isEnabled: true)
     }
   }
 
