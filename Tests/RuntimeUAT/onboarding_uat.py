@@ -669,6 +669,33 @@ def s_completion(run, speech):
     return s
 
 
+def utc_now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def s_consent_off(run, speech):
+    """Usage metrics OFF: a visit with picks and an abandon must send no Setup rows. The run
+    records the consent-off window; PostHog is read for that window AFTER the run (the
+    harness cannot see the vendor), so this scenario's own checks cover only the switch."""
+    s = Scenario("consent_off")
+    before = run.app.call("settings", "get", "shareUsageMetrics").get("value")
+    s.fixture("usage metrics switched off through the door (allowlisted; restored at the end)")
+    run.app.call("settings", "set", "shareUsageMetrics", "false")
+    off = run.app.call("settings", "get", "shareUsageMetrics").get("value")
+    s.expect(off is False, "usage metrics read off", off)
+    run.window["consent_off_start"] = utc_now()
+    run.reset(s, "a visit with consent off")
+    run.walk_to_downloads(s, speech)
+    run.app.call("onboarding", "stop")  # ends the visit: with consent on this sends choices
+    run.window["consent_off_end"] = utc_now()
+    run.app.call("settings", "set", "shareUsageMetrics", json.dumps(before))
+    back = run.app.call("settings", "get", "shareUsageMetrics").get("value")
+    s.expect(back == before, "usage metrics back to the founder's value", back)
+    s.notes.append("VENDOR CHECK OWED: no onboarding.* rows in PostHog (environment=development) "
+                   "between window.consent_off_start and window.consent_off_end")
+    return s
+
+
 def s_interrupted(run, speech):
     s = Scenario("interrupted")
     run.app.call("onboarding", "stop")
@@ -702,7 +729,7 @@ def s_interrupted(run, speech):
 SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
-    "interrupted": s_interrupted,
+    "interrupted": s_interrupted, "consent_off": s_consent_off,
 }
 
 
