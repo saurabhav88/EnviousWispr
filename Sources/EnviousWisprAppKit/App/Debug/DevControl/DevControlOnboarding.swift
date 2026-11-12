@@ -134,7 +134,7 @@
         return notRunning()
       }
       guard !workflow.legacyWindowVisible() else { return legacyBusy() }
-      presenter.show(coordinator: session.coordinator)
+      presenter.show(coordinator: session.coordinator, telemetry: session.telemetry)
       return .ok(snapshot())
     }
 
@@ -209,10 +209,15 @@
         fake.appleIntelligence = state
       }
       if let lang = args["lang"] {
-        guard let code = lang as? String, LanguageTypes.isSupported(code) else {
-          return .failure(.badArgs, "lang must be a supported language code")
+        // `none`: a Mac whose language the app cannot read (D8's blank Language field).
+        if lang as? String == "none" {
+          fake.macLanguages = []
+        } else {
+          guard let code = lang as? String, LanguageTypes.isSupported(code) else {
+            return .failure(.badArgs, "lang must be a supported language code or none")
+          }
+          fake.macLanguages = [code]
         }
-        fake.macLanguages = [code]
       }
       guard fake != SetupAdvice.DebugProfile() else {
         return .failure(.badArgs, "give at least one of ram, os, afm, lang, or clear")

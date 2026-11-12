@@ -738,6 +738,157 @@ def capture_window(wid, path):
             and os.path.getmtime(path) >= started - 1)
 
 
+def setup_elements(pid, role, title="Setup"):
+    """Every element of `role` in `pid`'s window `title`, with its title/description/value."""
+    from ui_helpers import get_ax_app, get_attr
+    window = next((w for w in (get_attr(get_ax_app(pid), "AXWindows") or [])
+                   if get_attr(w, "AXTitle") == title), None)
+    found, stack = [], [window] if window is not None else []
+    while stack:
+        el = stack.pop()
+        if get_attr(el, "AXRole") == role:
+            found.append(el)
+        stack.extend(get_attr(el, "AXChildren") or [])
+    return found
+
+
+def setup_button(pid, name):
+    from ui_helpers import get_attr
+    for b in setup_elements(pid, "AXButton"):
+        if name in (get_attr(b, "AXTitle"), get_attr(b, "AXDescription")):
+            return b
+    return None
+
+
+def setup_field(pid):
+    fields = setup_elements(pid, "AXTextField")
+    return fields[0] if len(fields) == 1 else None
+
+
+def post_keys(pid, text=None, keycode=None, flags=0):
+    """Keyboard events delivered to `pid` only (CGEventPostToPid), never to the frontmost app,
+    so a person using the Mac is not typed into. `text` types Unicode; `keycode` presses one key."""
+    from Quartz import (CGEventCreateKeyboardEvent, CGEventKeyboardSetUnicodeString,
+                        CGEventPostToPid, CGEventSetFlags)
+    def send(down, code=0, chars=None):
+        ev = CGEventCreateKeyboardEvent(None, code, down)
+        if chars is not None:
+            CGEventKeyboardSetUnicodeString(ev, len(chars), chars)
+        if flags:
+            CGEventSetFlags(ev, flags)
+        CGEventPostToPid(pid, ev)
+    if text is not None:
+        for ch in text:
+            send(True, 0, ch)
+            send(False, 0, ch)
+            time.sleep(0.02)  # test-fixture-timer: one character per event, in order
+    if keycode is not None:
+        send(True, keycode)
+        send(False, keycode)
+    time.sleep(0.2)  # test-fixture-timer: the field publishes its text on the next run loop turn
+
+
+KEY_RETURN, KEY_A, KEY_DELETE = 36, 0, 51
+FLAG_CMD = 1 << 20
+
+
+def s_screens_d1(run, speech):
+    """D1: Welcome and Language through their real controls (AX press, AX value, AX confirm),
+    with light/dark captures of each state. The Mac's language is faked for advice only
+    (`onboarding profile --lang`); appearance is set through the door and restored."""
+    from ui_helpers import get_attr, set_attr, perform_action
+    s = Scenario("screens_d1")
+    pid = run.app.client.pid
+    shots = os.path.join(run.artifacts, "shots")
+    os.makedirs(shots, exist_ok=True)
+    before = run.app.call("settings", "get", "appearance").get("value")
+
+    def shot(name):
+        wid = window_id(pid, "Setup")
+        path = os.path.join(shots, f"d1-{name}.png")
+        s.expect(wid is not None and capture_window(wid, path), f"captured {name}", path)
+
+    def settle(seconds=0.6):
+        time.sleep(seconds)  # test-fixture-timer: the screen entrance / greeting runs on screen
+
+    def type_language(text):
+        field = setup_field(pid)
+        s.expect(field is not None, "one language field")
+        if field is not None:
+            set_attr(field, "AXFocused", True)
+        post_keys(pid, keycode=KEY_A, flags=FLAG_CMD)  # select all
+        post_keys(pid, keycode=KEY_DELETE)
+        post_keys(pid, text=text)
+        settle(0.4)
+
+    for appearance in ("light", "dark"):
+        run.app.call("settings", "set", "appearance", json.dumps(appearance))
+        run.app.call("onboarding", "profile", "--lang", "de")
+        run.reset(s, f"fresh flow, Mac language faked German ({appearance})")
+        run.app.call("onboarding", "present")
+        settle()
+        shot(f"{appearance}-welcome")
+        start = setup_button(pid, "Set up dictation")
+        s.expect(start is not None and perform_action(start, "AXPress"),
+                 f"pressed Set up dictation ({appearance})")
+        st = run.until(lambda x: x.get("step") == "language", 4, "language")
+        s.expect(st.get("step") == "language", "Set up dictation reaches Language", st.get("step"))
+        settle(0.3)
+        field = setup_field(pid)
+        s.expect(field is not None and get_attr(field, "AXValue") == "Deutsch",
+                 "the Mac's language is pre-filled", field is not None and get_attr(field, "AXValue"))
+        shot(f"{appearance}-language-guess")
+        settle(0.5)
+        shot(f"{appearance}-language-greeting")
+        type_language("zzqxw")
+        cont = setup_button(pid, "Continue")
+        s.expect(cont is not None and get_attr(cont, "AXEnabled") is False,
+                 "Continue is disabled for unmatched text", cont is not None and get_attr(cont, "AXEnabled"))
+        shot(f"{appearance}-language-nomatch")
+        if appearance == "light":
+            perform_action(cont, "AXPress")
+            st = run.status()
+            s.expect(st.get("step") == "language" and (st.get("choices") or {}).get("language") is None,
+                     "a disabled Continue commits nothing", (st.get("step"), st.get("choices")))
+            type_language("Japanese")
+            post_keys(pid, keycode=KEY_RETURN)  # Return in the field
+            st = run.until(lambda x: x.get("step") == "speechPick", 4, "speechPick")
+            s.expect(st.get("step") == "speechPick"
+                     and (st.get("choices") or {}).get("language") == "ja"
+                     and (st.get("recommended") or {}).get("speech") == "whisper",
+                     "Return commits Japanese and the advice is Whisper (M73)",
+                     (st.get("step"), st.get("choices"), st.get("recommended")))
+            run.send("back")
+            st = run.until(lambda x: x.get("step") == "language", 4, "back")
+            settle(0.3)
+            field = setup_field(pid)
+            s.expect(field is not None and get_attr(field, "AXValue") == "日本語",
+                     "Back shows the committed language, not the Mac's guess",
+                     field is not None and get_attr(field, "AXValue"))
+            type_language("Deutsch")
+            cont = setup_button(pid, "Continue")
+            s.expect(cont is not None and perform_action(cont, "AXPress"), "pressed Continue")
+            st = run.until(lambda x: x.get("step") == "speechPick", 4, "speechPick")
+            s.expect((st.get("choices") or {}).get("language") == "de",
+                     "Continue commits German through the same path", st.get("choices"))
+        run.app.call("onboarding", "profile", "--lang", "none")
+        run.reset(s, f"fresh flow, Mac language unknown ({appearance})")
+        run.send("next")
+        settle()
+        field = setup_field(pid)
+        s.expect(field is not None and (get_attr(field, "AXValue") or "") == "",
+                 "an unknown Mac language starts blank", field is not None and get_attr(field, "AXValue"))
+        shot(f"{appearance}-language-blank")
+    title, texts = setup_window_ax(pid)
+    s.expect(any("Your main dictation language" in t for t in texts),
+             "the field's accessibility label", [t for t in texts if "language" in t.lower()][:5])
+    run.app.call("onboarding", "profile", "--clear")
+    run.app.call("settings", "set", "appearance", json.dumps(before))
+    run.app.call("onboarding", "stop")
+    s.notes.append(f"VISUAL REVIEW OWED: {shots} d1-* against the source-of-truth mockup")
+    return s
+
+
 def s_shell(run, speech):
     """D0: the new Setup shell shown for the session (DEBUG `onboarding present`), captured in
     light and dark at a few steps. Visual evidence only: positioning uses `goto`, which proves
@@ -811,7 +962,7 @@ SCENARIOS = {
     "fresh": s_fresh, "resume": s_resume, "restart": s_restart, "profiles": s_profiles,
     "permissions": s_permissions, "faults": s_faults, "completion": s_completion,
     "interrupted": s_interrupted, "consent_off": s_consent_off,
-    "shell": s_shell,
+    "shell": s_shell, "screens_d1": s_screens_d1,
 }
 
 

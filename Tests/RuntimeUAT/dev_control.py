@@ -441,7 +441,7 @@ def build_parser():
     profile.add_argument("--ram", type=int, help="memory in GiB")
     profile.add_argument("--os", type=int, help="macOS major version")
     profile.add_argument("--afm", choices=ONBOARDING_AFM_STATES)
-    profile.add_argument("--lang", help="the Mac's language code")
+    profile.add_argument("--lang", help="the Mac's language code, or none for an unreadable one")
     profile.add_argument("--clear", action="store_true")
     perms = onboarding.add_parser("permissions", help="simulate grants: no prompts, no telemetry")
     perms.add_argument("--mic", choices=("granted", "denied", "notDetermined"))

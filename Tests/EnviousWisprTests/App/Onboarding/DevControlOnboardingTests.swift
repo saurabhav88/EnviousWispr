@@ -181,18 +181,61 @@
       let observer = recorder.observer()
       let (door, _, _) = Self.make(telemetry: observer)
       _ = door.begin()
-      _ = door.present()
       _ = door.send(["event": "next"])
       _ = door.send(["event": "chooseLanguage", "value": "auto"])
+      _ = door.send(["event": "next"])  // Speech pick: still a placeholder
+      _ = door.present()
+      _ = door.send(["event": "compareSpeech"])  // another placeholder
       let window = try #require(NSApp.windows.first { $0.title == "Setup" && $0.isVisible })
       window.close()
       let status = Self.payload(door.status())
       #expect(status?["presented"] as? Bool == false)
-      #expect(status?["active"] as? Bool == true && status?["step"] as? String == "language")
+      #expect(status?["active"] as? Bool == true && status?["step"] as? String == "speechCompare")
       #expect(recorder.rows.isEmpty, "a placeholder or step change sent screen rows")
       _ = door.present()  // reattaches to the same flow
-      #expect(Self.payload(door.status())?["step"] as? String == "language")
+      #expect(Self.payload(door.status())?["step"] as? String == "speechCompare")
       _ = door.stop()
+    }
+
+    @Test("steps moved with no window shown send no screen rows (D1, M67)")
+    func hiddenStepsReportNothing() {
+      let recorder = OnboardingTelemetryObserverTests.Recorder()
+      let observer = recorder.observer()
+      let (door, _, _) = Self.make(telemetry: observer)
+      _ = door.begin()
+      _ = door.send(["event": "next"])  // Language, no window
+      _ = door.send(["event": "back"])  // Welcome, still no window
+      #expect(recorder.rows.isEmpty, "a hidden step sent a screen row")
+      _ = door.stop()
+    }
+
+    @Test("hide, navigate and mount while off screen, then show: one row, for the shown screen (D1, M67)")
+    func offScreenMountsReportOnlyWhenShown() throws {
+      let recorder = OnboardingTelemetryObserverTests.Recorder()
+      let observer = recorder.observer()
+      let world = OnboardingCoordinatorTests.World()
+      let coordinator = world.coordinator()
+      coordinator.begin()
+      let presenter = DevControlSetupPresenter()
+      presenter.isOnScreen = { $0.isVisible }  // no window-server occlusion in a test process
+      presenter.show(coordinator: coordinator, telemetry: observer)
+      let model = try #require(presenter.screenModel)
+      model.screenMounted(.welcome, epoch: model.routeEpoch)
+      #expect(recorder.rows.map(\.0) == ["welcome"])
+      let window = try #require(NSApp.windows.first { $0.title == "Setup" && $0.isVisible })
+      let note = Notification(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+      window.orderOut(nil)  // hidden without closing
+      presenter.windowDidChangeOcclusionState(note)
+      coordinator.send(.next)
+      model.screenMounted(.language, epoch: model.routeEpoch)
+      #expect(recorder.rows.map(\.0) == ["welcome"], "a screen mounted off screen sent a row")
+      presenter.show(coordinator: coordinator, telemetry: observer)  // refocus: back on screen
+      #expect(recorder.rows.map(\.0) == ["welcome", "language"])
+      presenter.show(coordinator: coordinator, telemetry: observer)  // refocus again: nothing new
+      presenter.windowDidChangeOcclusionState(note)
+      #expect(recorder.rows.map(\.0) == ["welcome", "language"])
+      presenter.close()
+      #expect(presenter.screenModel == nil && coordinator.onChange == nil)
     }
 
     @Test("a completed install opens no session and keeps Setup unowned")

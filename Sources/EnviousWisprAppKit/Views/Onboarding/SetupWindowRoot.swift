@@ -23,7 +23,7 @@ struct SetupWindowRoot: View {
       SetupStepStrip(step: model.state.step)
         .frame(height: SetupLayout.stripHeight)
       SetupScreenRouter(model: model)
-        .id(model.state.step)
+        .id(model.routeEpoch)
         .transition(reduceMotion ? .opacity : .setupScreenIn)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -33,7 +33,7 @@ struct SetupWindowRoot: View {
     .frame(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
     .background(Color.obCardBg)
     .foregroundStyle(Color.obTextPrimary)
-    .animation(Self.screenAnimation(reduceMotion: reduceMotion), value: model.state.step)
+    .animation(Self.screenAnimation(reduceMotion: reduceMotion), value: model.routeEpoch)
   }
 }
 
@@ -69,7 +69,18 @@ extension AnyTransition {
 final class SetupScreenModel {
   private(set) var state: OnboardingFlowState
   private(set) var isPracticeUsable: Bool
+  /// Changes on EVERY published step change, so a screen left and re-entered between two
+  /// renders (a reset from Language straight back to Language) is a new screen with a fresh
+  /// draft, never the old view kept alive by an unchanged step.
+  private(set) var routeEpoch = 0
   private weak var coordinator: OnboardingCoordinator?
+  /// Reports a REAL screen on screen (telemetry M67); the presenter binds it to the session's
+  /// observer. Placeholders never call it.
+  @ObservationIgnored var onPresented: ((OnboardingStep, _ resumed: Bool) -> Void)?
+  /// True only while the window is on screen: a mounted view in a hidden window is not a view.
+  @ObservationIgnored private(set) var isWindowVisible = false
+  /// The steps that have a real screen so far (D1).
+  static let realScreens: Set<OnboardingStep> = [.welcome, .language]
 
   init(coordinator: OnboardingCoordinator) {
     self.coordinator = coordinator
@@ -78,15 +89,49 @@ final class SetupScreenModel {
     coordinator.onChange = { [weak self] in self?.refresh() }
   }
 
+  /// The same events Setup's buttons send; the coordinator alone decides what happens.
+  func send(_ event: OnboardingEvent) {
+    coordinator?.send(event)
+  }
+
+  /// The route epoch of the real screen that last mounted (its `onAppear`).
+  @ObservationIgnored private var mountedEpoch: Int?
+
+  /// The window is now on screen (or off). Coming on screen reports the screen already mounted.
+  func setWindowVisible(_ visible: Bool) {
+    isWindowVisible = visible
+    if visible { reportIfShown() }
+  }
+
+  /// A real screen mounted for route `epoch` (its `onAppear`). The one presentation producer:
+  /// a row is reported only for the CURRENT route's mounted real screen while the window is
+  /// visible, so a step skipped between two renders never reports (M75 review r1).
+  func screenMounted(_ step: OnboardingStep, epoch: Int) {
+    guard epoch == routeEpoch, step == state.step else { return }
+    mountedEpoch = epoch
+    reportIfShown()
+  }
+
+  private func reportIfShown() {
+    guard isWindowVisible, mountedEpoch == routeEpoch, Self.realScreens.contains(state.step),
+      let coordinator
+    else { return }
+    onPresented?(state.step, coordinator.resumedFromCheckpoint)
+  }
+
   /// Re-reads the coordinator (its `onChange` fires after every published change).
   func refresh() {
     guard let coordinator else { return }
+    let previous = state.step
     state = coordinator.state
     isPracticeUsable = coordinator.isPracticeUsable
+    if state.step != previous { routeEpoch &+= 1 }
   }
 
   /// Stops mirroring. Only this model's subscription is removed.
   func detach() {
+    isWindowVisible = false
+    onPresented = nil
     coordinator?.onChange = nil
     coordinator = nil
   }
@@ -94,16 +139,16 @@ final class SetupScreenModel {
 
 // MARK: - Router
 
-/// Every presentable step has exactly one branch; `done` closes Setup and is never shown. A
-/// branch reports a real presentation (telemetry M67) only once its screen exists; the D0
+/// Every presentable step has exactly one branch; `done` closes Setup and is never shown. The
+/// model reports a real screen's presentation (telemetry M67) while the window is visible;
 /// placeholders report nothing.
 struct SetupScreenRouter: View {
   let model: SetupScreenModel
 
   var body: some View {
     switch model.state.step {
-    case .welcome: SetupPlaceholder(step: .welcome, chunk: "D1")
-    case .language: SetupPlaceholder(step: .language, chunk: "D1")
+    case .welcome: SetupWelcomeScreen(model: model, epoch: model.routeEpoch)
+    case .language: SetupLanguageScreen(model: model, epoch: model.routeEpoch)
     case .speechPick: SetupPlaceholder(step: .speechPick, chunk: "D2")
     case .speechCompare: SetupPlaceholder(step: .speechCompare, chunk: "D2")
     case .polishIntro: SetupPlaceholder(step: .polishIntro, chunk: "D3a")

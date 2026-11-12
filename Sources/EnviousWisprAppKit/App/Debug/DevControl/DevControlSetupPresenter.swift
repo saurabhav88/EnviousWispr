@@ -10,7 +10,12 @@
   /// - close (the window's close button): hides the window and detaches the screen model; the
   ///   flow, its transfers and its visit continue, and a later show reattaches;
   /// - stop, quit and completion: the door calls `close()` from its single ownership release,
-  ///   so no DEBUG window or `onChange` subscriber outlives the session.
+  ///   so no DEBUG window or `onChange` subscriber outlives the session;
+  /// - on-screen state (telemetry M67): every transition re-reads `isOnScreen` and hands it to the
+  ///   model: show and refocus (`makeKeyAndOrderFront`), the system's occlusion changes (covered,
+  ///   another Space, app hidden or unhidden), miniaturize and deminiaturize, and close (off for
+  ///   good). Signals only, no polling; a screen mounted while off screen reports nothing until it
+  ///   is on screen again, and then once (the observer's own dedup).
   /// It owns no flow, timer, settings writer or recommendation: it renders the coordinator the
   /// door already built.
   @MainActor
@@ -19,14 +24,33 @@
     private var model: SetupScreenModel?
 
     var isVisible: Bool { window?.isVisible ?? false }
+    /// The live screen model, for tests.
+    var screenModel: SetupScreenModel? { model }
+    /// Whether the window is actually on screen. Injected in tests, which have no window server
+    /// occlusion; production asks the window and the app.
+    var isOnScreen: (NSWindow) -> Bool = { window in
+      window.isVisible && !window.isMiniaturized && !NSApp.isHidden
+        && window.occlusionState.contains(.visible)
+    }
 
-    /// Shows (or refocuses) the Setup screens for `coordinator`.
-    func show(coordinator: OnboardingCoordinator) {
+    /// Hands the window's current on-screen state to the model (every transition calls this).
+    func updateVisibility() {
+      guard let window, let model else { return }
+      model.setWindowVisible(isOnScreen(window))
+    }
+
+    /// Shows (or refocuses) the Setup screens for `coordinator`. A real screen on screen is
+    /// reported to the session's telemetry observer (M67); nil sends nothing.
+    func show(coordinator: OnboardingCoordinator, telemetry: OnboardingTelemetryObserver?) {
       if let window {
         window.makeKeyAndOrderFront(nil)
+        updateVisibility()
         return
       }
       let model = SetupScreenModel(coordinator: coordinator)
+      model.onPresented = { [weak telemetry] step, resumed in
+        telemetry?.screenPresented(step, resumed: resumed)
+      }
       let window = NSWindow(
         contentRect: NSRect(
           x: 0, y: 0, width: SetupLayout.windowWidth, height: SetupLayout.contentHeight),
@@ -40,12 +64,17 @@
       self.window = window
       NSApp.activate()
       window.makeKeyAndOrderFront(nil)
+      updateVisibility()
     }
 
     /// Closes the window, if any (stop, quit and completion call this).
     func close() {
       window?.close()
     }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) { updateVisibility() }
+    func windowDidMiniaturize(_ notification: Notification) { updateVisibility() }
+    func windowDidDeminiaturize(_ notification: Notification) { updateVisibility() }
 
     func windowWillClose(_ notification: Notification) {
       model?.detach()
