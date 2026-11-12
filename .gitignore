@@ -172,6 +172,8 @@ scripts/*
 !scripts/cloud-models/
 # #4506: the design-book token generator ships so every checkout can regenerate tokens from DESIGN.md.
 !scripts/design/
+# #4528: the Setup rules signing tool and its interop fixtures (SetupRulesStoreTests reads them).
+!scripts/setup-rules/
 # #2374 Phase 2: the view-split equivalence proof and its two-way control. The
 # PR's central claim is a MOVE-ONLY verdict from this script, so a reviewer who
 # cannot read it is being handed an unchecked premise.

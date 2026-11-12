@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "revision": 7,
+  "rulesVersion": "2026.11.12",
+  "speech": {
+    "choice": [
+      {"when": {"languageIn": "parakeet"}, "pick": "parakeet"},
+      {"when": {}, "pick": "whisper"}
+    ]
+  },
+  "polish": {
+    "primary": [
+      {"when": {"memoryAtLeastGiB": 32}, "pick": "eg1.full"},
+      {"when": {"memoryAtLeastGiB": 16}, "pick": "eg1.mini"},
+      {"when": {"lockedNonEnglish": true}, "pick": "eg1.mini"},
+      {"when": {}, "pick": "eg1.micro"}
+    ],
+    "neighbour": [
+      {"when": {"primary": "eg1.full"}, "pick": "eg1.mini"},
+      {"when": {"primary": "eg1.micro"}, "pick": "eg1.mini"},
+      {"when": {"primary": "eg1.mini", "memoryBelowGiB": 16}, "pick": "eg1.micro"},
+      {"when": {}, "pick": "eg1.full"}
+    ]
+  },
+  "parallelDownloadsMinMemoryGiB": 16
+}
