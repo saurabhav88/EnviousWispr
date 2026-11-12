@@ -271,6 +271,11 @@ struct DesignTokensSyncTests {
     "Color.obSuccessSoft": .obSuccessSoft, "Color.obSuccessText": .obSuccessText,
     "Color.obWarning": .obWarning, "Color.obError": .obError,
     "Color.obErrorSoft": .obErrorSoft, "Color.obBorder": .obBorder,
+    "Color.firstRunTextTertiary": .firstRunTextTertiary, "Color.firstRunSuccessText": .firstRunSuccessText,
+    "Color.firstRunErrorText": .firstRunErrorText, "Color.firstRunButtonHover": .firstRunButtonHover,
+    "Color.firstRunButtonDisabled": .firstRunButtonDisabled,
+    "Color.firstRunButtonDisabledText": .firstRunButtonDisabledText,
+    "Color.firstRunOnAccent": .firstRunOnAccent, "Color.firstRunAccentSoft": .firstRunAccentSoft,
   ]
 
   static let compiledFonts: [String: Font] = [
@@ -279,6 +284,10 @@ struct DesignTokensSyncTests {
     "Font.stRowHelper": .stRowHelper, "Font.obDisplay": .obDisplay,
     "Font.obSubheading": .obSubheading, "Font.obBody": .obBody, "Font.obCaption": .obCaption,
     "Font.obCaptionSmall": .obCaptionSmall, "Font.obLabel": .obLabel,
+    "Font.firstRunHero": .firstRunHero, "Font.firstRunDisplay": .firstRunDisplay,
+    "Font.firstRunTitle": .firstRunTitle, "Font.firstRunSay": .firstRunSay, "Font.firstRunBody": .firstRunBody,
+    "Font.firstRunLabel": .firstRunLabel, "Font.firstRunCaption": .firstRunCaption,
+    "Font.firstRunEyebrow": .firstRunEyebrow,
   ]
 
   static let compiledLayout: [String: CGFloat] = [
@@ -305,6 +314,8 @@ struct DesignTokensSyncTests {
   static let compiledMotion: [String: Animation] = [
     "DesignMotion.quick": DesignMotion.quick, "DesignMotion.brisk": DesignMotion.brisk,
     "DesignMotion.standard": DesignMotion.standard, "DesignMotion.gentle": DesignMotion.gentle,
+    "DesignMotion.firstRunScreenIn": DesignMotion.firstRunScreenIn,
+    "DesignMotion.firstRunRise": DesignMotion.firstRunRise,
   ]
 
   @Test("the compiled-token tables name exactly the DESIGN.md tokens")
