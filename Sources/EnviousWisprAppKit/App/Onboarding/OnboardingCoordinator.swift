@@ -75,6 +75,9 @@ final class OnboardingCoordinator {
   private var ownedPolish: Set<String> = []
   private var speechStartsInFlight = 0
   private(set) var isActive = false
+  /// True when this flow was restored from a checkpoint (the first screen shown is a resume, not
+  /// a forward move). A narrow observation hook for telemetry (#4528 F2a); never navigation.
+  private(set) var resumedFromCheckpoint = false
   private var startedAt: Date?
   private var queuedPolish: String?
   private var holdsSleepAssertion = false
@@ -111,9 +114,11 @@ final class OnboardingCoordinator {
     case .fresh:
       state = freshState()
       startedAt = deps.now()
+      resumedFromCheckpoint = false
     case .resume(let restored, let restoredStart):
       state = restored
       startedAt = restoredStart ?? deps.now()
+      resumedFromCheckpoint = true
     }
     isActive = true
     onChange?()
@@ -229,6 +234,7 @@ final class OnboardingCoordinator {
     deps.restartOnboarding()
     state = freshState()
     startedAt = deps.now()
+    resumedFromCheckpoint = false
     isActive = true
     onChange?()
   }

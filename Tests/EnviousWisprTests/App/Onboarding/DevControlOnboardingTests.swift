@@ -277,6 +277,52 @@
       #expect(workflow.current == .legacy)
     }
 
+    @Test("a session's screen rows exist only while its own visit is in flight")
+    func sessionScreenRowsFollowOwnership() {
+      let progress = OnboardingProgress()
+      var rows: [String] = []
+      func door(_ world: OnboardingCoordinatorTests.World) -> DevControlOnboarding {
+        DevControlOnboarding(
+          workflow: OnboardingWorkflowOwner(),
+          makeSession: { door in
+            let c = world.coordinator()
+            let telemetry = OnboardingTelemetryObserver(
+              inputs: .init(
+                visitStart: { progress.isInFlight ? progress.sessionStart : nil },
+                visitOwned: { [weak door] in door?.ownsVisit ?? false },
+                updatePosition: { _ in }, emitScreenViewed: { step, _, _ in rows.append(step) },
+                now: { .now }))
+            return .init(
+              coordinator: c,
+              runtime: OnboardingRuntime(
+                coordinator: c, facts: OnboardingLiveFacts(),
+                inputs: .init(
+                  readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                  downloadsFinished: { false }, sampleAppleIntelligence: { .available },
+                  recheckAppleIntelligence: {}, now: { .now },
+                  // deadline-fallback: timers wait until stop() cancels them.
+                  sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
+                  pollInterval: .seconds(3600))),
+              telemetry: telemetry)
+          },
+          checkpointData: { nil }, legacyState: { world.legacy }, progress: progress)
+      }
+      let world = OnboardingCoordinatorTests.World()
+      let d = door(world)
+      _ = d.begin()
+      d.session?.telemetry?.screenPresented(.welcome, resumed: false)
+      _ = d.stop()
+      d.session?.telemetry?.screenPresented(.language, resumed: false)
+      #expect(rows == ["welcome"])
+
+      let completed = OnboardingCoordinatorTests.World()
+      completed.legacy = .completed
+      let c = door(completed)
+      _ = c.begin()  // a completed install opens nothing and begins no visit
+      c.session?.telemetry?.screenPresented(.welcome, resumed: false)
+      #expect(rows == ["welcome"] && progress.isInFlight == false)
+    }
+
     @Test("the old onboarding reports each long-lived task while it runs")
     func legacyTasksReported() async {
       let workflow = OnboardingWorkflowOwner()

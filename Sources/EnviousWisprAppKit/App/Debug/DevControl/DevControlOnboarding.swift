@@ -14,6 +14,9 @@
     struct Session {
       let coordinator: OnboardingCoordinator
       let runtime: OnboardingRuntime
+      /// Visit and screen telemetry (F2a). The door session presents no screens, so it emits no
+      /// screen rows; chunk D's screens call `screenPresented` when a screen is shown.
+      var telemetry: OnboardingTelemetryObserver? = nil
     }
 
     private let workflow: OnboardingWorkflowOwner
@@ -489,7 +492,9 @@
               }))
           let runtime = OnboardingRuntime(
             coordinator: coordinator, facts: facts, inputs: .live(owners, coordinator: coordinator))
-          return Session(coordinator: coordinator, runtime: runtime)
+          let telemetry = OnboardingTelemetryObserver(
+            inputs: .live(progress: progress, visitOwned: { [weak door] in door?.ownsVisit ?? false }))
+          return Session(coordinator: coordinator, runtime: runtime, telemetry: telemetry)
         },
         checkpointData: { owners.settings.onboardingCheckpointData },
         legacyState: { owners.settings.onboardingState },
