@@ -561,8 +561,8 @@ private struct EGOneSizeCardView: View {
           .foregroundStyle(warned ? Color.stWarning : Color.stTextSecondary)
           .lineLimit(1)
           .fixedSize()
-        // One line when the card is wide enough; the percent on its own line when it is not,
-        // so no label is cut short.
+        // One line when the card is wide enough, then the percent on its own line, then every
+        // entry on its own line, so no label is cut short.
         ViewThatFits(in: .horizontal) {
           HStack(spacing: 10) {
             keyEntry(key.inUse, color: .stTextTertiary)
@@ -575,6 +575,12 @@ private struct EGOneSizeCardView: View {
               keyEntry(key.inUse, color: .stTextTertiary)
               keyEntry(key.size, color: sizeColor)
             }
+            percent
+          }
+          // Narrowest cards (side by side near the stacking breakpoint): one entry per line.
+          VStack(alignment: .leading, spacing: 4) {
+            keyEntry(key.inUse, color: .stTextTertiary)
+            keyEntry(key.size, color: sizeColor)
             percent
           }
         }
