@@ -6,7 +6,8 @@ script embeds everything the page needs except the CSS and the pictures, which i
 links by relative path:
 - atlas.json (the picture list),
 - every part between `<!-- part: id | title | swift owner | picture id -->` and
-  `<!-- /part -->` in design/atlas/parts/*.html, as live HTML and as copyable text.
+  `<!-- /part -->` in design/atlas/parts/*.html, written into the page as static
+  markup and as escaped copyable text (the script never turns data into HTML).
 
 Usage:
   python3 scripts/design/build-atlas-index.py           # write index.html
@@ -20,6 +21,7 @@ from its Swift source because no picture shows it).
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -65,10 +67,31 @@ def render() -> str:
         raise AtlasError(f"atlas.json: {error}") from error
     pictures = atlas["pictures"]
     parts = load_parts({p["id"] for p in pictures})
-    data = json.dumps({"pictures": pictures, "parts": parts}, indent=1, ensure_ascii=False)
-    # A part's HTML may contain "</script>"-like text; keep the JSON inert inside the script tag.
+    # Parts are written into the page as static markup (live) and as escaped text (copy), so the
+    # script never turns data into HTML. Only the picture list travels as JSON.
+    data = json.dumps({"pictures": pictures}, indent=1, ensure_ascii=False)
     data = data.replace("</", "<\\/")
-    return TEMPLATE.replace("/*ATLAS_DATA*/", data)
+    return TEMPLATE.replace("/*ATLAS_DATA*/", data).replace("<!--PARTS-->", "\n".join(map(part_markup, parts)))
+
+
+def part_markup(part: dict) -> str:
+    e = html.escape
+    if part["picture"] == "none":
+        shot = ('<div class="shot meta">No app picture shows this part; it is drawn from its source ('
+                + e(part["swift"]) + ').</div>')
+    else:
+        shot = f'<div class="shot"><img data-picture="{e(part["picture"])}" alt="{e(part["picture"])}" loading="lazy"></div>'
+    search = e(" ".join((part["id"], part["title"], part["swift"])).lower())
+    return (
+        f'<section class="item" data-search="{search}">\n'
+        f'  <h3>{e(part["title"])}</h3>\n'
+        f'  <div class="meta">{e(part["swift"])} \u00b7 {e(part["file"])} \u00b7 picture {e(part["picture"])}</div>\n'
+        f'  <div class="pair"><div><div class="label">HTML part</div><div class="live">\n{part["html"]}\n</div></div>'
+        f'<div><div class="label">App picture</div>{shot}</div></div>\n'
+        f'  <div style="display:flex;gap:8px"><button class="ew-btn" data-copy>Copy snippet</button>'
+        f'<button class="ew-btn ew-btn--quiet" data-show>Show HTML</button></div>\n'
+        f'  <pre class="meta hidden">{e(part["html"])}</pre>\n'
+        f'</section>')
 
 
 TEMPLATE = """<!doctype html>
@@ -120,7 +143,9 @@ TEMPLATE = """<!doctype html>
 </header>
 <main>
   <h2>Parts to copy (live HTML, left; app picture, right)</h2>
-  <div id="parts" class="grid"></div>
+  <div id="parts" class="grid">
+<!--PARTS-->
+  </div>
   <div id="pictures"></div>
 </main>
 <script id="atlas-data" type="application/json">/*ATLAS_DATA*/</script>
@@ -142,26 +167,13 @@ function el(tag, attrs, children) { const node = document.createElement(tag);
   (children || []).forEach(c => node.append(c)); return node; }
 function pictureImg(id) { return el("img", {"data-picture": id, alt: id, loading: "lazy"}); }
 const byId = Object.fromEntries(data.pictures.map(p => [p.id, p]));
-const parts = document.getElementById("parts");
-for (const part of data.parts) {
-  const live = el("div", {class: "live"}); live.innerHTML = part.html;
-  const copy = el("button", {class: "ew-btn"}, ["Copy snippet"]);
-  copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(part.html);
-    copy.textContent = "Copied"; } catch (e) { copy.textContent = "Select the text below"; } });
-  const code = el("pre", {class: "meta hidden"}, [part.html]);
-  const show = el("button", {class: "ew-btn ew-btn--quiet"}, ["Show HTML"]);
-  show.addEventListener("click", () => code.classList.toggle("hidden"));
-  const shot = part.picture === "none"
-    ? el("div", {class: "shot meta"}, ["No app picture shows this part; it is drawn from its source (" + part.swift + ")."])
-    : el("div", {class: "shot"}, [pictureImg(part.picture)]);
-  const item = el("section", {class: "item", "data-search": (part.id + " " + part.title + " " + part.swift).toLowerCase()}, [
-    el("h3", {}, [part.title]),
-    el("div", {class: "meta"}, [part.swift + " \\u00b7 " + part.file + " \\u00b7 picture " + part.picture]),
-    el("div", {class: "pair"}, [el("div", {}, [el("div", {class: "label"}, ["HTML part"]), live]),
-      el("div", {}, [el("div", {class: "label"}, ["App picture"]), shot])]),
-    el("div", {style: "display:flex;gap:8px"}, [copy, show]), code]);
-  parts.append(item);
-}
+document.querySelectorAll("#parts .item").forEach(item => {
+  const code = item.querySelector("pre");
+  const copy = item.querySelector("[data-copy]");
+  copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(code.textContent);
+    copy.textContent = "Copied"; } catch (e) { code.classList.remove("hidden"); copy.textContent = "Select the text below"; } });
+  item.querySelector("[data-show]").addEventListener("click", () => code.classList.toggle("hidden"));
+});
 const groups = {};
 for (const p of data.pictures) (groups[p.group] = groups[p.group] || []).push(p);
 const holder = document.getElementById("pictures");
