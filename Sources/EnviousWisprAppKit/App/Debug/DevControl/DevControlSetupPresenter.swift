@@ -9,7 +9,7 @@
   /// - show: one window; a second show only refocuses it (the flow is never restarted);
   /// - close (the window's close button): hides the window and detaches the screen model; the
   ///   flow, its transfers and its visit continue, and a later show reattaches;
-  /// - stop, quit and completion: the door calls `close()` from its single ownership release,
+  /// - stop, quit and completion: the door calls `dismiss()` from its single ownership release,
   ///   so no DEBUG window or `onChange` subscriber outlives the session;
   /// - on-screen state (telemetry M67): every transition re-reads `isOnScreen` and hands it to the
   ///   model: show and refocus (`makeKeyAndOrderFront`), the system's occlusion changes (covered,
@@ -67,16 +67,22 @@
       updateVisibility()
     }
 
-    /// Closes the window, if any (stop, quit and completion call this).
-    func close() {
-      window?.close()
+    /// Takes the window down, if any (stop, quit and completion call this). It orders the window
+    /// out and releases it rather than calling `close()`: this module never closes a window
+    /// (OverlayRetainedWindowTests' guard), and the cleanup is the one the close button runs.
+    func dismiss() {
+      window?.orderOut(nil)
+      release()
     }
 
     func windowDidChangeOcclusionState(_ notification: Notification) { updateVisibility() }
     func windowDidMiniaturize(_ notification: Notification) { updateVisibility() }
     func windowDidDeminiaturize(_ notification: Notification) { updateVisibility() }
 
-    func windowWillClose(_ notification: Notification) {
+    /// The person's close button.
+    func windowWillClose(_ notification: Notification) { release() }
+
+    private func release() {
       model?.detach()
       model = nil
       window?.delegate = nil

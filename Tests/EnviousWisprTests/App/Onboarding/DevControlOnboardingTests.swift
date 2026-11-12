@@ -234,7 +234,7 @@
       presenter.show(coordinator: coordinator, telemetry: observer)  // refocus again: nothing new
       presenter.windowDidChangeOcclusionState(note)
       #expect(recorder.rows.map(\.0) == ["welcome", "language"])
-      presenter.close()
+      presenter.dismiss()
       #expect(presenter.screenModel == nil && coordinator.onChange == nil)
     }
 

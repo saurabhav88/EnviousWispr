@@ -179,7 +179,7 @@
     /// The one way this door gives Setup back (stop, and completion through the session's
     /// observer): simulation is cleared first, so no override outlives the session (M60).
     func endOwnership() {
-      presenter.close()
+      presenter.dismiss()
       clearSimulation()
       workflow.releaseBackendSession()
     }
