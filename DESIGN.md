@@ -180,7 +180,15 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Color.obBorder": {
       "light": [0.541, 0.169, 0.886, 0.06], "dark": [0.722, 0.667, 0.839, 0.14],
       "group": "Onboarding borders", "usage": "Onboarding card borders."
-    }
+    },
+    "Color.firstRunTextTertiary": {"light": [0.4, 0.345, 0.502, 1], "dark": [0.627, 0.596, 0.714, 1], "group": "First-run Setup", "usage": "Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes."},
+    "Color.firstRunSuccessText": {"light": [0.0, 0.459, 0.29, 1], "dark": [0.361, 0.788, 0.604, 1], "group": "First-run Setup", "usage": "Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards."},
+    "Color.firstRunErrorText": {"light": [0.784, 0.118, 0.192, 1], "dark": [0.937, 0.486, 0.537, 1], "group": "First-run Setup", "usage": "Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1."},
+    "Color.firstRunButtonHover": {"light": [0.169, 0.133, 0.251, 1], "dark": [0.486, 0.38, 0.871, 1], "group": "First-run Setup", "usage": "Setup primary button fill while hovered."},
+    "Color.firstRunButtonDisabled": {"light": [0.89, 0.871, 0.925, 1], "dark": [0.212, 0.188, 0.278, 1], "group": "First-run Setup", "usage": "Setup primary button fill while it cannot be pressed."},
+    "Color.firstRunButtonDisabledText": {"light": [0.435, 0.38, 0.537, 1], "dark": [0.604, 0.573, 0.69, 1], "group": "First-run Setup", "usage": "Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable)."},
+    "Color.firstRunOnAccent": {"light": [1.0, 1.0, 1.0, 1], "dark": [0.082, 0.071, 0.11, 1], "group": "First-run Setup", "usage": "Text or icon on an obAccent fill (selected tab, step dot)."},
+    "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."}
   },
   "fonts": {
     "Font.stSectionHeader": {
@@ -212,7 +220,15 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Font.obBody": {"size": 14, "weight": "regular", "usage": "Onboarding body copy."},
     "Font.obCaption": {"size": 12, "weight": "regular", "usage": "Onboarding caption."},
     "Font.obCaptionSmall": {"size": 11, "weight": "regular", "usage": "Onboarding small caption."},
-    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."}
+    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."},
+    "Font.firstRunHero": {"size": 64, "weight": "heavy", "design": "rounded", "usage": "Setup big number (the speed card)."},
+    "Font.firstRunDisplay": {"size": 28, "weight": "heavy", "design": "rounded", "usage": "Setup screen title."},
+    "Font.firstRunTitle": {"size": 20, "weight": "heavy", "design": "rounded", "usage": "Setup card title and film caption title."},
+    "Font.firstRunSay": {"size": 17, "weight": "semibold", "usage": "Setup practice sentence the person reads aloud."},
+    "Font.firstRunBody": {"size": 15, "weight": "regular", "usage": "Setup reading copy under a title."},
+    "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name, option name and button text."},
+    "Font.firstRunCaption": {"size": 13, "weight": "regular", "usage": "Setup card detail lines, hints and film caption subtitle."},
+    "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."}
   },
   "layout": {
     "SettingsLayout.sectionRadius": {"value": 14, "usage": "Corner radius of a settings card."},
@@ -254,7 +270,9 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "DesignMotion.quick": {"curve": "easeInOut", "duration": 0.15, "usage": "Small state changes."},
     "DesignMotion.brisk": {"curve": "easeInOut", "duration": 0.25, "usage": "Short transitions."},
     "DesignMotion.standard": {"curve": "easeInOut", "duration": 0.3, "usage": "Default transition (the most-used duration)."},
-    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."}
+    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."},
+    "DesignMotion.firstRunScreenIn": {"curve": "easeOut", "duration": 0.32, "usage": "Setup screen entering (slide and fade)."},
+    "DesignMotion.firstRunRise": {"curve": "easeOut", "duration": 0.4, "usage": "Setup card, caption or check rising into place.", "note": "The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token."}
   }
 }
 ```
@@ -267,6 +285,7 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
 - **One control fill.** Every field, picker box and segmented track uses `stInputBg` with the `stInputBorder` hairline, so a typable field never looks like a label.
 - **No default blue.** macOS settings use the brand accent purple, never the system blue.
 - Onboarding uses the `ob*` family, which mirrors the Settings values.
+- The first-run Setup window (#4528) uses the `firstRun*` family on top of `ob*` surfaces and accent: its type scale (11, 13, 15, 17, 20, 28, 64) and its contrast-raised quiet, success and error text come from the founder-approved Setup mockup. Meetings setup and other `ob*` screens keep their values.
 
 The founder reasons recorded with the palette and the type scale live in the values block under `reasons`, so the generator can repeat them in the Swift file.
 
@@ -354,7 +373,7 @@ Each drawing has one owner file. Never redraw it elsewhere.
 ## Motion
 
 - **One hover curve:** `SettingsHover.animation` (ease out, 0.12 s). Everything in the window fades at that speed.
-- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). Springs are used for physical movement, such as the switch knob.
+- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). The Setup window adds two ease-out entries: `firstRunScreenIn` (0.32 s) and `firstRunRise` (0.4 s). Springs are used for physical movement, such as the switch knob.
 - **Respect Reduce Motion.** Gate every animation on `accessibilityReduceMotion`; the state still changes, without the movement.
 
 ## Sound

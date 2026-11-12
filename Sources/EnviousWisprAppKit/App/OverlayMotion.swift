@@ -29,13 +29,11 @@ import SwiftUI
 ///   nothing that distinguishes a working take from a silent one. Both react to `audioLevel`
 ///   and neither runs on a timer of its own, which is what separates them from the loops
 ///   above.
-/// - *`SpectrumWheelIcon`'s rotation* on the polishing and cold-start pills, which is OUT OF
-///   SCOPE rather than decided: this issue is the recording pill and the lips, and that wheel is
-///   a progress indicator on two other pills. Checked rather than assumed, because the obvious
-///   justification for keeping it is wrong: it is NOT the only sign that work is happening.
-///   `PolishingOverlayView.swift:22` and `ColdStartNoticeView.swift:38` each draw a text label
-///   beside it. Whether a custom progress spinner should freeze under Reduce Motion is a real
-///   question and this change does not answer it.
+/// - *`SpectrumWheelIcon`'s rotation* was left open here (#2303: "a real question and this change
+///   does not answer it"). #4528 answered it: the wheel now holds still under Reduce Motion,
+///   because it is NOT the only sign that work is happening: `PolishingOverlayView` and
+///   `ColdStartNoticeView` each draw a text label beside it (DESIGN.md Motion: gate every
+///   animation). It is therefore no longer a KEPT item; its gate lives in the wheel itself.
 ///
 /// **The scope is the recording pill, and OTHER SURFACES STILL IGNORE THE SETTING.** Onboarding
 /// and the main window each run their own forever-loops, and the welcome screens have a second

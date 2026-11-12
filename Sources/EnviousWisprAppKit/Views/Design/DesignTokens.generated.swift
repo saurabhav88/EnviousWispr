@@ -144,6 +144,31 @@ extension Color {
   /// Onboarding card borders.
   static let obBorder = stDynamic(
     lightRGB: (0.541, 0.169, 0.886, 0.06), darkRGB: (0.722, 0.667, 0.839, 0.14))
+  // First-run Setup
+  /// Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes.
+  static let firstRunTextTertiary = stDynamic(
+    lightRGB: (0.4, 0.345, 0.502, 1), darkRGB: (0.627, 0.596, 0.714, 1))
+  /// Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards.
+  static let firstRunSuccessText = stDynamic(
+    lightRGB: (0.0, 0.459, 0.29, 1), darkRGB: (0.361, 0.788, 0.604, 1))
+  /// Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1.
+  static let firstRunErrorText = stDynamic(
+    lightRGB: (0.784, 0.118, 0.192, 1), darkRGB: (0.937, 0.486, 0.537, 1))
+  /// Setup primary button fill while hovered.
+  static let firstRunButtonHover = stDynamic(
+    lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.486, 0.38, 0.871, 1))
+  /// Setup primary button fill while it cannot be pressed.
+  static let firstRunButtonDisabled = stDynamic(
+    lightRGB: (0.89, 0.871, 0.925, 1), darkRGB: (0.212, 0.188, 0.278, 1))
+  /// Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable).
+  static let firstRunButtonDisabledText = stDynamic(
+    lightRGB: (0.435, 0.38, 0.537, 1), darkRGB: (0.604, 0.573, 0.69, 1))
+  /// Text or icon on an obAccent fill (selected tab, step dot).
+  static let firstRunOnAccent = stDynamic(
+    lightRGB: (1.0, 1.0, 1.0, 1), darkRGB: (0.082, 0.071, 0.11, 1))
+  /// Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1.
+  static let firstRunAccentSoft = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.655, 0.545, 0.98, 0.12))
 }
 
 // MARK: - Fonts (SF Pro)
@@ -177,6 +202,22 @@ extension Font {
   static let obCaptionSmall = Font.system(size: 11, weight: .regular)
   /// Onboarding label.
   static let obLabel = Font.system(size: 13, weight: .medium)
+  /// Setup big number (the speed card).
+  static let firstRunHero = Font.system(size: 64, weight: .heavy, design: .rounded)
+  /// Setup screen title.
+  static let firstRunDisplay = Font.system(size: 28, weight: .heavy, design: .rounded)
+  /// Setup card title and film caption title.
+  static let firstRunTitle = Font.system(size: 20, weight: .heavy, design: .rounded)
+  /// Setup practice sentence the person reads aloud.
+  static let firstRunSay = Font.system(size: 17, weight: .semibold)
+  /// Setup reading copy under a title.
+  static let firstRunBody = Font.system(size: 15, weight: .regular)
+  /// Setup card name, option name and button text.
+  static let firstRunLabel = Font.system(size: 15, weight: .semibold)
+  /// Setup card detail lines, hints and film caption subtitle.
+  static let firstRunCaption = Font.system(size: 13, weight: .regular)
+  /// Setup uppercase eyebrow and badge (RECOMMENDED).
+  static let firstRunEyebrow = Font.system(size: 11, weight: .semibold)
 }
 
 // MARK: - Layout (points)
@@ -260,4 +301,10 @@ enum DesignMotion {
   static let standard = Animation.easeInOut(duration: 0.3)
   /// Larger panels appearing or moving.
   static let gentle = Animation.easeInOut(duration: 0.35)
+  /// Setup screen entering (slide and fade).
+  static let firstRunScreenIn = Animation.easeOut(duration: 0.32)
+  /// Setup card, caption or check rising into place.
+  ///
+  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1); the generator offers standard curves only, so easeOut at the same duration is the closest token.
+  static let firstRunRise = Animation.easeOut(duration: 0.4)
 }
