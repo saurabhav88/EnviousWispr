@@ -275,7 +275,8 @@ private struct EGOneSizeCardView: View {
       RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
         .strokeBorder(
           card.isSelected ? Color.stAccentSolid : Color.stDivider,
-          lineWidth: card.isSelected ? 1.5 : 1)
+          lineWidth: card.isSelected ? 1.5 : 1
+        )
         .allowsHitTesting(false)
     )
     .animation(.easeInOut(duration: 0.15), value: card.isSelected)
@@ -320,7 +321,7 @@ private struct EGOneSizeCardView: View {
 
   private var recommendedPill: some View {
     Text(EGOneSizeCardCopy.bestForThisMac)
-      .font(.system(size: 12, weight: .semibold))
+      .font(.stRowLabel)
       .foregroundStyle(Color.white)
       .lineLimit(1)
       .fixedSize()
