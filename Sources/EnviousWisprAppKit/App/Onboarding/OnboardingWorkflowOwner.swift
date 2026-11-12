@@ -22,6 +22,10 @@ final class OnboardingWorkflowOwner {
   /// Whether the old onboarding window is open or its open is pending (wired to
   /// AppWindowCoordinator, which reserves it before scheduling the open).
   @ObservationIgnored var legacyWindowVisible: () -> Bool = { false }
+  /// Installed by the backend session while it owns Setup: Restart Onboarding and app quit reach
+  /// the session through these instead of the old onboarding (plan §16 ownership table).
+  @ObservationIgnored var backendRestart: (() -> Void)?
+  @ObservationIgnored var backendQuit: (() -> Void)?
 
   var current: Owner {
     if backendSessionActive { return .backend }
@@ -51,5 +55,9 @@ final class OnboardingWorkflowOwner {
     return true
   }
 
-  func releaseBackendSession() { backendSessionActive = false }
+  func releaseBackendSession() {
+    backendSessionActive = false
+    backendRestart = nil
+    backendQuit = nil
+  }
 }

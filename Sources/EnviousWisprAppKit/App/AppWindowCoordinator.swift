@@ -34,6 +34,8 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// (before SwiftUI creates it) until it closes or is dismissed, so Setup's workflow owner
   /// never sees a gap a new-coordinator session could claim.
   private var onboardingWindowReserved = false
+  /// #4528 C2c.2c: Setup's single owner, so Restart Onboarding reaches whichever workflow owns it.
+  var onboardingWorkflow: OnboardingWorkflowOwner?
   var isOnboardingWindowVisible: Bool {
     onboardingWindowReserved || (onboardingWindow?.isVisible ?? false)
   }
@@ -367,6 +369,27 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// Called by the onboarding Done button via the onComplete callback.
   /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange
   /// dismisses the window.
+  /// #4528 C2c.2c: Diagnostics "Restart Onboarding…". A backend session that owns Setup is reset
+  /// through its runtime; otherwise the old onboarding restarts (`legacyRestart`, then its window).
+  func restartOnboarding(legacyRestart: () -> Void) {
+    if let workflow = onboardingWorkflow, workflow.backendSessionActive {
+      workflow.backendRestart?()
+      return
+    }
+    legacyRestart()
+    openOnboardingWindow()
+  }
+
+  /// #4528 M16: a SUCCESSFUL finish lands in the menu bar. Setup's window goes away and the Dock
+  /// policy is re-decided with no window, but the main (Settings) window is NOT brought back,
+  /// unlike the old completion (`closeOnboardingWindow`). Chunk D wires the new screens to it.
+  func finishOnboardingToMenuBar() {
+    onboardingWindowReserved = false
+    dismissOnboardingAction?()
+    refreshAfterOnboardingDismissal()
+    onOnboardingDismissed?()
+  }
+
   func closeOnboardingWindow() {
     onboardingWindowReserved = false
     dismissOnboardingAction?()

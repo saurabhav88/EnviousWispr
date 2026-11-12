@@ -108,8 +108,8 @@ struct DiagnosticsSettingsView: View {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Button("Restart Onboarding…") {
-                settings.restartOnboarding()
-                appWindowCoordinator.openOnboardingWindow()
+                // #4528 C2c.2c: one restart entry; a backend session that owns Setup is reset instead.
+                appWindowCoordinator.restartOnboarding { settings.restartOnboarding() }
               }
               .disabled(liveRecordingState.pipelineState != .idle)
               Text(

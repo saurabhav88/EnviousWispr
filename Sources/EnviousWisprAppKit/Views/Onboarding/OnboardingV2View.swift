@@ -7,15 +7,6 @@ import EnviousWisprServices
 import IOKit.pwr_mgt
 import SwiftUI
 
-// MARK: - Apple Intelligence Settings Deep Link
-
-/// Existing System Settings destination, validated on macOS 26.6 (#1080).
-/// Kept internal so the onboarding test can assert the URL. Newer macOS may show
-/// different controls; the guidance does not promise a switch or a repair (#4016).
-enum AppleIntelligenceSettings {
-  static let systemSettingsURL = "x-apple.systempreferences:com.apple.Siri-Settings.extension"
-}
-
 // MARK: - ViewModel
 
 @MainActor

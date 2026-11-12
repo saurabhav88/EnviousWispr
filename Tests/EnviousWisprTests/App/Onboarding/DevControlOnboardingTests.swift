@@ -186,6 +186,97 @@
       }
     }
 
+    @Test("Restart Onboarding reaches the session that owns Setup, else the old onboarding")
+    func restartRouting() {
+      let workflow = OnboardingWorkflowOwner()
+      let windows = AppWindowCoordinator(
+        application: RecordingDesktopPresentationEffects(), showInDock: { true },
+        canOpenOnboarding: { workflow.legacyMayOpen }, isOnboardingComplete: { false })
+      windows.onboardingWorkflow = workflow
+      var legacyRestarts = 0
+      windows.restartOnboarding { legacyRestarts += 1 }
+      #expect(legacyRestarts == 1)
+      windows.closeOnboardingWindow()
+
+      let world = OnboardingCoordinatorTests.World()
+      let (door, _, _) = Self.make(world, workflow: workflow)
+      _ = door.begin()
+      _ = door.send(["event": "next"])
+      windows.restartOnboarding { legacyRestarts += 1 }
+      #expect(legacyRestarts == 1 && door.session?.coordinator.state.step == .welcome)
+      #expect(world.log.contains("restart"))
+    }
+
+    @Test("a successful finish lands in the menu bar without reopening the main window")
+    func finishToMenuBar() {
+      let windows = AppWindowCoordinator(
+        application: RecordingDesktopPresentationEffects(), showInDock: { true },
+        canOpenOnboarding: { true }, isOnboardingComplete: { true })
+      var dismissed = 0
+      var mainOpened = 0
+      var observed = 0
+      windows.dismissOnboardingAction = { dismissed += 1 }
+      windows.openMainWindowAction = { mainOpened += 1 }
+      windows.onOnboardingDismissed = { observed += 1 }
+      windows.finishOnboardingToMenuBar()
+      #expect(dismissed == 1 && observed == 1 && mainOpened == 0)
+      windows.closeOnboardingWindow()  // the old completion still restores the main window
+      #expect(mainOpened == 1)
+    }
+
+    @Test("a session visit begins once, abandons at most once, and a completed visit never abandons")
+    func visitTerminals() {
+      let progress = OnboardingProgress()
+      let workflow = OnboardingWorkflowOwner()
+      let world = OnboardingCoordinatorTests.World()
+      let door = DevControlOnboarding(
+        workflow: workflow,
+        makeSession: { _ in
+          let c = world.coordinator()
+          return .init(
+            coordinator: c,
+            runtime: OnboardingRuntime(
+              coordinator: c, facts: OnboardingLiveFacts(),
+              inputs: .init(
+                readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                downloadsFinished: { false }, sampleAppleIntelligence: { .available },
+                recheckAppleIntelligence: {}, now: { .now },
+                // deadline-fallback: timers wait until stop() cancels them.
+                sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
+                pollInterval: .seconds(3600))))
+        },
+        checkpointData: { nil }, legacyState: { world.legacy }, progress: progress)
+      _ = door.begin()
+      #expect(progress.isInFlight)
+      let started = progress.sessionStart
+      _ = door.reset()  // a reset of a live visit never rewinds it
+      #expect(progress.sessionStart == started)
+      workflow.backendQuit?()  // app quit while the session owns Setup
+      #expect(progress.isInFlight == false && workflow.backendSessionActive == false)
+      _ = door.stop()  // close after quit: no second abandon, nothing in flight
+      #expect(progress.isInFlight == false)
+
+      _ = door.begin()
+      #expect(progress.isInFlight)
+      door.sessionCompleted()
+      #expect(progress.isInFlight == false && workflow.backendSessionActive == false)
+    }
+
+    @Test("an idle stop never ends the old onboarding's live visit")
+    func idleStopLeavesLegacyVisit() {
+      let progress = OnboardingProgress()
+      let workflow = OnboardingWorkflowOwner()
+      workflow.legacyWindowVisible = { true }  // the old Setup window is open
+      progress.begin(source: "first_run")  // its visit (the old onboarding's ActionWirer begins it)
+      let door = DevControlOnboarding(
+        workflow: workflow, makeSession: { _ in fatalError("stop must not build a session") },
+        checkpointData: { nil }, legacyState: { .notStarted }, progress: progress)
+      _ = door.stop()
+      door.sessionCompleted()
+      #expect(progress.isInFlight)
+      #expect(workflow.current == .legacy)
+    }
+
     @Test("the old onboarding reports each long-lived task while it runs")
     func legacyTasksReported() async {
       let workflow = OnboardingWorkflowOwner()

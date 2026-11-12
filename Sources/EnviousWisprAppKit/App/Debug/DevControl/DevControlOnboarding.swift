@@ -23,6 +23,12 @@
     private let legacyState: @MainActor () -> OnboardingState
     /// The app's permissions service, for M5 simulation (nil when not wired).
     private let permissions: PermissionsService?
+    /// The visit box shared with the old onboarding (one owner at a time), for begin/abandon/complete.
+    private let progress: OnboardingProgress?
+    private let everCompleted: @MainActor () -> Bool
+    /// Whether the visit in the shared box is this session's (M63): only then may this door
+    /// abandon or complete it. The old onboarding's live visit is never touched from here.
+    private(set) var ownsVisit = false
     private(set) var session: Session?
 
     init(
@@ -30,9 +36,12 @@
       makeSession: @escaping @MainActor (DevControlOnboarding) -> Session,
       checkpointData: @escaping @MainActor () -> Data?,
       legacyState: @escaping @MainActor () -> OnboardingState,
-      permissions: PermissionsService? = nil
+      permissions: PermissionsService? = nil, progress: OnboardingProgress? = nil,
+      everCompleted: @escaping @MainActor () -> Bool = { false }
     ) {
       self.permissions = permissions
+      self.progress = progress
+      self.everCompleted = everCompleted
       self.workflow = workflow
       self.makeSession = makeSession
       self.checkpointData = checkpointData
@@ -50,7 +59,7 @@
 
     /// Starts or resumes the backend session from the checkpoint (resume UAT).
     func begin() -> Result {
-      guard workflow.claimBackendSession() else { return legacyBusy() }
+      guard claim() else { return legacyBusy() }
       let session = ensureSession()
       guard session.coordinator.begin() else {
         // Completed, or an interrupted completion just finished: Setup does not open, and
@@ -59,12 +68,13 @@
         return .ok(snapshot(extra: ["opened": false]))
       }
       session.runtime.start()
+      beginVisit()
       return .ok(snapshot(extra: ["opened": true]))
     }
 
     /// Restart Onboarding through the runtime (owners' cancels, checkpoint deleted, Welcome).
     func reset() -> Result {
-      guard workflow.claimBackendSession() else { return legacyBusy() }
+      guard claim() else { return legacyBusy() }
       let session = ensureSession()
       if session.runtime.isRunning {
         session.runtime.reset()
@@ -72,6 +82,7 @@
         session.coordinator.reset()
         session.runtime.start()
       }
+      beginVisit()
       return .ok(snapshot())
     }
 
@@ -80,11 +91,53 @@
     /// Ends any session as an app quit would and always clears simulation before Setup goes
     /// back to the old onboarding; with nothing running it only cleans up.
     func stop() -> Result {
+      endVisit(abandonReason: "window_closed")
+      return .ok(snapshot())
+    }
+
+    /// App quit while the session owns Setup (installed as `backendQuit`): abandon at most once.
+    func quitSession() {
+      endVisit(abandonReason: "app_quit")
+    }
+
+    /// The session's flow completed: the visit is complete (no abandon), then Setup goes back.
+    func sessionCompleted() {
+      if ownsVisit { progress?.markCompleted() }
+      ownsVisit = false
+      endOwnership()
+    }
+
+    /// Claims Setup and installs this session's Restart and quit handlers on the owner.
+    private func claim() -> Bool {
+      guard workflow.claimBackendSession() else { return false }
+      workflow.backendRestart = { [weak self] in _ = self?.reset() }
+      workflow.backendQuit = { [weak self] in self?.quitSession() }
+      return true
+    }
+
+    /// A visit starts when the session opens Setup; a refocus or reset of a live visit is a
+    /// no-op inside the box (it never rewinds).
+    private func beginVisit() {
+      guard let progress, !ownsVisit else { return }
+      // Never adopt a visit the old onboarding still has in flight.
+      guard !progress.isInFlight else { return }
+      progress.begin(source: everCompleted() ? "diagnostics_restart" : "first_run")
+      ownsVisit = true
+    }
+
+    /// Ends any running session as an app quit would, records the abandon at most once (a
+    /// completed visit records none), then gives Setup back.
+    private func endVisit(abandonReason: String) {
       if let session, session.runtime.isRunning || session.coordinator.isActive {
         session.runtime.quit()
       }
+      if ownsVisit {
+        progress?.emitAbandonIfInFlight(
+          reason: abandonReason, micStatus: permissions?.microphoneStatusString ?? "unknown",
+          accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied")
+      }
+      ownsVisit = false
       endOwnership()
-      return .ok(snapshot())
     }
 
     /// The one way this door gives Setup back (stop, and completion through the session's
@@ -128,7 +181,7 @@
         return .failure(.badArgs, "give at least one of ram, os, afm, lang, or clear")
       }
       // Validated: claim Setup immediately before applying (M61).
-      guard workflow.claimBackendSession() else { return legacyBusy() }
+      guard claim() else { return legacyBusy() }
       SetupAdvice.debugProfile = fake
       return .ok(snapshot())
     }
@@ -160,7 +213,7 @@
         return .failure(.badArgs, "give mic, ax, or clear")
       }
       // Validated: claim Setup immediately before applying (M61).
-      guard workflow.claimBackendSession() else { return legacyBusy() }
+      guard claim() else { return legacyBusy() }
       permissions.simulated = fake
       session?.runtime.tick()
       return .ok(snapshot())
@@ -176,7 +229,7 @@
         let names = OnboardingFault.allCases.map(\.rawValue).joined(separator: ", ")
         return .failure(.badArgs, "fault must be one of: \(names)")
       }
-      guard workflow.claimBackendSession() else { return legacyBusy() }
+      guard claim() else { return legacyBusy() }
       if args["off"] as? Bool == true {
         OnboardingDebugFaults.active.remove(fault)
       } else {
@@ -415,7 +468,7 @@
     /// The production door handler: the session is assembled on first use from the live owners
     /// (C2c.1), so every owner is fully built by then. Completing Setup returns it to nobody.
     static func live(
-      _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner
+      _ owners: OnboardingLiveOwners, workflow: OnboardingWorkflowOwner, progress: OnboardingProgress
     ) -> DevControlOnboarding {
       DevControlOnboarding(
         workflow: workflow,
@@ -428,7 +481,7 @@
               // Completion gives Setup back through the door, which clears simulation first.
               onCompleted: { [weak door] in
                 if let door {
-                  door.endOwnership()
+                  door.sessionCompleted()
                 } else {
                   DevControlOnboarding.clearSimulation(permissions: owners.permissions)
                   workflow?.releaseBackendSession()
@@ -440,7 +493,8 @@
         },
         checkpointData: { owners.settings.onboardingCheckpointData },
         legacyState: { owners.settings.onboardingState },
-        permissions: owners.permissions)
+        permissions: owners.permissions, progress: progress,
+        everCompleted: { owners.settings.onboardingEverCompleted })
     }
   }
 #endif
