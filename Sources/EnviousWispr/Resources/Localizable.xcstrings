@@ -4344,6 +4344,17 @@
         }
       }
     },
+    "Automatic removal never deletes a kept recording. You can still delete it yourself." : {
+      "comment" : "History: explains Keep this recording.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eine behaltene Aufnahme wird nie automatisch entfernt. Du kannst sie weiterhin selbst löschen."
+          }
+        }
+      }
+    },
     "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words." : {
       "comment" : "Your Words, Learn from: the self-learning dictionary row: what the feature does. Your Words is a page name.",
       "localizations" : {
@@ -7347,6 +7358,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting löschen"
+          }
+        }
+      }
+    },
+    "Delete recording, keep text" : {
+      "comment" : "History: deletes this dictation's audio and keeps its text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme löschen, Text behalten"
           }
         }
       }
@@ -11431,6 +11453,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Behalte die Aufnahme und transkribiere sie erneut mit einer anderen Engine."
+          }
+        }
+      }
+    },
+    "Keep this recording" : {
+      "comment" : "History: keeps this dictation's recording from being removed automatically.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Aufnahme behalten"
           }
         }
       }
@@ -17534,6 +17567,28 @@
         }
       }
     },
+    "Recording couldn't be saved." : {
+      "comment" : "History: the recording of this dictation failed to save.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Aufnahme konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Recording deleted. The text stays." : {
+      "comment" : "History: the user deleted this dictation's recording and kept its text.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme gelöscht. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "Recording for %@" : {
       "comment" : "EnviousMeet, VoiceOver: how long the meeting has been recording.\nMenu bar menu: how long the meeting has been recording, e.g. 12:34.",
       "localizations" : {
@@ -17609,6 +17664,28 @@
         }
       }
     },
+    "Recording removed after your keep period. The text stays." : {
+      "comment" : "History: the recording was removed by the user's recording keep period.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme nach deiner Aufbewahrungsdauer entfernt. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
+    "Recording removed to free space. The text stays." : {
+      "comment" : "History: the recording was removed automatically to free disk space.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme entfernt, um Speicherplatz freizugeben. Der Text bleibt erhalten."
+          }
+        }
+      }
+    },
     "Recording started" : {
       "comment" : "VoiceOver announcement from the recording overlay: recording began.",
       "localizations" : {
@@ -17675,6 +17752,17 @@
         }
       }
     },
+    "Recording unavailable." : {
+      "comment" : "History: this dictation has no recording and no recorded reason.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufnahme nicht verfügbar."
+          }
+        }
+      }
+    },
     "Recording your microphone only" : {
       "comment" : "Menu bar menu, while a meeting records: the call sound is switched off.",
       "localizations" : {
@@ -17703,6 +17791,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erfassung läuft, drücke eine Tastenkombination"
+          }
+        }
+      }
+    },
+    "Recordings were off for this dictation." : {
+      "comment" : "History: no recording because recordings were off when this dictation started.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Für dieses Diktat waren Aufnahmen ausgeschaltet."
           }
         }
       }
@@ -21128,6 +21227,17 @@
         }
       }
     },
+    "That didn't work. Try again." : {
+      "comment" : "History: a recording action (keep or delete) failed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das hat nicht geklappt. Versuch es erneut."
+          }
+        }
+      }
+    },
     "That download did not finish. Check your connection and try again." : {
       "comment" : "Live Preview settings: pack install failed.",
       "localizations" : {
@@ -22132,6 +22242,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Audioaufnahme kann nicht abgespielt werden. Sie wurde möglicherweise gelöscht oder ist beschädigt."
+          }
+        }
+      }
+    },
+    "The recording can't be read right now." : {
+      "comment" : "History: the recording's file or details could not be read just now.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Aufnahme kann gerade nicht gelesen werden."
           }
         }
       }

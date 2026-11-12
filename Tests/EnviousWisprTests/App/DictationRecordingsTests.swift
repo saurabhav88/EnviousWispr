@@ -6,6 +6,7 @@ import Testing
 @testable import EnviousWisprAppKit
 import EnviousWisprPipeline
 @testable import EnviousWisprStorage
+@testable import EnviousWisprAudio
 
 /// #3147 §3.1: when these fail, a recording the user deleted comes back after a slow encode, an
 /// older take overwrites a newer one, deleting a dictation leaves its audio on disk, or launch
@@ -449,6 +450,127 @@ struct DictationRecordingsTests {
     await rig.recordings.waitForSubmissions()
 
     #expect(try await rig.archive.absence(for: row.id) == .deleted)
+  }
+
+  /// A real AAC recording stored for `rowID` through the archive, bypassing the gate encoder.
+  private func storeRealRecording(_ rig: Rig, rowID: UUID, seconds: Double = 1) async throws {
+    let partial = try await rig.archive.partialURL(for: rowID)
+    let samples = (0..<Int(seconds * 16_000)).map { Float(sin(Double($0) * 0.05)) * 0.3 }
+    _ = try SpeechAudioEncoder.encode(samples: samples, purpose: .dictation, to: partial)
+    try await rig.archive.store(rowID: rowID, fileURL: partial, timing: nil)
+  }
+
+  @Test("History reads a recording's file length and Keep state, a recorded reason, or a read failure")
+  func statusForHistory() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id, seconds: 1)
+    try await rig.recordings.pin(rowID: row.id)
+
+    guard case .available(_, let durationMs, let pinned) = await rig.recordings.status(for: row.id)
+    else {
+      Issue.record("a stored recording is available")
+      return
+    }
+    #expect(abs(durationMs - 1_000) <= 50, "the file's own length, not the text's")
+    #expect(pinned)
+
+    try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
+    #expect(await rig.recordings.status(for: row.id) == .absent(.deleted))
+    #expect(await rig.recordings.status(for: UUID()) == .absent(nil), "legacy rows give no reason")
+
+    try Data("not json".utf8).write(to: rig.archive.directory.appendingPathComponent("absences.json"))
+    #expect(await rig.recordings.status(for: row.id) == .unreadable, "a read failure is no absence")
+  }
+
+  @Test("every recording deletion stops that recording's players before its files go")
+  func deletionsStopPlayback() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let arbiter = PlaybackArbiter()
+    rig.recordings.arbiter = arbiter
+    let silent: MeetingPlaybackController.Reader = { _, loaded, _, count in
+      (
+        loaded ?? (DictationPlaybackTests.SilentAudio() as any PlaybackWindowAudio),
+        [Float](repeating: 0, count: count * 16)
+      )
+    }
+    /// A playing player whose output records, at the moment it stops, whether the audio file
+    /// was still on disk.
+    func playingPlayer(_ id: UUID) async throws -> (MeetingPlaybackController, () -> Bool?) {
+      let file = try #require(await rig.archive.url(for: id))
+      let output = MeetingPlaybackControllerTests.FakeOutput()
+      var fileAtStop: Bool?
+      output.onStop = { fileAtStop = FileManager.default.fileExists(atPath: file.path) }
+      let player = MeetingPlaybackController(
+        media: .dictation(file), durationMs: 5_000, output: output, read: silent,
+        sourceID: .dictation(id), arbiter: arbiter)
+      player.play()
+      return (player, { fileAtStop })
+    }
+    let audioOnly = try savedRow(rig, "audio only")
+    let wholeRow = try savedRow(rig, "whole row")
+    let lastRow = try savedRow(rig, "last row")
+    for row in [audioOnly, wholeRow, lastRow] { try await storeRealRecording(rig, rowID: row.id) }
+
+    let (first, firstSaw) = try await playingPlayer(audioOnly.id)
+    try await rig.recordings.deleteRecording(rowID: audioOnly.id, reason: .deleted)
+    #expect(first.state == .unavailable)
+    #expect(firstSaw() == true, "audio-only deletion: playback stopped while the file was there")
+    #expect(await rig.archive.url(for: audioOnly.id) == nil, "then the file went")
+
+    let (second, secondSaw) = try await playingPlayer(wholeRow.id)
+    await rig.coordinator.delete(wholeRow)
+    #expect(second.state == .unavailable)
+    #expect(secondSaw() == true, "row deletion: playback stopped while the file was there")
+    #expect(await rig.archive.url(for: wholeRow.id) == nil)
+
+    let (third, thirdSaw) = try await playingPlayer(lastRow.id)
+    await rig.coordinator.deleteAll()
+    #expect(third.state == .unavailable)
+    #expect(thirdSaw() == true, "Delete All: playback stopped while the file was there")
+    #expect(try await rig.archive.recordedRowIDs().isEmpty)
+  }
+
+  @Test("a failed recording deletion keeps the audio, reports it, and lets Play work again")
+  func failedDeletionRestoresPlay() async throws {
+    let rig = rig()
+    defer { rig.gate.releaseAll() }
+    let arbiter = PlaybackArbiter()
+    rig.recordings.arbiter = arbiter
+    let row = try savedRow(rig)
+    try await storeRealRecording(rig, rowID: row.id)
+    let file = try #require(await rig.archive.url(for: row.id))
+    let player = MeetingPlaybackController(
+      media: .dictation(file), durationMs: 1_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .dictation(row.id),
+      arbiter: arbiter)
+    let revision = rig.recordings.changes.revision(for: row.id)
+    // A locked file cannot be removed.
+    try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
+    defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path) }
+
+    await #expect(throws: (any Error).self, "the failure reaches the caller, which shows it") {
+      try await rig.recordings.deleteRecording(rowID: row.id, reason: .deleted)
+    }
+
+    #expect(player.state == .unavailable, "the old player never plays again")
+    #expect(rig.recordings.changes.revision(for: row.id) != revision, "the detail reads again")
+    guard case .available(let url, _, _) = await rig.recordings.status(for: row.id) else {
+      Issue.record("the audio survived the failed removal")
+      return
+    }
+    #expect(url == file)
+    #expect(
+      DictationRecordingSection.needsNewPlayer(current: player, currentURL: file, read: url),
+      "the fresh read builds a new player, so Play works again")
+    let live = MeetingPlaybackController(
+      media: .dictation(file), durationMs: 1_000,
+      output: MeetingPlaybackControllerTests.FakeOutput())
+    #expect(
+      !DictationRecordingSection.needsNewPlayer(current: live, currentURL: file, read: file),
+      "a working player for the same file is kept")
   }
 
   @Test("launch cleanup removes interrupted encodes and orphans, never a recording with its row")

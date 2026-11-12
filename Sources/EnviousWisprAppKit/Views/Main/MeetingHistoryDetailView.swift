@@ -181,7 +181,11 @@ struct MeetingHistoryDetailView: View {
     case .replace:
       dropPlayer()
       if let source {
-        player = MeetingPlaybackController(source: source, output: MeetingPlaybackEngineOutput())
+        // #3147: known to the shared now-playing owner, so another recording starting pauses
+        // this one and a deletion stops it before its files go.
+        player = MeetingPlaybackController(
+          source: source, output: MeetingPlaybackEngineOutput(), meetingID: meetingID,
+          arbiter: meetings.playbackArbiter)
         playerSource = source
       }
     }

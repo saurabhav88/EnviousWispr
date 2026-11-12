@@ -23,9 +23,8 @@ import Foundation
 ///
 /// The producer is the dictation kernel (`DictationRecordingSink`): one request per take whose
 /// ordinary permanent save returned successfully, carrying the raw capture and the recording
-/// preference frozen at take start. Integration obligation for Chunk 4: before a deletion
-/// command gains a playback consumer, it stops that recording through the shared playback owner
-/// on this same path.
+/// preference frozen at take start. Every deletion command stops that recording's players through
+/// the shared now-playing owner (`arbiter`, wired by the composition root) before any file goes.
 @MainActor final class DictationRecordings: DictationRecordingSink {
   /// One admitted audio operation: the row and the generation it was admitted under.
   struct Ticket: Sendable, Equatable {
@@ -58,6 +57,10 @@ import Foundation
   /// The one generation authority: the current ticket generation per row. A row with no entry
   /// has no admitted encode, so nothing may be published for it.
   private var generations: [UUID: UInt64] = [:]
+  /// Which rows' recordings changed, for History views (#3147 chunk 4).
+  let changes = DictationRecordingChanges()
+  /// The shared now-playing owner; every deletion stops the recording's players first.
+  var arbiter: PlaybackArbiter?
   private var nextGeneration: UInt64 = 0
   private var startup: SerialCommandDrain.Receipt<Void>?
 
@@ -187,6 +190,7 @@ import Foundation
       generations[ticket.rowID] = nil
       do {
         try await archive.recordAbsence(.recordingsOff, for: ticket.rowID)
+        changes.changed(ticket.rowID)
         return .recordedOff
       } catch {
         log("recordings-off reason not recorded: \(type(of: error))")
@@ -230,6 +234,7 @@ import Foundation
       }
       do {
         let stored = try await archive.store(rowID: rowID, fileURL: partial, timing: timing)
+        changes.changed(rowID)
         if isCurrent(ticket) { generations[rowID] = nil }
         return stored == .stored ? .stored : .storedWithoutTimings
       } catch {
@@ -260,6 +265,7 @@ import Foundation
     log("recording not saved: \(type(of: error))")
     do {
       try await archive.recordAbsence(.saveFailed, for: ticket.rowID)
+      changes.changed(ticket.rowID)
     } catch {
       log("recording failure not recorded: \(type(of: error))")
     }
@@ -277,14 +283,38 @@ import Foundation
 
   func pin(rowID: UUID) async throws {
     try await executor.admit { [self] in
-      await executor.capture { try await archive.pin(rowID: rowID) }
+      await executor.capture {
+        defer { changes.changed(rowID) }
+        try await archive.pin(rowID: rowID)
+      }
     }.get()
   }
 
   func unpin(rowID: UUID) async throws {
     try await executor.admit { [self] in
-      await executor.capture { try await archive.unpin(rowID: rowID) }
+      await executor.capture {
+        defer { changes.changed(rowID) }
+        try await archive.unpin(rowID: rowID)
+      }
     }.get()
+  }
+
+  /// What History shows for one dictation's recording. Reads the archive and the file's own
+  /// length off the main actor; a read failure is `.unreadable`, never an absence.
+  func status(for rowID: UUID) async -> DictationRecordingStatus {
+    let archive = archive
+    do {
+      guard let url = await archive.url(for: rowID) else {
+        return .absent(try await archive.absence(for: rowID))
+      }
+      let pinned = try await archive.isPinned(rowID)
+      let durationMs = try await Task.detached(priority: .userInitiated) {
+        try DictationPlaybackAudio(url: url).durationMs
+      }.value
+      return .available(url: url, durationMs: durationMs, pinned: pinned)
+    } catch {
+      return .unreadable
+    }
   }
 
   // MARK: - Inside an admitted History command (never admit again from these)
@@ -293,6 +323,9 @@ import Foundation
   /// bring the recording back even if the removal fails.
   func deleteRecordingInCommand(rowID: UUID, reason: RecordingAbsence) async throws {
     generations[rowID] = nil
+    // Playback stops before any file goes, and never resumes from this file.
+    arbiter?.stopForDeletion(.dictation(rowID))
+    defer { changes.changed(rowID) }
     try await archive.delete(rowID: rowID, reason: reason)
   }
 
@@ -300,12 +333,16 @@ import Foundation
   /// reason go too.
   func forgetInCommand(rowID: UUID) async throws {
     generations[rowID] = nil
+    arbiter?.stopForDeletion(.dictation(rowID))
+    defer { changes.changed(rowID) }
     try await archive.forget(rowID: rowID)
   }
 
   /// Delete All removed every text row: every ticket is withdrawn and the archive emptied.
   func removeAllInCommand() async throws {
     generations.removeAll()
+    arbiter?.stopAllDictationsForDeletion()
+    defer { changes.changedAll() }
     try await archive.removeEverything()
   }
 

@@ -1514,6 +1514,48 @@ struct MeetingCoordinatorTests {
     #expect(try harness.store.load(id: meetingID).deletionRequested)
   }
 
+  /// #3147: a meeting's player stops before its audio or its folder is removed.
+  @Test("deleting a meeting's audio or the meeting stops its player before the files go")
+  func meetingDeletionsStopPlayback() async throws {
+    for wholeMeeting in [false, true] {
+      let harness = try Harness()
+      let coordinator = harness.coordinator
+      let arbiter = PlaybackArbiter()
+      coordinator.playbackArbiter = arbiter
+      await coordinator.start(from: .history)
+      let meetingID = try onlyMeeting(harness).id
+      await coordinator.stop(reason: .user)
+      await Self.eventually("ready") {
+        coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+      }
+      let source = try #require(coordinator.playbackSource(meetingID: meetingID))
+      let output = MeetingPlaybackControllerTests.FakeOutput()
+      var segmentsAtStop: Int?
+      output.onStop = {
+        segmentsAtStop = (try? harness.store.segmentFiles(meeting: meetingID).count) ?? 0
+      }
+      let player = MeetingPlaybackController(
+        source: source, output: output, meetingID: meetingID, arbiter: arbiter)
+      player.play()
+      #expect(player.state == .playing)
+      #expect(try harness.store.segmentFiles(meeting: meetingID).isEmpty == false)
+
+      if wholeMeeting {
+        #expect(await coordinator.delete(meetingID: meetingID))
+      } else {
+        await coordinator.deleteAudio(meetingID: meetingID)
+      }
+
+      #expect(player.state == .unavailable, wholeMeeting ? "meeting deleted" : "audio deleted")
+      #expect((segmentsAtStop ?? 0) > 0, "playback stopped while the audio files were still there")
+      #expect(
+        ((try? harness.store.segmentFiles(meeting: meetingID).count) ?? 0) == 0,
+        "then the audio files went")
+      player.play()
+      #expect(player.state == .unavailable, "never plays again")
+    }
+  }
+
   @Test("deleting only the audio keeps the meeting and stops a queued one from processing")
   func deleteAudioOnly() async throws {
     let harness = try Harness()

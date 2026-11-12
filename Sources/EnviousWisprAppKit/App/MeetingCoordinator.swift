@@ -287,6 +287,10 @@ final class MeetingFileWriter: Sendable {
 @MainActor
 @Observable
 final class MeetingCoordinator {
+  /// #3147: the shared now-playing owner. A meeting's players stop before its audio or folder
+  /// is removed, so nothing plays from a deleted file. Wired by the composition root.
+  @ObservationIgnored var playbackArbiter: PlaybackArbiter?
+
   struct Dependencies {
     var store: MeetingStore
     var makeRecorder:
@@ -2242,6 +2246,7 @@ final class MeetingCoordinator {
   /// Removes the audio of a meeting whose record says it is deleted. Repeatable: a launch runs
   /// it for every such meeting, and with no files left it does nothing.
   private func finishAudioDeletion(_ meetingID: UUID) async {
+    playbackArbiter?.stopForDeletion(.meeting(meetingID))
     do {
       try await writer.run { store in
         try store.deleteAudio(meeting: meetingID)
@@ -2409,6 +2414,7 @@ final class MeetingCoordinator {
       // deletion mark and live record stay, until the folder is gone too.
       try await deps.removeTranscriptRow(record.transcriptID)
       let meetingID = record.id
+      playbackArbiter?.stopForDeletion(.meeting(meetingID))
       try await writer.run { try $0.deleteFolder(meeting: meetingID) }
       discardSegmentSaves(record.id)
       // #3973 C2: the receipt went with the folder.

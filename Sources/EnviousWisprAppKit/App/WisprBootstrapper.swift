@@ -2899,6 +2899,11 @@ package final class WisprBootstrapper {
         setupService.setupState == .ready
       })
     let meetingCoordinator = MeetingWiring.make(meetingInputs)
+    // #3147: one now-playing owner for meeting and dictation recordings: starting one pauses
+    // the other, and every deletion stops that recording's players before its files go.
+    let playbackArbiter = PlaybackArbiter()
+    meetingCoordinator.playbackArbiter = playbackArbiter
+    transcriptCoordinator.recordings?.arbiter = playbackArbiter
     meetingSummariesForEviction = meetingCoordinator.summaries
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
