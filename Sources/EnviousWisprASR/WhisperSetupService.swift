@@ -135,7 +135,12 @@ public final class WhisperSetupService {
   /// state projection drives progress from there. A REFUSED request re-detects
   /// instead — no delivery state will ever arrive for it, and leaving the
   /// optimistic "Starting download..." up would stick forever (Codex 2b-r1 P2).
-  public func downloadModel() {
+  ///
+  /// #4528 M49: the returned task answers whether the request was ACCEPTED (false for a
+  /// cancel that outran it, a refused claim or a refused start), for a caller that must tell a
+  /// refusal from a download (Setup). Settings ignores it, as before.
+  @discardableResult
+  public func downloadModel() -> Task<Bool, Never> {
     removeNotice = nil
     setupState = .downloading(
       progress: 0,
@@ -144,25 +149,28 @@ public final class WhisperSetupService {
         comment: "Speech engine settings, Whisper model: download status line."))
     downloadIntentEpoch += 1
     let epoch = downloadIntentEpoch
-    Task { [startDownload, weak self] in
+    return Task { [startDownload, weak self] in
       guard let self, self.downloadIntentEpoch == epoch else {
         // A Cancel outran this task: the download never starts, so no delivery
         // state will arrive — re-detect to disk truth (paused when partials
         // exist) instead of leaving "Starting download..." up.
         await self?.forceDetectState()
-        return
+        return false
       }
       // #1707 Phase 3 (§3.2, row 9) / #1741 Chunk 4: hold a mutation claim for
       // the FULL download — a Settings-initiated fetch must never race crash
       // recovery on the shared engine.
       let outcome = await self.engineMutationScope.withClaim(site: "whisperKitDownload") {
+        () async -> Bool in
         if await startDownload() == false {
           await self.forceDetectState()
+          return false
         }
+        return true
       }
-      if case .refused = outcome {
-        await self.forceDetectState()
-      }
+      if case .completed(let accepted) = outcome { return accepted }
+      await self.forceDetectState()
+      return false
     }
   }
 
