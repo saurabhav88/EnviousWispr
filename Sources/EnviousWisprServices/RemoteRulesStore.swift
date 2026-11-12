@@ -34,6 +34,31 @@ package protocol RemoteRulesDocument: Sendable, Equatable {
   /// Orders documents: the store never replaces one with a lower or equal revision.
   var revision: Int { get }
   var origin: RemoteRulesOrigin { get }
+
+  /// A detached signature fetched beside the document, or nil for an unsigned document (#4528).
+  /// When set, the store downloads it too and hands both to `init(validating:signature:origin:)`.
+  static var signatureEndpoint: URL? { get }
+  /// The largest signature accepted.
+  static var maximumSignatureBytes: Int { get }
+  /// The largest cache file read back. Defaults to `maximumBytes`; a signed document caches a
+  /// larger unit (payload and signature together) and raises it.
+  static var maximumCacheBytes: Int { get }
+  /// Validates a downloaded document together with its detached signature. Unsigned documents
+  /// use the default, which ignores the signature.
+  init(validating data: Data, signature: Data?, origin: RemoteRulesOrigin) throws
+  /// The bytes to cache for a validated download, when they differ from the downloaded document
+  /// (a signed document caches payload and signature as one unit). Nil caches the document bytes.
+  var cacheData: Data? { get }
+}
+
+extension RemoteRulesDocument {
+  package static var signatureEndpoint: URL? { nil }
+  package static var maximumSignatureBytes: Int { 0 }
+  package static var maximumCacheBytes: Int { maximumBytes }
+  package init(validating data: Data, signature: Data?, origin: RemoteRulesOrigin) throws {
+    try self.init(validating: data, origin: origin)
+  }
+  package var cacheData: Data? { nil }
 }
 
 /// What every rules store shares.
@@ -55,6 +80,24 @@ package enum RemoteRules {
     directoryName: "TalkerRules")
   /// The app's self-mute rules (#4248), under `<data directory>/CallMuteRules/`.
   package static let mute = RemoteRulesStore<CallMuteRules>.live(directoryName: "CallMuteRules")
+}
+
+/// How the last refresh attempt ended, for later reporting (#4528 B2). Bounded: no URLs, no bodies.
+package enum RemoteRulesRefreshOutcome: String, Sendable, Equatable {
+  /// Not due: the daily limit had not passed.
+  case notDue = "not_due"
+  /// The request failed (offline, timeout, transport error).
+  case transportFailed = "transport_failed"
+  /// The reply was not a 200 from the one address asked, or was too large.
+  case badReply = "bad_reply"
+  /// A signed document's signature could not be fetched.
+  case signatureUnavailable = "signature_unavailable"
+  /// The document (or its signature) did not validate.
+  case invalid = "invalid"
+  /// Valid, but not newer than the rules already trusted.
+  case notNewer = "not_newer"
+  /// Accepted and cached.
+  case accepted = "accepted"
 }
 
 /// The one owner of one rules document on this Mac (#4013 D3, chunk 5; generic since reading
@@ -80,6 +123,7 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
   private var lastAttempt: Date?
   private var attemptLoaded = false
   private var inFlight: Task<Document, Never>?
+  private var lastOutcome: RemoteRulesRefreshOutcome?
 
   package init(
     directory: URL, bundledData: @escaping @Sendable () -> Data?,
@@ -123,13 +167,19 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
   /// Downloads a newer document when a day has passed since the last attempt, then answers like
   /// `current()`. Concurrent callers share one download. The attempt is recorded before the
   /// request, so a failure or a relaunch does not retry until the next day.
+  /// How the last refresh attempt in this run ended, or nil when none was made.
+  package func lastRefreshOutcome() -> RemoteRulesRefreshOutcome? { lastOutcome }
+
   package func refreshIfDue() async -> Document {
     if let inFlight {
       onJoinedRefresh?()
       return await inFlight.value
     }
     let base = current()
-    guard isDue() else { return base }
+    guard isDue() else {
+      lastOutcome = .notDue
+      return base
+    }
     recordAttempt()
     let task = Task { await self.download(over: base) }
     inFlight = task
@@ -144,22 +194,50 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
     request.timeoutInterval = RemoteRules.timeoutSeconds
     request.httpShouldHandleCookies = false
     request.cachePolicy = .reloadIgnoringLocalCacheData
-    guard let reply = try? await transport(request, Document.maximumBytes) else { return base }
+    guard let reply = try? await transport(request, Document.maximumBytes) else {
+      lastOutcome = .transportFailed
+      return base
+    }
     guard reply.response.statusCode == 200, Self.isEndpoint(reply.response.url),
-      reply.body.count <= Document.maximumBytes,
-      let fresh = try? Document(validating: reply.body, origin: .downloaded),
-      fresh.revision > base.revision
-    else { return base }
-    writeCache(reply.body)
+      reply.body.count <= Document.maximumBytes
+    else {
+      lastOutcome = .badReply
+      return base
+    }
+    // A signed document needs its detached signature, fetched the same way (#4528).
+    var signature: Data? = nil
+    if let signatureEndpoint = Document.signatureEndpoint {
+      var signatureRequest = request
+      signatureRequest.url = signatureEndpoint
+      guard let signed = try? await transport(signatureRequest, Document.maximumSignatureBytes),
+        signed.response.statusCode == 200,
+        Self.isEndpoint(signed.response.url, expected: signatureEndpoint),
+        signed.body.count <= Document.maximumSignatureBytes
+      else {
+        lastOutcome = .signatureUnavailable
+        return base
+      }
+      signature = signed.body
+    }
+    guard let fresh = try? Document(validating: reply.body, signature: signature, origin: .downloaded)
+    else {
+      lastOutcome = .invalid
+      return base
+    }
+    guard fresh.revision > base.revision else {
+      lastOutcome = .notNewer
+      return base
+    }
+    writeCache(fresh.cacheData ?? reply.body)
     snapshot = fresh
+    lastOutcome = .accepted
     return fresh
   }
 
   /// The answer must come from the one address asked, not a redirect or another host.
-  static func isEndpoint(_ url: URL?) -> Bool {
+  static func isEndpoint(_ url: URL?, expected: URL = Document.endpoint) -> Bool {
     guard let url else { return false }
-    let endpoint = Document.endpoint
-    return url.scheme == endpoint.scheme && url.host == endpoint.host && url.path == endpoint.path
+    return url.scheme == expected.scheme && url.host == expected.host && url.path == expected.path
   }
 
   // MARK: - Daily limit
@@ -201,8 +279,8 @@ package actor RemoteRulesStore<Document: RemoteRulesDocument> {
     }
     defer { try? handle.close() }
     // Bound the read: an oversized file is refused without loading it.
-    guard let data = try? handle.read(upToCount: Document.maximumBytes + 1),
-      data.count <= Document.maximumBytes
+    guard let data = try? handle.read(upToCount: Document.maximumCacheBytes + 1),
+      data.count <= Document.maximumCacheBytes
     else { return nil }
     return try? Document(validating: data, origin: .cached)
   }
