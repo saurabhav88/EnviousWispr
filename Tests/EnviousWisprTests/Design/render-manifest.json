@@ -3505,6 +3505,60 @@
       "state": "overlay notice from PillCatalog: language-chip"
     },
     {
+      "name": "notice-correction-save-error-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-save-error",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: correction-save-error"
+    },
+    {
+      "name": "notice-correction-save-error-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-save-error",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: correction-save-error"
+    },
+    {
+      "name": "notice-polish-setup-card-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-polish-setup-card",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: polish-setup-card"
+    },
+    {
+      "name": "notice-polish-setup-card-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-polish-setup-card",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: polish-setup-card"
+    },
+    {
+      "name": "notice-parakeet-upgrade-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-parakeet-upgrade",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: parakeet-upgrade"
+    },
+    {
+      "name": "notice-parakeet-upgrade-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-parakeet-upgrade",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "overlay notice from PillCatalog: parakeet-upgrade"
+    },
+    {
       "name": "logo-lips-light",
       "producer": "DesignRenderHarness",
       "fixture": "logo-lips",

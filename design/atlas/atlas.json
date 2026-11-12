@@ -489,6 +489,51 @@
       }
     },
     {
+      "id": "notice-correction-save-error",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Word not saved",
+      "source": {
+        "manifest": "notice-correction-save-error"
+      }
+    },
+    {
+      "id": "notice-polish-setup-card",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: AI Polish setup card",
+      "source": {
+        "manifest": "notice-polish-setup-card"
+      }
+    },
+    {
+      "id": "notice-parakeet-upgrade",
+      "kind": "harness",
+      "group": "Pill notices",
+      "title": "Notice: Parakeet Ultra download",
+      "source": {
+        "manifest": "notice-parakeet-upgrade"
+      }
+    },
+    {
+      "id": "page-appSettings-licenseReader",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Licenses > license text",
+      "source": {
+        "manifest": "licenseReader-default-820"
+      }
+    },
+    {
+      "id": "page-appSettings-noticesReader",
+      "kind": "harness",
+      "group": "Settings pages",
+      "title": "App Settings > Licenses > third-party notices",
+      "source": {
+        "manifest": "noticesReader-default-820"
+      }
+    },
+    {
       "id": "logo-lips",
       "kind": "harness",
       "group": "Logos",

@@ -32,7 +32,8 @@ import Testing
 ///   a meeting record plus the page's services (polish setup monitor, navigation, runtime, backend
 ///   metadata, history paste, previous-app tracker, window coordinator, meeting start flow, among
 ///   others); no test assembles them today, and building that fixture is outside this change.
-///   Those buttons are checked in Live UAT.
+///   Those buttons are NOT VERIFIED: the #4531 Live UAT could not select a meeting row through
+///   accessibility, so they still need a live check.
 /// - Onboarding: being rebuilt with more steps in a separate change (founder 2026-11-11), and its
 ///   rainbow mark animates, so its pictures are not repeatable; it is photographed after that
 ///   rebuild lands.
@@ -304,7 +305,51 @@ enum DesignPageCaptures {
         payload: LanguageChipPayload(
           lang: "es", displayName: "Spanish", state: .askToLock, generation: 1))
     ),
+    (
+      "correction-save-error",
+      .correctionLearnedSaveError(
+        LearnedCorrectionSaveError(canonical: "Tuist", reason: .vocabularyWriteFailed))
+    ),
+    ("polish-setup-card", .polishSetupCard(PolishSetupCardModel(problem: .cloudNoModel(.claude)))),
+    (
+      "parakeet-upgrade",
+      .parakeetUpgrade(ParakeetUpgradePillModel(phase: .downloading(fraction: 0.4)))
+    ),
   ]
+
+  /// Which atlas picture shows each kind of pill, so a new `PillCatalogRequest` case does not
+  /// build until someone decides how the atlas shows it (#4506). Add its fixture to `notices`
+  /// (and to `render-manifest.json` and `design/atlas/atlas.json`), or return nil with the reason.
+  static func atlasPicture(for request: PillCatalogRequest) -> String? {
+    switch request {
+    case .recording: nil  // the pill-<design>-<state> pictures
+    case .hidden: nil  // draws nothing
+    case .processing(let phase):
+      switch phase {
+      // The 60-minute case draws the same look with longer words.
+      case .transcribing, .transcribingMaxDurationReached: "processing-transcribing"
+      case .polishing: "processing-polishing"
+      }
+    case .clipboardFallback: "clipboard-fallback"
+    case .accessibilityToast: "accessibility-toast"
+    case .warning: "warning-polish-failed"
+    case .error: "error-capture"
+    case .advisory: "advisory-zero-signal"
+    case .interruption: "interruption-device-removed"
+    case .passiveChip: "language-chip"
+    case .cachingModel: "caching-model"
+    case .engineReady: "engine-ready"
+    case .recoveringLastRecording: "recovering"
+    case .recoverySucceeded: "recovery-succeeded"
+    case .bluetoothAwareness: "bluetooth"
+    case .escapeRecovery: "escape-recovery"
+    case .importStatus: "import-status"
+    case .correctionLearned: "correction-learned"
+    case .correctionLearnedSaveError: "correction-save-error"
+    case .polishSetupCard: "polish-setup-card"
+    case .parakeetUpgrade: "parakeet-upgrade"
+    }
+  }
 
   /// One notice as the overlay root draws it, proposed the width production proposes
   /// (`RenderedPillHarness.rootSize(for:)` repeats the same rule).
