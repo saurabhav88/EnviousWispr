@@ -108,7 +108,7 @@ struct DiagnosticsSettingsView: View {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Button("Restart Onboarding…") {
-                settings.onboardingState = .notStarted
+                settings.restartOnboarding()
                 appWindowCoordinator.openOnboardingWindow()
               }
               .disabled(liveRecordingState.pipelineState != .idle)

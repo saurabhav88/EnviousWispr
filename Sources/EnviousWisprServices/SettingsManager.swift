@@ -165,6 +165,7 @@ public final class SettingsManager {
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
     "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
+    SettingsManager.onboardingCheckpointKey,
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
     "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
@@ -1040,6 +1041,9 @@ public final class SettingsManager {
       // `source` as first_run vs diagnostics_restart in the SHARED settings store.
       if onboardingState == .completed {
         defaults.set(true, forKey: Self.onboardingEverCompletedKey)
+        // #4528: a finished Setup never resumes; deleting the checkpoint here means a leftover
+        // `done` checkpoint can only mean interrupted completion (OnboardingRestore).
+        defaults.removeObject(forKey: Self.onboardingCheckpointKey)
         // #4287: a fresh install maps its summary engine from the polish engine it just
         // picked; a no-op once a choice is stored.
         migrateMeetingSummaryEngineIfNeeded()
@@ -1049,6 +1053,30 @@ public final class SettingsManager {
   }
 
   static let onboardingEverCompletedKey = "ew.onboarding.everCompleted"
+
+  /// #4528: where the new Setup resumes. Opaque bytes owned by AppKit's `OnboardingCheckpoint`;
+  /// same store as `onboardingState`, so the two can never come from different builds' stores.
+  public nonisolated static let onboardingCheckpointKey = "ew.onboarding.checkpoint.v1"
+
+  /// #4528: the one way to send Setup back to Welcome (Diagnostics "Restart Onboarding…", the
+  /// DEBUG door). Deletes the checkpoint first so restore can never mistake a restart for an
+  /// interrupted completion, and a mid-flow checkpoint cannot resume after a restart.
+  public func restartOnboarding() {
+    onboardingCheckpointData = nil
+    onboardingState = .notStarted
+  }
+
+  /// The saved Setup checkpoint, or nil. Setting nil removes the key.
+  public var onboardingCheckpointData: Data? {
+    get { defaults.data(forKey: Self.onboardingCheckpointKey) }
+    set {
+      if let newValue {
+        defaults.set(newValue, forKey: Self.onboardingCheckpointKey)
+      } else {
+        defaults.removeObject(forKey: Self.onboardingCheckpointKey)
+      }
+    }
+  }
 
   /// The polish provider when none is stored (#4528 D1).
   ///
@@ -1078,7 +1106,9 @@ public final class SettingsManager {
   /// Backward-compat computed property — true when onboarding is fully complete.
   public var hasCompletedOnboarding: Bool {
     get { onboardingState == .completed }
-    set { onboardingState = newValue ? .completed : .notStarted }
+    set {
+      if newValue { onboardingState = .completed } else { restartOnboarding() }
+    }
   }
 
   public var cancelKeyCode: UInt16 {
